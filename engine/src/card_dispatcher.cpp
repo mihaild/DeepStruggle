@@ -673,12 +673,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 uint8_t drawn_card = state.ctx().temp_cards[0];
                 state.card_locations[drawn_card] = CardLocation::HAND_US;
                 state.ctx().pending_op_card = drawn_card;
+                state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
                 return false;
             } else {
                 // Return card, US conducts 2 Ops
                 state.ctx().pending_op_card = card_ids::GRAIN_SALES;
                 state.ctx().pending_ops_value = 2;
+                state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;
             }
@@ -865,6 +867,29 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     break;
                 case card_ids::MARINE_BARRACKS_BOMBING:
                     if (c_info.region == Region::MIDDLE_EAST && state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
+                        mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::SUEZ_CRISIS:
+                    if ((i == countries::UNITED_KINGDOM || i == countries::FRANCE || i == countries::ISRAEL) &&
+                        state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
+                        mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::EAST_EUROPEAN_UNREST:
+                    if (c_info.in_eastern_europe && state.countries[i].ussr_influence > 0 && !state.ctx().is_visited(i)) {
+                        mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::DECOLONIZATION:
+                    if ((c_info.region == Region::AFRICA || c_info.in_southeast_asia) && state.ctx().node_counts[i] < 1) {
+                        mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::MUSLIM_REVOLUTION:
+                    if ((i == countries::SUDAN || i == countries::IRAN || i == countries::IRAQ ||
+                         i == countries::EGYPT || i == countries::LIBYA || i == countries::SAUDI_ARABIA ||
+                         i == countries::SYRIA || i == countries::JORDAN) && state.countries[i].us_influence > 0 && !state.ctx().is_visited(i)) {
                         mask_out[i] = 1;
                     }
                     break;

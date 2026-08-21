@@ -451,6 +451,15 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {
+            if (action.is_confirm_done()) {
+                state.ctx().resolving_card = 0;
+                if (state.ctx_stack_depth > 0) {
+                    state.pop_context();
+                } else {
+                    advance_after_action_round(state);
+                }
+                return true;
+            }
             bool finished = CardHandlers::handle_event_step(state, action);
             if (finished) {
                 if (state.ctx_stack_depth > 0) {
