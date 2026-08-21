@@ -416,9 +416,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             };
             bool valid = false;
             for (uint8_t v : VALID_REDS) if (v == cid) valid = true;
-            if (valid) {
-                uint8_t stab = MapData::get_country(cid).stability;
-                state.countries[cid].add_influence(Player::US, stab);
+            if (valid && state.countries[cid].ussr_influence > 0) {
+                uint8_t ussr_inf = state.countries[cid].ussr_influence;
+                state.countries[cid].add_influence(Player::US, ussr_inf);
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -714,6 +714,35 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             return false;
         }
 
+        case card_ids::SPECIAL_RELATIONSHIP: {
+            uint8_t cid = action.primary_id;
+            if (cid < 84) {
+                if (!state.has_flag(effect_bits::NATO_ACTIVE)) {
+                    const auto& uk = MapData::get_country(countries::UNITED_KINGDOM);
+                    bool is_adj = false;
+                    for (uint8_t n = 0; n < uk.num_neighbors; ++n) {
+                        if (uk.neighbors[n] == cid) is_adj = true;
+                    }
+                    if (is_adj) {
+                        state.countries[cid].add_influence(Player::US, 1);
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
+                } else {
+                    if (MapData::get_country(cid).in_western_europe) {
+                        state.countries[cid].add_influence(Player::US, 1);
+                        if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
+                        if (state.ctx().remaining_steps == 0) {
+                            state.ctx().resolving_card = 0;
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+            }
+            return false;
+        }
+
         default:
             state.ctx().resolving_card = 0;
             return true;
@@ -771,6 +800,22 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 case card_ids::MARSHALL_PLAN:
                     if (c_info.in_western_europe && !Scoring::is_controlled_by(state, i, Player::USSR) && !state.ctx().is_visited(i)) {
                         mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::INDEPENDENT_REDS:
+                    if ((i == countries::YUGOSLAVIA || i == countries::ROMANIA || i == countries::BULGARIA ||
+                         i == countries::HUNGARY || i == countries::CZECHOSLOVAKIA) && state.countries[i].ussr_influence > 0) {
+                        mask_out[i] = 1;
+                    }
+                    break;
+                case card_ids::SPECIAL_RELATIONSHIP:
+                    if (!state.has_flag(effect_bits::NATO_ACTIVE)) {
+                        const auto& uk = MapData::get_country(countries::UNITED_KINGDOM);
+                        for (uint8_t n = 0; n < uk.num_neighbors; ++n) {
+                            if (uk.neighbors[n] == i) mask_out[i] = 1;
+                        }
+                    } else {
+                        if (c_info.in_western_europe) mask_out[i] = 1;
                     }
                     break;
                 case card_ids::TRUMAN_DOCTRINE:

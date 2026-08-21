@@ -145,15 +145,11 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
         return res;
     }
 
-    // 2. Military Operations Credit
-    uint8_t base_ops = ops_value;
-    if (state.ctx().pending_op_card >= 1 && state.ctx().pending_op_card <= 110) {
-        base_ops = CardData::get_card(state.ctx().pending_op_card).ops;
-    }
+    // 2. Military Operations Credit (uses effective ops_value with modifiers)
     if (p == Player::US) {
-        state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + base_ops));
+        state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + ops_value));
     } else {
-        state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + base_ops));
+        state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + ops_value));
     }
 
     // 3. DEFCON Degradation on Battleground Coup

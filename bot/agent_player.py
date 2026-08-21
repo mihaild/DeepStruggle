@@ -466,12 +466,11 @@ def format_board_overview(state: Dict[str, Any]) -> str:
     countries = state.get("countries", {})
     region_names = {
         0: "EUROPE (Western & Eastern)",
-        1: "MIDDLE EAST",
-        2: "ASIA",
-        3: "SOUTHEAST ASIA",
-        4: "AFRICA",
-        5: "CENTRAL AMERICA",
-        6: "SOUTH AMERICA"
+        1: "ASIA",
+        2: "MIDDLE EAST",
+        3: "AFRICA",
+        4: "CENTRAL AMERICA",
+        5: "SOUTH AMERICA"
     }
     regions: Dict[str, List[str]] = {name: [] for name in region_names.values()}
 

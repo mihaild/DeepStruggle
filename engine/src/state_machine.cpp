@@ -214,7 +214,10 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     }
 
     // Friendly / Neutral / Already triggered event
-    if (card != 0 && card != card_ids::THE_CHINA_CARD) {
+    if (card == card_ids::THE_CHINA_CARD) {
+        state.china_card_holder = get_opponent(p);
+        state.china_card_playable = 0; // Passes to opponent face down
+    } else if (card != 0) {
         const auto& c_info = CardData::get_card(card);
         state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
     }
