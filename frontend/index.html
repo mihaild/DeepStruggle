@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twilight Struggle Engine Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Header & Global Status Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-title">TWILIGHT STRUGGLE</span>
+        <span class="brand-badge">ENGINE WORKBENCH</span>
+      </div>
+
+      <div class="global-tracks" id="global-tracks">
+        <!-- Rendered by tracks_view.ts -->
+      </div>
+
+      <div class="session-controls">
+        <div class="session-info">
+          <span id="connection-status" class="status-badge connected">CONNECTING...</span>
+          <span id="active-player-badge" class="player-badge ussr">USSR TURN</span>
+        </div>
+        <div class="header-buttons">
+          <button id="btn-new-game" class="btn btn-secondary">New Game</button>
+          <button id="btn-toggle-debug" class="btn btn-secondary">Debug Tools</button>
+          <button id="btn-toggle-replay" class="btn btn-primary">Replay Mode</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Central Grid -->
+    <main class="main-content">
+      <!-- Left / Center: Interactive Deluxe Map Canvas -->
+      <section class="map-container" id="map-container">
+        <div class="map-viewport-controls">
+          <button id="btn-zoom-in" class="btn-icon" title="Zoom In">+</button>
+          <button id="btn-zoom-out" class="btn-icon" title="Zoom Out">−</button>
+          <button id="btn-zoom-reset" class="btn-icon" title="Reset View">⟲</button>
+          <div class="map-legend-toggle" id="map-legend"></div>
+        </div>
+        <div id="map-canvas-wrapper">
+          <svg id="ts-map-svg" viewBox="-180 -130 330 255" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </section>
+
+      <!-- Right Sidebar: Decision HUD, Hands, Discard -->
+      <aside class="sidebar">
+        <!-- Section 1: Decision & Interactive HUD -->
+        <div class="panel decision-panel" id="decision-panel">
+          <div class="panel-header">
+            <h3>CURRENT ACTION</h3>
+            <span id="decision-type-badge" class="badge">POINT_NODE</span>
+          </div>
+          <div class="decision-body" id="decision-body">
+            <!-- Rendered by action_hud.ts -->
+          </div>
+        </div>
+
+        <!-- Section 2: Cards & Hands (Full Visibility) -->
+        <div class="panel hands-panel">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="tab-ussr-hand">USSR Hand (<span id="ussr-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-us-hand">US Hand (<span id="us-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-board-cards">China & Piles</button>
+          </div>
+
+          <div class="tab-content active" id="tab-ussr-hand">
+            <div class="card-list" id="ussr-cards-list"></div>
+          </div>
+          <div class="tab-content" id="tab-us-hand">
+            <div class="card-list" id="us-cards-list"></div>
+          </div>
+          <div class="tab-content" id="tab-board-cards">
+            <div id="china-card-container"></div>
+            <div class="piles-summary">
+              <button id="btn-view-discard" class="btn btn-secondary btn-block">View Discard Pile (<span id="discard-count">0</span>)</button>
+              <button id="btn-view-removed" class="btn btn-secondary btn-block">View Removed Pile (<span id="removed-count">0</span>)</button>
+              <div class="draw-count-label">Draw Deck: <strong id="draw-count">0</strong> cards remaining</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Persistent Flags & Context Stack -->
+        <div class="panel effects-panel">
+          <div class="panel-header">
+            <h3>ACTIVE EFFECTS & CONTEXT</h3>
+          </div>
+          <div id="active-flags-container" class="flags-list"></div>
+          <div id="context-stack-container" class="context-stack"></div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Bottom Bar: Action Log & Replay Transport Controls -->
+    <footer class="bottom-bar">
+      <!-- Live Action Log Stream -->
+      <div class="log-stream-container">
+        <div class="log-header">ACTION STREAM</div>
+        <div class="log-messages" id="action-log-stream"></div>
+      </div>
+
+      <!-- Replay Transport Controls (Visible in Replay or Debug Mode) -->
+      <div class="replay-toolbar" id="replay-toolbar">
+        <div class="transport-controls">
+          <button id="btn-rep-first" class="btn-icon" title="First Step">⏮</button>
+          <button id="btn-rep-prev" class="btn-icon" title="Previous Step">◀</button>
+          <button id="btn-rep-play" class="btn btn-primary btn-sm">▶ Play</button>
+          <button id="btn-rep-next" class="btn-icon" title="Next Step">▶</button>
+          <button id="btn-rep-last" class="btn-icon" title="Last Step">⏭</button>
+        </div>
+        <div class="timeline-container">
+          <span id="rep-step-label">Step 0 / 0</span>
+          <input type="range" id="rep-timeline-slider" min="0" max="0" value="0">
+        </div>
+        <div class="replay-options">
+          <label>Speed:
+            <select id="rep-speed-select">
+              <option value="1000">1.0s</option>
+              <option value="500" selected>0.5s</option>
+              <option value="200">0.2s</option>
+              <option value="50">Fast</option>
+            </select>
+          </label>
+          <button id="btn-rep-export" class="btn btn-secondary btn-sm">Export Replay</button>
+          <label class="btn btn-secondary btn-sm file-upload-label">
+            Load Replay <input type="file" id="input-replay-file" accept=".json" style="display: none;">
+          </label>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Modal for Discard / Removed Pile / Debug State Tweaker -->
+    <div id="modal-container" class="modal-backdrop hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-title">Modal Title</h2>
+          <button id="modal-close" class="btn-icon">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Tooltip Element for Card inspection -->
+    <div id="card-tooltip" class="card-tooltip hidden"></div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
