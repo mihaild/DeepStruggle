@@ -102,6 +102,7 @@ void StateMachine::init_new_game(GameState& state, uint64_t seed) noexcept {
     state.countries[countries::PANAMA].us_influence = 1;
     state.countries[countries::SOUTH_AFRICA].us_influence = 1;
     state.countries[countries::UNITED_KINGDOM].us_influence = 5;
+    state.countries[countries::CANADA].us_influence = 2;
 
     // 3. China Card to USSR
     state.china_card_holder = Player::USSR;

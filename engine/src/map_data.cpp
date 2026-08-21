@@ -47,7 +47,7 @@ constexpr std::array<CountryInfo, 84> COUNTRIES = {{
     // 19: Romania
     {19, "Romania", 3, false, Region::EUROPE, false, true, false, Player::USSR, 3, {17,18,12,0,0,0}, {(1ULL<<17)|(1ULL<<18)|(1ULL<<12), 0}},
     // 20: Bulgaria
-    {20, "Bulgaria", 3, false, Region::EUROPE, false, true, false, Player::USSR, 2, {11,12,0,0,0,0}, {(1ULL<<11)|(1ULL<<12), 0}},
+    {20, "Bulgaria", 3, false, Region::EUROPE, false, true, false, Player::NONE, 2, {11,12,0,0,0,0}, {(1ULL<<11)|(1ULL<<12), 0}},
 
     // Middle East
     // 21: Lebanon
@@ -59,11 +59,11 @@ constexpr std::array<CountryInfo, 84> COUNTRIES = {{
     // 24: Iraq
     {24, "Iraq", 3, true, Region::MIDDLE_EAST, false, false, false, Player::NONE, 5, {22,26,28,27,25,0}, {(1ULL<<22)|(1ULL<<26)|(1ULL<<28)|(1ULL<<27)|(1ULL<<25), 0}},
     // 25: Iran
-    {25, "Iran", 2, true, Region::MIDDLE_EAST, false, false, false, Player::USSR, 4, {24,27,31,32,0,0}, {(1ULL<<24)|(1ULL<<27)|(1ULL<<31)|(1ULL<<32), 0}},
+    {25, "Iran", 2, true, Region::MIDDLE_EAST, false, false, false, Player::NONE, 3, {24,31,32,0,0,0}, {(1ULL<<24)|(1ULL<<31)|(1ULL<<32), 0}},
     // 26: Jordan
     {26, "Jordan", 2, false, Region::MIDDLE_EAST, false, false, false, Player::NONE, 4, {23,21,24,28,0,0}, {(1ULL<<23)|(1ULL<<21)|(1ULL<<24)|(1ULL<<28), 0}},
     // 27: Gulf States
-    {27, "Gulf States", 3, false, Region::MIDDLE_EAST, false, false, false, Player::NONE, 3, {24,28,25,0,0,0}, {(1ULL<<24)|(1ULL<<28)|(1ULL<<25), 0}},
+    {27, "Gulf States", 3, false, Region::MIDDLE_EAST, false, false, false, Player::NONE, 2, {24,28,0,0,0,0}, {(1ULL<<24)|(1ULL<<28), 0}},
     // 28: Saudi Arabia
     {28, "Saudi Arabia", 3, true, Region::MIDDLE_EAST, false, false, false, Player::NONE, 3, {26,24,27,0,0,0}, {(1ULL<<26)|(1ULL<<24)|(1ULL<<27), 0}},
     // 29: Egypt
