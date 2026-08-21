@@ -21,31 +21,26 @@ export class ActionHUD {
     }
 
     const dType = ctx.decision_type;
+    const dTypeName = ctx.decision_type_name || this.getDecisionTypeName(dType);
     const player = ctx.decision_player;
     const validIds = legal.valid_ids || [];
     const allowEarlyStop = legal.allow_early_stop;
+    const phaseName = state.current_phase_name || state.phase_name || '';
 
-    const typeNames: Record<number, string> = {
-      0: 'NONE',
-      1: 'SELECT_CARD',
-      2: 'SELECT_PLAY_MODE',
-      3: 'CHOOSE_TIMING_BRANCH',
-      4: 'SELECT_OP_MODE',
-      5: 'POINT_NODE',
-      6: 'CHOOSE_BRANCH'
-    };
-    this.badgeEl.textContent = typeNames[dType] || `TYPE ${dType}`;
+    // Update Decision Badge with human-readable type
+    this.badgeEl.textContent = dTypeName;
 
     let promptText = '';
     let buttonsHtml = '';
 
     if (state.is_terminal) {
+      const winner = state.terminal_utility > 0 ? 'US Victory' : (state.terminal_utility < 0 ? 'USSR Victory' : 'Draw');
       this.container.innerHTML = `
-        <div class="decision-prompt" style="color: #34D399;">
-          GAME TERMINATED
+        <div class="decision-prompt" style="color: #34D399; font-weight: bold;">
+          GAME OVER (${winner})
         </div>
-        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-          Utility: ${state.terminal_utility > 0 ? 'US Victory' : (state.terminal_utility < 0 ? 'USSR Victory' : 'Draw')}
+        <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          Final VP: ${state.victory_points > 0 ? '+' + state.victory_points : state.victory_points}
         </div>
         <button id="btn-restart-game" class="btn btn-primary btn-block">Start New Game</button>
       `;
@@ -57,64 +52,88 @@ export class ActionHUD {
 
     switch (dType) {
       case 1: // SELECT_CARD
-        promptText = `${player}: Select a card from your hand (or valid selection below):`;
+        if (phaseName === 'HEADLINE') {
+          promptText = `<strong>${player} Headline:</strong> Select a card from your hand to play as your secret Headline event:`;
+        } else if (phaseName === 'DISCARD') {
+          promptText = `<strong>${player} Discard:</strong> Select a card from your hand to discard:`;
+        } else {
+          promptText = `<strong>${player} [Turn ${state.turn} AR ${state.action_round}]:</strong> Select a card from your hand to play:`;
+        }
         if (validIds.includes(6)) { // The China Card
-          buttonsHtml += `<button class="btn btn-danger btn-block btn-hud-action" data-primary="6">Play The China Card (#6)</button>`;
+          buttonsHtml += `<button class="btn btn-danger btn-block btn-hud-action" data-primary="6" style="margin-top: 8px;">Play The China Card (4 Ops)</button>`;
         }
         break;
 
       case 2: // SELECT_PLAY_MODE
-        promptText = `${player}: Choose how to play Card #${ctx.pending_op_card}:`;
+        const cardName = ctx.pending_op_card_name || `Card #${ctx.pending_op_card}`;
+        promptText = `<strong>${player}:</strong> Choose how to play <em>${cardName}</em>:`;
         const modeLabels: Record<number, { text: string; class: string }> = {
-          0: { text: 'Play as Event', class: 'btn-primary' },
-          1: { text: 'Play for Operations', class: 'btn-success' },
-          2: { text: 'Space Race Attempt', class: 'btn-secondary' },
-          3: { text: 'Pass', class: 'btn-danger' }
+          0: { text: '1. Play as Event', class: 'btn-primary' },
+          1: { text: '2. Play for Operations', class: 'btn-success' },
+          2: { text: '3. Space Race Attempt', class: 'btn-secondary' },
+          3: { text: '4. Pass / Discard', class: 'btn-danger' }
         };
         validIds.forEach(m => {
           const cfg = modeLabels[m] || { text: `Mode ${m}`, class: 'btn-secondary' };
-          buttonsHtml += `<button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}">${cfg.text}</button>`;
+          buttonsHtml += `<button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}" style="margin-bottom: 6px;">${cfg.text}</button>`;
         });
         break;
 
       case 3: // CHOOSE_TIMING_BRANCH
-        promptText = `${player}: Opponent Card Timing Priority:`;
+        const oppCardName = ctx.pending_op_card_name || `Card #${ctx.pending_op_card}`;
+        promptText = `<strong>${player}:</strong> Opponent card <em>${oppCardName}</em> played for Ops. Choose execution order:`;
         if (validIds.includes(0)) {
-          buttonsHtml += `<button class="btn btn-primary btn-block btn-hud-action" data-primary="0">1. Operations First (Event Second)</button>`;
+          buttonsHtml += `<button class="btn btn-primary btn-block btn-hud-action" data-primary="0" style="margin-bottom: 6px;">1. Operations First (Opponent Event Second)</button>`;
         }
         if (validIds.includes(1)) {
-          buttonsHtml += `<button class="btn btn-secondary btn-block btn-hud-action" data-primary="1">2. Event First (Operations Second)</button>`;
+          buttonsHtml += `<button class="btn btn-secondary btn-block btn-hud-action" data-primary="1" style="margin-bottom: 6px;">2. Opponent Event First (Operations Second)</button>`;
         }
         break;
 
       case 4: // SELECT_OP_MODE
-        promptText = `${player}: Choose Operation Mode (${ctx.pending_ops_value} Ops Available):`;
-        const opLabels: Record<number, { text: string; class: string }> = {
-          0: { text: 'Place Influence', class: 'btn-primary' },
-          1: { text: 'Conduct Coup Attempt', class: 'btn-danger' },
-          2: { text: 'Conduct Realignment', class: 'btn-secondary' }
+        promptText = `<strong>${player}:</strong> Select Operations action with <strong>${ctx.pending_ops_value} Ops</strong> available:`;
+        const opLabels: Record<number, { text: string; desc: string; class: string }> = {
+          0: { text: 'Place Influence', desc: 'Place influence markers in adjacent countries', class: 'btn-primary' },
+          1: { text: 'Conduct Coup Attempt', desc: 'Roll die to remove enemy influence and add own', class: 'btn-danger' },
+          2: { text: 'Conduct Realignment', desc: 'Opposed die rolls to remove enemy influence', class: 'btn-secondary' }
         };
         validIds.forEach(m => {
-          const cfg = opLabels[m] || { text: `Op ${m}`, class: 'btn-secondary' };
-          buttonsHtml += `<button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}">${cfg.text}</button>`;
+          const cfg = opLabels[m] || { text: `Op Mode ${m}`, desc: '', class: 'btn-secondary' };
+          buttonsHtml += `
+            <button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}" style="margin-bottom: 8px; text-align: left; padding: 8px 12px;">
+              <div style="font-weight: bold;">${cfg.text}</div>
+              <div style="font-size: 11px; opacity: 0.85;">${cfg.desc}</div>
+            </button>
+          `;
         });
         break;
 
       case 5: // POINT_NODE
-        const remaining = ctx.remaining_steps > 0 ? ` (Remaining: ${ctx.remaining_steps})` : '';
-        promptText = `${player}: Click a highlighted country on the map to target${remaining}`;
+        if (phaseName === 'SETUP') {
+          const region = player === 'USSR' ? 'Eastern Europe' : 'Western Europe';
+          promptText = `<strong>${player} Setup Phase:</strong> Click highlighted countries in ${region} to place influence (<strong>${ctx.remaining_steps} remaining</strong>).`;
+        } else if (ctx.resolving_card > 0) {
+          const resCard = ctx.resolving_card_name || `Card #${ctx.resolving_card}`;
+          promptText = `<strong>${player}:</strong> Resolving event <em>${resCard}</em>. Click a highlighted target country (<strong>${ctx.remaining_steps} remaining</strong>):`;
+        } else {
+          const remaining = ctx.remaining_steps > 0 ? ` (${ctx.remaining_steps} Ops remaining)` : '';
+          promptText = `<strong>${player}:</strong> Click a highlighted country on the map to target${remaining}:`;
+        }
+
         if (allowEarlyStop) {
-          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0">Confirm Done / Pass Remaining</button>`;
+          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0" style="margin-top: 8px;">✓ Done / Pass Remaining</button>`;
         }
         break;
 
       case 6: // CHOOSE_BRANCH
-        promptText = `${player}: Choose branch option:`;
+        promptText = `<strong>${player}:</strong> Choose an option for this event:`;
+        const actionLabels = legal.valid_action_labels || {};
         validIds.forEach(b => {
-          buttonsHtml += `<button class="btn btn-secondary btn-block btn-hud-action" data-primary="${b}">Option ${b}</button>`;
+          const label = actionLabels[b.toString()] || `Option ${b + 1}`;
+          buttonsHtml += `<button class="btn btn-secondary btn-block btn-hud-action" data-primary="${b}" style="margin-bottom: 6px;">${label}</button>`;
         });
         if (allowEarlyStop) {
-          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0">Confirm / Pass</button>`;
+          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0" style="margin-top: 8px;">✓ Confirm / Pass</button>`;
         }
         break;
 
@@ -124,7 +143,7 @@ export class ActionHUD {
     }
 
     this.container.innerHTML = `
-      <div class="decision-prompt">${promptText}</div>
+      <div class="decision-prompt" style="font-size: 13px; line-height: 1.4; margin-bottom: 10px;">${promptText}</div>
       <div class="decision-actions">${buttonsHtml}</div>
     `;
 
@@ -145,5 +164,18 @@ export class ActionHUD {
         });
       });
     });
+  }
+
+  private getDecisionTypeName(dType: number): string {
+    const typeNames: Record<number, string> = {
+      0: 'NONE',
+      1: 'SELECT_CARD',
+      2: 'SELECT_PLAY_MODE',
+      3: 'CHOOSE_TIMING_BRANCH',
+      4: 'SELECT_OP_MODE',
+      5: 'POINT_NODE',
+      6: 'CHOOSE_BRANCH'
+    };
+    return typeNames[dType] || `TYPE_${dType}`;
   }
 }

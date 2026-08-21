@@ -49,13 +49,14 @@ enum class WarEra : uint8_t {
 
 // Card physical location registry
 enum class CardLocation : uint8_t {
-    DRAW_DECK          = 0,
-    HAND_US            = 1,
-    HAND_USSR          = 2,
-    DISCARD_PILE       = 3,
-    REMOVED_FROM_GAME  = 4,
-    ONGOING_EVENT      = 5,
-    PEEKED_TEMP        = 6
+    UNAVAILABLE        = 0, // Not yet in the deck (future era or unintroduced optional card)
+    DRAW_DECK          = 1,
+    HAND_US            = 2,
+    HAND_USSR          = 3,
+    DISCARD_PILE       = 4,
+    REMOVED_FROM_GAME  = 5,
+    ONGOING_EVENT      = 6,
+    PEEKED_TEMP        = 7
 };
 
 // Primitive Micro-Decision Types

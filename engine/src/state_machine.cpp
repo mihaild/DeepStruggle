@@ -239,8 +239,10 @@ void StateMachine::end_turn(GameState& state) noexcept {
 
     if (state.turn == 4) {
         add_era_cards_to_deck(state, WarEra::MID);
+        reshuffle_discard_into_draw(state);
     } else if (state.turn == 8) {
         add_era_cards_to_deck(state, WarEra::LATE);
+        reshuffle_discard_into_draw(state);
     }
 
     if (state.turn <= 10) {

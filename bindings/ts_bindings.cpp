@@ -20,6 +20,60 @@
 
 namespace nb = nanobind;
 
+// Helper: Convert enum types to human-readable string names
+static const char* decision_type_to_str(ts::DecisionType dt) {
+    switch (dt) {
+        case ts::DecisionType::NONE: return "NONE";
+        case ts::DecisionType::SELECT_CARD: return "SELECT_CARD";
+        case ts::DecisionType::SELECT_PLAY_MODE: return "SELECT_PLAY_MODE";
+        case ts::DecisionType::CHOOSE_TIMING_BRANCH: return "CHOOSE_TIMING_BRANCH";
+        case ts::DecisionType::SELECT_OP_MODE: return "SELECT_OP_MODE";
+        case ts::DecisionType::POINT_NODE: return "POINT_NODE";
+        case ts::DecisionType::CHOOSE_BRANCH: return "CHOOSE_BRANCH";
+        default: return "UNKNOWN";
+    }
+}
+
+static const char* phase_to_str(ts::Phase phase) {
+    switch (phase) {
+        case ts::Phase::SETUP: return "SETUP";
+        case ts::Phase::HEADLINE: return "HEADLINE";
+        case ts::Phase::ACTION_ROUND: return "ACTION_ROUND";
+        case ts::Phase::INTERRUPT: return "INTERRUPT";
+        case ts::Phase::DISCARD: return "DISCARD";
+        case ts::Phase::END_TURN: return "END_TURN";
+        case ts::Phase::GAME_OVER: return "GAME_OVER";
+        default: return "UNKNOWN";
+    }
+}
+
+static const char* play_mode_to_str(uint8_t mode) {
+    switch (mode) {
+        case static_cast<uint8_t>(ts::PlayMode::EVENT): return "EVENT";
+        case static_cast<uint8_t>(ts::PlayMode::OPS): return "OPS";
+        case static_cast<uint8_t>(ts::PlayMode::SPACE): return "SPACE";
+        case static_cast<uint8_t>(ts::PlayMode::PASS): return "PASS";
+        default: return "UNKNOWN";
+    }
+}
+
+static const char* op_mode_to_str(uint8_t mode) {
+    switch (mode) {
+        case static_cast<uint8_t>(ts::OpMode::INFLUENCE): return "INFLUENCE";
+        case static_cast<uint8_t>(ts::OpMode::COUP): return "COUP";
+        case static_cast<uint8_t>(ts::OpMode::REALIGN): return "REALIGN";
+        default: return "UNKNOWN";
+    }
+}
+
+static const char* timing_branch_to_str(uint8_t branch) {
+    switch (branch) {
+        case static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST): return "OPS_FIRST";
+        case static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST): return "EVENT_FIRST";
+        default: return "UNKNOWN";
+    }
+}
+
 // Helper: Convert entire GameState to a detailed Python dictionary
 nb::dict game_state_to_dict(const ts::GameState& state) {
     nb::dict d;
@@ -43,6 +97,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     // 2. Phasing & Priority
     d["phasing_player"] = (state.phasing_player == ts::Player::US ? "US" : (state.phasing_player == ts::Player::USSR ? "USSR" : "NONE"));
     d["current_phase"] = static_cast<int>(state.current_phase);
+    d["current_phase_name"] = phase_to_str(state.current_phase);
+    d["phase_name"] = phase_to_str(state.current_phase);
     d["headline_us_card"] = state.headline_us_card;
     d["headline_ussr_card"] = state.headline_ussr_card;
     d["forced_card_player"] = (state.forced_card_player == ts::Player::US ? "US" : (state.forced_card_player == ts::Player::USSR ? "USSR" : "NONE"));
@@ -139,18 +195,38 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     // 7. Cards & Locations
     nb::list us_hand;
     nb::list ussr_hand;
+    nb::list us_cards;
+    nb::list ussr_cards;
     nb::list discard_pile;
     nb::list removed_pile;
+    nb::list unavailable_cards;
     uint8_t draw_deck_count = 0;
 
     for (uint8_t i = 1; i <= 110; ++i) {
         auto loc = state.card_locations[i];
         switch (loc) {
-            case ts::CardLocation::HAND_US: us_hand.append(i); break;
-            case ts::CardLocation::HAND_USSR: ussr_hand.append(i); break;
+            case ts::CardLocation::HAND_US: {
+                us_hand.append(i);
+                nb::dict ci;
+                ci["id"] = i;
+                ci["name"] = std::string(ts::CardData::get_card_name(i));
+                ci["ops"] = ts::CardData::get_card(i).ops;
+                us_cards.append(ci);
+                break;
+            }
+            case ts::CardLocation::HAND_USSR: {
+                ussr_hand.append(i);
+                nb::dict ci;
+                ci["id"] = i;
+                ci["name"] = std::string(ts::CardData::get_card_name(i));
+                ci["ops"] = ts::CardData::get_card(i).ops;
+                ussr_cards.append(ci);
+                break;
+            }
             case ts::CardLocation::DISCARD_PILE: discard_pile.append(i); break;
             case ts::CardLocation::REMOVED_FROM_GAME: removed_pile.append(i); break;
             case ts::CardLocation::DRAW_DECK: draw_deck_count++; break;
+            case ts::CardLocation::UNAVAILABLE: unavailable_cards.append(i); break;
             default: break;
         }
     }
@@ -158,9 +234,12 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     nb::dict hands;
     hands["US"] = us_hand;
     hands["USSR"] = ussr_hand;
+    hands["US_cards"] = us_cards;
+    hands["USSR_cards"] = ussr_cards;
     d["hands"] = hands;
     d["discard_pile"] = discard_pile;
     d["removed_pile"] = removed_pile;
+    d["unavailable_cards"] = unavailable_cards;
     d["draw_deck_count"] = draw_deck_count;
 
     // 8. Decision Context & Stack
@@ -168,30 +247,66 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     nb::dict ctx_dict;
     ctx_dict["decision_player"] = (ctx.decision_player == ts::Player::US ? "US" : (ctx.decision_player == ts::Player::USSR ? "USSR" : "NONE"));
     ctx_dict["decision_type"] = static_cast<int>(ctx.decision_type);
+    ctx_dict["decision_type_name"] = decision_type_to_str(ctx.decision_type);
     ctx_dict["pending_op_card"] = ctx.pending_op_card;
+    ctx_dict["pending_op_card_name"] = (ctx.pending_op_card > 0) ? std::string(ts::CardData::get_card_name(ctx.pending_op_card)) : "";
     ctx_dict["pending_ops_value"] = ctx.pending_ops_value;
     ctx_dict["remaining_steps"] = ctx.remaining_steps;
     ctx_dict["max_per_country"] = ctx.max_per_country;
     ctx_dict["allow_early_stop"] = (ctx.allow_early_stop != 0);
     ctx_dict["resolving_card"] = ctx.resolving_card;
+    ctx_dict["resolving_card_name"] = (ctx.resolving_card > 0) ? std::string(ts::CardData::get_card_name(ctx.resolving_card)) : "";
     ctx_dict["stack_depth"] = state.ctx_stack_depth;
     d["decision_context"] = ctx_dict;
 
-    // 9. Legal Action Mask
+    // 9. Legal Action Mask & Human Readable Action Labels
     uint8_t mask[128];
     size_t mask_size = 0;
     ts::Engine::get_legal_action_mask(state, mask, &mask_size);
 
     nb::list legal_list;
+    nb::dict action_labels;
     for (size_t i = 0; i < mask_size; ++i) {
         if (mask[i]) {
             legal_list.append(i);
+
+            // Generate contextual human-readable label
+            std::string label;
+            switch (ctx.decision_type) {
+                case ts::DecisionType::POINT_NODE:
+                    if (i < 84) {
+                        label = std::string(ts::MapData::get_country_name(static_cast<uint8_t>(i)));
+                    }
+                    break;
+                case ts::DecisionType::SELECT_CARD:
+                    if (i >= 1 && i <= 110) {
+                        label = std::string(ts::CardData::get_card_name(static_cast<uint8_t>(i)));
+                    }
+                    break;
+                case ts::DecisionType::SELECT_PLAY_MODE:
+                    label = play_mode_to_str(static_cast<uint8_t>(i));
+                    break;
+                case ts::DecisionType::SELECT_OP_MODE:
+                    label = op_mode_to_str(static_cast<uint8_t>(i));
+                    break;
+                case ts::DecisionType::CHOOSE_TIMING_BRANCH:
+                    label = timing_branch_to_str(static_cast<uint8_t>(i));
+                    break;
+                default:
+                    label = "Option " + std::to_string(i);
+                    break;
+            }
+            if (!label.empty()) {
+                action_labels[std::to_string(i).c_str()] = label;
+            }
         }
     }
     nb::dict legal_actions;
     legal_actions["decision_type"] = static_cast<int>(ctx.decision_type);
+    legal_actions["decision_type_name"] = decision_type_to_str(ctx.decision_type);
     legal_actions["decision_player"] = (ctx.decision_player == ts::Player::US ? "US" : (ctx.decision_player == ts::Player::USSR ? "USSR" : "NONE"));
     legal_actions["valid_ids"] = legal_list;
+    legal_actions["valid_action_labels"] = action_labels;
     legal_actions["allow_early_stop"] = (ctx.allow_early_stop != 0);
     d["legal_actions"] = legal_actions;
 
@@ -254,6 +369,7 @@ NB_MODULE(ts_engine, m) {
         .export_values();
 
     nb::enum_<ts::CardLocation>(m, "CardLocation", nb::is_arithmetic())
+        .value("UNAVAILABLE", ts::CardLocation::UNAVAILABLE)
         .value("DRAW_DECK", ts::CardLocation::DRAW_DECK)
         .value("HAND_US", ts::CardLocation::HAND_US)
         .value("HAND_USSR", ts::CardLocation::HAND_USSR)

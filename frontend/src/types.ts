@@ -12,20 +12,31 @@ export interface CountryNode {
 export interface DecisionContext {
   decision_player: 'US' | 'USSR' | 'NONE';
   decision_type: number; // 0..6
+  decision_type_name?: string;
   pending_op_card: number;
+  pending_op_card_name?: string;
   pending_ops_value: number;
   remaining_steps: number;
   max_per_country: number;
   allow_early_stop: boolean;
   resolving_card: number;
+  resolving_card_name?: string;
   stack_depth: number;
 }
 
 export interface LegalActions {
   decision_type: number;
+  decision_type_name?: string;
   decision_player: 'US' | 'USSR' | 'NONE';
   valid_ids: number[];
+  valid_action_labels?: Record<string, string>;
   allow_early_stop: boolean;
+}
+
+export interface CardInHand {
+  id: number;
+  name: string;
+  ops: number;
 }
 
 export interface GameState {
@@ -37,6 +48,8 @@ export interface GameState {
   action_round: number;
   phasing_player: 'US' | 'USSR' | 'NONE';
   current_phase: number;
+  current_phase_name?: string;
+  phase_name?: string;
   headline_us_card: number;
   headline_ussr_card: number;
   forced_card_player: 'US' | 'USSR' | 'NONE';
@@ -46,9 +59,15 @@ export interface GameState {
   flags: string[];
   persistent_effects: number;
   countries: Record<string, CountryNode>;
-  hands: { US: number[]; USSR: number[] };
+  hands: {
+    US: number[];
+    USSR: number[];
+    US_cards?: CardInHand[];
+    USSR_cards?: CardInHand[];
+  };
   discard_pile: number[];
   removed_pile: number[];
+  unavailable_cards?: number[];
   draw_deck_count: number;
   decision_context: DecisionContext;
   legal_actions: LegalActions;
