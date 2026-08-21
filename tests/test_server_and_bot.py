@@ -27,6 +27,56 @@ def test_rest_api_game_creation():
     assert data["seed"] == 999
     assert data["state"]["turn"] == 1
 
+def test_action_cancellation_and_undo():
+    game_id = "game-undo-test"
+    res = client.post("/api/games/new", json={"game_id": game_id, "seed": 100})
+    assert res.status_code == 200
+
+    with client.websocket_connect(f"/ws/game/{game_id}?role=USSR") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "STATE_UPDATE"
+        init_state = msg["state"]
+
+        # USSR Setup: East Germany starts at 3
+        assert init_state["countries"]["East Germany"]["ussr_influence"] == 3
+        assert init_state["step_index"] == 0
+
+        # Step 1: Place 1 in East Germany (ID 14)
+        ws.send_json({
+            "type": "PLAY_ACTION",
+            "action": {"decision_type": int(ts_engine.DecisionType.POINT_NODE), "primary_id": 14, "secondary_id": 0, "flags": 0}
+        })
+        msg1 = ws.receive_json()
+        state1 = msg1["state"]
+        assert state1["countries"]["East Germany"]["ussr_influence"] == 4
+        assert state1["step_index"] == 1
+        assert state1["can_undo"] is True
+
+        # Step 2: Place 1 in Poland (ID 15)
+        ws.send_json({
+            "type": "PLAY_ACTION",
+            "action": {"decision_type": int(ts_engine.DecisionType.POINT_NODE), "primary_id": 15, "secondary_id": 0, "flags": 0}
+        })
+        msg2 = ws.receive_json()
+        state2 = msg2["state"]
+        assert state2["countries"]["Poland"]["ussr_influence"] == 1
+        assert state2["step_index"] == 2
+
+        # Send CANCEL_ACTION via WebSocket to undo Step 2
+        ws.send_json({"type": "CANCEL_ACTION"})
+        msg_undo = ws.receive_json()
+        state_undo = msg_undo["state"]
+        assert state_undo["step_index"] == 1
+        assert state_undo["countries"]["Poland"]["ussr_influence"] == 0
+        assert state_undo["countries"]["East Germany"]["ussr_influence"] == 4
+
+        # Send undo via REST API to undo Step 1
+        rest_undo = client.post(f"/api/games/{game_id}/undo")
+        assert rest_undo.status_code == 200
+        state_rest = rest_undo.json()["state"]
+        assert state_rest["step_index"] == 0
+        assert state_rest["countries"]["East Germany"]["ussr_influence"] == 3
+
 def test_bot_vs_bot_simulation():
     # Simulate a fast game using TestClient WebSocket
     game_id = "bot-sim-test"

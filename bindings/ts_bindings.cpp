@@ -388,6 +388,7 @@ NB_MODULE(ts_engine, m) {
     // Structs
     nb::class_<ts::MicroAction>(m, "MicroAction")
         .def(nb::init<>())
+        .def("clone", [](const ts::GameState& s) -> ts::GameState { return s; })
         .def(nb::init<ts::DecisionType, uint8_t, uint8_t, uint8_t>(),
              nb::arg("decision_type"), nb::arg("primary_id") = 0, nb::arg("secondary_id") = 0, nb::arg("flags") = 0)
         .def_rw("decision_type", &ts::MicroAction::decision_type)
@@ -418,6 +419,7 @@ NB_MODULE(ts_engine, m) {
         .def("is_visited", &ts::DecisionContext::is_visited);
 
     nb::class_<ts::GameState>(m, "GameState")
+        .def("clone", [](const ts::GameState& s) -> ts::GameState { return s; })
         .def(nb::init<>())
         .def_rw("victory_points", &ts::GameState::victory_points)
         .def_rw("defcon", &ts::GameState::defcon)

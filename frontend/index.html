@@ -28,9 +28,10 @@
           <span id="active-player-badge" class="player-badge ussr">USSR TURN</span>
         </div>
         <div class="header-buttons">
-          <button id="btn-new-game" class="btn btn-secondary">New Game</button>
-          <button id="btn-toggle-debug" class="btn btn-secondary">Debug Tools</button>
-          <button id="btn-toggle-replay" class="btn btn-primary">Replay Mode</button>
+          <button id="btn-undo-action" class="btn btn-warning btn-sm" title="Undo / Cancel Last Action (Ctrl+Z)">⟲ Cancel Action</button>
+          <button id="btn-new-game" class="btn btn-secondary btn-sm">New Game</button>
+          <button id="btn-toggle-debug" class="btn btn-secondary btn-sm">Debug Tools</button>
+          <button id="btn-toggle-replay" class="btn btn-primary btn-sm">Replay Mode</button>
         </div>
       </div>
     </header>
@@ -46,7 +47,7 @@
           <div class="map-legend-toggle" id="map-legend"></div>
         </div>
         <div id="map-canvas-wrapper">
-          <svg id="ts-map-svg" viewBox="-180 -130 330 255" preserveAspectRatio="xMidYMid meet"></svg>
+          <svg id="ts-map-svg" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
       </section>
 
@@ -98,11 +99,17 @@
       </aside>
     </main>
 
-    <!-- Bottom Bar: Action Log & Replay Transport Controls -->
-    <footer class="bottom-bar">
+    <!-- Bottom Bar: Action Log & Replay Transport Controls with Resizer -->
+    <div class="bottom-bar-resizer" id="bottom-resizer" title="Drag vertically to resize panel">
+      <div class="resizer-handle"></div>
+    </div>
+    <footer class="bottom-bar" id="bottom-panel">
       <!-- Live Action Log Stream -->
       <div class="log-stream-container">
-        <div class="log-header">ACTION STREAM</div>
+        <div class="log-header-row">
+          <span class="log-header">ACTION STREAM</span>
+          <span class="log-count-badge" id="log-count">0 events</span>
+        </div>
         <div class="log-messages" id="action-log-stream"></div>
       </div>
 

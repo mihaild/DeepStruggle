@@ -62,6 +62,7 @@ class TSApp {
     });
 
     this.setupGlobalControls();
+    this.setupBottomResizer();
     this.connectWebSocket();
   }
 
@@ -91,7 +92,6 @@ class TSApp {
   private connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    // Connect directly to backend or proxy
     const wsUrl = `${protocol}//${host}/ws/game/${this.gameId}?role=${this.userRole}`;
 
     const statusBadge = document.getElementById('connection-status')!;
@@ -138,7 +138,12 @@ class TSApp {
 
   private renderLogStream() {
     const logContainer = document.getElementById('action-log-stream');
+    const logCountBadge = document.getElementById('log-count');
     if (!logContainer || !this.state?.action_logs) return;
+
+    if (logCountBadge) {
+      logCountBadge.textContent = `${this.state.action_logs.length} events`;
+    }
 
     logContainer.innerHTML = '';
     this.state.action_logs.forEach(log => {
@@ -151,7 +156,11 @@ class TSApp {
       `;
       logContainer.appendChild(item);
     });
-    logContainer.scrollTop = logContainer.scrollHeight;
+
+    // Ensure auto-scrolling to the latest bottom line
+    requestAnimationFrame(() => {
+      logContainer.scrollTop = logContainer.scrollHeight;
+    });
   }
 
   private handleCountryClick(countryId: number) {
@@ -188,13 +197,22 @@ class TSApp {
     }
   }
 
-  private sendAction(action: MicroAction) {
+  public sendAction(action: MicroAction) {
     if (this.isReplayMode) return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     this.ws.send(JSON.stringify({
       type: 'PLAY_ACTION',
       action: action
+    }));
+  }
+
+  public cancelAction() {
+    if (this.isReplayMode) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    this.ws.send(JSON.stringify({
+      type: 'CANCEL_ACTION'
     }));
   }
 
@@ -206,7 +224,56 @@ class TSApp {
     }));
   }
 
+  private setupBottomResizer() {
+    const resizer = document.getElementById('bottom-resizer');
+    const bottomPanel = document.getElementById('bottom-panel');
+    if (!resizer || !bottomPanel) return;
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    resizer.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = bottomPanel.offsetHeight;
+      resizer.classList.add('active');
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const deltaY = startY - e.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight * 0.65, startHeight + deltaY));
+      bottomPanel.style.height = `${newHeight}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        resizer.classList.remove('active');
+        document.body.style.cursor = '';
+      }
+    });
+  }
+
   private setupGlobalControls() {
+    // Undo / Cancel Action button
+    document.getElementById('btn-undo-action')?.addEventListener('click', () => {
+      this.cancelAction();
+    });
+
+    // Global keyboard shortcuts (Ctrl+Z / Cmd+Z / Escape for undo)
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        this.cancelAction();
+      } else if (e.key === 'Escape') {
+        this.cancelAction();
+      }
+    });
+
     // Zoom buttons
     document.getElementById('btn-zoom-in')?.addEventListener('click', () => this.mapView.zoom(0.85));
     document.getElementById('btn-zoom-out')?.addEventListener('click', () => this.mapView.zoom(1.15));
@@ -237,7 +304,7 @@ class TSApp {
     replayBtn.addEventListener('click', () => {
       this.isReplayMode = !this.isReplayMode;
       replayBtn.textContent = this.isReplayMode ? 'Live Mode' : 'Replay Mode';
-      replayBtn.className = this.isReplayMode ? 'btn btn-warning' : 'btn btn-primary';
+      replayBtn.className = this.isReplayMode ? 'btn btn-warning btn-sm' : 'btn btn-primary btn-sm';
     });
 
     // Discard & Removed pile modals

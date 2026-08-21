@@ -1,5 +1,8 @@
 import os
+import sys
 import json
+import argparse
+import logging
 from typing import Dict, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +12,33 @@ from pydantic import BaseModel
 
 from server.session import GameSession
 from server.replay import ReplayManager
+
+def setup_server_logging(log_file: Optional[str] = None, log_level_name: str = "DEBUG"):
+    """Configures detailed logging using Python's standard logging module."""
+    log_level = getattr(logging, log_level_name.upper(), logging.DEBUG)
+    log_format = "%(asctime)s [%(levelname)s] [%(name)s]: %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    handlers = []
+    if log_file:
+        os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+        handlers.append(file_handler)
+    else:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+        handlers.append(stream_handler)
+
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        datefmt=date_format,
+        handlers=handlers,
+        force=True
+    )
+
+logger = logging.getLogger("ts_server")
 
 app = FastAPI(title="Twilight Struggle Web Engine & Debugger")
 
@@ -33,6 +63,7 @@ class NewGameRequest(BaseModel):
 @app.post("/api/games/new")
 async def create_game(req: NewGameRequest):
     game_id = req.game_id or f"game-{len(active_sessions) + 1}"
+    logger.info(f"REST: Creating new game session '{game_id}' (seed: {req.seed})")
     session = GameSession(game_id, seed=req.seed, us_player=req.us_player, ussr_player=req.ussr_player)
     active_sessions[game_id] = session
     return {"game_id": game_id, "seed": session.seed, "state": session.get_state_dict()}
@@ -40,10 +71,19 @@ async def create_game(req: NewGameRequest):
 @app.get("/api/games/{game_id}")
 async def get_game(game_id: str):
     if game_id not in active_sessions:
-        # Default auto-create session for quick debug
+        logger.info(f"REST: Auto-initializing session '{game_id}' on request")
         session = GameSession(game_id)
         active_sessions[game_id] = session
     return active_sessions[game_id].get_state_dict()
+
+@app.post("/api/games/{game_id}/cancel_action")
+@app.post("/api/games/{game_id}/undo")
+async def cancel_action(game_id: str):
+    if game_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Game session not found")
+    session = active_sessions[game_id]
+    success = await session.handle_cancel_action()
+    return {"success": success, "state": session.get_state_dict()}
 
 @app.get("/api/replays")
 async def list_replays():
@@ -77,6 +117,7 @@ async def get_cards_metadata():
 @app.websocket("/ws/game/{game_id}")
 async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERVER"):
     if game_id not in active_sessions:
+        logger.info(f"WebSocket: Initializing new session '{game_id}'")
         active_sessions[game_id] = GameSession(game_id)
     session = active_sessions[game_id]
 
@@ -85,16 +126,21 @@ async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERV
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
+
             if msg_type == "PLAY_ACTION":
                 action_data = data.get("action", {})
                 await session.handle_action(action_data, sender_role=role)
+            elif msg_type in ("CANCEL_ACTION", "UNDO_ACTION"):
+                logger.info(f"WebSocket: Received {msg_type} from role '{role}' for game '{game_id}'")
+                await session.handle_cancel_action()
             elif msg_type == "DEBUG_OVERRIDE":
                 await session.handle_debug_override(data.get("override", {}))
             elif msg_type == "PING":
                 await websocket.send_json({"type": "PONG"})
     except WebSocketDisconnect:
         session.disconnect(websocket)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"WebSocket error in game '{game_id}': {e}")
         session.disconnect(websocket)
 
 # Mount frontend if dist exists
@@ -104,4 +150,14 @@ if os.path.exists(dist_dir):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server.main:app", host="0.0.0.0", port=8000, reload=True)
+    parser = argparse.ArgumentParser(description="Twilight Struggle AI Game Server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host address to bind (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    parser.add_argument("--log-file", default=None, help="File path to write detailed server logs (default: stdout)")
+    parser.add_argument("--log-level", default="DEBUG", help="Logging level: DEBUG, INFO, WARNING, ERROR (default: DEBUG)")
+    args = parser.parse_args()
+
+    setup_server_logging(args.log_file, args.log_level)
+    logger.info(f"Starting server on {args.host}:{args.port} (log_file={args.log_file}, log_level={args.log_level})")
+
+    uvicorn.run(app, host=args.host, port=args.port, log_config=None)
