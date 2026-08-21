@@ -30,6 +30,8 @@ frontend/.vite/
 
 # Replays & Logs
 replays/*.tslog.json
+replays/*.txt
+replays/*.json
 !replays/.gitkeep
 *.log
 .system_generated/
