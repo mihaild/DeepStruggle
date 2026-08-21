@@ -49,3 +49,54 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 # Play with artificial delay (e.g. 0.5s per step for human observation)
 PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --delay 0.5
 ```
+
+---
+
+## 4. Agent Interactive Play Tool (`bot.agent_player`)
+
+[`agent_player.py`](file:///home/mihaild/prog/ts_ai/bot/agent_player.py) provides a rich CLI & Python API for LLM agents or human developers to query state and play actions by name or index.
+
+### 4.1 Usage
+
+```bash
+# 1. Inspect current state, active decision & legal choices
+PYTHONPATH=. .venv/bin/python -m bot.agent_player status
+
+# 2. View global board breakdown (regional influence and country control)
+PYTHONPATH=. .venv/bin/python -m bot.agent_player board
+
+# 3. Take an action by numbered index (e.g. 1) or by name
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play 1
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "Poland"
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "Duck and Cover"
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "OPS"
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "INFLUENCE"
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "done"
+
+# 4. Play action with manual die roll (1..6)
+PYTHONPATH=. .venv/bin/python -m bot.agent_player play "EVENT" --roll 2
+
+# 5. Undo last action
+PYTHONPATH=. .venv/bin/python -m bot.agent_player undo
+
+# 6. Start a new game with seed
+PYTHONPATH=. .venv/bin/python -m bot.agent_player new-game --seed 42
+
+# 7. Auto-play N steps using baseline bot
+PYTHONPATH=. .venv/bin/python -m bot.agent_player auto --steps 10
+```
+
+### 4.2 Python API for Agents
+
+```python
+from bot.agent_player import AgentGameClient, format_state_summary, format_board_overview
+
+client = AgentGameClient(use_local=True)
+state = client.get_state()
+
+# Print formatted overview
+print(format_state_summary(state, client))
+
+# Resolve action by friendly name
+state_after = client.resolve_choice("Poland")
+```
