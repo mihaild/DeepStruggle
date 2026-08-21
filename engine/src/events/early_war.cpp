@@ -112,6 +112,7 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 1;
     state.ctx().resolving_card = card_ids::BLOCKADE;
     return false;
 }

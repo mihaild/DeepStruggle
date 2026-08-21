@@ -148,7 +148,7 @@ namespace card_ids {
     constexpr uint8_t BRUSH_WAR                           = 36;
     constexpr uint8_t CENTRAL_AMERICA_SCORING             = 37;
     constexpr uint8_t SE_ASIA_SCORING                     = 38;
-    constexpr uint8_t SOUTH_AMERICA_SCORING               = 39;
+    constexpr uint8_t ARMS_RACE                            = 39;
     constexpr uint8_t CUBAN_MISSILE_CRISIS                = 40;
     constexpr uint8_t NUCLEAR_SUBS                        = 41;
     constexpr uint8_t QUAGMIRE                            = 42;
@@ -193,7 +193,7 @@ namespace card_ids {
     constexpr uint8_t ALLIANCE_FOR_PROGRESS               = 78;
     constexpr uint8_t AFRICA_SCORING                      = 79;
     constexpr uint8_t ONE_SMALL_STEP                      = 80;
-    constexpr uint8_t SOUTH_AMERICA_SCORING_LATE          = 81;
+    constexpr uint8_t SOUTH_AMERICA_SCORING               = 81;
     constexpr uint8_t IRANIAN_HOSTAGE_CRISIS              = 82;
     constexpr uint8_t THE_IRON_LADY                       = 83;
     constexpr uint8_t REAGAN_BOMBS_LIBYA                  = 84;

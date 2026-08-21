@@ -49,7 +49,7 @@ constexpr std::array<CardInfo, 111> CARDS = {{
     {36, "Brush War", 3, Player::NONE, WarEra::MID, false, false, true, false, false},
     {37, "Central America Scoring", 0, Player::NONE, WarEra::MID, false, true, false, false, false},
     {38, "Southeast Asia Scoring", 0, Player::NONE, WarEra::MID, true, true, false, false, false},
-    {39, "South America Scoring", 0, Player::NONE, WarEra::MID, false, true, false, false, false},
+    {39, "Arms Race", 3, Player::NONE, WarEra::MID, false, false, false, false, false},
     {40, "Cuban Missile Crisis", 3, Player::NONE, WarEra::MID, false, false, false, false, false},
     {41, "Nuclear Subs", 2, Player::US, WarEra::MID, true, false, false, false, false},
     {42, "Quagmire", 3, Player::USSR, WarEra::MID, true, false, false, false, false},

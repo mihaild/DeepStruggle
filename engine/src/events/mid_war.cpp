@@ -19,6 +19,22 @@ bool trigger_brush_war(GameState& state, Player p) noexcept {
     return false;
 }
 
+
+bool trigger_arms_race(GameState& state, Player p) noexcept {
+    uint8_t us_mo = state.us_mil_ops;
+    uint8_t ussr_mo = state.ussr_mil_ops;
+    if (us_mo > ussr_mo) {
+        int8_t vp = (us_mo >= state.defcon) ? 3 : 1;
+        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + vp));
+        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+    } else if (ussr_mo > us_mo) {
+        int8_t vp = (ussr_mo >= state.defcon) ? 3 : 1;
+        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - vp));
+        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
 bool trigger_cuban_missile_crisis(GameState& state, Player p) noexcept {
     state.defcon = 2;
     state.defcon_dropped_to_2_in_ar = 1;
