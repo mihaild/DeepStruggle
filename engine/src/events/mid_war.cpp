@@ -279,7 +279,7 @@ bool trigger_abm_treaty(GameState& state, Player p) noexcept {
     state.ctx().pending_op_card = card_ids::ABM_TREATY;
     state.ctx().pending_ops_value = 4;
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-    state.ctx().resolving_card = card_ids::ABM_TREATY;
+    state.ctx().resolving_card = 0;
     return false;
 }
 
@@ -336,7 +336,7 @@ bool trigger_lone_gunman(GameState& state, Player p) noexcept {
     state.ctx().pending_op_card = card_ids::LONE_GUNMAN;
     state.ctx().pending_ops_value = 1;
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-    state.ctx().resolving_card = card_ids::LONE_GUNMAN;
+    state.ctx().resolving_card = 0;
     return false;
 }
 

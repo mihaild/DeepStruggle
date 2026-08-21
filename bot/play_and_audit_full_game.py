@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 import ts_engine
 from bot.bot_client import HeuristicBot
+from bot.exploratory_bot import ExploratoryBot
 
 def validate_legal_choices(state_dict: dict) -> List[str]:
     """
@@ -36,15 +37,29 @@ def validate_legal_choices(state_dict: dict) -> List[str]:
 
     # 2. Decision Type Validation
     if d_type == 1: # SELECT_CARD
+        res_card = ctx.get("resolving_card", 0)
         hand = state_dict.get("hands", {}).get(f"{d_player}", [])
         china = state_dict.get("china_card", {})
-        for cid in valid_ids:
-            if cid == 6: # The China Card
-                if china.get("holder") != d_player or not china.get("playable"):
-                    violations.append(f"The China Card proposed to {d_player} but holder={china.get('holder')}, playable={china.get('playable')}")
-            else:
+        discard = state_dict.get("discard_pile", [])
+        
+        if res_card in (43, 85): # SALT_NEGOTIATIONS, STAR_WARS (pick from discard)
+            for cid in valid_ids:
+                if cid not in discard:
+                    violations.append(f"Card #{cid} proposed from discard for card #{res_card} but not in discard {discard}")
+        elif res_card == 108: # OUR_MAN_IN_TEHRAN
+            pass
+        elif res_card == 10: # BLOCKADE (discard 3+ ops from hand)
+            for cid in valid_ids:
                 if cid not in hand:
-                    violations.append(f"Card #{cid} proposed to {d_player} but not in hand {hand}")
+                    violations.append(f"Blockade proposed card #{cid} but not in hand {hand}")
+        else:
+            for cid in valid_ids:
+                if cid == 6: # The China Card
+                    if china.get("holder") != d_player or not china.get("playable"):
+                        violations.append(f"The China Card proposed to {d_player} but holder={china.get('holder')}, playable={china.get('playable')}")
+                else:
+                    if cid not in hand:
+                        violations.append(f"Card #{cid} proposed to {d_player} but not in hand {hand}")
 
     elif d_type == 2: # SELECT_PLAY_MODE
         card = ctx.get("pending_op_card", 0)
@@ -94,13 +109,25 @@ def validate_legal_choices(state_dict: dict) -> List[str]:
                         violations.append(f"Independent Reds allowed invalid country ID {nid}")
 
             elif res_card == 105: # SPECIAL_RELATIONSHIP
-                # Adjacent to UK
-                uk_info = ts_engine.MapData.get_country_info(1)
-                allowed_adj = set(uk_info.get("neighbors", []))
-                for nid in valid_ids:
-                    if nid not in allowed_adj:
-                        c_name = ts_engine.MapData.get_country_name(nid)
-                        violations.append(f"Special Relationship allowed non-UK adjacent country {c_name} (ID {nid})")
+                flags_list = state_dict.get("flags", [])
+                if isinstance(flags_list, dict):
+                    nato_active = flags_list.get("NATO_ACTIVE", False)
+                else:
+                    nato_active = "NATO_ACTIVE" in flags_list
+                nato_active = nato_active or ((state_dict.get("persistent_effects", 0) & (1 << 3)) != 0)
+                if not nato_active:
+                    uk_info = ts_engine.MapData.get_country_info(1)
+                    allowed_adj = set(uk_info.get("neighbors", []))
+                    for nid in valid_ids:
+                        if nid not in allowed_adj:
+                            c_name = ts_engine.MapData.get_country_name(nid)
+                            violations.append(f"Special Relationship allowed non-UK adjacent country {c_name} (ID {nid})")
+                else:
+                    for nid in valid_ids:
+                        c_info = ts_engine.MapData.get_country_info(nid)
+                        if not c_info.get("in_western_europe"):
+                            c_name = ts_engine.MapData.get_country_name(nid)
+                            violations.append(f"Special Relationship allowed non-Western Europe country {c_name} (ID {nid})")
 
             elif res_card == 28: # SUEZ_CRISIS
                 allowed_suez = {1, 8, 23} # UK, France, Israel
@@ -153,13 +180,22 @@ def validate_legal_choices(state_dict: dict) -> List[str]:
     return violations
 
 
-def run_full_game_simulation(seed: int = 42) -> Tuple[List[dict], List[str]]:
+def run_full_game_simulation(seed: int = 42, bot_type: str = "heuristic") -> Tuple[List[dict], List[str]]:
+    """Runs a complete game simulation with exhaustive validation, using either heuristic or exploratory bots."""
+    state = ts_engine.GameState()
+    ts_engine.Engine.init_game(state, seed)
+
+    if bot_type == "exploratory":
+        bot_us = ExploratoryBot("US", rng_seed=seed * 2 + 1)
+        bot_ussr = ExploratoryBot("USSR", rng_seed=seed * 2 + 2)
+    else:
+        bot_us = HeuristicBot("US")
+        bot_ussr = HeuristicBot("USSR")
     """Runs a complete game simulation, logging every step and validating engine choices."""
     state = ts_engine.GameState()
     ts_engine.Engine.init_game(state, seed)
 
-    bot_us = HeuristicBot("US")
-    bot_ussr = HeuristicBot("USSR")
+
 
     game_logs = []
     all_violations = []

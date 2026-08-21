@@ -298,7 +298,7 @@ bool trigger_cia_created(GameState& state, Player p) noexcept {
     state.ctx().pending_op_card = card_ids::CIA_CREATED;
     state.ctx().pending_ops_value = 1;
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-    state.ctx().resolving_card = card_ids::CIA_CREATED;
+    state.ctx().resolving_card = 0;
     return false;
 }
 

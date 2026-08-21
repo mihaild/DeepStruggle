@@ -218,7 +218,7 @@ bool trigger_tear_down_this_wall(GameState& state, Player p) noexcept {
     state.ctx().pending_op_card = card_ids::TEAR_DOWN_THIS_WALL;
     state.ctx().pending_ops_value = 3;
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-    state.ctx().resolving_card = card_ids::TEAR_DOWN_THIS_WALL;
+    state.ctx().resolving_card = 0;
     return false;
 }
 

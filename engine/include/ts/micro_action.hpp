@@ -13,7 +13,7 @@ struct alignas(4) MicroAction {
     uint8_t      flags;         // Bit 7 (0x80): CONFIRM_DONE / Early stop flag
 
     constexpr bool is_confirm_done() const noexcept {
-        return (flags & action_flags::CONFIRM_DONE) != 0;
+        return ((flags & action_flags::CONFIRM_DONE) != 0) || primary_id == 255;
     }
 };
 static_assert(sizeof(MicroAction) == 4, "MicroAction must be exactly 4 bytes");

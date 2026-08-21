@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Deep Game Auditor: Runs multiple complete games across diverse random seeds
-and performs a comprehensive, independent post-game and step-by-step invariant audit.
+Deep Game Auditor: Runs 10 full exploratory games across diverse random seeds
+with exploratory agents exploring edge cases, coups, space race, realignments, and complex events.
 """
 
 import sys
@@ -12,19 +12,19 @@ from typing import List, Dict, Any
 import ts_engine
 from bot.play_and_audit_full_game import run_full_game_simulation, generate_readable_game_summary
 
-def run_deep_audit(seeds: List[int]):
+def run_deep_audit(seeds: List[int], bot_type: str = "exploratory"):
     os.makedirs("replays", exist_ok=True)
     total_steps_all = 0
     total_violations_all = 0
     all_summaries = []
 
-    print("=" * 80)
-    print("STARTING MULTI-GAME DEEP ENGINE AUDITOR ACROSS DIVERSE SEEDS")
-    print("=" * 80)
+    print("=" * 85)
+    print(f"STARTING 10-GAME EXPLORATORY ENGINE AUDITOR (Mode: {bot_type.upper()})")
+    print("=" * 85)
 
-    for s in seeds:
-        print(f"\n--- Running Full Simulation for Seed {s} ---")
-        logs, violations = run_full_game_simulation(seed=s)
+    for idx, s in enumerate(seeds, 1):
+        print(f"\n--- [Game {idx:02d}/10] Running Simulation for Seed {s} ({bot_type}) ---")
+        logs, violations = run_full_game_simulation(seed=s, bot_type=bot_type)
         total_steps_all += len(logs)
         total_violations_all += len(violations)
 
@@ -33,27 +33,27 @@ def run_deep_audit(seeds: List[int]):
         final_vp = last_entry.get("final_vp", 0)
         turns = last_entry.get("turn", 1)
 
-        summary_line = f"Seed {s:5d}: {len(logs):3d} steps | End Turn: {turns:2d} | Winner: {winner:4s} | Final VP: {final_vp:+3d} | Violations: {len(violations)}"
+        summary_line = f"Game {idx:02d} (Seed {s:5d}): {len(logs):4d} steps | Turn {turns:2d} | Winner: {winner:4s} | Final VP: {final_vp:+3d} | Violations: {len(violations)}"
         print(f"Summary: {summary_line}")
         all_summaries.append(summary_line)
 
         # Save individual trace
-        txt_path = f"replays/audit_game_seed_{s}.txt"
+        txt_path = f"replays/exploratory_game_{idx:02d}_seed_{s}.txt"
         generate_readable_game_summary(logs, txt_path)
 
-    print("\n" + "=" * 80)
-    print("DEEP AUDITOR OVERALL RESULTS:")
-    print("=" * 80)
+    print("\n" + "=" * 85)
+    print("EXPLORATORY DEEP AUDITOR OVERALL RESULTS:")
+    print("=" * 85)
     for line in all_summaries:
         print(f"  • {line}")
-    print("-" * 80)
+    print("-" * 85)
     print(f"Total Games: {len(seeds)} | Total Micro-Steps Audited: {total_steps_all} | Total Invariant Violations: {total_violations_all}")
     if total_violations_all == 0:
-        print("🎉 ALL SIMULATIONS PASSED 100% INVARIANT AND RULE AUDIT WITH ZERO ERRORS!")
+        print("🎉 ALL 10 EXPLORATORY GAMES PASSED 100% INVARIANT AND RULE AUDIT WITH ZERO ERRORS!")
     else:
         print(f"⚠️ DETECTED {total_violations_all} ERRORS ACROSS SIMULATIONS!")
-    print("=" * 80)
+    print("=" * 85)
 
 if __name__ == "__main__":
-    seeds_to_test = [42, 100, 123, 777, 2026]
-    run_deep_audit(seeds_to_test)
+    test_seeds = [101, 202, 303, 404, 505, 606, 707, 808, 909, 1010]
+    run_deep_audit(test_seeds, bot_type="exploratory")

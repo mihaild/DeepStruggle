@@ -661,6 +661,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 // Transition to Ops in CA/SA
                 state.ctx().pending_op_card = card_ids::JUNTA;
                 state.ctx().pending_ops_value = 2;
+                state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;
             }

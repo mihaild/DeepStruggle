@@ -23,6 +23,7 @@ void StateMachine::add_era_cards_to_deck(GameState& state, WarEra era) noexcept 
 
 void StateMachine::reshuffle_discard_into_draw(GameState& state) noexcept {
     for (uint8_t i = 1; i <= 110; ++i) {
+        if (i == card_ids::THE_CHINA_CARD) continue;
         if (state.card_locations[i] == CardLocation::DISCARD_PILE) {
             state.card_locations[i] = CardLocation::DRAW_DECK;
         }
@@ -107,6 +108,8 @@ void StateMachine::init_new_game(GameState& state, uint64_t seed) noexcept {
     // 3. China Card to USSR
     state.china_card_holder = Player::USSR;
     state.china_card_playable = 1;
+    state.forced_card_player = Player::NONE;
+    state.forced_card_id = 0;
     state.card_locations[card_ids::THE_CHINA_CARD] = CardLocation::ONGOING_EVENT;
 
     // 4. Early War Cards & Deal Hands
@@ -193,6 +196,10 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 }
 
 void StateMachine::advance_after_ops(GameState& state) noexcept {
+    if (state.current_phase == Phase::HEADLINE) {
+        advance_headline_step(state);
+        return;
+    }
     uint8_t card = state.ctx().pending_op_card;
     Player p = state.phasing_player;
     uint8_t timing = state.ctx().timing_branch;
@@ -374,8 +381,42 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     if (state.current_phase == Phase::HEADLINE) {
         Player p = state.ctx().decision_player;
 
-        // If resolving active event sub-decision during Headline
+        // Headline Free Ops / Sub-decisions Handling
+        if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+            OpMode op_mode = static_cast<OpMode>(action.primary_id);
+            uint8_t ops = state.ctx().pending_ops_value;
+            state.ctx().op_mode = op_mode;
+            if (op_mode == OpMode::INFLUENCE) {
+                snapshot_op_influence(state, p);
+                state.ctx().decision_type = DecisionType::POINT_NODE;
+                state.ctx().remaining_steps = ops;
+                state.ctx().allow_early_stop = 1;
+                return true;
+            } else if (op_mode == OpMode::COUP) {
+                state.ctx().decision_type = DecisionType::POINT_NODE;
+                state.ctx().remaining_steps = 1;
+                state.ctx().max_per_country = 1;
+                state.ctx().allow_early_stop = 0;
+                return true;
+            } else if (op_mode == OpMode::REALIGN) {
+                state.ctx().decision_type = DecisionType::POINT_NODE;
+                state.ctx().remaining_steps = ops;
+                state.ctx().allow_early_stop = 1;
+                return true;
+            }
+            return false;
+        }
+
         if (state.ctx().resolving_card != 0) {
+            if (action.is_confirm_done()) {
+                state.ctx().resolving_card = 0;
+                if (state.ctx_stack_depth > 0) {
+                    state.pop_context();
+                } else {
+                    advance_headline_step(state);
+                }
+                return true;
+            }
             bool finished = CardHandlers::handle_event_step(state, action);
             if (finished) {
                 if (state.ctx_stack_depth > 0) {
@@ -385,6 +426,42 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
             }
             return true;
+        }
+
+        if (state.ctx().decision_type == DecisionType::POINT_NODE && state.headline_us_card != 0 && state.headline_ussr_card != 0) {
+            if (action.is_confirm_done()) {
+                advance_headline_step(state);
+                return true;
+            }
+            uint8_t cid = action.primary_id;
+            uint8_t forced_roll = action.secondary_id;
+            uint8_t forced_opp_roll = action.flags;
+
+            if (state.ctx().op_mode == OpMode::COUP) {
+                Operations::execute_coup(state, p, cid, state.ctx().pending_ops_value, forced_roll);
+                advance_headline_step(state);
+                return true;
+            } else if (state.ctx().op_mode == OpMode::REALIGN) {
+                uint8_t forced_us = (p == Player::US) ? forced_roll : forced_opp_roll;
+                uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
+                Operations::execute_realign(state, p, cid, forced_us, forced_ussr);
+                state.ctx().remaining_steps -= 1;
+                if (state.ctx().remaining_steps == 0) {
+                    advance_headline_step(state);
+                }
+                return true;
+            } else {
+                uint8_t cost = Operations::get_influence_cost(state, p, cid);
+                if (state.ctx().remaining_steps >= cost) {
+                    Operations::place_influence(state, p, cid);
+                    state.ctx().remaining_steps -= cost;
+                    if (state.ctx().remaining_steps == 0) {
+                        advance_headline_step(state);
+                    }
+                    return true;
+                }
+                return false;
+            }
         }
 
         uint8_t card = action.primary_id;
@@ -478,6 +555,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::SELECT_CARD: {
                 uint8_t card = action.primary_id;
                 state.ctx().pending_op_card = card;
+
+                if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == 0)) {
+                    state.forced_card_player = Player::NONE;
+                    state.forced_card_id = 0;
+                }
 
                 // Quagmire / Bear Trap handling
                 bool trapped = (p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||

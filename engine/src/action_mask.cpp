@@ -47,8 +47,11 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             // 3. Forced play (Missile Envy)
             if (state.forced_card_player == p && state.forced_card_id != 0) {
-                mask_out[state.forced_card_id] = 1;
-                return;
+                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+                if (state.card_locations[state.forced_card_id] == loc) {
+                    mask_out[state.forced_card_id] = 1;
+                    return;
+                }
             }
 
             // 4. Quagmire / Bear Trap
@@ -78,6 +81,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // 5. Standard Hand Selection
             CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
             for (uint8_t i = 1; i <= 110; ++i) {
+                if (i == card_ids::THE_CHINA_CARD) continue; // China card handled below
                 if (state.card_locations[i] == loc) {
                     mask_out[i] = 1;
                 }
