@@ -28,6 +28,7 @@ struct RealignResult {
 
 class Operations {
 public:
+    static uint8_t get_modified_ops(const GameState& state, uint8_t base_ops, Player player, Region target_region = Region::NONE_REGION) noexcept;
     static uint8_t get_effective_ops(const GameState& state, uint8_t card_id, Player player, Region target_region = Region::NONE_REGION) noexcept;
 
     // Influence Placement

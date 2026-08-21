@@ -276,7 +276,25 @@ namespace effect_bits {
     constexpr uint64_t CHERNOBYL_REGION_MASK       = 0x7ULL << CHERNOBYL_REGION_SHIFT;
 
     // Mask for flags that are cleared automatically at end of turn
-    constexpr uint64_t TURN_CLEANUP_MASK           = 0x00000780A3CBE3C0ULL;
+    constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |
+                                                     PURGE_US_ACTIVE |
+                                                     PURGE_USSR_ACTIVE |
+                                                     VIETNAM_REVOLTS_ACTIVE |
+                                                     CMC_ACTIVE_US |
+                                                     CMC_ACTIVE_USSR |
+                                                     NUCLEAR_SUBS_ACTIVE |
+                                                     SALT_ACTIVE |
+                                                     WE_WILL_BURY_YOU_PENDING |
+                                                     BREZHNEV_DOCTRINE_ACTIVE |
+                                                     U2_INCIDENT_ACTIVE |
+                                                     DEATH_SQUADS_US |
+                                                     DEATH_SQUADS_USSR |
+                                                     NORTH_SEA_OIL_ACTIVE |
+                                                     IRAN_CONTRA_ACTIVE |
+                                                     ALDRICH_AMES_ACTIVE |
+                                                     YURI_AND_SAMANTHA_ACTIVE |
+                                                     CHERNOBYL_ACTIVE |
+                                                     CHERNOBYL_REGION_MASK;
 }
 
 // Special flags for MicroAction

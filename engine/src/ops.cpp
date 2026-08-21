@@ -8,29 +8,44 @@
 
 namespace ts {
 
-uint8_t Operations::get_effective_ops(const GameState& state, uint8_t card_id, Player player, Region target_region) noexcept {
-    if (card_id < 1 || card_id > 110 || player == Player::NONE) return 0;
+uint8_t Operations::get_modified_ops(const GameState& state, uint8_t base_ops, Player player, Region target_region) noexcept {
+    if (base_ops == 0 || player == Player::NONE) return 0;
 
-    int16_t ops = CardData::get_card(card_id).ops;
+    int16_t ops = static_cast<int16_t>(base_ops);
 
     if (player == Player::US) {
-        if (state.has_flag(effect_bits::CONTAINMENT_ACTIVE)) {
-            ops = std::min(4, ops + 1);
-        }
-        if (state.has_flag(effect_bits::PURGE_US_ACTIVE)) {
-            ops = std::max(1, ops - 1);
+        bool containment = state.has_flag(effect_bits::CONTAINMENT_ACTIVE);
+        bool purge = state.has_flag(effect_bits::PURGE_US_ACTIVE);
+        if (containment && purge) {
+            // Net zero modifier: ops unaffected
+        } else if (containment) {
+            ops = std::min<int16_t>(4, ops + 1);
+        } else if (purge) {
+            ops = std::max<int16_t>(1, ops - 1);
         }
     } else if (player == Player::USSR) {
-        if (state.has_flag(effect_bits::BREZHNEV_DOCTRINE_ACTIVE)) {
-            ops = std::min(4, ops + 1);
-        }
-        if (state.has_flag(effect_bits::PURGE_USSR_ACTIVE)) {
-            ops = std::max(1, ops - 1);
+        bool brezhnev = state.has_flag(effect_bits::BREZHNEV_DOCTRINE_ACTIVE);
+        bool purge = state.has_flag(effect_bits::PURGE_USSR_ACTIVE);
+        if (brezhnev && purge) {
+            // Net zero modifier: ops unaffected
+        } else if (brezhnev) {
+            ops = std::min<int16_t>(4, ops + 1);
+        } else if (purge) {
+            ops = std::max<int16_t>(1, ops - 1);
         }
         if (state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && (target_region == Region::ASIA)) {
             ops += 1;
         }
     }
+
+    return static_cast<uint8_t>(std::clamp<int16_t>(ops, 1, 5));
+}
+
+uint8_t Operations::get_effective_ops(const GameState& state, uint8_t card_id, Player player, Region target_region) noexcept {
+    if (card_id < 1 || card_id > 110 || player == Player::NONE) return 0;
+
+    uint8_t base_ops = CardData::get_card(card_id).ops;
+    uint8_t ops = get_modified_ops(state, base_ops, player, target_region);
 
     if (card_id == card_ids::THE_CHINA_CARD && target_region == Region::ASIA) {
         ops += 1;

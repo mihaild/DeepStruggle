@@ -326,7 +326,7 @@ TEST(EarlyCardsTest, Card20_OlympicGames_Boycott) {
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR); // Opponent chooses
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
 
-    // USSR boycotts (branch 1) -> US gets 2 VP and 4 Ops
+    // USSR boycotts (branch 1) -> US gets 2 VP and conducts 4 Ops
     ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0));
     ASSERT_EQ(state.victory_points, 2);
     ASSERT_EQ(state.ctx().pending_ops_value, 4);

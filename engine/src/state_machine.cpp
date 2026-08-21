@@ -64,6 +64,9 @@ void StateMachine::deal_cards_to_hands(GameState& state) noexcept {
             uint8_t chosen_card = draw_cards[chosen_idx];
             state.card_locations[chosen_card] = hand_loc;
             current_count++;
+            if (draw_count == 1) {
+                reshuffle_discard_into_draw(state);
+            }
         }
     };
 
@@ -179,7 +182,9 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
             state.ctx().resolving_card = h2_card;
 
             bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
-            state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            if (h2_card != card_ids::KITCHEN_DEBATES) {
+                state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            }
             if (done) {
                 advance_headline_step(state);
             }
@@ -216,7 +221,9 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         state.ctx().timing_branch = 255; // cleared
 
         bool done = CardHandlers::trigger_event(state, card, opp);
-        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        if (card != card_ids::KITCHEN_DEBATES) {
+            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        }
         if (done) {
             advance_after_action_round(state);
         }
@@ -517,7 +524,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         state.ctx().resolving_card = first_card;
 
         bool done = CardHandlers::trigger_event(state, first_card, exec_player);
-        state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        if (first_card != card_ids::KITCHEN_DEBATES) {
+            state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        }
         if (done) {
             advance_headline_step(state);
         }
@@ -615,8 +624,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                 if (mode == PlayMode::EVENT) {
                     const auto& c_info = CardData::get_card(card);
-                    state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
                     bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
+                    if (card != card_ids::KITCHEN_DEBATES) {
+                        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                    }
                     if (done && state.current_phase != Phase::GAME_OVER) {
                         advance_after_action_round(state);
                     }

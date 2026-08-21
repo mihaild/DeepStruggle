@@ -53,3 +53,11 @@ inline void register_test(const std::string& name, std::function<void()> func) {
             std::exit(1); \
         } \
     } while(0)
+
+#define ASSERT_NE(a, b) \
+    do { \
+        if ((a) == (b)) { \
+            std::cerr << "Assertion failed at " << __FILE__ << ":" << __LINE__ << ": (" #a " != " #b ")" << std::endl; \
+            std::exit(1); \
+        } \
+    } while(0)

@@ -164,6 +164,9 @@ bool trigger_kitchen_debates(GameState& state, Player p) noexcept {
     if (us_bgs > ussr_bgs) {
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
         if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+        state.card_locations[card_ids::KITCHEN_DEBATES] = CardLocation::REMOVED_FROM_GAME;
+    } else {
+        state.card_locations[card_ids::KITCHEN_DEBATES] = CardLocation::DISCARD_PILE;
     }
     return true;
 }
@@ -179,6 +182,7 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
 
     for (uint8_t i = 1; i <= 110; ++i) {
         if (state.card_locations[i] == opp_hand) {
+            if (CardData::is_scoring_card(i)) continue;
             uint8_t ops = CardData::get_card(i).ops;
             if (ops > max_ops) {
                 max_ops = ops;
@@ -293,7 +297,7 @@ bool trigger_abm_treaty(GameState& state, Player p) noexcept {
     state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
     state.ctx().decision_player = p;
     state.ctx().pending_op_card = card_ids::ABM_TREATY;
-    state.ctx().pending_ops_value = 4;
+    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, p);
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
     state.ctx().resolving_card = 0;
     return false;
@@ -347,10 +351,10 @@ bool trigger_opec(GameState& state, Player p) noexcept {
 }
 
 bool trigger_lone_gunman(GameState& state, Player p) noexcept {
-    // US reveals hand; USSR conducts 1 Op
+    // US reveals hand; USSR conducts Operations using card Ops value (1 Op base)
     state.ctx().decision_player = Player::USSR;
     state.ctx().pending_op_card = card_ids::LONE_GUNMAN;
-    state.ctx().pending_ops_value = 1;
+    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 1, Player::USSR);
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
     state.ctx().resolving_card = 0;
     return false;
@@ -406,7 +410,7 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
         // USSR has no cards; US conducts Ops using 2 Ops
         state.ctx().decision_player = Player::US;
         state.ctx().pending_op_card = card_ids::GRAIN_SALES;
-        state.ctx().pending_ops_value = 2;
+        state.ctx().pending_ops_value = Operations::get_modified_ops(state, 2, Player::US);
         state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
         return false;
     }

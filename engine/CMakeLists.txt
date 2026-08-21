@@ -52,6 +52,10 @@ set(TEST_SOURCES
     tests/test_cards_late.cpp
     tests/test_defcon_suicide.cpp
     tests/test_reentrancy.cpp
+    tests/test_card_interactions.cpp
+    tests/test_state_lifecycle.cpp
+    tests/test_states.cpp
+    tests/test_card_edge_cases.cpp
 )
 
 add_executable(ts_tests ${TEST_SOURCES})

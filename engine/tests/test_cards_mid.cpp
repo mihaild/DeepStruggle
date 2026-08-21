@@ -529,11 +529,15 @@ TEST(MidCardsTest, Card76_UssuriRiver_USSRHasChinaCard) {
 TEST(MidCardsTest, Card77_AskNot) {
     ts::GameState state{};
     state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::DRAW_DECK;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DRAW_DECK;
     ts::CardHandlers::trigger_event(state, ts::card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 
     ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
     ASSERT_EQ(state.card_locations[ts::card_ids::FIDEL], ts::CardLocation::DISCARD_PILE);
+    bool has_drawn = (state.card_locations[ts::card_ids::DUCK_AND_COVER] == ts::CardLocation::HAND_US) || (state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] == ts::CardLocation::HAND_US);
+    ASSERT_TRUE(has_drawn);
 }
 
 // Card 78: Alliance for Progress

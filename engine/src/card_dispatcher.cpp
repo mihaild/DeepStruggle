@@ -416,7 +416,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.ctx().resolving_card = 0;
                 return true;
             } else {
-                // Boycott: sponsor receives 2 VP and conducts 4 Ops
+                // Boycott: sponsor receives 2 VP, DEFCON degrades by 1, and sponsor conducts Operations (as if played 4 Ops)
                 Player sponsor = get_opponent(state.ctx().decision_player);
                 int32_t vp_delta = (sponsor == Player::US) ? 2 : -2;
                 state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
@@ -425,8 +425,18 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().resolving_card = 0;
                     return true;
                 }
+                if (state.defcon > 1) {
+                    state.defcon--;
+                }
+                if (state.defcon == 1) {
+                    state.current_phase = Phase::GAME_OVER;
+                    Player loser = state.phasing_player;
+                    state.victory_points = (loser == Player::US) ? -20 : 20;
+                    state.ctx().resolving_card = 0;
+                    return true;
+                }
                 state.ctx().pending_op_card = card_ids::OLYMPIC_GAMES;
-                state.ctx().pending_ops_value = 4;
+                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, sponsor);
                 state.ctx().decision_player = sponsor;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 state.ctx().resolving_card = 0;
@@ -714,7 +724,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.countries[cid].add_influence(p, 2);
                 // Transition to Ops in CA/SA
                 state.ctx().pending_op_card = card_ids::JUNTA;
-                state.ctx().pending_ops_value = 2;
+                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 2, state.ctx().decision_player);
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;
@@ -764,7 +774,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             } else {
                 // Return card, US conducts 2 Ops
                 state.ctx().pending_op_card = card_ids::GRAIN_SALES;
-                state.ctx().pending_ops_value = 2;
+                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 2, Player::US);
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;
@@ -1119,6 +1129,37 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t card_id = action.primary_id;
             if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US) {
                 state.card_locations[card_id] = CardLocation::DISCARD_PILE;
+
+                // Draw 1 replacement card from draw deck
+                uint8_t draw_cards[111];
+                uint8_t draw_cnt = 0;
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (state.card_locations[i] == CardLocation::DRAW_DECK) {
+                        draw_cards[draw_cnt++] = i;
+                    }
+                }
+                if (draw_cnt == 0) {
+                    for (uint8_t i = 1; i <= 110; ++i) {
+                        if (i == card_ids::THE_CHINA_CARD) continue;
+                        if (state.card_locations[i] == CardLocation::DISCARD_PILE) {
+                            state.card_locations[i] = CardLocation::DRAW_DECK;
+                            draw_cards[draw_cnt++] = i;
+                        }
+                    }
+                }
+                if (draw_cnt > 0) {
+                    uint32_t chosen_idx = Prng::random_index(state.rng_state, draw_cnt);
+                    uint8_t chosen_card = draw_cards[chosen_idx];
+                    state.card_locations[chosen_card] = CardLocation::HAND_US;
+                    if (draw_cnt == 1) {
+                        for (uint8_t i = 1; i <= 110; ++i) {
+                            if (i == card_ids::THE_CHINA_CARD) continue;
+                            if (state.card_locations[i] == CardLocation::DISCARD_PILE) {
+                                state.card_locations[i] = CardLocation::DRAW_DECK;
+                            }
+                        }
+                    }
+                }
             }
             if (state.ctx().remaining_steps <= 1) {
                 state.ctx().resolving_card = 0;
@@ -1141,7 +1182,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && !MapData::get_country(cid).battleground) {
                 uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
-                int16_t coup_val = static_cast<int16_t>(roll + 3) - static_cast<int16_t>(2 * MapData::get_country(cid).stability);
+                uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
+                int16_t coup_val = static_cast<int16_t>(roll + che_ops) - static_cast<int16_t>(2 * MapData::get_country(cid).stability);
                 if (coup_val > 0) {
                     uint8_t us_inf = state.countries[cid].us_influence;
                     uint8_t removed = static_cast<uint8_t>(std::min(static_cast<int16_t>(us_inf), coup_val));
@@ -1155,7 +1197,29 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
+            uint8_t target_cid = action.primary_id;
             state.countries[countries::NICARAGUA].us_influence = 0;
+            const auto& nic = MapData::get_country(countries::NICARAGUA);
+            bool is_adj = false;
+            for (uint8_t n = 0; n < nic.num_neighbors; ++n) {
+                if (nic.neighbors[n] == target_cid) { is_adj = true; break; }
+            }
+            if (is_adj && target_cid < 84) {
+                uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+                uint8_t ortega_ops = Operations::get_modified_ops(state, 2, Player::USSR);
+                int16_t coup_val = static_cast<int16_t>(roll + ortega_ops) - static_cast<int16_t>(2 * MapData::get_country(target_cid).stability);
+                if (coup_val > 0) {
+                    uint8_t us_inf = state.countries[target_cid].us_influence;
+                    uint8_t removed = static_cast<uint8_t>(std::min(static_cast<int16_t>(us_inf), coup_val));
+                    state.countries[target_cid].remove_influence(Player::US, removed);
+                    uint8_t added = static_cast<uint8_t>(coup_val - removed);
+                    if (added > 0) state.countries[target_cid].add_influence(Player::USSR, added);
+                }
+                if (MapData::get_country(target_cid).battleground) {
+                    if (state.defcon > 1) state.defcon--;
+                }
+                state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+            }
             state.ctx().resolving_card = 0;
             return true;
         }
@@ -1340,6 +1404,13 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                         mask_out[i] = 1;
                     }
                     break;
+                case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
+                    const auto& nic = MapData::get_country(countries::NICARAGUA);
+                    for (uint8_t n = 0; n < nic.num_neighbors; ++n) {
+                        if (nic.neighbors[n] == i) mask_out[i] = 1;
+                    }
+                    break;
+                }
                 case card_ids::IRAN_IRAQ_WAR:
                     if (i == countries::IRAN || i == countries::IRAQ) mask_out[i] = 1;
                     break;
@@ -1371,6 +1442,13 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
                     uint8_t c = state.ctx().temp_cards[k];
                     if (c >= 1 && c <= 110) mask_out[c] = 1;
+                }
+                break;
+            case card_ids::ALDRICH_AMES:
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (state.card_locations[i] == CardLocation::HAND_US) {
+                        mask_out[i] = 1;
+                    }
                 }
                 break;
             case card_ids::BLOCKADE:
