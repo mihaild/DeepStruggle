@@ -58,3 +58,35 @@ TEST(ScoringTest, EuropeControlInstantVictory) {
     ASSERT_EQ(state.victory_points, 20);
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
 }
+
+TEST(ScoringTest, FinalScoringAccumulationWithIntermediateOver20) {
+    ts::GameState state{};
+    state.current_phase = ts::Phase::END_TURN;
+    state.turn = 10;
+    state.victory_points = 15; // Starting at +15 VP
+
+    // 1. Europe: US has Domination (West Germany, Italy, UK) vs USSR None
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 4;
+    state.countries[ts::countries::ITALY].us_influence = 3;
+    state.countries[ts::countries::UNITED_KINGDOM].us_influence = 5;
+    // US: Domination in Europe = 7 base + 2 BGs = +9 VP. (Intermediate VP: 15 + 9 = +24 VP)
+
+    // 2. Asia: USSR has Domination (North Korea, Pakistan, Vietnam) vs US Presence (Japan)
+    state.countries[ts::countries::NORTH_KOREA].ussr_influence = 3;
+    state.countries[ts::countries::PAKISTAN].ussr_influence = 3;
+    state.countries[ts::countries::VIETNAM].ussr_influence = 2;
+    state.countries[ts::countries::JAPAN].us_influence = 4;
+    // USSR: Domination in Asia = 7 base + 2 BGs = 9 VP.
+    // US: Presence in Asia = 3 base + 1 BG = 4 VP.
+    // Asia net delta = 4 - 9 = -5 VP. (Intermediate VP: 24 - 5 = +19 VP)
+
+    // China Card held by USSR (-1 VP)
+    state.china_card_holder = ts::Player::USSR;
+
+    // Execute Final Scoring
+    ts::Scoring::execute_final_scoring(state);
+
+    // Final VP must be exactly 15 + 9 - 5 - 1 = +18 VP (all regions counted, not clamped at 20 midway!)
+    ASSERT_EQ(state.victory_points, 18);
+    ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
+}

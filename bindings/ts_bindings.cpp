@@ -10,6 +10,7 @@
 #include "ts/game_state.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
+#include "ts/card_handlers.hpp"
 #include "ts/scoring.hpp"
 #include "ts/space_race.hpp"
 #include "ts/ops.hpp"
@@ -403,6 +404,16 @@ NB_MODULE(ts_engine, m) {
         .value("LATE", ts::WarEra::LATE)
         .export_values();
 
+    nb::enum_<ts::Region>(m, "Region", nb::is_arithmetic())
+        .value("EUROPE", ts::Region::EUROPE)
+        .value("ASIA", ts::Region::ASIA)
+        .value("MIDDLE_EAST", ts::Region::MIDDLE_EAST)
+        .value("AFRICA", ts::Region::AFRICA)
+        .value("CENTRAL_AMERICA", ts::Region::CENTRAL_AMERICA)
+        .value("SOUTH_AMERICA", ts::Region::SOUTH_AMERICA)
+        .value("NONE_REGION", ts::Region::NONE_REGION)
+        .export_values();
+
     // Structs
     nb::class_<ts::MicroAction>(m, "MicroAction")
         .def(nb::init<>())
@@ -426,14 +437,14 @@ NB_MODULE(ts_engine, m) {
         .def_rw("ussr_influence", &ts::CountryState::ussr_influence);
 
     nb::class_<ts::DecisionContext>(m, "DecisionContext")
-        .def_ro("decision_player", &ts::DecisionContext::decision_player)
-        .def_ro("decision_type", &ts::DecisionContext::decision_type)
-        .def_ro("pending_op_card", &ts::DecisionContext::pending_op_card)
-        .def_ro("pending_ops_value", &ts::DecisionContext::pending_ops_value)
-        .def_ro("remaining_steps", &ts::DecisionContext::remaining_steps)
-        .def_ro("max_per_country", &ts::DecisionContext::max_per_country)
-        .def_ro("allow_early_stop", &ts::DecisionContext::allow_early_stop)
-        .def_ro("resolving_card", &ts::DecisionContext::resolving_card)
+        .def_rw("decision_player", &ts::DecisionContext::decision_player)
+        .def_rw("decision_type", &ts::DecisionContext::decision_type)
+        .def_rw("pending_op_card", &ts::DecisionContext::pending_op_card)
+        .def_rw("pending_ops_value", &ts::DecisionContext::pending_ops_value)
+        .def_rw("remaining_steps", &ts::DecisionContext::remaining_steps)
+        .def_rw("max_per_country", &ts::DecisionContext::max_per_country)
+        .def_rw("allow_early_stop", &ts::DecisionContext::allow_early_stop)
+        .def_rw("resolving_card", &ts::DecisionContext::resolving_card)
         .def("is_visited", &ts::DecisionContext::is_visited);
 
     nb::class_<ts::GameState>(m, "GameState")
@@ -458,6 +469,8 @@ NB_MODULE(ts_engine, m) {
         .def_rw("persistent_effects", &ts::GameState::persistent_effects)
         .def_rw("ctx_stack_depth", &ts::GameState::ctx_stack_depth)
         .def_rw("rng_state", &ts::GameState::rng_state)
+        .def("set_flag", &ts::GameState::set_flag)
+        .def("clear_flag", &ts::GameState::clear_flag)
         .def("ctx", [](ts::GameState& s) -> ts::DecisionContext& { return s.ctx(); }, nb::rv_policy::reference)
         .def("has_flag", &ts::GameState::has_flag)
         .def("get_country", [](const ts::GameState& s, uint8_t idx) -> ts::CountryState {
@@ -532,6 +545,20 @@ NB_MODULE(ts_engine, m) {
             return d;
         });
 
+    // Card Handlers & Event execution helpers
+    nb::class_<ts::CardHandlers>(m, "CardHandlers")
+        .def_static("trigger_event", [](ts::GameState& s, uint8_t card_id, ts::Player p, uint8_t forced_roll) {
+            return ts::CardHandlers::trigger_event(s, card_id, p, forced_roll);
+        }, nb::arg("state"), nb::arg("card_id"), nb::arg("player"), nb::arg("forced_roll") = 0)
+        .def_static("handle_event_step", &ts::CardHandlers::handle_event_step);
+
+    // Scoring helpers
+    nb::class_<ts::Scoring>(m, "Scoring")
+        .def_static("score_region", &ts::Scoring::score_region)
+        .def_static("score_southeast_asia", &ts::Scoring::score_southeast_asia)
+        .def_static("execute_final_scoring", &ts::Scoring::execute_final_scoring)
+        .def_static("evaluate_military_ops", &ts::Scoring::evaluate_military_ops);
+
     // Card Metadata helpers
     nb::class_<ts::CardData>(m, "CardData")
         .def_static("get_card_name", [](uint8_t id) { return std::string(ts::CardData::get_card_name(id)); })
@@ -552,4 +579,45 @@ NB_MODULE(ts_engine, m) {
         });
 
     m.def("state_to_dict", &game_state_to_dict, "Convert GameState to Python dictionary");
+
+    // Effect Bits module constants
+    auto eb = m.def_submodule("EffectBits");
+    eb.attr("NATO_ACTIVE") = ts::effect_bits::NATO_ACTIVE;
+    eb.attr("MARSHALL_PLAN_PLAYED") = ts::effect_bits::MARSHALL_PLAN_PLAYED;
+    eb.attr("WARSAW_PACT_PLAYED") = ts::effect_bits::WARSAW_PACT_PLAYED;
+    eb.attr("US_JAPAN_PACT_ACTIVE") = ts::effect_bits::US_JAPAN_PACT_ACTIVE;
+    eb.attr("CONTAINMENT_ACTIVE") = ts::effect_bits::CONTAINMENT_ACTIVE;
+    eb.attr("PURGE_US_ACTIVE") = ts::effect_bits::PURGE_US_ACTIVE;
+    eb.attr("PURGE_USSR_ACTIVE") = ts::effect_bits::PURGE_USSR_ACTIVE;
+    eb.attr("VIETNAM_REVOLTS_ACTIVE") = ts::effect_bits::VIETNAM_REVOLTS_ACTIVE;
+    eb.attr("FORMOSAN_RESOLUTION_ACTIVE") = ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE;
+    eb.attr("CMC_ACTIVE_US") = ts::effect_bits::CMC_ACTIVE_US;
+    eb.attr("CMC_ACTIVE_USSR") = ts::effect_bits::CMC_ACTIVE_USSR;
+    eb.attr("NUCLEAR_SUBS_ACTIVE") = ts::effect_bits::NUCLEAR_SUBS_ACTIVE;
+    eb.attr("QUAGMIRE_ACTIVE") = ts::effect_bits::QUAGMIRE_ACTIVE;
+    eb.attr("BEAR_TRAP_ACTIVE") = ts::effect_bits::BEAR_TRAP_ACTIVE;
+    eb.attr("SALT_ACTIVE") = ts::effect_bits::SALT_ACTIVE;
+    eb.attr("WE_WILL_BURY_YOU_PENDING") = ts::effect_bits::WE_WILL_BURY_YOU_PENDING;
+    eb.attr("BREZHNEV_DOCTRINE_ACTIVE") = ts::effect_bits::BREZHNEV_DOCTRINE_ACTIVE;
+    eb.attr("FLOWER_POWER_ACTIVE") = ts::effect_bits::FLOWER_POWER_ACTIVE;
+    eb.attr("U2_INCIDENT_ACTIVE") = ts::effect_bits::U2_INCIDENT_ACTIVE;
+    eb.attr("SHUTTLE_DIPLOMACY_ACTIVE") = ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE;
+    eb.attr("DEATH_SQUADS_US") = ts::effect_bits::DEATH_SQUADS_US;
+    eb.attr("DEATH_SQUADS_USSR") = ts::effect_bits::DEATH_SQUADS_USSR;
+    eb.attr("CAMP_DAVID_PLAYED") = ts::effect_bits::CAMP_DAVID_PLAYED;
+    eb.attr("IRON_LADY_PLAYED") = ts::effect_bits::IRON_LADY_PLAYED;
+    eb.attr("NORTH_SEA_OIL_PLAYED") = ts::effect_bits::NORTH_SEA_OIL_PLAYED;
+    eb.attr("NORTH_SEA_OIL_ACTIVE") = ts::effect_bits::NORTH_SEA_OIL_ACTIVE;
+    eb.attr("THE_REFORMER_PLAYED") = ts::effect_bits::THE_REFORMER_PLAYED;
+    eb.attr("IRAN_CONTRA_ACTIVE") = ts::effect_bits::IRAN_CONTRA_ACTIVE;
+    eb.attr("EVIL_EMPIRE_PLAYED") = ts::effect_bits::EVIL_EMPIRE_PLAYED;
+    eb.attr("ALDRICH_AMES_ACTIVE") = ts::effect_bits::ALDRICH_AMES_ACTIVE;
+    eb.attr("JOHN_PAUL_II_PLAYED") = ts::effect_bits::JOHN_PAUL_II_PLAYED;
+    eb.attr("NORAD_ACTIVE") = ts::effect_bits::NORAD_ACTIVE;
+    eb.attr("YURI_AND_SAMANTHA_ACTIVE") = ts::effect_bits::YURI_AND_SAMANTHA_ACTIVE;
+    eb.attr("AWACS_PLAYED") = ts::effect_bits::AWACS_PLAYED;
+    eb.attr("IRANIAN_HOSTAGE_CRISIS_PLAY") = ts::effect_bits::IRANIAN_HOSTAGE_CRISIS_PLAY;
+    eb.attr("WILLY_BRANDT_PLAYED") = ts::effect_bits::WILLY_BRANDT_PLAYED;
+    eb.attr("TEAR_DOWN_THIS_WALL_PLAYED") = ts::effect_bits::TEAR_DOWN_THIS_WALL_PLAYED;
+    eb.attr("CHERNOBYL_ACTIVE") = ts::effect_bits::CHERNOBYL_ACTIVE;
 }

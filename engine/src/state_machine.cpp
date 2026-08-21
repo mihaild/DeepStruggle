@@ -97,7 +97,7 @@ void StateMachine::init_new_game(GameState& state, uint64_t seed) noexcept {
     state.countries[countries::IRAN].us_influence = 1;
     state.countries[countries::ISRAEL].us_influence = 1;
     state.countries[countries::JAPAN].us_influence = 1;
-    state.countries[countries::AUSTRALIA].us_influence = 1;
+    state.countries[countries::AUSTRALIA].us_influence = 4;
     state.countries[countries::PHILIPPINES].us_influence = 1;
     state.countries[countries::SOUTH_KOREA].us_influence = 1;
     state.countries[countries::PANAMA].us_influence = 1;
@@ -126,6 +126,9 @@ void StateMachine::init_new_game(GameState& state, uint64_t seed) noexcept {
 
 void StateMachine::start_turn(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
+
+    // Reset decision context cleanly for the new turn
+    state.ctx() = DecisionContext{};
 
     // Phase A: Improve DEFCON
     state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
@@ -554,6 +557,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         switch (dt) {
             case DecisionType::SELECT_CARD: {
                 uint8_t card = action.primary_id;
+                if (card == 0 || action.is_confirm_done()) {
+                    advance_after_action_round(state);
+                    return true;
+                }
                 state.ctx().pending_op_card = card;
 
                 if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == 0)) {
@@ -692,7 +699,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             }
 
             case DecisionType::POINT_NODE: {
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 84) {
                     // Early stop Ops
                     advance_after_ops(state);
                     return true;

@@ -21,7 +21,8 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
     switch (ctx.decision_type) {
         case DecisionType::NONE:
-            *out_size = 0;
+            *out_size = 1;
+            mask_out[0] = 1;
             break;
 
         case DecisionType::SELECT_CARD: {
@@ -31,6 +32,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // 1. If currently inside an active event's sub-decision:
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
+                bool any_legal = false;
+                for (size_t i = 0; i < *out_size; ++i) {
+                    if (mask_out[i]) { any_legal = true; break; }
+                }
+                if (!any_legal || ctx.allow_early_stop) {
+                    mask_out[0] = 1;
+                }
                 return;
             }
 
@@ -42,6 +50,9 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         mask_out[i] = 1;
                     }
                 }
+                bool any = false;
+                for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
+                if (!any) mask_out[0] = 1;
                 return;
             }
 
@@ -75,6 +86,9 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         }
                     }
                 }
+                bool any = false;
+                for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
+                if (!any) mask_out[0] = 1;
                 return;
             }
 
@@ -91,6 +105,10 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             if (state.china_card_holder == p && state.china_card_playable && state.current_phase != Phase::HEADLINE) {
                 mask_out[card_ids::THE_CHINA_CARD] = 1;
             }
+
+            bool any = false;
+            for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
+            if (!any) mask_out[0] = 1;
             break;
         }
 
@@ -169,6 +187,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
+                bool any_legal = false;
+                for (size_t i = 0; i < *out_size; ++i) {
+                    if (mask_out[i]) { any_legal = true; break; }
+                }
+                if (!any_legal) {
+                    mask_out[0] = 1;
+                }
                 return;
             }
 
@@ -196,6 +221,16 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                     Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);
                 }
             }
+
+            {
+                bool any_legal = false;
+                for (size_t i = 0; i < 84; ++i) {
+                    if (mask_out[i]) { any_legal = true; break; }
+                }
+                if (!any_legal) {
+                    mask_out[0] = 1;
+                }
+            }
             break;
         }
 
@@ -204,6 +239,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             std::memset(mask_out, 0, 8);
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
+                bool any_legal = false;
+                for (size_t i = 0; i < *out_size; ++i) {
+                    if (mask_out[i]) { any_legal = true; break; }
+                }
+                if (!any_legal) {
+                    mask_out[0] = 1;
+                }
             } else {
                 mask_out[0] = 1;
                 mask_out[1] = 1;

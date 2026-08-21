@@ -380,7 +380,13 @@ bool trigger_formosan_resolution(GameState& state, Player p) noexcept {
 }
 
 bool trigger_defectors(GameState& state, Player p) noexcept {
-    if (state.current_phase == Phase::ACTION_ROUND && p == Player::USSR) {
+    if (state.current_phase == Phase::HEADLINE) {
+        if (state.headline_ussr_card > 0) {
+            state.headline_ussr_card = 0;
+            state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
+            if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+        }
+    } else if (state.current_phase == Phase::ACTION_ROUND && p == Player::USSR) {
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
         if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
     }
@@ -435,6 +441,25 @@ bool trigger_special_relationship(GameState& state, Player p) noexcept {
 bool trigger_norad(GameState& state, Player p) noexcept {
     state.set_flag(effect_bits::NORAD_ACTIVE);
     return true;
+}
+
+bool trigger_un_intervention(GameState& state, Player p) noexcept {
+    Player opp = get_opponent(p);
+    bool has_opp_card = false;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ((p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR)) {
+            if (CardData::get_card(i).side == opp && !CardData::is_scoring_card(i)) {
+                has_opp_card = true;
+                break;
+            }
+        }
+    }
+    if (!has_opp_card) return true;
+
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::SELECT_CARD;
+    state.ctx().resolving_card = card_ids::UN_INTERVENTION;
+    return false;
 }
 
 } // namespace early_war

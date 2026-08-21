@@ -220,32 +220,60 @@ void Scoring::evaluate_military_ops(GameState& state) noexcept {
 void Scoring::execute_final_scoring(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
 
-    // Score all 6 regions in standard order
-    score_region(state, Region::EUROPE);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // 1. Europe Control Instant Victory check
+    auto europe_summary = evaluate_region(state, Region::EUROPE);
+    if (europe_summary.us_status == RegionalStatus::CONTROL) {
+        state.victory_points = 20;
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+    if (europe_summary.ussr_status == RegionalStatus::CONTROL) {
+        state.victory_points = -20;
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
 
-    score_region(state, Region::ASIA);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // 2. Accumulate all regions without intermediate clamping or early termination
+    // Final scoring allows intermediate VP to exceed +20 or drop below -20
+    int32_t total_vp = static_cast<int32_t>(state.victory_points);
 
-    score_region(state, Region::MIDDLE_EAST);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // Europe
+    total_vp += europe_summary.net_delta;
 
-    score_region(state, Region::AFRICA);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // Asia
+    auto asia_summary = evaluate_region(state, Region::ASIA);
+    total_vp += asia_summary.net_delta;
 
-    score_region(state, Region::CENTRAL_AMERICA);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // Middle East
+    auto me_summary = evaluate_region(state, Region::MIDDLE_EAST);
+    total_vp += me_summary.net_delta;
 
-    score_region(state, Region::SOUTH_AMERICA);
-    if (state.current_phase == Phase::GAME_OVER) return;
+    // Africa
+    auto africa_summary = evaluate_region(state, Region::AFRICA);
+    total_vp += africa_summary.net_delta;
+
+    // Central America
+    auto ca_summary = evaluate_region(state, Region::CENTRAL_AMERICA);
+    total_vp += ca_summary.net_delta;
+
+    // South America
+    auto sa_summary = evaluate_region(state, Region::SOUTH_AMERICA);
+    total_vp += sa_summary.net_delta;
+
+    if (state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+        state.clear_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    }
 
     // China card bonus (+1 VP to holder)
     if (state.china_card_holder == Player::US) {
-        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
+        total_vp += 1;
     } else if (state.china_card_holder == Player::USSR) {
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 1));
+        total_vp -= 1;
     }
 
+    // Final clamping to [-20, 20]
+    total_vp = std::clamp(total_vp, -20, 20);
+    state.victory_points = static_cast<int8_t>(total_vp);
     state.current_phase = Phase::GAME_OVER;
 }
 
