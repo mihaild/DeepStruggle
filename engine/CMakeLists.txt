@@ -45,6 +45,7 @@ set(TEST_SOURCES
     tests/test_main.cpp
     tests/test_map.cpp
     tests/test_scoring.cpp
+    tests/test_bugs_regression.cpp
     tests/test_ops.cpp
     tests/test_cards_early.cpp
     tests/test_cards_mid.cpp

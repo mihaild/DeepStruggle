@@ -4,6 +4,8 @@ export class ActionHUD {
   private container: HTMLElement;
   private badgeEl: HTMLElement;
   private onAction: (action: MicroAction) => void;
+  public selectedDieRoll = 0; // 0 = Auto roll, 1..6 = Manual roll
+  public selectedOppDieRoll = 0; // For Realignment opponent roll
 
   constructor(container: HTMLElement, badgeEl: HTMLElement, onAction: (action: MicroAction) => void) {
     this.container = container;
@@ -14,6 +16,7 @@ export class ActionHUD {
   public render(state: GameState) {
     const ctx = state.decision_context;
     const legal = state.legal_actions;
+
     if (!ctx || !legal) {
       this.badgeEl.textContent = 'WAITING';
       this.container.innerHTML = '<div style="color: var(--text-dim);">Waiting for engine...</div>';
@@ -32,6 +35,7 @@ export class ActionHUD {
 
     let promptText = '';
     let buttonsHtml = '';
+    let showDieSelector = false;
 
     if (state.is_terminal) {
       const winner = state.terminal_utility > 0 ? 'US Victory' : (state.terminal_utility < 0 ? 'USSR Victory' : 'Draw');
@@ -77,6 +81,9 @@ export class ActionHUD {
           const cfg = modeLabels[m] || { text: `Mode ${m}`, class: 'btn-secondary' };
           buttonsHtml += `<button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}" style="margin-bottom: 6px;">${cfg.text}</button>`;
         });
+        if (validIds.includes(2)) {
+          showDieSelector = true;
+        }
         break;
 
       case 3: // CHOOSE_TIMING_BRANCH
@@ -115,9 +122,11 @@ export class ActionHUD {
         } else if (ctx.resolving_card > 0) {
           const resCard = ctx.resolving_card_name || `Card #${ctx.resolving_card}`;
           promptText = `<strong>${player}:</strong> Resolving event <em>${resCard}</em>. Click a highlighted target country (<strong>${ctx.remaining_steps} remaining</strong>):`;
+          showDieSelector = true;
         } else {
           const remaining = ctx.remaining_steps > 0 ? ` (${ctx.remaining_steps} Ops remaining)` : '';
           promptText = `<strong>${player}:</strong> Click a highlighted country on the map to target${remaining}:`;
+          showDieSelector = true;
         }
 
         if (allowEarlyStop) {
@@ -142,10 +151,42 @@ export class ActionHUD {
         break;
     }
 
+    let dieSelectorHtml = '';
+    if (showDieSelector) {
+      dieSelectorHtml = `
+        <div class="die-roll-selector-container">
+          <div class="die-roll-header">
+            <span>🎲 Die Roll Input:</span>
+            <span class="die-selected-text">${this.selectedDieRoll === 0 ? 'Auto Roll (PRNG)' : 'Manual: ' + this.selectedDieRoll}</span>
+          </div>
+          <div class="die-buttons-row">
+            <button class="btn-die-opt ${this.selectedDieRoll === 0 ? 'active' : ''}" data-roll="0">🎲 Auto</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 1 ? 'active' : ''}" data-roll="1">⚀ 1</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 2 ? 'active' : ''}" data-roll="2">⚁ 2</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 3 ? 'active' : ''}" data-roll="3">⚂ 3</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 4 ? 'active' : ''}" data-roll="4">⚃ 4</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 5 ? 'active' : ''}" data-roll="5">⚄ 5</button>
+            <button class="btn-die-opt ${this.selectedDieRoll === 6 ? 'active' : ''}" data-roll="6">⚅ 6</button>
+          </div>
+        </div>
+      `;
+    }
+
     this.container.innerHTML = `
       <div class="decision-prompt" style="font-size: 13px; line-height: 1.4; margin-bottom: 10px;">${promptText}</div>
+      ${dieSelectorHtml}
       <div class="decision-actions">${buttonsHtml}</div>
     `;
+
+    // Attach click listeners to die buttons
+    const dieButtons = this.container.querySelectorAll('.btn-die-opt');
+    dieButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const roll = parseInt((e.currentTarget as HTMLElement).getAttribute('data-roll') || '0', 10);
+        this.selectedDieRoll = roll;
+        this.render(state);
+      });
+    });
 
     // Attach click listeners to action buttons
     const buttons = this.container.querySelectorAll('.btn-hud-action');
@@ -153,7 +194,7 @@ export class ActionHUD {
       btn.addEventListener('click', (e) => {
         const target = e.currentTarget as HTMLElement;
         const primary = parseInt(target.getAttribute('data-primary') || '0', 10);
-        const secondary = parseInt(target.getAttribute('data-secondary') || '0', 10);
+        const secondary = parseInt(target.getAttribute('data-secondary') || this.selectedDieRoll.toString(), 10);
         const flags = parseInt(target.getAttribute('data-flags') || '0', 10);
 
         this.onAction({

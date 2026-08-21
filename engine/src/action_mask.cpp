@@ -183,8 +183,14 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
 
             // Standard Op Mode Node Selection
-            if (ctx.remaining_steps > 0) {
-                Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);
+            if (ctx.op_mode == OpMode::COUP) {
+                Operations::get_coup_target_mask(state, p, mask_out);
+            } else if (ctx.op_mode == OpMode::REALIGN) {
+                Operations::get_realign_target_mask(state, p, mask_out);
+            } else {
+                if (ctx.remaining_steps > 0) {
+                    Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);
+                }
             }
             break;
         }

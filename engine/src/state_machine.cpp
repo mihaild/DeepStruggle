@@ -150,6 +150,77 @@ void StateMachine::start_turn(GameState& state) noexcept {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 }
 
+void StateMachine::advance_headline_step(GameState& state) noexcept {
+    // Check if we need to resolve headline 2 or enter AR 1
+    uint8_t stage = state.ctx().temp_cards[4];
+    if (stage == 1) {
+        // Move to Stage 2: Second headline
+        uint8_t h2_card = state.ctx().temp_cards[1];
+        Player h2_owner = static_cast<Player>(state.ctx().temp_cards[3]);
+        state.ctx().temp_cards[4] = 2;
+
+        if (h2_card != 0 && state.current_phase != Phase::GAME_OVER) {
+            bool ussr_cancelled = (state.headline_us_card == card_ids::DEFECTORS && h2_owner == Player::USSR);
+            if (ussr_cancelled) {
+                state.card_locations[h2_card] = CardLocation::DISCARD_PILE;
+                advance_headline_step(state);
+                return;
+            }
+            const auto& c_info = CardData::get_card(h2_card);
+            Player exec_player = (c_info.side == get_opponent(h2_owner)) ? get_opponent(h2_owner) : h2_owner;
+            state.phasing_player = h2_owner;
+            state.ctx().decision_player = exec_player;
+            state.ctx().resolving_card = h2_card;
+
+            bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
+            state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            if (done) {
+                advance_headline_step(state);
+            }
+            return;
+        }
+    }
+
+    // Both headlines resolved -> Start Action Round 1
+    if (state.current_phase != Phase::GAME_OVER) {
+        state.current_phase = Phase::ACTION_ROUND;
+        state.action_round = 1;
+        state.phasing_player = Player::USSR;
+        state.ctx() = DecisionContext{};
+        state.ctx().decision_player = Player::USSR;
+        state.ctx().decision_type = DecisionType::SELECT_CARD;
+    }
+}
+
+void StateMachine::advance_after_ops(GameState& state) noexcept {
+    uint8_t card = state.ctx().pending_op_card;
+    Player p = state.phasing_player;
+    uint8_t timing = state.ctx().timing_branch;
+
+    if (timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
+        // Trigger opponent event!
+        Player opp = get_opponent(p);
+        const auto& c_info = CardData::get_card(card);
+        state.ctx().decision_player = opp;
+        state.ctx().resolving_card = card;
+        state.ctx().timing_branch = 255; // cleared
+
+        bool done = CardHandlers::trigger_event(state, card, opp);
+        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        if (done) {
+            advance_after_action_round(state);
+        }
+        return;
+    }
+
+    // Friendly / Neutral / Already triggered event
+    if (card != 0 && card != card_ids::THE_CHINA_CARD) {
+        const auto& c_info = CardData::get_card(card);
+        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+    }
+    advance_after_action_round(state);
+}
+
 void StateMachine::advance_after_action_round(GameState& state) noexcept {
     // Check NORAD
     if (state.defcon_dropped_to_2_in_ar && state.has_flag(effect_bits::NORAD_ACTIVE) &&
@@ -290,8 +361,21 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     // 2. HEADLINE PHASE
     if (state.current_phase == Phase::HEADLINE) {
         Player p = state.ctx().decision_player;
-        uint8_t card = action.primary_id;
 
+        // If resolving active event sub-decision during Headline
+        if (state.ctx().resolving_card != 0) {
+            bool finished = CardHandlers::handle_event_step(state, action);
+            if (finished) {
+                if (state.ctx_stack_depth > 0) {
+                    state.pop_context();
+                } else {
+                    advance_headline_step(state);
+                }
+            }
+            return true;
+        }
+
+        uint8_t card = action.primary_id;
         if (p == Player::US && state.headline_us_card == 0) {
             state.headline_us_card = card;
             if (state.headline_ussr_card == 0) {
@@ -308,52 +392,42 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             }
         }
 
-        // Both headlines selected -> resolve headlines
+        // Both headlines selected -> resolve headlines in ops priority order
         uint8_t us_h = state.headline_us_card;
         uint8_t ussr_h = state.headline_ussr_card;
-
-        // Check Defectors (#103)
         bool ussr_cancelled = (us_h == card_ids::DEFECTORS);
 
         uint8_t us_hv = CardData::get_card(us_h).ops;
         uint8_t ussr_hv = CardData::get_card(ussr_h).ops;
-
         bool us_first = (us_hv >= ussr_hv); // US wins ties
 
-        auto resolve_headline = [&](uint8_t h_card, Player owner) {
-            if (owner == Player::USSR && ussr_cancelled) {
-                state.card_locations[h_card] = CardLocation::DISCARD_PILE;
-                return;
-            }
-            const auto& c_info = CardData::get_card(h_card);
-            Player exec_player = (c_info.side == get_opponent(owner)) ? get_opponent(owner) : owner;
-            state.phasing_player = owner;
-            state.ctx().decision_player = exec_player;
-            state.ctx().resolving_card = h_card;
+        uint8_t first_card = us_first ? us_h : ussr_h;
+        Player first_owner = us_first ? Player::US : Player::USSR;
+        uint8_t second_card = us_first ? ussr_h : us_h;
+        Player second_owner = us_first ? Player::USSR : Player::US;
 
-            CardHandlers::trigger_event(state, h_card, exec_player);
-            state.card_locations[h_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-        };
+        state.ctx().temp_cards[0] = first_card;
+        state.ctx().temp_cards[1] = second_card;
+        state.ctx().temp_cards[2] = static_cast<uint8_t>(first_owner);
+        state.ctx().temp_cards[3] = static_cast<uint8_t>(second_owner);
+        state.ctx().temp_cards[4] = 1; // Stage 1
 
-        if (us_first) {
-            resolve_headline(us_h, Player::US);
-            if (state.current_phase != Phase::GAME_OVER) {
-                resolve_headline(ussr_h, Player::USSR);
-            }
-        } else {
-            resolve_headline(ussr_h, Player::USSR);
-            if (state.current_phase != Phase::GAME_OVER) {
-                resolve_headline(us_h, Player::US);
-            }
+        if (first_owner == Player::USSR && ussr_cancelled) {
+            state.card_locations[first_card] = CardLocation::DISCARD_PILE;
+            advance_headline_step(state);
+            return true;
         }
 
-        if (state.current_phase != Phase::GAME_OVER) {
-            state.current_phase = Phase::ACTION_ROUND;
-            state.action_round = 1;
-            state.phasing_player = Player::USSR;
-            state.ctx() = DecisionContext{};
-            state.ctx().decision_player = Player::USSR;
-            state.ctx().decision_type = DecisionType::SELECT_CARD;
+        const auto& c_info = CardData::get_card(first_card);
+        Player exec_player = (c_info.side == get_opponent(first_owner)) ? get_opponent(first_owner) : first_owner;
+        state.phasing_player = first_owner;
+        state.ctx().decision_player = exec_player;
+        state.ctx().resolving_card = first_card;
+
+        bool done = CardHandlers::trigger_event(state, first_card, exec_player);
+        state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        if (done) {
+            advance_headline_step(state);
         }
         return true;
     }
@@ -369,6 +443,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             if (finished) {
                 if (state.ctx_stack_depth > 0) {
                     state.pop_context();
+                    if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+                        // Resumed from EVENT_FIRST
+                    }
                 } else {
                     advance_after_action_round(state);
                 }
@@ -389,7 +466,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     const auto& c_info = CardData::get_card(card);
                     if (c_info.ops >= 2) {
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
-                        uint8_t roll = Prng::roll_d6(state.rng_state);
+                        uint8_t roll = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : Prng::roll_d6(state.rng_state);
                         if (roll <= 4) {
                             if (p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
                             else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);
@@ -419,7 +496,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 PlayMode mode = static_cast<PlayMode>(action.primary_id);
 
                 if (mode == PlayMode::SPACE) {
-                    SpaceRace::attempt_space(state, p, card);
+                    SpaceRace::attempt_space(state, p, card, action.secondary_id);
                     if (state.current_phase != Phase::GAME_OVER) {
                         advance_after_action_round(state);
                     }
@@ -456,12 +533,14 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 TimingBranch branch = static_cast<TimingBranch>(action.primary_id);
 
                 if (branch == TimingBranch::OPS_FIRST) {
+                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::OPS_FIRST);
                     state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     return true;
                 } else {
                     // EVENT_FIRST
                     Player opp = get_opponent(p);
+                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
                     state.push_context();
                     state.ctx().decision_player = opp;
                     state.ctx().resolving_card = card;
@@ -480,6 +559,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::SELECT_OP_MODE: {
                 OpMode op_mode = static_cast<OpMode>(action.primary_id);
                 uint8_t ops = state.ctx().pending_ops_value;
+                state.ctx().op_mode = op_mode;
 
                 if (op_mode == OpMode::INFLUENCE) {
                     state.ctx().decision_type = DecisionType::POINT_NODE;
@@ -492,6 +572,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = 1;
                     state.ctx().max_per_country = 1;
+                    state.ctx().allow_early_stop = 0;
                     return true;
                 }
 
@@ -507,29 +588,40 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::POINT_NODE: {
                 if (action.is_confirm_done()) {
                     // Early stop Ops
-                    advance_after_action_round(state);
+                    advance_after_ops(state);
                     return true;
                 }
 
                 uint8_t cid = action.primary_id;
-                uint8_t card = state.ctx().pending_op_card;
+                uint8_t forced_roll = action.secondary_id;
+                uint8_t forced_opp_roll = action.flags;
 
-                if (state.ctx().max_per_country == 1 && state.ctx().remaining_steps == 1) {
-                    // Coup
-                    Operations::execute_coup(state, p, cid, state.ctx().pending_ops_value);
+                if (state.ctx().op_mode == OpMode::COUP) {
+                    Operations::execute_coup(state, p, cid, state.ctx().pending_ops_value, forced_roll);
                     if (state.current_phase != Phase::GAME_OVER) {
-                        advance_after_action_round(state);
+                        advance_after_ops(state);
                     }
                     return true;
                 }
 
-                // Influence or Realignment placement
+                if (state.ctx().op_mode == OpMode::REALIGN) {
+                    uint8_t forced_us = (p == Player::US) ? forced_roll : forced_opp_roll;
+                    uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
+                    Operations::execute_realign(state, p, cid, forced_us, forced_ussr);
+                    state.ctx().remaining_steps -= 1;
+                    if (state.ctx().remaining_steps == 0) {
+                        advance_after_ops(state);
+                    }
+                    return true;
+                }
+
+                // Influence placement
                 uint8_t cost = Operations::get_influence_cost(state, p, cid);
                 if (state.ctx().remaining_steps >= cost) {
                     Operations::place_influence(state, p, cid);
                     state.ctx().remaining_steps -= cost;
                     if (state.ctx().remaining_steps == 0) {
-                        advance_after_action_round(state);
+                        advance_after_ops(state);
                     }
                     return true;
                 }

@@ -39,6 +39,16 @@ export interface CardInHand {
   ops: number;
 }
 
+export interface ActionLogItem {
+  step_index: number;
+  turn: number;
+  ar: number;
+  phase: string;
+  player: string;
+  text: string;
+  details?: string[];
+}
+
 export interface GameState {
   victory_points: number;
   defcon: number;
@@ -68,6 +78,7 @@ export interface GameState {
   discard_pile: number[];
   removed_pile: number[];
   unavailable_cards?: number[];
+  card_locations?: Record<string, string>;
   draw_deck_count: number;
   decision_context: DecisionContext;
   legal_actions: LegalActions;
@@ -76,7 +87,8 @@ export interface GameState {
   game_id?: string;
   seed?: number;
   step_index?: number;
-  action_logs?: Array<{ step_index: number; turn: number; ar: number; phase: string; player: string; text: string }>;
+  can_undo?: boolean;
+  action_logs?: ActionLogItem[];
   players?: { US: string; USSR: string };
 }
 

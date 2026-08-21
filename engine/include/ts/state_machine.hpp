@@ -13,6 +13,8 @@ public:
 
     // Phase Transitions
     static void start_turn(GameState& state) noexcept;
+    static void advance_headline_step(GameState& state) noexcept;
+    static void advance_after_ops(GameState& state) noexcept;
     static void advance_after_action_round(GameState& state) noexcept;
     static void end_turn(GameState& state) noexcept;
 

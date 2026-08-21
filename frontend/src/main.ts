@@ -149,10 +149,19 @@ class TSApp {
     this.state.action_logs.forEach(log => {
       const item = document.createElement('div');
       item.className = 'log-item';
+      
+      let detailsHtml = '';
+      if (log.details && log.details.length > 0) {
+        detailsHtml = log.details.map(d => `<div class="log-detail-line">${d}</div>`).join('');
+      }
+
       item.innerHTML = `
-        <span class="log-step">[T${log.turn} AR${log.ar}]</span>
-        <span class="log-player ${log.player}">${log.player}:</span>
-        <span>${log.text}</span>
+        <div>
+          <span class="log-step">[T${log.turn} AR${log.ar}]</span>
+          <span class="log-player ${log.player}">${log.player}:</span>
+          <span>${log.text}</span>
+        </div>
+        ${detailsHtml}
       `;
       logContainer.appendChild(item);
     });
@@ -170,10 +179,11 @@ class TSApp {
     // If active decision is POINT_NODE (5), send action
     if (this.state.decision_context.decision_type === 5) {
       if (this.state.legal_actions.valid_ids.includes(countryId)) {
+        const roll = this.actionHud ? this.actionHud.selectedDieRoll : 0;
         this.sendAction({
           decision_type: 5,
           primary_id: countryId,
-          secondary_id: 0,
+          secondary_id: roll,
           flags: 0
         });
       }

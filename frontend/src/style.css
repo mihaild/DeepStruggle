@@ -793,3 +793,157 @@ body {
   pointer-events: none;
 }
 .card-tooltip.hidden { display: none; }
+
+/* ==========================================================================
+   DIE ROLL SELECTOR & ALL CARDS DIRECTORY STYLES
+   ========================================================================== */
+.die-roll-selector-container {
+  background: #0B1120;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.die-roll-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.die-selected-text {
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.die-buttons-row {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(6, 1fr);
+  gap: 4px;
+}
+.btn-die-opt {
+  background: #1E293B;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: 4px;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.btn-die-opt:hover {
+  background: #334155;
+  border-color: var(--warning);
+}
+.btn-die-opt.active {
+  background: var(--warning);
+  color: #000000;
+  border-color: #F59E0B;
+}
+
+/* All Cards 110 Directory */
+.all-cards-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.all-cards-search-input {
+  width: 100%;
+  background: #0B1120;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11.5px;
+}
+.all-cards-search-input:focus {
+  outline: none;
+  border-color: var(--warning);
+}
+.all-cards-filter-select {
+  width: 100%;
+  background: #1E293B;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.all-cards-scroll-list {
+  max-height: calc(100vh - 430px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.all-cards-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1E293B;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 8px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.all-cards-item:hover {
+  background: #27354E;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.all-cards-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.all-cards-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.all-cards-info .card-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.all-cards-info .card-meta {
+  font-size: 9.5px;
+  color: var(--text-dim);
+}
+
+/* Card Location Badges */
+.card-loc-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.loc-us { background: var(--us-blue-dark); color: var(--us-blue-light); border: 1px solid var(--us-blue); }
+.loc-ussr { background: var(--ussr-red-dark); color: var(--ussr-red-light); border: 1px solid var(--ussr-red); }
+.loc-deck { background: #064E3B; color: #34D399; border: 1px solid #059669; }
+.loc-discard { background: #78350F; color: #FBBF24; border: 1px solid #D97706; }
+.loc-removed { background: #374151; color: #9CA3AF; border: 1px solid #4B5563; }
+.loc-ongoing { background: #4C1D95; color: #C084FC; border: 1px solid #7C3AED; }
+.loc-future { background: #18181B; color: #71717A; border: 1px solid #27272A; }
+
+/* Log Stream Details */
+.log-detail-line {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding-left: 12px;
+  line-height: 1.3;
+}

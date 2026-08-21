@@ -242,6 +242,24 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     d["unavailable_cards"] = unavailable_cards;
     d["draw_deck_count"] = draw_deck_count;
 
+    nb::dict all_locs;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        auto loc = state.card_locations[i];
+        const char* loc_str = "UNAVAILABLE";
+        switch (loc) {
+            case ts::CardLocation::UNAVAILABLE: loc_str = "UNAVAILABLE"; break;
+            case ts::CardLocation::DRAW_DECK: loc_str = "DRAW_DECK"; break;
+            case ts::CardLocation::HAND_US: loc_str = "HAND_US"; break;
+            case ts::CardLocation::HAND_USSR: loc_str = "HAND_USSR"; break;
+            case ts::CardLocation::DISCARD_PILE: loc_str = "DISCARD_PILE"; break;
+            case ts::CardLocation::REMOVED_FROM_GAME: loc_str = "REMOVED_FROM_GAME"; break;
+            case ts::CardLocation::ONGOING_EVENT: loc_str = "ONGOING_EVENT"; break;
+            default: break;
+        }
+        all_locs[nb::cast(i)] = loc_str;
+    }
+    d["card_locations"] = all_locs;
+
     // 8. Decision Context & Stack
     const auto& ctx = state.ctx();
     nb::dict ctx_dict;

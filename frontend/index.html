@@ -28,7 +28,7 @@
           <span id="active-player-badge" class="player-badge ussr">USSR TURN</span>
         </div>
         <div class="header-buttons">
-          <button id="btn-undo-action" class="btn btn-warning btn-sm" title="Undo / Cancel Last Action (Ctrl+Z)">⟲ Cancel Action</button>
+          <button id="btn-undo-action" class="btn btn-warning btn-sm" title="Undo / Cancel Last Action (Ctrl+Z / Esc)">⟲ Cancel Action</button>
           <button id="btn-new-game" class="btn btn-secondary btn-sm">New Game</button>
           <button id="btn-toggle-debug" class="btn btn-secondary btn-sm">Debug Tools</button>
           <button id="btn-toggle-replay" class="btn btn-primary btn-sm">Replay Mode</button>
@@ -51,7 +51,7 @@
         </div>
       </section>
 
-      <!-- Right Sidebar: Decision HUD, Hands, Discard -->
+      <!-- Right Sidebar: Decision HUD, Hands, Discard, Full Card DB -->
       <aside class="sidebar">
         <!-- Section 1: Decision & Interactive HUD -->
         <div class="panel decision-panel" id="decision-panel">
@@ -67,9 +67,10 @@
         <!-- Section 2: Cards & Hands (Full Visibility) -->
         <div class="panel hands-panel">
           <div class="tabs">
-            <button class="tab-btn active" data-tab="tab-ussr-hand">USSR Hand (<span id="ussr-hand-count">0</span>)</button>
-            <button class="tab-btn" data-tab="tab-us-hand">US Hand (<span id="us-hand-count">0</span>)</button>
-            <button class="tab-btn" data-tab="tab-board-cards">China & Piles</button>
+            <button class="tab-btn active" data-tab="tab-ussr-hand">USSR (<span id="ussr-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-us-hand">US (<span id="us-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-board-cards">Piles</button>
+            <button class="tab-btn" data-tab="tab-all-cards">All Cards (110)</button>
           </div>
 
           <div class="tab-content active" id="tab-ussr-hand">
@@ -85,6 +86,22 @@
               <button id="btn-view-removed" class="btn btn-secondary btn-block">View Removed Pile (<span id="removed-count">0</span>)</button>
               <div class="draw-count-label">Draw Deck: <strong id="draw-count">0</strong> cards remaining</div>
             </div>
+          </div>
+          <div class="tab-content" id="tab-all-cards">
+            <div class="all-cards-controls">
+              <input type="text" id="all-cards-search" placeholder="Search cards by name/ID..." class="all-cards-search-input">
+              <select id="all-cards-filter" class="all-cards-filter-select">
+                <option value="ALL">All (110 Cards)</option>
+                <option value="HAND_US">US Hand</option>
+                <option value="HAND_USSR">USSR Hand</option>
+                <option value="DRAW_DECK">Draw Deck</option>
+                <option value="DISCARD_PILE">Discard Pile</option>
+                <option value="REMOVED_FROM_GAME">Removed Pile</option>
+                <option value="ONGOING_EVENT">Ongoing / China</option>
+                <option value="UNAVAILABLE">Future Era</option>
+              </select>
+            </div>
+            <div class="card-list all-cards-scroll-list" id="all-cards-list"></div>
           </div>
         </div>
 

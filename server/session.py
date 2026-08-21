@@ -10,53 +10,109 @@ from server.replay import ReplayLogger
 
 logger = logging.getLogger("ts_server.session")
 
-def get_action_description(state_before: dict, action: ts_engine.MicroAction) -> str:
-    """Generates a human-friendly narrative for a MicroAction."""
+def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts_engine.MicroAction) -> List[str]:
+    """Generates detailed human-readable log messages and state deltas for an executed action."""
     d_type = action.decision_type
     primary = action.primary_id
     secondary = action.secondary_id
+    flags = action.flags
     p = state_before.get("decision_context", {}).get("decision_player", "NONE")
+    logs = []
 
+    # 1. Primary Action Narrative
     if d_type == ts_engine.DecisionType.SELECT_CARD:
         card_name = ts_engine.CardData.get_card_name(primary)
         phase_name = state_before.get("current_phase_name", "")
         if phase_name == "HEADLINE":
-            return f"{p} commits Headline Card: {card_name} (#{primary})"
-        return f"{p} plays Card: {card_name} (#{primary})"
+            logs.append(f"{p} commits Headline Card: {card_name} (#{primary})")
+        else:
+            logs.append(f"{p} plays Card: {card_name} (#{primary})")
 
     elif d_type == ts_engine.DecisionType.POINT_NODE:
         if action.is_confirm_done():
-            return f"{p} confirms / finishes point node selections."
-        c_name = ts_engine.MapData.get_country_name(primary)
-        pending_card = state_before.get("decision_context", {}).get("pending_op_card", 0)
-        resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
-        phase_name = state_before.get("current_phase_name", "")
+            logs.append(f"{p} confirms / finishes point node selections.")
+        else:
+            c_name = ts_engine.MapData.get_country_name(primary)
+            resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
+            phase_name = state_before.get("current_phase_name", "")
 
-        if phase_name == "SETUP":
-            return f"{p} places 1 Influence in {c_name} during Setup."
-        if resolving_card > 0:
-            res_name = ts_engine.CardData.get_card_name(resolving_card)
-            return f"{p} targets {c_name} for Event: {res_name} (#{resolving_card})."
-        return f"{p} targets {c_name} for Operations."
+            if phase_name == "SETUP":
+                logs.append(f"{p} places 1 Influence in {c_name} during Setup.")
+            elif resolving_card > 0:
+                res_name = ts_engine.CardData.get_card_name(resolving_card)
+                logs.append(f"{p} targets {c_name} for Event: {res_name} (#{resolving_card})")
+            else:
+                # Op action
+                if secondary > 0 or flags > 0:
+                    logs.append(f"{p} conducts Op in {c_name} (Rolls: {secondary}, Opponent: {flags})")
+                else:
+                    logs.append(f"{p} targets {c_name} for Operations")
 
     elif d_type == ts_engine.DecisionType.SELECT_PLAY_MODE:
         modes = {0: "EVENT", 1: "OPERATIONS", 2: "SPACE RACE", 3: "PASS"}
-        return f"{p} selects play mode: {modes.get(primary, str(primary))}"
+        mode_str = modes.get(primary, str(primary))
+        if primary == 2: # Space Race
+            roll_info = f" (Input Roll: {secondary})" if secondary > 0 else ""
+            logs.append(f"{p} attempts Space Race with pending card{roll_info}")
+        else:
+            logs.append(f"{p} selects play mode: {mode_str}")
 
     elif d_type == ts_engine.DecisionType.CHOOSE_TIMING_BRANCH:
         branches = {0: "OPS FIRST (Opponent Event Second)", 1: "OPPONENT EVENT FIRST (Ops Second)"}
-        return f"{p} chooses timing branch: {branches.get(primary, str(primary))}"
+        logs.append(f"{p} chooses timing branch: {branches.get(primary, str(primary))}")
 
     elif d_type == ts_engine.DecisionType.SELECT_OP_MODE:
         op_modes = {0: "INFLUENCE PLACEMENT", 1: "COUP ATTEMPT", 2: "REALIGNMENT"}
-        return f"{p} chooses Op mode: {op_modes.get(primary, str(primary))}"
+        logs.append(f"{p} chooses Op mode: {op_modes.get(primary, str(primary))}")
 
     elif d_type == ts_engine.DecisionType.CHOOSE_BRANCH:
         if action.is_confirm_done():
-            return f"{p} confirms / passes option."
-        return f"{p} chooses option: {primary}"
+            logs.append(f"{p} confirms / passes option.")
+        else:
+            logs.append(f"{p} chooses option: {primary}")
+    else:
+        logs.append(f"{p} action: type={int(d_type)} primary={primary} secondary={secondary} flags={flags}")
 
-    return f"{p} action: type={int(d_type)} primary={primary}"
+    # 2. Influence deltas
+    old_countries = state_before.get("countries", {})
+    new_countries = state_after.get("countries", {})
+    for c_name, new_data in new_countries.items():
+        if c_name in old_countries:
+            old_data = old_countries[c_name]
+            us_diff = new_data["us_influence"] - old_data["us_influence"]
+            ussr_diff = new_data["ussr_influence"] - old_data["ussr_influence"]
+            if us_diff != 0 or ussr_diff != 0:
+                parts = []
+                if us_diff != 0:
+                    parts.append(f"US: {old_data['us_influence']} -> {new_data['us_influence']} ({'+' if us_diff > 0 else ''}{us_diff})")
+                if ussr_diff != 0:
+                    parts.append(f"USSR: {old_data['ussr_influence']} -> {new_data['ussr_influence']} ({'+' if ussr_diff > 0 else ''}{ussr_diff})")
+                logs.append(f"  • {c_name} Influence: " + ", ".join(parts))
+
+    # 3. Track deltas (DEFCON, VP, MilOps)
+    if state_before.get("defcon") != state_after.get("defcon"):
+        logs.append(f"  • DEFCON: {state_before.get('defcon')} -> {state_after.get('defcon')}")
+    if state_before.get("victory_points") != state_after.get("victory_points"):
+        vp_before = state_before.get("victory_points", 0)
+        vp_after = state_after.get("victory_points", 0)
+        vp_str = f"+{vp_after} (US)" if vp_after > 0 else (f"{vp_after} (USSR)" if vp_after < 0 else "0 (Tie)")
+        logs.append(f"  • Victory Points: {vp_before} -> {vp_str}")
+    if state_before.get("us_mil_ops") != state_after.get("us_mil_ops"):
+        logs.append(f"  • US MilOps: {state_before.get('us_mil_ops')} -> {state_after.get('us_mil_ops')}")
+    if state_before.get("ussr_mil_ops") != state_after.get("ussr_mil_ops"):
+        logs.append(f"  • USSR MilOps: {state_before.get('ussr_mil_ops')} -> {state_after.get('ussr_mil_ops')}")
+
+    # 4. Card movement deltas
+    old_locs = state_before.get("card_locations", {})
+    new_locs = state_after.get("card_locations", {})
+    for cid_str, new_loc in new_locs.items():
+        old_loc = old_locs.get(cid_str)
+        if old_loc and old_loc != new_loc:
+            cid = int(cid_str)
+            card_name = ts_engine.CardData.get_card_name(cid)
+            logs.append(f"  • Card #{cid} ({card_name}) moved: {old_loc} -> {new_loc}")
+
+    return logs
 
 class GameSession:
     def __init__(self, game_id: str, seed: Optional[int] = None, us_player: str = "US", ussr_player: str = "USSR"):
@@ -97,7 +153,7 @@ class GameSession:
         d["game_id"] = self.game_id
         d["seed"] = self.seed
         d["step_index"] = self.step_index
-        d["action_logs"] = self.action_logs[-40:] # Last 40 logs for UI stream
+        d["action_logs"] = self.action_logs[-60:] # Last 60 logs for UI stream
         d["can_undo"] = len(self.history_snapshots) > 0
         d["players"] = {
             "US": self.us_player,
@@ -161,7 +217,7 @@ class GameSession:
             return False
 
         ctx = self.state.ctx()
-        logger.debug(f"[{self.game_id}] Incoming action: type={int(d_type)} primary={primary} secondary={secondary} flags={flags} (Current ctx: type={int(ctx.decision_type)} player={ctx.decision_player})")
+        logger.info(f"[{self.game_id}] Action from {sender_role}: decision_type={int(ctx.decision_type)} ({int(d_type)}), primary={primary}, secondary={secondary}, flags={flags}")
 
         # Validate decision type against active context
         if ctx.decision_type != d_type:
@@ -184,8 +240,12 @@ class GameSession:
             return False
 
         self.step_index += 1
-        description = get_action_description(state_before, action)
-        logger.info(f"[{self.game_id}] Step {self.step_index} [Turn {self.state.turn} AR {self.state.action_round}]: {description}")
+        state_after = self.state.to_dict()
+        delta_lines = describe_action_and_deltas(state_before, state_after, action)
+
+        main_desc = delta_lines[0] if delta_lines else f"Action type={int(d_type)}"
+        for line in delta_lines:
+            logger.info(f"[{self.game_id}] Step {self.step_index} [Turn {self.state.turn} AR {self.state.action_round}]: {line}")
 
         log_entry = {
             "step_index": self.step_index,
@@ -193,7 +253,8 @@ class GameSession:
             "ar": self.state.action_round,
             "phase": str(state_before.get("current_phase_name", "ACTION")),
             "player": state_before.get("decision_context", {}).get("decision_player", "NONE"),
-            "text": description
+            "text": main_desc,
+            "details": delta_lines[1:] if len(delta_lines) > 1 else []
         }
         self.action_logs.append(log_entry)
 
@@ -205,8 +266,8 @@ class GameSession:
             phase=str(state_before.get("current_phase_name", "ACTION")),
             player=log_entry["player"],
             action={"decision_type": int(d_type), "primary_id": primary, "secondary_id": secondary, "flags": flags},
-            description=description,
-            state_snapshot=self.state.to_dict()
+            description=main_desc,
+            state_snapshot=state_after
         )
 
         # Check terminal state

@@ -90,19 +90,21 @@ struct alignas(2) CountryState {
 struct alignas(64) DecisionContext {
     Player       decision_player;       // Player making current micro-decision
     DecisionType decision_type;         // Active primitive decision type
+    OpMode       op_mode;               // Active OpMode (INFLUENCE=0, COUP=1, REALIGN=2)
     uint8_t      pending_op_card;       // Card ID pending Op resolution
     uint8_t      pending_ops_value;     // Effective Ops available for pending Op mode
     uint8_t      remaining_steps;       // Ops points or node selections remaining in sequence (0..7)
     uint8_t      max_per_country;       // Maximum influence placements/removals allowed per country
     uint8_t      allow_early_stop;      // 1 if CONFIRM_DONE (0x80) is legal, 0 otherwise
     uint8_t      resolving_card;        // Card ID currently executing (1..110)
+    uint8_t      timing_branch;         // 0 = OPS_FIRST, 1 = EVENT_FIRST, 255 = NONE
 
     // Transient tracking across sub-actions (cleared when resolving_card finishes)
     std::array<uint64_t, 2> visited_nodes; // 128-bit bitmask of nodes already modified
     std::array<uint8_t, 84> node_counts;   // Placements/removals per node during this event
     std::array<uint8_t, 5>  temp_cards;    // Temp buffer for peeked/searched card IDs
     uint8_t                 temp_card_cnt; // Number of valid cards in temp_cards
-    uint8_t                 pad[2];
+    uint8_t                 pad;
 
     inline void mark_visited(uint8_t node) noexcept {
         if (node < 64) {
