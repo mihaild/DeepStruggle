@@ -41,3 +41,4 @@ scratch/
 *.swp
 *.swo
 .DS_Store
+.ts_local_session.json
