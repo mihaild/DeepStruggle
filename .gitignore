@@ -1,0 +1,43 @@
+# General Game Rules & Reference Data (Local copy only, not committed)
+rules/
+
+# Build & CMake
+build/
+bin/
+lib/
+CMakeUserPresets.json
+compile_commands.json
+
+# C++ compiled binaries and shared libraries
+*.so
+*.dylib
+*.dll
+*.a
+*.o
+
+# Python virtual environment & cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Replays & Logs
+replays/*.tslog.json
+!replays/.gitkeep
+*.log
+.system_generated/
+scratch/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,585 @@
+#include "ts/card_handlers.hpp"
+#include "ts/card_data.hpp"
+#include "ts/map_data.hpp"
+#include "ts/scoring.hpp"
+#include "ts/space_race.hpp"
+#include "ts/ops.hpp"
+#include "ts/prng.hpp"
+#include <algorithm>
+
+namespace ts {
+
+namespace mid_war {
+
+bool trigger_brush_war(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 1;
+    state.ctx().resolving_card = card_ids::BRUSH_WAR;
+    return false;
+}
+
+bool trigger_cuban_missile_crisis(GameState& state, Player p) noexcept {
+    state.defcon = 2;
+    state.defcon_dropped_to_2_in_ar = 1;
+    if (p == Player::US) {
+        state.set_flag(effect_bits::CMC_ACTIVE_US);
+    } else {
+        state.set_flag(effect_bits::CMC_ACTIVE_USSR);
+    }
+    return true;
+}
+
+bool trigger_nuclear_subs(GameState& state, Player p) noexcept {
+    state.set_flag(effect_bits::NUCLEAR_SUBS_ACTIVE);
+    return true;
+}
+
+bool trigger_quagmire(GameState& state, Player p) noexcept {
+    state.set_flag(effect_bits::QUAGMIRE_ACTIVE);
+    state.clear_flag(effect_bits::NORAD_ACTIVE);
+    return true;
+}
+
+bool trigger_salt_negotiations(GameState& state, Player p) noexcept {
+    state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 2));
+    state.set_flag(effect_bits::SALT_ACTIVE);
+
+    // Player may look through discard pile and retrieve 1 non-scoring card
+    uint8_t discard_non_scoring[111];
+    uint8_t cnt = 0;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == CardLocation::DISCARD_PILE && !CardData::is_scoring_card(i)) {
+            discard_non_scoring[cnt++] = i;
+        }
+    }
+    if (cnt == 0) return true;
+
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::SELECT_CARD;
+    state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::SALT_NEGOTIATIONS;
+    return false;
+}
+
+bool trigger_bear_trap(GameState& state, Player p) noexcept {
+    state.set_flag(effect_bits::BEAR_TRAP_ACTIVE);
+    return true;
+}
+
+bool trigger_summit(GameState& state, Player p) noexcept {
+    uint8_t us_dom_count = 0;
+    uint8_t ussr_dom_count = 0;
+
+    for (uint8_t r = 0; r < 6; ++r) {
+        auto summary = Scoring::evaluate_region(state, static_cast<Region>(r));
+        if (summary.us_status == RegionalStatus::DOMINATION || summary.us_status == RegionalStatus::CONTROL) {
+            us_dom_count++;
+        }
+        if (summary.ussr_status == RegionalStatus::DOMINATION || summary.ussr_status == RegionalStatus::CONTROL) {
+            ussr_dom_count++;
+        }
+    }
+
+    uint8_t us_roll = Prng::roll_d6(state.rng_state);
+    uint8_t ussr_roll = Prng::roll_d6(state.rng_state);
+
+    int16_t us_total = us_roll + us_dom_count;
+    int16_t ussr_total = ussr_roll + ussr_dom_count;
+
+    if (us_total > ussr_total) {
+        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
+        if (state.victory_points >= 20) {
+            state.current_phase = Phase::GAME_OVER;
+            return true;
+        }
+        // US chooses DEFCON change: Branch 0 = improve, 1 = degrade, 2 = no change
+        state.ctx().decision_player = Player::US;
+        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+        state.ctx().resolving_card = card_ids::SUMMIT;
+        return false;
+    } else if (ussr_total > us_total) {
+        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+        if (state.victory_points <= -20) {
+            state.current_phase = Phase::GAME_OVER;
+            return true;
+        }
+        // USSR chooses DEFCON change
+        state.ctx().decision_player = Player::USSR;
+        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+        state.ctx().resolving_card = card_ids::SUMMIT;
+        return false;
+    }
+    return true;
+}
+
+bool trigger_how_i_learned_to_stop_worrying(GameState& state, Player p) noexcept {
+    if (p == Player::US) {
+        state.us_mil_ops = 5;
+    } else {
+        state.ussr_mil_ops = 5;
+    }
+    // Phasing player sets DEFCON to 1..5: Branches 1..5
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+    state.ctx().resolving_card = card_ids::HOW_I_LEARNED_TO_STOP_WORRYING;
+    return false;
+}
+
+bool trigger_junta(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::POINT_NODE; // Stage 1: Add 2 influence in CA/SA
+    state.ctx().remaining_steps = 1;
+    state.ctx().resolving_card = card_ids::JUNTA;
+    return false;
+}
+
+bool trigger_kitchen_debates(GameState& state, Player p) noexcept {
+    uint8_t us_bgs = 0;
+    uint8_t ussr_bgs = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (MapData::get_country(i).battleground) {
+            Player ctrl = Scoring::get_country_control(state, i);
+            if (ctrl == Player::US) us_bgs++;
+            else if (ctrl == Player::USSR) ussr_bgs++;
+        }
+    }
+    if (us_bgs > ussr_bgs) {
+        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
+        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
+bool trigger_missile_envy(GameState& state, Player p) noexcept {
+    Player opp = get_opponent(p);
+    CardLocation opp_hand = (opp == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+
+    // Find highest ops cards in opp hand
+    uint8_t max_ops = 0;
+    uint8_t tied_cards[10];
+    uint8_t tied_cnt = 0;
+
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == opp_hand) {
+            uint8_t ops = CardData::get_card(i).ops;
+            if (ops > max_ops) {
+                max_ops = ops;
+                tied_cnt = 0;
+                tied_cards[tied_cnt++] = i;
+            } else if (ops == max_ops) {
+                tied_cards[tied_cnt++] = i;
+            }
+        }
+    }
+
+    if (tied_cnt == 0) return true;
+
+    if (tied_cnt == 1) {
+        uint8_t chosen_card = tied_cards[0];
+        // Exchange cards
+        state.card_locations[chosen_card] = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+        state.card_locations[card_ids::MISSILE_ENVY] = opp_hand;
+        state.forced_card_player = opp;
+        state.forced_card_id = card_ids::MISSILE_ENVY;
+
+        const auto& c_info = CardData::get_card(chosen_card);
+        if (c_info.side == p || c_info.side == Player::NONE) {
+            // Event occurs immediately
+            state.push_context();
+            state.ctx().decision_player = p;
+            state.ctx().resolving_card = chosen_card;
+            bool done = CardHandlers::trigger_event(state, chosen_card, p);
+            if (done) state.pop_context();
+            return done;
+        } else {
+            // Use for Ops
+            state.ctx().pending_op_card = chosen_card;
+            state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
+            state.ctx().decision_player = p;
+            state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+            return false;
+        }
+    } else {
+        // Opponent selects which tied card to give
+        state.ctx().decision_player = opp;
+        state.ctx().decision_type = DecisionType::SELECT_CARD;
+        state.ctx().remaining_steps = 1;
+        state.ctx().resolving_card = card_ids::MISSILE_ENVY;
+        return false;
+    }
+}
+
+bool trigger_we_will_bury_you(GameState& state, Player p) noexcept {
+    if (state.defcon > 1) {
+        state.defcon--;
+        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+    }
+    if (state.defcon == 1) {
+        Player loser = state.phasing_player;
+        state.victory_points = (loser == Player::US) ? -20 : 20;
+        state.current_phase = Phase::GAME_OVER;
+        return true;
+    }
+    state.set_flag(effect_bits::WE_WILL_BURY_YOU_PENDING);
+    return true;
+}
+
+bool trigger_brezhnev_doctrine(GameState& state, Player p) noexcept {
+    state.set_flag(effect_bits::BREZHNEV_DOCTRINE_ACTIVE);
+    return true;
+}
+
+bool trigger_portuguese_empire(GameState& state, Player p) noexcept {
+    state.countries[countries::ANGOLA].add_influence(Player::USSR, 2);
+    state.countries[countries::SE_AFRICAN_STS].add_influence(Player::USSR, 2);
+    return true;
+}
+
+bool trigger_south_african_unrest(GameState& state, Player p) noexcept {
+    // USSR chooses: Branch 0 = Add 2 to South Africa, Branch 1 = Add 1 to SA and 2 to country adjacent to SA
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+    state.ctx().resolving_card = card_ids::SOUTH_AFRICAN_UNREST;
+    return false;
+}
+
+bool trigger_allende(GameState& state, Player p) noexcept {
+    state.countries[countries::CHILE].add_influence(Player::USSR, 2);
+    return true;
+}
+
+bool trigger_willy_brandt(GameState& state, Player p) noexcept {
+    if (state.has_flag(effect_bits::TEAR_DOWN_THIS_WALL_PLAYED)) return true;
+
+    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 1));
+    if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+
+    state.countries[countries::WEST_GERMANY].add_influence(Player::USSR, 1);
+    state.set_flag(effect_bits::WILLY_BRANDT_PLAYED);
+    state.set_flag(effect_bits::NATO_CANCELED_WEST_GERMANY);
+    return true;
+}
+
+bool trigger_muslim_revolution(GameState& state, Player p) noexcept {
+    if (state.has_flag(effect_bits::AWACS_PLAYED)) return true;
+
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 2;
+    state.ctx().max_per_country = 1;
+    state.ctx().resolving_card = card_ids::MUSLIM_REVOLUTION;
+    return false;
+}
+
+bool trigger_abm_treaty(GameState& state, Player p) noexcept {
+    state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
+    state.ctx().decision_player = p;
+    state.ctx().pending_op_card = card_ids::ABM_TREATY;
+    state.ctx().pending_ops_value = 4;
+    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+    state.ctx().resolving_card = card_ids::ABM_TREATY;
+    return false;
+}
+
+bool trigger_cultural_revolution(GameState& state, Player p) noexcept {
+    if (state.china_card_holder == Player::US) {
+        state.china_card_holder = Player::USSR;
+        state.china_card_playable = 1;
+    } else {
+        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 1));
+        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
+bool trigger_flower_power(GameState& state, Player p) noexcept {
+    if (!state.has_flag(effect_bits::EVIL_EMPIRE_PLAYED)) {
+        state.set_flag(effect_bits::FLOWER_POWER_ACTIVE);
+    }
+    return true;
+}
+
+bool trigger_u2_incident(GameState& state, Player p) noexcept {
+    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 1));
+    if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+    state.set_flag(effect_bits::U2_INCIDENT_ACTIVE);
+    return true;
+}
+
+bool trigger_opec(GameState& state, Player p) noexcept {
+    if (state.has_flag(effect_bits::NORTH_SEA_OIL_PLAYED)) return true;
+
+    constexpr std::array<uint8_t, 7> OPEC_COUNTRIES = {
+        countries::EGYPT, countries::IRAN, countries::LIBYA,
+        countries::SAUDI_ARABIA, countries::IRAQ, countries::GULF_STATES,
+        countries::VENEZUELA
+    };
+
+    uint8_t pts = 0;
+    for (uint8_t cid : OPEC_COUNTRIES) {
+        if (Scoring::is_controlled_by(state, cid, Player::USSR)) {
+            pts++;
+        }
+    }
+    if (pts > 0) {
+        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - pts));
+        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
+bool trigger_lone_gunman(GameState& state, Player p) noexcept {
+    // US reveals hand; USSR conducts 1 Op
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().pending_op_card = card_ids::LONE_GUNMAN;
+    state.ctx().pending_ops_value = 1;
+    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+    state.ctx().resolving_card = card_ids::LONE_GUNMAN;
+    return false;
+}
+
+bool trigger_colonial_rear_guards(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 4;
+    state.ctx().max_per_country = 1;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::COLONIAL_REAR_GUARDS;
+    return false;
+}
+
+bool trigger_panama_canal(GameState& state, Player p) noexcept {
+    state.countries[countries::PANAMA].add_influence(Player::US, 1);
+    state.countries[countries::COSTA_RICA].add_influence(Player::US, 1);
+    state.countries[countries::VENEZUELA].add_influence(Player::US, 1);
+    return true;
+}
+
+bool trigger_camp_david(GameState& state, Player p) noexcept {
+    state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
+    if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+    state.countries[countries::ISRAEL].add_influence(Player::US, 1);
+    state.countries[countries::JORDAN].add_influence(Player::US, 1);
+    state.countries[countries::EGYPT].add_influence(Player::US, 1);
+    state.set_flag(effect_bits::CAMP_DAVID_PLAYED);
+    return true;
+}
+
+bool trigger_puppet_governments(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 3;
+    state.ctx().max_per_country = 1;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::PUPPET_GOVERNMENTS;
+    return false;
+}
+
+bool trigger_grain_sales(GameState& state, Player p) noexcept {
+    // Check if USSR has cards in hand
+    uint8_t ussr_cards[111];
+    uint8_t cnt = 0;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == CardLocation::HAND_USSR) {
+            ussr_cards[cnt++] = i;
+        }
+    }
+    if (cnt == 0) {
+        // USSR has no cards; US conducts Ops using 2 Ops
+        state.ctx().decision_player = Player::US;
+        state.ctx().pending_op_card = card_ids::GRAIN_SALES;
+        state.ctx().pending_ops_value = 2;
+        state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+        return false;
+    }
+
+    uint32_t chosen_idx = Prng::random_index(state.rng_state, cnt);
+    uint8_t chosen_card = ussr_cards[chosen_idx];
+    state.ctx().temp_cards[0] = chosen_card;
+    state.ctx().temp_card_cnt = 1;
+
+    // US chooses: Branch 0 = Play drawn card, Branch 1 = Return card and conduct Ops with 2 Ops
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+    state.ctx().resolving_card = card_ids::GRAIN_SALES;
+    return false;
+}
+
+bool trigger_john_paul_ii(GameState& state, Player p) noexcept {
+    state.countries[countries::POLAND].remove_influence(Player::USSR, 2);
+    state.countries[countries::POLAND].add_influence(Player::US, 1);
+    state.set_flag(effect_bits::JOHN_PAUL_II_PLAYED);
+    return true;
+}
+
+bool trigger_latin_death_squads(GameState& state, Player p) noexcept {
+    if (p == Player::US) {
+        state.set_flag(effect_bits::DEATH_SQUADS_US);
+    } else {
+        state.set_flag(effect_bits::DEATH_SQUADS_USSR);
+    }
+    return true;
+}
+
+bool trigger_oas_founded(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 2;
+    state.ctx().max_per_country = 2;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::OAS_FOUNDED;
+    return false;
+}
+
+bool trigger_nixon_china_card(GameState& state, Player p) noexcept {
+    if (state.china_card_holder == Player::USSR) {
+        state.china_card_holder = Player::US;
+        state.china_card_playable = 0; // Face down
+    } else {
+        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
+        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
+bool trigger_sadat_expels_soviets(GameState& state, Player p) noexcept {
+    state.countries[countries::EGYPT].ussr_influence = 0;
+    state.countries[countries::EGYPT].add_influence(Player::US, 1);
+    return true;
+}
+
+bool trigger_shuttle_diplomacy(GameState& state, Player p) noexcept {
+    state.set_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    return true;
+}
+
+bool trigger_voice_of_america(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 4;
+    state.ctx().max_per_country = 2;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::THE_VOICE_OF_AMERICA;
+    return false;
+}
+
+bool trigger_liberation_theology(GameState& state, Player p) noexcept {
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 3;
+    state.ctx().max_per_country = 2;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::LIBERATION_THEOLOGY;
+    return false;
+}
+
+bool trigger_ussuri_river(GameState& state, Player p) noexcept {
+    if (state.china_card_holder == Player::USSR) {
+        state.china_card_holder = Player::US;
+        state.china_card_playable = 1; // Face up
+        return true;
+    } else {
+        state.ctx().decision_player = Player::US;
+        state.ctx().decision_type = DecisionType::POINT_NODE;
+        state.ctx().remaining_steps = 4;
+        state.ctx().max_per_country = 2;
+        state.ctx().allow_early_stop = 1;
+        state.ctx().resolving_card = card_ids::USSURI_RIVER_SKIRMISH;
+        return false;
+    }
+}
+
+bool trigger_ask_not(GameState& state, Player p) noexcept {
+    // US selects cards to discard: SELECT_CARD with allow_early_stop (CONFIRM_DONE / 0x80)
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::SELECT_CARD;
+    state.ctx().remaining_steps = 9;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU;
+    return false;
+}
+
+bool trigger_alliance_for_progress(GameState& state, Player p) noexcept {
+    uint8_t pts = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        const auto& c_info = MapData::get_country(i);
+        if (c_info.battleground && (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA)) {
+            if (Scoring::is_controlled_by(state, i, Player::US)) {
+                pts++;
+            }
+        }
+    }
+    if (pts > 0) {
+        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + pts));
+        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+    }
+    return true;
+}
+
+bool trigger_one_small_step(GameState& state, Player p) noexcept {
+    uint8_t cur_track = (p == Player::US) ? state.us_space_track : state.ussr_space_track;
+    uint8_t opp_track = (p == Player::US) ? state.ussr_space_track : state.us_space_track;
+    if (cur_track < opp_track) {
+        uint8_t new_track = std::min(8, cur_track + 2);
+        if (p == Player::US) state.us_space_track = new_track;
+        else state.ussr_space_track = new_track;
+
+        // VP award from final space moved into
+        const auto& box = SpaceRace::get_box_info(new_track);
+        uint8_t vp = (new_track > opp_track) ? box.vp_first : box.vp_second;
+        if (vp > 0) {
+            int32_t vp_delta = (p == Player::US) ? vp : -static_cast<int32_t>(vp);
+            state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
+            if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+        }
+    }
+    return true;
+}
+
+bool trigger_che(GameState& state, Player p) noexcept {
+    // USSR performs Coup 1 in non-BG in CA/SA/Africa
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 1;
+    state.ctx().resolving_card = card_ids::CHE;
+    return false;
+}
+
+bool trigger_our_man_in_tehran(GameState& state, Player p) noexcept {
+    // Check if US controls >= 1 ME country
+    bool has_me = false;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (MapData::get_country(i).region == Region::MIDDLE_EAST && Scoring::is_controlled_by(state, i, Player::US)) {
+            has_me = true;
+            break;
+        }
+    }
+    if (!has_me) return true;
+
+    // Peek top 5 cards from draw pile
+    uint8_t peek_cards[5];
+    uint8_t cnt = 0;
+    for (uint8_t i = 1; i <= 110 && cnt < 5; ++i) {
+        if (state.card_locations[i] == CardLocation::DRAW_DECK) {
+            peek_cards[cnt++] = i;
+            state.card_locations[i] = CardLocation::PEEKED_TEMP;
+        }
+    }
+    if (cnt == 0) return true;
+
+    for (uint8_t k = 0; k < cnt; ++k) state.ctx().temp_cards[k] = peek_cards[k];
+    state.ctx().temp_card_cnt = cnt;
+
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::SELECT_CARD;
+    state.ctx().remaining_steps = cnt;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().resolving_card = card_ids::OUR_MAN_IN_TEHRAN;
+    return false;
+}
+
+} // namespace mid_war
+
+} // namespace ts
