@@ -37,6 +37,10 @@ def setup_server_logging(log_file: Optional[str] = None, log_level_name: str = "
         handlers=handlers,
         force=True
     )
+    # Suppress uvicorn's internal truncated frame dump
+    logging.getLogger("uvicorn.protocols.websockets").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.protocols.http").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
 
 logger = logging.getLogger("ts_server")
 

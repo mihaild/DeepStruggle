@@ -18,7 +18,7 @@ namespace early_war {
     bool trigger_blockade(GameState& state, Player p) noexcept;
     bool trigger_korean_war(GameState& state, Player p) noexcept;
     bool trigger_romanian_abdication(GameState& state, Player p) noexcept;
-    bool trigger_arab_israeli_war(GameState& state, Player p) noexcept;
+    bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll = 0) noexcept;
     bool trigger_comecon(GameState& state, Player p) noexcept;
     bool trigger_nasser(GameState& state, Player p) noexcept;
     bool trigger_warsaw_pact(GameState& state, Player p) noexcept;
@@ -143,7 +143,7 @@ bool CardHandlers::can_trigger_event(const GameState& state, uint8_t card_id, Pl
     }
 }
 
-bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player player) noexcept {
+bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player player, uint8_t forced_roll) noexcept {
     if (!can_trigger_event(state, card_id, player)) {
         return true; // Unmet prerequisite: event does not occur
     }
@@ -174,7 +174,7 @@ bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player playe
         case card_ids::BLOCKADE: return early_war::trigger_blockade(state, player);
         case card_ids::KOREAN_WAR: return early_war::trigger_korean_war(state, player);
         case card_ids::ROMANIAN_ABDICATION: return early_war::trigger_romanian_abdication(state, player);
-        case card_ids::ARAB_ISRAELI_WAR: return early_war::trigger_arab_israeli_war(state, player);
+        case card_ids::ARAB_ISRAELI_WAR: return early_war::trigger_arab_israeli_war(state, player, forced_roll);
         case card_ids::COMECON: return early_war::trigger_comecon(state, player);
         case card_ids::NASSER: return early_war::trigger_nasser(state, player);
         case card_ids::WARSAW_PACT: return early_war::trigger_warsaw_pact(state, player);
@@ -325,6 +325,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().remaining_steps = 4;
                     state.ctx().max_per_country = 1;
                     state.ctx().allow_early_stop = 1;
+                    state.ctx().visited_nodes = {};
                     return false;
                 } else {
                     // Add 5 USSR inf in Eastern Europe (max 2 per country)
@@ -332,22 +333,33 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().remaining_steps = 5;
                     state.ctx().max_per_country = 2;
                     state.ctx().allow_early_stop = 1;
+                    state.ctx().node_counts = {};
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::POINT_NODE) {
+                if (action.is_confirm_done()) {
+                    state.ctx().resolving_card = 0;
+                    return true;
+                }
                 uint8_t cid = action.primary_id;
                 if (cid < 84 && MapData::get_country(cid).in_eastern_europe) {
                     if (state.ctx().max_per_country == 1) {
                         state.countries[cid].us_influence = 0;
+                        state.ctx().mark_visited(cid);
                     } else {
-                        state.countries[cid].add_influence(Player::USSR, 1);
-                        state.ctx().node_counts[cid]++;
+                        if (state.ctx().node_counts[cid] < 2) {
+                            state.countries[cid].add_influence(Player::USSR, 1);
+                            state.ctx().node_counts[cid]++;
+                        } else {
+                            return false;
+                        }
                     }
                     if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                     if (state.ctx().remaining_steps == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
                     }
+                    return false;
                 }
             }
             return false;
@@ -514,28 +526,47 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         case card_ids::DE_STALINIZATION: {
             // Stage 1 (removal) and Stage 2 (placement)
             uint8_t cid = action.primary_id;
-            if (state.ctx().temp_card_cnt < 4 && state.countries[cid].ussr_influence > 0) {
-                state.countries[cid].remove_influence(Player::USSR, 1);
-                state.ctx().temp_card_cnt++; // Tracks total removed
-                if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
-                if (state.ctx().remaining_steps == 0) {
-                    // Transition to placement
+            if (state.ctx().max_per_country == 0) {
+                // Stage 1: Removal of USSR influence
+                if (cid < 84 && state.countries[cid].ussr_influence > 0) {
+                    state.countries[cid].remove_influence(Player::USSR, 1);
+                    state.ctx().temp_card_cnt++; // Tracks total removed
+                    if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
+                    if (state.ctx().remaining_steps == 0 || action.is_confirm_done()) {
+                        if (state.ctx().temp_card_cnt == 0) {
+                            state.ctx().resolving_card = 0;
+                            return true;
+                        }
+                        // Transition to Stage 2
+                        state.ctx().remaining_steps = state.ctx().temp_card_cnt;
+                        state.ctx().max_per_country = 2;
+                        state.ctx().visited_nodes = {};
+                        state.ctx().node_counts = {};
+                        return false;
+                    }
+                    return false;
+                } else if (action.is_confirm_done()) {
+                    if (state.ctx().temp_card_cnt == 0) {
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
                     state.ctx().remaining_steps = state.ctx().temp_card_cnt;
                     state.ctx().max_per_country = 2;
                     state.ctx().visited_nodes = {};
                     state.ctx().node_counts = {};
                     return false;
                 }
-            } else if (state.ctx().remaining_steps > 0) {
-                // Placement stage
+            } else {
+                // Stage 2: Placement into non-US controlled countries (max 2 per country)
                 if (cid < 84 && !Scoring::is_controlled_by(state, cid, Player::US) && state.ctx().node_counts[cid] < 2) {
                     state.countries[cid].add_influence(Player::USSR, 1);
                     state.ctx().node_counts[cid]++;
-                    state.ctx().remaining_steps--;
+                    if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                     if (state.ctx().remaining_steps == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
                     }
+                    return false;
                 }
             }
             return false;
@@ -701,6 +732,32 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
             const auto& c_info = MapData::get_country(i);
 
             switch (card) {
+                case card_ids::WARSAW_PACT:
+                    if (state.ctx().max_per_country == 1) {
+                        // Remove all US influence from 4 countries in Eastern Europe
+                        if (c_info.in_eastern_europe && state.countries[i].us_influence > 0 && !state.ctx().is_visited(i)) {
+                            mask_out[i] = 1;
+                        }
+                    } else {
+                        // Add 5 USSR influence in Eastern Europe (max 2 per country)
+                        if (c_info.in_eastern_europe && state.ctx().node_counts[i] < 2) {
+                            mask_out[i] = 1;
+                        }
+                    }
+                    break;
+                case card_ids::DE_STALINIZATION:
+                    if (state.ctx().max_per_country == 0) {
+                        // Stage 1: Removal of USSR influence
+                        if (state.countries[i].ussr_influence > 0) {
+                            mask_out[i] = 1;
+                        }
+                    } else {
+                        // Stage 2: Placement into non-US controlled countries (max 2 per country)
+                        if (!Scoring::is_controlled_by(state, i, Player::US) && state.ctx().node_counts[i] < 2) {
+                            mask_out[i] = 1;
+                        }
+                    }
+                    break;
                 case card_ids::SOCIALIST_GOVERNMENTS:
                     if (c_info.in_western_europe && state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
                         mask_out[i] = 1;

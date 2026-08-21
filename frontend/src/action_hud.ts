@@ -81,7 +81,7 @@ export class ActionHUD {
           const cfg = modeLabels[m] || { text: `Mode ${m}`, class: 'btn-secondary' };
           buttonsHtml += `<button class="btn ${cfg.class} btn-block btn-hud-action" data-primary="${m}" style="margin-bottom: 6px;">${cfg.text}</button>`;
         });
-        if (validIds.includes(2)) {
+        if ([9, 11].includes(ctx.pending_op_card)) {
           showDieSelector = true;
         }
         break;
@@ -116,17 +116,20 @@ export class ActionHUD {
         break;
 
       case 5: // POINT_NODE
+        const isWarEvent = [9, 11, 23, 36, 84, 18, 70, 72, 97, 106].includes(ctx.resolving_card);
+        const isCoupOrRealign = (legal as any).op_mode === 1 || (legal as any).op_mode === 2 || (ctx as any).op_mode === 1 || (ctx as any).op_mode === 2;
+
         if (phaseName === 'SETUP') {
           const region = player === 'USSR' ? 'Eastern Europe' : 'Western Europe';
           promptText = `<strong>${player} Setup Phase:</strong> Click highlighted countries in ${region} to place influence (<strong>${ctx.remaining_steps} remaining</strong>).`;
         } else if (ctx.resolving_card > 0) {
           const resCard = ctx.resolving_card_name || `Card #${ctx.resolving_card}`;
           promptText = `<strong>${player}:</strong> Resolving event <em>${resCard}</em>. Click a highlighted target country (<strong>${ctx.remaining_steps} remaining</strong>):`;
-          showDieSelector = true;
+          if (isWarEvent) showDieSelector = true;
         } else {
           const remaining = ctx.remaining_steps > 0 ? ` (${ctx.remaining_steps} Ops remaining)` : '';
           promptText = `<strong>${player}:</strong> Click a highlighted country on the map to target${remaining}:`;
-          showDieSelector = true;
+          if (isCoupOrRealign) showDieSelector = true;
         }
 
         if (allowEarlyStop) {

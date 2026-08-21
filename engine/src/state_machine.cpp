@@ -325,6 +325,15 @@ void StateMachine::end_turn(GameState& state) noexcept {
     }
 }
 
+static void snapshot_op_influence(GameState& state, Player p) noexcept {
+    state.ctx().start_influence_nodes = {};
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (state.countries[i].get_influence(p) > 0) {
+            state.ctx().set_start_influence(i);
+        }
+    }
+}
+
 bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return false;
 
@@ -506,7 +515,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 if (mode == PlayMode::EVENT) {
                     const auto& c_info = CardData::get_card(card);
                     state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                    bool done = CardHandlers::trigger_event(state, card, p);
+                    bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
                     if (done && state.current_phase != Phase::GAME_OVER) {
                         advance_after_action_round(state);
                     }
@@ -520,6 +529,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         return true;
                     } else {
                         // Friendly / neutral
+                        snapshot_op_influence(state, p);
                         state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
                         state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                         return true;
@@ -533,6 +543,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 TimingBranch branch = static_cast<TimingBranch>(action.primary_id);
 
                 if (branch == TimingBranch::OPS_FIRST) {
+                    snapshot_op_influence(state, p);
                     state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::OPS_FIRST);
                     state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
@@ -562,6 +573,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 state.ctx().op_mode = op_mode;
 
                 if (op_mode == OpMode::INFLUENCE) {
+                    snapshot_op_influence(state, p);
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = ops;
                     state.ctx().allow_early_stop = 1;

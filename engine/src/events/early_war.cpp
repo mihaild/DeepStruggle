@@ -152,7 +152,7 @@ bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
     return true;
 }
 
-bool trigger_arab_israeli_war(GameState& state, Player p) noexcept {
+bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
     if (state.has_flag(effect_bits::CAMP_DAVID_PLAYED)) return true;
 
     state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
@@ -163,7 +163,7 @@ bool trigger_arab_israeli_war(GameState& state, Player p) noexcept {
     if (Scoring::is_controlled_by(state, countries::LEBANON, Player::US)) mod--;
     if (Scoring::is_controlled_by(state, countries::SYRIA, Player::US)) mod--;
 
-    uint8_t roll = Prng::roll_d6(state.rng_state);
+    uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
     int16_t total = roll + mod;
 
     if (total >= 4) {
@@ -353,8 +353,10 @@ bool trigger_de_stalinization(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::POINT_NODE; // Stage 1: Removal (up to 4)
     state.ctx().remaining_steps = 4;
+    state.ctx().max_per_country = 0; // Stage 1 removal flag
     state.ctx().allow_early_stop = 1;
     state.ctx().resolving_card = card_ids::DE_STALINIZATION;
+    state.ctx().temp_card_cnt = 0; // Counts total removed
     return false;
 }
 

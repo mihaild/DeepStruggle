@@ -11,7 +11,7 @@ public:
     // Initiates execution of an event.
     // Returns true if event is fully finished immediately (no sub-decisions),
     // or false if it transitioned into interactive sub-decisions in ctx().
-    static bool trigger_event(GameState& state, uint8_t card_id, Player player) noexcept;
+    static bool trigger_event(GameState& state, uint8_t card_id, Player player, uint8_t forced_roll = 0) noexcept;
 
     // Handles a sub-decision for an ongoing card event.
     // Returns true when the entire event finishes and pops from context stack.

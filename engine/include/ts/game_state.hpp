@@ -100,11 +100,23 @@ struct alignas(64) DecisionContext {
     uint8_t      timing_branch;         // 0 = OPS_FIRST, 1 = EVENT_FIRST, 255 = NONE
 
     // Transient tracking across sub-actions (cleared when resolving_card finishes)
-    std::array<uint64_t, 2> visited_nodes; // 128-bit bitmask of nodes already modified
-    std::array<uint8_t, 84> node_counts;   // Placements/removals per node during this event
-    std::array<uint8_t, 5>  temp_cards;    // Temp buffer for peeked/searched card IDs
-    uint8_t                 temp_card_cnt; // Number of valid cards in temp_cards
+    std::array<uint64_t, 2> start_influence_nodes; // Bitmask of countries with friendly influence at start of Op
+    std::array<uint64_t, 2> visited_nodes;         // 128-bit bitmask of nodes already modified
+    std::array<uint8_t, 84> node_counts;           // Placements/removals per node during this event
+    std::array<uint8_t, 5>  temp_cards;            // Temp buffer for peeked/searched card IDs
+    uint8_t                 temp_card_cnt;         // Number of valid cards in temp_cards
     uint8_t                 pad;
+
+    inline void set_start_influence(uint8_t node) noexcept {
+        if (node < 64) start_influence_nodes[0] |= (1ULL << node);
+        else if (node < 84) start_influence_nodes[1] |= (1ULL << (node - 64));
+    }
+
+    inline bool has_start_influence(uint8_t node) const noexcept {
+        if (node < 64) return (start_influence_nodes[0] & (1ULL << node)) != 0;
+        if (node < 84) return (start_influence_nodes[1] & (1ULL << (node - 64))) != 0;
+        return false;
+    }
 
     inline void mark_visited(uint8_t node) noexcept {
         if (node < 64) {

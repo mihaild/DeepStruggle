@@ -58,11 +58,14 @@ bool Operations::can_place_influence(const GameState& state, Player p, uint8_t c
     // Superpower adjacent
     if (c_info.superpower_adjacent == p) return true;
 
-    // Adjacent to friendly influence
+    // Adjacent to friendly influence (must have had influence at start of Op if snapshot exists)
+    bool has_snapshot = (state.ctx().start_influence_nodes[0] != 0 || state.ctx().start_influence_nodes[1] != 0);
     for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
         uint8_t n_id = c_info.neighbors[i];
         if (state.countries[n_id].get_influence(p) > 0) {
-            return true;
+            if (!has_snapshot || state.ctx().has_start_influence(n_id)) {
+                return true;
+            }
         }
     }
 
