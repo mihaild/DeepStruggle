@@ -497,6 +497,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     if (c_info.ops >= 2) {
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
                         uint8_t roll = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+                        state.last_die_roll = roll;
                         if (roll <= 4) {
                             if (p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
                             else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);

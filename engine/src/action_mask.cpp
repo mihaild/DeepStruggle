@@ -187,13 +187,6 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
-                bool any_legal = false;
-                for (size_t i = 0; i < *out_size; ++i) {
-                    if (mask_out[i]) { any_legal = true; break; }
-                }
-                if (!any_legal) {
-                    mask_out[0] = 1;
-                }
                 return;
             }
 
@@ -219,16 +212,6 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             } else {
                 if (ctx.remaining_steps > 0) {
                     Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);
-                }
-            }
-
-            {
-                bool any_legal = false;
-                for (size_t i = 0; i < 84; ++i) {
-                    if (mask_out[i]) { any_legal = true; break; }
-                }
-                if (!any_legal) {
-                    mask_out[0] = 1;
                 }
             }
             break;

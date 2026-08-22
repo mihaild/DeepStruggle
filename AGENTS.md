@@ -155,7 +155,7 @@ cmake --build build_san -j
 
 #### Standard Tests & Fuzzing:
 ```bash
-# C++ Unit Tests (275 tests) & Performance Benchmark
+# C++ Unit Tests (276 tests) & Performance Benchmark
 ./build/engine/ts_tests
 ./build/engine/ts_benchmark
 
@@ -163,7 +163,7 @@ cmake --build build_san -j
 ./build/engine/ts_fuzz --games 10000
 ./build/engine/ts_fuzz --steps 5000000
 
-# Python Integration Tests (123 tests)
+# Python Integration Tests (124 tests)
 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
 

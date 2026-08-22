@@ -109,6 +109,12 @@ export class MapView {
     linesGroup.setAttribute("id", "adjacency-lines");
     const drawnEdges = new Set<string>();
 
+    const superpowers = [
+      { id: "USA", label: "UNITED STATES", pos: [85, 230], color: "#1E3A8A", stroke: "#3B82F6" },
+      { id: "USSR", label: "SOVIET UNION", pos: [635, 120], color: "#7F1D1D", stroke: "#EF4444" }
+    ];
+
+    // Country-to-Country Edges
     countries.forEach(c => {
       (c.neighbours || []).forEach(nName => {
         const n = countryMap.get(nName);
@@ -122,21 +128,45 @@ export class MapView {
         line.setAttribute("y1", c.pos[1].toString());
         line.setAttribute("x2", n.pos[0].toString());
         line.setAttribute("y2", n.pos[1].toString());
-        line.setAttribute("stroke", "#334155");
-        line.setAttribute("stroke-width", "1.2");
-        line.setAttribute("stroke-dasharray", "2,2");
+        const isInterRegion = (c.region !== n.region);
+        line.setAttribute("stroke", isInterRegion ? "#DC2626" : "#475569");
+        line.setAttribute("stroke-width", isInterRegion ? "1.6" : "1.2");
+        line.setAttribute("stroke-dasharray", isInterRegion ? "3,3" : "2,2");
         linesGroup.appendChild(line);
       });
+
+      // Superpower Adjacency Edges
+      if (c.superpower_adjacent) {
+        const sp = superpowers.find(s => s.id === c.superpower_adjacent);
+        if (sp) {
+          if (c.name === "Japan") {
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", `M ${c.pos[0]} ${c.pos[1]} C 960 210, 960 500, 480 600 S 70 320, ${sp.pos[0]} ${sp.pos[1]}`);
+            path.setAttribute("stroke", "#3B82F6");
+            path.setAttribute("stroke-width", "2.0");
+            path.setAttribute("stroke-dasharray", "4,4");
+            path.setAttribute("fill", "none");
+            path.setAttribute("opacity", "0.8");
+            linesGroup.appendChild(path);
+          } else {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", c.pos[0].toString());
+            line.setAttribute("y1", c.pos[1].toString());
+            line.setAttribute("x2", sp.pos[0].toString());
+            line.setAttribute("y2", sp.pos[1].toString());
+            line.setAttribute("stroke", sp.stroke);
+            line.setAttribute("stroke-width", "2.2");
+            line.setAttribute("opacity", "0.9");
+            linesGroup.appendChild(line);
+          }
+        }
+      }
     });
     this.svg.appendChild(linesGroup);
 
     // 2. Superpower Connection Boxes (US on west, USSR on east)
     const spGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     spGroup.setAttribute("id", "superpowers");
-    const superpowers = [
-      { id: "USA", label: "UNITED STATES", pos: [70, 240], color: "#1E3A8A" },
-      { id: "USSR", label: "SOVIET UNION", pos: [630, 110], color: "#7F1D1D" }
-    ];
 
     superpowers.forEach(sp => {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -146,10 +176,10 @@ export class MapView {
       rect.setAttribute("y", (sp.pos[1] - h/2).toString());
       rect.setAttribute("width", w.toString());
       rect.setAttribute("height", h.toString());
-      rect.setAttribute("rx", "3");
+      rect.setAttribute("rx", "4");
       rect.setAttribute("fill", sp.color);
-      rect.setAttribute("stroke", "#F8FAFC");
-      rect.setAttribute("stroke-width", "1.5");
+      rect.setAttribute("stroke", sp.stroke);
+      rect.setAttribute("stroke-width", "2.0");
       g.appendChild(rect);
 
       const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -169,7 +199,7 @@ export class MapView {
     // 3. Country Nodes
     const legalNodes = new Set(
       state.legal_actions && state.legal_actions.decision_type === 5
-        ? state.legal_actions.valid_ids
+        ? (state.legal_actions.valid_ids || []).filter((id: number) => id < 84)
         : []
     );
 

@@ -117,7 +117,7 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
     return false;
 }
 
-bool trigger_korean_war(GameState& state, Player p) noexcept {
+bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
     // Add MilOps to USSR
     state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
 
@@ -127,7 +127,8 @@ bool trigger_korean_war(GameState& state, Player p) noexcept {
     if (Scoring::is_controlled_by(state, countries::JAPAN, Player::US)) mod--;
     if (Scoring::is_controlled_by(state, countries::TAIWAN, Player::US)) mod--;
 
-    uint8_t roll = Prng::roll_d6(state.rng_state);
+    uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
+    state.last_die_roll = roll;
     int16_t total = roll + mod;
 
     if (total >= 4) {
@@ -165,6 +166,7 @@ bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) n
     if (Scoring::is_controlled_by(state, countries::SYRIA, Player::US)) mod--;
 
     uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
+    state.last_die_roll = roll;
     int16_t total = roll + mod;
 
     if (total >= 4) {

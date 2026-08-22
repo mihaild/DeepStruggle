@@ -193,6 +193,7 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
     // 4. Die Roll & Modifiers
     uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
     res.die_roll = roll;
+    state.last_die_roll = roll;
 
     int16_t mod_roll = roll;
 
@@ -284,6 +285,8 @@ RealignResult Operations::execute_realign(GameState& state, Player p, uint8_t co
 
     res.us_roll = (forced_us_roll > 0) ? forced_us_roll : Prng::roll_d6(state.rng_state);
     res.ussr_roll = (forced_ussr_roll > 0) ? forced_ussr_roll : Prng::roll_d6(state.rng_state);
+    state.last_die_roll = res.us_roll;
+    state.last_opp_die_roll = res.ussr_roll;
 
     // Compute modifiers
     int16_t us_mod = 0;

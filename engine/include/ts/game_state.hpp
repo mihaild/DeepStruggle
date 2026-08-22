@@ -162,6 +162,8 @@ struct alignas(64) GameState {
     Player  forced_card_player;        // Player forced to play specific card (Missile Envy)
     uint8_t forced_card_id;            // Card ID forced on next AR (49 for Missile Envy, 0 if NONE)
     uint8_t defcon_dropped_to_2_in_ar; // 1 if DEFCON reached 2 during current AR (for NORAD)
+    uint8_t last_die_roll;             // Result of most recent die roll (1..6, 0 if none)
+    uint8_t last_opp_die_roll;         // Opponent die roll (e.g. Realignment or Summit)
 
     // -------------------------------------------------------------------------
     // 3. Space Race Metadata

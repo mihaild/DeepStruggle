@@ -170,7 +170,6 @@ public:
     bool auto_step(const PolicyFn& policy) {
         if (is_terminal()) return false;
         auto legal = get_legal_actions();
-        if (legal.empty()) return false;
         MicroAction action = policy(state, legal, step_count);
         return step(action);
     }
@@ -226,6 +225,9 @@ public:
         return [](const GameState& s, const std::vector<uint8_t>& legal, size_t step_idx) -> MicroAction {
             DecisionType dt = s.ctx().decision_type;
             Player p = s.ctx().decision_player;
+            if (legal.empty()) {
+                return MicroAction{dt, 0, 0, action_flags::CONFIRM_DONE};
+            }
             uint8_t chosen_id = legal[0];
             uint8_t flags = 0;
 
@@ -276,9 +278,10 @@ public:
                     chosen_id = legal[0];
                 }
             } else if (dt == DecisionType::POINT_NODE) {
-                if (s.ctx().resolving_card != 0 && s.ctx().allow_early_stop) {
-                    if (legal.size() == 1 && legal[0] == 0) flags = action_flags::CONFIRM_DONE;
-                    else chosen_id = legal[0];
+                if (legal.empty()) {
+                    flags = action_flags::CONFIRM_DONE;
+                } else if (s.ctx().resolving_card != 0 && s.ctx().allow_early_stop) {
+                    chosen_id = legal[0];
                 } else if (s.ctx().op_mode == OpMode::COUP) {
                     if (s.defcon == 2) {
                         bool non_bg_found = false;

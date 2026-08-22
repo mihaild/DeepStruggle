@@ -64,6 +64,14 @@ int main(int argc, char** argv) {
         }
 
         if (legal_indices.empty()) {
+            if (state.ctx().allow_early_stop || state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+                ts::MicroAction action{};
+                action.decision_type = state.ctx().decision_type;
+                action.flags = ts::action_flags::CONFIRM_DONE;
+                ts::Engine::step(state, action);
+                total_steps++;
+                continue;
+            }
             std::cerr << "Fuzzer error: no legal actions found in mask! decision_type="
                       << static_cast<int>(state.ctx().decision_type) << std::endl;
             std::exit(1);

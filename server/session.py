@@ -42,11 +42,14 @@ def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts
                 res_name = ts_engine.CardData.get_card_name(resolving_card)
                 logs.append(f"{p} targets {c_name} for Event: {res_name} (#{resolving_card})")
             else:
-                # Op action
-                if secondary > 0 or flags > 0:
-                    logs.append(f"{p} conducts Op in {c_name} (Rolls: {secondary}, Opponent: {flags})")
+                # Standard Operations: Influence placement, Coup, or Realignment
+                op_mode = state_before.get("decision_context", {}).get("op_mode", 0)
+                if op_mode == 1:
+                    logs.append(f"{p} attempts Coup in {c_name}")
+                elif op_mode == 2:
+                    logs.append(f"{p} conducts Realignment in {c_name}")
                 else:
-                    logs.append(f"{p} targets {c_name} for Operations")
+                    logs.append(f"{p} places Influence in {c_name}")
 
     elif d_type == ts_engine.DecisionType.SELECT_PLAY_MODE:
         modes = {0: "EVENT", 1: "OPERATIONS", 2: "SPACE RACE", 3: "PASS"}
@@ -111,6 +114,72 @@ def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts
             cid = int(cid_str)
             card_name = ts_engine.CardData.get_card_name(cid)
             logs.append(f"  • Card #{cid} ({card_name}) moved: {old_loc} -> {new_loc}")
+
+    # 5. Die roll logging
+    last_roll = state_after.get("last_die_roll", 0)
+    last_opp_roll = state_after.get("last_opp_die_roll", 0)
+
+    WAR_CARDS = {
+        9: "Korean War",
+        11: "Arab-Israeli War",
+        23: "Indo-Pakistani War",
+        36: "Brush War",
+        45: "Summit",
+        84: "Reagan Bombs Libya",
+        102: "Iran-Iraq War",
+        107: "Che",
+        91: "Ortega Elected in Nicaragua"
+    }
+
+    resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
+    pending_card = state_before.get("decision_context", {}).get("pending_op_card", 0)
+    op_mode = state_before.get("decision_context", {}).get("op_mode", 0)
+
+    # Coup attempt
+    if d_type == ts_engine.DecisionType.POINT_NODE and op_mode == 1 and not action.is_confirm_done():
+        c_name = ts_engine.MapData.get_country_name(primary)
+        c_stab = state_before.get("countries", {}).get(c_name, {}).get("stability", 1)
+        ops_val = state_before.get("decision_context", {}).get("pending_ops_value", 0)
+        total = last_roll + ops_val
+        def_target = c_stab * 2
+        net = total - def_target
+        status_str = f"Net +{net} (Coup Succeeded)" if net > 0 else "Coup Failed (Roll + Ops <= 2x Stability)"
+        logs.append(f"  🎲 Coup Roll in {c_name}: {last_roll} (+{ops_val} Ops = {total}) vs {def_target} Defense -> {status_str}")
+
+    # Realignment
+    elif d_type == ts_engine.DecisionType.POINT_NODE and op_mode == 2 and not action.is_confirm_done():
+        c_name = ts_engine.MapData.get_country_name(primary)
+        logs.append(f"  🎲 Realignment Rolls in {c_name}: US rolled {last_roll}, USSR rolled {last_opp_roll}")
+
+    # War event play
+    elif (d_type == ts_engine.DecisionType.SELECT_PLAY_MODE and primary == 0 and pending_card in WAR_CARDS) or          (d_type == ts_engine.DecisionType.POINT_NODE and resolving_card in WAR_CARDS and not action.is_confirm_done()):
+        card_id = resolving_card if resolving_card in WAR_CARDS else pending_card
+        war_name = WAR_CARDS.get(card_id, f"Card #{card_id}")
+        if card_id == 45: # Summit
+            logs.append(f"  🎲 Summit Die Rolls: US rolled {last_roll}, USSR rolled {last_opp_roll}")
+        elif last_roll > 0:
+            vp_diff = state_after.get("victory_points", 0) - state_before.get("victory_points", 0)
+            status = "Success (Victory Points & Influence awarded)" if vp_diff != 0 else "Roll Failed"
+            logs.append(f"  🎲 {war_name} Die Roll: {last_roll} -> {status}")
+
+    # Space Race
+    elif d_type == ts_engine.DecisionType.SELECT_PLAY_MODE and primary == 2:
+        us_sp = state_after.get("space", {}).get("US", 0) - state_before.get("space", {}).get("US", 0)
+        ussr_sp = state_after.get("space", {}).get("USSR", 0) - state_before.get("space", {}).get("USSR", 0)
+        sp_success = (us_sp > 0 or ussr_sp > 0)
+        new_step = state_after.get("space", {}).get("US" if p == "US" else "USSR", 0)
+        status = f"Success! Advanced to Step {new_step}" if sp_success else "Failed (Roll exceeded required threshold)"
+        logs.append(f"  🎲 Space Race Die Roll: {last_roll} -> {status}")
+
+    # Bear Trap / Quagmire
+    elif d_type == ts_engine.DecisionType.SELECT_CARD and (
+        (p == "US" and "QUAGMIRE_ACTIVE" in state_before.get("persistent_effects_list", [])) or
+        (p == "USSR" and "BEAR_TRAP_ACTIVE" in state_before.get("persistent_effects_list", []))
+    ):
+        if last_roll > 0:
+            escaped = (last_roll <= 4)
+            status = "Success! Discard canceled effect." if escaped else "Failed (Roll > 4, remains trapped)"
+            logs.append(f"  🎲 Escape Die Roll: {last_roll} (Need 1-4) -> {status}")
 
     return logs
 

@@ -1,3 +1,4 @@
+#include "ts/action_mask.hpp"
 #include "test_framework.hpp"
 #include "ts/card_handlers.hpp"
 #include "ts/card_data.hpp"
@@ -958,6 +959,49 @@ TEST(CardEdgeCasesTest, GrainSales_OpsModifiers_Suite) {
         CardHandlers::trigger_event(s, card_ids::GRAIN_SALES, Player::US);
         ASSERT_EQ(s.ctx().pending_ops_value, 2);
     }
+}
+
+
+TEST(CardEdgeCasesTest, WarsawPact_Branch0_NoUSInfluence_ResolvesImmediately_NeverHighlightsCanada) {
+    GameState state{};
+    StateMachine::init_new_game(state, 42);
+
+    // Setup: No US influence anywhere in Eastern Europe
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (MapData::get_country(i).in_eastern_europe) {
+            state.countries[i].us_influence = 0;
+            state.countries[i].ussr_influence = 0;
+        }
+    }
+    state.countries[countries::CANADA].us_influence = 4; // Canada has US influence
+
+    // Trigger Warsaw Pact event
+    bool done = CardHandlers::trigger_event(state, card_ids::WARSAW_PACT, Player::USSR);
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::CHOOSE_BRANCH);
+
+    // USSR chooses branch 0 (remove US influence from 4 EE countries)
+    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    
+    // Since there is NO US influence in Eastern Europe, it must resolve immediately!
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.ctx().resolving_card, 0);
+
+    // Now test when Poland has US influence: mask should ONLY contain Poland, NEVER Canada (id 0)
+    state.countries[countries::POLAND].us_influence = 2;
+    done = CardHandlers::trigger_event(state, card_ids::WARSAW_PACT, Player::USSR);
+    ASSERT_FALSE(done);
+    
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().max_per_country = 1;
+    state.ctx().remaining_steps = 1;
+    
+    uint8_t mask[84];
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(out_size, 84);
+    ASSERT_EQ(mask[countries::CANADA], 0); // Canada must NOT be legal!
+    ASSERT_EQ(mask[countries::POLAND], 1); // Poland IS legal!
 }
 
 } // namespace ts

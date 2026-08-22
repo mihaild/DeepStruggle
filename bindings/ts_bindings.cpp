@@ -104,6 +104,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     d["headline_ussr_card"] = state.headline_ussr_card;
     d["forced_card_player"] = (state.forced_card_player == ts::Player::US ? "US" : (state.forced_card_player == ts::Player::USSR ? "USSR" : "NONE"));
     d["forced_card_id"] = state.forced_card_id;
+    d["last_die_roll"] = state.last_die_roll;
+    d["last_opp_die_roll"] = state.last_opp_die_roll;
 
     // 3. Space turns used
     nb::dict space_turns;
@@ -295,6 +297,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
                 case ts::DecisionType::POINT_NODE:
                     if (i < 84) {
                         label = std::string(ts::MapData::get_country_name(static_cast<uint8_t>(i)));
+                    } else if (i == 84) {
+                        label = "Done / Pass";
                     }
                     break;
                 case ts::DecisionType::SELECT_CARD:

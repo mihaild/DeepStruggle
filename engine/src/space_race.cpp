@@ -91,6 +91,7 @@ bool SpaceRace::attempt_space(GameState& state, Player p, uint8_t card_id, uint8
     const auto& next_box = SPACE_BOXES[next_box_num];
 
     uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
+    state.last_die_roll = roll;
 
     if (roll <= next_box.max_roll) {
         // Advance track

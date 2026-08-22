@@ -100,6 +100,8 @@ bool trigger_summit(GameState& state, Player p) noexcept {
 
     uint8_t us_roll = Prng::roll_d6(state.rng_state);
     uint8_t ussr_roll = Prng::roll_d6(state.rng_state);
+    state.last_die_roll = us_roll;
+    state.last_opp_die_roll = ussr_roll;
 
     int16_t us_total = us_roll + us_dom_count;
     int16_t ussr_total = ussr_roll + ussr_dom_count;

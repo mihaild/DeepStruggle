@@ -123,3 +123,34 @@ def test_replay_loading():
     assert replays_res.status_code == 200
     replays = replays_res.json()
     assert isinstance(replays, list)
+
+def test_die_roll_logged_in_action_stream():
+    """Validates that die rolls (e.g. Korean War, Coups) are explicitly recorded in session action logs."""
+    from server.session import describe_action_and_deltas
+    
+    state_before = {
+        "decision_context": {
+            "decision_player": "USSR",
+            "pending_op_card": 9, # Korean War
+            "resolving_card": 0,
+            "op_mode": 0
+        },
+        "countries": {"South Korea": {"us_influence": 2, "ussr_influence": 0}},
+        "victory_points": 0,
+        "last_die_roll": 0
+    }
+    
+    state_after = {
+        "decision_context": {"decision_player": "USSR"},
+        "countries": {"South Korea": {"us_influence": 0, "ussr_influence": 2}},
+        "victory_points": -2,
+        "last_die_roll": 5
+    }
+    
+    action = ts_engine.MicroAction(ts_engine.DecisionType.SELECT_PLAY_MODE, 0, 0, 0)
+    delta_lines = describe_action_and_deltas(state_before, state_after, action)
+    
+    # Assert that die roll is explicitly present in the action log details
+    roll_logs = [line for line in delta_lines if "Korean War Die Roll" in line or "5" in line]
+    assert len(roll_logs) > 0
+    assert any("Korean War Die Roll: 5" in line for line in delta_lines)

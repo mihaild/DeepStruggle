@@ -16,7 +16,7 @@ namespace early_war {
     bool trigger_fidel(GameState& state, Player p) noexcept;
     bool trigger_vietnam_revolts(GameState& state, Player p) noexcept;
     bool trigger_blockade(GameState& state, Player p) noexcept;
-    bool trigger_korean_war(GameState& state, Player p) noexcept;
+    bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll = 0) noexcept;
     bool trigger_romanian_abdication(GameState& state, Player p) noexcept;
     bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll = 0) noexcept;
     bool trigger_comecon(GameState& state, Player p) noexcept;
@@ -176,7 +176,7 @@ bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player playe
         case card_ids::FIDEL: return early_war::trigger_fidel(state, player);
         case card_ids::VIETNAM_REVOLTS: return early_war::trigger_vietnam_revolts(state, player);
         case card_ids::BLOCKADE: return early_war::trigger_blockade(state, player);
-        case card_ids::KOREAN_WAR: return early_war::trigger_korean_war(state, player);
+        case card_ids::KOREAN_WAR: return early_war::trigger_korean_war(state, player, forced_roll);
         case card_ids::ROMANIAN_ABDICATION: return early_war::trigger_romanian_abdication(state, player);
         case card_ids::ARAB_ISRAELI_WAR: return early_war::trigger_arab_israeli_war(state, player, forced_roll);
         case card_ids::COMECON: return early_war::trigger_comecon(state, player);
@@ -343,8 +343,18 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
                 if (action.primary_id == 0) {
                     // Remove all US inf from 4 countries in Eastern Europe
+                    uint8_t count = 0;
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        if (MapData::get_country(i).in_eastern_europe && state.countries[i].us_influence > 0) {
+                            count++;
+                        }
+                    }
+                    if (count == 0) {
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
                     state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = 4;
+                    state.ctx().remaining_steps = std::min<uint8_t>(4, count);
                     state.ctx().max_per_country = 1;
                     state.ctx().allow_early_stop = 1;
                     state.ctx().visited_nodes = {};
@@ -359,15 +369,19 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::POINT_NODE) {
-                if (action.is_confirm_done() || action.primary_id == 0) {
+                if (action.is_confirm_done() || action.primary_id >= 84) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
                 uint8_t cid = action.primary_id;
                 if (cid < 84 && MapData::get_country(cid).in_eastern_europe) {
                     if (state.ctx().max_per_country == 1) {
-                        state.countries[cid].us_influence = 0;
-                        state.ctx().mark_visited(cid);
+                        if (state.countries[cid].us_influence > 0 && !state.ctx().is_visited(cid)) {
+                            state.countries[cid].us_influence = 0;
+                            state.ctx().mark_visited(cid);
+                        } else {
+                            return false;
+                        }
                     } else {
                         if (state.ctx().node_counts[cid] < 2) {
                             state.countries[cid].add_influence(Player::USSR, 1);
@@ -380,6 +394,18 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     if (state.ctx().remaining_steps == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
+                    }
+                    if (state.ctx().max_per_country == 1) {
+                        uint8_t rem = 0;
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (MapData::get_country(i).in_eastern_europe && state.countries[i].us_influence > 0 && !state.ctx().is_visited(i)) {
+                                rem++;
+                            }
+                        }
+                        if (rem == 0) {
+                            state.ctx().resolving_card = 0;
+                            return true;
+                        }
                     }
                     return false;
                 }
@@ -413,6 +439,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     sp_roll = Prng::roll_d6(state.rng_state) + 2;
                     opp_roll = Prng::roll_d6(state.rng_state);
                 }
+                state.last_die_roll = sp_roll;
+                state.last_opp_die_roll = opp_roll;
                 Player winner = (sp_roll > opp_roll) ? sponsor : get_opponent(sponsor);
                 int32_t vp_delta = (winner == Player::US) ? 2 : -2;
                 state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
@@ -499,7 +527,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
             }
 
-            uint8_t roll = Prng::roll_d6(state.rng_state);
+            uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+            state.last_die_roll = roll;
             if (roll + mod >= 4) {
                 int32_t vp_delta = (p == Player::US) ? 2 : -2;
                 state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
@@ -668,6 +697,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
 
             uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+            state.last_die_roll = roll;
             if (roll + mod >= 3) {
                 int32_t vp_delta = (p == Player::US) ? 1 : -1;
                 state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
@@ -1073,6 +1103,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
             }
             uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+            state.last_die_roll = roll;
             if (roll + mod >= 4) {
                 int32_t vp_delta = (p == Player::US) ? 2 : -2;
                 state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
@@ -1202,6 +1233,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && !MapData::get_country(cid).battleground) {
                 uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
+                state.last_die_roll = roll;
                 uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
                 int16_t coup_val = static_cast<int16_t>(roll + che_ops) - static_cast<int16_t>(2 * MapData::get_country(cid).stability);
                 if (coup_val > 0) {
