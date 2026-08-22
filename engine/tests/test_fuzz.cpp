@@ -10,17 +10,25 @@
 
 int main(int argc, char** argv) {
     uint64_t max_steps = 100000;
+    uint64_t max_games = 0;
     uint64_t seed = 42;
 
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--steps" && i + 1 < argc) {
+        std::string arg = argv[i];
+        if (arg == "--steps" && i + 1 < argc) {
             max_steps = std::stoull(argv[++i]);
-        } else if (std::string(argv[i]) == "--seed" && i + 1 < argc) {
+        } else if (arg == "--games" && i + 1 < argc) {
+            max_games = std::stoull(argv[++i]);
+        } else if (arg == "--seed" && i + 1 < argc) {
             seed = std::stoull(argv[++i]);
+        } else if (arg[0] != '-') {
+            max_steps = std::stoull(arg);
         }
     }
 
-    std::cout << "Starting Invariant Fuzzer: max_steps=" << max_steps << ", seed=" << seed << "..." << std::endl;
+    std::cout << "Starting Invariant Fuzzer: max_steps=" << max_steps
+              << ", max_games=" << max_games
+              << ", seed=" << seed << "..." << std::endl;
 
     uint64_t fuzzer_prng = seed;
     uint64_t total_steps = 0;
@@ -32,10 +40,14 @@ int main(int argc, char** argv) {
     uint8_t mask_buf[128];
     size_t mask_size = 0;
 
-    while (total_steps < max_steps) {
+    while (true) {
+        if (max_games > 0 && total_games >= max_games) break;
+        if (max_games == 0 && total_steps >= max_steps) break;
+
         if (ts::Engine::is_terminal(state)) {
             total_games++;
             ts::Engine::init_game(state, ts::Prng::next_u64(fuzzer_prng));
+            if (max_games > 0 && total_games >= max_games) break;
         }
 
         ts::Engine::get_legal_action_mask(state, mask_buf, &mask_size);
@@ -92,8 +104,8 @@ int main(int argc, char** argv) {
             std::exit(1);
         }
 
-        if (total_steps % 50000 == 0) {
-            std::cout << "Fuzzer progress: " << total_steps << " / " << max_steps << " steps (" << total_games << " games completed)" << std::endl;
+        if (total_steps % 100000 == 0) {
+            std::cout << "Fuzzer progress: " << total_steps << " steps (" << total_games << " games completed)" << std::endl;
         }
     }
 

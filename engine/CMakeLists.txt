@@ -56,6 +56,7 @@ set(TEST_SOURCES
     tests/test_state_lifecycle.cpp
     tests/test_states.cpp
     tests/test_card_edge_cases.cpp
+    tests/test_full_game.cpp
 )
 
 add_executable(ts_tests ${TEST_SOURCES})

@@ -2,7 +2,7 @@
 rules/
 
 # Build & CMake
-build/
+build*/
 bin/
 lib/
 CMakeUserPresets.json

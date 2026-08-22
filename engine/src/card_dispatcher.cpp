@@ -288,7 +288,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
     switch (card) {
         case card_ids::BLOCKADE: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.countries[countries::WEST_GERMANY].us_influence = 0;
                 state.ctx().resolving_card = 0;
                 return true;
@@ -303,7 +303,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SOCIALIST_GOVERNMENTS: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -321,7 +321,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::COMECON: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -359,7 +359,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::POINT_NODE) {
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 0) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
@@ -388,6 +388,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::TRUMAN_DOCTRINE: {
+            if (action.is_confirm_done() || action.primary_id == 0) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).region == Region::EUROPE) {
                 if (Scoring::get_country_control(state, cid) == Player::NONE) {
@@ -445,6 +449,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::INDEPENDENT_REDS: {
+            if (action.is_confirm_done() || action.primary_id == 0) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t cid = action.primary_id;
             if (cid == countries::YUGOSLAVIA || cid == countries::ROMANIA || cid == countries::BULGARIA ||
                 cid == countries::HUNGARY || cid == countries::CZECHOSLOVAKIA) {
@@ -457,7 +465,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MARSHALL_PLAN: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -511,7 +519,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SUEZ_CRISIS: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -534,7 +542,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::EAST_EUROPEAN_UNREST: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -553,7 +561,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::DECOLONIZATION: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -593,7 +601,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (state.ctx().max_per_country == 0) {
                 // Stage 1: Removal of USSR influence
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 0) {
                     if (state.ctx().temp_card_cnt == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
@@ -619,7 +627,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 }
             } else {
                 // Stage 2: Placement into non-US controlled countries (max 2 per country)
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 0) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
@@ -719,6 +727,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::JUNTA: {
+            if (action.is_confirm_done() || action.primary_id == 0) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t cid = action.primary_id;
             if (cid < 84 && (MapData::get_country(cid).region == Region::CENTRAL_AMERICA || MapData::get_country(cid).region == Region::SOUTH_AMERICA)) {
                 state.countries[cid].add_influence(p, 2);
@@ -733,6 +745,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MISSILE_ENVY: {
+            if (action.is_confirm_done() || action.primary_id == 0) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t chosen_card = action.primary_id;
             if (chosen_card < 1 || chosen_card > 110) return false;
             Player opp = state.ctx().decision_player;
@@ -812,6 +828,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SPECIAL_RELATIONSHIP: {
+            if (action.is_confirm_done() || action.primary_id == 0) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t cid = action.primary_id;
             if (cid < 84) {
                 if (!state.has_flag(effect_bits::NATO_ACTIVE)) {
@@ -841,7 +861,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::COLONIAL_REAR_GUARDS: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -859,7 +879,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::PUPPET_GOVERNMENTS: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -877,7 +897,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::OAS_FOUNDED: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -895,7 +915,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_VOICE_OF_AMERICA: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -913,7 +933,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::LIBERATION_THEOLOGY: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -931,7 +951,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MUSLIM_REVOLUTION: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -949,7 +969,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_REFORMER: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -967,7 +987,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MARINE_BARRACKS_BOMBING: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -986,7 +1006,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
         case card_ids::LATIN_AMERICAN_DEBT_CRISIS: {
             if (state.ctx().decision_player == Player::US) {
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 0) {
                     state.ctx().decision_player = Player::USSR;
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = 2;
@@ -1003,7 +1023,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 }
                 return false;
             } else {
-                if (action.is_confirm_done()) {
+                if (action.is_confirm_done() || action.primary_id == 0) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
@@ -1023,7 +1043,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::PERSHING_II_DEPLOYED: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1072,7 +1092,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_CAMBRIDGE_FIVE: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1122,7 +1142,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU: {
-            if (action.is_confirm_done()) {
+            if (action.is_confirm_done() || action.primary_id == 0) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1341,10 +1361,10 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     if (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA) mask_out[i] = 1;
                     break;
                 case card_ids::COLONIAL_REAR_GUARDS:
-                    if (c_info.region == Region::AFRICA || c_info.in_southeast_asia) mask_out[i] = 1;
+                    if ((c_info.region == Region::AFRICA || c_info.in_southeast_asia) && !state.ctx().is_visited(i)) mask_out[i] = 1;
                     break;
                 case card_ids::PUPPET_GOVERNMENTS:
-                    if (state.countries[i].us_influence == 0 && state.countries[i].ussr_influence == 0) mask_out[i] = 1;
+                    if (state.countries[i].us_influence == 0 && state.countries[i].ussr_influence == 0 && !state.ctx().is_visited(i)) mask_out[i] = 1;
                     break;
                 case card_ids::OAS_FOUNDED:
                     if ((c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA) && state.ctx().node_counts[i] < 2) {

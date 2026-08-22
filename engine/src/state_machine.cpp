@@ -387,93 +387,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         }
     }
 
-    // 2. HEADLINE PHASE
-    if (state.current_phase == Phase::HEADLINE) {
+    // 2. HEADLINE PHASE CARD SELECTION
+    if (state.current_phase == Phase::HEADLINE && state.ctx().temp_cards[4] == 0 && state.ctx().decision_type == DecisionType::SELECT_CARD && state.ctx().resolving_card == 0) {
         Player p = state.ctx().decision_player;
-
-        // Headline Free Ops / Sub-decisions Handling
-        if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
-            OpMode op_mode = static_cast<OpMode>(action.primary_id);
-            uint8_t ops = state.ctx().pending_ops_value;
-            state.ctx().op_mode = op_mode;
-            if (op_mode == OpMode::INFLUENCE) {
-                snapshot_op_influence(state, p);
-                state.ctx().decision_type = DecisionType::POINT_NODE;
-                state.ctx().remaining_steps = ops;
-                state.ctx().allow_early_stop = 1;
-                return true;
-            } else if (op_mode == OpMode::COUP) {
-                state.ctx().decision_type = DecisionType::POINT_NODE;
-                state.ctx().remaining_steps = 1;
-                state.ctx().max_per_country = 1;
-                state.ctx().allow_early_stop = 0;
-                return true;
-            } else if (op_mode == OpMode::REALIGN) {
-                state.ctx().decision_type = DecisionType::POINT_NODE;
-                state.ctx().remaining_steps = ops;
-                state.ctx().allow_early_stop = 1;
-                return true;
-            }
-            return false;
-        }
-
-        if (state.ctx().resolving_card != 0) {
-            if (action.is_confirm_done()) {
-                state.ctx().resolving_card = 0;
-                if (state.ctx_stack_depth > 0) {
-                    state.pop_context();
-                } else {
-                    advance_headline_step(state);
-                }
-                return true;
-            }
-            bool finished = CardHandlers::handle_event_step(state, action);
-            if (finished) {
-                if (state.ctx_stack_depth > 0) {
-                    state.pop_context();
-                } else {
-                    advance_headline_step(state);
-                }
-            }
-            return true;
-        }
-
-        if (state.ctx().decision_type == DecisionType::POINT_NODE && state.headline_us_card != 0 && state.headline_ussr_card != 0) {
-            if (action.is_confirm_done()) {
-                advance_headline_step(state);
-                return true;
-            }
-            uint8_t cid = action.primary_id;
-            uint8_t forced_roll = action.secondary_id;
-            uint8_t forced_opp_roll = action.flags;
-
-            if (state.ctx().op_mode == OpMode::COUP) {
-                Operations::execute_coup(state, p, cid, state.ctx().pending_ops_value, forced_roll);
-                advance_headline_step(state);
-                return true;
-            } else if (state.ctx().op_mode == OpMode::REALIGN) {
-                uint8_t forced_us = (p == Player::US) ? forced_roll : forced_opp_roll;
-                uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
-                Operations::execute_realign(state, p, cid, forced_us, forced_ussr);
-                state.ctx().remaining_steps -= 1;
-                if (state.ctx().remaining_steps == 0) {
-                    advance_headline_step(state);
-                }
-                return true;
-            } else {
-                uint8_t cost = Operations::get_influence_cost(state, p, cid);
-                if (state.ctx().remaining_steps >= cost) {
-                    Operations::place_influence(state, p, cid);
-                    state.ctx().remaining_steps -= cost;
-                    if (state.ctx().remaining_steps == 0) {
-                        advance_headline_step(state);
-                    }
-                    return true;
-                }
-                return false;
-            }
-        }
-
         uint8_t card = action.primary_id;
         if (p == Player::US && state.headline_us_card == 0) {
             state.headline_us_card = card;
@@ -533,29 +449,23 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         return true;
     }
 
-    // 3. ACTION ROUNDS & INTERACTIVE DECISIONS
-    if (state.current_phase == Phase::ACTION_ROUND) {
+    // 3. INTERACTIVE DECISIONS (HEADLINE OR ACTION ROUNDS)
+    if (state.current_phase == Phase::ACTION_ROUND || state.current_phase == Phase::HEADLINE) {
         DecisionType dt = state.ctx().decision_type;
         Player p = state.ctx().decision_player;
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {
-            if (action.is_confirm_done()) {
-                state.ctx().resolving_card = 0;
-                if (state.ctx_stack_depth > 0) {
-                    state.pop_context();
-                } else {
-                    advance_after_action_round(state);
-                }
-                return true;
-            }
             bool finished = CardHandlers::handle_event_step(state, action);
-            if (finished) {
+            if (finished || action.is_confirm_done()) {
+                state.ctx().resolving_card = 0;
                 if (state.ctx_stack_depth > 0) {
                     state.pop_context();
                     if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
                         // Resumed from EVENT_FIRST
                     }
+                } else if (state.current_phase == Phase::HEADLINE) {
+                    advance_headline_step(state);
                 } else {
                     advance_after_action_round(state);
                 }
@@ -567,7 +477,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::SELECT_CARD: {
                 uint8_t card = action.primary_id;
                 if (card == 0 || action.is_confirm_done()) {
-                    advance_after_action_round(state);
+                    if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                    else advance_after_action_round(state);
                     return true;
                 }
                 state.ctx().pending_op_card = card;
@@ -590,7 +501,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                             if (p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
                             else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);
                         }
-                        advance_after_action_round(state);
+                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                        else advance_after_action_round(state);
                         return true;
                     }
                 }
@@ -600,7 +512,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.card_locations[card] = CardData::get_card(card).one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
                     CardHandlers::trigger_event(state, card, p);
                     if (state.current_phase != Phase::GAME_OVER) {
-                        advance_after_action_round(state);
+                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                        else advance_after_action_round(state);
                     }
                     return true;
                 }
@@ -617,7 +530,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 if (mode == PlayMode::SPACE) {
                     SpaceRace::attempt_space(state, p, card, action.secondary_id);
                     if (state.current_phase != Phase::GAME_OVER) {
-                        advance_after_action_round(state);
+                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                        else advance_after_action_round(state);
                     }
                     return true;
                 }
@@ -629,23 +543,20 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
                     }
                     if (done && state.current_phase != Phase::GAME_OVER) {
-                        advance_after_action_round(state);
+                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                        else advance_after_action_round(state);
                     }
                     return true;
                 }
 
                 if (mode == PlayMode::OPS) {
-                    // Check if opponent card
                     if (CardData::is_opponent_card(card, p)) {
                         state.ctx().decision_type = DecisionType::CHOOSE_TIMING_BRANCH;
                         return true;
-                    } else {
-                        // Friendly / neutral
-                        snapshot_op_influence(state, p);
-                        state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
-                        state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                        return true;
                     }
+                    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
+                    return true;
                 }
                 return false;
             }
@@ -653,30 +564,36 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::CHOOSE_TIMING_BRANCH: {
                 uint8_t card = state.ctx().pending_op_card;
                 TimingBranch branch = static_cast<TimingBranch>(action.primary_id);
+                state.ctx().timing_branch = static_cast<uint8_t>(branch);
 
                 if (branch == TimingBranch::OPS_FIRST) {
-                    snapshot_op_influence(state, p);
-                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::OPS_FIRST);
+                    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
+                    return true;
+                }
+
+                if (branch == TimingBranch::EVENT_FIRST) {
+                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
                     state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                    return true;
-                } else {
-                    // EVENT_FIRST
-                    Player opp = get_opponent(p);
-                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
+                    state.ctx().decision_player = p;
                     state.push_context();
+
+                    Player opp = get_opponent(p);
+                    const auto& c_info = CardData::get_card(card);
                     state.ctx().decision_player = opp;
                     state.ctx().resolving_card = card;
+
                     bool done = CardHandlers::trigger_event(state, card, opp);
+                    if (card != card_ids::KITCHEN_DEBATES) {
+                        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                    }
                     if (done) {
                         state.pop_context();
-                        if (state.current_phase != Phase::GAME_OVER) {
-                            state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
-                            state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                        }
                     }
                     return true;
                 }
+                return false;
             }
 
             case DecisionType::SELECT_OP_MODE: {
@@ -740,12 +657,37 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 // Influence placement
-                uint8_t cost = Operations::get_influence_cost(state, p, cid);
-                if (state.ctx().remaining_steps >= cost) {
-                    Operations::place_influence(state, p, cid);
-                    state.ctx().remaining_steps -= cost;
-                    if (state.ctx().remaining_steps == 0) {
-                        advance_after_ops(state);
+                if (cid < 84) {
+                    uint8_t cost = Operations::get_influence_cost(state, p, cid);
+                    if (state.ctx().remaining_steps >= cost && Operations::can_place_influence(state, p, cid)) {
+                        Operations::place_influence(state, p, cid);
+                        state.ctx().remaining_steps -= cost;
+                        if (state.ctx().remaining_steps == 0) {
+                            advance_after_ops(state);
+                        }
+                        return true;
+                    }
+                }
+
+                if (state.ctx().allow_early_stop || action.primary_id == 0 || action.primary_id >= 84) {
+                    advance_after_ops(state);
+                    return true;
+                }
+                return false;
+            }
+
+            case DecisionType::CHOOSE_BRANCH: {
+                if (state.ctx().resolving_card != 0) {
+                    bool finished = CardHandlers::handle_event_step(state, action);
+                    if (finished || action.is_confirm_done()) {
+                        state.ctx().resolving_card = 0;
+                        if (state.ctx_stack_depth > 0) {
+                            state.pop_context();
+                        } else if (state.current_phase == Phase::HEADLINE) {
+                            advance_headline_step(state);
+                        } else {
+                            advance_after_action_round(state);
+                        }
                     }
                     return true;
                 }
