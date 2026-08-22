@@ -1,26 +1,28 @@
-# Twilight Struggle Engine Developer & Agent Guide (`engine/AGENTS.md`)
+# Twilight Struggle AI: C++ Simulation Core Guide
 
-Welcome to the **Twilight Struggle Engine (`engine/`)** codebase. This guide provides AI agents and human developers with an architectural overview, directory conventions, key invariants, and instructions for extending or maintaining the simulation engine.
-
----
-
-## 1. Engine Mission & Performance Mandate
-
-The simulation engine is designed for high-performance reinforcement learning (AlphaZero / MuZero / MCTS / PPO) training for Twilight Struggle (Deluxe Edition, 110 Cards).
-
-### Core Architectural Invariants:
-1. **ISO C++20 Compliance**: Written in modern C++20.
-2. **Zero-Allocation Execution**:
-   - `sizeof(GameState) \approx 1.1\text{ KB} \le 4\text{ KB}`, `alignas(64)`.
-   - `std::is_trivially_copyable_v<GameState>` MUST remain `true`.
-   - Never use pointers, virtual tables, heap allocations (`malloc`, `new`, `std::vector`, `std::string`, `std::unique_ptr`) inside `GameState`, `DecisionContext`, `CountryState`, or the active step loop.
-   - Fast state copying is done via bitwise memory copy (`std::memcpy`).
-3. **Simulation Throughput**: Target was $\ge 100\text{k}$ steps/sec/core. The engine achieves **$\ge 2,000,000$ steps/sec/core** in single-threaded release mode.
-4. **Deterministic Bit-for-Bit State**: Built-in 64-bit SplitMix64 PRNG (`Prng`) ensures perfect replayability from integer seeds.
+This directory contains the zero-allocation, high-throughput simulation engine for the Deluxe Edition of **Twilight Struggle** (110 Cards).
 
 ---
 
-## 2. Directory Structure
+## 1. Core Architectural Pillars
+
+1. **Zero Heap Allocation in Simulation Core**: The core data structures (`GameState`, `DecisionContext`, `MicroAction`) use fixed-size memory layouts. `GameState` is strictly trivially copyable and under 4 KB (`sizeof(GameState) <= 4096`).
+2. **Micro-Decision State Machine**: All multi-step actions (Ops, events with multiple target choices, headline selection, space races) are decomposed into fine-grained atomic steps (`DecisionType`).
+3. **High Simulation Throughput**: Single-core simulation speed exceeds **2,000,000 steps/second**, meeting reinforcement learning and MCTS training requirements.
+4. **Deterministic Bit-for-Bit State**: Built-in 64-bit SplitMix64 PRNG (`Prng`) ensures bit-for-bit replayability from integer seeds.
+5. **Unified Sub-Decision Processing**: State machine handles sub-decisions (e.g. `SELECT_OP_MODE`, `POINT_NODE`, `CHOOSE_TIMING_BRANCH`, `CHOOSE_BRANCH`) uniformly across both `Phase::HEADLINE` and `Phase::ACTION_ROUND`.
+
+---
+
+## 2. Mandatory Documentation Maintenance Rule for Agents
+
+> [!IMPORTANT]
+> **Keep Engine Documentation Synchronized**:
+> Whenever adding or modifying card handlers (`events/*.cpp`), updating `GameState`, adding tests in `tests/`, or adjusting fuzzer/sanitizer flags, you **MUST** update this file and root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md).
+
+---
+
+## 3. Directory Structure
 
 ```
 engine/
@@ -62,22 +64,29 @@ engine/
 │   └── engine.cpp              // ts::Engine API implementation
 └── tests/                      // Engine test suites
     ├── test_framework.hpp      // Lightweight assertion & test registry framework
+    ├── game_test_wrapper.hpp   // High-level full game execution wrapper & policy harness
     ├── test_main.cpp           // Test runner
     ├── test_map.cpp            // Topology, battlegrounds count, adjacency symmetry tests
     ├── test_scoring.cpp        // Regional formulas, Europe control instant win tests
+    ├── test_bugs_regression.cpp// Specific regression tests for card bugs
     ├── test_ops.cpp            // Dynamic cost drop, Coup DEFCON degradation, NATO tests
     ├── test_cards_early.cpp    // Early war card unit tests
     ├── test_cards_mid.cpp      // Mid war card unit tests
     ├── test_cards_late.cpp     // Late war card unit tests
     ├── test_defcon_suicide.cpp // DEFCON suicide priority in OPS_FIRST vs EVENT_FIRST
     ├── test_reentrancy.cpp     // Re-entrant DecisionContext stack tests
-    ├── test_fuzz.cpp           // 100k - 1M step invariant fuzzer
+    ├── test_card_interactions.cpp // Multi-card interaction test suite
+    ├── test_state_lifecycle.cpp// Turn, headline, and phase lifecycle tests
+    ├── test_states.cpp         // Continuous state effects and modifier tests
+    ├── test_card_edge_cases.cpp// Complete edge-case tests across all cards
+    ├── test_full_game.cpp      // 10-turn full game integration tests ending in final scoring
+    ├── test_fuzz.cpp           // Invariant fuzzer (--games <N>, --steps <N>, --seed <S>)
     └── test_benchmark.cpp      // 500k-step throughput benchmark
 ```
 
 ---
 
-## 3. Micro-Decision Pipeline & Action Representation
+## 4. Micro-Decision Pipeline & Action Representation
 
 The engine splits complex turns into a sequential stream of atomic 4-byte `MicroAction` structures:
 
@@ -85,58 +94,48 @@ The engine splits complex turns into a sequential stream of atomic 4-byte `Micro
 struct alignas(4) MicroAction {
     DecisionType decision_type; // 1 byte: SELECT_CARD, SELECT_PLAY_MODE, CHOOSE_TIMING_BRANCH, SELECT_OP_MODE, POINT_NODE, CHOOSE_BRANCH
     uint8_t      primary_id;    // 1 byte: Card ID (1..110), Country ID (0..83), Branch ID (0..7), PlayMode, OpMode, TimingBranch, or CONFIRM_DONE (0x80)
-    uint8_t      secondary_id;  // 1 byte: Sub-choice / quantity
-    uint8_t      padding;       // 1 byte alignment padding
+    uint8_t      secondary_id;  // 1 byte: Sub-choice / quantity / manual die roll
+    uint8_t      flags;         // 1 byte: Additional modifiers / opponent manual die roll
 };
 ```
-
-### Standard Action Round Decision Flow:
-```mermaid
-graph TD
-    A[SELECT_CARD] -->|Scoring Card| S[Auto-Score & Discard]
-    A -->|Standard Card| B[SELECT_PLAY_MODE]
-    B -->|SPACE| SP[Attempt Space Race]
-    B -->|EVENT| EV[Trigger Event]
-    B -->|OPS Friendly/Neutral| OP[SELECT_OP_MODE]
-    B -->|OPS Opponent Card| TB[CHOOSE_TIMING_BRANCH]
-    TB -->|OPS_FIRST| OP1[SELECT_OP_MODE -> Execute Ops -> Trigger Opponent Event]
-    TB -->|EVENT_FIRST| EV1[Trigger Opponent Event -> SELECT_OP_MODE -> Execute Ops]
-    OP -->|INFLUENCE| PN1[POINT_NODE: Place Influence]
-    OP -->|COUP| PN2[POINT_NODE: Coup Target]
-    OP -->|REALIGN| PN3[POINT_NODE: Realignment Target]
-```
-
-### Re-Entrant Card Contexts:
-Cards like *Star Wars (#85)*, *Five Year Plan (#5)*, and *Grain Sales (#67)* push a new `DecisionContext` onto `state.ctx_stack` (max depth 3). Sub-decisions resolve until the child event finishes, at which point `state.pop_context()` resumes the parent decision.
-
----
-
-## 4. Key Rules Handled by the Engine
-
-- **Strict DEFCON Suicide**: If DEFCON drops to 1, the **phasing player** loses immediately, regardless of whose card caused the drop.
-- **Dynamic Influence Cost Transition**: Cost is 2 Ops when placing influence into an enemy-controlled country; as soon as enemy control is broken by a placement, subsequent placements in the same AR immediately cost only 1 Op.
-- **Persistent Flags & Turn Cleanup**: All 43 continuous effects are tracked in `state.persistent_effects` (64-bit bitfield). Turn-cleanup effects are cleared at Phase H via `TURN_CLEANUP_MASK` (`0x00000780A3CBE3C0ULL`).
-- **Headline Priority**: Highest Headline Value (Ops) resolves first; ties are broken in favor of the US player. Space Box 4 (Man in Space) forces the opponent to select and reveal their headline first.
-- **Space Race Safe Discard**: Discarding an opponent card for the Space Race cancels the opponent's event completely.
 
 ---
 
 ## 5. How to Build, Test, and Benchmark
 
-### Build from Project Root:
+### Standard Build:
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-### Run Unit Tests:
+### Build with Sanitizers (AddressSanitizer + UndefinedBehaviorSanitizer):
 ```bash
-./build/engine/ts_tests
+cmake -B build_san -S . \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+cmake --build build_san -j
 ```
 
-### Run Invariant Fuzzer (e.g. 100k or 1M steps):
+### Run Unit Tests (275 tests):
 ```bash
-./build/engine/ts_fuzz --steps 1000000 --seed 42
+./build/engine/ts_tests
+# Or with sanitizers:
+./build_san/engine/ts_tests
+```
+
+### Run Invariant Fuzzer:
+```bash
+# Run 10,000 full games:
+./build/engine/ts_fuzz --games 10000
+
+# Run 5,000,000 steps:
+./build/engine/ts_fuzz --steps 5000000 --seed 42
+
+# Under ASan + UBSan:
+./build_san/engine/ts_fuzz --games 10000
 ```
 
 ### Run Performance Benchmark:
@@ -150,4 +149,5 @@ cmake --build build -j
 
 1. **Never Allocate Heap Memory in State Types**: Always ensure `static_assert(std::is_trivially_copyable_v<GameState>);` passes.
 2. **Deterministic PRNG**: Use `Prng::roll_d6(state.rng_state)` or `Prng::random_index(state.rng_state, n)` whenever game state dice or shuffles are executed.
-3. **Always Update Tests When Changing Card Logic**: Add test cases in `engine/tests/test_cards_*.cpp` for any new card behaviors or edge cases.
+3. **Pass / Confirm Handling**: Multi-step cards (e.g. *Suez Crisis*, *Muslim Revolution*, *Independent Reds*, *Special Relationship*) must support early pass (`action.primary_id == 0` or `CONFIRM_DONE`) when no eligible targets remain.
+4. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

@@ -1,6 +1,6 @@
 # Bot Client & AI Agent Guide
 
-This directory contains standalone bot clients that connect to the game server over WebSocket, receive game states, evaluate legal actions, and play moves.
+This directory contains standalone bot clients and interactive agent interfaces that connect to the game server over WebSocket, receive game states, evaluate legal actions, and play moves.
 
 ---
 
@@ -13,12 +13,23 @@ This directory contains standalone bot clients that connect to the game server o
     - Prioritizes East Germany/Poland for USSR and West Germany/Italy for US during Setup.
     - Plays Scoring cards when held, or highest Ops cards.
     - Selects friendly events or uses Ops for influence/coups.
-    - Prioritizes battlegrounds in current regions.
+    - Prioritizes battlegrounds in current scoring regions.
   - `run_bot_client()`: Async WebSocket client loop connecting to `ws://localhost:8000/ws/game/{id}?role={role}`.
+
+- [`agent_player.py`](file:///home/mihaild/prog/ts_ai/bot/agent_player.py):
+  - Rich CLI & Python API for LLM agents or human developers to query state and play actions by friendly name or index.
 
 ---
 
-## 2. Implementing New Bot Strategies
+## 2. Mandatory Documentation Maintenance Rule for Agents
+
+> [!IMPORTANT]
+> **Keep Bot Documentation Synchronized**:
+> Whenever adding new bot policies, modifying heuristic rules, extending CLI parameters, or altering the agent interactive interface, you **MUST** update this file and root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md).
+
+---
+
+## 3. Implementing New Bot Strategies
 
 To add a new bot strategy (e.g. MCTS bot, neural policy bot):
 
@@ -40,7 +51,7 @@ To add a new bot strategy (e.g. MCTS bot, neural policy bot):
 
 ---
 
-## 3. How to Run
+## 4. How to Run Bots
 
 ```bash
 # Play against Heuristic Bot on game-1 as USSR
@@ -52,11 +63,11 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --d
 
 ---
 
-## 4. Agent Interactive Play Tool (`bot.agent_player`)
+## 5. Agent Interactive Play Tool (`bot.agent_player`)
 
 [`agent_player.py`](file:///home/mihaild/prog/ts_ai/bot/agent_player.py) provides a rich CLI & Python API for LLM agents or human developers to query state and play actions by name or index.
 
-### 4.1 Usage
+### 5.1 CLI Commands
 
 ```bash
 # 1. Inspect current state, active decision & legal choices
@@ -86,7 +97,7 @@ PYTHONPATH=. .venv/bin/python -m bot.agent_player new-game --seed 42
 PYTHONPATH=. .venv/bin/python -m bot.agent_player auto --steps 10
 ```
 
-### 4.2 Python API for Agents
+### 5.2 Python API for Agents
 
 ```python
 from bot.agent_player import AgentGameClient, format_state_summary, format_board_overview

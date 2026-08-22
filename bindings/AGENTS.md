@@ -15,7 +15,15 @@ This directory contains the Python native extension module (`ts_engine`) built w
 
 ---
 
-## 2. Key Rules for Maintaining Bindings
+## 2. Mandatory Documentation Maintenance Rule for Agents
+
+> [!IMPORTANT]
+> **Keep Python Bindings Documentation Synchronized**:
+> Whenever adding or changing exported types, updating nanobind signatures, or altering serializer dictionaries, you **MUST** update this file and root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md).
+
+---
+
+## 3. Key Rules for Maintaining Bindings
 
 1. **Enum Arithmetic**:
    Always pass `nb::is_arithmetic()` when registering enums (e.g. `nb::enum_<ts::DecisionType>(m, "DecisionType", nb::is_arithmetic())`). This ensures Python code can cast to `int` and compare with integers directly.
@@ -26,13 +34,19 @@ This directory contains the Python native extension module (`ts_engine`) built w
 
 ---
 
-## 3. How to Compile & Test
+## 4. How to Compile & Test
 
+### Standard Build:
 ```bash
-# Build ts_engine.so
 cmake -B build -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build -j
 
 # Run Python binding tests
 PYTHONPATH=. .venv/bin/pytest -v tests/test_bindings.py
+```
+
+### Running with AddressSanitizer (ASan):
+When `ts_engine` is built with `-fsanitize=address`:
+```bash
+LD_PRELOAD=/usr/lib/libasan.so ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
