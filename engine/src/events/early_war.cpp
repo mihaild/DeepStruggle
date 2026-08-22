@@ -386,10 +386,9 @@ bool trigger_defectors(GameState& state, Player p) noexcept {
     if (state.current_phase == Phase::HEADLINE) {
         if (state.headline_ussr_card > 0) {
             state.headline_ussr_card = 0;
-            state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
-            if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
         }
-    } else if (state.current_phase == Phase::ACTION_ROUND && p == Player::USSR) {
+    } else if (state.current_phase == Phase::ACTION_ROUND) {
+        // If played during USSR Action Round, US gains 1 VP
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
         if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
     }

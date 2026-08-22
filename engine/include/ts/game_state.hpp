@@ -158,6 +158,11 @@ struct alignas(64) GameState {
     Player  phasing_player;            // Active player executing the action round
     uint8_t headline_us_card;          // Stored US headline card ID (1..110, 0 if NONE)
     uint8_t headline_ussr_card;        // Stored USSR headline card ID (1..110, 0 if NONE)
+    uint8_t headline_first_card;       // Card ID resolving 1st in headline (1..110, 0 if NONE)
+    uint8_t headline_second_card;      // Card ID resolving 2nd in headline (1..110, 0 if NONE)
+    uint8_t headline_stage;            // 0 = choosing, 1 = resolving 1st, 2 = resolving 2nd, 3 = done
+    Player  headline_first_owner;      // Player who selected 1st headline card
+    Player  headline_second_owner;     // Player who selected 2nd headline card
     Phase   current_phase;             // Active game phase
     Player  forced_card_player;        // Player forced to play specific card (Missile Envy)
     uint8_t forced_card_id;            // Card ID forced on next AR (49 for Missile Envy, 0 if NONE)
@@ -166,13 +171,7 @@ struct alignas(64) GameState {
     uint8_t last_opp_die_roll;         // Opponent die roll (e.g. Realignment or Summit)
 
     // -------------------------------------------------------------------------
-    // 3. Space Race Metadata
-    // -------------------------------------------------------------------------
-    uint8_t us_space_turns_used;       // Space attempts used this turn (0..2)
-    uint8_t ussr_space_turns_used;     // Space attempts used this turn (0..2)
-
-    // -------------------------------------------------------------------------
-    // 4. China Card Status
+    // 3. China Card Status
     // -------------------------------------------------------------------------
     Player  china_card_holder;         // US or USSR
     uint8_t china_card_playable;       // 1 if face up / playable, 0 if face down
@@ -236,6 +235,48 @@ struct alignas(64) GameState {
     }
     inline void clear_flag(uint64_t flag) noexcept {
         persistent_effects &= ~flag;
+    }
+
+    // Space race attempts state tracking (stored in persistent_effects bits 43..46)
+    inline uint8_t get_space_turns_used(Player p) const noexcept {
+        if (p == Player::US) {
+            if (has_flag(effect_bits::SPACE_US_ATTEMPT_2)) return 2;
+            if (has_flag(effect_bits::SPACE_US_ATTEMPT_1)) return 1;
+            return 0;
+        } else if (p == Player::USSR) {
+            if (has_flag(effect_bits::SPACE_USSR_ATTEMPT_2)) return 2;
+            if (has_flag(effect_bits::SPACE_USSR_ATTEMPT_1)) return 1;
+            return 0;
+        }
+        return 0;
+    }
+
+    inline void record_space_attempt(Player p) noexcept {
+        if (p == Player::US) {
+            if (!has_flag(effect_bits::SPACE_US_ATTEMPT_1)) {
+                set_flag(effect_bits::SPACE_US_ATTEMPT_1);
+            } else {
+                set_flag(effect_bits::SPACE_US_ATTEMPT_2);
+            }
+        } else if (p == Player::USSR) {
+            if (!has_flag(effect_bits::SPACE_USSR_ATTEMPT_1)) {
+                set_flag(effect_bits::SPACE_USSR_ATTEMPT_1);
+            } else {
+                set_flag(effect_bits::SPACE_USSR_ATTEMPT_2);
+            }
+        }
+    }
+
+    inline void set_space_turns_used(Player p, uint8_t count) noexcept {
+        if (p == Player::US) {
+            clear_flag(effect_bits::SPACE_US_ATTEMPT_1 | effect_bits::SPACE_US_ATTEMPT_2);
+            if (count >= 1) set_flag(effect_bits::SPACE_US_ATTEMPT_1);
+            if (count >= 2) set_flag(effect_bits::SPACE_US_ATTEMPT_2);
+        } else if (p == Player::USSR) {
+            clear_flag(effect_bits::SPACE_USSR_ATTEMPT_1 | effect_bits::SPACE_USSR_ATTEMPT_2);
+            if (count >= 1) set_flag(effect_bits::SPACE_USSR_ATTEMPT_1);
+            if (count >= 2) set_flag(effect_bits::SPACE_USSR_ATTEMPT_2);
+        }
     }
 };
 

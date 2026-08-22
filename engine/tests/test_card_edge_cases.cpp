@@ -6,6 +6,7 @@
 #include "ts/ops.hpp"
 #include "ts/scoring.hpp"
 #include "ts/state_machine.hpp"
+#include "ts/space_race.hpp"
 
 namespace ts {
 
@@ -1005,3 +1006,231 @@ TEST(CardEdgeCasesTest, WarsawPact_Branch0_NoUSInfluence_ResolvesImmediately_Nev
 }
 
 } // namespace ts
+
+// =============================================================================
+// Space Race Edge Cases and Ability Tests
+// =============================================================================
+
+TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInSpace_SpaceWalk_MoonLanding) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    // Box 0: Initial state - no abilities
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
+
+    // Box 2: Animal in Space (2 attempts per turn)
+    state.us_space_track = 2;
+    state.ussr_space_track = 1;
+    ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+
+    // When opponent catches up to Box 2, leader privilege is canceled
+    state.ussr_space_track = 2;
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+
+    // Box 4: Lunar Orbit (Opponent reveals headline first)
+    state.us_space_track = 4;
+    state.ussr_space_track = 3;
+    ASSERT_TRUE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::USSR));
+    state.ussr_space_track = 4;
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+
+    // Box 6: Space Walk (Discard 1 held card at end of turn)
+    state.us_space_track = 6;
+    state.ussr_space_track = 5;
+    ASSERT_TRUE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::USSR));
+    state.ussr_space_track = 6;
+    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+
+    // Box 8: Moon Landing (8th Action Round)
+    state.us_space_track = 8;
+    state.ussr_space_track = 7;
+    ASSERT_TRUE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::USSR));
+    state.ussr_space_track = 8;
+    ASSERT_FALSE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
+}
+
+TEST(CardEdgeCasesTest, CapturedNaziScientist_AdvancesTrack_AwardsVPsAndAbilities_AndRespectsMax) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.victory_points = 0;
+
+    // 1. US advances from Box 0 -> Box 1 (1st to reach: +2 VP)
+    state.us_space_track = 0;
+    state.ussr_space_track = 0;
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 1);
+    ASSERT_EQ(state.victory_points, 2); // 1st player VP award
+
+    // 2. USSR advances from Box 0 -> Box 1 (2nd to reach: +1 VP to USSR -> net +1 VP to US)
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::USSR);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.ussr_space_track, 1);
+    ASSERT_EQ(state.victory_points, 1); // 2 - 1 = +1 VP
+
+    // 3. US advances from Box 1 -> Box 2 (Animal in Space: 0 VP, but activates 2 attempts/turn)
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 2);
+    ASSERT_EQ(state.victory_points, 1); // No VP change on Box 2
+    ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+
+    // 4. USSR advances to Box 8 (Moon Landing): awards 2 VP to USSR (net 1 - 2 = -1 VP)
+    state.ussr_space_track = 7;
+    state.us_space_track = 6;
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::USSR);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.ussr_space_track, 8);
+    ASSERT_EQ(state.victory_points, -1); // 1 - 2 = -1 VP
+    ASSERT_TRUE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::USSR));
+
+    // 5. When already at Box 8 (max), cannot advance further
+    int8_t vp_before = state.victory_points;
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::USSR);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.ussr_space_track, 8);
+    ASSERT_EQ(state.victory_points, vp_before); // No change
+}
+
+TEST(CardEdgeCasesTest, OneSmallStep_Advances2SpacesWhenBehind_AwardsVPWhenLandingOnVPBox_NoVPWhenJumpingOver) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    // Case 1: Jumping over a VP box does NOT award VP
+    // USSR is at Box 3, US is at Box 0.
+    // US plays One Small Step: advances +2 to Box 2 (Animal in Space, 0 VP).
+    // Box 1 had 2 VP, but US jumps over it without landing -> 0 VP awarded.
+    state.victory_points = 0;
+    state.us_space_track = 0;
+    state.ussr_space_track = 3;
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::ONE_SMALL_STEP, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 2);
+    ASSERT_EQ(state.victory_points, 0); // Jumped over Box 1 -> No VP!
+
+    // Case 2: Landing on a VP box as 1st player awards full 1st VP
+    // USSR is at Box 4, US is at Box 3.
+    // US plays One Small Step: advances +2 to Box 5 (Lunar Probe).
+    // Box 5 awards 3 VP (1st) / 1 VP (2nd). US reaches Box 5 before USSR (USSR is at 4).
+    state.victory_points = 0;
+    state.us_space_track = 3;
+    state.ussr_space_track = 4;
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::ONE_SMALL_STEP, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 5);
+    ASSERT_EQ(state.victory_points, 3); // Landed on Box 5 as 1st -> +3 VP!
+
+    // Case 3: Landing on a VP box as 2nd player awards 2nd VP
+    // USSR is at Box 6, US is at Box 3.
+    // US plays One Small Step: advances +2 to Box 5.
+    // USSR is at 6 (already passed 5), so US lands on Box 5 as 2nd player -> receives 1 VP.
+    state.victory_points = 0;
+    state.us_space_track = 3;
+    state.ussr_space_track = 6;
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::ONE_SMALL_STEP, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 5);
+    ASSERT_EQ(state.victory_points, 1); // Landed on Box 5 as 2nd -> +1 VP!
+
+    // Case 4: Not behind opponent -> Does NOT advance
+    state.victory_points = 0;
+    state.us_space_track = 4;
+    state.ussr_space_track = 4; // Tied
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::ONE_SMALL_STEP, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 4); // No advance
+    ASSERT_EQ(state.victory_points, 0);
+
+    state.us_space_track = 5;
+    state.ussr_space_track = 3; // Ahead
+    done = ts::CardHandlers::trigger_event(state, ts::card_ids::ONE_SMALL_STEP, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.us_space_track, 5); // No advance
+    ASSERT_EQ(state.victory_points, 0);
+}
+
+TEST(CardEdgeCasesTest, Defectors_PlayedByUSSRDuringActionRound_Awards1VPToUS) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.victory_points = 0;
+
+    // When USSR plays Defectors for Ops or event during AR, event triggers with executor US
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::DEFECTORS, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.victory_points, 1); // US gains 1 VP!
+}
+
+TEST(CardEdgeCasesTest, Defectors_HeadlinePhase_CancelsUSSRHeadlineWithoutVP) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    state.headline_ussr_card = ts::card_ids::SOCIALIST_GOVERNMENTS;
+    state.victory_points = 0;
+
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::DEFECTORS, ts::Player::US);
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.headline_ussr_card, 0); // USSR headline cancelled
+    ASSERT_EQ(state.victory_points, 0);     // No VP in headline phase
+}
+
+TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdvancesToAR1) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.defcon = 4;
+    state.victory_points = 0;
+
+    // US headlines Grain Sales (2 Ops)
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
+    // USSR headlines We Will Bury You (4 Ops)
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0});
+
+    // Stage 1: We Will Bury You (4 Ops) resolves first -> DEFCON drops to 3
+    ASSERT_EQ(state.defcon, 3);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
+
+    // Stage 2: Grain Sales (2 Ops) resolves -> US is prompted to choose branch for drawn Duck and Cover
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
+
+    // US selects Branch 0: Play drawn card
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
+
+    // US plays Duck and Cover for PlayMode::EVENT (0)
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, 0, 0, 0});
+
+    // Duck and Cover resolves: DEFCON drops to 2, US gets 3 VP
+    ASSERT_EQ(state.defcon, 2);
+    ASSERT_EQ(state.victory_points, 3);
+
+    // Headline phase MUST be completely finished and now at AR 1 with USSR choosing card!
+    ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
+    ASSERT_EQ(state.action_round, 1);
+    ASSERT_EQ(state.phasing_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+}

@@ -66,7 +66,7 @@ bool SpaceRace::can_attempt_space(const GameState& state, Player p, uint8_t card
     uint8_t cur_track = (p == Player::US) ? state.us_space_track : state.ussr_space_track;
     if (cur_track >= 8) return false; // Already reached max box
 
-    uint8_t turns_used = (p == Player::US) ? state.us_space_turns_used : state.ussr_space_turns_used;
+    uint8_t turns_used = state.get_space_turns_used(p);
     uint8_t max_attempts = has_animal_in_space(state, p) ? 2 : 1;
     if (turns_used >= max_attempts) return false;
 
@@ -80,9 +80,8 @@ bool SpaceRace::attempt_space(GameState& state, Player p, uint8_t card_id, uint8
 
     uint8_t& cur_track = (p == Player::US) ? state.us_space_track : state.ussr_space_track;
     uint8_t opp_track = (p == Player::US) ? state.ussr_space_track : state.us_space_track;
-    uint8_t& turns_used = (p == Player::US) ? state.us_space_turns_used : state.ussr_space_turns_used;
 
-    turns_used++;
+    state.record_space_attempt(p);
 
     // Space race card is moved to discard pile (event never occurs)
     state.card_locations[card_id] = CardLocation::DISCARD_PILE;

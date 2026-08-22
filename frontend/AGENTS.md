@@ -41,10 +41,13 @@ frontend/
    - Highlights valid country targets with dynamic glowing borders when `POINT_NODE` decision is active.
    - Smooth mouse pan and zoom with automatic metadata loading and immediate re-rendering.
 2. **Active Continuous Effects Panel (`cards_view.ts`)**:
-   - Displays all 43 persistent continuous effects (e.g. *Containment*, *Brezhnev Doctrine*, *Red Scare/Purge*, *Quagmire*, *Bear Trap*, *Flower Power*, *Willy Brandt*, *NORAD*, *NATO*, *Space Race Bonuses*) with side tags (`US`, `USSR`, `Both`, `Neutral`), duration badges (`Turn Only`, `Permanent`, `Conditional`, `Space Perk`), and rule summaries.
+   - Displays all 47 persistent continuous effect & state bits (e.g. *Containment*, *Brezhnev Doctrine*, *Red Scare/Purge*, *Quagmire*, *Bear Trap*, *Flower Power*, *Willy Brandt*, *NORAD*, *NATO*, *Space Race Bonuses*) with side tags (`US`, `USSR`, `Both`, `Neutral`), duration badges (`Turn Only`, `Permanent`, `Conditional`, `Space Perk`), and rule summaries.
 3. **Descriptive Branch Choice HUD (`action_hud.ts`)**:
    - `CARD_BRANCHES` catalog translates numeric branch IDs into clear, human-readable options (e.g. *Branch 0: Award 2 VP / Branch 1: Conduct 4 Ops* for Olympic Games; *Branch 0: Remove all US Influence / Branch 1: Add 5 USSR Influence* for Warsaw Pact).
-4. **Interactive Action Stream & Replay Timeline (`replay_controls.ts` & `main.ts`)**:
+4. **Deluxe Space Race Track & Modal Inspector (`tracks_view.ts`)**:
+   - Renders 9-step ladder (0..8) in the top status bar with US and USSR marker tokens and turn attempt counters (`Attempts: used/max`).
+   - Clickable Space Race widget opens the full Deluxe Space Race Modal displaying all 9 boxes, required Ops, success rolls, 1st/2nd VP awards, and special ongoing privileges.
+5. **Interactive Action Stream & Replay Timeline (`replay_controls.ts` & `main.ts`)**:
    - Full timeline scrubber with play/pause, step forward/backward, and server replay loading.
    - Bottom Action Stream displays all recorded game events with active step highlighting (`.active-replay-step`) and click-to-scrub navigation.
 5. **Robust Autonomous Metadata Pipeline**:

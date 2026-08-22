@@ -63,7 +63,7 @@ graph TD
 │   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
 │   ├── rules.md / rules.json   # Formal mathematical rules specification
 │   ├── cards.json / primitives # 110 cards metadata and state machine primitives
-│   ├── flags.json              # 43 persistent continuous effect bits
+│   ├── flags.json              # 47 persistent continuous effect & state bits
 │   ├── map.json / map.md       # 84-country graph topology & coordinates
 │   └── render_map.py           # Reference topology layout generator
 │
@@ -155,7 +155,7 @@ cmake --build build_san -j
 
 #### Standard Tests & Fuzzing:
 ```bash
-# C++ Unit Tests (276 tests) & Performance Benchmark
+# C++ Unit Tests (282 tests) & Performance Benchmark
 ./build/engine/ts_tests
 ./build/engine/ts_benchmark
 

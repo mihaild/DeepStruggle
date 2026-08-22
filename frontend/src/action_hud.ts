@@ -133,10 +133,33 @@ export class ActionHud {
         break;
 
       case 1: // SELECT_CARD
-        if (phaseName === "HEADLINE") {
+        const resolvingCard = ctx.resolving_card || 0;
+        if (resolvingCard === 10) { // Blockade
+          promptText = `<strong>${player}:</strong> <em>Blockade</em> is resolving! Select and discard a card with <strong>Operations ≥ 3</strong> from hand to maintain US influence in West Germany (or confirm/pass to forfeit influence):`;
+        } else if (resolvingCard === 43) { // SALT Negotiations
+          promptText = `<strong>${player}:</strong> <em>SALT Negotiations</em>: Select a non-scoring card from the Discard Pile to return to hand:`;
+        } else if (resolvingCard === 5) { // Five Year Plan
+          promptText = `<strong>${player}:</strong> <em>Five Year Plan</em>: Select a card from hand to discard:`;
+        } else if (resolvingCard === 49) { // Missile Envy
+          promptText = `<strong>${player}:</strong> <em>Missile Envy</em>: Select your highest Ops card to transfer to opponent:`;
+        } else if (resolvingCard === 98) { // Aldrich Ames
+          promptText = `<strong>${player}:</strong> <em>Aldrich Ames</em>: Select a card from US hand to discard:`;
+        } else if (resolvingCard === 67) { // Grain Sales
+          promptText = `<strong>${player}:</strong> <em>Grain Sales</em>: Select a card from USSR hand:`;
+        } else if (resolvingCard === 77) { // Ask Not
+          promptText = `<strong>${player}:</strong> <em>Ask Not What Your Country Can Do For You</em>: Select cards from hand to discard:`;
+        } else if (resolvingCard === 92) { // Terrorism
+          promptText = `<strong>${player}:</strong> <em>Terrorism</em>: Select a card from hand to discard:`;
+        } else if (resolvingCard > 0) {
+          promptText = `<strong>${player}:</strong> Resolving Event (Card #${resolvingCard}): Select a card:`;
+        } else if (phaseName === "HEADLINE") {
           promptText = `<strong>${player} Headline Phase:</strong> Select a card from your hand to play as your Headline:`;
         } else {
           promptText = `<strong>${player} Action Round ${state.action_round}:</strong> Select a card from your hand to play:`;
+        }
+
+        if (allowEarlyStop) {
+          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0" style="margin-top: 8px;">✓ Pass / Confirm (Do not discard)</button>`;
         }
         break;
 

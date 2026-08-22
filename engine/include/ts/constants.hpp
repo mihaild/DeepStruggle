@@ -275,6 +275,12 @@ namespace effect_bits {
     constexpr uint64_t CHERNOBYL_REGION_SHIFT      = 40;
     constexpr uint64_t CHERNOBYL_REGION_MASK       = 0x7ULL << CHERNOBYL_REGION_SHIFT;
 
+    // Space Race Attempt Flags (Bits 43..46)
+    constexpr uint64_t SPACE_US_ATTEMPT_1          = 1ULL << 43; // US 1st space race attempt used this turn
+    constexpr uint64_t SPACE_US_ATTEMPT_2          = 1ULL << 44; // US 2nd space race attempt used this turn
+    constexpr uint64_t SPACE_USSR_ATTEMPT_1        = 1ULL << 45; // USSR 1st space race attempt used this turn
+    constexpr uint64_t SPACE_USSR_ATTEMPT_2        = 1ULL << 46; // USSR 2nd space race attempt used this turn
+
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |
                                                      PURGE_US_ACTIVE |
@@ -294,7 +300,11 @@ namespace effect_bits {
                                                      ALDRICH_AMES_ACTIVE |
                                                      YURI_AND_SAMANTHA_ACTIVE |
                                                      CHERNOBYL_ACTIVE |
-                                                     CHERNOBYL_REGION_MASK;
+                                                     CHERNOBYL_REGION_MASK |
+                                                     SPACE_US_ATTEMPT_1 |
+                                                     SPACE_US_ATTEMPT_2 |
+                                                     SPACE_USSR_ATTEMPT_1 |
+                                                     SPACE_USSR_ATTEMPT_2;
 }
 
 // Special flags for MicroAction

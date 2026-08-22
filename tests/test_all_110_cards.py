@@ -205,10 +205,20 @@ class TestEarlyWarCards:
 
     def test_18_captured_nazi_scientist(self):
         state = make_clean_state()
-        old_sp = state.us_space_track
+        state.victory_points = 0
+        state.us_space_track = 0
+        state.ussr_space_track = 0
+        # 1. Advance to Box 1 (1st to reach: +2 VP)
         done = ts_engine.CardHandlers.trigger_event(state, 18, ts_engine.Player.US)
         assert done == True
-        assert state.us_space_track == old_sp + 1
+        assert state.us_space_track == 1
+        assert state.victory_points == 2
+
+        # 2. USSR advances to Box 1 (2nd to reach: +1 VP to USSR -> net +1 VP to US)
+        done = ts_engine.CardHandlers.trigger_event(state, 18, ts_engine.Player.USSR)
+        assert done == True
+        assert state.ussr_space_track == 1
+        assert state.victory_points == 1
 
     def test_19_truman_doctrine(self):
         state = make_clean_state()
@@ -358,12 +368,20 @@ class TestEarlyWarCards:
 
     def test_103_defectors(self):
         state = make_clean_state()
+        # 1. Headline Phase: cancels USSR headline without VP
         state.current_phase = ts_engine.Phase.HEADLINE
         state.headline_ussr_card = 7
         old_vp = state.victory_points
         done = ts_engine.CardHandlers.trigger_event(state, 103, ts_engine.Player.US)
         assert done == True
         assert state.headline_ussr_card == 0
+        assert state.victory_points == old_vp
+
+        # 2. Action Round: USSR plays Defectors -> US gains 1 VP
+        state.current_phase = ts_engine.Phase.ACTION_ROUND
+        state.phasing_player = ts_engine.Player.USSR
+        done = ts_engine.CardHandlers.trigger_event(state, 103, ts_engine.Player.US)
+        assert done == True
         assert state.victory_points == old_vp + 1
 
     def test_104_cambridge_five(self):
@@ -773,11 +791,23 @@ class TestLateWarCards:
 
     def test_80_one_small_step(self):
         state = make_clean_state()
+        # Case 1: Jump over Box 1 to Box 2 (0 VP gained)
+        state.victory_points = 0
         state.us_space_track = 0
-        state.ussr_space_track = 1
+        state.ussr_space_track = 3
         done = ts_engine.CardHandlers.trigger_event(state, 80, ts_engine.Player.US)
         assert done == True
         assert state.us_space_track == 2
+        assert state.victory_points == 0
+
+        # Case 2: Advance from Box 3 to Box 5 (lands on Box 5, 1st to reach -> +3 VP)
+        state.victory_points = 0
+        state.us_space_track = 3
+        state.ussr_space_track = 4
+        done = ts_engine.CardHandlers.trigger_event(state, 80, ts_engine.Player.US)
+        assert done == True
+        assert state.us_space_track == 5
+        assert state.victory_points == 3
 
     def test_81_south_america_scoring_repeat(self):
         state = make_clean_state()

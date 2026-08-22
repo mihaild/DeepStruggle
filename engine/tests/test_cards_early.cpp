@@ -534,7 +534,7 @@ TEST(EarlyCardsTest, Card103_Defectors_Headline) {
     state.victory_points = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::DEFECTORS, ts::Player::US);
     ASSERT_EQ(state.headline_ussr_card, 0); // Canceled!
-    ASSERT_EQ(state.victory_points, 1); // +1 VP
+    ASSERT_EQ(state.victory_points, 0);     // Headline cancellation grants 0 VP
 }
 
 TEST(EarlyCardsTest, Card103_Defectors_ActionRoundUSSR) {

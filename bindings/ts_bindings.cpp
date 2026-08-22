@@ -102,6 +102,9 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     d["phase_name"] = phase_to_str(state.current_phase);
     d["headline_us_card"] = state.headline_us_card;
     d["headline_ussr_card"] = state.headline_ussr_card;
+    d["headline_first_card"] = state.headline_first_card;
+    d["headline_second_card"] = state.headline_second_card;
+    d["headline_stage"] = state.headline_stage;
     d["forced_card_player"] = (state.forced_card_player == ts::Player::US ? "US" : (state.forced_card_player == ts::Player::USSR ? "USSR" : "NONE"));
     d["forced_card_id"] = state.forced_card_id;
     d["last_die_roll"] = state.last_die_roll;
@@ -109,8 +112,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
 
     // 3. Space turns used
     nb::dict space_turns;
-    space_turns["US"] = state.us_space_turns_used;
-    space_turns["USSR"] = state.ussr_space_turns_used;
+    space_turns["US"] = state.get_space_turns_used(ts::Player::US);
+    space_turns["USSR"] = state.get_space_turns_used(ts::Player::USSR);
     d["space_turns_used"] = space_turns;
 
     // 4. China Card
@@ -162,6 +165,10 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     CHECK_FLAG(WILLY_BRANDT_PLAYED, "WILLY_BRANDT_PLAYED");
     CHECK_FLAG(TEAR_DOWN_THIS_WALL_PLAYED, "TEAR_DOWN_THIS_WALL_PLAYED");
     CHECK_FLAG(CHERNOBYL_ACTIVE, "CHERNOBYL_ACTIVE");
+    CHECK_FLAG(SPACE_US_ATTEMPT_1, "SPACE_US_ATTEMPT_1");
+    CHECK_FLAG(SPACE_US_ATTEMPT_2, "SPACE_US_ATTEMPT_2");
+    CHECK_FLAG(SPACE_USSR_ATTEMPT_1, "SPACE_USSR_ATTEMPT_1");
+    CHECK_FLAG(SPACE_USSR_ATTEMPT_2, "SPACE_USSR_ATTEMPT_2");
     #undef CHECK_FLAG
     d["flags"] = flags;
     d["persistent_effects"] = state.persistent_effects;
@@ -465,6 +472,9 @@ NB_MODULE(ts_engine, m) {
         .def_rw("phasing_player", &ts::GameState::phasing_player)
         .def_rw("headline_us_card", &ts::GameState::headline_us_card)
         .def_rw("headline_ussr_card", &ts::GameState::headline_ussr_card)
+        .def_rw("headline_first_card", &ts::GameState::headline_first_card)
+        .def_rw("headline_second_card", &ts::GameState::headline_second_card)
+        .def_rw("headline_stage", &ts::GameState::headline_stage)
         .def_rw("current_phase", &ts::GameState::current_phase)
         .def_rw("forced_card_player", &ts::GameState::forced_card_player)
         .def_rw("forced_card_id", &ts::GameState::forced_card_id)
@@ -486,6 +496,9 @@ NB_MODULE(ts_engine, m) {
             s.countries[idx].us_influence = us;
             s.countries[idx].ussr_influence = ussr;
         })
+        .def("get_space_turns_used", &ts::GameState::get_space_turns_used)
+        .def("set_space_turns_used", &ts::GameState::set_space_turns_used)
+        .def("record_space_attempt", &ts::GameState::record_space_attempt)
         .def("get_card_location", [](const ts::GameState& s, uint8_t card_id) -> ts::CardLocation {
             if (card_id < 1 || card_id > 110) throw std::out_of_range("Card ID must be 1..110");
             return s.card_locations[card_id];
@@ -624,4 +637,8 @@ NB_MODULE(ts_engine, m) {
     eb.attr("WILLY_BRANDT_PLAYED") = ts::effect_bits::WILLY_BRANDT_PLAYED;
     eb.attr("TEAR_DOWN_THIS_WALL_PLAYED") = ts::effect_bits::TEAR_DOWN_THIS_WALL_PLAYED;
     eb.attr("CHERNOBYL_ACTIVE") = ts::effect_bits::CHERNOBYL_ACTIVE;
+    eb.attr("SPACE_US_ATTEMPT_1") = ts::effect_bits::SPACE_US_ATTEMPT_1;
+    eb.attr("SPACE_US_ATTEMPT_2") = ts::effect_bits::SPACE_US_ATTEMPT_2;
+    eb.attr("SPACE_USSR_ATTEMPT_1") = ts::effect_bits::SPACE_USSR_ATTEMPT_1;
+    eb.attr("SPACE_USSR_ATTEMPT_2") = ts::effect_bits::SPACE_USSR_ATTEMPT_2;
 }

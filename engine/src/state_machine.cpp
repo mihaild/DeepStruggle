@@ -143,6 +143,11 @@ void StateMachine::start_turn(GameState& state) noexcept {
     state.current_phase = Phase::HEADLINE;
     state.headline_us_card = 0;
     state.headline_ussr_card = 0;
+    state.headline_first_card = 0;
+    state.headline_second_card = 0;
+    state.headline_stage = 0;
+    state.headline_first_owner = Player::NONE;
+    state.headline_second_owner = Player::NONE;
 
     // Space 4 Priority check
     bool us_space4 = SpaceRace::has_man_in_space(state, Player::US);
@@ -161,12 +166,11 @@ void StateMachine::start_turn(GameState& state) noexcept {
 
 void StateMachine::advance_headline_step(GameState& state) noexcept {
     // Check if we need to resolve headline 2 or enter AR 1
-    uint8_t stage = state.ctx().temp_cards[4];
-    if (stage == 1) {
+    if (state.headline_stage == 1) {
         // Move to Stage 2: Second headline
-        uint8_t h2_card = state.ctx().temp_cards[1];
-        Player h2_owner = static_cast<Player>(state.ctx().temp_cards[3]);
-        state.ctx().temp_cards[4] = 2;
+        state.headline_stage = 2;
+        uint8_t h2_card = state.headline_second_card;
+        Player h2_owner = state.headline_second_owner;
 
         if (h2_card != 0 && state.current_phase != Phase::GAME_OVER) {
             bool ussr_cancelled = (state.headline_us_card == card_ids::DEFECTORS && h2_owner == Player::USSR);
@@ -193,6 +197,7 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
     }
 
     // Both headlines resolved -> Start Action Round 1
+    state.headline_stage = 3;
     if (state.current_phase != Phase::GAME_OVER) {
         state.current_phase = Phase::ACTION_ROUND;
         state.action_round = 1;
@@ -323,8 +328,6 @@ void StateMachine::end_turn(GameState& state) noexcept {
     // Phase H: Advance Turn
     state.persistent_effects &= ~effect_bits::TURN_CLEANUP_MASK;
     state.turn_aggregates.clear();
-    state.us_space_turns_used = 0;
-    state.ussr_space_turns_used = 0;
 
     state.turn++;
     state.action_round = 1;
@@ -421,11 +424,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         uint8_t second_card = us_first ? ussr_h : us_h;
         Player second_owner = us_first ? Player::USSR : Player::US;
 
-        state.ctx().temp_cards[0] = first_card;
-        state.ctx().temp_cards[1] = second_card;
-        state.ctx().temp_cards[2] = static_cast<uint8_t>(first_owner);
-        state.ctx().temp_cards[3] = static_cast<uint8_t>(second_owner);
-        state.ctx().temp_cards[4] = 1; // Stage 1
+        state.headline_first_card = first_card;
+        state.headline_second_card = second_card;
+        state.headline_first_owner = first_owner;
+        state.headline_second_owner = second_owner;
+        state.headline_stage = 1; // Stage 1: Resolving 1st headline
 
         if (first_owner == Player::USSR && ussr_cancelled) {
             state.card_locations[first_card] = CardLocation::DISCARD_PILE;

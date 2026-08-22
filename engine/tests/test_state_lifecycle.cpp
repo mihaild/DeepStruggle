@@ -130,8 +130,8 @@ TEST(StateLifecycleTest, HeadlineState_DefectorsCancelsUSSRHeadline) {
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
 
     // Defectors cancels USSR headline -> Cuba US influence remains 2, USSR remains 0!
-    // US gains 1 VP from Defectors
-    ASSERT_EQ(state.victory_points, 1);
+    // Headline cancellation does not grant VP (1 VP is only when played by USSR in Action Round)
+    ASSERT_EQ(state.victory_points, 0);
     ASSERT_EQ(state.countries[ts::countries::CUBA].us_influence, 2);
     ASSERT_EQ(state.countries[ts::countries::CUBA].ussr_influence, 0);
     ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
@@ -355,19 +355,37 @@ TEST(StateLifecycleTest, SpaceRaceState_TwoAttemptsPerTurn_And_ResetOnTurnEnd) {
     state.us_space_track = 2; // Reached Animal in Space (allows 2 attempts per turn)
 
     ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
-    ASSERT_EQ(state.us_space_turns_used, 0);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::US), 0);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_1));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_2));
 
-    // First attempt used
-    state.us_space_turns_used = 1;
+    // First attempt used (sets SPACE_US_ATTEMPT_1)
+    state.record_space_attempt(ts::Player::US);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::US), 1);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_1));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_2));
     ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
 
-    // Second attempt used
-    state.us_space_turns_used = 2;
+    // Second attempt used (sets SPACE_US_ATTEMPT_2)
+    state.record_space_attempt(ts::Player::US);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::US), 2);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_1));
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_2));
     ASSERT_FALSE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
 
-    // Turn ends -> space attempts reset to 0
+    // Record USSR attempt as well
+    state.record_space_attempt(ts::Player::USSR);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::USSR), 1);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::SPACE_USSR_ATTEMPT_1));
+
+    // Turn ends -> space attempt bits are cleared via TURN_CLEANUP_MASK
     ts::StateMachine::end_turn(state);
-    ASSERT_EQ(state.us_space_turns_used, 0);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::US), 0);
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::USSR), 0);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_1));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_US_ATTEMPT_2));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_USSR_ATTEMPT_1));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::SPACE_USSR_ATTEMPT_2));
     ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
 }
 

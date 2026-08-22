@@ -481,7 +481,7 @@ TEST(CardInteractionTest, Defectors_CancelsScoringCardHeadline) {
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::DEFECTORS, ts::Player::US);
     ASSERT_EQ(state.headline_ussr_card, 0); // Europe scoring canceled!
-    ASSERT_EQ(state.victory_points, 1);
+    ASSERT_EQ(state.victory_points, 0);     // Headline cancellation does not award VP
 }
 
 
