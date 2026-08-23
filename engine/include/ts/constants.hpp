@@ -226,6 +226,7 @@ namespace card_ids {
     constexpr uint8_t YURI_AND_SAMANTHA                   = 109;
     constexpr uint8_t AWACS_SALE                          = 110;
     constexpr uint8_t AWACS_SALE_TO_SAUDIS                = 110;
+    constexpr uint8_t SPACE_WALK_DISCARD                  = 250;
 }
 
 // Persistent Effects Bitfield Bit Allocations

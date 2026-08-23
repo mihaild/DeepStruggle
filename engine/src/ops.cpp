@@ -239,6 +239,19 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
         }
     }
 
+    state.last_roll = DieRollRecord{
+        .type = RollType::COUP,
+        .roller = p,
+        .card_id = 0,
+        .country_id = country_id,
+        .roll1 = roll,
+        .mod1 = static_cast<int8_t>(ops_value + (mod_roll - roll)),
+        .roll2 = 0,
+        .mod2 = static_cast<int8_t>(2 * c_info.stability),
+        .success = (margin > 0),
+        .net_delta = static_cast<int8_t>(res.opp_inf_removed + res.player_inf_added)
+    };
+
     // Record turn aggregate
     size_t p_idx = player_to_index(p);
     size_t r_idx = static_cast<size_t>(c_info.region);
@@ -334,6 +347,19 @@ RealignResult Operations::execute_realign(GameState& state, Player p, uint8_t co
     } else {
         res.winner = Player::NONE;
     }
+
+    state.last_roll = DieRollRecord{
+        .type = RollType::REALIGNMENT,
+        .roller = p,
+        .card_id = 0,
+        .country_id = country_id,
+        .roll1 = res.us_roll,
+        .mod1 = static_cast<int8_t>(us_mod),
+        .roll2 = res.ussr_roll,
+        .mod2 = static_cast<int8_t>(ussr_mod),
+        .success = (res.winner == p),
+        .net_delta = static_cast<int8_t>(res.inf_removed)
+    };
 
     // Record turn aggregate
     size_t p_idx = player_to_index(p);

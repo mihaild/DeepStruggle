@@ -86,7 +86,7 @@ void StateMachine::init_new_game(GameState& state, uint64_t seed) noexcept {
     state.us_space_track = 0;
     state.ussr_space_track = 0;
     state.turn = 1;
-    state.action_round = 1;
+    state.action_round = 0;
 
     // 2. Fixed Setup Influence Placements
     // USSR: Syria(22)=1, Iraq(24)=1, North Korea(43)=3, East Germany(14)=3, Finland(5)=1
@@ -141,6 +141,7 @@ void StateMachine::start_turn(GameState& state) noexcept {
 
     // Phase C: Headline Phase
     state.current_phase = Phase::HEADLINE;
+    state.action_round = 0;
     state.headline_us_card = 0;
     state.headline_ussr_card = 0;
     state.headline_first_card = 0;
@@ -239,6 +240,9 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (card == card_ids::THE_CHINA_CARD) {
         state.china_card_holder = get_opponent(p);
         state.china_card_playable = 0; // Passes to opponent face down
+        if (p == Player::US) {
+            state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+        }
     } else if (card != 0) {
         const auto& c_info = CardData::get_card(card);
         state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
@@ -263,7 +267,8 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     // Determine max ARs for this turn
     uint8_t max_ar = (state.turn <= 3) ? 6 : 7;
     bool us_has_ar8 = state.has_flag(effect_bits::NORTH_SEA_OIL_ACTIVE) || SpaceRace::has_space_station_ar8(state, Player::US);
-    if (us_has_ar8 && state.phasing_player == Player::US && state.action_round == 7) {
+    bool ussr_has_ar8 = SpaceRace::has_space_station_ar8(state, Player::USSR);
+    if ((us_has_ar8 || ussr_has_ar8) && state.turn >= 4) {
         max_ar = 8;
     }
 
@@ -306,6 +311,34 @@ void StateMachine::end_turn(GameState& state) noexcept {
     Scoring::evaluate_military_ops(state);
     if (state.current_phase == Phase::GAME_OVER) return;
 
+    // Check Space Walk (Box 6) Privilege
+    bool us_sw = SpaceRace::has_space_walk(state, Player::US);
+    bool ussr_sw = SpaceRace::has_space_walk(state, Player::USSR);
+    Player sw_player = us_sw ? Player::US : (ussr_sw ? Player::USSR : Player::NONE);
+
+    if (sw_player != Player::NONE) {
+        CardLocation loc = (sw_player == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+        bool has_cards = false;
+        for (uint8_t i = 1; i <= 110; ++i) {
+            if (state.card_locations[i] == loc) {
+                has_cards = true;
+                break;
+            }
+        }
+        if (has_cards) {
+            state.ctx() = DecisionContext{};
+            state.ctx().decision_player = sw_player;
+            state.ctx().decision_type = DecisionType::SELECT_CARD;
+            state.ctx().resolving_card = card_ids::SPACE_WALK_DISCARD;
+            state.ctx().allow_early_stop = 1;
+            return;
+        }
+    }
+
+    finish_end_turn(state);
+}
+
+void StateMachine::finish_end_turn(GameState& state) noexcept {
     // Phase F: Check held cards (Scoring cards cannot be held!)
     for (uint8_t i = 1; i <= 110; ++i) {
         if (CardData::is_scoring_card(i)) {
@@ -330,7 +363,7 @@ void StateMachine::end_turn(GameState& state) noexcept {
     state.turn_aggregates.clear();
 
     state.turn++;
-    state.action_round = 1;
+    state.action_round = 0;
 
     if (state.turn == 4) {
         add_era_cards_to_deck(state, WarEra::MID);
@@ -358,6 +391,10 @@ static void snapshot_op_influence(GameState& state, Player p) noexcept {
 }
 
 bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
+    // Reset ephemeral die roll record for the current step
+    state.last_roll = DieRollRecord{};
+    state.last_die_roll = 0;
+    state.last_opp_die_roll = 0;
     if (state.current_phase == Phase::GAME_OVER) return false;
 
     // 1. SETUP PHASE
@@ -459,6 +496,16 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {
+            if (state.ctx().resolving_card == card_ids::SPACE_WALK_DISCARD) {
+                uint8_t card = action.primary_id;
+                if (card >= 1 && card <= 110 && !action.is_confirm_done()) {
+                    state.card_locations[card] = CardLocation::DISCARD_PILE;
+                }
+                state.ctx() = DecisionContext{};
+                finish_end_turn(state);
+                return true;
+            }
+
             bool finished = CardHandlers::handle_event_step(state, action);
             if (finished || action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
@@ -466,6 +513,14 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.pop_context();
                     if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
                         // Resumed from EVENT_FIRST
+                    } else {
+                        // Resumed from nested card execution (Missile Envy, Five Year Plan, Star Wars)
+                        state.ctx().resolving_card = 0;
+                        if (state.current_phase == Phase::HEADLINE) {
+                            advance_headline_step(state);
+                        } else {
+                            advance_after_action_round(state);
+                        }
                     }
                 } else if (state.current_phase == Phase::HEADLINE) {
                     advance_headline_step(state);
@@ -501,10 +556,23 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
                         uint8_t roll = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : Prng::roll_d6(state.rng_state);
                         state.last_die_roll = roll;
-                        if (roll <= 4) {
+                        bool escaped = (roll <= 4);
+                        if (escaped) {
                             if (p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
                             else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);
                         }
+                        state.last_roll = DieRollRecord{
+                            .type = RollType::TRAP_ESCAPE,
+                            .roller = p,
+                            .card_id = card,
+                            .country_id = 255,
+                            .roll1 = roll,
+                            .mod1 = 0,
+                            .roll2 = 0,
+                            .mod2 = 4, // escape threshold
+                            .success = escaped,
+                            .net_delta = 0
+                        };
                         if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
                         else advance_after_action_round(state);
                         return true;
@@ -541,6 +609,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::EVENT) {
+                    if (card == card_ids::THE_CHINA_CARD || CardData::is_opponent_card(card, p) || !CardHandlers::can_trigger_event(state, card, p)) {
+                        return false; // Illegal event play
+                    }
                     const auto& c_info = CardData::get_card(card);
                     bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
                     if (card != card_ids::KITCHEN_DEBATES) {
@@ -554,6 +625,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::OPS) {
+                    if (card == card_ids::THE_CHINA_CARD && p == Player::US) {
+                        state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+                    }
                     if (CardData::is_opponent_card(card, p)) {
                         state.ctx().decision_type = DecisionType::CHOOSE_TIMING_BRANCH;
                         return true;

@@ -1234,3 +1234,466 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 }
+
+TEST(CardEdgeCasesTest, SpaceRace_Box1_EarthSatellite_VPAwards_FirstAndSecond) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.victory_points = 0;
+    state.us_space_track = 0;
+    state.ussr_space_track = 0;
+
+    // US attempts Box 1 with forced roll 2 (success, 1-3)
+    bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER, 2);
+    ASSERT_TRUE(ok1);
+    ASSERT_EQ(state.us_space_track, 1);
+    ASSERT_EQ(state.victory_points, 2); // 1st player gets 2 VP
+
+    // USSR attempts Box 1 with forced roll 3 (success)
+    bool ok2 = ts::SpaceRace::attempt_space(state, ts::Player::USSR, ts::card_ids::SOCIALIST_GOVERNMENTS, 3);
+    ASSERT_TRUE(ok2);
+    ASSERT_EQ(state.ussr_space_track, 1);
+    ASSERT_EQ(state.victory_points, 1); // 2nd player gets 1 VP (2 - 1 = +1 VP)
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box2_AnimalInSpace_Grants2AttemptsPerTurn_AndCancelsWhenOpponentReaches) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.us_space_track = 1;
+    state.ussr_space_track = 0;
+
+    // US reaches Box 2
+    bool ok = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER, 2);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(state.us_space_track, 2);
+    ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+
+    // Reset turn attempts
+    state.set_space_turns_used(ts::Player::US, 0);
+    state.set_space_turns_used(ts::Player::USSR, 0);
+
+    // US can attempt space race 1st time
+    ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
+    state.record_space_attempt(ts::Player::US);
+
+    // US can attempt space race 2nd time in same turn!
+    ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
+    state.record_space_attempt(ts::Player::US);
+
+    // US cannot attempt 3rd time
+    ASSERT_FALSE(ts::SpaceRace::can_attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER));
+
+    // USSR can only attempt 1 time
+    ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::USSR, ts::card_ids::SOCIALIST_GOVERNMENTS));
+    state.record_space_attempt(ts::Player::USSR);
+    ASSERT_FALSE(ts::SpaceRace::can_attempt_space(state, ts::Player::USSR, ts::card_ids::SOCIALIST_GOVERNMENTS));
+
+    // USSR catches up to Box 2 -> privilege is cancelled for US!
+    state.ussr_space_track = 2;
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box3_ManInOrbit_VPAwards_First2VP_Second0VP) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.victory_points = 0;
+    state.us_space_track = 2;
+    state.ussr_space_track = 2;
+
+    // US advances to Box 3 (Man in Orbit)
+    bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER, 1);
+    ASSERT_TRUE(ok1);
+    ASSERT_EQ(state.us_space_track, 3);
+    ASSERT_EQ(state.victory_points, 2); // 1st player gets 2 VP
+
+    // USSR advances to Box 3
+    bool ok2 = ts::SpaceRace::attempt_space(state, ts::Player::USSR, ts::card_ids::SOCIALIST_GOVERNMENTS, 1);
+    ASSERT_TRUE(ok2);
+    ASSERT_EQ(state.ussr_space_track, 3);
+    ASSERT_EQ(state.victory_points, 2); // 2nd player gets 0 VP (remains +2 VP)
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInSpace_OpponentRevealsHeadlineFirst_AndCancelsWhenOpponentReaches) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.us_space_track = 4;
+    state.ussr_space_track = 3;
+
+    ASSERT_TRUE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::USSR));
+
+    // Start turn -> USSR must be prompted for Headline first!
+    ts::StateMachine::start_turn(state);
+    ASSERT_EQ(state.current_phase, ts::Phase::HEADLINE);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+
+    // USSR selects headline #31
+    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_US;
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0});
+
+    // Now US is prompted for Headline second, and USSR's headline is already known in state.headline_ussr_card!
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.headline_ussr_card, ts::card_ids::RED_SCARE_PURGE);
+
+    // US selects headline #103 Defectors -> cancels USSR headline!
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0});
+
+    // USSR catches up to Box 4 -> privilege cancelled
+    state.ussr_space_track = 4;
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box5_LunarProbe_VPAwards_First3VP_Second1VP) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.victory_points = 0;
+    state.us_space_track = 4;
+    state.ussr_space_track = 4;
+
+    // US advances to Box 5 (requires 3 Ops)
+    bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::CONTAINMENT, 1);
+    ASSERT_TRUE(ok1);
+    ASSERT_EQ(state.us_space_track, 5);
+    ASSERT_EQ(state.victory_points, 3); // 1st player gets 3 VP
+
+    // USSR advances to Box 5
+    bool ok2 = ts::SpaceRace::attempt_space(state, ts::Player::USSR, ts::card_ids::RED_SCARE_PURGE, 1);
+    ASSERT_TRUE(ok2);
+    ASSERT_EQ(state.ussr_space_track, 5);
+    ASSERT_EQ(state.victory_points, 2); // 2nd player gets 1 VP (3 - 1 = +2 VP)
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCancelsWhenOpponentReaches) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.turn = 2;
+    state.action_round = 6;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.us_space_track = 6;
+    state.ussr_space_track = 5;
+
+    ASSERT_TRUE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+
+    // Populate draw deck with plenty of dummy cards so reshuffle does not occur
+    for (uint8_t i = 1; i <= 35; ++i) {
+        state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+    }
+    // Put a toxic card in US hand
+    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::CardLocation::HAND_US;
+
+    // Step to finish AR 6 of Turn 2 (last AR in early war)
+    ts::StateMachine::advance_after_action_round(state);
+
+    // End of turn reached -> US with Space Walk is prompted to discard a card!
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+    ASSERT_EQ(state.ctx().allow_early_stop, 1);
+
+    // US discards Red Scare/Purge (#31)
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0});
+
+    // Card should now be in discard pile without event having triggered (Red Scare flag never set)
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::PURGE_US_ACTIVE));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::PURGE_USSR_ACTIVE));
+    
+    ASSERT_EQ(state.card_locations[ts::card_ids::RED_SCARE_PURGE], ts::CardLocation::DISCARD_PILE);
+
+    // Turn 2 is completed and advanced to Turn 3!
+    ASSERT_EQ(state.turn, 3);
+    ASSERT_EQ(state.current_phase, ts::Phase::HEADLINE);
+
+    // If USSR catches up to Box 6, privilege is cancelled
+    state.ussr_space_track = 6;
+    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box7_SpaceStation_VPAwards_First4VP_Second2VP) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.victory_points = 0;
+    state.us_space_track = 6;
+    state.ussr_space_track = 6;
+
+    // USSR advances to Box 7 (Space Station, 3 Ops)
+    bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::USSR, ts::card_ids::RED_SCARE_PURGE, 1);
+    ASSERT_TRUE(ok1);
+    ASSERT_EQ(state.ussr_space_track, 7);
+    ASSERT_EQ(state.victory_points, -4); // USSR 1st gets 4 VP
+
+    // US advances to Box 7
+    bool ok2 = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::CONTAINMENT, 1);
+    ASSERT_TRUE(ok2);
+    ASSERT_EQ(state.us_space_track, 7);
+    ASSERT_EQ(state.victory_points, -2); // US 2nd gets 2 VP (-4 + 2 = -2 VP)
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box8_EagleBearLanded_Grants8thActionRound_And2VPFirst0VPSecond) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.turn = 5;
+    state.victory_points = 0;
+    state.us_space_track = 7;
+    state.ussr_space_track = 7;
+
+    // US advances to Box 8 (requires 4 Ops, roll 1-2)
+    bool ok = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::MARSHALL_PLAN, 1);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(state.us_space_track, 8);
+    ASSERT_EQ(state.victory_points, 2); // 2 VP first
+    ASSERT_TRUE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
+
+    // Turn 5 AR 7: US plays in AR 7
+    state.turn = 5;
+    state.action_round = 7;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.china_card_playable = 0; // China card face down
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DISCARD_PILE;
+        }
+    }
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+
+    // Advance after US AR 7 -> Because US has Space Box 8, 8th AR begins (USSR has 0 cards so auto-passes to US)
+    ts::StateMachine::advance_after_action_round(state);
+    ASSERT_EQ(state.action_round, 8);
+    ASSERT_EQ(state.phasing_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+
+    // USSR catches up to Box 8 -> cancels 8th AR for US
+    state.ussr_space_track = 8;
+    ASSERT_FALSE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
+}
+
+TEST(CardEdgeCasesTest, IndependentReds_NoTargets_FinishesImmediately) {
+    ts::GameState state{};
+    state.rng_state = 42; state.turn = 1;
+
+    // Clear USSR influence in all 5 allowed countries
+    state.countries[ts::countries::YUGOSLAVIA].ussr_influence = 0;
+    state.countries[ts::countries::ROMANIA].ussr_influence = 0;
+    state.countries[ts::countries::BULGARIA].ussr_influence = 0;
+    state.countries[ts::countries::HUNGARY].ussr_influence = 0;
+    state.countries[ts::countries::CZECHOSLOVAKIA].ussr_influence = 0;
+
+    // Trigger Independent Reds
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::INDEPENDENT_REDS, ts::Player::US);
+    // When no targets exist, it must finish immediately with done=true and resolving_card=0
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.ctx().resolving_card, 0);
+}
+
+TEST(CardEdgeCasesTest, IndependentReds_RestrictedTo5AllowedCountries_RejectsCanada) {
+    ts::GameState state{};
+    state.rng_state = 42; state.turn = 1;
+
+    // Set USSR influence in Romania and Bulgaria only
+    state.countries[ts::countries::YUGOSLAVIA].ussr_influence = 0;
+    state.countries[ts::countries::ROMANIA].ussr_influence = 2;
+    state.countries[ts::countries::BULGARIA].ussr_influence = 1;
+    state.countries[ts::countries::HUNGARY].ussr_influence = 0;
+    state.countries[ts::countries::CZECHOSLOVAKIA].ussr_influence = 0;
+    state.countries[ts::countries::CANADA].ussr_influence = 0;
+    state.countries[ts::countries::CANADA].us_influence = 0;
+
+    bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::INDEPENDENT_REDS, ts::Player::US);
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::INDEPENDENT_REDS);
+
+    // Verify ActionMask only has ROMANIA and BULGARIA marked as legal
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[ts::countries::CANADA], 0); // Canada must be ILLEGAL
+    ASSERT_EQ(mask[ts::countries::ROMANIA], 1); // Romania must be legal
+    ASSERT_EQ(mask[ts::countries::BULGARIA], 1); // Bulgaria must be legal
+    ASSERT_EQ(mask[ts::countries::HUNGARY], 0); // Hungary has 0 USSR influence -> illegal
+
+    // Attempt to target Canada (country 0) -> must be rejected
+    bool ok_canada = ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0));
+    ASSERT_FALSE(ok_canada);
+    ASSERT_EQ(state.countries[ts::countries::CANADA].us_influence, 0);
+
+    // Target Romania (country 17) -> must succeed and add 2 US influence
+    bool ok_romania = ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::ROMANIA, 0, 0));
+    ASSERT_TRUE(ok_romania);
+    ASSERT_EQ(state.countries[ts::countries::ROMANIA].us_influence, 2);
+    ASSERT_EQ(state.ctx().resolving_card, 0);
+}
+
+TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OnlyOpsLegal) {
+    ts::GameState state{};
+    state.rng_state = 42;
+    state.turn = 1;
+    state.action_round = 1;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::USSR;
+    state.china_card_holder = ts::Player::USSR;
+    state.china_card_playable = 1;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // Step 1: USSR selects China Card
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::THE_CHINA_CARD);
+
+    // Verify ActionMask: EVENT (0) and SPACE (2) must be 0; only OPS (1) must be 1
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0); // Event ILLEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);   // Ops LEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 0); // Space ILLEGAL
+
+    // Attempting to step with EVENT mode must be rejected
+    bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    ASSERT_FALSE(ok_event);
+}
+
+TEST(CardEdgeCasesTest, OpponentCard_CannotBePlayedAsEvent_OnlyOpsAndSpaceLegal) {
+    ts::GameState state{};
+    state.rng_state = 42;
+    state.turn = 1;
+    state.action_round = 1;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR; // US Event Card
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // Step 1: USSR selects US card (Duck and Cover)
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+
+    // Verify ActionMask: EVENT (0) must be 0 for opponent card!
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0); // Event ILLEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);   // Ops LEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 1); // Space LEGAL (3 Ops vs Box 1 min 2)
+
+    // Attempting to step with EVENT mode must be rejected
+    bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    ASSERT_FALSE(ok_event);
+}
+
+TEST(CardEdgeCasesTest, FormosanResolution_CancelledWhenUSPlaysChinaCard) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.china_card_holder = ts::Player::US;
+    state.china_card_playable = 1;
+    state.set_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
+
+    // Step 1: US selects China Card
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    // Step 2: US selects OPS mode
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+
+    // Formosan resolution flag is cancelled upon US playing China Card for Ops!
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
+}
+
+TEST(CardEdgeCasesTest, FormosanResolution_NotCancelledWhenUSSRPlaysChinaCard) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.china_card_holder = ts::Player::USSR;
+    state.china_card_playable = 1;
+    state.set_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
+
+    // Step 1: USSR selects China Card
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    // Step 2: USSR selects OPS mode
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+
+    // Formosan resolution flag remains ACTIVE when USSR plays China Card
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
+}
+
+TEST(CardEdgeCasesTest, DieRollRecord_ResetToNoneOnNextStep) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.defcon = 5;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_OP_MODE;
+    state.ctx().pending_ops_value = 3;
+
+    // Step 1: USSR chooses COUP
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, 1, 0, 0));
+    ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
+
+    // Step 2: USSR points node (Iran) with forced roll 5
+    state.countries[ts::countries::IRAN].us_influence = 2;
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::IRAN, 5, 0));
+
+    ASSERT_EQ(state.last_roll.type, ts::RollType::COUP);
+    ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);
+    ASSERT_EQ(state.last_roll.country_id, ts::countries::IRAN);
+    ASSERT_EQ(state.last_roll.roll1, 5);
+    ASSERT_EQ(state.last_roll.mod1, 3); // Ops
+    ASSERT_TRUE(state.last_roll.success);
+
+    // Step 3: Next step (US turn, SELECT_CARD), last_roll MUST be reset to NONE
+    ASSERT_EQ(state.phasing_player, ts::Player::US);
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0));
+    ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
+    ASSERT_EQ(state.last_roll.roll1, 0);
+}
+
+TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    state.card_locations[ts::card_ids::BRUSH_WAR] = ts::CardLocation::HAND_USSR;
+
+    // Step 1: USSR selects Brush War (#36)
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::BRUSH_WAR, 0, 0));
+    ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
+
+    // Step 2: USSR selects EVENT mode -> transitions to POINT_NODE. NO ROLL YET!
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
+
+    // Step 3: USSR points to Brazil (#78, stability 2) with forced roll 4
+    state.countries[ts::countries::BRAZIL].us_influence = 2;
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::BRAZIL, 4, 0));
+
+    ASSERT_EQ(state.last_roll.type, ts::RollType::WAR_EVENT);
+    ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);
+    ASSERT_EQ(state.last_roll.card_id, ts::card_ids::BRUSH_WAR);
+    ASSERT_EQ(state.last_roll.country_id, ts::countries::BRAZIL);
+    ASSERT_EQ(state.last_roll.roll1, 4);
+    ASSERT_TRUE(state.last_roll.success);
+}

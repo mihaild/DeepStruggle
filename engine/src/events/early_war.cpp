@@ -130,8 +130,22 @@ bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll) noexcep
     uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
     state.last_die_roll = roll;
     int16_t total = roll + mod;
+    bool success = (total >= 4);
 
-    if (total >= 4) {
+    state.last_roll = DieRollRecord{
+        .type = RollType::WAR_EVENT,
+        .roller = Player::USSR,
+        .card_id = card_ids::KOREAN_WAR,
+        .country_id = countries::SOUTH_KOREA,
+        .roll1 = roll,
+        .mod1 = static_cast<int8_t>(mod),
+        .roll2 = 0,
+        .mod2 = 4, // Target total
+        .success = success,
+        .net_delta = static_cast<int8_t>(success ? 2 : 0)
+    };
+
+    if (success) {
         // USSR receives 2 VP and replaces all US influence in South Korea
         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
         uint8_t us_inf = state.countries[countries::SOUTH_KOREA].us_influence;
@@ -168,8 +182,22 @@ bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) n
     uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
     state.last_die_roll = roll;
     int16_t total = roll + mod;
+    bool success = (total >= 4);
 
-    if (total >= 4) {
+    state.last_roll = DieRollRecord{
+        .type = RollType::WAR_EVENT,
+        .roller = Player::USSR,
+        .card_id = card_ids::ARAB_ISRAELI_WAR,
+        .country_id = countries::ISRAEL,
+        .roll1 = roll,
+        .mod1 = static_cast<int8_t>(mod),
+        .roll2 = 0,
+        .mod2 = 4,
+        .success = success,
+        .net_delta = static_cast<int8_t>(success ? 2 : 0)
+    };
+
+    if (success) {
         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
         uint8_t us_inf = state.countries[countries::ISRAEL].us_influence;
         state.countries[countries::ISRAEL].us_influence = 0;
@@ -264,6 +292,20 @@ bool trigger_nato(GameState& state, Player p) noexcept {
 }
 
 bool trigger_independent_reds(GameState& state, Player p) noexcept {
+    // Independent Reds: Add US Influence to Yugoslavia, Romania, Bulgaria, Hungary, or Czechoslovakia
+    // equal to that country's USSR Influence.
+    bool any_valid = false;
+    uint8_t targets[] = { countries::YUGOSLAVIA, countries::ROMANIA, countries::BULGARIA, countries::HUNGARY, countries::CZECHOSLOVAKIA };
+    for (uint8_t cid : targets) {
+        if (state.countries[cid].ussr_influence > 0) {
+            any_valid = true;
+            break;
+        }
+    }
+    if (!any_valid) {
+        return true; // No valid target country has USSR influence -> event finishes immediately without effect
+    }
+
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;

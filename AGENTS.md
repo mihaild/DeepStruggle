@@ -101,7 +101,8 @@ graph TD
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
 │   ├── test_bindings.py        # Validates Python nanobind module
 │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation, replays
-│   └── test_web_workbench.py   # Validates map/card metadata endpoints and DOM structure
+│   ├── test_web_workbench.py   # Validates map/card metadata endpoints and DOM structure
+│   └── test_e2e_space_race.py  # Headless Playwright Chrome E2E browser tests
 │
 └── replays/                    # Recorded game logs in standardized .tslog.json format
 ```
@@ -163,7 +164,7 @@ cmake --build build_san -j
 ./build/engine/ts_fuzz --games 10000
 ./build/engine/ts_fuzz --steps 5000000
 
-# Python Integration Tests (124 tests)
+# Python Integration Tests (128 tests)
 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
 

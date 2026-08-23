@@ -63,6 +63,7 @@ bool SpaceRace::has_space_station_ar8(const GameState& state, Player p) noexcept
 
 bool SpaceRace::can_attempt_space(const GameState& state, Player p, uint8_t card_id) noexcept {
     if (p == Player::NONE || card_id < 1 || card_id > 110) return false;
+    if (card_id == card_ids::THE_CHINA_CARD) return false; // The China Card cannot be played for Space Race
     uint8_t cur_track = (p == Player::US) ? state.us_space_track : state.ussr_space_track;
     if (cur_track >= 8) return false; // Already reached max box
 
@@ -92,7 +93,21 @@ bool SpaceRace::attempt_space(GameState& state, Player p, uint8_t card_id, uint8
     uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
     state.last_die_roll = roll;
 
-    if (roll <= next_box.max_roll) {
+    bool success = (roll <= next_box.max_roll);
+    state.last_roll = DieRollRecord{
+        .type = RollType::SPACE_RACE,
+        .roller = p,
+        .card_id = card_id,
+        .country_id = next_box_num,
+        .roll1 = roll,
+        .mod1 = static_cast<int8_t>(next_box.max_roll),
+        .roll2 = 0,
+        .mod2 = 0,
+        .success = success,
+        .net_delta = static_cast<int8_t>(success ? 1 : 0)
+    };
+
+    if (success) {
         // Advance track
         cur_track = next_box_num;
 

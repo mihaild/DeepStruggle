@@ -66,6 +66,10 @@ target_link_libraries(ts_tests PRIVATE ts_engine_core)
 add_executable(ts_fuzz tests/test_fuzz.cpp)
 target_link_libraries(ts_fuzz PRIVATE ts_engine_core)
 
+# Event-Biased Fuzzer
+add_executable(ts_fuzz_events tests/test_fuzz_events.cpp)
+target_link_libraries(ts_fuzz_events PRIVATE ts_engine_core)
+
 # Performance Throughput Benchmark
 add_executable(ts_benchmark tests/test_benchmark.cpp)
 target_link_libraries(ts_benchmark PRIVATE ts_engine_core)

@@ -29,6 +29,18 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             *out_size = 112;
             std::memset(mask_out, 0, 112);
 
+            // 0. Space Walk (Box 6) end-of-turn discard
+            if (ctx.resolving_card == card_ids::SPACE_WALK_DISCARD) {
+                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (state.card_locations[i] == loc) {
+                        mask_out[i] = 1;
+                    }
+                }
+                mask_out[0] = 1; // Allow early stop / pass
+                return;
+            }
+
             // 1. If currently inside an active event's sub-decision:
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
@@ -122,15 +134,22 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // Event play
-            if (CardHandlers::can_trigger_event(state, card, p)) {
+            // China Card can ONLY be played for Operations (no Event, no Space Race)
+            if (card == card_ids::THE_CHINA_CARD) {
+                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                return;
+            }
+
+            // Event play: legal ONLY for friendly or neutral cards (excluding China Card),
+            // and only if event prerequisites are met.
+            if (!CardData::is_opponent_card(card, p) && CardHandlers::can_trigger_event(state, card, p)) {
                 mask_out[static_cast<size_t>(PlayMode::EVENT)] = 1;
             }
 
-            // Ops play
+            // Ops play: always legal for non-scoring cards
             mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
 
-            // Space play
+            // Space play: legal if prerequisites are met and card is NOT China Card
             if (SpaceRace::can_attempt_space(state, p, card)) {
                 mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
             }

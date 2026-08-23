@@ -36,6 +36,6 @@ if(nanobind_FOUND)
     target_include_directories(ts_engine PRIVATE engine/include)
     target_link_libraries(ts_engine PRIVATE ts_engine_core)
     set_target_properties(ts_engine PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 endif()

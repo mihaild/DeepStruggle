@@ -363,13 +363,19 @@ export class TSApp {
       if (this.state) this.cardsView.showPileModal("Removed from Game Pile", this.state.removed_pile || []);
     });
 
-    // Modal Close button
-    document.getElementById("modal-close")?.addEventListener("click", () => {
+    // Modal Close button & ESC key
+    const closeModal = () => {
       document.getElementById("modal-container")?.classList.add("hidden");
-    });
+    };
+    document.getElementById("modal-close")?.addEventListener("click", closeModal);
     document.getElementById("modal-container")?.addEventListener("click", (e) => {
       if ((e.target as HTMLElement).id === "modal-container") {
-        document.getElementById("modal-container")?.classList.add("hidden");
+        closeModal();
+      }
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closeModal();
       }
     });
   }
@@ -377,5 +383,5 @@ export class TSApp {
 
 // Boot application
 window.addEventListener("DOMContentLoaded", () => {
-  new TSApp();
+  (window as any).__wb = new TSApp();
 });

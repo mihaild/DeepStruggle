@@ -11,7 +11,15 @@ import json
 import argparse
 from typing import Dict, List, Optional, Any, Union
 
-import ts_engine
+import os
+try:
+    import ts_engine
+except ImportError:
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _build = os.path.join(_root, "build")
+    if os.path.exists(_build) and _build not in sys.path:
+        sys.path.insert(0, _build)
+    import ts_engine
 
 class LocalSessionManager:
     """Manages an in-memory or file-persisted game session using ts_engine directly."""

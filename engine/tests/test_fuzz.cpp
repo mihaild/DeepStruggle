@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
     uint64_t fuzzer_prng = seed;
     uint64_t total_steps = 0;
     uint64_t total_games = 0;
+    uint64_t game_steps = 0;
 
     ts::GameState state{};
     ts::Engine::init_game(state, ts::Prng::next_u64(fuzzer_prng));
@@ -46,6 +47,7 @@ int main(int argc, char** argv) {
 
         if (ts::Engine::is_terminal(state)) {
             total_games++;
+            game_steps = 0;
             ts::Engine::init_game(state, ts::Prng::next_u64(fuzzer_prng));
             if (max_games > 0 && total_games >= max_games) break;
         }
@@ -87,6 +89,16 @@ int main(int argc, char** argv) {
         // Step engine
         ts::Engine::step(state, action);
         total_steps++;
+        game_steps++;
+        if (game_steps > 20000) {
+            std::cerr << "Game " << total_games << " exceeded 20000 steps! phase=" << static_cast<int>(state.current_phase)
+                      << " turn=" << static_cast<int>(state.turn)
+                      << " ar=" << static_cast<int>(state.action_round)
+                      << " dt=" << static_cast<int>(state.ctx().decision_type)
+                      << " res_card=" << static_cast<int>(state.ctx().resolving_card)
+                      << " p=" << static_cast<int>(state.ctx().decision_player) << std::endl;
+            std::exit(1);
+        }
 
         // Invariant checks
         if (state.victory_points < -20 || state.victory_points > 20) {

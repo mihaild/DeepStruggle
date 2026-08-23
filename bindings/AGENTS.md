@@ -41,12 +41,16 @@ This directory contains the Python native extension module (`ts_engine`) built w
 cmake -B build -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build -j
 
-# Run Python binding tests
-PYTHONPATH=. .venv/bin/pytest -v tests/test_bindings.py
+# Run Python binding tests (outputs to build/ts_engine.so)
+PYTHONPATH=build:. .venv/bin/pytest -v tests/test_bindings.py
 ```
 
 ### Running with AddressSanitizer (ASan):
-When `ts_engine` is built with `-fsanitize=address`:
+When `ts_engine` is built in `build_san/` with `-fsanitize=address`:
 ```bash
-LD_PRELOAD=/usr/lib/libasan.so ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0 PYTHONPATH=. .venv/bin/pytest -v tests/
+# Using the automated helper script (dynamically resolves libasan.so and points to build_san/)
+./run_asan.sh .venv/bin/pytest -v tests/test_bindings.py
+
+# Or manually:
+LD_PRELOAD=/usr/lib/libasan.so ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0 PYTHONPATH=build_san:. .venv/bin/pytest -v tests/test_bindings.py
 ```

@@ -5,7 +5,14 @@ import random
 import logging
 from typing import Dict, List, Optional, Set, Any
 from fastapi import WebSocket
-import ts_engine
+try:
+    import ts_engine
+except ImportError:
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _build = os.path.join(_root, "build")
+    if os.path.exists(_build) and _build not in sys.path:
+        sys.path.insert(0, _build)
+    import ts_engine
 from server.replay import ReplayLogger
 
 logger = logging.getLogger("ts_server.session")
@@ -21,18 +28,45 @@ def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts
 
     # 1. Primary Action Narrative
     if d_type == ts_engine.DecisionType.SELECT_CARD:
-        card_name = ts_engine.CardData.get_card_name(primary)
+        resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
+        card_name = ts_engine.CardData.get_card_name(primary) if 1 <= primary <= 110 else f"#{primary}"
         phase_name = state_before.get("current_phase_name", "")
-        if phase_name == "HEADLINE":
+        if resolving_card == 250:
+            if action.is_confirm_done() or primary == 0:
+                logs.append(f"{p} passes Space Walk (Box 6) turn-end discard opportunity.")
+            else:
+                logs.append(f"{p} discards {card_name} (#{primary}) via Space Walk (Box 6 privilege).")
+        elif phase_name == "HEADLINE":
+            us_h_before = state_before.get("headline_us_card", 0)
+            ussr_h_before = state_before.get("headline_ussr_card", 0)
+            is_second = (p == "US" and ussr_h_before > 0) or (p == "USSR" and us_h_before > 0)
+
             logs.append(f"{p} commits Headline Card: {card_name} (#{primary})")
+            if is_second:
+                us_card = primary if p == "US" else us_h_before
+                ussr_card = primary if p == "USSR" else ussr_h_before
+                us_name = ts_engine.CardData.get_card_name(us_card)
+                ussr_name = ts_engine.CardData.get_card_name(ussr_card)
+                us_ops = ts_engine.CardData.get_card_info(us_card).get("ops", 0)
+                ussr_ops = ts_engine.CardData.get_card_info(ussr_card).get("ops", 0)
+
+                first_p = "US" if us_ops >= ussr_ops else "USSR"
+                second_p = "USSR" if first_p == "US" else "US"
+                first_name = us_name if first_p == "US" else ussr_name
+                second_name = ussr_name if first_p == "US" else us_name
+                first_ops = max(us_ops, ussr_ops)
+                second_ops = min(us_ops, ussr_ops)
+
+                logs.append(f"  ★ Headlines Simultaneously Revealed: US plays '{us_name}' (#{us_card}, {us_ops} Ops) vs USSR plays '{ussr_name}' (#{ussr_card}, {ussr_ops} Ops)")
+                logs.append(f"  ★ Resolution Order: 1st {first_p} '{first_name}' ({first_ops} Ops) -> 2nd {second_p} '{second_name}' ({second_ops} Ops)")
         else:
             logs.append(f"{p} plays Card: {card_name} (#{primary})")
 
     elif d_type == ts_engine.DecisionType.POINT_NODE:
-        if action.is_confirm_done():
+        if action.is_confirm_done() or primary == 255 or (primary == 0 and (flags & 128)):
             logs.append(f"{p} confirms / finishes point node selections.")
         else:
-            c_name = ts_engine.MapData.get_country_name(primary)
+            c_name = ts_engine.MapData.get_country_name(primary) if primary < 84 else f"Node #{primary}"
             resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
             phase_name = state_before.get("current_phase_name", "")
 
@@ -105,6 +139,14 @@ def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts
     if state_before.get("ussr_mil_ops") != state_after.get("ussr_mil_ops"):
         logs.append(f"  • USSR MilOps: {state_before.get('ussr_mil_ops')} -> {state_after.get('ussr_mil_ops')}")
 
+    # 3.5 Effect Flag deltas
+    old_flags = set(state_before.get("flags", []))
+    new_flags = set(state_after.get("flags", []))
+    for f in sorted(new_flags - old_flags):
+        logs.append(f"  • Effect Activated: {f}")
+    for f in sorted(old_flags - new_flags):
+        logs.append(f"  • Effect Cancelled: {f}")
+
     # 4. Card movement deltas
     old_locs = state_before.get("card_locations", {})
     new_locs = state_after.get("card_locations", {})
@@ -115,73 +157,104 @@ def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts
             card_name = ts_engine.CardData.get_card_name(cid)
             logs.append(f"  • Card #{cid} ({card_name}) moved: {old_loc} -> {new_loc}")
 
-    # 5. Die roll logging
-    last_roll = state_after.get("last_die_roll", 0)
-    last_opp_roll = state_after.get("last_opp_die_roll", 0)
+    # 5. Structured Die Roll Event Logging (Zero ghost / stale rolls)
+    die_roll = state_after.get("die_roll", {})
+    roll_type = die_roll.get("type", "NONE")
 
-    WAR_CARDS = {
-        9: "Korean War",
-        11: "Arab-Israeli War",
-        23: "Indo-Pakistani War",
-        36: "Brush War",
-        45: "Summit",
-        84: "Reagan Bombs Libya",
-        102: "Iran-Iraq War",
-        107: "Che",
-        91: "Ortega Elected in Nicaragua"
-    }
-
-    resolving_card = state_before.get("decision_context", {}).get("resolving_card", 0)
-    pending_card = state_before.get("decision_context", {}).get("pending_op_card", 0)
-    op_mode = state_before.get("decision_context", {}).get("op_mode", 0)
-
-    # Coup attempt
-    if d_type == ts_engine.DecisionType.POINT_NODE and op_mode == 1 and not action.is_confirm_done():
-        c_name = ts_engine.MapData.get_country_name(primary)
+    if roll_type == "COUP":
+        c_name = die_roll.get("country_name") or (ts_engine.MapData.get_country_name(die_roll.get("country_id", 0)) if die_roll.get("country_id", 255) < 84 else "")
         c_stab = state_before.get("countries", {}).get(c_name, {}).get("stability", 1)
-        ops_val = state_before.get("decision_context", {}).get("pending_ops_value", 0)
-        total = last_roll + ops_val
+        r_player = die_roll.get("roller") or p
+        roll1 = die_roll.get("roll1", 0)
+        mod1 = die_roll.get("mod1", 0)
+        tot1 = die_roll.get("total1", roll1 + mod1)
         def_target = c_stab * 2
-        net = total - def_target
-        status_str = f"Net +{net} (Coup Succeeded)" if net > 0 else "Coup Failed (Roll + Ops <= 2x Stability)"
-        logs.append(f"  🎲 Coup Roll in {c_name}: {last_roll} (+{ops_val} Ops = {total}) vs {def_target} Defense -> {status_str}")
+        success = die_roll.get("success", False)
+        net = die_roll.get("net_delta", 0)
+        card_name = die_roll.get("card_name", "")
+        card_prefix = f" ({card_name})" if card_name else ""
+        status_str = f"Net +{net} Influence (Coup Succeeded)" if success else "Coup Failed (Roll + Ops <= 2x Stability)"
+        logs.append(f"  🎲 Coup in {c_name}{card_prefix}: {r_player} rolls {roll1} (+{mod1} Ops = {tot1}) vs {def_target} Defense (2x Stability {c_stab}) -> {status_str}")
 
-    # Realignment
-    elif d_type == ts_engine.DecisionType.POINT_NODE and op_mode == 2 and not action.is_confirm_done():
-        c_name = ts_engine.MapData.get_country_name(primary)
-        logs.append(f"  🎲 Realignment Rolls in {c_name}: US rolled {last_roll}, USSR rolled {last_opp_roll}")
+    elif roll_type == "REALIGNMENT":
+        c_name = die_roll.get("country_name") or (ts_engine.MapData.get_country_name(die_roll.get("country_id", 0)) if die_roll.get("country_id", 255) < 84 else "")
+        roll_us = die_roll.get("roll1", 0)
+        mod_us = die_roll.get("mod1", 0)
+        tot_us = die_roll.get("total1", roll_us + mod_us)
+        roll_ussr = die_roll.get("roll2", 0)
+        mod_ussr = die_roll.get("mod2", 0)
+        tot_ussr = die_roll.get("total2", roll_ussr + mod_ussr)
+        net = die_roll.get("net_delta", 0)
+        if tot_us > tot_ussr:
+            res_str = f"US wins by +{tot_us - tot_ussr} (Removes {net} USSR Influence)"
+        elif tot_ussr > tot_us:
+            res_str = f"USSR wins by +{tot_ussr - tot_us} (Removes {net} US Influence)"
+        else:
+            res_str = "Tie (No Influence Removed)"
+        logs.append(f"  🎲 Realignment in {c_name}: US rolls {roll_us} ({'+' if mod_us>=0 else ''}{mod_us} mod = {tot_us}), USSR rolls {roll_ussr} ({'+' if mod_ussr>=0 else ''}{mod_ussr} mod = {tot_ussr}) -> {res_str}")
 
-    # War event play
-    elif (d_type == ts_engine.DecisionType.SELECT_PLAY_MODE and primary == 0 and pending_card in WAR_CARDS) or          (d_type == ts_engine.DecisionType.POINT_NODE and resolving_card in WAR_CARDS and not action.is_confirm_done()):
-        card_id = resolving_card if resolving_card in WAR_CARDS else pending_card
-        war_name = WAR_CARDS.get(card_id, f"Card #{card_id}")
-        if card_id == 45: # Summit
-            logs.append(f"  🎲 Summit Die Rolls: US rolled {last_roll}, USSR rolled {last_opp_roll}")
-        elif last_roll > 0:
-            vp_diff = state_after.get("victory_points", 0) - state_before.get("victory_points", 0)
-            status = "Success (Victory Points & Influence awarded)" if vp_diff != 0 else "Roll Failed"
-            logs.append(f"  🎲 {war_name} Die Roll: {last_roll} -> {status}")
+    elif roll_type == "SPACE_RACE":
+        target_step = die_roll.get("country_id", 0)
+        roll1 = die_roll.get("roll1", 0)
+        max_roll = die_roll.get("mod1", 0)
+        success = die_roll.get("success", False)
+        r_player = die_roll.get("roller") or p
+        status = f"SUCCESS (Advanced to Box #{target_step})" if success else f"FAILED (Roll {roll1} > {max_roll} threshold)"
+        logs.append(f"  🎲 Space Race Attempt (Target Box #{target_step}): {r_player} rolls {roll1} -> {status}")
 
-    # Space Race
-    elif d_type == ts_engine.DecisionType.SELECT_PLAY_MODE and primary == 2:
-        us_sp = state_after.get("space", {}).get("US", 0) - state_before.get("space", {}).get("US", 0)
-        ussr_sp = state_after.get("space", {}).get("USSR", 0) - state_before.get("space", {}).get("USSR", 0)
-        sp_success = (us_sp > 0 or ussr_sp > 0)
-        new_step = state_after.get("space", {}).get("US" if p == "US" else "USSR", 0)
-        status = f"Success! Advanced to Step {new_step}" if sp_success else "Failed (Roll exceeded required threshold)"
-        logs.append(f"  🎲 Space Race Die Roll: {last_roll} -> {status}")
+    elif roll_type == "WAR_EVENT":
+        card_name = die_roll.get("card_name") or f"Card #{die_roll.get('card_id')}"
+        c_name = die_roll.get("country_name") or (ts_engine.MapData.get_country_name(die_roll.get("country_id", 0)) if die_roll.get("country_id", 255) < 84 else "")
+        roll1 = die_roll.get("roll1", 0)
+        mod1 = die_roll.get("mod1", 0)
+        tot1 = die_roll.get("total1", roll1 + mod1)
+        threshold = die_roll.get("mod2", 0)
+        success = die_roll.get("success", False)
+        r_player = die_roll.get("roller") or p
+        target_str = f" targeting {c_name}" if c_name else ""
+        status = f"Success ({tot1} >= {threshold} target: Target Captured & VP Awarded)" if success else f"Roll Failed ({tot1} < {threshold} target)"
+        logs.append(f"  🎲 {card_name} Roll{target_str}: {r_player} rolls {roll1} ({'+' if mod1>=0 else ''}{mod1} mod = {tot1}) -> {status}")
 
-    # Bear Trap / Quagmire
-    elif d_type == ts_engine.DecisionType.SELECT_CARD and (
-        (p == "US" and "QUAGMIRE_ACTIVE" in state_before.get("persistent_effects_list", [])) or
-        (p == "USSR" and "BEAR_TRAP_ACTIVE" in state_before.get("persistent_effects_list", []))
-    ):
-        if last_roll > 0:
-            escaped = (last_roll <= 4)
-            status = "Success! Discard canceled effect." if escaped else "Failed (Roll > 4, remains trapped)"
-            logs.append(f"  🎲 Escape Die Roll: {last_roll} (Need 1-4) -> {status}")
+    elif roll_type == "OLYMPIC_GAMES":
+        sponsor = die_roll.get("roller") or p
+        sp_roll = die_roll.get("roll1", 0)
+        sp_tot = die_roll.get("total1", sp_roll + 2)
+        opp_roll = die_roll.get("roll2", 0)
+        opp_tot = die_roll.get("total2", opp_roll)
+        opp_side = "US" if sponsor == "USSR" else "USSR"
+        if sp_tot > opp_tot:
+            res_str = f"Sponsor {sponsor} wins by +{sp_tot - opp_tot} (+2 VP)"
+        elif opp_tot > sp_tot:
+            res_str = f"Opponent {opp_side} wins"
+        else:
+            res_str = "Tie (No VP)"
+        logs.append(f"  🎲 Olympic Games Competition: Sponsor ({sponsor}) rolls {sp_roll} (+2 = {sp_tot}), Opponent ({opp_side}) rolls {opp_roll} -> {res_str}")
+
+    elif roll_type == "SUMMIT":
+        us_roll = die_roll.get("roll1", 0)
+        us_dom = die_roll.get("mod1", 0)
+        us_tot = die_roll.get("total1", us_roll + us_dom)
+        ussr_roll = die_roll.get("roll2", 0)
+        ussr_dom = die_roll.get("mod2", 0)
+        ussr_tot = die_roll.get("total2", ussr_roll + ussr_dom)
+        diff = abs(us_tot - ussr_tot)
+        if us_tot > ussr_tot:
+            res_str = f"US wins Summit by +{diff}"
+        elif ussr_tot > us_tot:
+            res_str = f"USSR wins Summit by +{diff}"
+        else:
+            res_str = "Tied Summit (No Effect)"
+        logs.append(f"  🎲 Summit Rolls: US rolls {us_roll} (+{us_dom} Dom = {us_tot}), USSR rolls {ussr_roll} (+{ussr_dom} Dom = {ussr_tot}) -> {res_str}")
+
+    elif roll_type == "TRAP_ESCAPE":
+        r_player = die_roll.get("roller") or p
+        roll1 = die_roll.get("roll1", 0)
+        success = die_roll.get("success", False)
+        status = "Success! Discard canceled trap." if success else "Failed (Roll > 4, remains trapped)"
+        logs.append(f"  🎲 Trap Escape Roll: {r_player} rolls {roll1} (Needed 1–4) -> {status}")
 
     return logs
+
 
 class GameSession:
     def __init__(self, game_id: str, seed: Optional[int] = None, us_player: str = "US", ussr_player: str = "USSR"):
@@ -316,11 +389,15 @@ class GameSession:
         for line in delta_lines:
             logger.info(f"[{self.game_id}] Step {self.step_index} [Turn {self.state.turn} AR {self.state.action_round}]: {line}")
 
+        step_turn = state_before.get("turn", self.state.turn)
+        step_phase = str(state_before.get("current_phase_name", "ACTION"))
+        step_ar = 0 if step_phase in ("HEADLINE", "SETUP") else state_before.get("action_round", self.state.action_round)
+
         log_entry = {
             "step_index": self.step_index,
-            "turn": self.state.turn,
-            "ar": self.state.action_round,
-            "phase": str(state_before.get("current_phase_name", "ACTION")),
+            "turn": step_turn,
+            "ar": step_ar,
+            "phase": step_phase,
             "player": state_before.get("decision_context", {}).get("decision_player", "NONE"),
             "text": main_desc,
             "details": delta_lines[1:] if len(delta_lines) > 1 else []
@@ -330,9 +407,9 @@ class GameSession:
         # Log to replay
         self.replay_logger.log_step(
             step_index=self.step_index,
-            turn=self.state.turn,
-            ar=self.state.action_round,
-            phase=str(state_before.get("current_phase_name", "ACTION")),
+            turn=step_turn,
+            ar=step_ar,
+            phase=step_phase,
             player=log_entry["player"],
             action={"decision_type": int(d_type), "primary_id": primary, "secondary_id": secondary, "flags": flags},
             description=main_desc,

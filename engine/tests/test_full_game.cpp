@@ -1,3 +1,4 @@
+#include "ts/prng.hpp"
 #include "test_framework.hpp"
 #include "game_test_wrapper.hpp"
 #include "ts/constants.hpp"
@@ -104,4 +105,106 @@ TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
     ASSERT_TRUE(has_domination);
     ASSERT_TRUE(has_control);
     ASSERT_TRUE(has_presence);
+}
+
+TEST(FullGameTest, EventBiasedFuzzing_HighEventProbability_MaintainsInvariantsAcrossManyGames) {
+    uint64_t fuzzer_prng = 2026;
+    uint32_t total_games = 0;
+    uint32_t total_events = 0;
+    uint32_t target_games = 200;
+
+    uint8_t mask_buf[128];
+    size_t mask_size = 0;
+
+    while (total_games < target_games) {
+        ts::GameState state{};
+        ts::Engine::init_game(state, ts::Prng::next_u64(fuzzer_prng));
+
+        while (!ts::Engine::is_terminal(state)) {
+            ts::Engine::get_legal_action_mask(state, mask_buf, &mask_size);
+            ASSERT_GT(mask_size, 0);
+
+            std::vector<uint8_t> legal_indices;
+            for (size_t i = 0; i < mask_size; ++i) {
+                if (mask_buf[i]) legal_indices.push_back(static_cast<uint8_t>(i));
+            }
+
+            if (legal_indices.empty()) {
+                if (state.ctx().allow_early_stop || state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+                    ts::MicroAction action{};
+                    action.decision_type = state.ctx().decision_type;
+                    action.flags = ts::action_flags::CONFIRM_DONE;
+                    ts::Engine::step(state, action);
+                    continue;
+                }
+                ASSERT_TRUE(false);
+            }
+
+            uint8_t chosen_action_id = legal_indices[0];
+            ts::DecisionType d_type = state.ctx().decision_type;
+
+            if (d_type == ts::DecisionType::SELECT_PLAY_MODE) {
+                bool event_legal = (std::find(legal_indices.begin(), legal_indices.end(), 0) != legal_indices.end());
+                uint32_t roll = ts::Prng::random_index(fuzzer_prng, 100);
+                if (event_legal && roll < 95) {
+                    chosen_action_id = 0;
+                    total_events++;
+                } else {
+                    uint32_t idx = ts::Prng::random_index(fuzzer_prng, static_cast<uint32_t>(legal_indices.size()));
+                    chosen_action_id = legal_indices[idx];
+                }
+            } else if (d_type == ts::DecisionType::CHOOSE_TIMING_BRANCH) {
+                bool event_first_legal = (std::find(legal_indices.begin(), legal_indices.end(), 1) != legal_indices.end());
+                uint32_t roll = ts::Prng::random_index(fuzzer_prng, 100);
+                if (event_first_legal && roll < 95) {
+                    chosen_action_id = 1;
+                    total_events++;
+                } else {
+                    uint32_t idx = ts::Prng::random_index(fuzzer_prng, static_cast<uint32_t>(legal_indices.size()));
+                    chosen_action_id = legal_indices[idx];
+                }
+            } else if (d_type == ts::DecisionType::SELECT_CARD && state.ctx().resolving_card == 0) {
+                std::vector<uint8_t> event_cards;
+                for (uint8_t cid : legal_indices) {
+                    if (cid >= 1 && cid <= 110) {
+                        const auto& c_info = ts::CardData::get_card(cid);
+                        if (!c_info.is_scoring) {
+                            event_cards.push_back(cid);
+                        }
+                    }
+                }
+                uint32_t roll = ts::Prng::random_index(fuzzer_prng, 100);
+                if (!event_cards.empty() && roll < 90) {
+                    uint32_t idx = ts::Prng::random_index(fuzzer_prng, static_cast<uint32_t>(event_cards.size()));
+                    chosen_action_id = event_cards[idx];
+                } else {
+                    uint32_t idx = ts::Prng::random_index(fuzzer_prng, static_cast<uint32_t>(legal_indices.size()));
+                    chosen_action_id = legal_indices[idx];
+                }
+            } else {
+                uint32_t chosen_idx = ts::Prng::random_index(fuzzer_prng, static_cast<uint32_t>(legal_indices.size()));
+                chosen_action_id = legal_indices[chosen_idx];
+            }
+
+            ts::MicroAction action{};
+            action.decision_type = d_type;
+            action.primary_id = chosen_action_id;
+
+            ts::Engine::step(state, action);
+
+            ASSERT_GE(state.victory_points, -20);
+            ASSERT_LE(state.victory_points, 20);
+            ASSERT_GE(state.defcon, 1);
+            ASSERT_LE(state.defcon, 5);
+            ASSERT_LE(state.us_mil_ops, 5);
+            ASSERT_LE(state.ussr_mil_ops, 5);
+            ASSERT_LE(state.us_space_track, 8);
+            ASSERT_LE(state.ussr_space_track, 8);
+            ASSERT_LE(state.ctx_stack_depth, 2);
+        }
+        total_games++;
+    }
+
+    ASSERT_EQ(total_games, target_games);
+    ASSERT_GT(total_events, 500);
 }

@@ -35,6 +35,19 @@ static const char* decision_type_to_str(ts::DecisionType dt) {
     }
 }
 
+static const char* roll_type_to_str(ts::RollType t) noexcept {
+    switch (t) {
+        case ts::RollType::COUP: return "COUP";
+        case ts::RollType::REALIGNMENT: return "REALIGNMENT";
+        case ts::RollType::SPACE_RACE: return "SPACE_RACE";
+        case ts::RollType::WAR_EVENT: return "WAR_EVENT";
+        case ts::RollType::OLYMPIC_GAMES: return "OLYMPIC_GAMES";
+        case ts::RollType::SUMMIT: return "SUMMIT";
+        case ts::RollType::TRAP_ESCAPE: return "TRAP_ESCAPE";
+        default: return "NONE";
+    }
+}
+
 static const char* phase_to_str(ts::Phase phase) {
     switch (phase) {
         case ts::Phase::SETUP: return "SETUP";
@@ -109,6 +122,24 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     d["forced_card_id"] = state.forced_card_id;
     d["last_die_roll"] = state.last_die_roll;
     d["last_opp_die_roll"] = state.last_opp_die_roll;
+
+    nb::dict die_roll;
+    die_roll["type"] = roll_type_to_str(state.last_roll.type);
+    die_roll["type_id"] = static_cast<uint8_t>(state.last_roll.type);
+    die_roll["roller"] = (state.last_roll.roller == ts::Player::US ? "US" : (state.last_roll.roller == ts::Player::USSR ? "USSR" : "NONE"));
+    die_roll["card_id"] = state.last_roll.card_id;
+    die_roll["card_name"] = (state.last_roll.card_id >= 1 && state.last_roll.card_id <= 110) ? std::string(ts::CardData::get_card(state.last_roll.card_id).name) : "";
+    die_roll["country_id"] = state.last_roll.country_id;
+    die_roll["country_name"] = (state.last_roll.country_id < 84) ? std::string(ts::MapData::get_country(state.last_roll.country_id).name) : "";
+    die_roll["roll1"] = state.last_roll.roll1;
+    die_roll["mod1"] = state.last_roll.mod1;
+    die_roll["total1"] = state.last_roll.roll1 + state.last_roll.mod1;
+    die_roll["roll2"] = state.last_roll.roll2;
+    die_roll["mod2"] = state.last_roll.mod2;
+    die_roll["total2"] = state.last_roll.roll2 + state.last_roll.mod2;
+    die_roll["success"] = state.last_roll.success;
+    die_roll["net_delta"] = state.last_roll.net_delta;
+    d["die_roll"] = die_roll;
 
     // 3. Space turns used
     nb::dict space_turns;
@@ -276,6 +307,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     ctx_dict["decision_player"] = (ctx.decision_player == ts::Player::US ? "US" : (ctx.decision_player == ts::Player::USSR ? "USSR" : "NONE"));
     ctx_dict["decision_type"] = static_cast<int>(ctx.decision_type);
     ctx_dict["decision_type_name"] = decision_type_to_str(ctx.decision_type);
+    ctx_dict["op_mode"] = static_cast<int>(ctx.op_mode);
+    ctx_dict["op_mode_name"] = op_mode_to_str(static_cast<uint8_t>(ctx.op_mode));
     ctx_dict["pending_op_card"] = ctx.pending_op_card;
     ctx_dict["pending_op_card_name"] = (ctx.pending_op_card > 0) ? std::string(ts::CardData::get_card_name(ctx.pending_op_card)) : "";
     ctx_dict["pending_ops_value"] = ctx.pending_ops_value;
@@ -354,6 +387,17 @@ NB_MODULE(ts_engine, m) {
     m.doc() = "Twilight Struggle C++ Simulation Engine Python Bindings (nanobind)";
 
     // Enums (with nb::is_arithmetic to support direct integer casting/comparison)
+    nb::enum_<ts::RollType>(m, "RollType", nb::is_arithmetic())
+        .value("NONE", ts::RollType::NONE)
+        .value("COUP", ts::RollType::COUP)
+        .value("REALIGNMENT", ts::RollType::REALIGNMENT)
+        .value("SPACE_RACE", ts::RollType::SPACE_RACE)
+        .value("WAR_EVENT", ts::RollType::WAR_EVENT)
+        .value("OLYMPIC_GAMES", ts::RollType::OLYMPIC_GAMES)
+        .value("SUMMIT", ts::RollType::SUMMIT)
+        .value("TRAP_ESCAPE", ts::RollType::TRAP_ESCAPE)
+        .export_values();
+
     nb::enum_<ts::Player>(m, "Player", nb::is_arithmetic())
         .value("NONE", ts::Player::NONE)
         .value("US", ts::Player::US)

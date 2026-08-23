@@ -6,6 +6,14 @@ This directory contains standalone bot clients and interactive agent interfaces 
 
 ## 1. File Overview
 
+- [`generate_strategic_game.py`](file:///home/mihaild/prog/ts_ai/bot/generate_strategic_game.py):
+  - Generates deep, high-level reasoned games maintaining DEFCON at 2 for most of the match, prioritizing Realignments in contested non-battleground/battleground theaters, and managing toxic card disposals via Space Race.
+  - Automatically writes replays to `.tslog.json` and human-readable `.log` files.
+
+- [`generate_event_heavy_game.py`](file:///home/mihaild/prog/ts_ai/bot/generate_event_heavy_game.py):
+  - Generates event-dense match trajectories maximizing historical event trigger rates (preferring `PlayMode::EVENT` and `TimingBranch::EVENT_FIRST`).
+  - Outputs full replay to `replays/event_heavy_game.tslog.json` and in-character commentary to `.log`.
+
 - [`bot_client.py`](file:///home/mihaild/prog/ts_ai/bot/bot_client.py):
   - `BaseBot`: Abstract base class defining `select_action(state, legal_actions) -> dict`.
   - `RandomBot`: Selects uniformly random valid actions from `legal_actions['valid_ids']`. Supports early pass (`0x80`).

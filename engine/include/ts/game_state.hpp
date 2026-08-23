@@ -8,6 +8,34 @@
 
 namespace ts {
 
+enum class RollType : uint8_t {
+    NONE = 0,
+    COUP = 1,
+    REALIGNMENT = 2,
+    SPACE_RACE = 3,
+    WAR_EVENT = 4,
+    OLYMPIC_GAMES = 5,
+    SUMMIT = 6,
+    TRAP_ESCAPE = 7
+};
+
+// Structured record of a die roll event occurring within a step (16 bytes)
+struct alignas(2) DieRollRecord {
+    RollType type = RollType::NONE;
+    Player roller = Player::NONE;
+    uint8_t card_id = 0;
+    uint8_t country_id = 255;  // 255 if not country-targeted
+    uint8_t roll1 = 0;         // Primary / Active / US / Sponsor roll (1..6)
+    int8_t mod1 = 0;           // Primary modifier (Ops / adjacency / dom)
+    uint8_t roll2 = 0;         // Opponent / USSR roll (1..6, 0 if none)
+    int8_t mod2 = 0;           // Opponent modifier
+    bool success = false;
+    int8_t net_delta = 0;      // Influence removed or VP awarded
+    uint8_t padding[6] = {0};
+};
+static_assert(sizeof(DieRollRecord) == 16, "DieRollRecord must be exactly 16 bytes");
+static_assert(std::is_trivially_copyable_v<DieRollRecord>, "DieRollRecord must be trivially copyable");
+
 // Single Micro-Action Token in rolling history (16 bytes, 16-byte aligned)
 struct alignas(16) ActionToken {
     Player     acting_player;        // US or USSR
@@ -167,8 +195,9 @@ struct alignas(64) GameState {
     Player  forced_card_player;        // Player forced to play specific card (Missile Envy)
     uint8_t forced_card_id;            // Card ID forced on next AR (49 for Missile Envy, 0 if NONE)
     uint8_t defcon_dropped_to_2_in_ar; // 1 if DEFCON reached 2 during current AR (for NORAD)
-    uint8_t last_die_roll;             // Result of most recent die roll (1..6, 0 if none)
-    uint8_t last_opp_die_roll;         // Opponent die roll (e.g. Realignment or Summit)
+    DieRollRecord last_roll;           // Structured record of die roll event occurring in current step
+    uint8_t last_die_roll;             // Backwards-compat: result of most recent die roll (1..6, 0 if none)
+    uint8_t last_opp_die_roll;         // Backwards-compat: opponent die roll
 
     // -------------------------------------------------------------------------
     // 3. China Card Status

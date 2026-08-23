@@ -6,7 +6,15 @@ import sys
 from typing import Dict, Any, Optional
 import websockets
 
-import ts_engine
+import os
+try:
+    import ts_engine
+except ImportError:
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _build = os.path.join(_root, "build")
+    if os.path.exists(_build) and _build not in sys.path:
+        sys.path.insert(0, _build)
+    import ts_engine
 
 class BaseBot:
     def __init__(self, role: str):

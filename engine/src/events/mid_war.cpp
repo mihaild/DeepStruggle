@@ -106,6 +106,23 @@ bool trigger_summit(GameState& state, Player p) noexcept {
     int16_t us_total = us_roll + us_dom_count;
     int16_t ussr_total = ussr_roll + ussr_dom_count;
 
+    bool us_wins = (us_total > ussr_total);
+    bool ussr_wins = (ussr_total > us_total);
+    Player summit_winner = us_wins ? Player::US : (ussr_wins ? Player::USSR : Player::NONE);
+
+    state.last_roll = DieRollRecord{
+        .type = RollType::SUMMIT,
+        .roller = p,
+        .card_id = card_ids::SUMMIT,
+        .country_id = 255,
+        .roll1 = us_roll,
+        .mod1 = static_cast<int8_t>(us_dom_count),
+        .roll2 = ussr_roll,
+        .mod2 = static_cast<int8_t>(ussr_dom_count),
+        .success = (summit_winner != Player::NONE),
+        .net_delta = static_cast<int8_t>(us_wins ? 2 : (ussr_wins ? -2 : 0))
+    };
+
     if (us_total > ussr_total) {
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
         if (state.victory_points >= 20) {

@@ -193,9 +193,10 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
 
-    // 1. USSR plays CIA Created as event
+    // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
 
     // 2. US conducts 1 Op from CIA Created -> selects COUP mode
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
@@ -224,9 +225,10 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
 
-    // 1. USSR plays CIA Created
+    // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
 
     // 2. US selects COUP
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
@@ -257,9 +259,10 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUSSR_USPlaysLoneGunman_USSR
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::LONE_GUNMAN] = ts::CardLocation::HAND_US;
 
-    // 1. US plays Lone Gunman as event
+    // 1. US plays Lone Gunman for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::LONE_GUNMAN, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
 
     // 2. USSR conducts 1 Op from Lone Gunman -> chooses COUP mode
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
@@ -287,9 +290,10 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
 
-    // 1. USSR plays CIA Created
+    // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
 
     // 2. US conducts 1 Op -> chooses COUP
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
