@@ -39,12 +39,17 @@ const CARD_BRANCHES: Record<number, Record<number, BranchMeta>> = {
   43: { // SALT Negotiations
     0: { title: "Retrieve Discarded Card", desc: "Search the discard pile and retrieve 1 card into hand." }
   },
+  45: { // Summit
+    0: { title: "Improve DEFCON (+1)", desc: "Improve the DEFCON track by 1 level." },
+    1: { title: "Degrade DEFCON (-1)", desc: "Degrade the DEFCON track by 1 level." },
+    2: { title: "Keep DEFCON Unchanged", desc: "Do not alter the DEFCON track." }
+  },
   46: { // How I Learned to Stop Worrying
-    0: { title: "Set DEFCON to 5 (Peace)", desc: "Reset DEFCON track to 5." },
-    1: { title: "Set DEFCON to 4", desc: "Set DEFCON track to 4." },
-    2: { title: "Set DEFCON to 3", desc: "Set DEFCON track to 3." },
-    3: { title: "Set DEFCON to 2", desc: "Set DEFCON track to 2." },
-    4: { title: "Set DEFCON to 1 (Warning: Loss)", desc: "Set DEFCON track to 1 (triggers DEFCON suicide loss for phasing player!)." }
+    1: { title: "Set DEFCON to 1 (Warning: Loss)", desc: "Set DEFCON track to 1 (triggers DEFCON suicide loss for phasing player!)." },
+    2: { title: "Set DEFCON to 2", desc: "Set DEFCON track to 2." },
+    3: { title: "Set DEFCON to 3", desc: "Set DEFCON track to 3." },
+    4: { title: "Set DEFCON to 4", desc: "Set DEFCON track to 4." },
+    5: { title: "Set DEFCON to 5 (Peace)", desc: "Reset DEFCON track to 5." }
   },
   47: { // Junta
     0: { title: "Place 2 Influence", desc: "Add 2 Influence in Central America or South America." },

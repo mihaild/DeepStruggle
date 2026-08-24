@@ -233,7 +233,8 @@ public:
 
             auto is_defcon_danger_card = [&](uint8_t cid) -> bool {
                 if (s.defcon > 2) return false;
-                if (p == Player::US && (cid == card_ids::DUCK_AND_COVER || cid == card_ids::CIA_CREATED || cid == card_ids::SOVIETS_SHOOT_DOWN_KAL_007)) return true;
+                if (cid == card_ids::DUCK_AND_COVER || cid == card_ids::WE_WILL_BURY_YOU || cid == card_ids::SOVIETS_SHOOT_DOWN_KAL_007) return true;
+                if (p == Player::US && cid == card_ids::CIA_CREATED) return true;
                 if (p == Player::USSR && (cid == card_ids::LONE_GUNMAN || cid == card_ids::OLYMPIC_GAMES || cid == card_ids::CHE || cid == card_ids::ORTEGA_ELECTED_IN_NICARAGUA)) return true;
                 return false;
             };
@@ -266,14 +267,18 @@ public:
                 uint8_t cur_mil = (p == Player::US) ? s.us_mil_ops : s.ussr_mil_ops;
                 bool can_coup = false;
                 bool can_inf = false;
+                bool can_realign = false;
                 for (uint8_t m : legal) {
                     if (m == static_cast<uint8_t>(OpMode::COUP)) can_coup = true;
                     if (m == static_cast<uint8_t>(OpMode::INFLUENCE)) can_inf = true;
+                    if (m == static_cast<uint8_t>(OpMode::REALIGN)) can_realign = true;
                 }
                 if (cur_mil < s.defcon && can_coup && s.defcon > 2) {
                     chosen_id = static_cast<uint8_t>(OpMode::COUP);
                 } else if (can_inf) {
                     chosen_id = static_cast<uint8_t>(OpMode::INFLUENCE);
+                } else if (s.defcon <= 2 && can_realign) {
+                    chosen_id = static_cast<uint8_t>(OpMode::REALIGN);
                 } else {
                     chosen_id = legal[0];
                 }
@@ -368,7 +373,13 @@ public:
                     }
                 }
             } else if (dt == DecisionType::CHOOSE_BRANCH) {
-                chosen_id = legal[0];
+                if (s.ctx().resolving_card == card_ids::HOW_I_LEARNED_TO_STOP_WORRYING) {
+                    chosen_id = legal.back(); // Safest DEFCON (5)
+                } else if (s.ctx().resolving_card == card_ids::SUMMIT && s.defcon <= 2) {
+                    chosen_id = 2; // Pass / keep DEFCON unchanged when low
+                } else {
+                    chosen_id = legal[0];
+                }
             }
 
             MicroAction act{};

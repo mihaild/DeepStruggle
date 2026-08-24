@@ -308,7 +308,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SOCIALIST_GOVERNMENTS: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -326,7 +326,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::COMECON: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -419,7 +419,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::TRUMAN_DOCTRINE: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -487,7 +487,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::INDEPENDENT_REDS: {
-            if (action.is_confirm_done() || action.primary_id == 255 || (action.primary_id == 0 && (action.flags & action_flags::CONFIRM_DONE))) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -506,7 +506,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MARSHALL_PLAN: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -574,7 +574,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SUEZ_CRISIS: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -597,7 +597,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::EAST_EUROPEAN_UNREST: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -616,7 +616,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::DECOLONIZATION: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -664,7 +664,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (state.ctx().max_per_country == 0) {
                 // Stage 1: Removal of USSR influence
-                if (action.is_confirm_done() || action.primary_id == 0 || action.primary_id == 255) {
+                if (action.is_confirm_done()) {
                     if (state.ctx().temp_card_cnt == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
@@ -710,11 +710,12 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid >= 84 || MapData::get_country(cid).stability > 2) return false;
 
-            // NATO check
+            // NATO check: US controlled countries in Europe cannot be attacked by Brush War
+            const auto& c_info = MapData::get_country(cid);
             bool nato_canceled_for_country = (cid == countries::WEST_GERMANY && state.has_flag(effect_bits::NATO_CANCELED_WEST_GERMANY)) ||
                                              (cid == countries::FRANCE && state.has_flag(effect_bits::NATO_CANCELED_FRANCE));
             if (p == Player::USSR && state.has_flag(effect_bits::NATO_ACTIVE) &&
-                MapData::get_country(cid).in_western_europe &&
+                c_info.region == Region::EUROPE && Scoring::is_controlled_by(state, cid, Player::US) &&
                 !nato_canceled_for_country) {
                 return false;
             }
@@ -724,7 +725,6 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
             Player opp = get_opponent(p);
             int16_t mod = 0;
-            const auto& c_info = MapData::get_country(cid);
             for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
                 if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
             }
@@ -803,7 +803,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::JUNTA: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -927,7 +927,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SPECIAL_RELATIONSHIP: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -956,7 +956,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::COLONIAL_REAR_GUARDS: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -974,7 +974,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::PUPPET_GOVERNMENTS: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -992,7 +992,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::OAS_FOUNDED: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1010,7 +1010,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_VOICE_OF_AMERICA: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1028,7 +1028,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::LIBERATION_THEOLOGY: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1046,7 +1046,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MUSLIM_REVOLUTION: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1064,7 +1064,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_REFORMER: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1082,7 +1082,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::MARINE_BARRACKS_BOMBING: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1118,7 +1118,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 }
                 return false;
             } else {
-                if (action.is_confirm_done() || action.primary_id == 0) {
+                if (action.is_confirm_done()) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
@@ -1138,7 +1138,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::PERSHING_II_DEPLOYED: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1201,7 +1201,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::THE_CAMBRIDGE_FIVE: {
-            if (action.is_confirm_done() || action.primary_id == 0) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1326,7 +1326,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::CHE: {
-            if (action.is_confirm_done() || action.primary_id == 0 || action.primary_id == 84 || action.primary_id == 255) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1357,7 +1357,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
-            if (action.is_confirm_done() || action.primary_id == 0 || action.primary_id == 84 || action.primary_id == 255) {
+            if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
             }
@@ -1690,7 +1690,9 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
         mask_out[0] = 1;
         mask_out[1] = 1;
         if (card == card_ids::HOW_I_LEARNED_TO_STOP_WORRYING) {
-            mask_out[2] = 1; mask_out[3] = 1; mask_out[4] = 1;
+            mask_out[0] = 0; mask_out[1] = 1; mask_out[2] = 1; mask_out[3] = 1; mask_out[4] = 1; mask_out[5] = 1;
+        } else if (card == card_ids::SUMMIT) {
+            mask_out[0] = 1; mask_out[1] = 1; mask_out[2] = 1;
         } else if (card == card_ids::CHERNOBYL) {
             mask_out[2] = 1; mask_out[3] = 1; mask_out[4] = 1; mask_out[5] = 1;
         }

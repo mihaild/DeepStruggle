@@ -174,9 +174,9 @@ def test_fix_card_59_flower_power_war_cards_for_ops():
     s.phasing_player = ts.Player.US
     s.ctx().decision_player = ts.Player.US
     s.ctx().decision_type = ts.DecisionType.SELECT_PLAY_MODE
-    s.ctx().pending_op_card = 97 # An Evil Empire (War card)
+    s.ctx().pending_op_card = 36 # Brush War (actual War card)
     s.victory_points = 0
-    # US plays An Evil Empire for Ops
+    # US plays Brush War for Ops
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # OPS
     # USSR is awarded +2 VP (-2 on VP track)
     assert s.victory_points == -2
@@ -488,3 +488,103 @@ def test_fix_cambridge_five_reveals_up_to_seven_scoring_cards():
     # USSR should be able to target South America (from 6th scoring card)
     mask = ts.Engine.get_legal_action_mask(s)
     assert mask[argentina_id] == 1
+
+def test_fix_card_97_an_evil_empire_not_war_card():
+    # Card 97 is not a war card; Flower Power should not trigger when US plays it for ops
+    card_info = ts.CardData.get_card_info(97)
+    assert not card_info["is_war_card"], "Card 97 (An Evil Empire) should not have is_war flag set"
+
+    s = make_state()
+    s.set_flag(EB.FLOWER_POWER_ACTIVE)
+    s.victory_points = 0
+    s.turn = 8
+    s.current_phase = ts.Phase.ACTION_ROUND
+    s.phasing_player = ts.Player.US
+    s.set_card_location(97, ts.CardLocation.HAND_US)
+
+    # US selects Card 97 for play mode OPS
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.SELECT_CARD
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 97))
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS)))
+
+    # VP should still be 0 (Flower Power did not award 2 VP to USSR)
+    assert s.victory_points == 0
+
+def test_fix_card_46_how_i_learned_defcon_levels():
+    # Branches 1..5 set DEFCON to levels 1..5
+    for target_defcon in range(1, 6):
+        s = make_state()
+        s.defcon = 3
+        done = ts.CardHandlers.trigger_event(s, 46, ts.Player.US)
+        assert not done
+        mask = ts.Engine.get_legal_action_mask(s)
+        assert mask[target_defcon] == 1
+        ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, target_defcon))
+        assert s.defcon == target_defcon
+
+def test_fix_card_45_summit_pass_branch():
+    s = make_state()
+    s.defcon = 2
+    # Equal domination -> roll determines winner or tie
+    set_inf(s, "West Germany", 4, 0)
+    done = ts.CardHandlers.trigger_event(s, 45, ts.Player.US)
+    if not done:
+        mask = ts.Engine.get_legal_action_mask(s)
+        assert mask[2] == 1 # Branch 2 (pass / no change) is legal
+        ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 2))
+        assert s.defcon == 2 # DEFCON unchanged
+
+def test_fix_card_36_brush_war_nato_validation_us_control():
+    s = make_state()
+    s.set_flag(EB.NATO_ACTIVE)
+    # 1. Uncontrolled Western Europe country (e.g. Spain/Portugal, stab 2) can be targeted by USSR
+    spain_id = cid("Spain/Portugal")
+    set_inf(s, spain_id, 0, 0)
+    ts.CardHandlers.trigger_event(s, 36, ts.Player.USSR)
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[spain_id] == 1
+    # Step targeting Spain/Portugal is accepted
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, spain_id, 6))
+    assert res == True
+
+    # 2. US-controlled European country (e.g. Greece, stab 2, US inf 2) cannot be targeted by USSR
+    s2 = make_state()
+    s2.set_flag(EB.NATO_ACTIVE)
+    greece_id = cid("Greece")
+    set_inf(s2, greece_id, 2, 0) # US control
+    ts.CardHandlers.trigger_event(s2, 36, ts.Player.USSR)
+    mask2 = ts.Engine.get_legal_action_mask(s2)
+    assert mask2[greece_id] == 0
+    res2 = ts.CardHandlers.handle_event_step(s2, ts.MicroAction(ts.DecisionType.POINT_NODE, greece_id, 6))
+    assert res2 == False
+
+def test_fix_card_23_marshall_plan_canada_selection():
+    s = make_state()
+    canada_id = cid("Canada") # Country 0
+    set_inf(s, canada_id, 0, 0)
+    done = ts.CardHandlers.trigger_event(s, 23, ts.Player.US)
+    assert not done
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[canada_id] == 1
+    # Placing influence in Canada (Country 0) should add 1 US influence, not exit early
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, canada_id))
+    assert res == False # Still has remaining steps to place
+    assert s.get_country(canada_id).us_influence == 1
+
+def test_fix_card_66_puppet_governments_canada_selection():
+    s = make_state()
+    canada_id = cid("Canada") # Country 0
+    set_inf(s, canada_id, 0, 0)
+    done = ts.CardHandlers.trigger_event(s, 66, ts.Player.US)
+    assert not done
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[canada_id] == 1
+    # Placing influence in Canada (Country 0) should add 1 US influence, not exit early
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, canada_id))
+    assert res == False
+    assert s.get_country(canada_id).us_influence == 1
+
+def test_fix_card_14_comecon_metadata():
+    card_info = ts.CardData.get_card_info(14)
+    assert card_info["name"] == "Comecon"

@@ -29,8 +29,9 @@ TEST(MidCardsTest, Card36_BrushWar_Success) {
 TEST(MidCardsTest, Card36_BrushWar_BlockedByNATO) {
     ts::GameState state{};
     state.set_flag(ts::effect_bits::NATO_ACTIVE);
+    state.countries[ts::countries::ITALY].us_influence = 2; // US controls Italy (stability 2)
     ts::CardHandlers::trigger_event(state, ts::card_ids::BRUSH_WAR, ts::Player::USSR);
-    // USSR cannot target Italy (Western Europe protected by NATO)
+    // USSR cannot target US-controlled Italy (European country protected by NATO)
     ts::MicroAction act{ts::DecisionType::POINT_NODE, ts::countries::ITALY, 5, 0};
     bool done = ts::CardHandlers::handle_event_step(state, act);
     ASSERT_FALSE(done); // Rejected
