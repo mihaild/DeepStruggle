@@ -131,9 +131,9 @@ struct alignas(64) DecisionContext {
     std::array<uint64_t, 2> start_influence_nodes; // Bitmask of countries with friendly influence at start of Op
     std::array<uint64_t, 2> visited_nodes;         // 128-bit bitmask of nodes already modified
     std::array<uint8_t, 84> node_counts;           // Placements/removals per node during this event
-    std::array<uint8_t, 5>  temp_cards;            // Temp buffer for peeked/searched card IDs
+    std::array<uint8_t, 16> temp_cards;            // Temp buffer for peeked/searched card IDs
     uint8_t                 temp_card_cnt;         // Number of valid cards in temp_cards
-    uint8_t                 pad;
+    uint8_t                 pad[7];
 
     inline void set_start_influence(uint8_t node) noexcept {
         if (node < 64) start_influence_nodes[0] |= (1ULL << node);

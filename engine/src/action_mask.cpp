@@ -227,6 +227,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             if (ctx.resolving_card != 0) {
                 CardHandlers::get_event_action_mask(state, mask_out, out_size);
+                *out_size = 84;
                 return;
             }
 
@@ -272,8 +273,32 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             } else {
                 if (ctx.remaining_steps > 0) {
                     Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);
+                    uint8_t op_card = ctx.pending_op_card;
+                    uint8_t total_spent = ctx.pending_ops_value - ctx.remaining_steps;
+                    if (op_card == card_ids::THE_CHINA_CARD) {
+                        uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (mask_out[i] && MapData::get_country(i).region != Region::ASIA) {
+                                uint8_t cost = Operations::get_influence_cost(state, p, i);
+                                if (total_spent + cost > non_asia_base) {
+                                    mask_out[i] = 0;
+                                }
+                            }
+                        }
+                    } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE)) {
+                        uint8_t non_se_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (mask_out[i] && !MapData::get_country(i).in_southeast_asia) {
+                                uint8_t cost = Operations::get_influence_cost(state, p, i);
+                                if (total_spent + cost > non_se_base) {
+                                    mask_out[i] = 0;
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            *out_size = 84;
             break;
         }
 

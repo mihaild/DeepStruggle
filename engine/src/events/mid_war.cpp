@@ -234,6 +234,13 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             state.ctx().decision_player = p;
             state.ctx().resolving_card = chosen_card;
             bool done = CardHandlers::trigger_event(state, chosen_card, p);
+            if (chosen_card != card_ids::KITCHEN_DEBATES) {
+                if (chosen_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                    state.card_locations[chosen_card] = CardLocation::ONGOING_EVENT;
+                } else {
+                    state.card_locations[chosen_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                }
+            }
             if (done) state.pop_context();
             return done;
         } else {
@@ -242,11 +249,12 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
             state.ctx().decision_player = p;
             state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+            state.ctx().resolving_card = 0;
             return false;
         }
     } else {
         // Opponent selects which tied card to give
-        uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(tied_cnt, 5));
+        uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(tied_cnt, state.ctx().temp_cards.size()));
         for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = tied_cards[k];
         state.ctx().temp_card_cnt = stored_cnt;
         state.ctx().decision_player = opp;

@@ -430,9 +430,11 @@ bool trigger_defectors(GameState& state, Player p) noexcept {
             state.headline_ussr_card = 0;
         }
     } else if (state.current_phase == Phase::ACTION_ROUND) {
-        // If played during USSR Action Round, US gains 1 VP
-        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
-        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+        // If played by USSR during an Action Round, US gains 1 VP
+        if (state.phasing_player == Player::USSR || (state.phasing_player == Player::NONE && p == Player::USSR)) {
+            state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 1));
+            if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+        }
     }
     return true;
 }
@@ -454,7 +456,7 @@ bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
     state.ctx().resolving_card = card_ids::THE_CAMBRIDGE_FIVE;
-    uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(cnt, 5));
+    uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(cnt, state.ctx().temp_cards.size()));
     for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = score_cards[k];
     state.ctx().temp_card_cnt = stored_cnt;
     return false;

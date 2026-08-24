@@ -595,6 +595,18 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     }
                 }
 
+                // We Will Bury You check on US Action Round
+                if (p == Player::US && state.current_phase == Phase::ACTION_ROUND && state.has_flag(effect_bits::WE_WILL_BURY_YOU_PENDING)) {
+                    if (card != card_ids::UN_INTERVENTION) {
+                        state.clear_flag(effect_bits::WE_WILL_BURY_YOU_PENDING);
+                        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 3));
+                        if (state.victory_points <= -20) {
+                            state.current_phase = Phase::GAME_OVER;
+                            return true;
+                        }
+                    }
+                }
+
                 // Scoring card auto-resolve
                 if (CardData::is_scoring_card(card)) {
                     state.card_locations[card] = CardData::get_card(card).one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
@@ -615,10 +627,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 uint8_t card = state.ctx().pending_op_card;
                 PlayMode mode = static_cast<PlayMode>(action.primary_id);
 
-                // We Will Bury You check on US Action Round
+                // We Will Bury You check on US Action Round when playing UN Intervention
                 if (p == Player::US && state.current_phase == Phase::ACTION_ROUND && state.has_flag(effect_bits::WE_WILL_BURY_YOU_PENDING)) {
                     state.clear_flag(effect_bits::WE_WILL_BURY_YOU_PENDING);
-                    if (!(mode == PlayMode::EVENT && card == card_ids::UN_INTERVENTION)) {
+                    if (mode != PlayMode::EVENT) {
                         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 3));
                         if (state.victory_points <= -20) {
                             state.current_phase = Phase::GAME_OVER;
@@ -672,7 +684,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         return true;
                     }
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
                     return true;
                 }
                 return false;
@@ -685,13 +697,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                 if (branch == TimingBranch::OPS_FIRST) {
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
                     return true;
                 }
 
                 if (branch == TimingBranch::EVENT_FIRST) {
                     state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p);
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().decision_player = p;
                     state.push_context();
@@ -761,7 +773,15 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 uint8_t forced_opp_roll = action.flags;
 
                 if (state.ctx().op_mode == OpMode::COUP) {
-                    Operations::execute_coup(state, p, cid, state.ctx().pending_ops_value, forced_roll);
+                    uint8_t coup_ops = state.ctx().pending_ops_value;
+                    uint8_t op_card = state.ctx().pending_op_card;
+                    const auto& c_info = MapData::get_country(cid);
+                    if (op_card == card_ids::THE_CHINA_CARD) {
+                        coup_ops = Operations::get_effective_ops(state, op_card, p, c_info.region);
+                    } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE)) {
+                        coup_ops = Operations::get_effective_ops(state, op_card, p, c_info.in_southeast_asia ? Region::ASIA : Region::NONE_REGION);
+                    }
+                    Operations::execute_coup(state, p, cid, coup_ops, forced_roll);
                     if (state.current_phase != Phase::GAME_OVER) {
                         advance_after_ops(state);
                     }
@@ -773,6 +793,27 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
                     Operations::execute_realign(state, p, cid, forced_us, forced_ussr);
                     state.ctx().remaining_steps -= 1;
+
+                    uint8_t op_card = state.ctx().pending_op_card;
+                    const auto& c_info = MapData::get_country(cid);
+                    if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
+                        uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                        if (total_spent >= non_asia_base) {
+                            state.ctx().remaining_steps = 0;
+                        } else {
+                            state.ctx().remaining_steps = non_asia_base - total_spent;
+                        }
+                    } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
+                        uint8_t non_se_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                        if (total_spent >= non_se_base) {
+                            state.ctx().remaining_steps = 0;
+                        } else {
+                            state.ctx().remaining_steps = non_se_base - total_spent;
+                        }
+                    }
+
                     if (state.ctx().remaining_steps == 0) {
                         advance_after_ops(state);
                     }
@@ -785,6 +826,27 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     if (state.ctx().remaining_steps >= cost && Operations::can_place_influence(state, p, cid)) {
                         Operations::place_influence(state, p, cid);
                         state.ctx().remaining_steps -= cost;
+
+                        uint8_t op_card = state.ctx().pending_op_card;
+                        const auto& c_info = MapData::get_country(cid);
+                        if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
+                            uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                            uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                            if (total_spent >= non_asia_base) {
+                                state.ctx().remaining_steps = 0;
+                            } else {
+                                state.ctx().remaining_steps = non_asia_base - total_spent;
+                            }
+                        } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
+                            uint8_t non_se_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
+                            uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                            if (total_spent >= non_se_base) {
+                                state.ctx().remaining_steps = 0;
+                            } else {
+                                state.ctx().remaining_steps = non_se_base - total_spent;
+                            }
+                        }
+
                         if (state.ctx().remaining_steps == 0) {
                             advance_after_ops(state);
                         }

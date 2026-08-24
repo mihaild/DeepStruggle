@@ -200,8 +200,9 @@ TEST(MidCardsTest, Card49_MissileEnvy_SingleHighest) {
     state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR; // 2 Ops
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::MISSILE_ENVY, ts::Player::US);
-    // US took Duck and Cover, gave Missile Envy to USSR
-    ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::HAND_US);
+    // US took Duck and Cover (US event -> executed immediately and discarded), gave Missile Envy to USSR
+    ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.victory_points, 1);
     ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::HAND_USSR);
     ASSERT_EQ(state.forced_card_player, ts::Player::USSR);
     ASSERT_EQ(state.forced_card_id, ts::card_ids::MISSILE_ENVY);

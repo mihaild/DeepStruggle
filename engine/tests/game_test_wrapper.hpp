@@ -280,6 +280,19 @@ public:
             } else if (dt == DecisionType::POINT_NODE) {
                 if (legal.empty()) {
                     flags = action_flags::CONFIRM_DONE;
+                } else if (s.ctx().resolving_card == card_ids::ORTEGA_ELECTED_IN_NICARAGUA && s.defcon == 2) {
+                    bool non_bg = false;
+                    for (uint8_t cid : legal) {
+                        if (!MapData::get_country(cid).battleground) {
+                            chosen_id = cid;
+                            non_bg = true;
+                            break;
+                        }
+                    }
+                    if (!non_bg) {
+                        flags = action_flags::CONFIRM_DONE;
+                        chosen_id = 0;
+                    }
                 } else if (s.ctx().resolving_card != 0 && s.ctx().allow_early_stop) {
                     chosen_id = legal[0];
                 } else if (s.ctx().op_mode == OpMode::COUP) {

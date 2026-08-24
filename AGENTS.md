@@ -165,7 +165,7 @@ cmake --build build_san -j
 ./build/engine/ts_fuzz --games 10000
 ./build/engine/ts_fuzz --steps 5000000
 
-# Python Integration Tests (148 tests)
+# Python Integration Tests (157 tests)
 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
 

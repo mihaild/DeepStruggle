@@ -158,8 +158,8 @@ TEST(StateLifecycleTest, ActionRoundState_ChinaCardPlay_PassesToOpponentFaceDown
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
 
-    // Place influence in North Korea (4 points from China Card in Asia)
-    for (int i = 0; i < 4; ++i) {
+    // Place influence in North Korea (5 points from China Card in Asia with +1 Asia bonus)
+    for (int i = 0; i < 5; ++i) {
         ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::NORTH_KOREA, 0, 0});
     }
 

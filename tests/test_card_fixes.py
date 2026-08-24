@@ -324,3 +324,167 @@ def test_fix_card_108_our_man_in_tehran_peek_discard_and_return():
     assert done == True
     assert s.get_card_location(11) == ts.CardLocation.DRAW_DECK
     assert s.get_card_location(12) == ts.CardLocation.DRAW_DECK
+
+# =============================================================================
+# Verification of 13 Specific Bug Fixes
+# =============================================================================
+
+def test_fix_china_card_asia_bonus_in_action_round():
+    s = make_state()
+    s.current_phase = ts.Phase.ACTION_ROUND
+    s.phasing_player = ts.Player.US
+    s.china_card_holder = ts.Player.US
+    s.china_card_playable = 1
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # US plays China Card for Ops
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 6)) # China Card
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # Ops
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0)) # Influence
+
+    # In Asia, pending ops should be 5
+    assert s.ctx().pending_ops_value == 5
+    assert s.ctx().remaining_steps == 5
+
+    japan_id = cid("Japan")
+    for _ in range(5):
+        ts.Engine.step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, japan_id))
+    
+    # Finished all 5 points in Asia -> passes China Card to USSR
+    assert s.china_card_holder == ts.Player.USSR
+    assert s.china_card_playable == 0
+
+def test_fix_nato_brush_war_europe_control_check():
+    s = make_state()
+    s.set_flag(EB.NATO_ACTIVE)
+    greece_id = cid("Greece") # Western Europe, stability 2, uncontrolled
+    spain_id = cid("Spain/Portugal") # Western Europe, stability 2, US controlled
+    
+    set_inf(s, greece_id, 0, 0) # Uncontrolled
+    set_inf(s, spain_id, 2, 0)  # US controlled
+    
+    ts.CardHandlers.trigger_event(s, 36, ts.Player.USSR)
+    mask = ts.Engine.get_legal_action_mask(s)
+    
+    # Spain is US-controlled in Europe -> blocked by NATO
+    assert mask[spain_id] == 0
+    # Greece is uncontrolled Western Europe, stability 2 -> legal target (fixed from bug which blocked all Western Europe)
+    assert mask[greece_id] == 1
+
+def test_fix_independent_reds_sets_equal_influence():
+    s = make_state()
+    yugo_id = cid("Yugoslavia")
+    set_inf(s, yugo_id, 2, 3) # US 2, USSR 3
+    
+    ts.CardHandlers.trigger_event(s, 22, ts.Player.US)
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, yugo_id))
+    
+    # US influence should equal USSR influence (3, not 5!)
+    assert get_inf(s, yugo_id)[0] == 3
+    assert get_inf(s, yugo_id)[1] == 3
+
+def test_fix_we_will_bury_you_vp_penalty_on_scoring_card():
+    s = make_state()
+    s.current_phase = ts.Phase.ACTION_ROUND
+    s.phasing_player = ts.Player.US
+    s.victory_points = 0
+    s.set_flag(EB.WE_WILL_BURY_YOU_PENDING)
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # US plays Asia Scoring
+    s.set_card_location(1, ts.CardLocation.HAND_US)
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 1))
+
+    # USSR should have gained 3 VP (-3) + 1 VP from default Asia Scoring (-1) = -4 VP
+    assert not s.has_flag(EB.WE_WILL_BURY_YOU_PENDING)
+    assert s.victory_points == -4
+
+def test_fix_ask_not_discard_six_cards_safely():
+    s = make_state()
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.SELECT_CARD
+    # Give US 7 cards
+    for c in range(10, 17):
+        s.set_card_location(c, ts.CardLocation.HAND_US)
+    
+    ts.CardHandlers.trigger_event(s, 77, ts.Player.US)
+    
+    # Discard 6 cards
+    for c in range(10, 16):
+        done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, c))
+        assert not done
+    
+    # Finish discard
+    action = ts.MicroAction(ts.DecisionType.SELECT_CARD, 0)
+    action.flags = 0x80
+    done = ts.CardHandlers.handle_event_step(s, action)
+    assert done == True
+
+def test_fix_star_wars_replays_shuttle_diplomacy_as_ongoing():
+    s = make_state()
+    s.us_space_track = 5
+    s.ussr_space_track = 2
+    s.set_card_location(73, ts.CardLocation.DISCARD_PILE) # Shuttle Diplomacy
+    
+    ts.CardHandlers.trigger_event(s, 85, ts.Player.US)
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 73))
+    
+    assert s.has_flag(EB.SHUTTLE_DIPLOMACY_ACTIVE)
+    assert s.get_card_location(73) == ts.CardLocation.ONGOING_EVENT
+
+def test_fix_kal007_glasnost_tear_down_ops_reachable():
+    s = make_state()
+    sk_id = cid("South Korea")
+    set_inf(s, sk_id, 3, 0) # US controls SK
+    
+    # KAL-007
+    done = ts.CardHandlers.trigger_event(s, 89, ts.Player.US)
+    assert not done
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    assert s.ctx().resolving_card == 0
+    assert s.ctx().pending_ops_value == 4
+    
+    # Glasnost with Reformer
+    s.set_flag(EB.THE_REFORMER_PLAYED)
+    done = ts.CardHandlers.trigger_event(s, 90, ts.Player.USSR)
+    assert not done
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    assert s.ctx().resolving_card == 0
+    assert s.ctx().pending_ops_value == 4
+    
+    # Tear Down This Wall
+    done = ts.CardHandlers.trigger_event(s, 96, ts.Player.US)
+    assert not done
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    assert s.ctx().resolving_card == 0
+    assert s.ctx().pending_ops_value == 3
+
+def test_fix_defectors_no_vp_on_us_action_round():
+    s = make_state()
+    s.current_phase = ts.Phase.ACTION_ROUND
+    s.phasing_player = ts.Player.US
+    s.victory_points = 0
+    
+    # US plays Defectors event on US AR
+    ts.CardHandlers.trigger_event(s, 103, ts.Player.US)
+    assert s.victory_points == 0 # NO VP awarded to US!
+
+def test_fix_cambridge_five_reveals_up_to_seven_scoring_cards():
+    s = make_state()
+    s.turn = 3
+    # Give US 6 scoring cards
+    score_cards = [1, 2, 3, 37, 38, 81] # Asia, Europe, ME, CA, SEA, SA
+    for sc in score_cards:
+        s.set_card_location(sc, ts.CardLocation.HAND_US)
+    
+    argentina_id = cid("Argentina") # SA
+    set_inf(s, argentina_id, 0, 0)
+    
+    done = ts.CardHandlers.trigger_event(s, 104, ts.Player.USSR)
+    assert not done
+    
+    # USSR should be able to target South America (from 6th scoring card)
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[argentina_id] == 1

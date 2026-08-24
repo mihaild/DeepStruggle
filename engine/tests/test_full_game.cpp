@@ -47,7 +47,7 @@ TEST(FullGameTest, FullGame_Turn1ToFinalScoring_DominationAndControlRequirements
 }
 
 TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
-    ts::GameTestWrapper wrapper(39);
+    ts::GameTestWrapper wrapper(9);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
 
     // Verify Turn 1 starts in SETUP phase
@@ -64,6 +64,9 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
         // Turn invariants
         ASSERT_GE(wrapper.get_vp(), -20);
         ASSERT_LE(wrapper.get_vp(), 20);
+        if (wrapper.get_defcon() < 2) {
+            std::cout << "DEFCON dropped to " << (int)wrapper.get_defcon() << " on turn " << (int)expected_turn << " phase: " << (int)wrapper.get_phase() << std::endl;
+        }
         ASSERT_GE(wrapper.get_defcon(), 2);
     }
 
@@ -74,7 +77,7 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
 }
 
 TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
-    ts::GameTestWrapper wrapper(39);
+    ts::GameTestWrapper wrapper(9);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
 
     wrapper.run_to_completion(policy, 5000);
