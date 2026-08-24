@@ -440,11 +440,11 @@ bool trigger_defectors(GameState& state, Player p) noexcept {
 bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     if (state.turn >= 8) return true; // Cannot be played in Late War
     // Check if US has scoring cards
-    uint8_t score_cards[5];
+    uint8_t score_cards[16];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
         if (state.card_locations[i] == CardLocation::HAND_US && CardData::is_scoring_card(i)) {
-            score_cards[cnt++] = i;
+            if (cnt < 16) score_cards[cnt++] = i;
         }
     }
     if (cnt == 0) return true;
@@ -454,8 +454,9 @@ bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
     state.ctx().resolving_card = card_ids::THE_CAMBRIDGE_FIVE;
-    for (uint8_t k = 0; k < cnt; ++k) state.ctx().temp_cards[k] = score_cards[k];
-    state.ctx().temp_card_cnt = cnt;
+    uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(cnt, 5));
+    for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = score_cards[k];
+    state.ctx().temp_card_cnt = stored_cnt;
     return false;
 }
 
@@ -470,13 +471,12 @@ bool trigger_special_relationship(GameState& state, Player p) noexcept {
         state.ctx().resolving_card = card_ids::SPECIAL_RELATIONSHIP;
         return false;
     } else {
-        // Add 2 US influence in Western Europe + 2 VP
+        // Add 2 US influence in one Western European country + 2 VP
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
         if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
-        state.ctx().remaining_steps = 2;
-        state.ctx().max_per_country = 2;
+        state.ctx().remaining_steps = 1;
         state.ctx().resolving_card = card_ids::SPECIAL_RELATIONSHIP;
         return false;
     }

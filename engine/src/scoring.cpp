@@ -155,9 +155,10 @@ void Scoring::score_region(GameState& state, Region r) noexcept {
         }
     }
 
-    // If Shuttle Diplomacy was active and this was ME or Asia, clear flag
+    // If Shuttle Diplomacy was active and this was ME or Asia, clear flag and move card to discard pile
     if ((r == Region::MIDDLE_EAST || r == Region::ASIA) && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
         state.clear_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+        state.card_locations[card_ids::SHUTTLE_DIPLOMACY] = CardLocation::DISCARD_PILE;
     }
 
     int32_t new_vp = static_cast<int32_t>(state.victory_points) + summary.net_delta;
@@ -262,6 +263,7 @@ void Scoring::execute_final_scoring(GameState& state) noexcept {
 
     if (state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
         state.clear_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+        state.card_locations[card_ids::SHUTTLE_DIPLOMACY] = CardLocation::DISCARD_PILE;
     }
 
     // China card bonus (+1 VP to holder)

@@ -326,9 +326,9 @@ TEST(EarlyCardsTest, Card20_OlympicGames_Boycott) {
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR); // Opponent chooses
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
 
-    // USSR boycotts (branch 1) -> US gets 2 VP and conducts 4 Ops
+    // USSR boycotts (branch 1) -> US conducts 4 Ops (no VP)
     ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0));
-    ASSERT_EQ(state.victory_points, 2);
+    ASSERT_EQ(state.victory_points, 0);
     ASSERT_EQ(state.ctx().pending_ops_value, 4);
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
 }
@@ -591,9 +591,8 @@ TEST(EarlyCardsTest, Card105_SpecialRelationship_WithNATO) {
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::SPECIAL_RELATIONSHIP, ts::Player::US);
     ASSERT_EQ(state.victory_points, 2); // +2 VP
-    ASSERT_EQ(state.ctx().remaining_steps, 2);
+    ASSERT_EQ(state.ctx().remaining_steps, 1);
 
-    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0));
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].us_influence, 2);

@@ -535,6 +535,7 @@ TEST(MidCardsTest, Card77_AskNot) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 
     ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, 0, 0, ts::action_flags::CONFIRM_DONE});
     ASSERT_EQ(state.card_locations[ts::card_ids::FIDEL], ts::CardLocation::DISCARD_PILE);
     bool has_drawn = (state.card_locations[ts::card_ids::DUCK_AND_COVER] == ts::CardLocation::HAND_US) || (state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] == ts::CardLocation::HAND_US);
     ASSERT_TRUE(has_drawn);
@@ -590,9 +591,12 @@ TEST(MidCardsTest, Card107_Che) {
 
     // Roll 6 -> coup value: 6 + 3 - 2*1 = 7. Removes 2 US and adds 5 USSR
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::COLOMBIA, 6, 0});
-    ASSERT_TRUE(done);
+    ASSERT_FALSE(done); // Second coup is offered because US influence was removed
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 0);
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].ussr_influence, 5);
+    // Pass second coup
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, 0, 0, ts::action_flags::CONFIRM_DONE});
+    ASSERT_TRUE(done);
 }
 
 // Card 108: Our Man in Tehran

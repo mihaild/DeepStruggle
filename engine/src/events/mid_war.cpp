@@ -23,14 +23,18 @@ bool trigger_brush_war(GameState& state, Player p) noexcept {
 bool trigger_arms_race(GameState& state, Player p) noexcept {
     uint8_t us_mo = state.us_mil_ops;
     uint8_t ussr_mo = state.ussr_mil_ops;
-    if (us_mo > ussr_mo) {
-        int8_t vp = (us_mo >= state.defcon) ? 3 : 1;
-        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + vp));
-        if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
-    } else if (ussr_mo > us_mo) {
-        int8_t vp = (ussr_mo >= state.defcon) ? 3 : 1;
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - vp));
-        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+    if (p == Player::US) {
+        if (us_mo > ussr_mo) {
+            int8_t vp = (us_mo >= state.defcon) ? 3 : 1;
+            state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + vp));
+            if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
+        }
+    } else if (p == Player::USSR) {
+        if (ussr_mo > us_mo) {
+            int8_t vp = (ussr_mo >= state.defcon) ? 3 : 1;
+            state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - vp));
+            if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+        }
     }
     return true;
 }
@@ -196,7 +200,7 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
 
     // Find highest ops cards in opp hand
     uint8_t max_ops = 0;
-    uint8_t tied_cards[10];
+    uint8_t tied_cards[111];
     uint8_t tied_cnt = 0;
 
     for (uint8_t i = 1; i <= 110; ++i) {
@@ -242,6 +246,9 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
         }
     } else {
         // Opponent selects which tied card to give
+        uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(tied_cnt, 5));
+        for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = tied_cards[k];
+        state.ctx().temp_card_cnt = stored_cnt;
         state.ctx().decision_player = opp;
         state.ctx().decision_type = DecisionType::SELECT_CARD;
         state.ctx().remaining_steps = 1;
@@ -536,6 +543,7 @@ bool trigger_ask_not(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.ctx().remaining_steps = 9;
     state.ctx().allow_early_stop = 1;
+    state.ctx().temp_card_cnt = 0;
     state.ctx().resolving_card = card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU;
     return false;
 }
@@ -582,6 +590,8 @@ bool trigger_che(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 1;
+    state.ctx().temp_cards[0] = 0; // Stage 1 indicator
     state.ctx().resolving_card = card_ids::CHE;
     return false;
 }
@@ -597,23 +607,36 @@ bool trigger_our_man_in_tehran(GameState& state, Player p) noexcept {
     }
     if (!has_me) return true;
 
-    // Peek top 5 cards from draw pile
-    uint8_t peek_cards[5];
-    uint8_t cnt = 0;
-    for (uint8_t i = 1; i <= 110 && cnt < 5; ++i) {
-        if (state.card_locations[i] == CardLocation::DRAW_DECK) {
-            peek_cards[cnt++] = i;
-            state.card_locations[i] = CardLocation::PEEKED_TEMP;
+    // Draw up to 5 cards from draw deck
+    uint8_t draw_pool[111];
+    uint8_t draw_cnt = 0;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == CardLocation::DRAW_DECK) draw_pool[draw_cnt++] = i;
+    }
+    if (draw_cnt == 0) {
+        for (uint8_t i = 1; i <= 110; ++i) {
+            if (i == card_ids::THE_CHINA_CARD) continue;
+            if (state.card_locations[i] == CardLocation::DISCARD_PILE) {
+                state.card_locations[i] = CardLocation::DRAW_DECK;
+                draw_pool[draw_cnt++] = i;
+            }
         }
     }
-    if (cnt == 0) return true;
+    if (draw_cnt == 0) return true;
 
-    for (uint8_t k = 0; k < cnt; ++k) state.ctx().temp_cards[k] = peek_cards[k];
-    state.ctx().temp_card_cnt = cnt;
+    uint8_t sample_count = std::min(static_cast<uint8_t>(5), draw_cnt);
+    for (uint8_t k = 0; k < sample_count; ++k) {
+        uint32_t chosen_idx = Prng::random_index(state.rng_state, draw_cnt);
+        uint8_t drawn_card = draw_pool[chosen_idx];
+        draw_pool[chosen_idx] = draw_pool[--draw_cnt];
+        state.card_locations[drawn_card] = CardLocation::PEEKED_TEMP;
+        state.ctx().temp_cards[k] = drawn_card;
+    }
+    state.ctx().temp_card_cnt = sample_count;
 
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
-    state.ctx().remaining_steps = cnt;
+    state.ctx().remaining_steps = sample_count;
     state.ctx().allow_early_stop = 1;
     state.ctx().resolving_card = card_ids::OUR_MAN_IN_TEHRAN;
     return false;

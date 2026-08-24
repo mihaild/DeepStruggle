@@ -400,7 +400,7 @@ class TestEarlyWarCards:
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, fra_id))
         assert state.victory_points == old_vp + 2
         us_fra, _ = get_inf(state, "France")
-        assert us_fra == 1
+        assert us_fra == 2
 
     def test_106_norad(self):
         state = make_clean_state()
@@ -749,6 +749,10 @@ class TestMidWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 77, ts_engine.Player.US)
         assert done == False
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 4))
+        assert state.get_card_location(4) == ts_engine.CardLocation.PEEKED_TEMP
+        action = ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 0)
+        action.flags = 0x80 # CONFIRM_DONE
+        ts_engine.CardHandlers.handle_event_step(state, action)
         assert state.get_card_location(4) == ts_engine.CardLocation.DISCARD_PILE
 
     def test_78_alliance_for_progress(self):

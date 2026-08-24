@@ -109,7 +109,7 @@ constexpr std::array<CardInfo, 111> CARDS = {{
     {94, "Chernobyl", 3, Player::US, WarEra::LATE, true, false, false, false, false},
     {95, "Latin American Debt Crisis", 2, Player::USSR, WarEra::LATE, false, false, false, false, false},
     {96, "Tear Down this Wall", 3, Player::US, WarEra::LATE, true, false, false, false, false},
-    {97, "“An Evil Empire”", 3, Player::US, WarEra::LATE, true, false, false, false, false},
+    {97, "“An Evil Empire”", 3, Player::US, WarEra::LATE, true, false, true, false, false},
     {98, "Aldrich Ames Remix", 3, Player::USSR, WarEra::LATE, true, false, false, false, false},
     {99, "Pershing II Deployed", 3, Player::USSR, WarEra::LATE, true, false, false, false, false},
     {100, "Wargames", 4, Player::NONE, WarEra::LATE, true, false, false, false, false},

@@ -17,7 +17,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
     }
 
     const auto& ctx = state.ctx();
-    Player p = ctx.decision_player;
+    Player p = (ctx.decision_player != Player::NONE) ? ctx.decision_player : state.phasing_player;
 
     switch (ctx.decision_type) {
         case DecisionType::NONE:
@@ -108,6 +108,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
             for (uint8_t i = 1; i <= 110; ++i) {
                 if (i == card_ids::THE_CHINA_CARD) continue; // China card handled below
+                if (state.current_phase == Phase::HEADLINE && i == card_ids::UN_INTERVENTION) continue;
                 if (state.card_locations[i] == loc) {
                     mask_out[i] = 1;
                 }
@@ -167,24 +168,35 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             *out_size = 3;
             std::memset(mask_out, 0, 3);
             uint8_t ops = ctx.pending_ops_value;
+            uint8_t op_card = ctx.pending_op_card;
 
-            // Check if influence placement is possible
-            uint8_t inf_mask[84];
-            Operations::get_influence_placement_mask(state, p, ops, inf_mask);
-            for (uint8_t i = 0; i < 84; ++i) {
-                if (inf_mask[i]) {
-                    mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
-                    break;
+            // Check if influence placement is possible (Junta & Tear Down This Wall forbid Influence)
+            if (op_card != card_ids::JUNTA && op_card != card_ids::TEAR_DOWN_THIS_WALL) {
+                uint8_t inf_mask[84];
+                Operations::get_influence_placement_mask(state, p, ops, inf_mask);
+                for (uint8_t i = 0; i < 84; ++i) {
+                    if (inf_mask[i]) {
+                        mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
+                        break;
+                    }
                 }
             }
 
-            // Check if coup is possible
-            uint8_t coup_mask[84];
-            Operations::get_coup_target_mask(state, p, coup_mask);
-            for (uint8_t i = 0; i < 84; ++i) {
-                if (coup_mask[i]) {
-                    mask_out[static_cast<size_t>(OpMode::COUP)] = 1;
-                    break;
+            // Check if coup is possible (KAL-007 & Glasnost forbid Coups)
+            if (op_card != card_ids::SOVIETS_SHOOT_DOWN_KAL_007 && op_card != card_ids::GLASNOST) {
+                uint8_t coup_mask[84];
+                Operations::get_coup_target_mask(state, p, coup_mask);
+                for (uint8_t i = 0; i < 84; ++i) {
+                    if (coup_mask[i]) {
+                        if (op_card == card_ids::JUNTA) {
+                            const auto& c = MapData::get_country(i);
+                            if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
+                        } else if (op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                            if (MapData::get_country(i).region != Region::EUROPE) continue;
+                        }
+                        mask_out[static_cast<size_t>(OpMode::COUP)] = 1;
+                        break;
+                    }
                 }
             }
 
@@ -193,9 +205,18 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             Operations::get_realign_target_mask(state, p, realign_mask);
             for (uint8_t i = 0; i < 84; ++i) {
                 if (realign_mask[i]) {
+                    if (op_card == card_ids::JUNTA) {
+                        const auto& c = MapData::get_country(i);
+                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
+                    } else if (op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                        if (MapData::get_country(i).region != Region::EUROPE) continue;
+                    }
                     mask_out[static_cast<size_t>(OpMode::REALIGN)] = 1;
                     break;
                 }
+            }
+            if (!mask_out[0] && !mask_out[1] && !mask_out[2]) {
+                mask_out[0] = 1; // Allow skipping if no ops legal
             }
             break;
         }
@@ -226,8 +247,28 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // Standard Op Mode Node Selection
             if (ctx.op_mode == OpMode::COUP) {
                 Operations::get_coup_target_mask(state, p, mask_out);
+                if (ctx.pending_op_card == card_ids::JUNTA) {
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        const auto& c = MapData::get_country(i);
+                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
+                    }
+                } else if (ctx.pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        if (MapData::get_country(i).region != Region::EUROPE) mask_out[i] = 0;
+                    }
+                }
             } else if (ctx.op_mode == OpMode::REALIGN) {
                 Operations::get_realign_target_mask(state, p, mask_out);
+                if (ctx.pending_op_card == card_ids::JUNTA) {
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        const auto& c = MapData::get_country(i);
+                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
+                    }
+                } else if (ctx.pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        if (MapData::get_country(i).region != Region::EUROPE) mask_out[i] = 0;
+                    }
+                }
             } else {
                 if (ctx.remaining_steps > 0) {
                     Operations::get_influence_placement_mask(state, p, ctx.remaining_steps, mask_out);

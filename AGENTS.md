@@ -99,6 +99,7 @@ graph TD
 │
 ├── tests/                      # Python pytest integration test suite
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
+│   ├── test_card_fixes.py      # Dedicated verification suite for card rules fixes
 │   ├── test_bindings.py        # Validates Python nanobind module
 │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation, replays
 │   ├── test_web_workbench.py   # Validates map/card metadata endpoints and DOM structure
@@ -156,7 +157,7 @@ cmake --build build_san -j
 
 #### Standard Tests & Fuzzing:
 ```bash
-# C++ Unit Tests (282 tests) & Performance Benchmark
+# C++ Unit Tests (299 tests) & Performance Benchmark
 ./build/engine/ts_tests
 ./build/engine/ts_benchmark
 
@@ -164,7 +165,7 @@ cmake --build build_san -j
 ./build/engine/ts_fuzz --games 10000
 ./build/engine/ts_fuzz --steps 5000000
 
-# Python Integration Tests (128 tests)
+# Python Integration Tests (148 tests)
 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
 

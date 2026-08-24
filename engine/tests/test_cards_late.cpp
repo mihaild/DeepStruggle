@@ -196,7 +196,7 @@ TEST(LateCardsTest, Card94_Chernobyl) {
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::CHERNOBYL_ACTIVE));
-    ASSERT_EQ(state.ctx().temp_cards[0], 0);
+    ASSERT_EQ((state.persistent_effects & ts::effect_bits::CHERNOBYL_REGION_MASK) >> ts::effect_bits::CHERNOBYL_REGION_SHIFT, 0);
 }
 
 // Card 95: Latin American Debt Crisis

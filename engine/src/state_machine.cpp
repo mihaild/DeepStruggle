@@ -188,7 +188,11 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 
             bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
             if (h2_card != card_ids::KITCHEN_DEBATES) {
-                state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                if (h2_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                    state.card_locations[h2_card] = CardLocation::ONGOING_EVENT;
+                } else {
+                    state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                }
             }
             if (done) {
                 advance_headline_step(state);
@@ -228,7 +232,11 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
 
         bool done = CardHandlers::trigger_event(state, card, opp);
         if (card != card_ids::KITCHEN_DEBATES) {
-            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                state.card_locations[card] = CardLocation::ONGOING_EVENT;
+            } else {
+                state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            }
         }
         if (done) {
             advance_after_action_round(state);
@@ -245,7 +253,11 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         }
     } else if (card != 0) {
         const auto& c_info = CardData::get_card(card);
-        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+            state.card_locations[card] = CardLocation::ONGOING_EVENT;
+        } else {
+            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        }
     }
     advance_after_action_round(state);
 }
@@ -481,7 +493,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
         bool done = CardHandlers::trigger_event(state, first_card, exec_player);
         if (first_card != card_ids::KITCHEN_DEBATES) {
-            state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            if (first_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                state.card_locations[first_card] = CardLocation::ONGOING_EVENT;
+            } else {
+                state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            }
         }
         if (done) {
             advance_headline_step(state);
@@ -599,6 +615,18 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 uint8_t card = state.ctx().pending_op_card;
                 PlayMode mode = static_cast<PlayMode>(action.primary_id);
 
+                // We Will Bury You check on US Action Round
+                if (p == Player::US && state.current_phase == Phase::ACTION_ROUND && state.has_flag(effect_bits::WE_WILL_BURY_YOU_PENDING)) {
+                    state.clear_flag(effect_bits::WE_WILL_BURY_YOU_PENDING);
+                    if (!(mode == PlayMode::EVENT && card == card_ids::UN_INTERVENTION)) {
+                        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 3));
+                        if (state.victory_points <= -20) {
+                            state.current_phase = Phase::GAME_OVER;
+                            return true;
+                        }
+                    }
+                }
+
                 if (mode == PlayMode::SPACE) {
                     SpaceRace::attempt_space(state, p, card, action.secondary_id);
                     if (state.current_phase != Phase::GAME_OVER) {
@@ -615,7 +643,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     const auto& c_info = CardData::get_card(card);
                     bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
                     if (card != card_ids::KITCHEN_DEBATES) {
-                        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                        if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                            state.card_locations[card] = CardLocation::ONGOING_EVENT;
+                        } else {
+                            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                        }
                     }
                     if (done && state.current_phase != Phase::GAME_OVER) {
                         if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
@@ -625,6 +657,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::OPS) {
+                    if (p == Player::US && CardData::is_war_card(card) && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                        if (state.victory_points <= -20) {
+                            state.current_phase = Phase::GAME_OVER;
+                            return true;
+                        }
+                    }
                     if (card == card_ids::THE_CHINA_CARD && p == Player::US) {
                         state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
                     }
@@ -675,6 +714,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             }
 
             case DecisionType::SELECT_OP_MODE: {
+                if (action.is_confirm_done() || action.primary_id == 255 ||
+                    (action.primary_id == 0 && (state.ctx().pending_op_card == card_ids::JUNTA || state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL))) {
+                    if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                    else advance_after_ops(state);
+                    return true;
+                }
                 OpMode op_mode = static_cast<OpMode>(action.primary_id);
                 uint8_t ops = state.ctx().pending_ops_value;
                 state.ctx().op_mode = op_mode;

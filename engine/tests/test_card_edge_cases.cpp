@@ -482,9 +482,15 @@ TEST(CardEdgeCasesTest, Che_SecondCoupGrantedOnlyOnSuccess) {
 
     // First coup in Colombia with forced roll 6: 6 + 3 - 2 * 1 = 7 (removes 2 US, adds 5 USSR)
     done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 6, 0});
-    ASSERT_TRUE(done); // First step completes
+    ASSERT_FALSE(done); // Second coup is offered because US influence was removed
     ASSERT_EQ(s1.countries[countries::COLOMBIA].us_influence, 0);
     ASSERT_EQ(s1.countries[countries::COLOMBIA].ussr_influence, 5);
+
+    // Second coup in Peru with forced roll 6
+    done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::PERU, 6, 0});
+    ASSERT_TRUE(done);
+    ASSERT_EQ(s1.countries[countries::PERU].us_influence, 0);
+    ASSERT_EQ(s1.countries[countries::PERU].ussr_influence, 3);
 }
 
 TEST(CardEdgeCasesTest, SpecialRelationship_UKUncontrolled_NoEffect) {
@@ -499,13 +505,13 @@ TEST(CardEdgeCasesTest, SpecialRelationship_UKUncontrolled_NoEffect) {
 
 
 TEST(CardEdgeCasesTest, OlympicGames_Boycott_OpsModifiers_Suite) {
-    // 1. Default Boycott (4 Ops)
+    // 1. Default Boycott (4 Ops, 0 VP)
     {
         GameState s{};
         s.defcon = 4;
         CardHandlers::trigger_event(s, card_ids::OLYMPIC_GAMES, Player::US);
         CardHandlers::handle_event_step(s, MicroAction{DecisionType::CHOOSE_BRANCH, 1, 0, 0}); // USSR boycotts
-        ASSERT_EQ(s.victory_points, 2);
+        ASSERT_EQ(s.victory_points, 0);
         ASSERT_EQ(s.defcon, 3);
         ASSERT_EQ(s.ctx().pending_ops_value, 4);
     }
@@ -514,7 +520,7 @@ TEST(CardEdgeCasesTest, OlympicGames_Boycott_OpsModifiers_Suite) {
         s.defcon = 4;
         CardHandlers::trigger_event(s, card_ids::OLYMPIC_GAMES, Player::USSR);
         CardHandlers::handle_event_step(s, MicroAction{DecisionType::CHOOSE_BRANCH, 1, 0, 0}); // US boycotts
-        ASSERT_EQ(s.victory_points, -2);
+        ASSERT_EQ(s.victory_points, 0);
         ASSERT_EQ(s.defcon, 3);
         ASSERT_EQ(s.ctx().pending_ops_value, 4);
     }

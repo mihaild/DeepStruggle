@@ -144,20 +144,34 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
     Player opp = get_opponent(p);
     const auto& c_info = MapData::get_country(country_id);
 
-    // 1. Cuban Missile Crisis check
+    // 1. Cuban Missile Crisis check & cancellation
     if (p == Player::USSR && state.has_flag(effect_bits::CMC_ACTIVE_US)) {
-        // USSR loses immediately!
-        state.victory_points = 20;
-        state.current_phase = Phase::GAME_OVER;
-        res.caused_defcon_suicide = true;
-        return res;
+        if (state.countries[countries::CUBA].ussr_influence >= 2) {
+            // Cancel CMC by removing 2 USSR influence from Cuba
+            state.countries[countries::CUBA].remove_influence(Player::USSR, 2);
+            state.clear_flag(effect_bits::CMC_ACTIVE_US);
+        } else {
+            // USSR loses immediately!
+            state.victory_points = 20;
+            state.current_phase = Phase::GAME_OVER;
+            res.caused_defcon_suicide = true;
+            return res;
+        }
     }
     if (p == Player::US && state.has_flag(effect_bits::CMC_ACTIVE_USSR)) {
-        // US loses immediately!
-        state.victory_points = -20;
-        state.current_phase = Phase::GAME_OVER;
-        res.caused_defcon_suicide = true;
-        return res;
+        if (state.countries[countries::WEST_GERMANY].us_influence >= 2) {
+            state.countries[countries::WEST_GERMANY].remove_influence(Player::US, 2);
+            state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
+        } else if (state.countries[countries::TURKEY].us_influence >= 2) {
+            state.countries[countries::TURKEY].remove_influence(Player::US, 2);
+            state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
+        } else {
+            // US loses immediately!
+            state.victory_points = -20;
+            state.current_phase = Phase::GAME_OVER;
+            res.caused_defcon_suicide = true;
+            return res;
+        }
     }
 
     // 2. Military Operations Credit (uses effective ops_value with modifiers)

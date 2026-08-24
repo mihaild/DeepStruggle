@@ -644,6 +644,8 @@ NB_MODULE(ts_engine, m) {
     // Effect Bits module constants
     auto eb = m.def_submodule("EffectBits");
     eb.attr("NATO_ACTIVE") = ts::effect_bits::NATO_ACTIVE;
+    eb.attr("NATO_CANCELED_FRANCE") = ts::effect_bits::NATO_CANCELED_FRANCE;
+    eb.attr("NATO_CANCELED_WEST_GERMANY") = ts::effect_bits::NATO_CANCELED_WEST_GERMANY;
     eb.attr("MARSHALL_PLAN_PLAYED") = ts::effect_bits::MARSHALL_PLAN_PLAYED;
     eb.attr("WARSAW_PACT_PLAYED") = ts::effect_bits::WARSAW_PACT_PLAYED;
     eb.attr("US_JAPAN_PACT_ACTIVE") = ts::effect_bits::US_JAPAN_PACT_ACTIVE;
@@ -681,6 +683,8 @@ NB_MODULE(ts_engine, m) {
     eb.attr("WILLY_BRANDT_PLAYED") = ts::effect_bits::WILLY_BRANDT_PLAYED;
     eb.attr("TEAR_DOWN_THIS_WALL_PLAYED") = ts::effect_bits::TEAR_DOWN_THIS_WALL_PLAYED;
     eb.attr("CHERNOBYL_ACTIVE") = ts::effect_bits::CHERNOBYL_ACTIVE;
+    eb.attr("CHERNOBYL_REGION_SHIFT") = ts::effect_bits::CHERNOBYL_REGION_SHIFT;
+    eb.attr("CHERNOBYL_REGION_MASK") = ts::effect_bits::CHERNOBYL_REGION_MASK;
     eb.attr("SPACE_US_ATTEMPT_1") = ts::effect_bits::SPACE_US_ATTEMPT_1;
     eb.attr("SPACE_US_ATTEMPT_2") = ts::effect_bits::SPACE_US_ATTEMPT_2;
     eb.attr("SPACE_USSR_ATTEMPT_1") = ts::effect_bits::SPACE_USSR_ATTEMPT_1;
