@@ -27,7 +27,7 @@ class NeuralBot(BaseBot):
         role: str,
         model_path: Optional[str] = None,
         device: str = "cuda",
-        temperature: float = 0.05,
+        temperature: float = 0.3,
     ):
         super().__init__(role)
         self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
@@ -51,11 +51,6 @@ class NeuralBot(BaseBot):
 
         if not valid_ids and not allow_early_stop:
             return None
-
-        # Build ts.GameState from session state dict or reconstruct
-        # For direct GameState evaluation, we can parse state or use session GameState
-        # Let's construct state or use legal mask
-        p = ts.Player.US if self.role == "US" else ts.Player.USSR
 
         # Fallback to legal action choice if state serialization is partial
         if not valid_ids:
@@ -94,20 +89,12 @@ class NeuralBot(BaseBot):
         if allow_early_stop:
             mask[ActionEncoder.CONFIRM_DONE_INDEX] = 1
 
-        # Build approximate/direct observation from state dict
+        # Build canonical observation from state dict
         obs = np.zeros(4293, dtype=np.float32)
+        my_is_us = (self.role == "US")
+        side_sign = 1.0 if my_is_us else -1.0
 
-        # Global features
-        obs[3672 + 0] = float(state_dict.get("victory_points", 0)) / 20.0
-        obs[3672 + 1] = float(state_dict.get("defcon", 5)) / 5.0
-        obs[3672 + 2] = float(state_dict.get("us_mil_ops", 0)) / 5.0
-        obs[3672 + 3] = float(state_dict.get("ussr_mil_ops", 0)) / 5.0
-        obs[3672 + 6] = float(state_dict.get("turn", 1)) / 10.0
-        obs[3672 + 7] = float(state_dict.get("action_round", 0)) / 8.0
-        obs[3672 + 8] = 1.0 if self.role == "US" else -1.0
-        obs[4292] = 1.0 if self.role == "US" else -1.0
-
-        # Country features
+        # Board features (Canonical Myself vs Opponent)
         countries = state_dict.get("countries", [])
         for c in countries:
             cid = c.get("id", 0)
@@ -115,16 +102,47 @@ class NeuralBot(BaseBot):
                 offset = cid * 28
                 us_inf = float(c.get("us_influence", 0))
                 ussr_inf = float(c.get("ussr_influence", 0))
-                obs[offset + 0] = us_inf / 10.0
-                obs[offset + 1] = ussr_inf / 10.0
-                obs[offset + 2] = (us_inf - ussr_inf) / 10.0
+                my_inf = us_inf if my_is_us else ussr_inf
+                opp_inf = ussr_inf if my_is_us else us_inf
+                stability = float(c.get("stability", 1))
+
+                obs[offset + 0] = my_inf / 10.0
+                obs[offset + 1] = opp_inf / 10.0
+                obs[offset + 2] = (my_inf - opp_inf) / 10.0
+                obs[offset + 3] = stability / 5.0
+                obs[offset + 4] = 1.0 if c.get("battleground", False) else 0.0
+
+                controlled_by = c.get("controlled_by", "NONE")
+                obs[offset + 5] = 1.0 if (controlled_by == self.role) else 0.0
+                obs[offset + 6] = 1.0 if (controlled_by not in (self.role, "NONE")) else 0.0
+                obs[offset + 7] = 1.0 if (controlled_by == "NONE") else 0.0
+
+        # Global features (Canonical Myself vs Opponent)
+        raw_vp = float(state_dict.get("victory_points", 0))
+        my_vp = raw_vp if my_is_us else -raw_vp
+        obs[3672 + 0] = my_vp / 20.0
+        obs[3672 + 1] = float(state_dict.get("defcon", 5)) / 5.0
+        
+        my_mil = float(state_dict.get("us_mil_ops", 0) if my_is_us else state_dict.get("ussr_mil_ops", 0))
+        opp_mil = float(state_dict.get("ussr_mil_ops", 0) if my_is_us else state_dict.get("us_mil_ops", 0))
+        obs[3672 + 2] = my_mil / 5.0
+        obs[3672 + 3] = opp_mil / 5.0
+
+        obs[3672 + 6] = float(state_dict.get("turn", 1)) / 10.0
+        obs[3672 + 7] = float(state_dict.get("action_round", 0)) / 8.0
+        
+        # Explicit side flags
+        obs[3672 + 61] = 1.0 if my_is_us else 0.0
+        obs[3672 + 62] = 1.0 if not my_is_us else 0.0
+        obs[3672 + 63] = side_sign
+        obs[4292] = side_sign
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             actions_t, _, _, _, _ = self.model.sample_action(
-                obs_t, mask_t, temperature=self.temperature, deterministic=(self.temperature == 0)
+                obs_t, mask_t, temperature=self.temperature, deterministic=False
             )
 
         chosen_flat = int(actions_t.item())

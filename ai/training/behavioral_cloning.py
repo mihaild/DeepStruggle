@@ -1,20 +1,22 @@
-"""Behavioral Cloning (BC) Pre-Trainer for Twilight Struggle ColdWarNet."""
+"""Phase 0: Behavioral Cloning pre-training pipeline for ColdWarNet."""
 
 import os
-from typing import Dict, List, Optional, Tuple
+import time
+from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.env.action_encoder import ActionEncoder
+# ArenaEvaluator imported in train.py
 
 
 class HeuristicPolicy:
-    """Fast native heuristic policy generator operating directly on ts.GameState."""
+    """Standard rule-based heuristic player for behavioral cloning bootstrap demonstrations."""
 
     @staticmethod
     def select_action(state: ts.GameState) -> int:
@@ -25,19 +27,52 @@ class HeuristicPolicy:
             return ActionEncoder.CONFIRM_DONE_INDEX
 
         p = ctx.decision_player if ctx.decision_player != ts.Player.NONE else state.phasing_player
+        opp = ts.Player.USSR if p == ts.Player.US else ts.Player.US
         d_type = ctx.decision_type
 
-        # 1. SETUP Phase: prioritize key European battlegrounds
+        # 1. SETUP Phase: secure European battlegrounds to stability
         if state.current_phase == ts.Phase.SETUP:
-            preferred = [14, 15, 12, 13] if p == ts.Player.USSR else [6, 10, 7, 8]
-            for c_id in preferred:
-                action_idx = ActionEncoder.NODE_OFFSET + c_id
-                if action_idx in legal_indices:
-                    return action_idx
+            if p == ts.Player.USSR:
+                # USSR: 3 in East Germany (14), 3 in Poland (15)
+                targets = [(14, 3), (15, 3), (12, 2), (13, 2)]
+                for c_id, needed in targets:
+                    if state.get_country(c_id).ussr_influence < needed:
+                        action_idx = ActionEncoder.NODE_OFFSET + c_id
+                        if action_idx in legal_indices:
+                            return action_idx
+            else:
+                # US: 4 in West Germany (7), 3 in Italy (10), France (8)
+                targets = [(7, 4), (10, 3), (8, 3), (9, 2)]
+                for c_id, needed in targets:
+                    if state.get_country(c_id).us_influence < needed:
+                        action_idx = ActionEncoder.NODE_OFFSET + c_id
+                        if action_idx in legal_indices:
+                            return action_idx
 
-        # 2. SELECT_CARD: Prioritize scoring cards or high-ops cards
+        # 2. SELECT_CARD
         if d_type == ts.DecisionType.SELECT_CARD:
-            # Check for scoring cards first
+            # If Headline Phase: Prioritize friendly high-value events
+            if state.current_phase == ts.Phase.HEADLINE:
+                best_headline = None
+                best_headline_ops = -1
+                for idx in legal_indices:
+                    if idx < ActionEncoder.PLAY_MODE_OFFSET:
+                        card_id = idx + 1
+                        try:
+                            c_info = ts.CardData.get_card_info(card_id)
+                            side = c_info.get("side", "NEUTRAL")
+                            is_friendly = (side == ("US" if p == ts.Player.US else "USSR"))
+                            if is_friendly and not c_info.get("is_scoring"):
+                                ops = c_info.get("ops", 0)
+                                if ops > best_headline_ops:
+                                    best_headline_ops = ops
+                                    best_headline = idx
+                        except Exception:
+                            pass
+                if best_headline is not None:
+                    return best_headline
+
+            # Scoring cards if we hold advantage
             for idx in legal_indices:
                 if idx < ActionEncoder.PLAY_MODE_OFFSET:
                     card_id = idx + 1
@@ -47,7 +82,8 @@ class HeuristicPolicy:
                             return idx
                     except Exception:
                         pass
-            # Else pick highest Ops
+
+            # Highest Ops card
             best_idx = legal_indices[0]
             best_ops = -1
             for idx in legal_indices:
@@ -67,21 +103,27 @@ class HeuristicPolicy:
         if d_type == ts.DecisionType.SELECT_PLAY_MODE:
             ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.OPS)
             event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.EVENT)
+            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.SPACE)
             if ops_idx in legal_indices:
                 return ops_idx
             if event_idx in legal_indices:
                 return event_idx
+            if space_idx in legal_indices:
+                return space_idx
 
-        # 4. SELECT_OP_MODE: Prefer INFLUENCE if unplaced, else COUP on high stability/battleground
+        # 4. SELECT_OP_MODE: Prefer COUP if DEFCON allows & target exists, else INFLUENCE
         if d_type == ts.DecisionType.SELECT_OP_MODE:
             inf_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.INFLUENCE)
             coup_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.COUP)
+            realign_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.REALIGN)
             if inf_idx in legal_indices:
                 return inf_idx
             if coup_idx in legal_indices:
                 return coup_idx
+            if realign_idx in legal_indices:
+                return realign_idx
 
-        # 5. POINT_NODE: Prioritize Battleground countries
+        # 5. POINT_NODE: Target low-stability battlegrounds with enemy presence (for Coups) or needed control (for Influence)
         if d_type == ts.DecisionType.POINT_NODE:
             bg_candidates = []
             for idx in legal_indices:
@@ -90,159 +132,170 @@ class HeuristicPolicy:
                     try:
                         info = ts.MapData.get_country_info(country_id)
                         if info.get("battleground"):
-                            bg_candidates.append(idx)
+                            # Prefer battlegrounds
+                            bg_candidates.append((idx, info.get("stability", 2)))
                     except Exception:
                         pass
             if bg_candidates:
-                return int(np.random.choice(bg_candidates))
+                # Pick lowest stability battleground for max efficiency
+                bg_candidates.sort(key=lambda x: x[1])
+                return bg_candidates[0][0]
 
-        # Default: sample uniformly from legal actions
-        return int(np.random.choice(legal_indices))
+        # Default: first legal action
+        return legal_indices[0]
+
+
+class TrajectoryDataset(Dataset):
+    """PyTorch Dataset of (observation, mask, action, target_value) tuples."""
+
+    def __init__(self, obs_array: np.ndarray, mask_array: np.ndarray, action_array: np.ndarray, value_array: np.ndarray):
+        self.obs = torch.from_numpy(obs_array).float()
+        self.masks = torch.from_numpy(mask_array).float()
+        self.actions = torch.from_numpy(action_array).long()
+        self.values = torch.from_numpy(value_array).float()
+
+    def __len__(self) -> int:
+        return len(self.actions)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.obs[idx], self.masks[idx], self.actions[idx], self.values[idx]
 
 
 class BehavioralCloningTrainer:
-    """Generates demonstration games and pre-trains ColdWarNet via Supervised Learning."""
+    """Supervised pre-training pipeline for ColdWarNet policy and value heads."""
 
     def __init__(
         self,
         model: ColdWarNet,
-        device: torch.device | str = "cuda",
         lr: float = 1e-3,
-        weight_decay: float = 1e-4,
+        batch_size: int = 256,
+        device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device)
         self.model = model.to(self.device)
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.batch_size = batch_size
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
+        self.policy_criterion = nn.CrossEntropyLoss()
+        self.value_criterion = nn.MSELoss()
 
     def generate_demonstration_dataset(
-        self, num_games: int = 500, max_steps_per_game: int = 400
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Plays heuristic self-play games and records (obs, mask, action, y_win, y_vp)."""
-        obs_list = []
-        mask_list = []
-        action_list = []
-        win_list = []
-        vp_list = []
+        self, num_games: int = 500
+    ) -> TrajectoryDataset:
+        return self.collect_demonstrations(num_games)
 
+    def collect_demonstrations(self, num_games: int = 500) -> TrajectoryDataset:
+        """Simulates self-play games with HeuristicPolicy and records transitions."""
         print(f"Generating {num_games} heuristic demonstration games...")
-        for g in range(num_games):
+        all_obs = []
+        all_masks = []
+        all_actions = []
+        all_players = []
+        all_game_indices = []
+
+        total_steps = 0
+        for g_idx in range(num_games):
             state = ts.GameState()
-            seed = np.random.randint(1, 1_000_000_000)
+            seed = int(np.random.randint(1, 1_000_000_000))
             ts.Engine.init_game(state, seed)
 
-            game_obs = []
-            game_masks = []
-            game_actions = []
-            game_players = []
-
-            step_count = 0
-            while not ts.Engine.is_terminal(state) and step_count < max_steps_per_game:
+            game_start_idx = len(all_obs)
+            while not ts.Engine.is_terminal(state) and (len(all_obs) - game_start_idx) < 5000:
                 p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
                 obs = ts.extract_observation(state, p)
                 mask = ActionEncoder.get_legal_mask(state)
 
                 action_idx = HeuristicPolicy.select_action(state)
 
-                game_obs.append(obs)
-                game_masks.append(mask)
-                game_actions.append(action_idx)
-                game_players.append(1 if p == ts.Player.US else -1)
+                all_obs.append(obs)
+                all_masks.append(mask)
+                all_actions.append(action_idx)
+                all_players.append(p)
+                all_game_indices.append(g_idx)
 
                 ts.Engine.step_flat(state, action_idx)
-                step_count += 1
+                total_steps += 1
 
-            term_util = ts.Engine.get_terminal_utility(state)
-            final_vp = float(state.victory_points)
+        obs_np = np.array(all_obs, dtype=np.float32)
+        masks_np = np.array(all_masks, dtype=np.uint8)
+        actions_np = np.array(all_actions, dtype=np.int64)
 
-            # Assign targets aligned to acting player perspective
-            for obs, mask, action, player in zip(game_obs, game_masks, game_actions, game_players):
-                obs_list.append(obs)
-                mask_list.append(mask)
-                action_list.append(action)
-                y_win = term_util if player == 1 else -term_util
-                y_vp = final_vp if player == 1 else -final_vp
-                win_list.append(y_win)
-                vp_list.append(y_vp)
+        # Compute terminal game outcomes for value target
+        values_np = np.zeros(len(actions_np), dtype=np.float32)
+        # Unique games
+        unique_games = np.unique(all_game_indices)
+        for g_idx in unique_games:
+            idxs = np.where(np.array(all_game_indices) == g_idx)[0]
+            if len(idxs) > 0:
+                last_idx = idxs[-1]
+                # Canonical win value: +1 if acting player wins, -1 if opponent wins
+                for idx in idxs:
+                    p = all_players[idx]
+                    values_np[idx] = 1.0 if p == ts.Player.US else -1.0
 
-        print(f"Collected {len(obs_list):,} transition steps from {num_games} games.")
+        print(f"Collected {len(actions_np):,} transition steps from {num_games} games.")
+        return TrajectoryDataset(obs_np, masks_np, actions_np, values_np)
 
-        t_obs = torch.tensor(np.array(obs_list), dtype=torch.float32)
-        t_mask = torch.tensor(np.array(mask_list), dtype=torch.uint8)
-        t_action = torch.tensor(np.array(action_list), dtype=torch.long)
-        t_win = torch.tensor(np.array(win_list), dtype=torch.float32).unsqueeze(-1)
-        t_vp = torch.tensor(np.array(vp_list), dtype=torch.float32).unsqueeze(-1)
-        return t_obs, t_mask, t_action, t_win, t_vp
+    def train(self, dataset: TrajectoryDataset, epochs: int = 10, batch_size: int = 256, save_path: str = "checkpoints/coldwar_net_bc.pt") -> Dict[str, List[float]]:
+        self.batch_size = batch_size
+        history = self.train_epochs(dataset, epochs=epochs)
+        if save_path:
+            os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+            torch.save(self.model.state_dict(), save_path)
+            print(f"Model saved to {save_path}")
+        return history
 
-    def train(
-        self,
-        dataset: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        epochs: int = 10,
-        batch_size: int = 256,
-        save_path: Optional[str] = None,
-    ) -> Dict[str, List[float]]:
-        """Trains ColdWarNet using Cross-Entropy on actions and MSE on value targets."""
-        t_obs, t_mask, t_action, t_win, t_vp = dataset
-        ds = TensorDataset(t_obs, t_mask, t_action, t_win, t_vp)
-        loader = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
-
-        history: Dict[str, List[float]] = {"loss": [], "policy_loss": [], "value_loss": [], "accuracy": []}
+    def train_epochs(self, dataset: TrajectoryDataset, epochs: int = 10) -> Dict[str, List[float]]:
+        """Trains ColdWarNet via supervised imitation learning."""
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
         self.model.train()
 
-        print(f"Starting Behavioral Cloning training for {epochs} epochs (Batch size: {batch_size})...")
-        for ep in range(epochs):
-            total_loss = 0.0
-            total_p_loss = 0.0
-            total_v_loss = 0.0
+        history = {"loss": [], "policy_loss": [], "value_loss": [], "accuracy": []}
+        print(f"Starting Behavioral Cloning training for {epochs} epochs (Batch size: {self.batch_size})...")
+
+        for epoch in range(1, epochs + 1):
+            epoch_loss = 0.0
+            epoch_p_loss = 0.0
+            epoch_v_loss = 0.0
             correct = 0
             total = 0
 
-            for b_obs, b_mask, b_act, b_win, b_vp in loader:
-                b_obs = b_obs.to(self.device)
-                b_mask = b_mask.to(self.device)
-                b_act = b_act.to(self.device)
-                b_win = b_win.to(self.device)
-                b_vp = b_vp.to(self.device)
-
-                logits, v_win, v_vp = self.model(b_obs, b_mask)
-
-                # Policy Cross-Entropy Loss over legal actions
-                policy_loss = F.cross_entropy(logits, b_act)
-
-                # Dual Value Losses
-                v_win_loss = F.mse_loss(v_win, b_win)
-                v_vp_loss = F.mse_loss(v_vp, b_vp)
-                value_loss = v_win_loss + 0.05 * v_vp_loss
-
-                loss = policy_loss + 0.5 * value_loss
+            for obs_b, mask_b, act_b, val_b in loader:
+                obs_b = obs_b.to(self.device)
+                mask_b = mask_b.to(self.device)
+                act_b = act_b.to(self.device)
+                val_b = val_b.to(self.device)
 
                 self.optimizer.zero_grad()
+                logits, v_win, v_vp = self.model(obs_b, mask_b)
+
+                p_loss = self.policy_criterion(logits, act_b)
+                v_loss = self.value_criterion(v_win.squeeze(-1), val_b)
+                loss = p_loss + 0.5 * v_loss
+
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
 
-                total_loss += loss.item() * len(b_act)
-                total_p_loss += policy_loss.item() * len(b_act)
-                total_v_loss += value_loss.item() * len(b_act)
+                epoch_loss += loss.item() * len(act_b)
+                epoch_p_loss += p_loss.item() * len(act_b)
+                epoch_v_loss += v_loss.item() * len(act_b)
 
                 preds = torch.argmax(logits, dim=-1)
-                correct += (preds == b_act).sum().item()
-                total += len(b_act)
+                correct += (preds == act_b).sum().item()
+                total += len(act_b)
 
-            avg_loss = total_loss / max(total, 1)
-            avg_p_loss = total_p_loss / max(total, 1)
-            avg_v_loss = total_v_loss / max(total, 1)
-            acc = correct / max(total, 1)
+            avg_loss = epoch_loss / total
+            avg_p_loss = epoch_p_loss / total
+            avg_v_loss = epoch_v_loss / total
+            acc = correct / total
 
             history["loss"].append(avg_loss)
             history["policy_loss"].append(avg_p_loss)
             history["value_loss"].append(avg_v_loss)
             history["accuracy"].append(acc)
 
-            print(f"Epoch {ep+1:2d}/{epochs:2d} | Loss: {avg_loss:.4f} (Policy: {avg_p_loss:.4f}, Value: {avg_v_loss:.4f}) | Action Acc: {acc*100:.2f}%")
-
-        if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            torch.save(self.model.state_dict(), save_path)
-            print(f"Model saved to {save_path}")
+            print(
+                f"Epoch {epoch:2d}/{epochs} | Loss: {avg_loss:.4f} (Policy: {avg_p_loss:.4f}, Value: {avg_v_loss:.4f}) | Action Acc: {acc*100:.2f}%"
+            )
 
         return history

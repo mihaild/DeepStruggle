@@ -25,7 +25,7 @@ class ArenaEvaluator:
         us_agent_type: str = "neural",
         ussr_agent_type: str = "heuristic",
         seed: Optional[int] = None,
-        max_steps: int = 500,
+        max_steps: int = 5000,
     ) -> Dict[str, Any]:
         """Plays a single game between two specified agents."""
         state = ts.GameState()
@@ -46,7 +46,7 @@ class ArenaEvaluator:
                 mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
 
                 with torch.no_grad():
-                    actions_t, _, _, _, _ = self.model.sample_action(obs_t, mask_t, temperature=0.1, deterministic=True)
+                    actions_t, _, _, _, _ = self.model.sample_action(obs_t, mask_t, temperature=0.3, deterministic=False)
                 action_idx = int(actions_t.item())
             elif agent_type == "heuristic":
                 action_idx = HeuristicPolicy.select_action(state)

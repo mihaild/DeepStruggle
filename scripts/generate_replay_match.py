@@ -51,7 +51,7 @@ def generate_self_play_replay(
     # Initial state snapshot
     initial_dict = ts.state_to_dict(state)
     step_index = 0
-    max_steps = 500
+    max_steps = 5000  # Generous safety limit, plays naturally to full game completion
 
     print(f"{'Step':>4s} | {'Turn':>4s} | {'AR':>2s} | {'Player':>5s} | {'DEFCON':>6s} | {'VP':>4s} | {'Action Description'}")
     print(f"{'-'*75}")
