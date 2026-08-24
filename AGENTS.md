@@ -21,8 +21,17 @@ graph TD
         Logger["Replay Recorder (.tslog.json)"]
     end
 
+    subgraph NeuralAI ["Neural Network & RL (ai/)"]
+        ColdWarNet["ColdWarNet (GNN + Card + ResNet Fusion)"]
+        NashPG["NashPG Trainer (Iterative KL Self-Play)"]
+        BC["Behavioral Cloning (Phase 0 Pre-training)"]
+        VecEnv["Vectorized C++ Batch Runner (100k+ step/s)"]
+        Arena["Arena Tournament Evaluator"]
+    end
+
     subgraph Bot ["Bot Client (bot/)"]
-        Runner["bot.py Client"]
+        Runner["bot_client.py Client"]
+        NeuralBotClient["NeuralBot (ColdWarNet PyTorch)"]
         Heuristic["Heuristic Baseline Bot"]
         Random["Random / Fuzz Bot"]
         AgentPlayer["Agent Interactive Player CLI"]
@@ -33,9 +42,10 @@ graph TD
     end
 
     subgraph CoreEngine ["C++ Simulation Core (engine/)"]
-        Core["ts::Engine (C++20 Zero-Allocation)"]
+        Core["ts::Engine (C++20 Zero-Allocation, 2.45M step/s)"]
         State["ts::GameState (4 KB Trivially Copyable)"]
-        Mask["ts::ActionMask"]
+        Mask["ts::ActionMask (212-dim Flat Action Space)"]
+        Obs["ts::Observation (4293-dim Float Tensor)"]
         Map["ts::MapData (84 Countries Graph)"]
         Cards["ts::CardData (110 Cards Event Logic)"]
     end
@@ -46,6 +56,12 @@ graph TD
     WS <--> Logger
     WS <--> Nanobind
     Nanobind <--> CoreEngine
+    VecEnv <--> Nanobind
+    VecEnv <--> NashPG
+    NashPG <--> ColdWarNet
+    ColdWarNet --> NeuralBotClient
+    NeuralBotClient --> Runner
+    Arena <--> ColdWarNet
 ```
 
 ---
@@ -58,6 +74,20 @@ graph TD
 ├── CMakeLists.txt              # Root build configuration for C++ core and nanobind module
 ├── .gitignore                  # Git ignore rules for build, venv, node, logs, and rules/
 ├── .python-version             # Python runtime version pinned for environment
+│
+├── ai/                         # Neural Network & Reinforcement Learning (NashPG / ColdWarNet)
+│   ├── env/                    # Environment wrappers & flat action codecs
+│   │   ├── action_encoder.py   # 212-dim Flat Action <-> MicroAction bidirectional codec
+│   │   └── ts_env.py           # Single & Vectorized batched C++ simulation wrapper
+│   ├── models/                 # Neural network architectures
+│   │   └── coldwar_net.py      # ColdWarNet (GNN GraphConv + Card + Global ResNet + Masked Heads)
+│   ├── training/               # Training pipelines & algorithms
+│   │   ├── rollout_buffer.py   # Trajectory storage & GAE advantage calculator
+│   │   ├── behavioral_cloning.py # Phase 0 supervised pre-training
+│   │   ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization)
+│   │   └── train.py            # Unified CLI training & evaluation runner
+│   └── eval/                   # Tournament evaluation & arena metrics
+│       └── arena.py            # Automated tournament evaluator vs HeuristicBot / RandomBot
 │
 ├── rules/                      # [GIT IGNORED] General game rules, PDF, map & card descriptions
 │   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
@@ -77,158 +107,98 @@ graph TD
 ├── bindings/                   # Native Python bridge via nanobind (see bindings/AGENTS.md)
 │   ├── CMakeLists.txt          # Module build instructions
 │   ├── AGENTS.md               # Specific instructions for maintaining the Python bindings
-│   └── ts_bindings.cpp         # nanobind module exporting ts_engine
+│   └── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
 │
 ├── server/                     # FastAPI game server and replay manager (see server/AGENTS.md)
 │   ├── AGENTS.md               # Specific instructions for server maintainers
 │   ├── main.py                 # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
-│   ├── session.py              # GameSession class, micro-action router, state broadcasting
-│   └── replay.py               # ReplayLogger and ReplayManager for .tslog.json files
+│   └── session.py              # GameSession class, micro-action router, state broadcasting
 │
-├── bot/                        # Standalone bot clients (see bot/AGENTS.md)
+├── bot/                        # Bot clients & interactive players (see bot/AGENTS.md)
 │   ├── AGENTS.md               # Specific instructions for developing AI bots
-│   ├── bot_client.py           # CLI bot runner (RandomBot, HeuristicBot, custom agents)
+│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints
+│   ├── bot_client.py           # CLI bot runner (RandomBot, HeuristicBot, NeuralBot)
 │   └── agent_player.py         # Rich CLI & interactive agent player interface
 │
-├── docs/                       # Architectural guides and engine comparison reports
-│   └── STRUGGLER_COMPARISON.md # Deep comparison between ts_ai C++ core and struggler Python engine
-│
-├── external/                   # Git submodules for external engines and references
-│   └── struggler/              # alekpinel/struggler Python Twilight Struggle engine submodule
-│
-├── frontend/                   # Modern Web UI & Game Workbench (see frontend/AGENTS.md)
-│   ├── AGENTS.md               # Specific instructions for frontend development
-│   ├── package.json            # Node dependencies (Vite, TypeScript)
-│   ├── vite.config.ts          # Vite build & WebSocket proxy configuration
-│   ├── index.html              # Workbench layout
-│   └── src/                    # TypeScript components (map_view, tracks, cards, action_hud, replay)
-│
-├── tests/                      # Python pytest integration test suite
+├── tests/                      # Python pytest integration test suite (343 tests)
+│   ├── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
-│   ├── test_all_110_cards_differential.py # Exhaustive 110-card cross-engine validation & state variants (131 tests)
+│   ├── test_all_110_cards_differential.py # Exhaustive 110-card cross-engine validation (131 tests)
+│   ├── test_struggler_differential.py # Cross-engine differential test suite
 │   ├── test_card_fixes.py      # Dedicated verification suite for card rules fixes
 │   ├── test_bindings.py        # Validates Python nanobind module
-│   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation, replays
-│   ├── test_web_workbench.py   # Validates map/card metadata endpoints and DOM structure
-│   ├── test_e2e_space_race.py  # Headless Playwright Chrome E2E browser tests
-│   ├── struggler_adapter.py    # Bidirectional translation bridge between ts_ai and struggler
-│   └── test_struggler_differential.py # Cross-engine differential test suite (37 tests)
+│   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation
+│   └── test_e2e_space_race.py  # Playwright E2E browser tests
 │
 └── replays/                    # Recorded game logs in standardized .tslog.json format
 ```
 
 ---
 
-## 3. Mandatory Documentation Maintenance Rule for Agents
+## 3. Developer & Agent Workflows
 
-> [!IMPORTANT]
-> **Documentation Must Always Match Code Changes**:
-> Whenever making any changes to the codebase (e.g. adding or updating card logic, engine features, build targets, sanitizer options, bot interfaces, API endpoints, or frontend views), you **MUST** update all corresponding documentation files:
-> - Root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md)
-> - Subdirectory guides: [`engine/AGENTS.md`](file:///home/mihaild/prog/ts_ai/engine/AGENTS.md), [`frontend/AGENTS.md`](file:///home/mihaild/prog/ts_ai/frontend/AGENTS.md), [`server/AGENTS.md`](file:///home/mihaild/prog/ts_ai/server/AGENTS.md), [`bot/AGENTS.md`](file:///home/mihaild/prog/ts_ai/bot/AGENTS.md), and [`bindings/AGENTS.md`](file:///home/mihaild/prog/ts_ai/bindings/AGENTS.md).
-> Ensure that all commands, directory listings, architecture diagrams, and testing instructions reflect the exact active state of the repository.
-
----
-
-## 4. Developer & Agent Workflows
-
-### 4.1 Initial Environment Setup
+### 3.1 Initial Environment Setup
 ```bash
 # 1. Python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install nanobind fastapi "uvicorn[standard]" websockets pytest numpy pydantic httpx
+pip install nanobind fastapi "uvicorn[standard]" websockets pytest numpy pydantic httpx torch torchvision
 
 # 2. Frontend dependencies & production build
 cd frontend && npm install && npm run build && cd ..
 ```
 
-### 4.2 Build C++ Engine & Nanobind Extension
+### 3.2 Build C++ Engine & Nanobind Extension
 ```bash
 # Standard Release Build
 cmake -B build -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build -j
 ```
-*Output: Generates `./ts_engine.cpython-*.so` in the workspace root, as well as `./build/engine/ts_tests`, `ts_fuzz`, `ts_benchmark`.*
 
-### 4.3 Build with Sanitizers (ASan + UBSan)
+### 3.3 Training & Evaluating Neural Networks (ColdWarNet / NashPG)
+
 ```bash
-# AddressSanitizer & UndefinedBehaviorSanitizer Debug Build
-cmake -B build_san -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3 \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
-  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
-cmake --build build_san -j
+# Phase 0: Supervised Behavioral Cloning Pre-Training
+PYTHONPATH=. .venv/bin/python -m ai.training.train --mode bc --bc-games 1000 --bc-epochs 10 --save-path checkpoints/coldwar_net_bc.pt
+
+# Phase 1: NashPG (Nash Policy Gradient) Self-Play Reinforcement Learning
+PYTHONPATH=. .venv/bin/python -m ai.training.train --mode nashpg --load-path checkpoints/coldwar_net_bc.pt --num-envs 64 --buffer-size 128 --iterations 100 --eta 0.1 --save-path checkpoints/coldwar_net.pt
+
+# Phase 2: Tournament Evaluation
+PYTHONPATH=. .venv/bin/python -m ai.training.train --mode eval --load-path checkpoints/coldwar_net.pt --eval-games 100 --eval-opponent heuristic
 ```
 
-### 4.4 Run Test Suites
+### 3.4 Launch Web Workbench & Play Against NeuralBot
+```bash
+# 1. Start backend server (serves web UI on port 8000)
+PYTHONPATH=. .venv/bin/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 
-#### Standard Tests & Fuzzing:
+# 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
+PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --type neural --model-path checkpoints/coldwar_net.pt
+
+# 3. Open browser at:
+# http://localhost:8000/?game_id=game-1&role=US
+```
+
+### 3.5 Run Test Suites
 ```bash
 # C++ Unit Tests (299 tests) & Performance Benchmark
 ./build/engine/ts_tests
 ./build/engine/ts_benchmark
 
-# Invariant Fuzzer (e.g. 10,000 games or 5,000,000 steps)
-./build/engine/ts_fuzz --games 10000
-./build/engine/ts_fuzz --steps 5000000
-
-# Python Integration Tests (332 tests including exhaustive 110-card differential suite)
-PYTHONPATH=. .venv/bin/pytest -v tests/
-```
-
-#### Sanitizers Run:
-```bash
-# C++ Unit Tests under ASan + UBSan
-./build_san/engine/ts_tests
-
-# Fuzzer under ASan + UBSan
-./build_san/engine/ts_fuzz --games 10000
-./build_san/engine/ts_fuzz --steps 5000000
-
-# Python Integration Tests under ASan
-LD_PRELOAD=/usr/lib/libasan.so ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0 PYTHONPATH=. .venv/bin/pytest -v tests/
-```
-
-### 4.5 Launch Web Workbench & Play Against Bot
-```bash
-# 1. Start backend server (serves web UI on port 8000)
-PYTHONPATH=. .venv/bin/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
-
-# 2. In a separate terminal, launch a bot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --type heuristic
-
-# 3. Open browser at:
-# http://localhost:8000/?game_id=game-1&role=US
-# Or view replays at:
-# http://localhost:8000/?replay=llm_match_with_commentary.tslog.json
+# Python Integration Tests (343 tests including Neural & NashPG suite)
+PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
 ```
 
 ---
 
-## 5. Key Maintenance Invariants for Agents
+## 4. Key Maintenance Invariants for Agents
 
 1. **Zero Heap Allocations in Engine Core**:
-   `ts::GameState` must remain trivially copyable (`std::is_trivially_copyable_v<GameState>`) and within 4 KB. Never use heap structures (`std::vector`, `std::string`, `std::map`) within `GameState` or `DecisionContext`.
-2. **Nanobind Enums with `nb::is_arithmetic()`**:
-   When adding or updating enums in `bindings/ts_bindings.cpp`, always enable `nb::is_arithmetic()` so they can be cast to/from integers cleanly in Python.
-3. **Deterministic PRNG**:
-   All randomness in the engine uses `state.rng_state` with SplitMix64 (`ts::Prng`). Never use `rand()` or `std::mt19937` inside `ts::Engine::step()`.
-4. **Replay Preservation**:
-   All micro-actions must be fully recorded by `ReplayLogger` in `server/replay.py` to ensure exact replayability from the initial seed.
-5. **Full State Visibility (No Secrecy Required)**:
-   The UI and server explicitly support perfect information for debugging—both hands, hidden cards, and deck locations are transparently visible to players and observers.
-6. **Rules Isolation**:
-   Original game rules and descriptive documents live in `rules/` and remain git ignored.
-
----
-
-## 6. Subdirectory Guides
-
-For component-specific development, refer to:
-- [`engine/AGENTS.md`](file:///home/mihaild/prog/ts_ai/engine/AGENTS.md) — C++ engine architecture, card handlers, action masking, micro-decisions, sanitizers, and fuzzing.
-- [`bindings/AGENTS.md`](file:///home/mihaild/prog/ts_ai/bindings/AGENTS.md) — nanobind bridge, dictionary serialization, types export, ASan preload.
-- [`server/AGENTS.md`](file:///home/mihaild/prog/ts_ai/server/AGENTS.md) — FastAPI server, session management, WebSocket protocol, replay logging.
-- [`bot/AGENTS.md`](file:///home/mihaild/prog/ts_ai/bot/AGENTS.md) — Bot interface, heuristic and random strategies, interactive agent player CLI.
-- [`frontend/AGENTS.md`](file:///home/mihaild/prog/ts_ai/frontend/AGENTS.md) — Vite + TypeScript web client, SVG map, decision HUD, active continuous effects panel, branch catalog, replay player.
+   `ts::GameState` must remain trivially copyable (`std::is_trivially_copyable_v<GameState>`) and within 4 KB.
+2. **212-Dimensional Flat Action Space**:
+   All neural network policy heads and action masks operate over the exact 212 flat action space mapped by `ActionEncoder` and `ActionMask::generate_flat_mask_212`.
+3. **NashPG Reference Regularization**:
+   The active policy $\pi_\theta$ is regularized against the frozen outer-loop snapshot $\pi_{\text{ref}}^{(k)}$ with fixed $\eta$, ensuring monotonic convergence to Nash equilibrium without strategy cycling.
+4. **Deterministic PRNG**:
+   All simulation randomness uses `state.rng_state` with SplitMix64 (`ts::Prng`).

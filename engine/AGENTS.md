@@ -41,7 +41,7 @@ engine/
 │   ├── ops.hpp                 // Influence placement, Coup mechanics, Realignment rolls, dynamic costs
 │   ├── space_race.hpp          // Space race tracks, milestone rewards, and special abilities
 │   ├── card_handlers.hpp       // Card event handlers and sub-decision dispatch declarations
-│   ├── action_mask.hpp         // Legal action mask generator per DecisionType
+│   ├── action_mask.hpp         // Legal action mask generator (per DecisionType and unified 212-dim flat mask)
 │   ├── state_machine.hpp       // Turn and Action Round lifecycle, Headline resolution
 │   ├── observation.hpp         // Neural observation feature extractor (ObservationBuffer)
 │   ├── serialization.hpp       // Binary snapshot and JSON serialization
@@ -57,7 +57,7 @@ engine/
 │   │   ├── mid_war.cpp         // Cards 36-81, 107-108 event handlers
 │   │   └── late_war.cpp        // Cards 82-102, 109-110 event handlers
 │   ├── card_dispatcher.cpp     // Event trigger dispatch, sub-decision step router, action mask filters
-│   ├── action_mask.cpp         // ActionMask::generate_mask implementation
+│   ├── action_mask.cpp         // ActionMask::generate_mask, generate_flat_mask_212, decode_flat_action_212, encode_micro_action_212
 │   ├── state_machine.cpp       // State machine turn loop, setup, headline, and AR transitions
 │   ├── observation.cpp         // Feature extractor implementation
 │   ├── serialization.cpp       // Serializer binary & JSON implementations

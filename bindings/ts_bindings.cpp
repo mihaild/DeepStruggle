@@ -1,3 +1,6 @@
+#include <cstring>
+#include <nanobind/ndarray.h>
+#include "ts/observation.hpp"
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/string_view.h>
@@ -579,7 +582,15 @@ NB_MODULE(ts_engine, m) {
                 if (mask[i]) res.append(static_cast<int>(i));
             }
             return res;
-        });
+        })
+        .def_static("get_flat_action_mask", [](const ts::GameState& state) {
+            size_t shape[1] = { 212 };
+            uint8_t* data = new uint8_t[212];
+            ts::ActionMask::generate_flat_mask_212(state, data);
+            nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
+            return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
+        })
+        .def_static("step_flat", &ts::Engine::step_flat);
 
     // Map Metadata helpers
     nb::class_<ts::MapData>(m, "MapData")
@@ -640,6 +651,162 @@ NB_MODULE(ts_engine, m) {
         });
 
     m.def("state_to_dict", &game_state_to_dict, "Convert GameState to Python dictionary");
+
+
+    // Flat Action Mask & Codec exports
+    m.def("get_flat_action_mask", [](const ts::GameState& state) {
+        size_t shape[1] = { 212 };
+        uint8_t* data = new uint8_t[212];
+        ts::ActionMask::generate_flat_mask_212(state, data);
+        nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
+        return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
+    });
+
+    m.def("decode_flat_action", &ts::ActionMask::decode_flat_action_212);
+    m.def("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
+
+    m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective) {
+        ts::ObservationBuffer buf;
+        ts::Observation::extract(state, perspective, &buf);
+        size_t shape[1] = { 4293 };
+        float* data = new float[4293];
+        std::memcpy(data, reinterpret_cast<const float*>(&buf), 4293 * sizeof(float));
+        nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<float*>(p); });
+        return nb::ndarray<nb::numpy, float, nb::ndim<1>>(data, 1, shape, owner);
+    });
+
+    nb::class_<ts::ActionMask>(m, "ActionMask")
+        .def_static("generate_flat_mask", [](const ts::GameState& state) {
+            size_t shape[1] = { 212 };
+            uint8_t* data = new uint8_t[212];
+            ts::ActionMask::generate_flat_mask_212(state, data);
+            nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
+            return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
+        })
+        .def_static("decode_flat_action", &ts::ActionMask::decode_flat_action_212)
+        .def_static("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
+
+    // Vectorized Batch Runner for fast parallel self-play rollouts
+    struct VectorizedBatchRunner {
+        std::vector<ts::GameState> states;
+        std::vector<float> obs_buffer;
+        std::vector<uint8_t> mask_buffer;
+        size_t num_envs;
+
+        VectorizedBatchRunner(size_t n, uint64_t base_seed) : num_envs(n) {
+            states.resize(n);
+            obs_buffer.resize(n * 4293);
+            mask_buffer.resize(n * 212);
+            for (size_t i = 0; i < n; ++i) {
+                ts::StateMachine::init_new_game(states[i], base_seed + i * 10007 + 1);
+            }
+            refresh_all();
+        }
+
+        void reset_game(size_t idx, uint64_t seed) {
+            if (idx >= num_envs) return;
+            ts::StateMachine::init_new_game(states[idx], seed);
+            refresh_single(idx);
+        }
+
+        void refresh_single(size_t idx) {
+            ts::Player p = (states[idx].ctx().decision_player != ts::Player::NONE)
+                ? states[idx].ctx().decision_player : states[idx].phasing_player;
+            ts::ObservationBuffer ob;
+            ts::Observation::extract(states[idx], p, &ob);
+            std::memcpy(&obs_buffer[idx * 4293], reinterpret_cast<const float*>(&ob), 4293 * sizeof(float));
+            ts::ActionMask::generate_flat_mask_212(states[idx], &mask_buffer[idx * 212]);
+        }
+
+        void refresh_all() {
+#pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < static_cast<int64_t>(num_envs); ++i) {
+                refresh_single(static_cast<size_t>(i));
+            }
+        }
+
+        std::vector<int> step_flat_all(const std::vector<uint16_t>& actions) {
+            std::vector<int> results(num_envs, 0);
+            const size_t act_count = actions.size();
+#pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < static_cast<int64_t>(num_envs); ++i) {
+                if (static_cast<size_t>(i) >= act_count) continue;
+                if (states[i].current_phase == ts::Phase::GAME_OVER ||
+                    states[i].victory_points >= 20 ||
+                    states[i].victory_points <= -20) {
+                    results[i] = 2; // Terminal
+                    continue;
+                }
+                ts::MicroAction ma = ts::ActionMask::decode_flat_action_212(states[i], actions[i]);
+                bool ok = ts::StateMachine::step(states[i], ma);
+                results[i] = ok ? 1 : 0;
+                refresh_single(static_cast<size_t>(i));
+            }
+            return results;
+        }
+
+        nb::ndarray<nb::numpy, float, nb::ndim<2>> get_observations() {
+            size_t shape[2] = { num_envs, 4293 };
+            return nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs_buffer.data(), 2, shape);
+        }
+
+        nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>> get_action_masks() {
+            size_t shape[2] = { num_envs, 212 };
+            return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(mask_buffer.data(), 2, shape);
+        }
+
+        std::vector<int8_t> get_decision_players() const {
+            std::vector<int8_t> res(num_envs);
+            for (size_t i = 0; i < num_envs; ++i) {
+                ts::Player p = (states[i].ctx().decision_player != ts::Player::NONE)
+                    ? states[i].ctx().decision_player : states[i].phasing_player;
+                res[i] = static_cast<int8_t>(p);
+            }
+            return res;
+        }
+
+        std::vector<bool> get_terminals() const {
+            std::vector<bool> res(num_envs);
+            for (size_t i = 0; i < num_envs; ++i) {
+                res[i] = (states[i].current_phase == ts::Phase::GAME_OVER ||
+                          states[i].victory_points >= 20 ||
+                          states[i].victory_points <= -20);
+            }
+            return res;
+        }
+
+        std::vector<float> get_terminal_utilities() const {
+            std::vector<float> res(num_envs, 0.0f);
+            for (size_t i = 0; i < num_envs; ++i) {
+                if (states[i].victory_points >= 20) res[i] = 1.0f;
+                else if (states[i].victory_points <= -20) res[i] = -1.0f;
+                else if (states[i].victory_points > 0) res[i] = 1.0f;
+                else if (states[i].victory_points < 0) res[i] = -1.0f;
+            }
+            return res;
+        }
+
+        std::vector<int8_t> get_victory_points() const {
+            std::vector<int8_t> res(num_envs);
+            for (size_t i = 0; i < num_envs; ++i) {
+                res[i] = states[i].victory_points;
+            }
+            return res;
+        }
+    };
+
+    nb::class_<VectorizedBatchRunner>(m, "VectorizedBatchRunner")
+        .def(nb::init<size_t, uint64_t>(), nb::arg("num_envs"), nb::arg("base_seed") = 12345)
+        .def("reset_game", &VectorizedBatchRunner::reset_game)
+        .def("refresh_all", &VectorizedBatchRunner::refresh_all)
+        .def("step_flat_all", &VectorizedBatchRunner::step_flat_all)
+        .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
+        .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
+        .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
+        .def("get_terminals", &VectorizedBatchRunner::get_terminals)
+        .def("get_terminal_utilities", &VectorizedBatchRunner::get_terminal_utilities)
+        .def("get_victory_points", &VectorizedBatchRunner::get_victory_points)
+        .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal);
 
     // Effect Bits module constants
     auto eb = m.def_submodule("EffectBits");

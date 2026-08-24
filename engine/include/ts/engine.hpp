@@ -5,6 +5,7 @@
 #include "types.hpp"
 #include "game_state.hpp"
 #include "micro_action.hpp"
+#include "action_mask.hpp"
 
 namespace ts {
 
@@ -17,8 +18,14 @@ public:
     // Max buffer required: 112 bytes for SELECT_CARD, 84 bytes for POINT_NODE.
     static void get_legal_action_mask(const GameState& state, uint8_t* mask_out, size_t* out_size) noexcept;
 
+    // Writes 212-element flat legal action mask
+    static void get_flat_action_mask(const GameState& state, uint8_t* mask_212) noexcept;
+
     // Advances game state by 1 validated micro-action. Returns true on success.
     static bool step(GameState& state, const MicroAction& action) noexcept;
+
+    // Advances game state by 1 flat action index [0..211].
+    static bool step_flat(GameState& state, uint16_t action_idx) noexcept;
 
     // Fast terminal state evaluation
     static bool is_terminal(const GameState& state) noexcept;

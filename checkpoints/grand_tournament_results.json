@@ -1,0 +1,414 @@
+{
+  "games_per_side": 100,
+  "total_games": 7200,
+  "total_elapsed_seconds": 77.02116656303406,
+  "leaderboard": {
+    "Snapshot_31m": 2000.3,
+    "Snapshot_20m": 1988.8,
+    "Snapshot_41m": 1905.1,
+    "Snapshot_51m": 1815.0,
+    "Snapshot_10m": 1798.8,
+    "Snapshot_60m": 1764.7,
+    "Snapshot_0m (BC)": 1723.7,
+    "HeuristicBot": 1500.0,
+    "RandomBot": 1178.3
+  },
+  "pair_summary": {
+    "Snapshot_60m vs Snapshot_51m": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_51m",
+      "total_games": 200,
+      "agent_a_points": 105.0,
+      "agent_a_win_rate": 0.525,
+      "as_us": {
+        "agent_a_record": "7W - 93L - 0D",
+        "agent_b_record": "2W - 98L - 0D"
+      }
+    },
+    "Snapshot_60m vs Snapshot_41m": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_41m",
+      "total_games": 200,
+      "agent_a_points": 106.5,
+      "agent_a_win_rate": 0.5325,
+      "as_us": {
+        "agent_a_record": "6W - 93L - 1D",
+        "agent_b_record": "0W - 100L - 0D"
+      }
+    },
+    "Snapshot_60m vs Snapshot_31m": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_31m",
+      "total_games": 200,
+      "agent_a_points": 102.0,
+      "agent_a_win_rate": 0.51,
+      "as_us": {
+        "agent_a_record": "3W - 97L - 0D",
+        "agent_b_record": "1W - 99L - 0D"
+      }
+    },
+    "Snapshot_60m vs Snapshot_20m": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_20m",
+      "total_games": 200,
+      "agent_a_points": 91.5,
+      "agent_a_win_rate": 0.4575,
+      "as_us": {
+        "agent_a_record": "5W - 95L - 0D",
+        "agent_b_record": "13W - 86L - 1D"
+      }
+    },
+    "Snapshot_60m vs Snapshot_10m": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_10m",
+      "total_games": 200,
+      "agent_a_points": 98.5,
+      "agent_a_win_rate": 0.4925,
+      "as_us": {
+        "agent_a_record": "7W - 93L - 0D",
+        "agent_b_record": "8W - 91L - 1D"
+      }
+    },
+    "Snapshot_60m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 79.0,
+      "agent_a_win_rate": 0.395,
+      "as_us": {
+        "agent_a_record": "0W - 100L - 0D",
+        "agent_b_record": "20W - 78L - 2D"
+      }
+    },
+    "Snapshot_60m vs HeuristicBot": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 79.0,
+      "agent_a_win_rate": 0.395,
+      "as_us": {
+        "agent_a_record": "0W - 100L - 0D",
+        "agent_b_record": "21W - 79L - 0D"
+      }
+    },
+    "Snapshot_60m vs RandomBot": {
+      "agent_a": "Snapshot_60m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 130.0,
+      "agent_a_win_rate": 0.65,
+      "as_us": {
+        "agent_a_record": "31W - 69L - 0D",
+        "agent_b_record": "1W - 99L - 0D"
+      }
+    },
+    "Snapshot_51m vs Snapshot_41m": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "Snapshot_41m",
+      "total_games": 200,
+      "agent_a_points": 104.0,
+      "agent_a_win_rate": 0.52,
+      "as_us": {
+        "agent_a_record": "11W - 89L - 0D",
+        "agent_b_record": "7W - 93L - 0D"
+      }
+    },
+    "Snapshot_51m vs Snapshot_31m": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "Snapshot_31m",
+      "total_games": 200,
+      "agent_a_points": 89.0,
+      "agent_a_win_rate": 0.445,
+      "as_us": {
+        "agent_a_record": "2W - 98L - 0D",
+        "agent_b_record": "13W - 87L - 0D"
+      }
+    },
+    "Snapshot_51m vs Snapshot_20m": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "Snapshot_20m",
+      "total_games": 200,
+      "agent_a_points": 79.5,
+      "agent_a_win_rate": 0.3975,
+      "as_us": {
+        "agent_a_record": "1W - 99L - 0D",
+        "agent_b_record": "21W - 78L - 1D"
+      }
+    },
+    "Snapshot_51m vs Snapshot_10m": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "Snapshot_10m",
+      "total_games": 200,
+      "agent_a_points": 99.5,
+      "agent_a_win_rate": 0.4975,
+      "as_us": {
+        "agent_a_record": "7W - 93L - 0D",
+        "agent_b_record": "7W - 92L - 1D"
+      }
+    },
+    "Snapshot_51m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 78.5,
+      "agent_a_win_rate": 0.3925,
+      "as_us": {
+        "agent_a_record": "5W - 94L - 1D",
+        "agent_b_record": "26W - 72L - 2D"
+      }
+    },
+    "Snapshot_51m vs HeuristicBot": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 66.0,
+      "agent_a_win_rate": 0.33,
+      "as_us": {
+        "agent_a_record": "4W - 96L - 0D",
+        "agent_b_record": "36W - 60L - 4D"
+      }
+    },
+    "Snapshot_51m vs RandomBot": {
+      "agent_a": "Snapshot_51m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 130.0,
+      "agent_a_win_rate": 0.65,
+      "as_us": {
+        "agent_a_record": "35W - 65L - 0D",
+        "agent_b_record": "5W - 95L - 0D"
+      }
+    },
+    "Snapshot_41m vs Snapshot_31m": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "Snapshot_31m",
+      "total_games": 200,
+      "agent_a_points": 98.0,
+      "agent_a_win_rate": 0.49,
+      "as_us": {
+        "agent_a_record": "2W - 98L - 0D",
+        "agent_b_record": "4W - 96L - 0D"
+      }
+    },
+    "Snapshot_41m vs Snapshot_20m": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "Snapshot_20m",
+      "total_games": 200,
+      "agent_a_points": 92.5,
+      "agent_a_win_rate": 0.4625,
+      "as_us": {
+        "agent_a_record": "4W - 96L - 0D",
+        "agent_b_record": "11W - 88L - 1D"
+      }
+    },
+    "Snapshot_41m vs Snapshot_10m": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "Snapshot_10m",
+      "total_games": 200,
+      "agent_a_points": 102.5,
+      "agent_a_win_rate": 0.5125,
+      "as_us": {
+        "agent_a_record": "12W - 88L - 0D",
+        "agent_b_record": "9W - 90L - 1D"
+      }
+    },
+    "Snapshot_41m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 79.0,
+      "agent_a_win_rate": 0.395,
+      "as_us": {
+        "agent_a_record": "6W - 94L - 0D",
+        "agent_b_record": "27W - 73L - 0D"
+      }
+    },
+    "Snapshot_41m vs HeuristicBot": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 68.5,
+      "agent_a_win_rate": 0.3425,
+      "as_us": {
+        "agent_a_record": "3W - 97L - 0D",
+        "agent_b_record": "33W - 64L - 3D"
+      }
+    },
+    "Snapshot_41m vs RandomBot": {
+      "agent_a": "Snapshot_41m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 122.0,
+      "agent_a_win_rate": 0.61,
+      "as_us": {
+        "agent_a_record": "31W - 69L - 0D",
+        "agent_b_record": "9W - 91L - 0D"
+      }
+    },
+    "Snapshot_31m vs Snapshot_20m": {
+      "agent_a": "Snapshot_31m",
+      "agent_b": "Snapshot_20m",
+      "total_games": 200,
+      "agent_a_points": 89.0,
+      "agent_a_win_rate": 0.445,
+      "as_us": {
+        "agent_a_record": "8W - 92L - 0D",
+        "agent_b_record": "18W - 80L - 2D"
+      }
+    },
+    "Snapshot_31m vs Snapshot_10m": {
+      "agent_a": "Snapshot_31m",
+      "agent_b": "Snapshot_10m",
+      "total_games": 200,
+      "agent_a_points": 109.5,
+      "agent_a_win_rate": 0.5475,
+      "as_us": {
+        "agent_a_record": "16W - 84L - 0D",
+        "agent_b_record": "6W - 93L - 1D"
+      }
+    },
+    "Snapshot_31m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_31m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 91.0,
+      "agent_a_win_rate": 0.455,
+      "as_us": {
+        "agent_a_record": "14W - 84L - 2D",
+        "agent_b_record": "23W - 75L - 2D"
+      }
+    },
+    "Snapshot_31m vs HeuristicBot": {
+      "agent_a": "Snapshot_31m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 91.5,
+      "agent_a_win_rate": 0.4575,
+      "as_us": {
+        "agent_a_record": "12W - 87L - 1D",
+        "agent_b_record": "21W - 79L - 0D"
+      }
+    },
+    "Snapshot_31m vs RandomBot": {
+      "agent_a": "Snapshot_31m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 153.5,
+      "agent_a_win_rate": 0.7675,
+      "as_us": {
+        "agent_a_record": "57W - 42L - 1D",
+        "agent_b_record": "4W - 96L - 0D"
+      }
+    },
+    "Snapshot_20m vs Snapshot_10m": {
+      "agent_a": "Snapshot_20m",
+      "agent_b": "Snapshot_10m",
+      "total_games": 200,
+      "agent_a_points": 124.0,
+      "agent_a_win_rate": 0.62,
+      "as_us": {
+        "agent_a_record": "28W - 70L - 2D",
+        "agent_b_record": "5W - 95L - 0D"
+      }
+    },
+    "Snapshot_20m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_20m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 126.0,
+      "agent_a_win_rate": 0.63,
+      "as_us": {
+        "agent_a_record": "48W - 51L - 1D",
+        "agent_b_record": "22W - 77L - 1D"
+      }
+    },
+    "Snapshot_20m vs HeuristicBot": {
+      "agent_a": "Snapshot_20m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 142.5,
+      "agent_a_win_rate": 0.7125,
+      "as_us": {
+        "agent_a_record": "54W - 42L - 4D",
+        "agent_b_record": "12W - 85L - 3D"
+      }
+    },
+    "Snapshot_20m vs RandomBot": {
+      "agent_a": "Snapshot_20m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 173.0,
+      "agent_a_win_rate": 0.865,
+      "as_us": {
+        "agent_a_record": "81W - 19L - 0D",
+        "agent_b_record": "8W - 92L - 0D"
+      }
+    },
+    "Snapshot_10m vs Snapshot_0m (BC)": {
+      "agent_a": "Snapshot_10m",
+      "agent_b": "Snapshot_0m (BC)",
+      "total_games": 200,
+      "agent_a_points": 113.0,
+      "agent_a_win_rate": 0.565,
+      "as_us": {
+        "agent_a_record": "32W - 68L - 0D",
+        "agent_b_record": "19W - 81L - 0D"
+      }
+    },
+    "Snapshot_10m vs HeuristicBot": {
+      "agent_a": "Snapshot_10m",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 98.0,
+      "agent_a_win_rate": 0.49,
+      "as_us": {
+        "agent_a_record": "30W - 68L - 2D",
+        "agent_b_record": "33W - 67L - 0D"
+      }
+    },
+    "Snapshot_10m vs RandomBot": {
+      "agent_a": "Snapshot_10m",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 136.5,
+      "agent_a_win_rate": 0.6825,
+      "as_us": {
+        "agent_a_record": "51W - 49L - 0D",
+        "agent_b_record": "14W - 85L - 1D"
+      }
+    },
+    "Snapshot_0m (BC) vs HeuristicBot": {
+      "agent_a": "Snapshot_0m (BC)",
+      "agent_b": "HeuristicBot",
+      "total_games": 200,
+      "agent_a_points": 96.5,
+      "agent_a_win_rate": 0.4825,
+      "as_us": {
+        "agent_a_record": "9W - 88L - 3D",
+        "agent_b_record": "13W - 85L - 2D"
+      }
+    },
+    "Snapshot_0m (BC) vs RandomBot": {
+      "agent_a": "Snapshot_0m (BC)",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 154.5,
+      "agent_a_win_rate": 0.7725,
+      "as_us": {
+        "agent_a_record": "63W - 36L - 1D",
+        "agent_b_record": "9W - 91L - 0D"
+      }
+    },
+    "HeuristicBot vs RandomBot": {
+      "agent_a": "HeuristicBot",
+      "agent_b": "RandomBot",
+      "total_games": 200,
+      "agent_a_points": 160.0,
+      "agent_a_win_rate": 0.8,
+      "as_us": {
+        "agent_a_record": "73W - 27L - 0D",
+        "agent_b_record": "13W - 87L - 0D"
+      }
+    }
+  }
+}

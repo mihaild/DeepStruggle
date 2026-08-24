@@ -12,6 +12,8 @@ else()
     add_compile_options(-O3 -march=native -Wall -Wextra -Wpedantic -Wno-unused-parameter)
 endif()
 
+find_package(OpenMP)
+
 add_subdirectory(engine)
 
 # Python & nanobind configuration
@@ -35,6 +37,9 @@ if(nanobind_FOUND)
     nanobind_add_module(ts_engine bindings/ts_bindings.cpp)
     target_include_directories(ts_engine PRIVATE engine/include)
     target_link_libraries(ts_engine PRIVATE ts_engine_core)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(ts_engine PRIVATE OpenMP::OpenMP_CXX)
+    endif()
     set_target_properties(ts_engine PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )

@@ -44,3 +44,8 @@ scratch/
 *.swo
 .DS_Store
 .ts_local_session.json
+
+# Model checkpoints
+checkpoints/*.pt
+*.pt
+!checkpoints/.gitkeep

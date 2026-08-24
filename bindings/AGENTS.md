@@ -9,7 +9,8 @@ This directory contains the Python native extension module (`ts_engine`) built w
 - [`ts_bindings.cpp`](file:///home/mihaild/prog/ts_ai/bindings/ts_bindings.cpp): Complete nanobind module definition. Exposes:
   - Enums: `Player`, `Phase`, `DecisionType`, `PlayMode`, `TimingBranch`, `OpMode`, `CardLocation`, `WarEra`.
   - Structs: `MicroAction`, `CountryState`, `DecisionContext`, `GameState`.
-  - Static Engine API: `init_game()`, `step()`, `is_terminal()`, `get_terminal_utility()`, `get_legal_action_mask()`, `get_legal_action_indices()`.
+  - Static Engine API: `init_game()`, `step()`, `step_flat()`, `is_terminal()`, `get_terminal_utility()`, `get_legal_action_mask()`, `get_flat_action_mask()`, `get_legal_action_indices()`.
+  - Neural Network & Vectorized RL: `extract_observation()`, `get_flat_action_mask()`, `decode_flat_action()`, `encode_micro_action()`, `ActionMask`, `VectorizedBatchRunner` (contiguous multi-game simulation).
   - Metadata helpers: `MapData`, `CardData`.
   - Dictionary serializer: `state_to_dict()` for full zero-copy state inspection.
 
@@ -30,7 +31,7 @@ This directory contains the Python native extension module (`ts_engine`) built w
 2. **Reference vs Copy for Nested State**:
    When exposing methods returning internal state references (like `state.ctx()`), specify `nb::rv_policy::reference` to avoid unnecessary copies.
 3. **Array and Container Conversions**:
-   Include `<nanobind/stl/string.h>`, `<nanobind/stl/vector.h>`, `<nanobind/stl/array.h>` when converting between C++ containers and Python lists/tuples.
+   Include `<nanobind/ndarray.h>`, `<nanobind/stl/string.h>`, `<nanobind/stl/vector.h>`, `<nanobind/stl/array.h>` when converting between C++ containers and Python lists/tuples/numpy arrays.
 
 ---
 
@@ -43,14 +44,4 @@ cmake --build build -j
 
 # Run Python binding tests (outputs to build/ts_engine.so)
 PYTHONPATH=build:. .venv/bin/pytest -v tests/test_bindings.py
-```
-
-### Running with AddressSanitizer (ASan):
-When `ts_engine` is built in `build_san/` with `-fsanitize=address`:
-```bash
-# Using the automated helper script (dynamically resolves libasan.so and points to build_san/)
-./run_asan.sh .venv/bin/pytest -v tests/test_bindings.py
-
-# Or manually:
-LD_PRELOAD=/usr/lib/libasan.so ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0 PYTHONPATH=build_san:. .venv/bin/pytest -v tests/test_bindings.py
 ```

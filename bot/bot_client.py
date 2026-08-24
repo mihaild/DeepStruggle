@@ -1,3 +1,7 @@
+try:
+    from bot.neural_bot import NeuralBot
+except ImportError:
+    NeuralBot = None
 import argparse
 import asyncio
 import json
@@ -139,8 +143,15 @@ class HeuristicBot(BaseBot):
             "flags": 0
         }
 
-async def run_bot_client(server_url: str, game_id: str, role: str, bot_type: str = "heuristic", delay: float = 0.3):
-    bot = HeuristicBot(role) if bot_type == "heuristic" else RandomBot(role)
+async def run_bot_client(server_url: str, game_id: str, role: str, bot_type: str = "heuristic", delay: float = 0.3, model_path: str = None):
+    if bot_type == "neural":
+        if NeuralBot is None:
+            raise ImportError("NeuralBot is not available. Please ensure PyTorch and AI modules are installed.")
+        bot = NeuralBot(role, model_path=model_path)
+    elif bot_type == "heuristic":
+        bot = HeuristicBot(role)
+    else:
+        bot = RandomBot(role)
     ws_uri = f"{server_url}/ws/game/{game_id}?role={role}"
 
     print(f"Connecting {bot_type.upper()} bot for {role} to {ws_uri}...")
@@ -177,8 +188,9 @@ if __name__ == "__main__":
     parser.add_argument("--server", type=str, default="ws://localhost:8000", help="WebSocket server URI")
     parser.add_argument("--game-id", type=str, default="game-1", help="Game ID to join")
     parser.add_argument("--role", type=str, default="USSR", choices=["US", "USSR"], help="Player side")
-    parser.add_argument("--type", type=str, default="heuristic", choices=["random", "heuristic"], help="Bot strategy")
+    parser.add_argument("--type", type=str, default="heuristic", choices=["random", "heuristic", "neural"], help="Bot strategy")
+    parser.add_argument("--model-path", type=str, default="checkpoints/coldwar_net.pt", help="Path to trained model checkpoint")
     parser.add_argument("--delay", type=float, default=0.2, help="Artificial delay in seconds between moves")
 
     args = parser.parse_args()
-    asyncio.run(run_bot_client(args.server, args.game_id, args.role, args.type, args.delay))
+    asyncio.run(run_bot_client(args.server, args.game_id, args.role, args.type, args.delay, args.model_path))

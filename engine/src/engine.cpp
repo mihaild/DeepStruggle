@@ -13,7 +13,16 @@ void Engine::get_legal_action_mask(const GameState& state, uint8_t* mask_out, si
     ActionMask::generate_mask(state, mask_out, out_size);
 }
 
+void Engine::get_flat_action_mask(const GameState& state, uint8_t* mask_212) noexcept {
+    ActionMask::generate_flat_mask_212(state, mask_212);
+}
+
 bool Engine::step(GameState& state, const MicroAction& action) noexcept {
+    return StateMachine::step(state, action);
+}
+
+bool Engine::step_flat(GameState& state, uint16_t action_idx) noexcept {
+    MicroAction action = ActionMask::decode_flat_action_212(state, action_idx);
     return StateMachine::step(state, action);
 }
 

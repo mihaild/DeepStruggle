@@ -323,4 +323,166 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
     }
 }
 
+
+void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_212) noexcept {
+    if (!mask_212) return;
+    std::memset(mask_212, 0, FLAT_ACTION_SPACE_SIZE);
+
+    if (state.current_phase == Phase::GAME_OVER || state.victory_points >= 20 || state.victory_points <= -20) {
+        return;
+    }
+
+    uint8_t temp_mask[128];
+    size_t temp_size = 0;
+    generate_mask(state, temp_mask, &temp_size);
+
+    const auto& ctx = state.ctx();
+    switch (ctx.decision_type) {
+        case DecisionType::NONE:
+            mask_212[211] = 1;
+            break;
+
+        case DecisionType::SELECT_CARD:
+            for (size_t i = 1; i <= 110 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[i - 1] = 1;
+                }
+            }
+            if (temp_mask[0]) {
+                mask_212[211] = 1; // Pass / early stop
+            }
+            break;
+
+        case DecisionType::SELECT_PLAY_MODE:
+            for (size_t i = 0; i < 4 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[110 + i] = 1;
+                }
+            }
+            break;
+
+        case DecisionType::CHOOSE_TIMING_BRANCH:
+            for (size_t i = 0; i < 2 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[114 + i] = 1;
+                }
+            }
+            break;
+
+        case DecisionType::SELECT_OP_MODE:
+            for (size_t i = 0; i < 3 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[116 + i] = 1;
+                }
+            }
+            break;
+
+        case DecisionType::POINT_NODE:
+            for (size_t i = 0; i < 84 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[119 + i] = 1;
+                }
+            }
+            if (ctx.allow_early_stop) {
+                mask_212[211] = 1;
+            }
+            break;
+
+        case DecisionType::CHOOSE_BRANCH:
+            for (size_t i = 0; i < 8 && i < temp_size; ++i) {
+                if (temp_mask[i]) {
+                    mask_212[203 + i] = 1;
+                }
+            }
+            if (ctx.allow_early_stop) {
+                mask_212[211] = 1;
+            }
+            break;
+    }
+
+    // Safety guarantee: ensure at least one action is legal if game is active
+    bool any_legal = false;
+    for (size_t i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) {
+        if (mask_212[i]) {
+            any_legal = true;
+            break;
+        }
+    }
+    if (!any_legal) {
+        mask_212[211] = 1; // Fallback confirm/done
+    }
+}
+
+MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t action_idx) noexcept {
+    const auto& ctx = state.ctx();
+
+    if (action_idx == 211) {
+        if (ctx.decision_type == DecisionType::SELECT_CARD) {
+            return MicroAction{DecisionType::SELECT_CARD, 0, 0, 0};
+        }
+        return MicroAction{ctx.decision_type, 255, 0, action_flags::CONFIRM_DONE};
+    }
+
+    if (action_idx < 110) {
+        return MicroAction{DecisionType::SELECT_CARD, static_cast<uint8_t>(action_idx + 1), 0, 0};
+    }
+    if (action_idx < 114) {
+        return MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(action_idx - 110), 0, 0};
+    }
+    if (action_idx < 116) {
+        return MicroAction{DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(action_idx - 114), 0, 0};
+    }
+    if (action_idx < 119) {
+        return MicroAction{DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(action_idx - 116), 0, 0};
+    }
+    if (action_idx < 203) {
+        return MicroAction{DecisionType::POINT_NODE, static_cast<uint8_t>(action_idx - 119), 0, 0};
+    }
+    if (action_idx < 211) {
+        return MicroAction{DecisionType::CHOOSE_BRANCH, static_cast<uint8_t>(action_idx - 203), 0, 0};
+    }
+
+    return MicroAction{ctx.decision_type, 255, 0, action_flags::CONFIRM_DONE};
+}
+
+int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroAction& action) noexcept {
+    (void)state;
+    if (action.is_confirm_done() || action.primary_id == 255) {
+        return 211;
+    }
+
+    switch (action.decision_type) {
+        case DecisionType::SELECT_CARD:
+            if (action.primary_id == 0) return 211;
+            if (action.primary_id >= 1 && action.primary_id <= 110) {
+                return static_cast<int16_t>(action.primary_id - 1);
+            }
+            return 211;
+
+        case DecisionType::SELECT_PLAY_MODE:
+            if (action.primary_id < 4) return static_cast<int16_t>(110 + action.primary_id);
+            return 211;
+
+        case DecisionType::CHOOSE_TIMING_BRANCH:
+            if (action.primary_id < 2) return static_cast<int16_t>(114 + action.primary_id);
+            return 211;
+
+        case DecisionType::SELECT_OP_MODE:
+            if (action.primary_id < 3) return static_cast<int16_t>(116 + action.primary_id);
+            return 211;
+
+        case DecisionType::POINT_NODE:
+            if (action.primary_id < 84) return static_cast<int16_t>(119 + action.primary_id);
+            return 211;
+
+        case DecisionType::CHOOSE_BRANCH:
+            if (action.primary_id < 8) return static_cast<int16_t>(203 + action.primary_id);
+            return 211;
+
+        case DecisionType::NONE:
+        default:
+            return 211;
+    }
+}
+
 } // namespace ts
