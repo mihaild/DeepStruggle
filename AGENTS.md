@@ -90,6 +90,12 @@ graph TD
 │   ├── bot_client.py           # CLI bot runner (RandomBot, HeuristicBot, custom agents)
 │   └── agent_player.py         # Rich CLI & interactive agent player interface
 │
+├── docs/                       # Architectural guides and engine comparison reports
+│   └── STRUGGLER_COMPARISON.md # Deep comparison between ts_ai C++ core and struggler Python engine
+│
+├── external/                   # Git submodules for external engines and references
+│   └── struggler/              # alekpinel/struggler Python Twilight Struggle engine submodule
+│
 ├── frontend/                   # Modern Web UI & Game Workbench (see frontend/AGENTS.md)
 │   ├── AGENTS.md               # Specific instructions for frontend development
 │   ├── package.json            # Node dependencies (Vite, TypeScript)
@@ -99,11 +105,14 @@ graph TD
 │
 ├── tests/                      # Python pytest integration test suite
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
+│   ├── test_all_110_cards_differential.py # Exhaustive 110-card cross-engine validation & state variants (131 tests)
 │   ├── test_card_fixes.py      # Dedicated verification suite for card rules fixes
 │   ├── test_bindings.py        # Validates Python nanobind module
 │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation, replays
 │   ├── test_web_workbench.py   # Validates map/card metadata endpoints and DOM structure
-│   └── test_e2e_space_race.py  # Headless Playwright Chrome E2E browser tests
+│   ├── test_e2e_space_race.py  # Headless Playwright Chrome E2E browser tests
+│   ├── struggler_adapter.py    # Bidirectional translation bridge between ts_ai and struggler
+│   └── test_struggler_differential.py # Cross-engine differential test suite (37 tests)
 │
 └── replays/                    # Recorded game logs in standardized .tslog.json format
 ```
@@ -165,7 +174,7 @@ cmake --build build_san -j
 ./build/engine/ts_fuzz --games 10000
 ./build/engine/ts_fuzz --steps 5000000
 
-# Python Integration Tests (164 tests)
+# Python Integration Tests (332 tests including exhaustive 110-card differential suite)
 PYTHONPATH=. .venv/bin/pytest -v tests/
 ```
 
