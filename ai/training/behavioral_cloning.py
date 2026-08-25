@@ -179,11 +179,11 @@ class BehavioralCloningTrainer:
         self.value_criterion = nn.MSELoss()
 
     def generate_demonstration_dataset(
-        self, num_games: int = 500
+        self, num_games: int = 500, max_steps_per_game: int = 1000
     ) -> TrajectoryDataset:
-        return self.collect_demonstrations(num_games)
+        return self.collect_demonstrations(num_games, max_steps_per_game)
 
-    def collect_demonstrations(self, num_games: int = 500) -> TrajectoryDataset:
+    def collect_demonstrations(self, num_games: int = 500, max_steps_per_game: int = 1000) -> TrajectoryDataset:
         """Simulates self-play games with HeuristicPolicy and records transitions."""
         print(f"Generating {num_games} heuristic demonstration games...")
         all_obs = []

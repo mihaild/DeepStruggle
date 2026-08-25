@@ -100,23 +100,21 @@ class RolloutBuffer:
 
         for t in reversed(range(self.buffer_size)):
             curr_p = self.players[t]
+            non_terminal = 1.0 - self.dones[t].float()
+
             if t == self.buffer_size - 1:
-                next_non_terminal = 1.0 - last_dones.float()
                 # Sign alignment with bootstrap state player (+1 if same player, -1 if opponent)
                 sign = torch.where(curr_p == last_players, 1.0, -1.0)
                 next_val = sign * last_v_win
-                next_gae = sign * last_gae
             else:
-                next_non_terminal = 1.0 - self.dones[t + 1].float()
                 # Sign alignment between step t and step t+1
                 next_p = self.players[t + 1]
                 sign = torch.where(curr_p == next_p, 1.0, -1.0)
                 next_val = sign * self.values_win[t + 1]
-                next_gae = sign * last_gae
 
             # TD error delta from perspective of acting player at step t
-            delta = self.rewards[t] + gamma * next_val * next_non_terminal - self.values_win[t]
-            last_gae = delta + gamma * gae_lambda * next_non_terminal * next_gae
+            delta = self.rewards[t] + gamma * next_val * non_terminal - self.values_win[t]
+            last_gae = delta + gamma * gae_lambda * sign * non_terminal * last_gae
             self.advantages[t] = last_gae
             self.returns_win[t] = self.advantages[t] + self.values_win[t]
             self.returns_vp[t] = self.values_vp[t]

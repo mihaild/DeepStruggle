@@ -46,6 +46,6 @@ scratch/
 .ts_local_session.json
 
 # Model checkpoints
-checkpoints/*.pt
+checkpoints/
 *.pt
 !checkpoints/.gitkeep

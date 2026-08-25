@@ -1,11 +1,21 @@
-"""1-Hour Twilight Struggle NashPG Training Runner with 10-Minute Snapshots and Elo Evaluation."""
+"""Automated Twilight Struggle NashPG Training Harness.
+
+Features:
+- Separate run directory per training execution under checkpoints/
+- 10-Minute Snapshotting with batched tournament evaluation
+- 50 Games as US + 50 Games as USSR against all past versions, HeuristicBot, and RandomBot
+- Separate US / USSR win rate reporting
+- Automatic full-game self-play .tslog.json replay generation per snapshot
+- Live Bradley-Terry Elo leaderboard tracking
+"""
 
 import argparse
 import json
 import os
 import sys
 import time
-from typing import Dict, List, Tuple, Any
+from datetime import datetime
+from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
 import torch
 
@@ -19,316 +29,513 @@ from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.env.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import BehavioralCloningTrainer, HeuristicPolicy
 from ai.training.nash_pg import NashPGTrainer
+from server.replay import ReplayLogger, REPLAYS_DIR
 
 
 class EloCalculator:
-    """Computes Elo ratings via Bradley-Terry maximum likelihood or iterative updates."""
+    """Computes calibrated Elo ratings via Bradley-Terry maximum likelihood estimation."""
 
     @staticmethod
     def compute_elo_ratings(
         match_results: List[Tuple[str, str, float]],
         anchor_agent: str = "HeuristicBot",
         anchor_rating: float = 1500.0,
-        k_factor: float = 24.0,
-        iterations: int = 100,
+        iterations: int = 250,
+        lr: float = 0.5,
     ) -> Dict[str, float]:
-        """Calculates Elo ratings given a list of (agent_a, agent_b, score_a).
-
-        score_a: 1.0 (win), 0.5 (draw), 0.0 (loss).
-        """
         agents = sorted(list(set([a for m in match_results for a in m[:2]])))
-        ratings = {a: 1500.0 for a in agents}
-        if "RandomBot" in ratings:
-            ratings["RandomBot"] = 1000.0
+        if not agents:
+            return {}
+
+        gamma = {a: 0.0 for a in agents}
+        n_matches = max(1, len(match_results))
 
         for _ in range(iterations):
-            for agent_a, agent_b, score_a in match_results:
-                r_a = ratings[agent_a]
-                r_b = ratings[agent_b]
-                e_a = 1.0 / (1.0 + 10.0 ** ((r_b - r_a) / 400.0))
-                e_b = 1.0 - e_a
-                score_b = 1.0 - score_a
+            grad = {a: 0.0 for a in agents}
+            for a, b, score_a in match_results:
+                diff = np.clip(gamma[b] - gamma[a], -20.0, 20.0)
+                p_a = 1.0 / (1.0 + np.exp(diff))
+                grad[a] += (score_a - p_a)
+                grad[b] += ((1.0 - score_a) - (1.0 - p_a))
 
-                ratings[agent_a] += k_factor * (score_a - e_a)
-                ratings[agent_b] += k_factor * (score_b - e_b)
+            for a in agents:
+                gamma[a] += lr * grad[a] / n_matches
 
-        # Re-center so anchor has anchor_rating
+        scale = 400.0 / np.log(10.0)
+        ratings = {a: gamma[a] * scale for a in agents}
+
         if anchor_agent in ratings:
             shift = anchor_rating - ratings[anchor_agent]
             for a in ratings:
                 ratings[a] += shift
 
-        return {k: round(v, 1) for k, v in sorted(ratings.items(), key=lambda x: x[1], reverse=True)}
+        return ratings
 
 
-class CrossEvaluator:
-    """Plays head-to-head matches between model snapshots, HeuristicBot, and RandomBot."""
+class BatchedEvaluator:
+    """High-speed vectorized match evaluator playing 50 US and 50 USSR games simultaneously."""
 
     def __init__(self, device: torch.device):
         self.device = device
-        self.models_cache: Dict[str, ColdWarNet] = {}
 
-    def get_model(self, name: str, path: str) -> ColdWarNet:
-        if name not in self.models_cache:
-            m = create_coldwar_net(self.device)
-            m.load_state_dict(torch.load(path, map_location=self.device))
-            m.eval()
-            self.models_cache[name] = m
-        return self.models_cache[name]
+    def evaluate_pair(
+        self,
+        name_a: str,
+        model_a: Optional[ColdWarNet],
+        name_b: str,
+        model_b: Optional[ColdWarNet],
+        games_per_side: int = 50,
+        base_seed: int = 42,
+        temperature: float = 0.3,
+    ) -> Dict[str, Any]:
+        """Plays games_per_side with A as US and games_per_side with B as US."""
+        total_games = games_per_side * 2
+        runner = ts.VectorizedBatchRunner(total_games, base_seed)
 
-    def play_match(self, agent_a_name: str, agent_b_name: str, games_per_pair: int = 16) -> List[Tuple[str, str, float]]:
-        """Plays games between agent_a and agent_b, half as US and half as USSR."""
-        results = []
-        half = games_per_pair // 2
+        completed = [False] * total_games
+        winners = ["NONE"] * total_games
+        final_vps = [0] * total_games
+        step_counts = [0] * total_games
 
-        matchups = [(agent_a_name, agent_b_name)] * half + [(agent_b_name, agent_a_name)] * (games_per_pair - half)
+        steps = 0
+        max_steps = 4000
 
-        for us_agent, ussr_agent in matchups:
-            state = ts.GameState()
-            seed = int(np.random.randint(1, 1_000_000_000))
-            ts.Engine.init_game(state, seed)
+        while not all(completed) and steps < max_steps:
+            steps += 1
+            obs_all = np.array(runner.get_observations(), copy=False)
+            masks_all = np.array(runner.get_action_masks(), copy=False)
+            players = runner.get_decision_players()
+            terminals = runner.get_terminals()
+            term_utils = runner.get_terminal_utilities()
+            vps = runner.get_victory_points()
 
-            step = 0
-            while not ts.Engine.is_terminal(state) and step < 450:
-                p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
-                active_agent = us_agent if p == ts.Player.US else ussr_agent
+            for i in range(total_games):
+                if not completed[i] and terminals[i]:
+                    completed[i] = True
+                    step_counts[i] = steps
+                    final_vps[i] = int(vps[i])
+                    if term_utils[i] > 0:
+                        winners[i] = "US"
+                    elif term_utils[i] < 0:
+                        winners[i] = "USSR"
+                    else:
+                        winners[i] = "DRAW"
 
-                if active_agent.startswith("Snapshot") or active_agent.startswith("ColdWarNet"):
-                    model = self.models_cache[active_agent]
-                    obs = ts.extract_observation(state, p)
-                    mask = ActionEncoder.get_legal_mask(state)
-                    obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
-                    mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
-                    with torch.no_grad():
-                        act_t, _, _, _, _ = model.sample_action(obs_t, mask_t, temperature=0.3, deterministic=False)
-                    action_idx = int(act_t.item())
-                elif active_agent == "HeuristicBot":
-                    action_idx = HeuristicPolicy.select_action(state)
-                else: # RandomBot
-                    mask = ActionEncoder.get_legal_mask(state)
-                    legal_indices = [int(i) for i in np.where(mask > 0)[0]]
-                    action_idx = int(np.random.choice(legal_indices)) if legal_indices else ActionEncoder.CONFIRM_DONE_INDEX
+            if all(completed):
+                break
 
-                ts.Engine.step_flat(state, action_idx)
-                step += 1
+            active_indices = [i for i in range(total_games) if not completed[i]]
+            if not active_indices:
+                break
 
-            term_util = ts.Engine.get_terminal_utility(state)
-            if term_util > 0: # US won
-                score_for_us = 1.0
-            elif term_util < 0: # USSR won
-                score_for_us = 0.0
-            else: # Draw
-                score_for_us = 0.5
+            actions = [0] * total_games
 
-            if us_agent == agent_a_name:
-                results.append((agent_a_name, agent_b_name, score_for_us))
-            else:
-                score_for_a = 1.0 - score_for_us
-                results.append((agent_a_name, agent_b_name, score_for_a))
+            indices_for_a = []
+            indices_for_b = []
+            indices_heuristic = []
+            indices_random = []
 
-        return results
+            for i in active_indices:
+                p = players[i]
+                is_agent_a = (i < games_per_side and p == 1) or (i >= games_per_side and p == 2)
+                agent_name = name_a if is_agent_a else name_b
+                model = model_a if is_agent_a else model_b
+
+                if agent_name == "HeuristicBot":
+                    indices_heuristic.append(i)
+                elif agent_name == "RandomBot":
+                    indices_random.append(i)
+                else:
+                    if is_agent_a:
+                        indices_for_a.append(i)
+                    else:
+                        indices_for_b.append(i)
+
+            if indices_for_a and model_a is not None:
+                obs_sub = torch.from_numpy(obs_all[indices_for_a]).float().to(self.device)
+                mask_sub = torch.from_numpy(masks_all[indices_for_a]).to(self.device)
+                with torch.no_grad():
+                    act_t, _, _, _, _ = model_a.sample_action(obs_sub, mask_sub, temperature=temperature, deterministic=False)
+                act_list = act_t.cpu().numpy().tolist()
+                for idx_sub, env_i in enumerate(indices_for_a):
+                    actions[env_i] = int(act_list[idx_sub])
+
+            if indices_for_b and model_b is not None:
+                obs_sub = torch.from_numpy(obs_all[indices_for_b]).float().to(self.device)
+                mask_sub = torch.from_numpy(masks_all[indices_for_b]).to(self.device)
+                with torch.no_grad():
+                    act_t, _, _, _, _ = model_b.sample_action(obs_sub, mask_sub, temperature=temperature, deterministic=False)
+                act_list = act_t.cpu().numpy().tolist()
+                for idx_sub, env_i in enumerate(indices_for_b):
+                    actions[env_i] = int(act_list[idx_sub])
+
+            for env_i in indices_heuristic:
+                state_ref = runner.get_state(env_i)
+                actions[env_i] = HeuristicPolicy.select_action(state_ref)
+
+            for env_i in indices_random:
+                m = masks_all[env_i]
+                legal_ids = [int(x) for x in np.where(m > 0)[0]]
+                actions[env_i] = int(np.random.choice(legal_ids)) if legal_ids else ActionEncoder.CONFIRM_DONE_INDEX
+
+            runner.step_flat_all(actions)
+
+        us_wins_a = sum(1 for i in range(games_per_side) if winners[i] == "US")
+        us_losses_a = sum(1 for i in range(games_per_side) if winners[i] == "USSR")
+        us_draws_a = sum(1 for i in range(games_per_side) if winners[i] == "DRAW")
+
+        ussr_wins_a = sum(1 for i in range(games_per_side, total_games) if winners[i] == "USSR")
+        ussr_losses_a = sum(1 for i in range(games_per_side, total_games) if winners[i] == "US")
+        ussr_draws_a = sum(1 for i in range(games_per_side, total_games) if winners[i] == "DRAW")
+
+        total_wins_a = us_wins_a + ussr_wins_a
+        total_losses_a = us_losses_a + ussr_losses_a
+        total_draws_a = us_draws_a + ussr_draws_a
+        total_points_a = total_wins_a + 0.5 * total_draws_a
+
+        return {
+            "agent_a": name_a,
+            "agent_b": name_b,
+            "games_per_side": games_per_side,
+            "total_games": total_games,
+            "us_wins_a": us_wins_a,
+            "us_losses_a": us_losses_a,
+            "us_draws_a": us_draws_a,
+            "us_win_rate_a": us_wins_a / max(1, games_per_side),
+            "ussr_wins_a": ussr_wins_a,
+            "ussr_losses_a": ussr_losses_a,
+            "ussr_draws_a": ussr_draws_a,
+            "ussr_win_rate_a": ussr_wins_a / max(1, games_per_side),
+            "total_wins_a": total_wins_a,
+            "total_losses_a": total_losses_a,
+            "total_draws_a": total_draws_a,
+            "total_points_a": total_points_a,
+            "total_win_rate_a": total_points_a / max(1, total_games),
+        }
 
 
-def run_1hour_training_with_benchmarks(
-    total_minutes: int = 60,
-    snapshot_interval_minutes: int = 10,
+def dump_sample_self_play_game(
+    model: ColdWarNet,
+    model_name: str,
+    output_paths: List[str],
+    device: torch.device,
+    seed: int = 2026,
+    temperature: float = 0.3,
+) -> str:
+    """Simulates a sample self-play game to full completion and saves .tslog.json replay."""
+    state = ts.GameState()
+    ts.Engine.init_game(state, seed)
+
+    replay_logger = ReplayLogger(
+        game_id=f"{model_name}_sample_game",
+        seed=seed,
+        us_player=f"{model_name} [US]",
+        ussr_player=f"{model_name} [USSR]",
+    )
+
+    step_index = 0
+    max_steps = 4000
+
+    while not ts.Engine.is_terminal(state) and step_index < max_steps:
+        step_index += 1
+        p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
+        player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
+
+        obs = ts.extract_observation(state, p)
+        mask = ActionEncoder.get_legal_mask(state)
+        obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(device)
+        mask_t = torch.from_numpy(mask).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            act_t, _, _, _, _ = model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=False)
+
+        action_idx = int(act_t.item())
+        action_desc = ActionEncoder.get_action_name(state, action_idx)
+        ma = ts.ActionMask.decode_flat_action(state, action_idx)
+
+        action_dict = {
+            "flat_action_idx": action_idx,
+            "decision_type": int(ma.decision_type),
+            "primary_id": int(ma.primary_id),
+            "secondary_id": int(ma.secondary_id),
+            "flags": int(ma.flags),
+        }
+
+        turn_before = state.turn
+        ar_before = state.action_round
+        phase_before = str(state.current_phase).replace("Phase.", "")
+
+        ts.Engine.step_flat(state, action_idx)
+        state_after_dict = ts.state_to_dict(state)
+
+        replay_logger.log_step(
+            step_index=step_index,
+            turn=turn_before,
+            ar=ar_before,
+            phase=phase_before,
+            player=player_name,
+            action=action_dict,
+            description=action_desc,
+            state_snapshot=state_after_dict,
+        )
+
+    term_util = ts.Engine.get_terminal_utility(state)
+    winner = "US" if term_util > 0 else ("USSR" if term_util < 0 else "DRAW")
+    margin = int(state.victory_points)
+    reason = "Victory Point Threshold (±20 VP)" if state.defcon > 1 else "DEFCON 1 Nuclear Loss"
+    replay_logger.set_result(winner=winner, margin=margin, end_turn=state.turn, reason=reason)
+
+    saved_main = ""
+    for path in output_paths:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        saved_main = replay_logger.save(path)
+
+    return saved_main
+
+
+def run_full_training_campaign(
+    total_hours: float = 1.0,
+    snapshot_interval_minutes: float = 10.0,
+    games_per_side: int = 50,
     num_envs: int = 256,
     buffer_size: int = 128,
-    eta: float = 0.1,
-    lr: float = 3e-4,
+    run_dir: Optional[str] = None,
     device_str: str = "cuda",
 ):
+    start_time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if not run_dir:
+        run_dir = os.path.join("checkpoints", f"run_{start_time_stamp}")
+    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(REPLAYS_DIR, exist_ok=True)
+
     device = torch.device(device_str if torch.cuda.is_available() and device_str == "cuda" else "cpu")
-    print(f"\n{'='*70}")
-    print(f" Twilight Struggle: 1-Hour NashPG Training with 10-Minute Elo Benchmarks")
-    print(f" Device: {device} ({torch.cuda.get_device_name(0) if device.type == 'cuda' else 'CPU'})")
-    print(f" Envs: {num_envs} (OpenMP 24-core) | Buffer: {buffer_size} | NashPG η: {eta} | LR: {lr}")
-    print(f" Total Duration: {total_minutes} mins | Snapshot Interval: {snapshot_interval_minutes} mins")
-    print(f"{'='*70}\n")
 
-    os.makedirs("checkpoints", exist_ok=True)
-    bc_checkpoint = "checkpoints/coldwar_net_bc.pt"
+    print("\n" + "=" * 80)
+    print(" Twilight Struggle NashPG Training Campaign (Canonical Representation)")
+    print(f" Run Directory: {run_dir}")
+    print(f" Device: {device} | Total Duration: {total_hours} hr | Snapshots every {snapshot_interval_minutes} min")
+    print(f" Parallel Envs: {num_envs} (OpenMP Multi-Threaded) | Buffer Size: {buffer_size}")
+    print(f" Evaluation per Pair: {games_per_side} as US + {games_per_side} as USSR (100 total)")
+    print("=" * 80 + "\n")
 
-    # Step 1: Ensure Phase 0 BC checkpoint exists
-    model = create_coldwar_net(device)
-    if not os.path.exists(bc_checkpoint):
-        print(f"[Phase 0] Running Initial Behavioral Cloning Pre-Training...")
-        bc_trainer = BehavioralCloningTrainer(model, device=device, lr=1e-3)
-        dataset = bc_trainer.generate_demonstration_dataset(num_games=500)
-        bc_trainer.train(dataset, epochs=10, batch_size=256, save_path=bc_checkpoint)
-    else:
-        print(f"[Phase 0] Loading existing BC baseline weights from {bc_checkpoint}")
-        model.load_state_dict(torch.load(bc_checkpoint, map_location=device))
+    evaluator = BatchedEvaluator(device)
 
-    # Initialize NashPG Trainer with corrected zero-sum GAE
+    # 1. Phase 0: Behavioral Cloning Pre-training
+    bc_path = os.path.join(run_dir, "coldwar_net_bc.pt")
+    snap0_path = os.path.join(run_dir, "snapshot_0m.pt")
+
+    print(">>> [Phase 0] Training Behavioral Cloning Foundation Model...")
+    base_model = create_coldwar_net(device)
+    bc_trainer = BehavioralCloningTrainer(base_model, lr=1e-3, batch_size=256, device=device)
+    dataset = bc_trainer.generate_demonstration_dataset(num_games=500)
+    bc_trainer.train(dataset, epochs=10, batch_size=256, save_path=bc_path)
+
+    torch.save(base_model.state_dict(), snap0_path)
+    print(f"Saved initial baseline checkpoint to {snap0_path}\n")
+
+    # Snapshot registry
+    snapshots: Dict[str, ColdWarNet] = {}
+    snapshots["Snapshot_0m (BC)"] = create_coldwar_net(device)
+    snapshots["Snapshot_0m (BC)"].load_state_dict(torch.load(snap0_path, map_location=device))
+    snapshots["Snapshot_0m (BC)"].eval()
+
+    all_match_history: List[Tuple[str, str, float]] = []
+    eval_records: List[Dict[str, Any]] = []
+
+    # Baseline match between HeuristicBot and RandomBot
+    res_hr = evaluator.evaluate_pair("HeuristicBot", None, "RandomBot", None, games_per_side=games_per_side, base_seed=200)
+    eval_records.append(res_hr)
+    for _ in range(res_hr["total_wins_a"]):
+        all_match_history.append(("HeuristicBot", "RandomBot", 1.0))
+    for _ in range(res_hr["total_losses_a"]):
+        all_match_history.append(("HeuristicBot", "RandomBot", 0.0))
+    for _ in range(res_hr["total_draws_a"]):
+        all_match_history.append(("HeuristicBot", "RandomBot", 0.5))
+
+    # Initial Baseline Tournament for Snapshot_0m vs Heuristic and Random
+    print("--- Evaluating Snapshot_0m Baseline ---")
+    for opp_name in ["HeuristicBot", "RandomBot"]:
+        opp_m = None
+        res = evaluator.evaluate_pair(
+            "Snapshot_0m (BC)", snapshots["Snapshot_0m (BC)"],
+            opp_name, opp_m,
+            games_per_side=games_per_side, base_seed=100
+        )
+        eval_records.append(res)
+        for _ in range(res["total_wins_a"]):
+            all_match_history.append(("Snapshot_0m (BC)", opp_name, 1.0))
+        for _ in range(res["total_losses_a"]):
+            all_match_history.append(("Snapshot_0m (BC)", opp_name, 0.0))
+        for _ in range(res["total_draws_a"]):
+            all_match_history.append(("Snapshot_0m (BC)", opp_name, 0.5))
+
+        print(f"  vs {opp_name:12s} | US Win: {res['us_win_rate_a']*100:5.1f}% | USSR Win: {res['ussr_win_rate_a']*100:5.1f}% | Total: {res['total_win_rate_a']*100:5.1f}% ({res['total_points_a']:.1f}/{res['total_games']})")
+
+    initial_elos = EloCalculator.compute_elo_ratings(all_match_history, anchor_agent="HeuristicBot", anchor_rating=1500.0)
+    print("\nInitial Elo Ratings:")
+    for ag, r in sorted(initial_elos.items(), key=lambda x: -x[1]):
+        print(f"  {ag:20s}: {r:6.1f}")
+    print()
+
+    # 2. Phase 1: NashPG RL Self-Play Training Loop
+    active_net = create_coldwar_net(device)
+    active_net.load_state_dict(torch.load(snap0_path, map_location=device))
+
     trainer = NashPGTrainer(
-        active_net=model,
+        active_net=active_net,
         num_envs=num_envs,
         buffer_size=buffer_size,
-        lr=lr,
-        eta=eta,
-        ref_update_freq=250_000,
+        lr=3e-4,
+        gamma=0.999,
+        gae_lambda=0.95,
+        eta=0.1,
         device=device,
     )
 
-    evaluator = CrossEvaluator(device)
+    total_seconds = total_hours * 3600.0
+    snapshot_interval_seconds = snapshot_interval_minutes * 60.0
+    next_snapshot_time = snapshot_interval_seconds
 
-    # Save initial Snapshot_0m (BC baseline)
-    init_snap_name = "Snapshot_0m (BC)"
-    init_snap_path = "checkpoints/snapshot_0m.pt"
-    torch.save(model.state_dict(), init_snap_path)
-    evaluator.get_model(init_snap_name, init_snap_path)
+    t_start = time.time()
+    iter_idx = 0
+    snapshot_count = 0
 
-    snapshots: List[Tuple[str, str]] = [(init_snap_name, init_snap_path)]
-    all_match_history: List[Tuple[str, str, float]] = []
-
-    # Run initial baseline games vs HeuristicBot and RandomBot
-    print(f"\n[Baseline Benchmark] Running initial evaluation vs Heuristic & Random Bot...")
-    h_matches = evaluator.play_match(init_snap_name, "HeuristicBot", games_per_pair=20)
-    all_match_history.extend(h_matches)
-    h_wins = sum(1 for m in h_matches if m[0] == init_snap_name and m[2] == 1.0)
-    print(f"  Snapshot_0m (BC) vs HeuristicBot: {h_wins}/{len(h_matches)} wins ({h_wins/len(h_matches)*100:.1f}%)")
-
-    r_matches = evaluator.play_match(init_snap_name, "RandomBot", games_per_pair=12)
-    all_match_history.extend(r_matches)
-    r_wins = sum(1 for m in r_matches if m[0] == init_snap_name and m[2] == 1.0)
-    print(f"  Snapshot_0m (BC) vs RandomBot:    {r_wins}/{len(r_matches)} wins ({r_wins/len(r_matches)*100:.1f}%)")
-
-    all_match_history.extend(evaluator.play_match("HeuristicBot", "RandomBot", games_per_pair=12))
-
-    initial_elo = EloCalculator.compute_elo_ratings(all_match_history, anchor_agent="HeuristicBot", anchor_rating=1500.0)
-    print(f"Initial Elo Leaderboard: {initial_elo}\n")
-
-    start_time = time.time()
-    total_seconds = total_minutes * 60
-    interval_seconds = snapshot_interval_minutes * 60
-    next_snapshot_time = start_time + interval_seconds
-
-    iteration = 0
-    snapshot_idx = 1
+    print(f">>> [Phase 1] Launching NashPG Self-Play RL for {total_hours} Hours...")
 
     while True:
-        iteration += 1
-        rollout_stats = trainer.collect_rollouts()
-        train_stats = trainer.train_step()
-
-        elapsed = time.time() - start_time
-        remaining = max(0, total_seconds - elapsed)
-
-        if iteration % 5 == 0:
-            print(
-                f"[{elapsed/60:4.1f}m / {total_minutes}m] Iter {iteration:4d} | Steps: {trainer.total_env_steps:9,d} "
-                f"({rollout_stats['fps']:6.0f} step/s) | Loss: {train_stats['loss']:.4f} (Pol: {train_stats['policy_loss']:.4f}, "
-                f"Val: {train_stats['val_loss']:.4f}, KL: {train_stats['kl_div']:.4f}) | Left: {remaining/60:.1f}m"
-            )
-
-        # Check if snapshot interval is reached or training is complete
-        if time.time() >= next_snapshot_time or elapsed >= total_seconds:
-            curr_mins = int(round(elapsed / 60))
-            snap_name = f"Snapshot_{curr_mins}m"
-            snap_path = f"checkpoints/snapshot_{curr_mins}m.pt"
-
-            print(f"\n{'*'*70}")
-            print(f" >>> [SNAPSHOT {snapshot_idx}] Saving {snap_name} at {trainer.total_env_steps:,} total steps ({elapsed/60:.1f} mins) <<<")
-            torch.save(trainer.active_net.state_dict(), snap_path)
-            torch.save(trainer.active_net.state_dict(), "checkpoints/coldwar_net_latest.pt")
-            evaluator.get_model(snap_name, snap_path)
-            snapshots.append((snap_name, snap_path))
-
-            # Run Cross-Tournament: New snapshot vs All past snapshots, HeuristicBot, and RandomBot
-            print(f" >>> Running Cross-Evaluation Tournament for {snap_name}...")
-            # 1. Play vs HeuristicBot
-            h_matches = evaluator.play_match(snap_name, "HeuristicBot", games_per_pair=20)
-            all_match_history.extend(h_matches)
-            h_wins = sum(1 for m in h_matches if m[0] == snap_name and m[2] == 1.0)
-            print(f"     vs HeuristicBot: {h_wins}/{len(h_matches)} wins ({h_wins/len(h_matches)*100:.1f}%)")
-
-            # 2. Play vs RandomBot
-            r_matches = evaluator.play_match(snap_name, "RandomBot", games_per_pair=12)
-            all_match_history.extend(r_matches)
-            r_wins = sum(1 for m in r_matches if m[0] == snap_name and m[2] == 1.0)
-            print(f"     vs RandomBot:    {r_wins}/{len(r_matches)} wins ({r_wins/len(r_matches)*100:.1f}%)")
-
-            # 3. Play vs Prior Snapshots
-            for prev_name, _ in snapshots[:-1]:
-                p_matches = evaluator.play_match(snap_name, prev_name, games_per_pair=16)
-                all_match_history.extend(p_matches)
-                p_wins = sum(1 for m in p_matches if m[0] == snap_name and m[2] == 1.0)
-                print(f"     vs {prev_name:18s}: {p_wins}/{len(p_matches)} wins ({p_wins/len(p_matches)*100:.1f}%)")
-
-            # Compute current Elo ratings
-            current_elo = EloCalculator.compute_elo_ratings(
-                all_match_history, anchor_agent="HeuristicBot", anchor_rating=1500.0
-            )
-
-            print(f"\n ---------------- ELO LEADERBOARD ({curr_mins} mins) ----------------")
-            for rank, (agent, elo) in enumerate(current_elo.items(), start=1):
-                star = " <-- CURRENT" if agent == snap_name else ""
-                print(f"  {rank:2d}. {agent:22s} : {elo:6.1f} Elo{star}")
-            print(f" --------------------------------------------------------\n")
-
-            # Save Elo history to JSON
-            elo_log = {
-                "elapsed_minutes": curr_mins,
-                "total_env_steps": trainer.total_env_steps,
-                "leaderboard": current_elo,
-                "snapshots": [s[0] for s in snapshots],
-            }
-            with open("checkpoints/elo_history.json", "w") as f:
-                json.dump(elo_log, f, indent=2)
-
-            # Write formatted report artifact
-            write_markdown_report(snapshots, current_elo, trainer.total_env_steps, elapsed)
-
-            snapshot_idx += 1
-            next_snapshot_time = time.time() + interval_seconds
-
+        elapsed = time.time() - t_start
         if elapsed >= total_seconds:
-            print(f"\n=======================================================")
-            print(f" 1-Hour NashPG Training Complete! Total Steps: {trainer.total_env_steps:,}")
-            print(f" Checkpoints and Elo Leaderboard saved in checkpoints/")
-            print(f"=======================================================\n")
             break
 
+        iter_idx += 1
+        metrics = trainer.train_iteration(ref_update_freq=250_000, ppo_epochs=4, batch_size=512)
 
-def write_markdown_report(snapshots: List[Tuple[str, str]], elo_ratings: Dict[str, float], total_steps: int, elapsed_sec: float):
-    report = f"""# Twilight Struggle Neural AI Training Report
+        # Print iteration status
+        if iter_idx % 5 == 0 or iter_idx == 1:
+            total_steps = iter_idx * num_envs * buffer_size
+            speed = total_steps / max(elapsed, 0.001)
+            print(
+                f"[NashPG] Iter {iter_idx:4d} | Elapsed: {elapsed/60.0:4.1f}m | Total Steps: {total_steps:,} | "
+                f"Speed: {speed:,.0f} step/s | Loss: {metrics['loss']:.4f} (Pol: {metrics['policy_loss']:.4f}, Val: {metrics.get('val_loss', metrics.get('value_loss', 0.0)):.4f}, KL: {metrics['kl_div']:.4f})"
+            )
 
-- **Elapsed Time**: {elapsed_sec / 60:.1f} minutes
-- **Total Environment Steps**: {total_steps:,}
-- **Algorithm**: NashPG (Nash Policy Gradient with Iteratively Refined Regularization)
+        # Check if snapshot milestone is reached
+        if elapsed >= next_snapshot_time or (elapsed + 30 >= total_seconds and snapshot_count < int(total_seconds / snapshot_interval_seconds)):
+            snapshot_count += 1
+            snap_min = int(round(elapsed / 60.0))
+            snap_name = f"Snapshot_{snap_min}m"
+            snap_file = os.path.join(run_dir, f"snapshot_{snap_min}m.pt")
+            torch.save(active_net.state_dict(), snap_file)
 
-## Current Elo Leaderboard (Anchored vs HeuristicBot @ 1500 Elo)
+            # Register snapshot model
+            snap_model = create_coldwar_net(device)
+            snap_model.load_state_dict(torch.load(snap_file, map_location=device))
+            snap_model.eval()
+            snapshots[snap_name] = snap_model
 
-| Rank | Agent / Checkpoint | Elo Rating |
-|:----:|:-------------------|:----------:|
-"""
-    for rank, (agent, elo) in enumerate(elo_ratings.items(), start=1):
-        report += f"| {rank} | **{agent}** | **{elo:.1f}** |\n"
+            print(f"\n{'*'*80}")
+            print(f" [SNAPSHOT MILESTONE] {snap_name} reached at {elapsed/60.0:.1f} minutes! Saved to {snap_file}")
+            print(f" Running Batched Tournament ({games_per_side} as US + {games_per_side} as USSR per opponent)...")
+            print(f"{'*'*80}")
 
-    report += f"\n*Report automatically updated at {time.strftime('%Y-%m-%d %H:%M:%S')}*\n"
+            # Dump sample self-play replay for this snapshot
+            replay_run_path = os.path.join(run_dir, f"{snap_name.lower()}_self_play.tslog.json")
+            replay_web_path = os.path.join(REPLAYS_DIR, f"{os.path.basename(run_dir)}_{snap_name.lower()}_self_play.tslog.json")
+            dump_sample_self_play_game(snap_model, snap_name, [replay_run_path, replay_web_path], device=device, seed=2026 + snapshot_count)
+            print(f" Sample Self-Play Replay recorded to: {replay_web_path}")
 
-    with open("checkpoints/training_report.md", "w") as f:
-        f.write(report)
+            # Evaluate against all previous snapshots and baselines
+            opponents_to_eval = [s for s in snapshots.keys() if s != snap_name] + ["HeuristicBot", "RandomBot"]
+
+            for opp_name in opponents_to_eval:
+                opp_m = snapshots.get(opp_name, None)
+                res = evaluator.evaluate_pair(
+                    snap_name, snap_model,
+                    opp_name, opp_m,
+                    games_per_side=games_per_side,
+                    base_seed=1000 * snapshot_count + len(eval_records)
+                )
+                eval_records.append(res)
+                for _ in range(res["total_wins_a"]):
+                    all_match_history.append((snap_name, opp_name, 1.0))
+                for _ in range(res["total_losses_a"]):
+                    all_match_history.append((snap_name, opp_name, 0.0))
+                for _ in range(res["total_draws_a"]):
+                    all_match_history.append((snap_name, opp_name, 0.5))
+
+                print(
+                    f"  vs {opp_name:18s} | US Win: {res['us_win_rate_a']*100:5.1f}% ({res['us_wins_a']:2d}/{games_per_side}) | "
+                    f"USSR Win: {res['ussr_win_rate_a']*100:5.1f}% ({res['ussr_wins_a']:2d}/{games_per_side}) | "
+                    f"Total: {res['total_win_rate_a']*100:5.1f}% ({res['total_points_a']:.1f}/{res['total_games']})"
+                )
+
+            # Compute and display updated Elo ratings
+            current_elos = EloCalculator.compute_elo_ratings(all_match_history, anchor_agent="HeuristicBot", anchor_rating=1500.0)
+            print(f"\n ---------------- CURRENT ELO LEADERBOARD ({elapsed/60.0:.1f}m) ----------------")
+            print(f" | Rank | Agent / Model Snapshot      | Elo Rating |")
+            print(f" +------+-----------------------------+------------+")
+            for rank, (ag, r) in enumerate(sorted(current_elos.items(), key=lambda x: -x[1]), 1):
+                print(f" | {rank:4d} | {ag:27s} | {r:10.1f} |")
+            print(f" ---------------------------------------------------------\n")
+
+            # Write updated markdown report
+            write_run_report(run_dir, current_elos, eval_records, iter_idx, elapsed)
+
+            next_snapshot_time += snapshot_interval_seconds
+
+    # Save final model
+    latest_path = os.path.join(run_dir, "coldwar_net_latest.pt")
+    torch.save(active_net.state_dict(), latest_path)
+    print(f"\nTraining Complete! Final model saved to {latest_path}")
+
+
+def write_run_report(run_dir: str, elo_ratings: Dict[str, float], eval_records: List[Dict[str, Any]], iters: int, elapsed_sec: float):
+    report_file = os.path.join(run_dir, "training_report.md")
+    json_file = os.path.join(run_dir, "elo_history.json")
+
+    with open(json_file, "w") as f:
+        json.dump({"elo_ratings": elo_ratings, "iterations": iters, "elapsed_seconds": elapsed_sec}, f, indent=2)
+
+    with open(report_file, "w") as f:
+        f.write(f"# Twilight Struggle RL Training Report\n\n")
+        f.write(f"- **Run Directory**: `{run_dir}`\n")
+        f.write(f"- **Elapsed Training Time**: {elapsed_sec/60.0:.1f} minutes ({iters} NashPG iterations)\n")
+        f.write(f"- **Anchor**: `HeuristicBot` @ 1500.0 Elo\n\n")
+        f.write(f"## Current Elo Leaderboard\n\n")
+        f.write(f"| Rank | Agent / Model Snapshot | Elo Rating |\n")
+        f.write(f"|:----:|:-----------------------|:----------:|\n")
+        for rank, (ag, r) in enumerate(sorted(elo_ratings.items(), key=lambda x: -x[1]), 1):
+            f.write(f"| **{rank}** | **{ag}** | **{r:.1f}** |\n")
+
+        f.write(f"\n## Head-to-Head Matchup Breakdown (50 US / 50 USSR)\n\n")
+        f.write(f"| Snapshot (Agent A) | Opponent (Agent B) | US Win Rate (as US) | USSR Win Rate (as USSR) | Total Win Rate | Total Points |\n")
+        f.write(f"|:---|:---|:---:|:---:|:---:|:---:|\n")
+        for r in eval_records:
+            f.write(
+                f"| **{r['agent_a']}** | {r['agent_b']} | "
+                f"{r['us_win_rate_a']*100:.1f}% ({r['us_wins_a']}/{r['games_per_side']}) | "
+                f"{r['ussr_win_rate_a']*100:.1f}% ({r['ussr_wins_a']}/{r['games_per_side']}) | "
+                f"**{r['total_win_rate_a']*100:.1f}%** | {r['total_points_a']:.1f} / {r['total_games']} |\n"
+            )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="1-Hour NashPG Training with 10-Minute Elo Benchmarks")
-    parser.add_argument("--minutes", type=int, default=60, help="Total training time in minutes (default 60)")
-    parser.add_argument("--interval", type=int, default=10, help="Snapshot interval in minutes (default 10)")
-    parser.add_argument("--num-envs", type=int, default=256, help="Number of parallel environments (default 256)")
-    parser.add_argument("--buffer-size", type=int, default=128, help="Buffer size per environment (default 128)")
-    parser.add_argument("--eta", type=float, default=0.1, help="NashPG KL regularization coefficient")
-    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
+    parser = argparse.ArgumentParser(description="Twilight Struggle NashPG Training Campaign")
+    parser.add_argument("--hours", type=float, default=1.0, help="Total training hours")
+    parser.add_argument("--interval", type=float, default=10.0, help="Snapshot interval in minutes")
+    parser.add_argument("--games-per-side", type=int, default=50, help="Evaluation games as US and USSR (default: 50)")
+    parser.add_argument("--num-envs", type=int, default=256, help="Number of parallel environments")
+    parser.add_argument("--buffer-size", type=int, default=128, help="Rollout buffer size per environment")
+    parser.add_argument("--run-dir", type=str, default=None, help="Custom run directory under checkpoints/")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device ('cuda' or 'cpu')")
 
     args = parser.parse_args()
-    run_1hour_training_with_benchmarks(
-        total_minutes=args.minutes,
+    run_full_training_campaign(
+        total_hours=args.hours,
         snapshot_interval_minutes=args.interval,
+        games_per_side=args.games_per_side,
         num_envs=args.num_envs,
         buffer_size=args.buffer_size,
-        eta=args.eta,
-        lr=args.lr,
+        run_dir=args.run_dir,
         device_str=args.device,
     )

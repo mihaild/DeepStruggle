@@ -142,6 +142,12 @@ class NashPGTrainer:
             "completed_episodes": completed_episodes,
         }
 
+    def train_iteration(self, **kwargs) -> Dict[str, Any]:
+        rollout_info = self.collect_rollouts()
+        train_metrics = self.train_step()
+        train_metrics.update(rollout_info)
+        return train_metrics
+
     def train_step(self) -> Dict[str, float]:
         """Runs the inner-loop NashPG update over the collected trajectory buffer."""
         self.active_net.train()

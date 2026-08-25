@@ -52,12 +52,27 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         out_buf->board_features[offset + 17] = c_info.in_eastern_europe ? 1.0f : 0.0f;
         out_buf->board_features[offset + 18] = c_info.in_southeast_asia ? 1.0f : 0.0f;
 
-        out_buf->board_features[offset + 19] = Operations::can_place_influence(state, my_player, i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 20] = Operations::can_place_influence(state, opp_player, i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 21] = Operations::can_coup(state, my_player, i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 22] = Operations::can_coup(state, opp_player, i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 23] = Operations::can_realign(state, my_player, i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 24] = Operations::can_realign(state, opp_player, i) ? 1.0f : 0.0f;
+        bool can_my_place = false;
+        bool can_opp_place = false;
+        if (state.current_phase == Phase::SETUP) {
+            can_my_place = (my_player == Player::USSR) ? c_info.in_eastern_europe : c_info.in_western_europe;
+            can_opp_place = (opp_player == Player::USSR) ? c_info.in_eastern_europe : c_info.in_western_europe;
+        } else {
+            can_my_place = Operations::can_place_influence(state, my_player, i);
+            can_opp_place = Operations::can_place_influence(state, opp_player, i);
+        }
+        out_buf->board_features[offset + 19] = can_my_place ? 1.0f : 0.0f;
+        out_buf->board_features[offset + 20] = can_opp_place ? 1.0f : 0.0f;
+
+        bool can_my_coup = (state.current_phase != Phase::SETUP) && Operations::can_coup(state, my_player, i);
+        bool can_opp_coup = (state.current_phase != Phase::SETUP) && Operations::can_coup(state, opp_player, i);
+        out_buf->board_features[offset + 21] = can_my_coup ? 1.0f : 0.0f;
+        out_buf->board_features[offset + 22] = can_opp_coup ? 1.0f : 0.0f;
+
+        bool can_my_realign = (state.current_phase != Phase::SETUP) && Operations::can_realign(state, my_player, i);
+        bool can_opp_realign = (state.current_phase != Phase::SETUP) && Operations::can_realign(state, opp_player, i);
+        out_buf->board_features[offset + 23] = can_my_realign ? 1.0f : 0.0f;
+        out_buf->board_features[offset + 24] = can_opp_realign ? 1.0f : 0.0f;
 
         out_buf->board_features[offset + 25] = state.ctx().is_visited(i) ? 1.0f : 0.0f;
         out_buf->board_features[offset + 26] = static_cast<float>(state.ctx().node_counts[i]) / 5.0f;
