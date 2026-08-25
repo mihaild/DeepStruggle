@@ -188,6 +188,9 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 
 # Python Integration Tests (343 tests including Neural & NashPG suite)
 PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
+
+# Static Type Checking with Pyrefly
+.venv/bin/pyrefly check
 ```
 
 ---
@@ -202,3 +205,7 @@ PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
    The active policy $\pi_\theta$ is regularized against the frozen outer-loop snapshot $\pi_{\text{ref}}^{(k)}$ with fixed $\eta$, ensuring monotonic convergence to Nash equilibrium without strategy cycling.
 4. **Deterministic PRNG**:
    All simulation randomness uses `state.rng_state` with SplitMix64 (`ts::Prng`).
+5. **Strict Type Annotations & Mandatory Type Checking**:
+   All Python types must be explicitly annotated (using `TypedDict` definitions in `server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
+6. **Unified Self-Play & Replay Generation**:
+   All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `ai.eval.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).

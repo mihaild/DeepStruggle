@@ -30,6 +30,8 @@ from ai.env.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import BehavioralCloningTrainer, HeuristicPolicy
 from ai.training.nash_pg import NashPGTrainer
 from server.replay import ReplayLogger, REPLAYS_DIR
+from ai.eval.self_play import generate_self_play_replay
+from server.replay_types import EloBenchmarkReportDict
 
 
 class EloCalculator:
@@ -223,74 +225,16 @@ def dump_sample_self_play_game(
     temperature: float = 0.3,
 ) -> str:
     """Simulates a sample self-play game to full completion and saves .tslog.json replay."""
-    state = ts.GameState()
-    ts.Engine.init_game(state, seed)
-
-    replay_logger = ReplayLogger(
-        game_id=f"{model_name}_sample_game",
+    _, saved_path = generate_self_play_replay(
+        model=model,
+        model_name=model_name,
+        output_path=output_paths,
+        device=device,
         seed=seed,
-        us_player=f"{model_name} [US]",
-        ussr_player=f"{model_name} [USSR]",
+        temperature=temperature,
+        verbose=False,
     )
-
-    step_index = 0
-    max_steps = 4000
-
-    while not ts.Engine.is_terminal(state) and step_index < max_steps:
-        step_index += 1
-        p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
-        player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
-
-        obs = ts.extract_observation(state, p)
-        mask = ActionEncoder.get_legal_mask(state)
-        obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(device)
-        mask_t = torch.from_numpy(mask).unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            act_t, _, _, _, _ = model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=False)
-
-        action_idx = int(act_t.item())
-        action_desc = ActionEncoder.get_action_name(state, action_idx)
-        ma = ts.ActionMask.decode_flat_action(state, action_idx)
-
-        action_dict = {
-            "flat_action_idx": action_idx,
-            "decision_type": int(ma.decision_type),
-            "primary_id": int(ma.primary_id),
-            "secondary_id": int(ma.secondary_id),
-            "flags": int(ma.flags),
-        }
-
-        turn_before = state.turn
-        ar_before = state.action_round
-        phase_before = str(state.current_phase).replace("Phase.", "")
-
-        ts.Engine.step_flat(state, action_idx)
-        state_after_dict = ts.state_to_dict(state)
-
-        replay_logger.log_step(
-            step_index=step_index,
-            turn=turn_before,
-            ar=ar_before,
-            phase=phase_before,
-            player=player_name,
-            action=action_dict,
-            description=action_desc,
-            state_snapshot=state_after_dict,
-        )
-
-    term_util = ts.Engine.get_terminal_utility(state)
-    winner = "US" if term_util > 0 else ("USSR" if term_util < 0 else "DRAW")
-    margin = int(state.victory_points)
-    reason = "Victory Point Threshold (±20 VP)" if state.defcon > 1 else "DEFCON 1 Nuclear Loss"
-    replay_logger.set_result(winner=winner, margin=margin, end_turn=state.turn, reason=reason)
-
-    saved_main = ""
-    for path in output_paths:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        saved_main = replay_logger.save(path)
-
-    return saved_main
+    return saved_path
 
 
 def run_full_training_campaign(
@@ -494,7 +438,8 @@ def write_run_report(run_dir: str, elo_ratings: Dict[str, float], eval_records: 
     json_file = os.path.join(run_dir, "elo_history.json")
 
     with open(json_file, "w") as f:
-        json.dump({"elo_ratings": elo_ratings, "iterations": iters, "elapsed_seconds": elapsed_sec}, f, indent=2)
+        elo_report: EloBenchmarkReportDict = {"elo_ratings": elo_ratings, "iterations": [iters], "elapsed_seconds": elapsed_sec}
+        json.dump(elo_report, f, indent=2)
 
     with open(report_file, "w") as f:
         f.write(f"# Twilight Struggle RL Training Report\n\n")
