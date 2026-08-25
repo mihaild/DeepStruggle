@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 import ts_engine as ts
 from .action_encoder import ActionEncoder
+from .reward_calculator import RewardCalculator, ZeroSumTerminalReward
 
 
 class TsSingleEnv:
@@ -12,9 +13,10 @@ class TsSingleEnv:
     OBSERVATION_SIZE = 4293
     ACTION_SPACE_SIZE = 212
 
-    def __init__(self, seed: Optional[int] = None):
+    def __init__(self, seed: Optional[int] = None, reward_calculator: Optional[RewardCalculator] = None):
         self.state = ts.GameState()
-        self.seed = seed or np.random.randint(1, 1_000_000_000)
+        self.seed = seed or int(np.random.randint(1, 1_000_000_000))
+        self.reward_calc: RewardCalculator = reward_calculator or ZeroSumTerminalReward()
         self.reset(self.seed)
 
     def reset(self, seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
@@ -47,24 +49,34 @@ class TsSingleEnv:
             p = self.current_player
             obs = ts.extract_observation(self.state, p)
             mask = np.zeros(self.ACTION_SPACE_SIZE, dtype=np.uint8)
-            reward = ts.Engine.get_terminal_utility(self.state)
+            reward = float(ts.Engine.get_terminal_utility(self.state))
             return obs, mask, reward, True, self._get_info()
 
-        prev_player = self.current_player
+        acting_player = int(self.current_player)
+        prev_vp = np.array([self.state.victory_points], dtype=np.int8)
+
         ok = ts.Engine.step_flat(self.state, int(action_idx))
 
         done = self.is_done
-        terminal_util = ts.Engine.get_terminal_utility(self.state) if done else 0.0
+        term_util = np.array([ts.Engine.get_terminal_utility(self.state) if done else 0.0], dtype=np.float32)
+        curr_vp = np.array([self.state.victory_points], dtype=np.int8)
 
-        # Perspective reward: positive if favourable to prev_player
-        reward = float(terminal_util if prev_player == ts.Player.US else -terminal_util)
+        rewards = self.reward_calc.compute_step_rewards(
+            acting_players=np.array([acting_player], dtype=np.int8),
+            dones=np.array([done], dtype=bool),
+            terminal_utilities=term_util,
+            prev_victory_points=prev_vp,
+            curr_victory_points=curr_vp,
+        )
+        reward = float(rewards[0])
 
         p = self.current_player
         obs = ts.extract_observation(self.state, p)
         mask = ActionEncoder.get_legal_mask(self.state) if not done else np.zeros(self.ACTION_SPACE_SIZE, dtype=np.uint8)
         info = self._get_info()
         info["step_ok"] = ok
-        info["prev_player"] = int(prev_player)
+        info["acting_player"] = acting_player
+        info["prev_player"] = acting_player
         return obs, mask, reward, done, info
 
     def _get_info(self) -> Dict[str, Any]:
@@ -89,10 +101,17 @@ class TsVectorizedEnv:
     OBSERVATION_SIZE = 4293
     ACTION_SPACE_SIZE = 212
 
-    def __init__(self, num_envs: int = 64, base_seed: int = 42, auto_reset: bool = True):
+    def __init__(
+        self,
+        num_envs: int = 64,
+        base_seed: int = 42,
+        auto_reset: bool = True,
+        reward_calculator: Optional[RewardCalculator] = None,
+    ):
         self.num_envs = num_envs
         self.base_seed = base_seed
         self.auto_reset = auto_reset
+        self.reward_calc: RewardCalculator = reward_calculator or ZeroSumTerminalReward()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
@@ -118,7 +137,7 @@ class TsVectorizedEnv:
         self.ep_rewards[env_idx] = 0.0
 
     def step(self, actions: np.ndarray | List[int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
-        """Steps all N environments in parallel.
+        """Steps all N environments in parallel with exact acting player attribution.
 
         Args:
             actions: Array/list of flat action indices of length num_envs.
@@ -130,21 +149,27 @@ class TsVectorizedEnv:
             dones: np.ndarray shape (num_envs,) boolean flags
             info: Dict containing episode statistics and terminal outcomes
         """
-        prev_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
+        # 1. Capture exact acting players BEFORE stepping simulation
+        acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
+        prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
-        # Convert to list of ints for C++ runner
+        # 2. Step C++ simulation in parallel
         action_list = [int(a) for a in actions]
         self.runner.step_flat_all(action_list)
 
+        # 3. Read post-step metrics BEFORE auto-resetting
         dones = np.array(self.runner.get_terminals(), dtype=bool)
         term_utils = np.array(self.runner.get_terminal_utilities(), dtype=np.float32)
+        curr_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
-        # Reward calculation: terminal utility (+1 US / -1 USSR) aligned to acting player perspective
-        rewards = np.zeros(self.num_envs, dtype=np.float32)
-        for i in range(self.num_envs):
-            if dones[i]:
-                # terminal reward from perspective of the player that acted
-                rewards[i] = term_utils[i] if prev_players[i] == 1 else -term_utils[i]
+        # 4. Pure algebraic reward computation via RewardCalculator
+        rewards = self.reward_calc.compute_step_rewards(
+            acting_players=acting_players,
+            dones=dones,
+            terminal_utilities=term_utils,
+            prev_victory_points=prev_vp,
+            curr_victory_points=curr_vp,
+        )
 
         self.ep_lengths += 1
         self.ep_rewards += rewards
@@ -158,7 +183,7 @@ class TsVectorizedEnv:
                         "length": int(self.ep_lengths[i]),
                         "reward": float(self.ep_rewards[i]),
                         "terminal_utility": float(term_utils[i]),
-                        "victory_points": int(self.runner.get_victory_points()[i]),
+                        "victory_points": int(curr_vp[i]),
                         "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
                     })
                     # Auto-reset environment with fresh random seed
@@ -169,7 +194,8 @@ class TsVectorizedEnv:
 
         info = self._get_batch_info()
         info["completed_episodes"] = completed_episodes
-        info["prev_players"] = prev_players
+        info["acting_players"] = acting_players
+        info["prev_players"] = acting_players
         return obs, masks, rewards, dones, info
 
     def _get_batch_info(self) -> Dict[str, Any]:

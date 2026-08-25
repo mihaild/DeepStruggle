@@ -93,7 +93,7 @@ class RolloutBuffer:
         last_dones: torch.Tensor,
         last_players: torch.Tensor,
         gamma: float = 0.999,
-        gae_lambda: float = 0.95,
+        gae_lambda: float = 0.98,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment."""
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
@@ -104,12 +104,12 @@ class RolloutBuffer:
 
             if t == self.buffer_size - 1:
                 # Sign alignment with bootstrap state player (+1 if same player, -1 if opponent)
-                sign = torch.where(curr_p == last_players, 1.0, -1.0)
+                sign = (curr_p * last_players).float()
                 next_val = sign * last_v_win
             else:
                 # Sign alignment between step t and step t+1
                 next_p = self.players[t + 1]
-                sign = torch.where(curr_p == next_p, 1.0, -1.0)
+                sign = (curr_p * next_p).float()
                 next_val = sign * self.values_win[t + 1]
 
             # TD error delta from perspective of acting player at step t
