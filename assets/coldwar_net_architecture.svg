@@ -1,0 +1,281 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1050" width="100%" height="100%" style="background: #0B0F19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <defs>
+    <!-- Background Grid -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1F293D" stroke-width="1" opacity="0.4"/>
+    </pattern>
+
+    <!-- Gradients -->
+    <linearGradient id="cyanGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="goldGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#D97706" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="greenGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#059669" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="purpleGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="roseGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#F43F5E" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#161F30" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="glowShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+
+    <filter id="neonCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Arrow Marker -->
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#00F0FF" />
+    </marker>
+    <marker id="arrowGold" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#F59E0B" />
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8B5CF6" />
+    </marker>
+    <marker id="arrowRose" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#EF4444" />
+    </marker>
+  </defs>
+
+  <!-- Background Grid & Highlights -->
+  <rect width="100%" height="100%" fill="#0B0F19" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
+  <circle cx="800" cy="520" r="450" fill="#6366F1" opacity="0.05" filter="blur(80px)" />
+  <circle cx="250" cy="200" r="250" fill="#00F0FF" opacity="0.04" filter="blur(60px)" />
+
+  <!-- HEADER -->
+  <g transform="translate(80, 50)">
+    <rect x="0" y="0" width="6" height="52" rx="3" fill="url(#cyanGlow)" />
+    <text x="24" y="32" fill="#FFFFFF" font-size="28" font-weight="800" letter-spacing="0.5">ColdWarNet: Multi-Modal Graph &amp; Cross-Attention Architecture</text>
+    <text x="24" y="54" fill="#94A3B8" font-size="15" font-weight="500">Canonical 4,293-dim State Representation • GNN Board Topology • Card-to-Country Cross-Attention • Masked 212-dim Policy</text>
+  </g>
+
+  <!-- LAYER 1: RAW INPUT MODALITIES (Y: 130 -> 240) -->
+  <!-- 1A: Board Input -->
+  <g transform="translate(80, 130)" filter="url(#glowShadow)">
+    <rect width="340" height="110" rx="12" fill="url(#cardBg)" stroke="#00F0FF" stroke-width="1.5" stroke-opacity="0.6" />
+    <rect x="16" y="16" width="8" height="8" rx="2" fill="#00F0FF" />
+    <text x="32" y="24" fill="#00F0FF" font-size="14" font-weight="700" letter-spacing="1">BOARD TOPOLOGY</text>
+    <text x="240" y="24" fill="#64748B" font-size="12" font-weight="600">84 × 28 Tensor</text>
+    <text x="16" y="50" fill="#E2E8F0" font-size="13" font-weight="600">84 Country Nodes</text>
+    <text x="16" y="72" fill="#94A3B8" font-size="12">• My &amp; Opp Influence, Stability, Battleground</text>
+    <text x="16" y="92" fill="#94A3B8" font-size="12">• Net Realign Mod [-1,1], Coup Nuclear Hazard</text>
+  </g>
+
+  <!-- 1B: Card Input -->
+  <g transform="translate(460, 130)" filter="url(#glowShadow)">
+    <rect width="340" height="110" rx="12" fill="url(#cardBg)" stroke="#F59E0B" stroke-width="1.5" stroke-opacity="0.6" />
+    <rect x="16" y="16" width="8" height="8" rx="2" fill="#F59E0B" />
+    <text x="32" y="24" fill="#F59E0B" font-size="14" font-weight="700" letter-spacing="1">CARD REGISTRY</text>
+    <text x="235" y="24" fill="#64748B" font-size="12" font-weight="600">110 × 12 Tensor</text>
+    <text x="16" y="50" fill="#E2E8F0" font-size="13" font-weight="600">110 Twilight Struggle Cards</text>
+    <text x="16" y="72" fill="#94A3B8" font-size="12">• Location (Hand, Discard, Removed, Ongoing)</text>
+    <text x="16" y="92" fill="#94A3B8" font-size="12">• Ops Value, Loyalty (+1 Friendly, -1 Hostile)</text>
+  </g>
+
+  <!-- 1C: Global Input -->
+  <g transform="translate(840, 130)" filter="url(#glowShadow)">
+    <rect width="330" height="110" rx="12" fill="url(#cardBg)" stroke="#10B981" stroke-width="1.5" stroke-opacity="0.6" />
+    <rect x="16" y="16" width="8" height="8" rx="2" fill="#10B981" />
+    <text x="32" y="24" fill="#10B981" font-size="14" font-weight="700" letter-spacing="1">GLOBAL STATE</text>
+    <text x="245" y="24" fill="#64748B" font-size="12" font-weight="600">76-dim Vector</text>
+    <text x="16" y="50" fill="#E2E8F0" font-size="13" font-weight="600">Game Tracks &amp; 45 Event Bits</text>
+    <text x="16" y="72" fill="#94A3B8" font-size="12">• VP [-1,1], DEFCON, Space, MilOps</text>
+    <text x="16" y="92" fill="#94A3B8" font-size="12">• 6 Region VP Differentials, Deck Counters</text>
+  </g>
+
+  <!-- 1D: History Input -->
+  <g transform="translate(1210, 130)" filter="url(#glowShadow)">
+    <rect width="310" height="110" rx="12" fill="url(#cardBg)" stroke="#8B5CF6" stroke-width="1.5" stroke-opacity="0.6" />
+    <rect x="16" y="16" width="8" height="8" rx="2" fill="#8B5CF6" />
+    <text x="32" y="24" fill="#8B5CF6" font-size="14" font-weight="700" letter-spacing="1">HISTORY BUFFER</text>
+    <text x="215" y="24" fill="#64748B" font-size="12" font-weight="600">16 × 32 Tensor</text>
+    <text x="16" y="50" fill="#E2E8F0" font-size="13" font-weight="600">Last 16 Micro-Action Steps</text>
+    <text x="16" y="72" fill="#94A3B8" font-size="12">• Acting Player, Action Type, Target Node</text>
+    <text x="16" y="92" fill="#94A3B8" font-size="12">• Ops Value, Die Rolls, DEFCON Deltas</text>
+  </g>
+
+  <!-- LAYER 2: SPECIALIZED ENCODERS (Y: 290 -> 400) -->
+  <!-- 2A: Board GCN -->
+  <g transform="translate(80, 290)" filter="url(#glowShadow)">
+    <rect width="340" height="110" rx="12" fill="url(#cardBg)" stroke="#3B82F6" stroke-width="1.5" />
+    <text x="20" y="30" fill="#60A5FA" font-size="15" font-weight="700">2-Layer Graph Convolution (GCN)</text>
+    <text x="20" y="55" fill="#CBD5E1" font-size="13">Normalized 84×84 Adjacency: D^(-½) A D^(-½)</text>
+    <rect x="20" y="70" width="145" height="26" rx="6" fill="#1E293B" />
+    <text x="32" y="88" fill="#38BDF8" font-size="12" font-weight="600">Layer 1: 28 → 64</text>
+    <rect x="175" y="70" width="145" height="26" rx="6" fill="#1E293B" />
+    <text x="187" y="88" fill="#38BDF8" font-size="12" font-weight="600">Layer 2: 64 → 64</text>
+  </g>
+
+  <!-- 2B: Card MLP -->
+  <g transform="translate(460, 290)" filter="url(#glowShadow)">
+    <rect width="340" height="110" rx="12" fill="url(#cardBg)" stroke="#D97706" stroke-width="1.5" />
+    <text x="20" y="30" fill="#FBBF24" font-size="15" font-weight="700">Card Feature Projection</text>
+    <text x="20" y="55" fill="#CBD5E1" font-size="13">Linear(12 → 64) + GELU Activation</text>
+    <rect x="20" y="70" width="300" height="26" rx="6" fill="#1E293B" />
+    <text x="40" y="88" fill="#F59E0B" font-size="12" font-weight="600">Output: 110 Card Tokens (110 × 64)</text>
+  </g>
+
+  <!-- 2C: Global Dense -->
+  <g transform="translate(840, 290)" filter="url(#glowShadow)">
+    <rect width="330" height="110" rx="12" fill="url(#cardBg)" stroke="#059669" stroke-width="1.5" />
+    <text x="20" y="30" fill="#34D399" font-size="15" font-weight="700">Global Dense Projection</text>
+    <text x="20" y="55" fill="#CBD5E1" font-size="13">Linear(76 → 128) + LayerNorm + GELU</text>
+    <rect x="20" y="70" width="290" height="26" rx="6" fill="#1E293B" />
+    <text x="55" y="88" fill="#10B981" font-size="12" font-weight="600">Global Embedding (128-d)</text>
+  </g>
+
+  <!-- 2D: History 1D Conv -->
+  <g transform="translate(1210, 290)" filter="url(#glowShadow)">
+    <rect width="310" height="110" rx="12" fill="url(#cardBg)" stroke="#7C3AED" stroke-width="1.5" />
+    <text x="20" y="30" fill="#A78BFA" font-size="15" font-weight="700">1D Temporal ConvNet</text>
+    <text x="20" y="55" fill="#CBD5E1" font-size="13">Conv1d(32 → 32, Kernel 3, Pad 1)</text>
+    <rect x="20" y="70" width="270" height="26" rx="6" fill="#1E293B" />
+    <text x="45" y="88" fill="#8B5CF6" font-size="12" font-weight="600">History Embedding (128-d)</text>
+  </g>
+
+  <!-- Connectors Layer 1 -> Layer 2 -->
+  <line x1="250" y1="240" x2="250" y2="290" stroke="#00F0FF" stroke-width="2" marker-end="url(#arrowCyan)" />
+  <line x1="630" y1="240" x2="630" y2="290" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowGold)" />
+  <line x1="1005" y1="240" x2="1005" y2="290" stroke="#10B981" stroke-width="2" marker-end="url(#arrowCyan)" />
+  <line x1="1365" y1="240" x2="1365" y2="290" stroke="#8B5CF6" stroke-width="2" marker-end="url(#arrowPurple)" />
+
+  <!-- LAYER 3: CARD <-> COUNTRY CROSS-ATTENTION & POOLING (Y: 450 -> 570) -->
+  <g transform="translate(80, 450)" filter="url(#glowShadow)">
+    <rect width="720" height="120" rx="14" fill="#131C2E" stroke="#818CF8" stroke-width="2" />
+    <rect x="20" y="16" width="8" height="8" rx="2" fill="#818CF8" />
+    <text x="36" y="25" fill="#818CF8" font-size="14" font-weight="800" letter-spacing="1">CARD ↔ COUNTRY CROSS-ATTENTION (ColdWarNetV2)</text>
+    
+    <!-- Attention Mechanism Box -->
+    <rect x="20" y="42" width="320" height="62" rx="8" fill="#1E293B" stroke="#4F46E5" stroke-width="1" />
+    <text x="32" y="64" fill="#C7D2FE" font-size="12" font-weight="700">Queries (Q): Card Tokens (110 × 64)</text>
+    <text x="32" y="82" fill="#94A3B8" font-size="11">Keys (K) &amp; Values (V): Country Nodes (84 × 64)</text>
+    <text x="32" y="96" fill="#38BDF8" font-size="11" font-weight="600">Softmax(Q Kᵀ / √d) V → Context-Aware Cards</text>
+
+    <!-- Semantic Association Callouts -->
+    <rect x="360" y="42" width="340" height="62" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1" stroke-opacity="0.6" />
+    <text x="372" y="62" fill="#FBBF24" font-size="11" font-weight="700">• Marshall Plan ➔ Western Europe Nodes</text>
+    <text x="372" y="78" fill="#F87171" font-size="11" font-weight="700">• Arab-Israeli War ➔ Israel &amp; Middle East Nodes</text>
+    <text x="372" y="94" fill="#34D399" font-size="11" font-weight="700">• Regional Scoring ➔ Battleground Deficits</text>
+  </g>
+
+  <!-- Connectors GCN & Card -> Cross-Attention -->
+  <path d="M 250 400 L 250 450" stroke="#00F0FF" stroke-width="2" marker-end="url(#arrowCyan)" />
+  <path d="M 630 400 L 630 450" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowGold)" />
+
+  <!-- Direct pooling bypass lines for GCN & Cards to Fusion -->
+  <path d="M 800 510 L 800 620" stroke="#818CF8" stroke-width="2.5" marker-end="url(#arrowPurple)" />
+  <path d="M 1005 400 L 1005 620" stroke="#10B981" stroke-width="2" marker-end="url(#arrowCyan)" />
+  <path d="M 1365 400 L 1365 620" stroke="#8B5CF6" stroke-width="2" marker-end="url(#arrowPurple)" />
+
+  <!-- LAYER 4: DEEP RESIDUAL FUSION TRUNK (Y: 620 -> 780) -->
+  <g transform="translate(80, 620)" filter="url(#glowShadow)">
+    <rect width="1440" height="160" rx="16" fill="url(#cardBg)" stroke="#8B5CF6" stroke-width="2" />
+    <text x="24" y="32" fill="#C084FC" font-size="16" font-weight="800" letter-spacing="1">MULTI-MODAL FUSION TRUNK &amp; RESNET BLOCKS</text>
+    <text x="470" y="32" fill="#94A3B8" font-size="13">Concatenation: [Board (256) + Card (256) + Global (128) + History (128)] = 768-d ➔ Linear(768 → 512)</text>
+
+    <!-- ResBlocks 1..4 -->
+    <g transform="translate(24, 55)">
+      <!-- ResBlock 1 -->
+      <rect x="0" y="0" width="325" height="85" rx="10" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.5" />
+      <text x="16" y="26" fill="#A5B4FC" font-size="13" font-weight="700">ResBlock 1 (Dim 512)</text>
+      <text x="16" y="48" fill="#94A3B8" font-size="11">Pre-LN ➔ Linear(512, 512) ➔ GELU</text>
+      <text x="16" y="68" fill="#94A3B8" font-size="11">Dropout(0.05) ➔ Linear(512, 512) + Residual</text>
+
+      <!-- ResBlock 2 -->
+      <rect x="355" y="0" width="325" height="85" rx="10" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.5" />
+      <text x="16" y="26" fill="#A5B4FC" font-size="13" font-weight="700">ResBlock 2 (Dim 512)</text>
+      <text x="16" y="48" fill="#94A3B8" font-size="11">Pre-LN ➔ Linear(512, 512) ➔ GELU</text>
+      <text x="16" y="68" fill="#94A3B8" font-size="11">Dropout(0.05) ➔ Linear(512, 512) + Residual</text>
+
+      <!-- ResBlock 3 -->
+      <rect x="710" y="0" width="325" height="85" rx="10" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.5" />
+      <text x="16" y="26" fill="#A5B4FC" font-size="13" font-weight="700">ResBlock 3 (Dim 512)</text>
+      <text x="16" y="48" fill="#94A3B8" font-size="11">Pre-LN ➔ Linear(512, 512) ➔ GELU</text>
+      <text x="16" y="68" fill="#94A3B8" font-size="11">Dropout(0.05) ➔ Linear(512, 512) + Residual</text>
+
+      <!-- ResBlock 4 -->
+      <rect x="1065" y="0" width="325" height="85" rx="10" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.5" />
+      <text x="16" y="26" fill="#A5B4FC" font-size="13" font-weight="700">ResBlock 4 (Dim 512)</text>
+      <text x="16" y="48" fill="#94A3B8" font-size="11">Pre-LN ➔ Linear(512, 512) ➔ GELU</text>
+      <text x="16" y="68" fill="#94A3B8" font-size="11">Dropout(0.05) ➔ Linear(512, 512) + Residual</text>
+    </g>
+  </g>
+
+  <!-- Connectors Fusion -> Heads -->
+  <path d="M 480 780 L 480 840" stroke="#F43F5E" stroke-width="2.5" marker-end="url(#arrowRose)" />
+  <path d="M 1120 780 L 1120 840" stroke="#10B981" stroke-width="2.5" marker-end="url(#arrowCyan)" />
+
+  <!-- LAYER 5: DUAL OUTPUT HEADS (Y: 840 -> 990) -->
+  <!-- 5A: Masked Policy Head -->
+  <g transform="translate(80, 840)" filter="url(#glowShadow)">
+    <rect width="780" height="150" rx="14" fill="url(#cardBg)" stroke="#F43F5E" stroke-width="2" />
+    <rect x="20" y="16" width="8" height="8" rx="2" fill="#F43F5E" />
+    <text x="36" y="25" fill="#FB7185" font-size="15" font-weight="800" letter-spacing="1">MASKED POLICY HEAD (π_θ)</text>
+    <text x="540" y="25" fill="#64748B" font-size="12" font-weight="600">212-dim Flat Action Space</text>
+
+    <!-- Network Layer -->
+    <rect x="20" y="42" width="280" height="90" rx="8" fill="#1E293B" />
+    <text x="32" y="64" fill="#FDA4AF" font-size="12" font-weight="700">Linear(512 → 256) ➔ GELU</text>
+    <text x="32" y="84" fill="#E2E8F0" font-size="12">Linear(256 → 212) Raw Logits</text>
+    <text x="32" y="108" fill="#94A3B8" font-size="11">Flat Codec (Cards, Ops, Coups, Realign)</text>
+
+    <!-- Masking Operation -->
+    <g transform="translate(320, 42)">
+      <rect width="440" height="90" rx="8" fill="#3F1D28" stroke="#E11D48" stroke-width="1.5" />
+      <text x="16" y="24" fill="#FECDD3" font-size="12" font-weight="700">C++ Engine Action Masking (ActionMask::generate_flat_mask)</text>
+      <text x="16" y="46" fill="#FDA4AF" font-size="11">Masked Logits: z_masked = where(mask == 1, logits, -1e9)</text>
+      <text x="16" y="68" fill="#38BDF8" font-size="12" font-weight="700">Sampling: a ~ Categorical(Softmax(z_masked / Temperature))</text>
+      <text x="16" y="84" fill="#4ADE80" font-size="11" font-weight="600">Guarantees 100% Legal Move Selection across all 110 Cards</text>
+    </g>
+  </g>
+
+  <!-- 5B: Value Head -->
+  <g transform="translate(890, 840)" filter="url(#glowShadow)">
+    <rect width="630" height="150" rx="14" fill="url(#cardBg)" stroke="#10B981" stroke-width="2" />
+    <rect x="20" y="16" width="8" height="8" rx="2" fill="#10B981" />
+    <text x="36" y="25" fill="#34D399" font-size="15" font-weight="800" letter-spacing="1">DUAL VALUE HEADS (V_win &amp; V_vp)</text>
+    <text x="480" y="25" fill="#64748B" font-size="12" font-weight="600">Two-Player Zero-Sum</text>
+
+    <g transform="translate(20, 42)">
+      <!-- Win/Loss Head -->
+      <rect x="0" y="0" width="285" height="90" rx="8" fill="#064E3B" stroke="#10B981" stroke-width="1" />
+      <text x="14" y="24" fill="#A7F3D0" font-size="12" font-weight="700">Win / Loss Probability Head</text>
+      <text x="14" y="46" fill="#E2E8F0" font-size="11">Linear(512 → 256) ➔ Linear(256 → 1)</text>
+      <text x="14" y="68" fill="#34D399" font-size="12" font-weight="700">Activation: Tanh → [-1.0, +1.0]</text>
+      <text x="14" y="84" fill="#6EE7B7" font-size="10">+1.0 = Guaranteed Win, -1.0 = Loss</text>
+
+      <!-- Auxiliary VP Head -->
+      <rect x="305" y="0" width="285" height="90" rx="8" fill="#134E4A" stroke="#14B8A6" stroke-width="1" />
+      <text x="14" y="24" fill="#99F6E4" font-size="12" font-weight="700">Auxiliary Victory Point Margin</text>
+      <text x="14" y="46" fill="#E2E8F0" font-size="11">Linear(512 → 256) ➔ Linear(256 → 1)</text>
+      <text x="14" y="68" fill="#2DD4BF" font-size="12" font-weight="700">Activation: Tanh → [-1.0, +1.0]</text>
+      <text x="14" y="84" fill="#5EEAD4" font-size="10">Predicted End Margin: VP / 20.0</text>
+    </g>
+  </g>
+
+</svg>
