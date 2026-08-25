@@ -8,6 +8,48 @@
 
 namespace ts {
 
+namespace {
+
+int16_t compute_net_realign_mod(const GameState& state, Player p, uint8_t country_id) noexcept {
+    if (country_id >= 84 || p == Player::NONE) return 0;
+    const auto& c_info = MapData::get_country(country_id);
+    Player opp = (p == Player::US) ? Player::USSR : Player::US;
+
+    int16_t my_mod = 0;
+    int16_t opp_mod = 0;
+
+    for (uint8_t n = 0; n < c_info.num_neighbors; ++n) {
+        uint8_t n_id = c_info.neighbors[n];
+        if (Scoring::is_controlled_by(state, n_id, p)) my_mod++;
+        if (Scoring::is_controlled_by(state, n_id, opp)) opp_mod++;
+    }
+
+    uint8_t my_inf = state.countries[country_id].get_influence(p);
+    uint8_t opp_inf = state.countries[country_id].get_influence(opp);
+    if (my_inf > opp_inf) my_mod++;
+    else if (opp_inf > my_inf) opp_mod++;
+
+    if (c_info.superpower_adjacent == p) my_mod++;
+    if (c_info.superpower_adjacent == opp) opp_mod++;
+
+    if (p == Player::US && state.has_flag(effect_bits::IRAN_CONTRA_ACTIVE)) my_mod -= 1;
+    if (opp == Player::US && state.has_flag(effect_bits::IRAN_CONTRA_ACTIVE)) opp_mod -= 1;
+
+    return my_mod - opp_mod;
+}
+
+bool is_coup_nuclear_hazard(const GameState& state, Player p, uint8_t country_id) noexcept {
+    if (state.defcon > 2 || country_id >= 84) return false;
+    const auto& c_info = MapData::get_country(country_id);
+    if (!c_info.battleground) return false;
+    
+    // In TS, couping a battleground reduces DEFCON by 1.
+    // If DEFCON is 2 and country is legal to coup, couping causes DEFCON 1 Nuclear Loss!
+    return Operations::can_coup(state, p, country_id);
+}
+
+} // anonymous namespace
+
 void Observation::extract(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept {
     if (!out_buf) return;
     std::memset(out_buf, 0, sizeof(ObservationBuffer));
@@ -31,14 +73,20 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
 
         out_buf->board_features[offset + 0] = my_inf / 10.0f;
         out_buf->board_features[offset + 1] = opp_inf / 10.0f;
-        out_buf->board_features[offset + 2] = (my_inf - opp_inf) / 10.0f; // Net margin from MY perspective
+        
+        // 2. Net Realignment Modifier (Dice advantage normalized by 5.0)
+        int16_t net_realign = compute_net_realign_mod(state, my_player, i);
+        out_buf->board_features[offset + 2] = std::clamp(static_cast<float>(net_realign) / 5.0f, -1.0f, 1.0f);
+        
         out_buf->board_features[offset + 3] = static_cast<float>(c_info.stability) / 5.0f;
         out_buf->board_features[offset + 4] = c_info.battleground ? 1.0f : 0.0f;
 
         Player ctrl = Scoring::get_country_control(state, i);
         out_buf->board_features[offset + 5] = (ctrl == my_player) ? 1.0f : 0.0f;  // MY Control
         out_buf->board_features[offset + 6] = (ctrl == opp_player) ? 1.0f : 0.0f; // OPPONENT Control
-        out_buf->board_features[offset + 7] = (ctrl == Player::NONE) ? 1.0f : 0.0f;
+        
+        // 7. Coup Nuclear Hazard: 1.0 if couping here causes DEFCON 1 Nuclear Loss
+        out_buf->board_features[offset + 7] = is_coup_nuclear_hazard(state, my_player, i) ? 1.0f : 0.0f;
 
         out_buf->board_features[offset + 8] = (c_info.superpower_adjacent == my_player) ? 1.0f : 0.0f;  // Adjacent to MY Superpower
         out_buf->board_features[offset + 9] = (c_info.superpower_adjacent == opp_player) ? 1.0f : 0.0f; // Adjacent to OPP Superpower
@@ -74,12 +122,27 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         out_buf->board_features[offset + 23] = can_my_realign ? 1.0f : 0.0f;
         out_buf->board_features[offset + 24] = can_opp_realign ? 1.0f : 0.0f;
 
-        out_buf->board_features[offset + 25] = state.ctx().is_visited(i) ? 1.0f : 0.0f;
-        out_buf->board_features[offset + 26] = static_cast<float>(state.ctx().node_counts[i]) / 5.0f;
-        out_buf->board_features[offset + 27] = (my_inf >= c_info.stability) ? 1.0f : 0.0f;
+        out_buf->board_features[offset + 25] = static_cast<float>(state.ctx().node_counts[i]) / 5.0f;
+        
+        // 26. Influence Deficit to My Control: How many Ops needed to achieve control
+        int my_def_stab = std::max(0, static_cast<int>(c_info.stability) - static_cast<int>(my_inf));
+        int my_def_margin = std::max(0, static_cast<int>(opp_inf) + static_cast<int>(c_info.stability) - static_cast<int>(my_inf));
+        int my_deficit = std::max(my_def_stab, my_def_margin);
+        out_buf->board_features[offset + 26] = std::min(static_cast<float>(my_deficit) / 5.0f, 2.0f);
+        
+        // 27. Influence Deficit to Opponent Control
+        int opp_def_stab = std::max(0, static_cast<int>(c_info.stability) - static_cast<int>(opp_inf));
+        int opp_def_margin = std::max(0, static_cast<int>(my_inf) + static_cast<int>(c_info.stability) - static_cast<int>(opp_inf));
+        int opp_deficit = std::max(opp_def_stab, opp_def_margin);
+        out_buf->board_features[offset + 27] = std::min(static_cast<float>(opp_deficit) / 5.0f, 2.0f);
     }
 
     // 2. Card features (110 * 12) - Canonical (Myself vs Opponent)
+    uint8_t draw_pile_cnt = 0;
+    uint8_t discard_pile_cnt = 0;
+    uint8_t my_hand_cnt = 0;
+    uint8_t opp_hand_cnt = 0;
+
     for (uint8_t i = 1; i <= 110; ++i) {
         const auto& c_info = CardData::get_card(i);
         size_t offset = (i - 1) * 12;
@@ -88,14 +151,18 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         size_t canon_loc = 0;
         if (loc == CardLocation::DRAW_DECK || loc == CardLocation::UNAVAILABLE) {
             canon_loc = 0;
+            if (loc == CardLocation::DRAW_DECK) draw_pile_cnt++;
         } else if ((loc == CardLocation::HAND_US && my_player == Player::US) ||
                    (loc == CardLocation::HAND_USSR && my_player == Player::USSR)) {
             canon_loc = 1; // MY_HAND
+            my_hand_cnt++;
         } else if ((loc == CardLocation::HAND_US && my_player == Player::USSR) ||
                    (loc == CardLocation::HAND_USSR && my_player == Player::US)) {
             canon_loc = 2; // OPPONENT_HAND
+            opp_hand_cnt++;
         } else if (loc == CardLocation::DISCARD_PILE) {
             canon_loc = 3;
+            discard_pile_cnt++;
         } else if (loc == CardLocation::REMOVED_FROM_GAME) {
             canon_loc = 4;
         } else if (loc == CardLocation::ONGOING_EVENT) {
@@ -109,7 +176,6 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         }
 
         out_buf->card_features[offset + 7] = static_cast<float>(c_info.ops) / 4.0f;
-        // Card side relative to myself: +1.0 = FRIENDLY, -1.0 = HOSTILE, 0.0 = NEUTRAL
         float rel_side = (c_info.side == my_player) ? 1.0f : ((c_info.side == opp_player) ? -1.0f : 0.0f);
         out_buf->card_features[offset + 8] = rel_side;
         out_buf->card_features[offset + 9] = static_cast<float>(c_info.era) / 2.0f;
@@ -148,10 +214,22 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
     out_buf->global_features[59] = static_cast<float>(state.get_space_turns_used(my_player)) / 2.0f;
     out_buf->global_features[60] = static_cast<float>(state.get_space_turns_used(opp_player)) / 2.0f;
 
-    // Explicit Side Identity Flags (Model knows exactly which side it is playing)
-    out_buf->global_features[61] = (my_player == Player::US) ? 1.0f : 0.0f;   // I_AM_US
-    out_buf->global_features[62] = (my_player == Player::USSR) ? 1.0f : 0.0f; // I_AM_USSR
-    out_buf->global_features[63] = side_sign;                                 // SIDE_SIGN (+1.0 US, -1.0 USSR)
+    // Side Identity Flag
+    out_buf->global_features[61] = (my_player == Player::US) ? 1.0f : 0.0f; // I_AM_US
+    
+    // Deck Tracking Features
+    out_buf->global_features[62] = static_cast<float>(draw_pile_cnt) / 100.0f;
+    out_buf->global_features[63] = static_cast<float>(discard_pile_cnt) / 100.0f;
+
+    // Real-Time Regional Scoring VP Differentials for the 6 Regions
+    for (size_t r = 0; r < 6; ++r) {
+        auto summary = Scoring::evaluate_region(state, static_cast<Region>(r));
+        float my_region_vp = (my_player == Player::US) ? static_cast<float>(summary.net_delta) : -static_cast<float>(summary.net_delta);
+        out_buf->global_features[64 + r] = std::clamp(my_region_vp / 20.0f, -1.0f, 1.0f);
+    }
+
+    out_buf->global_features[70] = static_cast<float>(opp_hand_cnt) / 10.0f;
+    out_buf->global_features[71] = static_cast<float>(my_hand_cnt) / 10.0f;
 
     // 4. Turn aggregates (32) - Canonical (Myself vs Opponent)
     size_t my_p_idx = (my_player == Player::US) ? 0 : 1;

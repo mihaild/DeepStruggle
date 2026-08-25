@@ -137,7 +137,7 @@ class BatchedEvaluator:
 
             for i in active_indices:
                 p = players[i]
-                is_agent_a = (i < games_per_side and p == 1) or (i >= games_per_side and p == 2)
+                is_agent_a = (i < games_per_side and (p == 1 or p == int(ts.Player.US))) or (i >= games_per_side and (p == -1 or p == int(ts.Player.USSR)))
                 agent_name = name_a if is_agent_a else name_b
                 model = model_a if is_agent_a else model_b
 
