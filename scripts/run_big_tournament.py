@@ -1,3 +1,4 @@
+from server.replay_types import TournamentReportDict
 """Large-Scale Vectorized Round-Robin Tournament (200 games per pair)."""
 
 import argparse
@@ -260,7 +261,7 @@ def run_full_200game_tournament(
     print(f" ------------------------------------------------------------------------\n")
 
     # Save detailed JSON and Markdown report
-    report_data = {
+    report_data: TournamentReportDict = {
         "games_per_side": games_per_side,
         "total_games": total_games,
         "total_elapsed_seconds": total_elapsed,

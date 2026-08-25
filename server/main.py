@@ -1,3 +1,4 @@
+from server.replay_types import ReplaySummaryDict, ReplayLogDict, GameStateDict
 import os
 import sys
 import json
@@ -89,12 +90,12 @@ async def cancel_action(game_id: str):
     success = await session.handle_cancel_action()
     return {"success": success, "state": session.get_state_dict()}
 
-@app.get("/api/replays")
-async def list_replays():
+@app.get("/api/replays", response_model=None)
+async def list_replays() -> List[ReplaySummaryDict]:
     return ReplayManager.list_replays()
 
-@app.get("/api/replays/{filename}")
-async def get_replay(filename: str):
+@app.get("/api/replays/{filename}", response_model=None)
+async def get_replay(filename: str) -> ReplayLogDict:
     data = ReplayManager.load_replay(filename)
     if not data:
         raise HTTPException(status_code=404, detail="Replay not found")

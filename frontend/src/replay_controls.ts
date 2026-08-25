@@ -21,6 +21,12 @@ export interface ReplayFile {
   };
   steps?: ReplayStep[];
   logs?: any[];
+  events?: any[];
+  game_id?: string;
+  seed?: number;
+  winner?: string;
+  final_vp?: number;
+  final_turn?: number;
 }
 
 export class ReplayControls {
@@ -102,6 +108,22 @@ export class ReplayControls {
         action: l.action_executed || {},
         description: l.commentary || l.strategy || `Step ${i + 1}`,
         state_snapshot: l.state_snapshot || {}
+      }));
+    } else if (replayData.events && replayData.events.length > 0) {
+      this.steps = replayData.events.map((ev, i) => ({
+        step_index: ev.step !== undefined ? ev.step + 1 : i + 1,
+        turn: ev.turn || ev.state?.turn || 1,
+        ar: ev.ar || ev.state?.action_round || 0,
+        phase: ev.phase || ev.state?.current_phase_name || ev.state?.phase_name || "ACTION",
+        player: ev.player || "SYSTEM",
+        action: {
+          decision_type: ev.decision_type,
+          primary_id: ev.primary_id,
+          secondary_id: ev.secondary_id,
+          flat_action: ev.flat_action,
+        },
+        description: ev.description || `Action (type=${ev.decision_type}, flat=${ev.flat_action})`,
+        state_snapshot: ev.state || ev.state_snapshot || {}
       }));
     } else {
       this.steps = [];

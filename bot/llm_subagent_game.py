@@ -1,3 +1,4 @@
+from server.replay_types import AuditGameReportDict, AuditLogEntryDict
 #!/usr/bin/env python3
 """
 Autonomous LLM Subagent System for Twilight Struggle
@@ -620,7 +621,8 @@ def main():
     # Export JSON
     json_path = "replays/llm_subagents_game.json"
     with open(json_path, "w") as f:
-        json.dump({"meta": meta, "violations": violations, "logs": logs}, f, indent=2)
+        audit_report: AuditGameReportDict = {"total_steps": len(logs), "violations_count": len(violations), "violations": violations, "logs": logs, "meta": meta}
+        json.dump(audit_report, f, indent=2)
     print(f"JSON logs written to: {json_path}")
 
     # Export Human-readable text chronicle

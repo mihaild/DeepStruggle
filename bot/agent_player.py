@@ -1,3 +1,4 @@
+from server.replay_types import SavedGameSessionDict
 #!/usr/bin/env python3
 """
 Twilight Struggle Agent Player & CLI Tool
@@ -98,11 +99,8 @@ class LocalSessionManager:
     def save(self):
         try:
             with open(self.SAVE_FILE, "w") as f:
-                json.dump({
-                    "seed": self.seed,
-                    "actions": self.actions,
-                    "action_logs": self.action_logs
-                }, f)
+                save_data: SavedGameSessionDict = {"seed": self.seed, "actions": self.actions, "action_logs": self.action_logs}
+                json.dump(save_data, f)
         except Exception:
             pass
 

@@ -1,3 +1,4 @@
+from server.replay_types import AuditGameReportDict, AuditLogEntryDict
 #!/usr/bin/env python3
 """
 Plays a full Twilight Struggle game against itself with exhaustive rule and action mask validation on every single step.
@@ -334,7 +335,8 @@ def main():
     # Save JSON dump
     json_path = "replays/full_audit_game.json"
     with open(json_path, "w") as f:
-        json.dump({"total_steps": len(logs), "violations_count": len(violations), "violations": violations, "logs": logs}, f, indent=2)
+        audit_report: AuditGameReportDict = {"total_steps": len(logs), "violations_count": len(violations), "violations": violations, "logs": logs}
+        json.dump(audit_report, f, indent=2)
     print(f"JSON trace written to: {json_path}")
 
     # Save text summary

@@ -1,3 +1,4 @@
+from server.replay_types import WebSocketMessageDict, WebSocketActionPayloadDict
 try:
     from bot.neural_bot import NeuralBot
 except ImportError:
@@ -175,10 +176,8 @@ async def run_bot_client(server_url: str, game_id: str, role: str, bot_type: str
                             await asyncio.sleep(delay)
                         action = bot.select_action(state, legal_actions)
                         if action:
-                            await websocket.send(json.dumps({
-                                "type": "PLAY_ACTION",
-                                "action": action
-                            }))
+                            play_msg: WebSocketMessageDict = {"type": "PLAY_ACTION", "action": action}
+                            await websocket.send(json.dumps(play_msg))
             except websockets.exceptions.ConnectionClosed:
                 print("Connection closed.")
                 break

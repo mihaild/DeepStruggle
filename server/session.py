@@ -1,3 +1,4 @@
+from server.replay_types import GameStateDict, ReplayActionDict
 import os
 import sys
 import json
@@ -290,7 +291,7 @@ class GameSession:
             "text": f"Game started (Seed: {self.seed}). USSR setup: Place 6 Influence in Eastern Europe."
         })
 
-    def get_state_dict(self) -> dict:
+    def get_state_dict(self) -> GameStateDict:
         d = self.state.to_dict()
         d["game_id"] = self.game_id
         d["seed"] = self.seed
