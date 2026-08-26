@@ -12,7 +12,9 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     # 1. DEFCON 1 Nuclear Suicide (Takes absolute precedence)
     if state.defcon <= 1:
         phasing = str(state.phasing_player).split(".")[-1]
-        return f"DEFCON suicide by {phasing}"
+        is_provoked = state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
+        kind = "provoked" if is_provoked else "unprovoked"
+        return f"DEFCON suicide ({kind}) by {phasing}"
 
     # 2. Europe Control Instant Victory
     eu_bgs = [7, 8, 10, 14, 15]
@@ -52,7 +54,11 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     if state.turn >= 10:
         return "Final Scoring (Turn 10)"
 
-    return "Early Termination"
+    # 6. Wargames (#100) or early strategic agreement
+    if state.current_phase == ts.Phase.GAME_OVER:
+        return "Wargames (#100)"
+
+    return "Timeout (Step Limit Exceeded)"
 
 
 class TournamentEvaluator:

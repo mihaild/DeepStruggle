@@ -281,6 +281,7 @@ namespace effect_bits {
     constexpr uint64_t SPACE_US_ATTEMPT_2          = 1ULL << 44; // US 2nd space race attempt used this turn
     constexpr uint64_t SPACE_USSR_ATTEMPT_1        = 1ULL << 45; // USSR 1st space race attempt used this turn
     constexpr uint64_t SPACE_USSR_ATTEMPT_2        = 1ULL << 46; // USSR 2nd space race attempt used this turn
+    constexpr uint64_t DEFCON_SUICIDE_PROVOKED     = 1ULL << 47; // DEFCON degraded to 1 by opponent action (event trap)
 
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |

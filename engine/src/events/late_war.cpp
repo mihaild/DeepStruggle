@@ -94,6 +94,9 @@ bool trigger_soviets_shoot_down_kal(GameState& state, Player p) noexcept {
     }
     if (state.defcon == 1) {
         Player loser = state.phasing_player;
+        if (loser == Player::USSR) {
+            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+        }
         state.victory_points = (loser == Player::US) ? -20 : 20;
         state.current_phase = Phase::GAME_OVER;
         return true;

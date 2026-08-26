@@ -473,6 +473,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (state.defcon == 1) {
                     state.current_phase = Phase::GAME_OVER;
                     Player loser = state.phasing_player;
+                    if (state.ctx().decision_player != state.phasing_player) {
+                        state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+                    }
                     state.victory_points = (loser == Player::US) ? -20 : 20;
                     state.ctx().resolving_card = 0;
                     return true;
