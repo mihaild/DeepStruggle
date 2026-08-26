@@ -21,7 +21,7 @@ import torch.nn as nn
 
 import ts_engine as ts
 from ai.env.action_encoder import ActionEncoder
-from ai.training.behavioral_cloning import HeuristicPolicy
+from ai.training.behavioral_cloning import HeuristicPolicy, OldHeuristicPolicy
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 
@@ -58,6 +58,21 @@ class RandomAgent:
         if len(legal) == 0:
             return ActionEncoder.CONFIRM_DONE_INDEX
         return int(np.random.choice(legal))
+
+
+class OldHeuristicAgent:
+    """Legacy rule-based heuristic baseline player (prior to overcontrol prevention)."""
+
+    def __init__(self, name: str = "OldHeuristicBot"):
+        self.name = name
+
+    def select_action(
+        self,
+        state: ts.GameState,
+        player: ts.Player,
+        temperature: float = 0.1,
+    ) -> int:
+        return int(OldHeuristicPolicy.select_action(state))
 
 
 class HeuristicAgent:
@@ -137,6 +152,8 @@ def load_agent(spec: str, device: torch.device | str = "cuda") -> PlayerAgent:
     s = spec.strip()
     if s.lower() in ["random", "randombot", "rand"]:
         return RandomAgent()
-    if s.lower() in ["heuristic", "heuristicbot", "heur"]:
+    if s.lower() in ["old_heuristic", "old_heuristicbot", "old_heur", "oldheuristic"]:
+        return OldHeuristicAgent()
+    if s.lower() in ["heuristic", "heuristicbot", "heur", "new_heuristic", "new_heuristicbot"]:
         return HeuristicAgent()
     return NeuralAgent.from_checkpoint(s, device=device)

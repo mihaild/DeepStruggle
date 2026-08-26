@@ -128,13 +128,43 @@ class HeuristicBot(BaseBot):
             if 0 in valid_ids: # INFLUENCE
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}
 
-        # 6. POINT_NODE: Prefer battlegrounds
+        # 6. POINT_NODE: Prefer controlling new battlegrounds, avoid overcontrol
         if d_type == 5: # POINT_NODE
+            best_node = None
+            best_score = -999999
+            countries = state.get("countries", {})
             for node_id in valid_ids:
                 if 0 <= node_id < 84:
                     c_info = ts_engine.MapData.get_country_info(node_id)
-                    if c_info.get("battleground"):
-                        return {"decision_type": d_type, "primary_id": node_id, "secondary_id": 0, "flags": 0}
+                    is_bg = c_info.get("battleground", False)
+                    stab = c_info.get("stability", 2)
+                    c_data = countries.get(str(node_id), {}) if isinstance(countries, dict) else {}
+                    my_inf = c_data.get("us_influence" if self.role == "US" else "ussr_influence", 0)
+                    opp_inf = c_data.get("ussr_influence" if self.role == "US" else "us_influence", 0)
+                    my_ctrl = (my_inf >= opp_inf + stab)
+                    deficit = max(stab - my_inf, opp_inf + stab - my_inf)
+
+                    if is_bg:
+                        if not my_ctrl:
+                            score = 1000 - deficit * 10 - stab
+                        elif my_inf == opp_inf + stab:
+                            score = 500 - stab
+                        else:
+                            score = 10 - (my_inf - opp_inf - stab) * 5
+                    else:
+                        if not my_ctrl:
+                            score = 300 - deficit * 10 - stab
+                        elif my_inf == opp_inf + stab:
+                            score = 100
+                        else:
+                            score = 5 - (my_inf - opp_inf - stab) * 5
+
+                    if score > best_score:
+                        best_score = score
+                        best_node = node_id
+
+            if best_node is not None:
+                return {"decision_type": d_type, "primary_id": best_node, "secondary_id": 0, "flags": 0}
 
         # Fallback to random
         return {

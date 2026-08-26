@@ -15,7 +15,8 @@ from ai.env.action_encoder import ActionEncoder
 # ArenaEvaluator imported in train.py
 
 
-class HeuristicPolicy:
+class OldHeuristicPolicy:
+    """Original baseline heuristic player without overcontrol prevention."""
     """Standard rule-based heuristic player for behavioral cloning bootstrap demonstrations."""
 
     @staticmethod
@@ -144,6 +145,165 @@ class HeuristicPolicy:
         # Default: first legal action
         return legal_indices[0]
 
+
+
+class HeuristicPolicy:
+    """Updated heuristic player that prioritizes controlling new battlegrounds and prevents overcontrol."""
+
+    @staticmethod
+    def select_action(state: ts.GameState) -> int:
+        ctx = state.ctx()
+        mask = ActionEncoder.get_legal_mask(state)
+        legal_indices = [int(i) for i in np.where(mask > 0)[0]]
+        if not legal_indices:
+            return ActionEncoder.CONFIRM_DONE_INDEX
+
+        p = ctx.decision_player if ctx.decision_player != ts.Player.NONE else state.phasing_player
+        opp = ts.Player.USSR if p == ts.Player.US else ts.Player.US
+        d_type = ctx.decision_type
+
+        # 1. SETUP Phase: secure European battlegrounds to stability
+        if state.current_phase == ts.Phase.SETUP:
+            if p == ts.Player.USSR:
+                # USSR: 3 in East Germany (14), 3 in Poland (15)
+                targets = [(14, 3), (15, 3), (12, 2), (13, 2)]
+                for c_id, needed in targets:
+                    if state.get_country(c_id).ussr_influence < needed:
+                        action_idx = ActionEncoder.NODE_OFFSET + c_id
+                        if action_idx in legal_indices:
+                            return action_idx
+            else:
+                # US: 4 in West Germany (7), 3 in Italy (10), France (8)
+                targets = [(7, 4), (10, 3), (8, 3), (9, 2)]
+                for c_id, needed in targets:
+                    if state.get_country(c_id).us_influence < needed:
+                        action_idx = ActionEncoder.NODE_OFFSET + c_id
+                        if action_idx in legal_indices:
+                            return action_idx
+
+        # 2. SELECT_CARD
+        if d_type == ts.DecisionType.SELECT_CARD:
+            # If Headline Phase: Prioritize friendly high-value events
+            if state.current_phase == ts.Phase.HEADLINE:
+                best_headline = None
+                best_headline_ops = -1
+                for idx in legal_indices:
+                    if idx < ActionEncoder.PLAY_MODE_OFFSET:
+                        card_id = idx + 1
+                        try:
+                            c_info = ts.CardData.get_card_info(card_id)
+                            side = c_info.get("side", "NEUTRAL")
+                            is_friendly = (side == ("US" if p == ts.Player.US else "USSR"))
+                            if is_friendly and not c_info.get("is_scoring"):
+                                ops = c_info.get("ops", 0)
+                                if ops > best_headline_ops:
+                                    best_headline_ops = ops
+                                    best_headline = idx
+                        except Exception:
+                            pass
+                if best_headline is not None:
+                    return best_headline
+
+            # Scoring cards if we hold advantage
+            for idx in legal_indices:
+                if idx < ActionEncoder.PLAY_MODE_OFFSET:
+                    card_id = idx + 1
+                    try:
+                        c_info = ts.CardData.get_card_info(card_id)
+                        if c_info.get("is_scoring"):
+                            return idx
+                    except Exception:
+                        pass
+
+            # Highest Ops card
+            best_idx = legal_indices[0]
+            best_ops = -1
+            for idx in legal_indices:
+                if idx < ActionEncoder.PLAY_MODE_OFFSET:
+                    card_id = idx + 1
+                    try:
+                        c_info = ts.CardData.get_card_info(card_id)
+                        ops = c_info.get("ops", 0)
+                        if ops > best_ops:
+                            best_ops = ops
+                            best_idx = idx
+                    except Exception:
+                        pass
+            return best_idx
+
+        # 3. SELECT_PLAY_MODE: Prioritize OPS if opponent card, else EVENT or OPS
+        if d_type == ts.DecisionType.SELECT_PLAY_MODE:
+            ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.OPS)
+            event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.EVENT)
+            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.SPACE)
+            if ops_idx in legal_indices:
+                return ops_idx
+            if event_idx in legal_indices:
+                return event_idx
+            if space_idx in legal_indices:
+                return space_idx
+
+        # 4. SELECT_OP_MODE: Prefer COUP if DEFCON allows & target exists, else INFLUENCE
+        if d_type == ts.DecisionType.SELECT_OP_MODE:
+            inf_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.INFLUENCE)
+            coup_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.COUP)
+            realign_idx = ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.REALIGN)
+            if inf_idx in legal_indices:
+                return inf_idx
+            if coup_idx in legal_indices:
+                return coup_idx
+            if realign_idx in legal_indices:
+                return realign_idx
+
+        # 5. POINT_NODE: Target new uncontrolled battlegrounds, then under-buffered battlegrounds, avoiding overcontrol
+        if d_type == ts.DecisionType.POINT_NODE:
+            best_action = None
+            best_score = -999999
+
+            for idx in legal_indices:
+                if ActionEncoder.NODE_OFFSET <= idx < ActionEncoder.BRANCH_OFFSET:
+                    country_id = idx - ActionEncoder.NODE_OFFSET
+                    try:
+                        c_state = state.get_country(country_id)
+                        c_info = ts.MapData.get_country_info(country_id)
+                        stab = c_info.get("stability", 2)
+                        is_bg = c_info.get("battleground", False)
+
+                        my_inf = c_state.us_influence if p == ts.Player.US else c_state.ussr_influence
+                        opp_inf = c_state.ussr_influence if p == ts.Player.US else c_state.us_influence
+                        my_ctrl = (my_inf >= opp_inf + stab)
+                        deficit = max(stab - my_inf, opp_inf + stab - my_inf)
+
+                        if is_bg:
+                            if not my_ctrl:
+                                # Top priority: uncontrolled battlegrounds (closest to control first)
+                                score = 1000 - deficit * 10 - stab
+                            elif my_inf == opp_inf + stab:
+                                # Safe 1-point buffer on existing battlegrounds
+                                score = 500 - stab
+                            else:
+                                # Overcontrolled battleground: heavily penalized
+                                score = 10 - (my_inf - opp_inf - stab) * 5
+                        else:
+                            if not my_ctrl:
+                                # Uncontrolled non-battlegrounds
+                                score = 300 - deficit * 10 - stab
+                            elif my_inf == opp_inf + stab:
+                                score = 100
+                            else:
+                                score = 5 - (my_inf - opp_inf - stab) * 5
+
+                        if score > best_score:
+                            best_score = score
+                            best_action = idx
+                    except Exception:
+                        pass
+
+            if best_action is not None:
+                return best_action
+
+        # Default: first legal action
+        return legal_indices[0]
 
 class TrajectoryDataset(Dataset):
     """PyTorch Dataset of (observation, mask, action, target_value) tuples."""
