@@ -31,7 +31,7 @@ def run_behavioral_cloning_warmup(
     dataset_path: str,
     output_checkpoint_path: str,
     epochs: int = 5,
-    batch_size: int = 512,
+    batch_size: int = 1024,
     lr: float = 1e-3,
     max_games: Optional[int] = None,
     device: Optional[Union[torch.device, str]] = None,
@@ -46,12 +46,13 @@ def run_behavioral_cloning_warmup(
     ds = WarmupDataset(dataset_path)
 
     for epoch in range(1, epochs + 1):
+        t_epoch = time.time()
         total_loss = 0.0
         correct_actions = 0
         samples_seen = 0
 
         for b_obs, b_mask, b_act, b_val, b_vp in ds.stream_batches(
-            batch_size=batch_size, max_games=max_games, device=dev, shuffle_buffer_size=2048
+            batch_size=batch_size, max_games=max_games, device=dev, shuffle_buffer_size=4096
         ):
             logits, v_win, v_vp = model(b_obs, b_mask)
             policy_loss = F.cross_entropy(logits, b_act)
@@ -71,14 +72,16 @@ def run_behavioral_cloning_warmup(
             total_loss += loss.item() * cur_b_size
             samples_seen += cur_b_size
 
-            if samples_seen % 25000 < batch_size:
+            if samples_seen % 100000 < batch_size:
                 cur_l = total_loss / max(1, samples_seen)
                 cur_acc = (correct_actions / max(1, samples_seen)) * 100.0
-                print(f"  Epoch {epoch:2d}/{epochs:2d} | Streamed {samples_seen:,} samples | Loss: {cur_l:.4f} | Acc: {cur_acc:.2f}%", flush=True)
+                dt = max(1e-2, time.time() - t_epoch)
+                print(f"  Epoch {epoch:2d}/{epochs:2d} | {samples_seen:,} samples ({samples_seen/dt:.0f} samples/s) | Loss: {cur_l:.4f} | Acc: {cur_acc:.2f}%", flush=True)
 
         avg_loss = total_loss / max(1, samples_seen)
         acc = (correct_actions / max(1, samples_seen)) * 100.0
-        print(f"  Epoch {epoch:2d}/{epochs:2d} COMPLETED | Loss: {avg_loss:.4f} | Action Acc: {acc:.2f}% | Total Samples: {samples_seen:,}", flush=True)
+        dt = max(1e-2, time.time() - t_epoch)
+        print(f"  Epoch {epoch:2d}/{epochs:2d} COMPLETED in {dt:.1f}s | Loss: {avg_loss:.4f} | Action Acc: {acc:.2f}% | Total Samples: {samples_seen:,}", flush=True)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)), exist_ok=True)
     torch.save(model.state_dict(), output_checkpoint_path)

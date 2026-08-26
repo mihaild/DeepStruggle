@@ -125,7 +125,14 @@ class WarmupDataset:
             )
 
     def build_in_memory_tensors(self, max_games: Optional[int] = None, device: torch.device = torch.device('cpu')) -> Dict[str, torch.Tensor]:
-        """Extracts and loads dataset directly into PyTorch tensors."""
+        """Extracts and loads dataset directly into PyTorch tensors.
+        WARNING: High RAM consumption. Use stream_batches() for training to prevent OOM.
+        """
+        if max_games is None or max_games > 500:
+            raise ValueError(
+                f"build_in_memory_tensors is restricted to max_games <= 500 to prevent system OOM. "
+                f"Use stream_batches() for bounded streaming training on large datasets."
+            )
         all_obs = []
         all_masks = []
         all_acts = []

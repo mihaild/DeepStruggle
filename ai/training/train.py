@@ -92,6 +92,8 @@ def main():
             dataset_path=args.warmup_dataset,
             output_checkpoint_path=out_save,
             epochs=args.bc_epochs,
+            batch_size=args.batch_size if args.batch_size <= 2048 else 1024,
+            lr=args.lr,
             device=dev,
         )
     elif args.mode == "eval":
