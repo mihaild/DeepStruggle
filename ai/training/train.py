@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
-    parser.add_argument("--reward-scheme", type=str, default="terminal", choices=["terminal", "shaped"], help="Reward calculation scheme")
+    parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped"], help="Reward calculation scheme")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints and reports")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
 
