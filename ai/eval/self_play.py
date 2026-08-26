@@ -33,14 +33,27 @@ def generate_self_play_replay(
 
     if model is None:
         from ai.eval.player_agent import load_agent, NeuralAgent
-        chkpt_path = model_path or "checkpoints/snapshot_20m.pt"
-        if not os.path.exists(chkpt_path):
-            chkpt_path = "checkpoints/coldwar_net.pt"
-        agent = load_agent(chkpt_path, device=dev)
-        if isinstance(agent, NeuralAgent):
-            active_model: Any = agent.model
+        candidates = [
+            model_path,
+            "checkpoints/snapshot_20m.pt",
+            "checkpoints/coldwar_net.pt",
+            "checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
+        ]
+        found_path = None
+        for c in candidates:
+            if c and os.path.exists(c):
+                found_path = c
+                break
+
+        if found_path is not None:
+            agent = load_agent(found_path, device=dev)
+            if isinstance(agent, NeuralAgent):
+                active_model: Any = agent.model
+            else:
+                raise ValueError(f"Model path {found_path} did not produce a NeuralAgent")
         else:
-            raise ValueError(f"Model path {chkpt_path} did not produce a NeuralAgent")
+            from ai.models.coldwar_net import create_coldwar_net
+            active_model = create_coldwar_net(dev)
     else:
         active_model: Any = model.to(dev) if hasattr(model, "to") else model
         if hasattr(active_model, "eval"):
