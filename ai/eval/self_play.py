@@ -32,16 +32,17 @@ def generate_self_play_replay(
     dev: torch.device = torch.device(device if torch.cuda.is_available() and str(device) == "cuda" else "cpu")
 
     if model is None:
+        from ai.eval.player_agent import load_agent, NeuralAgent
         chkpt_path = model_path or "checkpoints/snapshot_20m.pt"
         if not os.path.exists(chkpt_path):
             chkpt_path = "checkpoints/coldwar_net.pt"
-        loaded_model = create_coldwar_net(dev)
-        if os.path.exists(chkpt_path):
-            loaded_model.load_state_dict(torch.load(chkpt_path, map_location=dev))
-        loaded_model.eval()
-        active_model = loaded_model
+        agent = load_agent(chkpt_path, device=dev)
+        if isinstance(agent, NeuralAgent):
+            active_model: Any = agent.model
+        else:
+            raise ValueError(f"Model path {chkpt_path} did not produce a NeuralAgent")
     else:
-        active_model = model.to(dev) if hasattr(model, "to") else model
+        active_model: Any = model.to(dev) if hasattr(model, "to") else model
         if hasattr(active_model, "eval"):
             active_model.eval()
 
