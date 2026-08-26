@@ -16,6 +16,8 @@ PYTHONPATH=. .venv/bin/python tools/train.py \
   --duration-seconds "$DURATION" \
   --snapshot-interval-seconds "$SNAPSHOT_INTERVAL" \
   --reward-scheme blunder_aware \
+  --eval-opponents heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-games-per-side 50 \
   --post-tournament \
   --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500

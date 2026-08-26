@@ -10,7 +10,11 @@ from ai.eval.tournament_evaluator import TournamentEvaluator
 def format_loss_causes(causes) -> str:
     if not causes:
         return "None (0 losses)"
-    sorted_items = sorted(causes.items(), key=lambda x: x[1], reverse=True)
+    grouped = {}
+    for k, v in causes.items():
+        label = "Held scoring" if k.startswith("Held scoring") else k
+        grouped[label] = grouped.get(label, 0) + v
+    sorted_items = sorted(grouped.items(), key=lambda x: x[1], reverse=True)
     return ", ".join([f"{k} ({v})" for k, v in sorted_items])
 
 

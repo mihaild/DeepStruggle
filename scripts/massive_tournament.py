@@ -17,9 +17,13 @@ from ai.eval.batch_tournament import BatchMatchRunner, compute_mle_elo
 def format_loss_causes(causes: Dict[str, int], total_losses: int) -> str:
     if not causes or total_losses == 0:
         return "None (0 losses)"
-    actual_tot = sum(causes.values())
+    grouped: Dict[str, int] = {}
+    for k, v in causes.items():
+        label = "Held scoring" if k.startswith("Held scoring") else k
+        grouped[label] = grouped.get(label, 0) + v
+    actual_tot = sum(grouped.values())
     tot = max(actual_tot, total_losses, 1)
-    sorted_items = sorted(causes.items(), key=lambda x: x[1], reverse=True)
+    sorted_items = sorted(grouped.items(), key=lambda x: x[1], reverse=True)
     return ", ".join([f"{k}: {v} ({v/tot*100:.1f}%)" for k, v in sorted_items])
 
 

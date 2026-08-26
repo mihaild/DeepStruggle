@@ -169,12 +169,13 @@ class BatchMatchRunner:
                         a_us_wins += 1
                 elif b_won:
                     b_wins += 1
+                    clean_reason = "Held scoring" if reason.startswith("Held scoring") else reason
                     if a_is_ussr:
                         a_ussr_losses += 1
-                        causes_loss_ussr[reason] = causes_loss_ussr.get(reason, 0) + 1
+                        causes_loss_ussr[clean_reason] = causes_loss_ussr.get(clean_reason, 0) + 1
                     else:
                         a_us_losses += 1
-                        causes_loss_us[reason] = causes_loss_us.get(reason, 0) + 1
+                        causes_loss_us[clean_reason] = causes_loss_us.get(clean_reason, 0) + 1
                 else:
                     draws += 1
                     if a_is_ussr:
