@@ -9,25 +9,12 @@ from ai.eval.player_agent import PlayerAgent
 
 def classify_game_ending_reason(state: ts.GameState) -> str:
     """Accurately determines the exact cause of game termination."""
-    # 1. Held Scoring Card Check (Rule 4.4)
-    held_scoring_us = [c for c in range(1, 111) if state.get_card_location(c) == ts.CardLocation.HAND_US and ts.CardData.get_card_info(c).get("is_scoring")]
-    held_scoring_ussr = [c for c in range(1, 111) if state.get_card_location(c) == ts.CardLocation.HAND_USSR and ts.CardData.get_card_info(c).get("is_scoring")]
-
-    if held_scoring_us:
-        names = [ts.CardData.get_card_info(c).get("name", f"Card {c}") for c in held_scoring_us]
-        joined = ", ".join(names)
-        return f"Held scoring (US): {joined}"
-    if held_scoring_ussr:
-        names = [ts.CardData.get_card_info(c).get("name", f"Card {c}") for c in held_scoring_ussr]
-        joined = ", ".join(names)
-        return f"Held scoring (USSR): {joined}"
-
-    # 2. DEFCON 1 Nuclear Suicide
+    # 1. DEFCON 1 Nuclear Suicide (Takes absolute precedence)
     if state.defcon <= 1:
         phasing = str(state.phasing_player).split(".")[-1]
         return f"DEFCON suicide by {phasing}"
 
-    # 3. Europe Control Instant Victory
+    # 2. Europe Control Instant Victory
     eu_bgs = [7, 8, 10, 14, 15]
     us_eu_bgs = 0
     ussr_eu_bgs = 0
@@ -44,6 +31,16 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
         return "Europe Control (US)"
     if ussr_eu_bgs == 5 and abs(state.victory_points) >= 20:
         return "Europe Control (USSR)"
+
+    # 3. Held Scoring Card Check at Turn End (Rule 4.4)
+    # If a player lost due to holding a scoring card, the game ended with +/-20 VP at turn end
+    held_scoring_us = [c for c in range(1, 111) if state.get_card_location(c) == ts.CardLocation.HAND_US and ts.CardData.get_card_info(c).get("is_scoring")]
+    held_scoring_ussr = [c for c in range(1, 111) if state.get_card_location(c) == ts.CardLocation.HAND_USSR and ts.CardData.get_card_info(c).get("is_scoring")]
+
+    if state.victory_points <= -20 and held_scoring_us and state.action_round >= 6:
+        return "Held scoring"
+    if state.victory_points >= 20 and held_scoring_ussr and state.action_round >= 6:
+        return "Held scoring"
 
     # 4. Milestone VP Sudden Death (+/- 20 VP)
     if state.victory_points >= 20:

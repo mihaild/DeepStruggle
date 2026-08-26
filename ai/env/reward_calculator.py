@@ -101,19 +101,22 @@ class BlunderAwareRewardCalculator:
             loser_player = -1 if term_util > 0 else 1  # USSR is -1, US is 1
 
             if st is not None:
-                # Check for strategic win conditions FIRST
-                if abs(st.victory_points) >= 20 or st.turn >= 10:
-                    is_blunder = False
-                elif st.defcon <= 1:
-                    # Nuclear suicide
+                if st.defcon <= 1:
                     is_blunder = True
                 else:
-                    # Check for held scoring cards
-                    held_us = any(st.get_card_location(c) == ts.CardLocation.HAND_US and ts.CardData.get_card_info(c).get("is_scoring") for c in range(1, 111))
-                    held_ussr = any(st.get_card_location(c) == ts.CardLocation.HAND_USSR and ts.CardData.get_card_info(c).get("is_scoring") for c in range(1, 111))
-                    if held_us or held_ussr:
-                        is_blunder = True
-
+                    # Held scoring blunder applies only if the LOSING player held a scoring card
+                    if loser_player == 1:
+                        is_blunder = any(
+                            st.get_card_location(c) == ts.CardLocation.HAND_US
+                            and ts.CardData.get_card_info(c).get("is_scoring")
+                            for c in range(1, 111)
+                        )
+                    else:
+                        is_blunder = any(
+                            st.get_card_location(c) == ts.CardLocation.HAND_USSR
+                            and ts.CardData.get_card_info(c).get("is_scoring")
+                            for c in range(1, 111)
+                        )
             if is_blunder:
                 # Shield winner (r_winner = 0.0), heavily penalize loser (r_loser = -1.0)
                 if p_act == loser_player:
