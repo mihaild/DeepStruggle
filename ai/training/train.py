@@ -1,3 +1,6 @@
+import os
+if 'TRITON_CACHE_DIR' not in os.environ:
+    os.environ['TRITON_CACHE_DIR'] = os.path.abspath('.triton_cache')
 # Unified Generic CLI Training & Evaluation Runner for Twilight Struggle AI.
 
 import argparse
@@ -31,6 +34,11 @@ def main():
     parser.add_argument("--eval-opponents", nargs="+", default=["random", "heuristic"], help="List of opponent models/bots to evaluate on snapshots")
     parser.add_argument("--eval-games-per-side", type=int, default=50, help="Games per side per opponent (total 2x games per matchup)")
 
+    # Post-Training Tournament parameters
+    parser.add_argument("--post-tournament", action="store_true", help="Automatically launch massive tournament benchmark across all snapshots upon training completion")
+    parser.add_argument("--post-tournament-models", nargs="+", default=["heuristic", "random"], help="Additional benchmark models or baselines to include in post-training tournament")
+    parser.add_argument("--post-tournament-games", type=int, default=500, help="Games per side in post-training tournament")
+
     # RL Hyperparameters
     parser.add_argument("--num-envs", type=int, default=512, help="Number of parallel vectorized game environments")
     parser.add_argument("--buffer-size", type=int, default=128, help="Rollout buffer size per environment")
@@ -39,7 +47,7 @@ def main():
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped"], help="Reward calculation scheme")
-    parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints and reports")
+    parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
 
     args = parser.parse_args()
@@ -63,6 +71,9 @@ def main():
             reward_scheme=args.reward_scheme,
             output_dir=args.output_dir,
             device=args.device,
+            post_tournament=args.post_tournament,
+            post_tournament_models=args.post_tournament_models,
+            post_tournament_games=args.post_tournament_games,
         )
     elif args.mode == "warmup":
         if not args.warmup_dataset:

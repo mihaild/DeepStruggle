@@ -188,11 +188,25 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 # http://localhost:8000/?game_id=game-1&role=US
 ```
 
-### 3.6 Reusable Agent CLI Tools (`tools/`)
+### 3.6 Reusable Agent CLI Tools (`tools/`) & Helper Scripts (`scripts/`)
 
-The `tools/` directory provides standardized, fast CLI tools for training, evaluating, and visualizing models:
+> **Agent Guideline: Prefer Generic CLI Tools Over Ad-Hoc Scripts**
+> Agents must prioritize extending and utilizing generic, configurable CLI tools in `tools/` (with appropriate flags/arguments) rather than creating ad-hoc, throwaway wrapper scripts (e.g. one-off bash scripts). All training, tournament, replay, and evaluation features should be parameterized cleanly in `tools/`.
 
-1. **Massive Vectorized Tournament & Elo Rating (`tools/tournament.py`)**:
+#### Standard CLI Tools (`tools/`)
+1. **Unified Training Runner (`tools/train.py`)**:
+   Starts time-bounded RL with live snapshot tournaments, blunder-aware reward shielding, and optional post-training massive tournament benchmarking:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/train.py \
+     --arch v3 \
+     --duration-seconds 7200 \
+     --snapshot-interval-seconds 600 \
+     --reward-scheme blunder_aware \
+     --post-tournament \
+     --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt
+   ```
+
+2. **Massive Vectorized Tournament & Elo Rating (`tools/tournament.py`)**:
    Runs ultra-fast parallel tournaments (300-800 games/sec) across all checkpoints in a directory, calculating Bradley-Terry Elo ratings, total/USSR/US winning matrices, and side-specific loss cause breakdowns:
    ```bash
    PYTHONPATH=. .venv/bin/python tools/tournament.py \
@@ -201,7 +215,7 @@ The `tools/` directory provides standardized, fast CLI tools for training, evalu
      --output-report checkpoints/run_v2_blunder_aware_9h/massive_tournament_report.md
    ```
 
-2. **Generate Game Replay (`tools/generate_replay.py`)**:
+3. **Generate Game Replay (`tools/generate_replay.py`)**:
    Runs self-play or head-to-head matches and logs standardized `.tslog.json` replays with the exact Web Workbench viewer URL:
    ```bash
    PYTHONPATH=. .venv/bin/python tools/generate_replay.py \
@@ -210,7 +224,7 @@ The `tools/` directory provides standardized, fast CLI tools for training, evalu
    # Open browser at: http://localhost:8000/?replay=snapshot_21601s_selfplay.tslog.json
    ```
 
-3. **Head-to-Head Match Evaluator (`tools/evaluate.py`)**:
+4. **Head-to-Head Match Evaluator (`tools/evaluate.py`)**:
    Runs a fast match between any two agents, breaking down US and USSR win rates and exact loss reasons:
    ```bash
    PYTHONPATH=. .venv/bin/python tools/evaluate.py \
@@ -219,23 +233,20 @@ The `tools/` directory provides standardized, fast CLI tools for training, evalu
      --games-per-side 50
    ```
 
-4. **Unified Training Runner (`tools/train.py`)**:
-   Starts time-bounded RL with live snapshot tournaments and blunder-aware reward shielding:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/train.py \
-     --arch v2 \
-     --warmup-checkpoint checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
-     --duration-seconds 3600 \
-     --snapshot-interval-seconds 600 \
-     --reward-scheme blunder_aware \
-     --output-dir checkpoints/run_new_1h
-   ```
-
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
    Scans `checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures:
    ```bash
    PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
    ```
+
+#### Existing Helper Scripts (`scripts/`)
+- `scripts/train_direct_rl.sh`: Generic runner for time-bounded RL self-play that avoids memory-heavy BC datasets, adheres to the timestamped checkpoint naming convention, and runs post-training tournament benchmarks.
+- `scripts/massive_tournament.py`: Vectorized parallel round-robin tournament and MLE Elo rating benchmark engine (underlying implementation for `tools/tournament.py`).
+- `scripts/evaluate.py`: Fast head-to-head match evaluation CLI between two agents or checkpoints (underlying implementation for `tools/evaluate.py`).
+- `scripts/generate_replay_match.py`: Generates standardized `.tslog.json` match replays for Web Workbench (underlying implementation for `tools/generate_replay.py`).
+- `scripts/generate_warmup_dataset.py`: Rollout generator for multi-temperature demonstration datasets (`.jsonl.gz`) across 500 parallel environments.
+- `scripts/run_asan.sh`: AddressSanitizer and UndefinedBehaviorSanitizer test execution script for C++ engine verification.
+- `scripts/train.py`: CLI training entry point (redirects to `ai.training.train`).
 
 ### 3.5 Run Test Suites
 ```bash
@@ -266,3 +277,9 @@ PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
    All Python types must be explicitly annotated (using `TypedDict` definitions in `server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
 6. **Unified Self-Play & Replay Generation**:
    All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `ai.eval.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
+7. **Mandatory Checkpoint Directory Naming Convention**:
+   All model checkpoint directories MUST follow the standard pattern:
+   `checkpoints/run_[version]_[start date]_[start time]`
+   (e.g., `checkpoints/run_v3_20260826_231500` or `checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v3_2h`) are strictly forbidden.
+8. **Bounded Dataset Streaming & OOM Prevention**:
+   Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.

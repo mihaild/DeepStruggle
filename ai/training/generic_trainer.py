@@ -1,3 +1,6 @@
+import os
+if 'TRITON_CACHE_DIR' not in os.environ:
+    os.environ['TRITON_CACHE_DIR'] = os.path.abspath('.triton_cache')
 # Generic Trainer: Configurable multi-stage training with live snapshot tournament evaluation.
 
 import os
@@ -30,6 +33,7 @@ def run_behavioral_cloning_warmup(
     epochs: int = 5,
     batch_size: int = 512,
     lr: float = 1e-3,
+    max_games: Optional[int] = None,
     device: Optional[Union[torch.device, str]] = None,
 ) -> None:
     dev = resolve_device(device)
@@ -37,31 +41,18 @@ def run_behavioral_cloning_warmup(
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
-    print(f"=== Loading Warm-up Dataset from: {dataset_path} ===", flush=True)
+    print(f"=== Loading Warm-up Dataset (OOM-Safe Streaming Mode) from: {dataset_path} ===", flush=True)
     t0 = time.time()
     ds = WarmupDataset(dataset_path)
-    tensors = ds.build_in_memory_tensors(device=dev)
-    obs = tensors["observations"]
-    masks = tensors["action_masks"]
-    acts = tensors["actions"]
-    val_wins = tensors["win_targets"]
-    val_vps = tensors["vp_targets"]
-    num_samples = obs.size(0)
-    print(f"Loaded {num_samples:,} transition samples in {time.time() - t0:.1f}s. Training {epochs} epochs...", flush=True)
 
     for epoch in range(1, epochs + 1):
-        perm = torch.randperm(num_samples, device=dev)
         total_loss = 0.0
         correct_actions = 0
+        samples_seen = 0
 
-        for idx in range(0, num_samples, batch_size):
-            batch_indices = perm[idx : idx + batch_size]
-            b_obs = obs[batch_indices]
-            b_mask = masks[batch_indices]
-            b_act = acts[batch_indices]
-            b_val = val_wins[batch_indices]
-            b_vp = val_vps[batch_indices]
-
+        for b_obs, b_mask, b_act, b_val, b_vp in ds.stream_batches(
+            batch_size=batch_size, max_games=max_games, device=dev, shuffle_buffer_size=2048
+        ):
             logits, v_win, v_vp = model(b_obs, b_mask)
             policy_loss = F.cross_entropy(logits, b_act)
             val_win_loss = F.mse_loss(v_win.squeeze(-1), b_val)
@@ -76,15 +67,23 @@ def run_behavioral_cloning_warmup(
 
             preds = torch.argmax(logits, dim=-1)
             correct_actions += (preds == b_act).sum().item()
-            total_loss += loss.item() * b_obs.size(0)
+            cur_b_size = b_obs.size(0)
+            total_loss += loss.item() * cur_b_size
+            samples_seen += cur_b_size
 
-        avg_loss = total_loss / max(1, num_samples)
-        acc = (correct_actions / max(1, num_samples)) * 100.0
-        print(f"  Epoch {epoch:2d}/{epochs:2d} | Loss: {avg_loss:.4f} | Action Acc: {acc:.2f}% | Samples: {num_samples}", flush=True)
+            if samples_seen % 25000 < batch_size:
+                cur_l = total_loss / max(1, samples_seen)
+                cur_acc = (correct_actions / max(1, samples_seen)) * 100.0
+                print(f"  Epoch {epoch:2d}/{epochs:2d} | Streamed {samples_seen:,} samples | Loss: {cur_l:.4f} | Acc: {cur_acc:.2f}%", flush=True)
+
+        avg_loss = total_loss / max(1, samples_seen)
+        acc = (correct_actions / max(1, samples_seen)) * 100.0
+        print(f"  Epoch {epoch:2d}/{epochs:2d} COMPLETED | Loss: {avg_loss:.4f} | Action Acc: {acc:.2f}% | Total Samples: {samples_seen:,}", flush=True)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)), exist_ok=True)
     torch.save(model.state_dict(), output_checkpoint_path)
-    print(f"=== Warm-up Complete in {time.time() - t0:.1f}s. Saved to: {output_checkpoint_path} ===\n", flush=True)
+    print(f"=== Warm-up Complete in {time.time() - t0:.1f}s. Saved to: {output_checkpoint_path} ===", flush=True)
+
 
 
 def train_pipeline(
@@ -105,6 +104,9 @@ def train_pipeline(
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
     device: Optional[Union[torch.device, str]] = None,
+    post_tournament: bool = False,
+    post_tournament_models: Optional[List[str]] = None,
+    post_tournament_games: int = 500,
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -210,6 +212,9 @@ def train_pipeline(
         add_to_opponents_after=True,
         arch=arch,
     )
+
+    dones_np = np.zeros(num_envs, dtype=np.float32)
+    info: Dict[str, Any] = {"acting_players": np.zeros(num_envs, dtype=np.int32)}
 
     while True:
         elapsed = time.time() - t_start
@@ -385,6 +390,34 @@ def train_pipeline(
         arch=arch,
     )
     print(f"=== Training Complete. Final Checkpoint: {final_snap_path} ===", flush=True)
+
+    if post_tournament:
+        from scripts.massive_tournament import run_massive_tournament
+        print("\n" + "=" * 80, flush=True)
+        print(" LAUNCHING POST-TRAINING MASSIVE TOURNAMENT BENCHMARK", flush=True)
+        print("=" * 80 + "\n", flush=True)
+        tourn_report = os.path.join(out_dir, "final_tournament_report.md")
+        tourn_json = os.path.join(out_dir, "final_tournament_results.json")
+
+        snap_files = [
+            os.path.join(out_dir, f)
+            for f in sorted(os.listdir(out_dir))
+            if f.endswith(".pt") and not f.endswith("warmup.pt")
+        ]
+
+        models_to_test = list(snap_files)
+        for extra in (post_tournament_models or []):
+            if extra not in models_to_test:
+                models_to_test.append(extra)
+
+        run_massive_tournament(
+            model_specs=models_to_test,
+            games_per_side=post_tournament_games,
+            batch_chunk_size=1000,
+            output_report=tourn_report,
+            output_json=tourn_json,
+            device=str(dev),
+        )
 
 
 def format_loss_causes(causes: Dict[str, int]) -> str:

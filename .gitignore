@@ -49,3 +49,4 @@ scratch/
 checkpoints/
 *.pt
 !checkpoints/.gitkeep
+.triton_cache/

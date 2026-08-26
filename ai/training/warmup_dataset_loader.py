@@ -49,6 +49,81 @@ class WarmupDataset:
                     
                 game_count += 1
 
+
+    def stream_batches(
+        self,
+        batch_size: int = 512,
+        max_games: Optional[int] = None,
+        device: torch.device = torch.device('cpu'),
+        shuffle_buffer_size: int = 2048,
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
+        """
+        Streams mini-batches directly as PyTorch tensors using an online reservoir buffer.
+        Peak memory is strictly bounded by shuffle_buffer_size (< 40 MB), completely eliminating OOM.
+        """
+        buffer_obs: List[np.ndarray] = []
+        buffer_mask: List[np.ndarray] = []
+        buffer_act: List[int] = []
+        buffer_w: List[float] = []
+        buffer_vp: List[float] = []
+
+        for obs, mask, act, w_ret, vp_ret in self.stream_transitions(max_games=max_games):
+            buffer_obs.append(obs)
+            buffer_mask.append(mask)
+            buffer_act.append(act)
+            buffer_w.append(w_ret)
+            buffer_vp.append(vp_ret)
+
+            if len(buffer_obs) >= shuffle_buffer_size:
+                indices = np.random.choice(len(buffer_obs), size=batch_size, replace=False)
+                keep_mask = np.ones(len(buffer_obs), dtype=bool)
+                keep_mask[indices] = False
+
+                b_obs = [buffer_obs[i] for i in indices]
+                b_mask = [buffer_mask[i] for i in indices]
+                b_act = [buffer_act[i] for i in indices]
+                b_w = [buffer_w[i] for i in indices]
+                b_vp = [buffer_vp[i] for i in indices]
+
+                buffer_obs = [buffer_obs[i] for i in range(len(buffer_obs)) if keep_mask[i]]
+                buffer_mask = [buffer_mask[i] for i in range(len(buffer_mask)) if keep_mask[i]]
+                buffer_act = [buffer_act[i] for i in range(len(buffer_act)) if keep_mask[i]]
+                buffer_w = [buffer_w[i] for i in range(len(buffer_w)) if keep_mask[i]]
+                buffer_vp = [buffer_vp[i] for i in range(len(buffer_vp)) if keep_mask[i]]
+
+                yield (
+                    torch.from_numpy(np.array(b_obs, dtype=np.float32)).to(device),
+                    torch.from_numpy(np.array(b_mask, dtype=np.uint8)).to(device),
+                    torch.tensor(b_act, dtype=torch.long, device=device),
+                    torch.tensor(b_w, dtype=torch.float32, device=device),
+                    torch.tensor(b_vp, dtype=torch.float32, device=device),
+                )
+
+        while len(buffer_obs) >= batch_size:
+            indices = np.random.choice(len(buffer_obs), size=batch_size, replace=False)
+            keep_mask = np.ones(len(buffer_obs), dtype=bool)
+            keep_mask[indices] = False
+
+            b_obs = [buffer_obs[i] for i in indices]
+            b_mask = [buffer_mask[i] for i in indices]
+            b_act = [buffer_act[i] for i in indices]
+            b_w = [buffer_w[i] for i in indices]
+            b_vp = [buffer_vp[i] for i in indices]
+
+            buffer_obs = [buffer_obs[i] for i in range(len(buffer_obs)) if keep_mask[i]]
+            buffer_mask = [buffer_mask[i] for i in range(len(buffer_mask)) if keep_mask[i]]
+            buffer_act = [buffer_act[i] for i in range(len(buffer_act)) if keep_mask[i]]
+            buffer_w = [buffer_w[i] for i in range(len(buffer_w)) if keep_mask[i]]
+            buffer_vp = [buffer_vp[i] for i in range(len(buffer_vp)) if keep_mask[i]]
+
+            yield (
+                torch.from_numpy(np.array(b_obs, dtype=np.float32)).to(device),
+                torch.from_numpy(np.array(b_mask, dtype=np.uint8)).to(device),
+                torch.tensor(b_act, dtype=torch.long, device=device),
+                torch.tensor(b_w, dtype=torch.float32, device=device),
+                torch.tensor(b_vp, dtype=torch.float32, device=device),
+            )
+
     def build_in_memory_tensors(self, max_games: Optional[int] = None, device: torch.device = torch.device('cpu')) -> Dict[str, torch.Tensor]:
         """Extracts and loads dataset directly into PyTorch tensors."""
         all_obs = []
