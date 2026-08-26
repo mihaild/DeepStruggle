@@ -24,6 +24,7 @@ from ai.env.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import HeuristicPolicy, OldHeuristicPolicy
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
+from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 
 
 class PlayerAgent(Protocol):
@@ -117,10 +118,13 @@ class NeuralAgent:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
         state_dict = torch.load(checkpoint_path, map_location=dev, weights_only=True)
-        # Architecture detection: ColdWarNetV2 contains country_cross_attn
+        # Architecture detection: V3 contains node_pointer_proj/cross_b2c, V2 contains cross_attn
+        is_v3 = any("node_pointer_proj" in k or "cross_b2c" in k for k in state_dict.keys())
         is_v2 = any("cross_attn" in k or "cross_card_proj" in k for k in state_dict.keys())
 
-        if is_v2:
+        if is_v3:
+            model = create_coldwar_net_v3(dev)
+        elif is_v2:
             model = create_coldwar_net_v2(dev)
         else:
             model = create_coldwar_net(dev)

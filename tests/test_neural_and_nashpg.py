@@ -6,7 +6,7 @@ import torch
 
 import ts_engine as ts
 from ai.env import ActionEncoder, TsSingleEnv, TsVectorizedEnv
-from ai.models import ColdWarNet, create_coldwar_net
+from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldwar_net_v2, ColdWarNetV3, create_coldwar_net_v3
 from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer
 from ai.eval import ArenaEvaluator
 from bot.neural_bot import NeuralBot
@@ -213,3 +213,37 @@ class TestNeuralBotAndArena:
         summary = arena.run_tournament(opponent_type="random", num_games=4, verbose=False)
         assert summary["total_games"] == 4
         assert summary["neural_wins"] + summary["opponent_wins"] + summary["draws"] == 4
+
+
+class TestColdWarNetV3:
+    @pytest.fixture
+    def device(self):
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def test_v3_forward_pass_and_dual_pointers(self, device):
+        model = create_coldwar_net_v3(device)
+        B = 4
+        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
+        dummy_mask[:, [0, 50, 110, 119, 150, 211]] = 1
+
+        logits, v_win, v_vp = model(dummy_obs, dummy_mask)
+        assert logits.shape == (B, 212)
+        assert v_win.shape == (B, 1)
+        assert v_vp.shape == (B, 1)
+        assert torch.all(v_win >= -1.0) and torch.all(v_win <= 1.0)
+
+        # Illegal actions must be masked out to -1e9
+        illegal = (dummy_mask == 0)
+        assert torch.all(logits[illegal] <= -1e8)
+
+        # Sampling and action evaluation (in eval mode for deterministic reproducibility without dropout)
+        model.eval()
+        actions, log_probs, v_win_s, v_vp_s, entropy = model.sample_action(dummy_obs, dummy_mask, temperature=1.0)
+        assert actions.shape == (B,)
+        assert log_probs.shape == (B,)
+        assert v_win_s.shape == (B,)
+        assert v_vp_s.shape == (B,)
+
+        eval_lp, eval_ent, eval_vw, eval_vvp = model.evaluate_actions(dummy_obs, dummy_mask, actions)
+        assert torch.allclose(eval_lp, log_probs, atol=1e-5)

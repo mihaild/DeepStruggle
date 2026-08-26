@@ -257,10 +257,10 @@ class NashPGTrainer:
             if it % log_interval == 0 or it == 1:
                 recent_eps = all_completed[-100:] if all_completed else []
                 if recent_eps:
-                    us_wins = sum(1 for e in recent_eps if e["winner"] == "US")
-                    ussr_wins = sum(1 for e in recent_eps if e["winner"] == "USSR")
-                    avg_len = np.mean([e["length"] for e in recent_eps])
-                    avg_vp = np.mean([e["victory_points"] for e in recent_eps])
+                    us_wins = sum(1 for e in recent_eps if e.get("winner") == "US")
+                    ussr_wins = sum(1 for e in recent_eps if e.get("winner") == "USSR")
+                    avg_len = np.mean([e.get("length", 0) for e in recent_eps])
+                    avg_vp = np.mean([e.get("victory_points", 0) for e in recent_eps])
                     win_str = f"US Win: {us_wins/len(recent_eps)*100:.1f}% | USSR Win: {ussr_wins/len(recent_eps)*100:.1f}% | Avg Len: {avg_len:.1f} | Avg VP: {avg_vp:+.1f}"
                 else:
                     win_str = "No completed episodes yet"

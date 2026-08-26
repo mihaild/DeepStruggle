@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
+from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
 from ai.env.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
@@ -114,7 +115,9 @@ def train_pipeline(
     report_path = os.path.join(out_dir, "tournament_report.md")
 
     # 1. Initialize Model
-    if arch == "v2":
+    if arch == "v3":
+        model = create_coldwar_net_v3(dev)
+    elif arch == "v2":
         model = create_coldwar_net_v2(dev)
     else:
         model = create_coldwar_net(dev)
@@ -145,7 +148,7 @@ def train_pipeline(
         reward_calc = ZeroSumTerminalReward()
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
 
-    ref_model = create_coldwar_net_v2(dev) if arch == "v2" else create_coldwar_net(dev)
+    ref_model = create_coldwar_net_v3(dev) if arch == "v3" else (create_coldwar_net_v2(dev) if arch == "v2" else create_coldwar_net(dev))
     ref_model.load_state_dict(model.state_dict())
     ref_model.to(dev)
     ref_model.eval()
@@ -465,7 +468,7 @@ def evaluate_and_log_snapshot(
 
     # Register this snapshot into opponents list for future snapshots to test against
     if add_to_opponents_after:
-        frozen_model = create_coldwar_net_v2(device) if arch == "v2" else create_coldwar_net(device)
+        frozen_model = create_coldwar_net_v3(device) if arch == "v3" else (create_coldwar_net_v2(device) if arch == "v2" else create_coldwar_net(device))
         frozen_model.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
         frozen_model.to(device)
         frozen_model.eval()

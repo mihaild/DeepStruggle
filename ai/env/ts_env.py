@@ -177,6 +177,8 @@ class TsVectorizedEnv:
                         "length": int(self.ep_lengths[i]),
                         "reward": float(self.ep_rewards[i]),
                         "terminal_utility": float(term_utils[i]),
+                        "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
+                        "victory_points": int(curr_vp[i]),
                     })
                     new_seed = int(np.random.randint(1, 1_000_000_000))
                     self.runner.reset_game(i, new_seed)
