@@ -1,12 +1,12 @@
-"""Vectorized Rollout Buffer for Masked Multi-Agent Twilight Struggle Training."""
+"""Vectorized Rollout Buffer for Masked Multi-Agent Twilight Struggle Training with GAE Credit Slicing."""
 
-from typing import Generator, Tuple
+from typing import Generator, Tuple, Optional
 import torch
 import numpy as np
 
 
 class RolloutBuffer:
-    """Stores trajectories from TsVectorizedEnv and computes GAE advantages with zero-sum perspective alignment."""
+    """Stores trajectories from TsVectorizedEnv and computes GAE advantages with zero-sum perspective alignment and credit slicing."""
 
     def __init__(
         self,
@@ -32,6 +32,7 @@ class RolloutBuffer:
         self.values_win = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.values_vp = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.players = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
+        self.turns = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
 
         # Computed targets
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
@@ -57,6 +58,7 @@ class RolloutBuffer:
         values_win: torch.Tensor,
         values_vp: torch.Tensor,
         players: np.ndarray | torch.Tensor,
+        turns: Optional[np.ndarray | torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -71,6 +73,8 @@ class RolloutBuffer:
             dones = torch.from_numpy(dones)
         if isinstance(players, np.ndarray):
             players = torch.from_numpy(players)
+        if isinstance(turns, np.ndarray):
+            turns = torch.from_numpy(turns)
 
         self.obs[self.step].copy_(obs)
         self.masks[self.step].copy_(masks)
@@ -81,6 +85,8 @@ class RolloutBuffer:
         self.values_win[self.step].copy_(values_win)
         self.values_vp[self.step].copy_(values_vp)
         self.players[self.step].copy_(players)
+        if turns is not None:
+            self.turns[self.step].copy_(turns)
 
         self.step += 1
         if self.step >= self.buffer_size:
@@ -94,6 +100,7 @@ class RolloutBuffer:
         last_players: torch.Tensor,
         gamma: float = 0.999,
         gae_lambda: float = 0.98,
+        slice_turn_boundaries: bool = False,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment."""
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
@@ -111,6 +118,11 @@ class RolloutBuffer:
                 next_p = self.players[t + 1]
                 sign = (curr_p * next_p).float()
                 next_val = sign * self.values_win[t + 1]
+
+                # Optional Turn Boundary Credit Slicing
+                if slice_turn_boundaries:
+                    turn_boundary_mask = (self.turns[t] == self.turns[t + 1]).float()
+                    non_terminal = non_terminal * turn_boundary_mask
 
             # TD error delta from perspective of acting player at step t
             delta = self.rewards[t] + gamma * next_val * non_terminal - self.values_win[t]

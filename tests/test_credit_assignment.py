@@ -9,7 +9,7 @@ import pytest
 import numpy as np
 import torch
 import ts_engine as ts
-from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward
+from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
 from ai.env.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 
@@ -360,3 +360,141 @@ class TestCubanMissileCrisisCoupSuicide:
         assert st.victory_points == -20  # USSR Win
         assert rewards[0] == -1.0  # US was acting player -> gets -1.0
         assert info["acting_players"][0] == 1
+
+
+class TestBlunderAwareRewardCalculator:
+    """Verifies BlunderAwareRewardCalculator and Spurious Reward Shielding."""
+
+    def test_held_scoring_card_blunder_reward_shielding(self):
+        calc = BlunderAwareRewardCalculator()
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Asia Scoring held by USSR
+        st.turn = 3
+
+        # If USSR is acting player when game ends due to held scoring:
+        r_ussr = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),  # US won
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_ussr[0] == -1.0, f"Blundering loser (USSR) must receive -1.0 penalty, got {r_ussr[0]}"
+
+        # If US is acting player when USSR held scoring card:
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),  # US won
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us[0] == 0.0, f"Winner (US) must be shielded with 0.0 reward, got {r_us[0]}"
+
+    def test_voluntary_defcon_coup_suicide_reward_shielding(self):
+        calc = BlunderAwareRewardCalculator()
+        st = ts.GameState()
+        ts.Engine.init_game(st, 200)
+        st.defcon = 1  # DEFCON 1 Nuclear suicide
+
+        # USSR commits suicide -> USSR acting player gets -1.0
+        r_ussr = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),  # US won
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_ussr[0] == -1.0, "Suiciding player must receive -1.0 penalty"
+
+        # Winner (US) is shielded from unearned +1.0
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),  # US won
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us[0] == 0.0, "Winner must receive 0.0 reward on opponent suicide"
+
+    def test_strategic_win_preserves_full_zero_sum(self):
+        calc = BlunderAwareRewardCalculator()
+        st = ts.GameState()
+        ts.Engine.init_game(st, 300)
+        st.defcon = 3
+        st.victory_points = 20  # +20 VP Sudden Death
+
+        # US won by strategic 20 VP -> US gets +1.0, USSR gets -1.0
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([18], dtype=np.int8),
+            curr_victory_points=np.array([20], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us[0] == 1.0, "Strategic winner must receive +1.0"
+
+        r_ussr = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([18], dtype=np.int8),
+            curr_victory_points=np.array([20], dtype=np.int8),
+            states=[st],
+        )
+        assert r_ussr[0] == -1.0, "Strategic loser must receive -1.0"
+
+
+class TestTurnBoundaryCreditSlicing:
+    """Verifies that GAE credit slicing prevents turn T blunders from corrupting turns 1..T-1."""
+
+    def test_turn_boundary_gae_slicing(self):
+        dev = "cpu"
+        buf = RolloutBuffer(buffer_size=4, num_envs=1, obs_dim=10, action_dim=5, device=dev)
+
+        # Step 0: Turn 1 (Good move)
+        # Step 1: Turn 2 (Good move)
+        # Step 2: Turn 3 AR1 (Turn 3 decision)
+        # Step 3: Turn 3 AR2 (Held scoring blunder -> penalty -1.0, done=True)
+        obs = np.zeros((1, 10), dtype=np.float32)
+        mask = np.ones((1, 5), dtype=np.uint8)
+        act = np.zeros(1, dtype=np.int64)
+        lp = torch.zeros(1)
+        v_win = torch.zeros(1)
+        v_vp = torch.zeros(1)
+        player = np.array([-1], dtype=np.int8)  # USSR
+
+        # Add steps with turn information
+        buf.add(obs, mask, act, lp, np.array([0.0]), np.array([False]), v_win, v_vp, player, turns=np.array([1]))
+        buf.add(obs, mask, act, lp, np.array([0.0]), np.array([False]), v_win, v_vp, player, turns=np.array([2]))
+        buf.add(obs, mask, act, lp, np.array([0.0]), np.array([False]), v_win, v_vp, player, turns=np.array([3]))
+        buf.add(obs, mask, act, lp, np.array([-1.0]), np.array([True]), v_win, v_vp, player, turns=np.array([3]))
+
+        # Compute GAE with slice_turn_boundaries=True
+        buf.compute_gae(
+            last_v_win=torch.zeros(1),
+            last_v_vp=torch.zeros(1),
+            last_dones=torch.tensor([True]),
+            last_players=torch.tensor([-1]),
+            gamma=1.0,
+            gae_lambda=1.0,
+            slice_turn_boundaries=True,
+        )
+
+        # Raw advantages before batch normalization
+        # In Turn 3 (steps 2 and 3), penalty is present:
+        # Step 3: delta = -1.0, adv = -1.0
+        # Step 2: delta = 0.0, adv = -1.0 (propagated within Turn 3)
+        # Across Turn 2/3 boundary (Step 1): adv sliced! delta = 0, next adv masked = 0.
+        # Step 0 (Turn 1): adv = 0.
+        # Check raw returns_win:
+        assert buf.returns_win[3, 0].item() == -1.0
+        assert buf.returns_win[2, 0].item() == -1.0
+        assert buf.returns_win[1, 0].item() == 0.0, f"Turn 2 return must be 0.0 (sliced), got {buf.returns_win[1, 0].item()}"
+        assert buf.returns_win[0, 0].item() == 0.0, f"Turn 1 return must be 0.0 (sliced), got {buf.returns_win[0, 0].item()}"

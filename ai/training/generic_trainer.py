@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
-from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward
+from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
 from ai.env.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.warmup_dataset_loader import WarmupDataset
@@ -101,7 +101,7 @@ def train_pipeline(
     lr: float = 3e-4,
     eta: float = 0.1,
     entropy_coef: float = 0.01,
-    reward_scheme: str = "terminal",
+    reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
     device: Optional[Union[torch.device, str]] = None,
 ) -> None:
@@ -137,7 +137,12 @@ def train_pipeline(
         print("No warmup checkpoint or dataset specified. Starting from fresh weights.", flush=True)
 
     # 3. Setup Reward Calculator & Vectorized Env
-    reward_calc = ShapedZeroSumReward() if reward_scheme == "shaped" else ZeroSumTerminalReward()
+    if reward_scheme == "blunder_aware":
+        reward_calc = BlunderAwareRewardCalculator()
+    elif reward_scheme == "shaped":
+        reward_calc = ShapedZeroSumReward()
+    else:
+        reward_calc = ZeroSumTerminalReward()
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
 
     ref_model = create_coldwar_net_v2(dev) if arch == "v2" else create_coldwar_net(dev)
@@ -258,6 +263,7 @@ def train_pipeline(
             last_players=last_players,
             gamma=0.999,
             gae_lambda=0.98,
+            slice_turn_boundaries=(reward_scheme == "blunder_aware"),
         )
 
         steps_collected = buffer_size * num_envs

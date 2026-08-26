@@ -1,8 +1,9 @@
 """Abstract Reward Calculator Interface & Concrete Strategies for Zero-Sum Games."""
 
-from typing import Protocol
+from typing import Protocol, Optional, List, Dict, Any
 import numpy as np
 import torch
+import ts_engine as ts
 
 
 class RewardCalculator(Protocol):
@@ -15,6 +16,7 @@ class RewardCalculator(Protocol):
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
+        states: Optional[List[ts.GameState]] = None,
     ) -> np.ndarray:
         """Computes per-environment step rewards from the perspective of the acting player."""
         ...
@@ -44,6 +46,7 @@ class ZeroSumTerminalReward:
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
+        states: Optional[List[ts.GameState]] = None,
     ) -> np.ndarray:
         rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
         return rewards.astype(np.float32)
@@ -56,12 +59,83 @@ class ZeroSumTerminalReward:
         return (curr_players * next_players).float()
 
 
-class ShapedZeroSumReward:
-    """Zero-sum terminal reward augmented with dense VP-delta reward shaping.
+class BlunderAwareRewardCalculator:
+    """Blunder-Aware Reward Strategy with Spurious Reward Shielding and Credit Slicing.
 
-    - Step reward: r_t = (terminal_utility * acting_player if done else 0.0) + alpha * (delta_vp * acting_player)
-    - Normalizes VP deltas to prevent overriding terminal outcomes.
+    1. Rule 4.4 Held Scoring Card Blunder:
+       - Blundering loser receives r = -1.0 on the blunder step.
+       - Winner receives r = 0.0 (shielded from spurious +1.0 value inflation).
+    2. Voluntary DEFCON Coup Suicide:
+       - Blundering player receives r = -1.0.
+       - Winner receives r = 0.0.
+    3. Strategic Wins (Europe Control, Milestone VP, Final Scoring, Wargames, Event Traps):
+       - Full zero-sum terminal outcome: Winner +1.0, Loser -1.0.
     """
+
+    def compute_step_rewards(
+        self,
+        acting_players: np.ndarray,
+        dones: np.ndarray,
+        terminal_utilities: np.ndarray,
+        prev_victory_points: np.ndarray,
+        curr_victory_points: np.ndarray,
+        states: Optional[List[ts.GameState]] = None,
+    ) -> np.ndarray:
+        N = len(acting_players)
+        rewards = np.zeros(N, dtype=np.float32)
+
+        for i in range(N):
+            if not dones[i]:
+                continue
+
+            term_util = float(terminal_utilities[i])
+            p_act = int(acting_players[i])
+
+            if term_util == 0.0:
+                rewards[i] = 0.0
+                continue
+
+            # Check if this was a blunder if state is available
+            st = states[i] if states is not None and i < len(states) else None
+            is_blunder = False
+            loser_player = -1 if term_util > 0 else 1  # USSR is -1, US is 1
+
+            if st is not None:
+                # Check for strategic win conditions FIRST
+                if abs(st.victory_points) >= 20 or st.turn >= 10:
+                    is_blunder = False
+                elif st.defcon <= 1:
+                    # Nuclear suicide
+                    is_blunder = True
+                else:
+                    # Check for held scoring cards
+                    held_us = any(st.get_card_location(c) == ts.CardLocation.HAND_US and ts.CardData.get_card_info(c).get("is_scoring") for c in range(1, 111))
+                    held_ussr = any(st.get_card_location(c) == ts.CardLocation.HAND_USSR and ts.CardData.get_card_info(c).get("is_scoring") for c in range(1, 111))
+                    if held_us or held_ussr:
+                        is_blunder = True
+
+            if is_blunder:
+                # Shield winner (r_winner = 0.0), heavily penalize loser (r_loser = -1.0)
+                if p_act == loser_player:
+                    rewards[i] = -1.0
+                else:
+                    rewards[i] = 0.0
+            else:
+                # Standard strategic win: Winner +1.0, Loser -1.0
+                rewards[i] = term_util * p_act
+
+        return rewards
+
+    def compute_zero_sum_sign(
+        self,
+        curr_players: torch.Tensor,
+        next_players: torch.Tensor,
+    ) -> torch.Tensor:
+        return (curr_players * next_players).float()
+
+
+class ShapedZeroSumReward:
+    """Zero-sum terminal reward augmented with dense VP-delta reward shaping."""
 
     def __init__(self, vp_scale: float = 0.02):
         self.vp_scale = vp_scale
@@ -73,6 +147,7 @@ class ShapedZeroSumReward:
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
+        states: Optional[List[ts.GameState]] = None,
     ) -> np.ndarray:
         term_rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
         delta_vp_us = (curr_victory_points - prev_victory_points).astype(np.float32)
