@@ -109,6 +109,14 @@ graph TD
 │   ├── AGENTS.md               # Specific instructions for maintaining the Python bindings
 │   └── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
 │
+├── tools/                      # Reusable agent & developer CLI tools (see tools/README.md)
+│   ├── README.md               # Tool descriptions, CLI flags, and usage examples
+│   ├── train.py                # Unified RL training & fine-tuning runner
+│   ├── tournament.py           # Massive vectorized round-robin tournament & Elo matrix evaluator
+│   ├── evaluate.py             # Head-to-head match evaluation CLI
+│   ├── generate_replay.py      # Self-play or head-to-head replay generator (.tslog.json)
+│   └── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & metadata inspector
+│
 ├── server/                     # FastAPI game server and replay manager (see server/AGENTS.md)
 │   ├── AGENTS.md               # Specific instructions for server maintainers
 │   ├── main.py                 # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
@@ -179,6 +187,55 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 # 3. Open browser at:
 # http://localhost:8000/?game_id=game-1&role=US
 ```
+
+### 3.6 Reusable Agent CLI Tools (`tools/`)
+
+The `tools/` directory provides standardized, fast CLI tools for training, evaluating, and visualizing models:
+
+1. **Massive Vectorized Tournament & Elo Rating (`tools/tournament.py`)**:
+   Runs ultra-fast parallel tournaments (300-800 games/sec) across all checkpoints in a directory, calculating Bradley-Terry Elo ratings, total/USSR/US winning matrices, and side-specific loss cause breakdowns:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/tournament.py \
+     --checkpoint-dir checkpoints/run_v2_blunder_aware_9h \
+     --games-per-side 1000 \
+     --output-report checkpoints/run_v2_blunder_aware_9h/massive_tournament_report.md
+   ```
+
+2. **Generate Game Replay (`tools/generate_replay.py`)**:
+   Runs self-play or head-to-head matches and logs standardized `.tslog.json` replays with the exact Web Workbench viewer URL:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/generate_replay.py \
+     --model checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+     --game-id snapshot_21601s_selfplay
+   # Open browser at: http://localhost:8000/?replay=snapshot_21601s_selfplay.tslog.json
+   ```
+
+3. **Head-to-Head Match Evaluator (`tools/evaluate.py`)**:
+   Runs a fast match between any two agents, breaking down US and USSR win rates and exact loss reasons:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/evaluate.py \
+     --agent-a checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+     --agent-b heuristic \
+     --games-per-side 50
+   ```
+
+4. **Unified Training Runner (`tools/train.py`)**:
+   Starts time-bounded RL with live snapshot tournaments and blunder-aware reward shielding:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/train.py \
+     --arch v2 \
+     --warmup-checkpoint checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+     --duration-seconds 3600 \
+     --snapshot-interval-seconds 600 \
+     --reward-scheme blunder_aware \
+     --output-dir checkpoints/run_new_1h
+   ```
+
+5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
+   Scans `checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures:
+   ```bash
+   PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
+   ```
 
 ### 3.5 Run Test Suites
 ```bash
