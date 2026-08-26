@@ -11,10 +11,10 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     """Accurately determines the exact cause of game termination."""
     # 1. DEFCON 1 Nuclear Suicide (Takes absolute precedence)
     if state.defcon <= 1:
-        phasing = str(state.phasing_player).split(".")[-1]
+        loser = "US" if state.victory_points < 0 else "USSR"
         is_provoked = state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
         kind = "provoked" if is_provoked else "unprovoked"
-        return f"DEFCON suicide ({kind}) by {phasing}"
+        return f"DEFCON suicide ({kind}) by {loser}"
 
     # 2. Europe Control Instant Victory
     eu_bgs = [7, 8, 10, 14, 15]
