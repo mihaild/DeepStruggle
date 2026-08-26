@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from typing import Dict, List, Tuple, Any
 import ts_engine as ts
-from ai.models import ColdWarNet, create_coldwar_net
+from ai.eval.player_agent import load_agent, NeuralAgent
 from ai.env import ActionEncoder
 
 def get_temperature_for_profile(profile_idx: int, turn: int) -> float:
@@ -33,10 +33,12 @@ def generate_warmup_dataset(
     models = {}
     for name, path in checkpoints.items():
         print(f"  {name}: {path}")
-        m = create_coldwar_net(device)
-        m.load_state_dict(torch.load(path, map_location=device))
-        m.eval()
-        models[name] = m
+        agent = load_agent(path, device=device)
+        if isinstance(agent, NeuralAgent):
+            agent.model.eval()
+            models[name] = agent.model
+        else:
+            raise ValueError(f"Expected neural agent for {name}, got {type(agent)}")
         
     model_names = list(models.keys())
     
@@ -182,10 +184,10 @@ def generate_warmup_dataset(
 
 if __name__ == "__main__":
     top_checkpoints = {
-        "Snapshot_210m": "checkpoints/run_20260825_093352/snapshot_210m.pt",
-        "Snapshot_180m": "checkpoints/run_20260825_093352/snapshot_180m.pt",
-        "Snapshot_360m": "checkpoints/run_20260825_093352/snapshot_360m.pt",
-        "Snapshot_480m": "checkpoints/run_20260825_093352/snapshot_480m.pt",
+        "Snapshot_21601s": "checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
+        "Snapshot_18003s": "checkpoints/run_v2_blunder_aware_9h/snapshot_18003s.pt",
+        "Snapshot_14402s": "checkpoints/run_v2_blunder_aware_9h/snapshot_14402s.pt",
+        "Snapshot_Final": "checkpoints/run_v2_blunder_aware_9h/snapshot_final.pt",
     }
     
     generate_warmup_dataset(
