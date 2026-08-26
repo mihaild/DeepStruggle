@@ -426,16 +426,32 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             return false;
         } else if (state.ctx().decision_player == Player::US) {
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).in_western_europe) {
-                state.countries[cid].add_influence(Player::US, 1);
-                state.ctx().remaining_steps--;
-                if (state.ctx().remaining_steps == 0) {
-                    // Setup complete -> start Turn 1
-                    start_turn(state);
+            if (state.ctx().pending_ops_value == 0) {
+                // Stage 0: 7 points in Western Europe
+                if (cid < 84 && MapData::get_country(cid).in_western_europe) {
+                    state.countries[cid].add_influence(Player::US, 1);
+                    state.ctx().remaining_steps--;
+                    if (state.ctx().remaining_steps == 0) {
+                        // Transition to US placing 2 bonus influence in countries with existing US presence
+                        state.ctx().pending_ops_value = 1; // Stage 1: Bonus placement
+                        state.ctx().remaining_steps = 2;
+                    }
+                    return true;
                 }
-                return true;
+                return false;
+            } else {
+                // Stage 1: 2 bonus influence in any country with existing US influence
+                if (cid < 84 && state.countries[cid].us_influence > 0) {
+                    state.countries[cid].add_influence(Player::US, 1);
+                    state.ctx().remaining_steps--;
+                    if (state.ctx().remaining_steps == 0) {
+                        // Setup complete -> start Turn 1
+                        start_turn(state);
+                    }
+                    return true;
+                }
+                return false;
             }
-            return false;
         }
     }
 

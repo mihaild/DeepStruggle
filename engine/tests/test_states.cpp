@@ -30,8 +30,16 @@ TEST(StatesTest, Phase_SETUP_Flow) {
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().remaining_steps, 7);
 
-    // US 7 placements in Western Europe
+    // US 7 placements in Western Europe (Stage 0)
     for (int i = 0; i < 7; ++i) {
+        ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0}));
+    }
+    ASSERT_EQ(state.current_phase, ts::Phase::SETUP);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().remaining_steps, 2);
+
+    // US 2 bonus placements in countries with US influence (Stage 1)
+    for (int i = 0; i < 2; ++i) {
         ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0}));
     }
     ASSERT_EQ(state.current_phase, ts::Phase::HEADLINE);
@@ -371,4 +379,110 @@ TEST(StatesTest, GameState_ShuttleDiplomacy_SubtractsUSSRBattleground_AndClearsO
     // score_region clears the flag after scoring
     ts::Scoring::score_region(state, ts::Region::MIDDLE_EAST);
     ASSERT_FALSE(state.has_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE));
+}
+
+TEST(StatesTest, SetupPhase_USBonusInfluencePlacement) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 12345);
+
+    ASSERT_EQ(state.current_phase, ts::Phase::SETUP);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().remaining_steps, 6);
+
+    // USSR attempts illegal placement outside Eastern Europe (e.g. Canada)
+    ts::MicroAction act_illegal{};
+    act_illegal.decision_type = ts::DecisionType::POINT_NODE;
+    act_illegal.primary_id = ts::countries::CANADA;
+    ASSERT_FALSE(ts::StateMachine::step(state, act_illegal));
+
+    // USSR legally places 3 in East Germany and 3 in Poland
+    for (int i = 0; i < 3; ++i) {
+        ts::MicroAction act{};
+        act.decision_type = ts::DecisionType::POINT_NODE;
+        act.primary_id = ts::countries::EAST_GERMANY;
+        ASSERT_TRUE(ts::StateMachine::step(state, act));
+    }
+    for (int i = 0; i < 3; ++i) {
+        ts::MicroAction act{};
+        act.decision_type = ts::DecisionType::POINT_NODE;
+        act.primary_id = ts::countries::POLAND;
+        ASSERT_TRUE(ts::StateMachine::step(state, act));
+    }
+
+    // Now transitioned to US Stage 0 (7 in Western Europe)
+    ASSERT_EQ(state.current_phase, ts::Phase::SETUP);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().remaining_steps, 7);
+    ASSERT_EQ(state.ctx().pending_ops_value, 0);
+
+    // US attempts placement outside Western Europe (e.g. Iran) during Stage 0 -> rejected
+    ts::MicroAction act_iran{};
+    act_iran.decision_type = ts::DecisionType::POINT_NODE;
+    act_iran.primary_id = ts::countries::IRAN;
+    ASSERT_FALSE(ts::StateMachine::step(state, act_iran));
+
+    // Verify ActionMask during Stage 0 allows Western Europe and forbids Iran
+    uint8_t mask[84] = {0};
+    size_t out_sz = 0; ts::ActionMask::generate_mask(state, mask, &out_sz);
+    ASSERT_EQ(mask[ts::countries::WEST_GERMANY], 1);
+    ASSERT_EQ(mask[ts::countries::ITALY], 1);
+    ASSERT_EQ(mask[ts::countries::IRAN], 0);
+
+    // US places 4 in West Germany and 3 in Italy
+    for (int i = 0; i < 4; ++i) {
+        ts::MicroAction act{};
+        act.decision_type = ts::DecisionType::POINT_NODE;
+        act.primary_id = ts::countries::WEST_GERMANY;
+        ASSERT_TRUE(ts::StateMachine::step(state, act));
+    }
+    for (int i = 0; i < 3; ++i) {
+        ts::MicroAction act{};
+        act.decision_type = ts::DecisionType::POINT_NODE;
+        act.primary_id = ts::countries::ITALY;
+        ASSERT_TRUE(ts::StateMachine::step(state, act));
+    }
+
+    // Now transitioned to US Stage 1 (2 Bonus influence in countries with US presence)
+    ASSERT_EQ(state.current_phase, ts::Phase::SETUP);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().remaining_steps, 2);
+    ASSERT_EQ(state.ctx().pending_ops_value, 1);
+
+    // Verify ActionMask during Stage 1:
+    // Countries with US influence (Iran = 1, West Germany = 4, Canada = 2) must be 1.
+    // Countries without US influence (Iraq = 0, Chile = 0, Poland = 0) must be 0.
+    std::fill(std::begin(mask), std::end(mask), 0);
+    out_sz = 0; ts::ActionMask::generate_mask(state, mask, &out_sz);
+    ASSERT_EQ(mask[ts::countries::IRAN], 1);
+    ASSERT_EQ(mask[ts::countries::WEST_GERMANY], 1);
+    ASSERT_EQ(mask[ts::countries::CANADA], 1);
+    ASSERT_EQ(mask[ts::countries::IRAQ], 0);
+    ASSERT_EQ(mask[ts::countries::CHILE], 0);
+    ASSERT_EQ(mask[ts::countries::POLAND], 0);
+
+    // US attempts illegal bonus placement in Iraq (0 US influence) -> rejected
+    ts::MicroAction act_iraq{};
+    act_iraq.decision_type = ts::DecisionType::POINT_NODE;
+    act_iraq.primary_id = ts::countries::IRAQ;
+    ASSERT_FALSE(ts::StateMachine::step(state, act_iraq));
+
+    // US bonus point 1: Iran (boosts from 1 to 2)
+    uint8_t iran_before = state.countries[ts::countries::IRAN].us_influence;
+    ASSERT_EQ(iran_before, 1);
+    ASSERT_TRUE(ts::StateMachine::step(state, act_iran));
+    ASSERT_EQ(state.countries[ts::countries::IRAN].us_influence, 2);
+    ASSERT_EQ(state.ctx().remaining_steps, 1);
+
+    // US bonus point 2: West Germany (boosts from 4 to 5)
+    uint8_t wg_before = state.countries[ts::countries::WEST_GERMANY].us_influence;
+    ASSERT_EQ(wg_before, 4);
+    ts::MicroAction act_wg{};
+    act_wg.decision_type = ts::DecisionType::POINT_NODE;
+    act_wg.primary_id = ts::countries::WEST_GERMANY;
+    ASSERT_TRUE(ts::StateMachine::step(state, act_wg));
+    ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].us_influence, 5);
+
+    // Setup is completely finished -> Turn 1 begins in HEADLINE phase!
+    ASSERT_EQ(state.current_phase, ts::Phase::HEADLINE);
+    ASSERT_EQ(state.turn, 1);
 }

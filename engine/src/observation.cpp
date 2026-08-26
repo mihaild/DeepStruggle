@@ -103,8 +103,13 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         bool can_my_place = false;
         bool can_opp_place = false;
         if (state.current_phase == Phase::SETUP) {
-            can_my_place = (my_player == Player::USSR) ? c_info.in_eastern_europe : c_info.in_western_europe;
-            can_opp_place = (opp_player == Player::USSR) ? c_info.in_eastern_europe : c_info.in_western_europe;
+            auto check_setup_place = [&](Player pl) -> bool {
+                if (pl == Player::USSR) return c_info.in_eastern_europe;
+                if (state.ctx().pending_ops_value == 0) return c_info.in_western_europe;
+                return state.countries[i].us_influence > 0;
+            };
+            can_my_place = check_setup_place(my_player);
+            can_opp_place = check_setup_place(opp_player);
         } else {
             can_my_place = Operations::can_place_influence(state, my_player, i);
             can_opp_place = Operations::can_place_influence(state, opp_player, i);

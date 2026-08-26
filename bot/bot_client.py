@@ -83,8 +83,8 @@ class HeuristicBot(BaseBot):
                     if preferred in valid_ids:
                         return {"decision_type": d_type, "primary_id": preferred, "secondary_id": 0, "flags": 0}
             elif self.role == "US":
-                # West Germany (6), Italy (10)
-                for preferred in [6, 10]:
+                # Iran (25), West Germany (7), Italy (10), France (8)
+                for preferred in [25, 7, 10, 8]:
                     if preferred in valid_ids:
                         return {"decision_type": d_type, "primary_id": preferred, "secondary_id": 0, "flags": 0}
 

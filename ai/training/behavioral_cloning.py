@@ -42,8 +42,8 @@ class OldHeuristicPolicy:
                         if action_idx in legal_indices:
                             return action_idx
             else:
-                # US: 4 in West Germany (7), 3 in Italy (10), France (8)
-                targets = [(7, 4), (10, 3), (8, 3), (9, 2)]
+                # US: Stage 0 Western Europe (WG to 4, Italy to 3, France) + Stage 1 Bonus (Iran to 2/3, Italy/WG)
+                targets = [(25, 2), (7, 4), (10, 3), (8, 3), (25, 3), (10, 4), (9, 2)]
                 for c_id, needed in targets:
                     if state.get_country(c_id).us_influence < needed:
                         action_idx = ActionEncoder.NODE_OFFSET + c_id
@@ -173,8 +173,8 @@ class HeuristicPolicy:
                         if action_idx in legal_indices:
                             return action_idx
             else:
-                # US: 4 in West Germany (7), 3 in Italy (10), France (8)
-                targets = [(7, 4), (10, 3), (8, 3), (9, 2)]
+                # US: Stage 0 Western Europe (WG to 4, Italy to 3, France) + Stage 1 Bonus (Iran to 2/3, Italy/WG)
+                targets = [(25, 2), (7, 4), (10, 3), (8, 3), (25, 3), (10, 4), (9, 2)]
                 for c_id, needed in targets:
                     if state.get_country(c_id).us_influence < needed:
                         action_idx = ActionEncoder.NODE_OFFSET + c_id

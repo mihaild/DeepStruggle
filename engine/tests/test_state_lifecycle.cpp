@@ -37,12 +37,27 @@ TEST(StateLifecycleTest, SetupState_USSRAndUSPlacement_TransitionsToHeadline) {
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().remaining_steps, 7);
 
-    // 2. US places 7 influence in Western Europe
+    // 2. US places 7 influence in Western Europe (Stage 0)
     for (int i = 0; i < 7; ++i) {
         bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0});
         ASSERT_TRUE(ok);
     }
     ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].us_influence, 7);
+
+    // Transitions to US Stage 1 (2 Bonus influence in countries with existing US presence)
+    ASSERT_EQ(state.current_phase, ts::Phase::SETUP);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().remaining_steps, 2);
+    ASSERT_EQ(state.ctx().pending_ops_value, 1);
+
+    // 3. US places 2 bonus influence (1 in Iran, 1 in West Germany)
+    bool ok_iran = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0});
+    ASSERT_TRUE(ok_iran);
+    ASSERT_EQ(state.countries[ts::countries::IRAN].us_influence, 2);
+
+    bool ok_wg = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::WEST_GERMANY, 0, 0});
+    ASSERT_TRUE(ok_wg);
+    ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].us_influence, 8);
 
     // Setup complete -> Transitions cleanly to Headline phase of Turn 1
     ASSERT_EQ(state.current_phase, ts::Phase::HEADLINE);

@@ -238,8 +238,16 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         if (MapData::get_country(i).in_eastern_europe) mask_out[i] = 1;
                     }
                 } else if (p == Player::US) {
-                    for (uint8_t i = 0; i < 84; ++i) {
-                        if (MapData::get_country(i).in_western_europe) mask_out[i] = 1;
+                    if (ctx.pending_ops_value == 0) {
+                        // Stage 0: 7 Western Europe placements
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (MapData::get_country(i).in_western_europe) mask_out[i] = 1;
+                        }
+                    } else {
+                        // Stage 1: 2 Bonus placements in countries with existing US presence
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (state.countries[i].us_influence > 0) mask_out[i] = 1;
+                        }
                     }
                 }
                 return;

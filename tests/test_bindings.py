@@ -63,3 +63,62 @@ def test_map_and_card_data():
     assert card_name == "The China Card"
     card_info = ts_engine.CardData.get_card_info(6)
     assert card_info["ops"] == 4
+
+def test_us_bonus_placement_full_lifecycle():
+    state = ts_engine.GameState()
+    ts_engine.Engine.init_game(state, 12345)
+
+    # 1. USSR places 6 influence in Poland (15)
+    for _ in range(6):
+        action = ts_engine.MicroAction(
+            decision_type=ts_engine.DecisionType.POINT_NODE,
+            primary_id=15,
+            secondary_id=0,
+            flags=0
+        )
+        assert ts_engine.Engine.step(state, action)
+
+    # 2. Transits to US Stage 0 (7 influence in Western Europe)
+    assert state.current_phase == ts_engine.Phase.SETUP
+    assert state.ctx().decision_player == ts_engine.Player.US
+    assert state.ctx().remaining_steps == 7
+    assert state.ctx().pending_ops_value == 0
+
+    mask = ts_engine.Engine.get_legal_action_mask(state)
+    assert mask[7] == 1  # West Germany legal
+    assert mask[25] == 0 # Iran illegal during Western Europe stage
+
+    # US places 4 in West Germany (7) and 3 in Italy (10)
+    for _ in range(4):
+        action = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=7, secondary_id=0, flags=0)
+        assert ts_engine.Engine.step(state, action)
+    for _ in range(3):
+        action = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=10, secondary_id=0, flags=0)
+        assert ts_engine.Engine.step(state, action)
+
+    # 3. Transits to US Stage 1 (2 Bonus influence in countries with existing US presence)
+    assert state.current_phase == ts_engine.Phase.SETUP
+    assert state.ctx().decision_player == ts_engine.Player.US
+    assert state.ctx().remaining_steps == 2
+    assert state.ctx().pending_ops_value == 1
+
+    mask = ts_engine.Engine.get_legal_action_mask(state)
+    assert mask[25] == 1 # Iran (has 1 US influence) is legal!
+    assert mask[7] == 1  # West Germany (has 4 US influence) is legal!
+    assert mask[0] == 1  # Canada (has 2 US influence) is legal!
+    assert mask[26] == 0 # Iraq (0 US influence) is ILLEGAL!
+
+    # Place bonus 1 in Iran
+    act_iran = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=25, secondary_id=0, flags=0)
+    assert ts_engine.Engine.step(state, act_iran)
+    assert state.get_country(25).us_influence == 2
+    assert state.ctx().remaining_steps == 1
+
+    # Place bonus 2 in West Germany
+    act_wg = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=7, secondary_id=0, flags=0)
+    assert ts_engine.Engine.step(state, act_wg)
+    assert state.get_country(7).us_influence == 5
+
+    # 4. Setup completes cleanly into Turn 1 HEADLINE phase
+    assert state.current_phase == ts_engine.Phase.HEADLINE
+    assert state.turn == 1
