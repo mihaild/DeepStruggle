@@ -52,3 +52,106 @@ TEST(OpsTest, NATOProtectionAgainstCoup) {
     state.set_flag(ts::effect_bits::NATO_CANCELED_FRANCE);
     ASSERT_TRUE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::FRANCE));
 }
+
+TEST(OpsTest, RealignmentDefconRestrictions) {
+    ts::GameState state{};
+    // Give opponent influence in each region
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 2; // Europe
+    state.countries[ts::countries::JAPAN].us_influence = 2;        // Asia
+    state.countries[ts::countries::EGYPT].us_influence = 2;        // Middle East
+    state.countries[ts::countries::ANGOLA].us_influence = 2;       // Africa
+    state.countries[ts::countries::CHILE].us_influence = 2;        // South America
+    state.countries[ts::countries::CUBA].us_influence = 2;         // Central America
+
+    // DEFCON 5: All regions allowed for coup and realign
+    state.defcon = 5;
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::JAPAN));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::EGYPT));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::ANGOLA));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::CHILE));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::CUBA));
+
+    // DEFCON 4: Europe restricted
+    state.defcon = 4;
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::JAPAN));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::EGYPT));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::ANGOLA));
+
+    // DEFCON 3: Europe and Asia restricted
+    state.defcon = 3;
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::JAPAN));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::JAPAN));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::EGYPT));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::ANGOLA));
+
+    // DEFCON 2: Europe, Asia, and Middle East restricted
+    state.defcon = 2;
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::JAPAN));
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::EGYPT));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::EGYPT));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::ANGOLA));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::CHILE));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::CUBA));
+}
+
+TEST(OpsTest, TearDownThisWallDefconExemption) {
+    ts::GameState state{};
+    state.defcon = 2;
+    state.countries[ts::countries::WEST_GERMANY].ussr_influence = 2;
+    state.countries[ts::countries::EGYPT].ussr_influence = 2;
+
+    // Normal play at DEFCON 2: US cannot realign or coup in West Germany or Egypt
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::WEST_GERMANY));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::WEST_GERMANY));
+
+    // When resolving Tear Down This Wall (#96) as US:
+    state.ctx().pending_op_card = ts::card_ids::TEAR_DOWN_THIS_WALL;
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::WEST_GERMANY));
+    ASSERT_TRUE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::WEST_GERMANY));
+
+    // But Middle East is not Europe, so still restricted at DEFCON 2
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::EGYPT));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::EGYPT));
+
+    // And USSR is not exempt under Tear Down This Wall
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 2;
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+}
+
+TEST(OpsTest, ReformerRestrictsCoupNotRealign) {
+    ts::GameState state{};
+    state.defcon = 5;
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 2;
+
+    // Before Reformer at DEFCON 5: USSR can coup and realign in West Germany
+    ASSERT_TRUE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+
+    // Set THE_REFORMER_PLAYED
+    state.set_flag(ts::effect_bits::THE_REFORMER_PLAYED);
+
+    // Coup in Europe is blocked by Reformer
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+    // Realignment in Europe is NOT blocked by Reformer
+    ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::USSR, ts::countries::WEST_GERMANY));
+}
+
+TEST(OpsTest, CanCoupOrRealignSideQuery) {
+    ts::GameState state{};
+    state.defcon = 2;
+    // With empty board, no opponent influence anywhere -> false
+    ASSERT_FALSE(ts::Operations::can_coup_or_realign(state, ts::Player::US));
+
+    // Add US influence only in Europe (West Germany) at DEFCON 2 -> Europe restricted -> false for USSR
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 2;
+    ASSERT_FALSE(ts::Operations::can_coup_or_realign(state, ts::Player::USSR));
+
+    // Add US influence in Angola (Africa, never restricted by DEFCON) -> true for USSR
+    state.countries[ts::countries::ANGOLA].us_influence = 1;
+    ASSERT_TRUE(ts::Operations::can_coup_or_realign(state, ts::Player::USSR));
+}

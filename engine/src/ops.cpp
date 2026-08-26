@@ -99,7 +99,7 @@ bool Operations::place_influence(GameState& state, Player p, uint8_t country_id)
     return true;
 }
 
-bool Operations::can_coup(const GameState& state, Player p, uint8_t country_id) noexcept {
+bool Operations::can_coup_or_realign(const GameState& state, Player p, uint8_t country_id) noexcept {
     if (country_id >= 84 || p == Player::NONE) return false;
 
     Player opp = get_opponent(p);
@@ -107,24 +107,27 @@ bool Operations::can_coup(const GameState& state, Player p, uint8_t country_id) 
 
     const auto& c_info = MapData::get_country(country_id);
 
-    // DEFCON regional restrictions
-    if (state.defcon <= 4 && c_info.region == Region::EUROPE) return false;
-    if (state.defcon <= 3 && c_info.region == Region::ASIA) return false;
-    if (state.defcon <= 2 && c_info.region == Region::MIDDLE_EAST) return false;
+    // Special effects that circumvent DEFCON restrictions:
+    // Tear Down This Wall (#96) allows US free Coup Attempts or Realignment rolls in Europe regardless of DEFCON
+    bool defcon_exempt = (p == Player::US &&
+                          state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL &&
+                          c_info.region == Region::EUROPE);
+
+    if (!defcon_exempt) {
+        // DEFCON regional restrictions (Rule 8.1.5)
+        if (state.defcon <= 4 && c_info.region == Region::EUROPE) return false;
+        if (state.defcon <= 3 && c_info.region == Region::ASIA) return false;
+        if (state.defcon <= 2 && c_info.region == Region::MIDDLE_EAST) return false;
+    }
 
     // Special restrictions for USSR
     if (p == Player::USSR) {
-        // The Reformer prevents all USSR coups in Europe
-        if (state.has_flag(effect_bits::THE_REFORMER_PLAYED) && c_info.region == Region::EUROPE) {
-            return false;
-        }
-
-        // US/Japan Pact
+        // US/Japan Pact: USSR cannot coup or realign in Japan
         if (state.has_flag(effect_bits::US_JAPAN_PACT_ACTIVE) && country_id == countries::JAPAN) {
             return false;
         }
 
-        // NATO protection
+        // NATO protection: USSR cannot coup or realign in US-controlled European countries
         if (state.has_flag(effect_bits::NATO_ACTIVE) && c_info.region == Region::EUROPE) {
             if (Scoring::is_controlled_by(state, country_id, Player::US)) {
                 bool exempt = (country_id == countries::FRANCE && state.has_flag(effect_bits::NATO_CANCELED_FRANCE)) ||
@@ -132,6 +135,28 @@ bool Operations::can_coup(const GameState& state, Player p, uint8_t country_id) 
                 if (!exempt) return false;
             }
         }
+    }
+
+    return true;
+}
+
+bool Operations::can_coup_or_realign(const GameState& state, Player p) noexcept {
+    if (p == Player::NONE) return false;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (can_coup_or_realign(state, p, i)) return true;
+    }
+    return false;
+}
+
+bool Operations::can_coup(const GameState& state, Player p, uint8_t country_id) noexcept {
+    if (!can_coup_or_realign(state, p, country_id)) return false;
+
+    const auto& c_info = MapData::get_country(country_id);
+
+    // Coup-specific restrictions:
+    // The Reformer prevents all USSR coups in Europe
+    if (p == Player::USSR && state.has_flag(effect_bits::THE_REFORMER_PLAYED) && c_info.region == Region::EUROPE) {
+        return false;
     }
 
     return true;
@@ -277,31 +302,7 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
 }
 
 bool Operations::can_realign(const GameState& state, Player p, uint8_t country_id) noexcept {
-    if (country_id >= 84 || p == Player::NONE) return false;
-
-    Player opp = get_opponent(p);
-    if (state.countries[country_id].get_influence(opp) == 0) return false;
-
-    const auto& c_info = MapData::get_country(country_id);
-
-    // Special restrictions for USSR
-    if (p == Player::USSR) {
-        // US/Japan Pact
-        if (state.has_flag(effect_bits::US_JAPAN_PACT_ACTIVE) && country_id == countries::JAPAN) {
-            return false;
-        }
-
-        // NATO protection
-        if (state.has_flag(effect_bits::NATO_ACTIVE) && c_info.region == Region::EUROPE) {
-            if (Scoring::is_controlled_by(state, country_id, Player::US)) {
-                bool exempt = (country_id == countries::FRANCE && state.has_flag(effect_bits::NATO_CANCELED_FRANCE)) ||
-                              (country_id == countries::WEST_GERMANY && state.has_flag(effect_bits::NATO_CANCELED_WEST_GERMANY));
-                if (!exempt) return false;
-            }
-        }
-    }
-
-    return true;
+    return can_coup_or_realign(state, p, country_id);
 }
 
 RealignResult Operations::execute_realign(GameState& state, Player p, uint8_t country_id, uint8_t forced_us_roll, uint8_t forced_ussr_roll) noexcept {

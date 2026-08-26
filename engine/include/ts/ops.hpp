@@ -44,6 +44,10 @@ public:
     static bool can_realign(const GameState& state, Player p, uint8_t country_id) noexcept;
     static RealignResult execute_realign(GameState& state, Player p, uint8_t country_id, uint8_t forced_us_roll = 0, uint8_t forced_ussr_roll = 0) noexcept;
 
+    // Shared Coup/Realignment Restrictions
+    static bool can_coup_or_realign(const GameState& state, Player p, uint8_t country_id) noexcept;
+    static bool can_coup_or_realign(const GameState& state, Player p) noexcept;
+
     // Fast bitmask queries for legal targets
     static void get_influence_placement_mask(const GameState& state, Player p, uint8_t ops_available, uint8_t* out_mask_84) noexcept;
     static void get_coup_target_mask(const GameState& state, Player p, uint8_t* out_mask_84) noexcept;
