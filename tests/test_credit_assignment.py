@@ -498,3 +498,112 @@ class TestTurnBoundaryCreditSlicing:
         assert buf.returns_win[2, 0].item() == -1.0
         assert buf.returns_win[1, 0].item() == 0.0, f"Turn 2 return must be 0.0 (sliced), got {buf.returns_win[1, 0].item()}"
         assert buf.returns_win[0, 0].item() == 0.0, f"Turn 1 return must be 0.0 (sliced), got {buf.returns_win[0, 0].item()}"
+
+    def test_provoked_defcon_suicide_reward_propagation(self):
+        """Tests that in an Event Trap (provoked DEFCON suicide), the winner gets +1.0
+
+        and zero-sum alternating GAE propagates -1.0 penalty to the trapped loser.
+        """
+        calc = BlunderAwareRewardCalculator()
+        st = ts.GameState()
+        ts.Engine.init_game(st, 300)
+        st.defcon = 1
+        st.set_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
+
+        # US is acting player who executed the coup, US won
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([20], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us[0] == 1.0, f"Acting winner (US) executing event trap coup must receive +1.0, got {r_us[0]}"
+
+        # In GAE buffer: Step t-1 (USSR played dangerous card), Step t (US executed coup)
+        buf = RolloutBuffer(buffer_size=2, num_envs=1, obs_dim=10, action_dim=5, device="cpu")
+        obs = np.zeros((1, 10), dtype=np.float32)
+        mask = np.ones((1, 5), dtype=np.uint8)
+        act = np.zeros(1, dtype=np.int64)
+        lp = torch.zeros(1)
+        v_win = torch.zeros(1)
+        v_vp = torch.zeros(1)
+
+        # Step 0: USSR (-1) played CIA Created (non-terminal, r=0.0)
+        buf.add(obs, mask, act, lp, np.array([0.0]), np.array([False]), v_win, v_vp, np.array([-1], dtype=np.int8))
+        # Step 1: US (+1) executed coup (terminal, r=+1.0)
+        buf.add(obs, mask, act, lp, np.array([1.0]), np.array([True]), v_win, v_vp, np.array([1], dtype=np.int8))
+
+        buf.compute_gae(
+            last_v_win=torch.zeros(1),
+            last_v_vp=torch.zeros(1),
+            last_dones=torch.tensor([True]),
+            last_players=torch.tensor([1]),
+            gamma=1.0,
+            gae_lambda=1.0,
+        )
+
+        assert buf.returns_win[1, 0].item() == 1.0, "US return must be +1.0"
+        assert buf.returns_win[0, 0].item() == -1.0, f"USSR return must be -1.0 (penalized for playing trap card), got {buf.returns_win[0, 0].item()}"
+
+
+class TestHeadlineResolutionOrder:
+    """Verifies official Twilight Struggle Rule 4.3 headline resolution order:
+
+    1. Higher printed Ops card resolves first.
+    2. Ties resolve US card first.
+    3. If first headline terminates the game, second headline is not resolved.
+    """
+
+    def test_higher_ops_resolves_first(self):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 42)
+        st.turn = 7
+        st.defcon = 3
+        st.current_phase = ts.Phase.HEADLINE
+
+        # Card 50 (We Will Bury You) = 4 Ops; Card 4 (Duck and Cover) = 3 Ops
+        st.set_card_location(4, ts.CardLocation.HAND_US)
+        st.set_card_location(50, ts.CardLocation.HAND_USSR)
+
+        # US selects Duck and Cover (3 Ops)
+        st.ctx().decision_player = ts.Player.US
+        st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
+
+        # USSR selects We Will Bury You (4 Ops)
+        st.ctx().decision_player = ts.Player.USSR
+        st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 50, 0, 0))
+
+        # WWBY (4 Ops) resolves first -> DEFCON 3 -> 2
+        # Duck & Cover (3 Ops) resolves second on US phasing -> DEFCON 2 -> 1 -> US loses!
+        assert st.defcon == 1, f"DEFCON must reach 1, got {st.defcon}"
+        assert st.current_phase == ts.Phase.GAME_OVER, "Game must be over"
+        assert st.victory_points == -20, f"USSR must win (-20 VP), got {st.victory_points}"
+        assert ts.Engine.get_terminal_utility(st) == -1.0, "Terminal utility must be -1.0 (USSR Win)"
+
+    def test_tie_in_ops_resolves_us_first(self):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 42)
+        st.turn = 3
+        st.defcon = 3
+        st.current_phase = ts.Phase.HEADLINE
+
+        # Card 4 (Duck and Cover) = 3 Ops; Card 8 (Fidel) = 3 Ops
+        st.set_card_location(4, ts.CardLocation.HAND_US)
+        st.set_card_location(8, ts.CardLocation.HAND_USSR)
+
+        # US selects Duck and Cover (3 Ops)
+        st.ctx().decision_player = ts.Player.US
+        st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
+
+        # USSR selects Fidel (3 Ops)
+        st.ctx().decision_player = ts.Player.USSR
+        st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 8, 0, 0))
+
+        # On tie, US card must resolve first
+        assert st.headline_first_card == 4, f"US card (4) must resolve first on tie, got {st.headline_first_card}"

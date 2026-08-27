@@ -102,7 +102,10 @@ class BlunderAwareRewardCalculator:
 
             if st is not None:
                 if st.defcon <= 1:
-                    is_blunder = True
+                    # Unprovoked DEFCON suicide (direct coup/degradation) is a blunder.
+                    # Provoked DEFCON suicide (event trap where opponent executed coup) is a strategic win!
+                    if not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
+                        is_blunder = True
                 else:
                     # Held scoring blunder applies only if the LOSING player held a scoring card
                     if loser_player == 1:
