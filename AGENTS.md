@@ -346,6 +346,12 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    (e.g., `data/checkpoints/run_v3_20260826_231500` or `data/checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v3_2h`) are strictly forbidden.
 8. **Bounded Dataset Streaming & OOM Prevention**:
    Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.
+9. **Mandatory Unified CLI Invariant — No Ad-Hoc Scripts**:
+   Agents must NEVER write ad-hoc Python scripts, scratch files, or one-off code to call Behavioral Cloning (`ai/training/behavioral_cloning.py`), train neural models, run tournaments, or simulate matches.
+   - For all model training (both Behavioral Cloning warmup and RL self-play): **ALWAYS execute `tools/train.py`** (`tools/train.py --mode warmup --warmup-dataset <path>` for BC warmup, or `tools/train.py --warmup-dataset <path>` for BC warmup + RL self-play).
+   - For all tournaments and evaluations: **ALWAYS execute `tools/tournament.py`**.
+   - For all match simulation and replays: **ALWAYS execute `tools/play_match.py`**.
+   Writing one-off scripts to invoke training or simulation functions directly violates repository architecture.
 
 ---
 

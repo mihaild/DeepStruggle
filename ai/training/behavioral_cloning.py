@@ -459,3 +459,13 @@ class BehavioralCloningTrainer:
             )
 
         return history
+
+
+if __name__ == "__main__":
+    import sys
+    print("Notice: Directly executing behavioral_cloning.py is deprecated. Use the unified CLI: tools/train.py --mode warmup")
+    from ai.training.train import main as train_main
+    if "--mode" not in sys.argv:
+        sys.argv.insert(1, "warmup")
+        sys.argv.insert(1, "--mode")
+    train_main()
