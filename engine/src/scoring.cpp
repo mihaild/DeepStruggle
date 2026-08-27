@@ -1,3 +1,4 @@
+#include "ts/ops.hpp"
 #include "ts/scoring.hpp"
 #include "ts/map_data.hpp"
 #include "ts/constants.hpp"
@@ -277,6 +278,89 @@ void Scoring::execute_final_scoring(GameState& state) noexcept {
     total_vp = std::clamp(total_vp, -20, 20);
     state.victory_points = static_cast<int8_t>(total_vp);
     state.current_phase = Phase::GAME_OVER;
+}
+
+
+float Scoring::compute_useful_actions_potential(const GameState& state, Player p) noexcept {
+    if (p == Player::NONE) return 0.0f;
+    Player opp = (p == Player::US) ? Player::USSR : Player::US;
+    float p_sign = (p == Player::US) ? 1.0f : -1.0f;
+
+    // 1. VP in favor of current player: (vp in favor) / 20.0, weight 0.5
+    float vp_favor = static_cast<float>(state.victory_points) * p_sign;
+    float term1 = std::clamp(vp_favor / 20.0f, -1.0f, 1.0f);
+
+    // 2. Battlegrounds: (bg controlled by player - bg controlled by opp) / total bg, weight 0.3
+    uint8_t total_bg = 0;
+    int16_t bg_diff = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        const auto& c_info = MapData::get_country(i);
+        if (c_info.battleground) {
+            total_bg++;
+            Player ctrl = get_country_control(state, i);
+            if (ctrl == p) bg_diff++;
+            else if (ctrl == opp) bg_diff--;
+        }
+    }
+    float term2 = (total_bg > 0) ? (static_cast<float>(bg_diff) / static_cast<float>(total_bg)) : 0.0f;
+
+    // 3. Unscored regions: (sum across all unscored regions of (vp region would give current player) / (control_vp + num_bg)) / 6, weight 0.1
+    constexpr std::array<std::pair<Region, uint8_t>, 6> REGIONS = {{
+        {Region::EUROPE, card_ids::EUROPE_SCORING},
+        {Region::ASIA, card_ids::ASIA_SCORING},
+        {Region::MIDDLE_EAST, card_ids::MIDDLE_EAST_SCORING},
+        {Region::AFRICA, card_ids::AFRICA_SCORING},
+        {Region::CENTRAL_AMERICA, card_ids::CENTRAL_AMERICA_SCORING},
+        {Region::SOUTH_AMERICA, card_ids::SOUTH_AMERICA_SCORING}
+    }};
+
+    float sum_unscored_ratio = 0.0f;
+    for (const auto& [r, card_id] : REGIONS) {
+        if (state.card_locations[card_id] == CardLocation::DISCARD_PILE) {
+            continue; // Region is already scored this cycle
+        }
+        auto summ = evaluate_region(state, r);
+        int16_t net_vp = 0;
+        if (r == Region::EUROPE) {
+            if (summ.us_status == RegionalStatus::CONTROL) {
+                net_vp = 20 + summ.us_battlegrounds;
+            } else if (summ.ussr_status == RegionalStatus::CONTROL) {
+                net_vp = -(20 + summ.ussr_battlegrounds);
+            } else {
+                net_vp = summ.net_delta;
+            }
+        } else {
+            net_vp = summ.net_delta;
+        }
+        int16_t vp_player = (p == Player::US) ? net_vp : -net_vp;
+
+        int16_t ctrl_vp = 0;
+        switch (r) {
+            case Region::EUROPE: ctrl_vp = 20; break;
+            case Region::ASIA: ctrl_vp = 9; break;
+            case Region::MIDDLE_EAST: ctrl_vp = 7; break;
+            case Region::AFRICA: ctrl_vp = 6; break;
+            case Region::CENTRAL_AMERICA: ctrl_vp = 5; break;
+            case Region::SOUTH_AMERICA: ctrl_vp = 6; break;
+            default: break;
+        }
+        uint8_t bg_cnt = MapData::get_region_battleground_count(r);
+        float denom = static_cast<float>(ctrl_vp + bg_cnt);
+        if (denom > 0.0f) {
+            sum_unscored_ratio += std::clamp(static_cast<float>(vp_player) / denom, -1.0f, 1.0f);
+        }
+    }
+    float term3 = sum_unscored_ratio / 6.0f;
+
+    // 4. Country access: (countries player has access to - countries opp has access to) / 84, weight 0.1
+    int16_t access_diff = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (Operations::can_place_influence(state, p, i)) access_diff++;
+        if (Operations::can_place_influence(state, opp, i)) access_diff--;
+    }
+    float term4 = static_cast<float>(access_diff) / 84.0f;
+
+    return 0.5f * term1 + 0.3f * term2 + 0.1f * term3 + 0.1f * term4;
 }
 
 } // namespace ts

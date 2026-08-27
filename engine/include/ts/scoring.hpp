@@ -45,6 +45,9 @@ public:
 
     // Conducts Final Scoring (Phase I at end of Turn 10)
     static void execute_final_scoring(GameState& state) noexcept;
+
+    // Computes the strategic useful actions potential Phi(s, p) in [-1.0, 1.0]
+    static float compute_useful_actions_potential(const GameState& state, Player p) noexcept;
 };
 
 } // namespace ts

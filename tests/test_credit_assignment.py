@@ -9,7 +9,7 @@ import pytest
 import numpy as np
 import torch
 import ts_engine as ts
-from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
 from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 
@@ -634,3 +634,124 @@ class TestHeadlineResolutionOrder:
 
         # On tie, US card must resolve first
         assert st.headline_first_card == 4, f"US card (4) must resolve first on tie, got {st.headline_first_card}"
+
+
+class TestUsefulActionsRewardCalculator:
+    """Verifies UsefulActionsReward potential shaping and BlunderAware inheritance."""
+
+    def test_vp_potential_component(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+
+        base_us = calc.compute_potential(st, 1)
+        base_ussr = calc.compute_potential(st, -1)
+        assert abs(base_us + base_ussr) < 1e-5, "Potential must be symmetric opposite at initial state"
+
+        # Increase VP by +2 for US
+        st.victory_points += 2
+        pot_us = calc.compute_potential(st, 1)
+        delta = pot_us - base_us
+        expected_delta = (2.0 / 20.0) * 0.5  # weight 0.5
+        assert abs(delta - expected_delta) < 1e-4, f"VP delta must be {expected_delta}, got {delta}"
+
+    def test_battleground_control_component(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+
+        base_us = calc.compute_potential(st, 1)
+        # Give US control of South Korea (country 36, stability 3)
+        st.set_country(36, 5, 0)
+        pot_us = calc.compute_potential(st, 1)
+        assert pot_us > base_us, "Gaining battleground control must increase potential"
+
+    def test_country_access_component(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+
+        base_us = calc.compute_potential(st, 1)
+        # Give US influence in remote country Angola (57)
+        st.set_country(57, 1, 0)
+        pot_us = calc.compute_potential(st, 1)
+        assert pot_us > base_us, "Expanding country access must increase potential"
+
+    def test_unscored_regions_component_and_discard_behavior(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+
+        # Discarding Asia Scoring card (1) means Asia is no longer unscored
+        p_unscored = calc.compute_potential(st, 1)
+        st.set_card_location(1, ts.CardLocation.DISCARD_PILE)
+        p_scored = calc.compute_potential(st, 1)
+        assert p_unscored != p_scored, "Discarding scoring card must remove region from unscored potential"
+
+    def test_useful_actions_reward_inherits_blunder_aware_terminal(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 200)
+        st.defcon = 1  # DEFCON suicide
+        st.phasing_player = ts.Player.USSR
+
+        # USSR commits unprovoked suicide on USSR turn -> receives -1.0
+        r_ussr = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_ussr[0] == -1.0, "Blundering player on terminal step must receive -1.0"
+
+        # US is non-phasing player provoking USSR suicide -> receives +1.0
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us[0] == 1.0, "Acting player provoking opponent DEFCON suicide must receive +1.0"
+
+    def test_useful_actions_reward_step_potential_delta(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 300)
+
+        # Step 0: init
+        r0 = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([False]),
+            terminal_utilities=np.array([0.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r0[0] == 0.0, "Initial step without delta has 0.0 reward"
+
+        # Step 1: US captures battleground
+        st.set_country(36, 5, 0)
+        r1 = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([False]),
+            terminal_utilities=np.array([0.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r1[0] > 0.0, f"Capturing battleground must grant positive shaped reward, got {r1[0]}"
+
+    def test_vectorized_runner_potentials(self):
+        runner = ts.VectorizedBatchRunner(8, 42)
+        acting_players = [1, -1, 1, -1, 1, -1, 1, -1]
+        pots = runner.compute_useful_actions_potentials(acting_players)
+        assert len(pots) == 8
+        calc = UsefulActionsReward()
+        for i in range(8):
+            st = runner.get_state(i)
+            expected = calc.compute_potential(st, acting_players[i])
+            assert abs(pots[i] - expected) < 1e-5, f"Vectorized potential at env {i} must match scalar calculation"

@@ -6,6 +6,7 @@ from ai.rewards.reward_calculator import (
     ZeroSumTerminalReward,
     BlunderAwareRewardCalculator,
     ShapedZeroSumReward,
+    UsefulActionsReward,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ZeroSumTerminalReward",
     "BlunderAwareRewardCalculator",
     "ShapedZeroSumReward",
+    "UsefulActionsReward",
 ]

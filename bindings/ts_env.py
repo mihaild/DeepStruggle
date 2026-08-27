@@ -114,6 +114,8 @@ class TsVectorizedEnv:
 
     def reset_all(self, base_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         """Reset all environments."""
+        if hasattr(self.reward_calc, "reset"):
+            self.reward_calc.reset()
         if base_seed is not None:
             self.base_seed = base_seed
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed)
@@ -147,9 +149,13 @@ class TsVectorizedEnv:
         term_utils = np.array(self.runner.get_terminal_utilities(), dtype=np.float32)
         curr_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
-        # Retrieve state pointers for any terminal environments
+        # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
-        if np.any(dones):
+        needs_all_states = getattr(self.reward_calc, "needs_all_states", False)
+        if needs_all_states:
+            for i in range(self.num_envs):
+                states.append(self.runner.get_state(i))
+        elif np.any(dones):
             for i in range(self.num_envs):
                 states.append(self.runner.get_state(i) if dones[i] else None)
         else:

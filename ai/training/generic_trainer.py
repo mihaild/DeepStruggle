@@ -18,7 +18,7 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
-from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
 from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.warmup_dataset_loader import WarmupDataset
@@ -110,6 +110,8 @@ def train_pipeline(
     post_tournament: bool = False,
     post_tournament_models: Optional[List[str]] = None,
     post_tournament_games: int = 500,
+    curriculum_switch_seconds: Optional[int] = None,
+    curriculum_switch_fraction: float = 0.5,
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -145,13 +147,28 @@ def train_pipeline(
         print("No warmup checkpoint or dataset specified. Starting from fresh weights.", flush=True)
 
     # 3. Setup Reward Calculator & Vectorized Env
-    if reward_scheme == "blunder_aware":
+    is_curriculum = (reward_scheme == "curriculum")
+    if is_curriculum or reward_scheme == "useful_actions":
+        reward_calc = UsefulActionsReward()
+    elif reward_scheme == "blunder_aware":
         reward_calc = BlunderAwareRewardCalculator()
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
     else:
         reward_calc = ZeroSumTerminalReward()
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
+
+    # Curriculum timing configuration
+    if is_curriculum:
+        if curriculum_switch_seconds is not None:
+            curriculum_switch_at = float(curriculum_switch_seconds)
+        else:
+            curriculum_switch_at = float(duration_seconds) * float(curriculum_switch_fraction)
+        curriculum_switched = False
+        print(f"[CURRICULUM] Active: Stage 1 = UsefulActionsReward (first {curriculum_switch_at:.0f}s), Stage 2 = BlunderAwareRewardCalculator", flush=True)
+    else:
+        curriculum_switch_at = float("inf")
+        curriculum_switched = False
 
     ref_model = create_coldwar_net_v3(dev) if arch == "v3" else (create_coldwar_net_v2(dev) if arch == "v2" else create_coldwar_net(dev))
     ref_model.load_state_dict(model.state_dict())
@@ -223,6 +240,15 @@ def train_pipeline(
         elapsed = time.time() - t_start
         if elapsed >= duration_seconds:
             break
+
+        # Curriculum stage switch from UsefulActionsReward to BlunderAwareRewardCalculator
+        if is_curriculum and not curriculum_switched and elapsed >= curriculum_switch_at:
+            curriculum_switched = True
+            env.reward_calc = BlunderAwareRewardCalculator()
+            reward_scheme = "blunder_aware"
+            print(f"\n{'=' * 80}", flush=True)
+            print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with BlunderAwareRewardCalculator at elapsed={elapsed:.1f}s / {duration_seconds}s", flush=True)
+            print(f"{'=' * 80}\n", flush=True)
 
         it += 1
         model.eval()

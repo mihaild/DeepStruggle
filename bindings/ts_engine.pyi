@@ -579,6 +579,29 @@ class CardHandlers:
     @staticmethod
     def handle_event_step(arg0: GameState, arg1: MicroAction, /) -> bool: ...
 
+class RegionalStatus:
+    NONE: int
+    PRESENCE: int
+    DOMINATION: int
+    CONTROL: int
+
+class RegionScoreSummary:
+    us_status: RegionalStatus
+    ussr_status: RegionalStatus
+    us_countries: int
+    ussr_countries: int
+    us_battlegrounds: int
+    ussr_battlegrounds: int
+    us_superpower_adjacent: int
+    ussr_superpower_adjacent: int
+    us_score: int
+    ussr_score: int
+    net_delta: int
+
+class Operations:
+    @staticmethod
+    def can_place_influence(state: GameState, player: Player, country_id: int, /) -> bool: ...
+
 class Scoring:
     @staticmethod
     def score_region(arg0: GameState, arg1: Region, /) -> None: ...
@@ -591,6 +614,18 @@ class Scoring:
 
     @staticmethod
     def evaluate_military_ops(arg: GameState, /) -> None: ...
+
+    @staticmethod
+    def evaluate_region(state: GameState, region: Region, /) -> RegionScoreSummary: ...
+
+    @staticmethod
+    def get_country_control(state: GameState, country_id: int, /) -> Player: ...
+
+    @staticmethod
+    def is_controlled_by(state: GameState, country_id: int, player: Player, /) -> bool: ...
+
+    @staticmethod
+    def compute_useful_actions_potential(state: GameState, player: Player, /) -> float: ...
 
 class CardData:
     @staticmethod
@@ -645,3 +680,4 @@ class VectorizedBatchRunner:
     def get_victory_points(self) -> list[int]: ...
 
     def get_state(self, arg: int, /) -> GameState: ...
+    def compute_useful_actions_potentials(self, acting_players: list[int], /) -> list[float]: ...

@@ -627,12 +627,40 @@ NB_MODULE(ts_engine, m) {
                     nb::arg("state"), nb::arg("card_id"), nb::arg("player"))
         .def_static("handle_event_step", &ts::CardHandlers::handle_event_step);
 
+    // Regional Status Enum & Score Summary
+    nb::enum_<ts::RegionalStatus>(m, "RegionalStatus", nb::is_arithmetic())
+        .value("NONE", ts::RegionalStatus::NONE)
+        .value("PRESENCE", ts::RegionalStatus::PRESENCE)
+        .value("DOMINATION", ts::RegionalStatus::DOMINATION)
+        .value("CONTROL", ts::RegionalStatus::CONTROL);
+
+    nb::class_<ts::RegionScoreSummary>(m, "RegionScoreSummary")
+        .def_ro("us_status", &ts::RegionScoreSummary::us_status)
+        .def_ro("ussr_status", &ts::RegionScoreSummary::ussr_status)
+        .def_ro("us_countries", &ts::RegionScoreSummary::us_countries)
+        .def_ro("ussr_countries", &ts::RegionScoreSummary::ussr_countries)
+        .def_ro("us_battlegrounds", &ts::RegionScoreSummary::us_battlegrounds)
+        .def_ro("ussr_battlegrounds", &ts::RegionScoreSummary::ussr_battlegrounds)
+        .def_ro("us_superpower_adjacent", &ts::RegionScoreSummary::us_superpower_adjacent)
+        .def_ro("ussr_superpower_adjacent", &ts::RegionScoreSummary::ussr_superpower_adjacent)
+        .def_ro("us_score", &ts::RegionScoreSummary::us_score)
+        .def_ro("ussr_score", &ts::RegionScoreSummary::ussr_score)
+        .def_ro("net_delta", &ts::RegionScoreSummary::net_delta);
+
+    // Operations helpers
+    nb::class_<ts::Operations>(m, "Operations")
+        .def_static("can_place_influence", &ts::Operations::can_place_influence);
+
     // Scoring helpers
     nb::class_<ts::Scoring>(m, "Scoring")
         .def_static("score_region", &ts::Scoring::score_region)
         .def_static("score_southeast_asia", &ts::Scoring::score_southeast_asia)
         .def_static("execute_final_scoring", &ts::Scoring::execute_final_scoring)
-        .def_static("evaluate_military_ops", &ts::Scoring::evaluate_military_ops);
+        .def_static("evaluate_military_ops", &ts::Scoring::evaluate_military_ops)
+        .def_static("evaluate_region", &ts::Scoring::evaluate_region)
+        .def_static("get_country_control", &ts::Scoring::get_country_control)
+        .def_static("is_controlled_by", &ts::Scoring::is_controlled_by)
+        .def_static("compute_useful_actions_potential", &ts::Scoring::compute_useful_actions_potential);
 
     // Card Metadata helpers
     nb::class_<ts::CardData>(m, "CardData")
@@ -809,7 +837,17 @@ NB_MODULE(ts_engine, m) {
         .def("get_terminals", &VectorizedBatchRunner::get_terminals)
         .def("get_terminal_utilities", &VectorizedBatchRunner::get_terminal_utilities)
         .def("get_victory_points", &VectorizedBatchRunner::get_victory_points)
-        .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal);
+        .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal)
+        .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
+            size_t n = self.num_envs;
+            std::vector<float> potentials(n);
+            #pragma omp parallel for schedule(static)
+            for (size_t i = 0; i < n; ++i) {
+                ts::Player p = (acting_players[i] == 1) ? ts::Player::US : (acting_players[i] == -1 ? ts::Player::USSR : ts::Player::NONE);
+                potentials[i] = ts::Scoring::compute_useful_actions_potential(self.states[i], p);
+            }
+            return potentials;
+        });
 
     // Effect Bits module constants
     auto eb = m.def_submodule("EffectBits");

@@ -19,7 +19,7 @@ from ai.models.coldwar_net_v3 import create_coldwar_net_v3
 def main():
     parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
     parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "v3"], help="Model architecture: v1 (ColdWarNet) or v2 (ColdWarNetV2 Cross-Attention)")
-    parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval"], help="Execution mode")
+    parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval", "curriculum"], help="Execution mode")
 
     # Warm-up / Checkpoint options
     parser.add_argument("--warmup-checkpoint", "--load-path", type=str, default=None, help="Path to pre-trained checkpoint")
@@ -46,13 +46,16 @@ def main():
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
-    parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped"], help="Reward calculation scheme")
+    parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
+    parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
+    parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
 
     args = parser.parse_args()
 
-    if args.mode == "train":
+    if args.mode in ["train", "curriculum"]:
+        eff_reward_scheme = "curriculum" if args.mode == "curriculum" else args.reward_scheme
         train_pipeline(
             arch=args.arch,
             warmup_checkpoint=args.warmup_checkpoint,
@@ -68,12 +71,14 @@ def main():
             lr=args.lr,
             eta=args.eta,
             entropy_coef=args.entropy_coef,
-            reward_scheme=args.reward_scheme,
+            reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,
             device=args.device,
             post_tournament=args.post_tournament,
             post_tournament_models=args.post_tournament_models,
             post_tournament_games=args.post_tournament_games,
+            curriculum_switch_seconds=args.curriculum_switch_seconds,
+            curriculum_switch_fraction=args.curriculum_switch_fraction,
         )
     elif args.mode == "warmup":
         if not args.warmup_dataset:

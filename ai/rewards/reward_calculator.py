@@ -177,3 +177,75 @@ class ShapedZeroSumReward:
         next_players: torch.Tensor,
     ) -> torch.Tensor:
         return (curr_players * next_players).float()
+
+
+class UsefulActionsReward(BlunderAwareRewardCalculator):
+    """Reward calculator encouraging usually useful actions via strategic potential shaping.
+
+    Inherits endgame blunder-shielded terminal rewards from BlunderAwareRewardCalculator,
+    and augments intermediate steps with the potential difference Delta Phi:
+        R_step = Phi(s', p_act) - Phi(s, p_act)
+
+    Potential Function Phi(s, p) consists of 4 normalized components:
+    1. (vp in favor of current player) / 20, weight 0.5
+    2. (battlegrounds controlled by player - battlegrounds controlled by opponent) / total_bgs, weight 0.3
+    3. (sum across all unscored regions of (vp region would give) / (control_vp + num_bg)) / 6, weight 0.1
+    4. (countries player has access to - countries opponent has access to) / 84, weight 0.1
+    """
+
+    needs_all_states: bool = True
+
+    def __init__(self, potential_scale: float = 1.0):
+        super().__init__()
+        self.potential_scale: float = potential_scale
+        self.prev_potentials: Optional[np.ndarray] = None
+
+    def compute_potential(self, state: ts.GameState, player: int) -> float:
+        """Compute the strategic potential Phi(s, p) in [-1.0, 1.0] for the given player."""
+        p_enum = ts.Player.US if player == 1 else (ts.Player.USSR if player == -1 else ts.Player.NONE)
+        return float(ts.Scoring.compute_useful_actions_potential(state, p_enum))
+
+    def reset(self) -> None:
+        """Reset internal potential tracking."""
+        self.prev_potentials = None
+
+    def compute_step_rewards(
+        self,
+        acting_players: np.ndarray,
+        dones: np.ndarray,
+        terminal_utilities: np.ndarray,
+        prev_victory_points: np.ndarray,
+        curr_victory_points: np.ndarray,
+        states: Optional[List[Optional[ts.GameState]]] = None,
+    ) -> np.ndarray:
+        N = len(acting_players)
+        # 1. Terminal rewards from BlunderAwareRewardCalculator
+        rewards = super().compute_step_rewards(
+            acting_players=acting_players,
+            dones=dones,
+            terminal_utilities=terminal_utilities,
+            prev_victory_points=prev_victory_points,
+            curr_victory_points=curr_victory_points,
+            states=states,
+        )
+
+        # 2. Intermediate potential delta shaping
+        if states is not None and len(states) == N:
+            if self.prev_potentials is None or len(self.prev_potentials) != N:
+                self.prev_potentials = np.zeros(N, dtype=np.float32)
+                for i in range(N):
+                    st = states[i]
+                    if st is not None:
+                        self.prev_potentials[i] = self.compute_potential(st, int(acting_players[i]))
+
+            for i in range(N):
+                st = states[i]
+                if st is not None:
+                    p_act = int(acting_players[i])
+                    curr_pot = self.compute_potential(st, p_act)
+                    if not dones[i]:
+                        delta_pot = curr_pot - self.prev_potentials[i]
+                        rewards[i] = float(delta_pot * self.potential_scale)
+                    self.prev_potentials[i] = 0.0 if dones[i] else curr_pot
+
+        return rewards.astype(np.float32)
