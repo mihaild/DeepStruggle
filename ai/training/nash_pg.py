@@ -80,6 +80,7 @@ class NashPGTrainer:
 
         t0 = time.time()
         completed_episodes = []
+        dones_np = np.zeros(self.env.num_envs, dtype=bool)
 
         for _ in range(self.buffer_size):
             obs_t = torch.from_numpy(obs_np).float().to(self.device)

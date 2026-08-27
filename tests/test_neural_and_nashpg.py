@@ -8,7 +8,7 @@ import ts_engine as ts
 from bindings import ActionEncoder, TsSingleEnv, TsVectorizedEnv
 from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldwar_net_v2, ColdWarNetV3, create_coldwar_net_v3
 from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer
-from tools.eval.arena import ArenaEvaluator
+from tools.lib import TournamentEvaluator, NeuralAgent, RandomAgent
 from bot.neural_bot import NeuralBot
 
 
@@ -207,12 +207,11 @@ class TestNeuralBotAndArena:
         assert action["decision_type"] == int(ts.DecisionType.POINT_NODE)
         assert action["primary_id"] in [14, 15, 12]
 
-    def test_arena_evaluator_tournament(self):
+    def test_tournament_evaluator_matchup(self):
         model = create_coldwar_net("cpu")
-        arena = ArenaEvaluator(model, device="cpu")
-        summary = arena.run_tournament(opponent_type="random", num_games=4, verbose=False)
-        assert summary["total_games"] == 4
-        assert summary["neural_wins"] + summary["opponent_wins"] + summary["draws"] == 4
+        res = TournamentEvaluator.play_matchup(NeuralAgent(model, name="TestNeural"), RandomAgent(), games_per_side=2)
+        assert res["total_games"] == 4
+        assert res["a_wins"] + res["b_wins"] + res["draws"] == 4
 
 
 class TestColdWarNetV3:

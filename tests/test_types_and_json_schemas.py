@@ -8,7 +8,7 @@ import pytest
 from typing import Dict, Any
 
 import ts_engine as ts
-from tools.eval.self_play import generate_self_play_replay
+from tools.lib.self_play import generate_self_play_replay
 from web.server.replay import ReplayLogger, ReplayManager, REPLAYS_DIR
 from web.server.replay_types import (
     GameStateDict,

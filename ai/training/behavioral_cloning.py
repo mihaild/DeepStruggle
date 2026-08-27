@@ -317,8 +317,8 @@ class TrajectoryDataset(Dataset):
     def __len__(self) -> int:
         return len(self.actions)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        return self.obs[idx], self.masks[idx], self.actions[idx], self.values[idx]
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.obs[index], self.masks[index], self.actions[index], self.values[index]
 
 
 class BehavioralCloningTrainer:

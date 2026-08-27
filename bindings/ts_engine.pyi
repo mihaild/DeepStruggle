@@ -7,7 +7,55 @@ from typing import Annotated, overload
 import numpy
 from numpy.typing import NDArray
 
-from ts_engine import EffectBits as EffectBits
+class EffectBits:
+    ALDRICH_AMES_ACTIVE: int
+    AWACS_PLAYED: int
+    BEAR_TRAP_ACTIVE: int
+    BREZHNEV_DOCTRINE_ACTIVE: int
+    CAMP_DAVID_PLAYED: int
+    CHERNOBYL_ACTIVE: int
+    CHERNOBYL_REGION_MASK: int
+    CHERNOBYL_REGION_SHIFT: int
+    CMC_ACTIVE_US: int
+    CMC_ACTIVE_USSR: int
+    CONTAINMENT_ACTIVE: int
+    DEATH_SQUADS_US: int
+    DEATH_SQUADS_USSR: int
+    DEFCON_SUICIDE_PROVOKED: int
+    EVIL_EMPIRE_PLAYED: int
+    FLOWER_POWER_ACTIVE: int
+    FORMOSAN_RESOLUTION_ACTIVE: int
+    IRANIAN_HOSTAGE_CRISIS_PLAY: int
+    IRAN_CONTRA_ACTIVE: int
+    IRON_LADY_PLAYED: int
+    JOHN_PAUL_II_PLAYED: int
+    MARSHALL_PLAN_PLAYED: int
+    NATO_ACTIVE: int
+    NATO_CANCELED_FRANCE: int
+    NATO_CANCELED_WEST_GERMANY: int
+    NORAD_ACTIVE: int
+    NORTH_SEA_OIL_ACTIVE: int
+    NORTH_SEA_OIL_PLAYED: int
+    NUCLEAR_SUBS_ACTIVE: int
+    PURGE_USSR_ACTIVE: int
+    PURGE_US_ACTIVE: int
+    QUAGMIRE_ACTIVE: int
+    SALT_ACTIVE: int
+    SHUTTLE_DIPLOMACY_ACTIVE: int
+    SPACE_USSR_ATTEMPT_1: int
+    SPACE_USSR_ATTEMPT_2: int
+    SPACE_US_ATTEMPT_1: int
+    SPACE_US_ATTEMPT_2: int
+    TEAR_DOWN_THIS_WALL_PLAYED: int
+    THE_REFORMER_PLAYED: int
+    U2_INCIDENT_ACTIVE: int
+    US_JAPAN_PACT_ACTIVE: int
+    VIETNAM_REVOLTS_ACTIVE: int
+    WARSAW_PACT_PLAYED: int
+    WE_WILL_BURY_YOU_PENDING: int
+    WILLY_BRANDT_PLAYED: int
+    YURI_AND_SAMANTHA_ACTIVE: int
+
 
 
 class RollType(enum.IntEnum):

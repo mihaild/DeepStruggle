@@ -1,7 +1,7 @@
 import pytest
 from starlette.testclient import TestClient
 from web.server.main import app
-from bot.bot_client import HeuristicBot, RandomBot
+from bot import HeuristicBot, RandomBot
 import ts_engine
 import json
 import os

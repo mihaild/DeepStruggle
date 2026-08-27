@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Massive Parallel Tournament & Elo Matrix Evaluator for Twilight Struggle AI."""
+"""Unified Tournament & Matchup Evaluator for Twilight Struggle AI.
+
+Supports both 2-model head-to-head benchmarking with granular loss cause diagnostics
+and massive round-robin tournaments with Bradley-Terry MLE Elo rating matrices.
+"""
 
 import os
 import sys
@@ -10,8 +14,12 @@ from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
 import torch
 
-from tools.eval.player_agent import PlayerAgent, load_agent, resolve_device
-from tools.eval.batch_tournament import BatchMatchRunner, compute_mle_elo
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+from tools.lib.player_agent import PlayerAgent, load_agent, resolve_device
+from tools.lib.batch_tournament import BatchMatchRunner, compute_mle_elo
 
 
 def format_loss_causes(causes: Dict[str, int], total_losses: int) -> str:
@@ -27,136 +35,181 @@ def format_loss_causes(causes: Dict[str, int], total_losses: int) -> str:
     return ", ".join([f"{k}: {v} ({v/tot*100:.1f}%)" for k, v in sorted_items])
 
 
+def run_head_to_head_report(
+    agent_a: PlayerAgent,
+    agent_b: PlayerAgent,
+    matchup: Dict[str, Any],
+    elo_ratings: Dict[str, float],
+    elapsed_time: float,
+) -> str:
+    """Formats a detailed head-to-head match report for exactly two agents."""
+    name_a = agent_a.name
+    name_b = agent_b.name
+    tot = matchup["total_games"]
+    w_a = matchup["a_wins"]
+    w_b = matchup["b_wins"]
+    d = matchup["draws"]
+    wr_a = (w_a / tot) * 100.0
+    wr_b = (w_b / tot) * 100.0
+
+    lines: List[str] = []
+    lines.append("\n" + "=" * 85 + "\n")
+    lines.append(f"TWILIGHT STRUGGLE HEAD-TO-HEAD BENCHMARK: {name_a} vs {name_b}\n")
+    lines.append("=" * 85 + "\n\n")
+
+    lines.append(f"• Total Games Played: {tot:,} ({tot // 2:,} per side) in {elapsed_time:.1f}s ({tot / max(0.1, elapsed_time):.1f} games/s)\n")
+    lines.append(f"• Overall Result: {name_a} {w_a}W - {w_b}L - {d}D ({wr_a:.1f}% win rate)\n")
+    lines.append(f"• Elo Ratings: {name_a} = {elo_ratings[name_a]:.1f} | {name_b} = {elo_ratings[name_b]:.1f} (Δ {elo_ratings[name_a] - elo_ratings[name_b]:+.1f})\n\n")
+
+    lines.append("### Side-Specific Breakdown:\n")
+    a_us_w = matchup["a_wins_as_us"]
+    a_us_l = matchup["a_losses_as_us"]
+    a_us_d = matchup.get("a_draws_as_us", 0)
+    a_us_tot = a_us_w + a_us_l + a_us_d
+    lines.append(f"  1. {name_a} (US) vs {name_b} (USSR):\n")
+    lines.append(f"     - Record: {a_us_w}W - {a_us_l}L - {a_us_d}D ({a_us_w / max(1, a_us_tot) * 100:.1f}% US win rate)\n")
+    lines.append(f"     - Average Steps: {matchup.get('avg_steps', 0.0):.1f}\n")
+    lines.append(f"     - Losses by {name_a} (US): {format_loss_causes(matchup['causes_loss_us'], a_us_l)}\n\n")
+
+    a_ussr_w = matchup["a_wins_as_ussr"]
+    a_ussr_l = matchup["a_losses_as_ussr"]
+    a_ussr_d = matchup.get("a_draws_as_ussr", 0)
+    a_ussr_tot = a_ussr_w + a_ussr_l + a_ussr_d
+    lines.append(f"  2. {name_a} (USSR) vs {name_b} (US):\n")
+    lines.append(f"     - Record: {a_ussr_w}W - {a_ussr_l}L - {a_ussr_d}D ({a_ussr_w / max(1, a_ussr_tot) * 100:.1f}% USSR win rate)\n")
+    lines.append(f"     - Average Steps: {matchup.get('avg_steps', 0.0):.1f}\n")
+    lines.append(f"     - Losses by {name_a} (USSR): {format_loss_causes(matchup['causes_loss_ussr'], a_ussr_l)}\n\n")
+
+    lines.append("=" * 85 + "\n")
+    return "".join(lines)
+
+
 def run_massive_tournament(
     model_specs: List[str],
-    games_per_side: int = 1000,
+    games_per_side: int = 500,
     batch_chunk_size: int = 1000,
     anchor_model: str = "HeuristicBot",
     anchor_elo: float = 1500.0,
     output_report: Optional[str] = None,
     output_json: Optional[str] = None,
-    device: Optional[str] = "cuda",
+    device: str = "cuda",
 ) -> Dict[str, Any]:
+    """Runs high-throughput round-robin tournament across all specified models."""
     dev = resolve_device(device)
-    print("=" * 90)
-    print(f"STARTING MASSIVE PARALLEL TOURNAMENT: {len(model_specs)} Models, {games_per_side * 2:,} games per matchup")
-    print(f"Compute Device: {dev} | Batch Chunk Size: {batch_chunk_size}")
-    print("=" * 90)
 
-    # 1. Load All Agents
+    print("\n" + "=" * 85)
+    print(f" INITIALIZING TOURNAMENT EVALUATOR: {len(model_specs)} Models, {games_per_side * 2} Games/Pair")
+    print(f" Device: {dev} | Chunk Size: {batch_chunk_size}")
+    print("=" * 85)
+
     agents: List[PlayerAgent] = []
     for spec in model_specs:
-        try:
-            agents.append(load_agent(spec, device=dev))
-        except Exception as e:
-            print(f"Error loading model '{spec}': {e}")
-            sys.exit(1)
+        agent = load_agent(spec, device=dev)
+        agents.append(agent)
+        print(f" Loaded Agent: {agent.name:<35s} (from {spec})")
 
     M = len(agents)
     model_names = [a.name for a in agents]
-    print(f"Loaded {M} Models: {model_names}\n")
 
-    # Matrices: M x M
     win_matrix = np.zeros((M, M), dtype=np.int32)
     loss_matrix = np.zeros((M, M), dtype=np.int32)
     draw_matrix = np.zeros((M, M), dtype=np.int32)
-    total_matrix = np.zeros((M, M), dtype=np.int32)
-
     ussr_win_matrix = np.zeros((M, M), dtype=np.int32)
     us_win_matrix = np.zeros((M, M), dtype=np.int32)
+    total_matrix = np.zeros((M, M), dtype=np.int32)
 
-    matchup_details: Dict[str, Dict[str, Any]] = {}
-    pair_count = (M * (M - 1)) // 2
-    cur_pair = 0
-    t0_all = time.time()
+    total_pairs = (M * (M - 1)) // 2
+    pair_idx = 0
+    t_start = time.time()
+    matchup_details: Dict[str, Any] = {}
 
-    # 2. Run All Pairwise Matches
     for i in range(M):
         for j in range(i + 1, M):
-            cur_pair += 1
-            agent_i = agents[i]
-            agent_j = agents[j]
-            pair_key = f"{agent_i.name}_vs_{agent_j.name}"
+            pair_idx += 1
+            agent_a = agents[i]
+            agent_b = agents[j]
+            pair_start = time.time()
 
-            print(f"[{cur_pair:2d}/{pair_count:2d}] Running Matchup: {agent_i.name} vs {agent_j.name} ({games_per_side*2:,} games)...", flush=True)
-            res = BatchMatchRunner.play_parallel_matchup(
-                agent_a=agent_i,
-                agent_b=agent_j,
+            m_res = BatchMatchRunner.play_parallel_matchup(
+                agent_a,
+                agent_b,
                 games_per_side=games_per_side,
-                batch_chunk_size=batch_chunk_size,
-                base_seed=10000 + (cur_pair * 10000),
                 device=dev,
+                batch_chunk_size=batch_chunk_size,
             )
+            pair_time = time.time() - pair_start
+            matchup_key = f"{agent_a.name}_vs_{agent_b.name}"
+            matchup_details[matchup_key] = m_res
 
-            # Record Results
-            w_i = res["a_wins"]
-            w_j = res["b_wins"]
-            d = res["draws"]
-            tot = res["total_games"]
+            w_a = m_res["a_wins"]
+            w_b = m_res["b_wins"]
+            d = m_res["draws"]
+            tot = m_res["total_games"]
 
-            win_matrix[i, j] = w_i
-            loss_matrix[i, j] = w_j
+            win_matrix[i, j] = w_a
+            win_matrix[j, i] = w_b
+            loss_matrix[i, j] = w_b
+            loss_matrix[j, i] = w_a
             draw_matrix[i, j] = d
-            total_matrix[i, j] = tot
-
-            win_matrix[j, i] = w_j
-            loss_matrix[j, i] = w_i
             draw_matrix[j, i] = d
+            total_matrix[i, j] = tot
             total_matrix[j, i] = tot
 
-            # Side specific
-            ussr_win_matrix[i, j] = res["a_wins_as_ussr"]
-            us_win_matrix[i, j] = res["a_wins_as_us"]
-            ussr_win_matrix[j, i] = res["a_losses_as_us"]   # j won as USSR when i was US
-            us_win_matrix[j, i] = res["a_losses_as_ussr"]   # j won as US when i was USSR
+            ussr_win_matrix[i, j] = m_res["a_wins_as_ussr"]
+            ussr_win_matrix[j, i] = m_res["a_losses_as_us"]
+            us_win_matrix[i, j] = m_res["a_wins_as_us"]
+            us_win_matrix[j, i] = m_res["a_losses_as_ussr"]
 
-            matchup_details[pair_key] = res
+            wr_a = (w_a / tot) * 100.0
+            print(
+                f"[{pair_idx:2d}/{total_pairs:2d}] {agent_a.name:<25s} vs {agent_b.name:<25s} -> "
+                f"{w_a:4d}W - {w_b:4d}L - {d:2d}D ({wr_a:5.1f}% win) in {pair_time:5.1f}s"
+            )
 
-            wr_i = (w_i / tot) * 100.0
-            wr_j = (w_j / tot) * 100.0
-            print(f"      -> {agent_i.name}: {wr_i:.1f}% ({w_i}W) | {agent_j.name}: {wr_j:.1f}% ({w_j}W) | Draws: {d} in {res['elapsed_seconds']:.1f}s ({tot/res['elapsed_seconds']:.1f} g/s)", flush=True)
+    total_tournament_time = time.time() - t_start
+    total_games_played = np.sum(total_matrix) // 2
 
-    total_tournament_time = time.time() - t0_all
-    print("\n" + "=" * 90)
-    print(f"ALL MATCHUPS FINISHED in {total_tournament_time:.1f}s ({(pair_count * games_per_side * 2) / total_tournament_time:.1f} total games/sec)")
-    print("=" * 90 + "\n")
+    # Compute Bradley-Terry MLE Elo ratings
+    elo_ratings = compute_mle_elo(model_names, win_matrix, total_matrix, anchor_model=anchor_model, anchor_elo=anchor_elo)
 
-    # 3. Compute Bradley-Terry Elo Ratings
-    elo_ratings = compute_mle_elo(
-        model_names=model_names,
-        win_matrix=win_matrix,
-        total_matrix=total_matrix,
-        anchor_model=anchor_model if anchor_model in model_names else model_names[0],
-        anchor_elo=anchor_elo,
-    )
+    # If exactly 2 models, print detailed head-to-head report
+    if M == 2:
+        m_key = f"{agents[0].name}_vs_{agents[1].name}"
+        report_text = run_head_to_head_report(agents[0], agents[1], matchup_details[m_key], elo_ratings, total_tournament_time)
+        print(report_text)
+        if output_report:
+            os.makedirs(os.path.dirname(os.path.abspath(output_report)), exist_ok=True)
+            with open(output_report, "w", encoding="utf-8") as f:
+                f.write(report_text)
+        return {
+            "models": model_names,
+            "elo_ratings": elo_ratings,
+            "matchup": matchup_details[m_key],
+            "total_time_seconds": total_tournament_time,
+        }
 
-    # Sort models by Elo
+    # Full Round-Robin Tournament Report
     sorted_indices = sorted(range(M), key=lambda idx: elo_ratings[model_names[idx]], reverse=True)
     sorted_names = [model_names[idx] for idx in sorted_indices]
 
-    # 4. Format Winning Matrices (Total, USSR, US)
-    total_wr_matrix = np.zeros((M, M), dtype=np.float32)
-    ussr_wr_matrix = np.zeros((M, M), dtype=np.float32)
-    us_wr_matrix = np.zeros((M, M), dtype=np.float32)
-
+    total_wr_matrix = np.zeros((M, M))
+    ussr_wr_matrix = np.zeros((M, M))
+    us_wr_matrix = np.zeros((M, M))
     for i in range(M):
         for j in range(M):
-            if i != j and total_matrix[i, j] > 0:
-                total_wr_matrix[i, j] = (win_matrix[i, j] / total_matrix[i, j]) * 100.0
-                ussr_wr_matrix[i, j] = (ussr_win_matrix[i, j] / games_per_side) * 100.0
-                us_wr_matrix[i, j] = (us_win_matrix[i, j] / games_per_side) * 100.0
+            if i != j:
+                total_wr_matrix[i, j] = (win_matrix[i, j] / max(1, total_matrix[i, j])) * 100.0
+                ussr_wr_matrix[i, j] = (ussr_win_matrix[i, j] / max(1, games_per_side)) * 100.0
+                us_wr_matrix[i, j] = (us_win_matrix[i, j] / max(1, games_per_side)) * 100.0
 
-    # 5. Build Markdown Report
-    report_lines = []
-    report_lines.append("# Massive Parallel Tournament & Elo Rating Report\n\n")
+    report_lines: List[str] = []
+    report_lines.append("# Twilight Struggle AI: Massive Tournament Evaluation Report\n\n")
     report_lines.append(f"- **Total Models**: {M}\n")
-    report_lines.append(f"- **Games per Matchup**: {games_per_side * 2:,} ({games_per_side:,} as USSR, {games_per_side:,} as US)\n")
-    report_lines.append(f"- **Total Games Played**: {pair_count * games_per_side * 2:,}\n")
-    report_lines.append(f"- **Total Computation Time**: {total_tournament_time:.1f}s ({(pair_count * games_per_side * 2) / total_tournament_time:.1f} games/sec)\n")
-    report_lines.append(f"- **Anchor Reference**: `{anchor_model}` = {anchor_elo:.0f} Elo\n\n")
+    report_lines.append(f"- **Total Games Played**: {total_games_played:,}\n")
+    report_lines.append(f"- **Games Per Matchup Pair**: {games_per_side * 2:,} ({games_per_side} per side)\n")
+    report_lines.append(f"- **Total Evaluation Time**: {total_tournament_time:.1f} seconds ({total_games_played / max(0.1, total_tournament_time):.1f} games/sec)\n\n")
 
-    # Leaderboard Table
-    report_lines.append("## 1. Overall Leaderboard & Elo Ratings\n\n")
+    report_lines.append("## 1. Bradley-Terry MLE Elo Leaderboard\n\n")
     report_lines.append("| Rank | Model | Elo Rating | Total Matches | Total Record (W-L-D) | Overall Win Rate |\n")
     report_lines.append("|:---:|:---|:---:|:---:|:---:|:---:|\n")
 
@@ -171,7 +224,7 @@ def run_massive_tournament(
         report_lines.append(f"| **{rank}** | **{name}** | **{elo:.1f}** | {tot_g:,} | {tot_w:,}W - {tot_l:,}L - {tot_d:,}D | **{wr:.1f}%** |\n")
     report_lines.append("\n---\n\n")
 
-    # Total Win Rate Matrix
+    # Matrices
     report_lines.append("## 2. Head-to-Head Total Win Rate Matrix (% Win for Row vs Column)\n\n")
     header_cols = " | ".join([f"**{name}**" for name in sorted_names])
     report_lines.append(f"| Model | {header_cols} |\n")
@@ -179,80 +232,12 @@ def run_massive_tournament(
     for i in sorted_indices:
         row_vals = []
         for j in sorted_indices:
-            if i == j:
-                row_vals.append("—")
-            else:
-                row_vals.append(f"{total_wr_matrix[i, j]:.1f}%")
+            row_vals.append("—" if i == j else f"{total_wr_matrix[i, j]:.1f}%")
         report_lines.append(f"| **{model_names[i]}** | {' | '.join(row_vals)} |\n")
     report_lines.append("\n---\n\n")
-
-    # USSR Win Rate Matrix
-    report_lines.append("## 3. USSR Win Rate Matrix (% Win when Row Model is USSR)\n\n")
-    report_lines.append(f"| Model (as USSR) | {header_cols} |\n")
-    report_lines.append(f"|:---|{'---:|' * M}\n")
-    for i in sorted_indices:
-        row_vals = []
-        for j in sorted_indices:
-            if i == j:
-                row_vals.append("—")
-            else:
-                row_vals.append(f"{ussr_wr_matrix[i, j]:.1f}%")
-        report_lines.append(f"| **{model_names[i]}** | {' | '.join(row_vals)} |\n")
-    report_lines.append("\n---\n\n")
-
-    # US Win Rate Matrix
-    report_lines.append("## 4. US Win Rate Matrix (% Win when Row Model is US)\n\n")
-    report_lines.append(f"| Model (as US) | {header_cols} |\n")
-    report_lines.append(f"|:---|{'---:|' * M}\n")
-    for i in sorted_indices:
-        row_vals = []
-        for j in sorted_indices:
-            if i == j:
-                row_vals.append("—")
-            else:
-                row_vals.append(f"{us_wr_matrix[i, j]:.1f}%")
-        report_lines.append(f"| **{model_names[i]}** | {' | '.join(row_vals)} |\n")
-    report_lines.append("\n---\n\n")
-
-    # 6. Detailed Loss Cause Breakdown for the Final Model
-    final_model_idx = M - 1  # Last model in input list (or snapshot_final)
-    final_name = model_names[final_model_idx]
-    report_lines.append(f"## 5. Granular Loss Causes Breakdown for Final Model (`{final_name}`)\n\n")
-    report_lines.append("| Opponent | Overall Win Rate | Record (W-L-D) | Loss Reasons when `{final_name}` played as USSR | Loss Reasons when `{final_name}` played as US |\n")
-    report_lines.append("|:---|:---:|:---:|:---|:---|\n")
-
-    for j in range(M):
-        if j == final_model_idx:
-            continue
-        opp_name = model_names[j]
-        # Retrieve matchup result
-        key_f_vs_j = f"{final_name}_vs_{opp_name}"
-        key_j_vs_f = f"{opp_name}_vs_{final_name}"
-
-        if key_f_vs_j in matchup_details:
-            m_res = matchup_details[key_f_vs_j]
-            w = m_res["a_wins"]
-            l = m_res["b_wins"]
-            d = m_res["draws"]
-            tot = m_res["total_games"]
-            wr = (w / tot) * 100.0
-            causes_loss_ussr = format_loss_causes(m_res["causes_loss_ussr"], m_res["a_losses_as_ussr"])
-            causes_loss_us = format_loss_causes(m_res["causes_loss_us"], m_res["a_losses_as_us"])
-        else:
-            m_res = matchup_details[key_j_vs_f]
-            w = m_res["b_wins"]
-            l = m_res["a_wins"]
-            d = m_res["draws"]
-            tot = m_res["total_games"]
-            wr = (w / tot) * 100.0
-            causes_loss_ussr = format_loss_causes(m_res["causes_loss_us"], m_res["a_wins_as_us"]) # j won as US -> final lost as USSR
-            causes_loss_us = format_loss_causes(m_res["causes_loss_ussr"], m_res["a_wins_as_ussr"]) # j won as USSR -> final lost as US
-
-        report_lines.append(f"| **{opp_name}** | **{wr:.1f}%** | {w}W - {l}L - {d}D | {causes_loss_ussr} | {causes_loss_us} |\n")
 
     report_text = "".join(report_lines)
 
-    # Save outputs
     if output_report:
         os.makedirs(os.path.dirname(os.path.abspath(output_report)), exist_ok=True)
         with open(output_report, "w", encoding="utf-8") as f:
@@ -264,8 +249,6 @@ def run_massive_tournament(
         "elo_ratings": elo_ratings,
         "win_matrix": win_matrix.tolist(),
         "total_matrix": total_matrix.tolist(),
-        "ussr_win_matrix": ussr_win_matrix.tolist(),
-        "us_win_matrix": us_win_matrix.tolist(),
         "games_per_side": games_per_side,
         "total_time_seconds": total_tournament_time,
     }
@@ -284,21 +267,24 @@ def main():
     parser = argparse.ArgumentParser(description="Massive Parallel Tournament & Elo Rating Benchmark")
     parser.add_argument("--models", nargs="+", default=None, help="List of model checkpoints or bot names ('random', 'heuristic')")
     parser.add_argument("--checkpoint-dir", type=str, default=None, help="Directory to auto-discover all snapshot checkpoints")
-    parser.add_argument("--include-baselines", action="store_true", default=True, help="Include RandomBot and HeuristicBot")
-    parser.add_argument("--games-per-side", type=int, default=1000, help="Games per side per matchup (total 2x games per pair)")
+    parser.add_argument("--include-baselines", action="store_true", default=False, help="Explicitly include RandomBot and HeuristicBot")
+    parser.add_argument("--games-per-side", type=int, default=500, help="Games per side per matchup (total 2x games per pair)")
     parser.add_argument("--batch-chunk-size", type=int, default=1000, help="Max parallel games executed in a single vectorized batch")
     parser.add_argument("--anchor-model", type=str, default="HeuristicBot", help="Model name to anchor Elo ratings")
     parser.add_argument("--anchor-elo", type=float, default=1500.0, help="Anchor Elo rating value")
     parser.add_argument("--output-report", type=str, default=None, help="Path to save Markdown report")
     parser.add_argument("--output-json", type=str, default=None, help="Path to save JSON results")
-    parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
+    parser.add_argument("--device", type=str, default="cpu", help="Compute device (cuda or cpu)")
 
     args = parser.parse_args()
 
-    models = args.models or []
+    models = list(args.models) if args.models else []
     if args.checkpoint_dir and os.path.exists(args.checkpoint_dir):
         discovered = [os.path.join(args.checkpoint_dir, f) for f in sorted(os.listdir(args.checkpoint_dir)) if f.endswith(".pt")]
         models.extend(discovered)
+        # When evaluating a checkpoint directory, default to including baselines unless explicitly specified
+        if not args.models and not args.include_baselines:
+            args.include_baselines = True
 
     if args.include_baselines:
         if "random" not in models and "RandomBot" not in models:
@@ -307,11 +293,11 @@ def main():
             models.insert(1, "heuristic")
 
     if len(models) < 2:
-        print("Error: Need at least 2 models for a tournament.")
+        print("Error: Need at least 2 models for an evaluation or tournament.")
         sys.exit(1)
 
-    out_rep = args.output_report or os.path.join(args.checkpoint_dir or "checkpoints", "massive_tournament_report.md")
-    out_json = args.output_json or os.path.join(args.checkpoint_dir or "checkpoints", "massive_tournament_results.json")
+    out_rep = args.output_report
+    out_json = args.output_json
 
     run_massive_tournament(
         model_specs=models,

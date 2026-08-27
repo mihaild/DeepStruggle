@@ -9,8 +9,8 @@ import sys
 import torch
 
 from ai.training.generic_trainer import train_pipeline, run_behavioral_cloning_warmup
-from tools.eval.player_agent import load_agent
-from tools.eval.tournament_evaluator import TournamentEvaluator
+from tools.lib.player_agent import load_agent
+from tools.lib.tournament_evaluator import TournamentEvaluator
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 from ai.models.coldwar_net_v3 import create_coldwar_net_v3

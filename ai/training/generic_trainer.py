@@ -22,8 +22,8 @@ from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumRew
 from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.warmup_dataset_loader import WarmupDataset
-from tools.eval.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
-from tools.eval.tournament_evaluator import TournamentEvaluator
+from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
+from tools.lib.tournament_evaluator import TournamentEvaluator
 
 
 def run_behavioral_cloning_warmup(

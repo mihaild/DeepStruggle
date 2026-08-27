@@ -27,26 +27,31 @@ graph TD
         Rewards["BlunderAware / Shaped Rewards (ai/rewards/)"]
     end
 
-    subgraph Bot ["Bot Clients & Agents (bot/)"]
+    subgraph Bot ["Bot Clients & Heuristic Agents (bot/)"]
         BaseBot["Generic BaseBot Class (bot/base_bot.py)"]
-        Runner["WebSocket bot_client.py"]
-        NeuralBotClient["NeuralBot (PyTorch)"]
+        NeuralBotClient["NeuralBot (PyTorch V1/V2/V3)"]
         Heuristic["HeuristicBot Baseline"]
         Random["RandomBot Baseline"]
-        AgentPlayer["Agent Interactive Player CLI"]
+        Exploratory["ExploratoryBot Baseline"]
+        Strategic["StrategicBot Realist Agent"]
+        EventHeavy["EventHeavyBot Agent"]
+        Human["HumanBot Interactive CLI"]
         BaseBot --> Heuristic
         BaseBot --> Random
         BaseBot --> NeuralBotClient
-        BaseBot --> AgentPlayer
+        BaseBot --> Exploratory
+        BaseBot --> Strategic
+        BaseBot --> EventHeavy
+        BaseBot --> Human
     end
 
-    subgraph Tools ["Generic CLI Tools & Evaluation (tools/)"]
+    subgraph Tools ["Generic CLI Tools & Shared Library (tools/)"]
         TrainRunner["Unified Training CLI (tools/train.py)"]
-        TourneyRunner["Massive Tournament CLI (tools/tournament.py)"]
-        EvalCLI["Head-to-Head Evaluator (tools/evaluate.py)"]
-        ReplayGen["Replay Generator (tools/generate_replay.py)"]
+        TourneyRunner["Unified Tournament & Evaluator (tools/tournament.py)"]
+        MatchRunner["Unified Match & Replay Player (tools/play_match.py)"]
+        DatasetGen["Demonstration Generator (tools/generate_dataset.py)"]
         Inspector["Checkpoint Inspector (tools/inspect_checkpoints.py)"]
-        GenericEval["Generic Evaluation & Self-Play (tools/eval/)"]
+        SharedLib["Shared Simulation & Analytics Engine (tools/lib/)"]
         Scripts["Shell Automation (tools/scripts/)"]
     end
 
@@ -65,7 +70,7 @@ graph TD
         Cards["ts::CardData (110 Cards Event Logic)"]
     end
 
-    Runner <-->|WebSocket: JSON State / Actions| WS
+    WebBotRunner["WebSocket bot_client.py (web/)"] <-->|WebSocket| WS
     WS <--> Nanobind
     Nanobind <--> CoreEngine
     VecEnv <--> Nanobind
@@ -73,8 +78,8 @@ graph TD
     NashPG <--> ColdWarNet
     Rewards <--> NashPG
     ColdWarNet --> NeuralBotClient
-    NeuralBotClient --> Runner
-    GenericEval <--> ColdWarNet
+    NeuralBotClient --> WebBotRunner
+    SharedLib <--> ColdWarNet
 ```
 
 ---
@@ -116,21 +121,24 @@ graph TD
 │       ├── warmup_dataset_loader.py # Memory-bounded demonstration streaming
 │       └── train.py            # CLI training entry point
 │
-├── bot/                        # Bot clients & interactive players (see bot/AGENTS.md)
+├── bot/                        # Bot clients & baseline heuristics (see bot/AGENTS.md)
 │   ├── AGENTS.md               # Specific instructions for developing AI bots
 │   ├── base_bot.py             # Generic BaseBot abstract class defining bot interface
 │   ├── random_bot.py           # RandomBot baseline
 │   ├── heuristic_bot.py        # HeuristicBot rule-based baseline
-│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints
-│   ├── agent_player.py         # Rich CLI & interactive agent player interface
-│   └── bot_client.py           # WebSocket network bot runner for live matches
+│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints (V1/V2/V3)
+│   ├── exploratory_bot.py      # ExploratoryBot diverse exploration agent
+│   ├── strategic_bot.py        # StrategicBot DEFCON-2 containment & commentary agent
+│   ├── event_heavy_bot.py      # EventHeavyBot event-prioritizing agent
+│   └── human_bot.py            # HumanBot interactive CLI terminal player
 │
-├── web/                        # Web Workbench (UI + Backend Server)
-│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (was frontend/)
+├── web/                        # Web Workbench (UI + Backend Server + Bot Client)
+│   ├── bot_client.py           # WebSocket network bot runner for browser matches
+│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map
 │   │   ├── index.html
 │   │   ├── package.json / vite.config.ts
 │   │   └── src/                # Map view, HUD, tracks, debug panel, replay controls
-│   └── server/                 # FastAPI Game Server and Replay Manager (was server/)
+│   └── server/                 # FastAPI Game Server and Replay Manager
 │       ├── AGENTS.md           # Instructions for server maintainers
 │       ├── main.py             # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
 │       ├── session.py          # GameSession class, action router, state broadcasting
@@ -140,17 +148,17 @@ graph TD
 ├── tools/                      # Reusable agent & developer CLI tools (see tools/README.md)
 │   ├── README.md               # Tool descriptions, CLI flags, and usage examples
 │   ├── train.py                # Unified RL training & fine-tuning runner
-│   ├── tournament.py           # Massive vectorized round-robin tournament & Elo matrix evaluator
-│   ├── evaluate.py             # Head-to-head match evaluation CLI
-│   ├── generate_replay.py      # Self-play or head-to-head replay generator (.tslog.json)
-│   ├── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & metadata inspector
-│   ├── generate_warmup_dataset.py # Demonstration rollout generator
-│   ├── eval/                   # Generic agent evaluation & self-play utilities
+│   ├── tournament.py           # Unified tournament & head-to-head evaluator
+│   ├── play_match.py           # Unified match runner & replay generator (.tslog.json)
+│   ├── generate_dataset.py     # High-throughput vectorized demonstration generator (.jsonl.gz)
+│   ├── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & inspector
+│   ├── lib/                    # Reusable simulation, evaluation & analytics backend
 │   │   ├── player_agent.py     # Unified Agent loader (random, heuristic, neural)
 │   │   ├── tournament_evaluator.py # Matchup runner & loss cause classifier
 │   │   ├── self_play.py        # Self-play simulation & .tslog.json recorder
-│   │   ├── batch_tournament.py # Vectorized batch tournament runner
-│   │   └── arena.py            # Tournament evaluator vs baselines
+│   │   ├── batch_tournament.py # Vectorized batch tournament runner & Bradley-Terry MLE
+│   │   ├── scoring_formatter.py # Regional scoring audit calculation helper
+│   │   └── checkpoint_utils.py # Checkpoint scanning and architecture detection
 │   └── scripts/                # Shell automation scripts
 │       ├── train_and_tournament.sh # Unified training & tournament bash runner
 │       ├── train_direct_rl.sh  # Direct RL self-play runner
@@ -165,7 +173,7 @@ graph TD
 │   ├── README.md               # Integration guide
 │   └── struggler/              # External reference engine (Rust/Python)
 │
-├── tests/                      # Python pytest integration test suite (368 tests)
+├── tests/                      # Python pytest integration test suite (373 tests)
 │   ├── test_credit_assignment.py # Unit tests for reward propagation & Rule 4.3 headlines
 │   ├── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
@@ -296,7 +304,7 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt
+PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt
 
 # 3. Open browser at:
 # http://localhost:8000/?game_id=game-1&role=US
@@ -307,14 +315,14 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 #### Standard CLI Tools (`tools/`)
 1. **Unified Training Runner (`tools/train.py`)**:
    Starts time-bounded RL with live snapshot tournaments, blunder-aware reward shielding, and optional post-training massive tournament benchmarking.
-2. **Massive Vectorized Tournament & Elo Rating (`tools/tournament.py`)**:
-   Runs ultra-fast parallel tournaments (300-800 games/sec) across all checkpoints in a directory, calculating Bradley-Terry Elo ratings, total/USSR/US winning matrices, and side-specific loss cause breakdowns.
-3. **Generate Game Replay (`tools/generate_replay.py`)**:
-   Runs self-play or head-to-head matches and logs standardized `.tslog.json` replays with the exact Web Workbench viewer URL.
-4. **Head-to-Head Match Evaluator (`tools/evaluate.py`)**:
-   Runs a fast match between any two agents, breaking down US and USSR win rates and exact loss reasons.
+2. **Unified Tournament & Evaluator (`tools/tournament.py`)**:
+   Runs ultra-fast parallel tournaments and matchups (300-800 games/sec). If passed 2 models, outputs a granular head-to-head report with loss causes; if passed multiple models or a directory, outputs the full round-robin leaderboard and Bradley-Terry Elo matrix.
+3. **Unified Match Runner & Replay Generator (`tools/play_match.py`)**:
+   Runs matches between any pair of agents (supporting distinct checkpoints, heuristics, interactive human CLI play via `--us human`, and commentary), saving standardized `.tslog.json` replays with direct Web Workbench viewer URLs.
+4. **Vectorized Demonstration Generator (`tools/generate_dataset.py`)**:
+   Charns out thousands of games in parallel using 500 C++ environments and multi-temperature schedules, dumping compressed `.jsonl.gz` datasets for supervised BC warmup.
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
-   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures.
+   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures (V1/V2/V3).
 
 ---
 
@@ -331,7 +339,7 @@ PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --t
 5. **Strict Type Annotations & Mandatory Type Checking**:
    All Python types must be explicitly annotated (using `TypedDict` definitions in `web/server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
 6. **Unified Self-Play & Replay Generation**:
-   All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.eval.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
+   All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.lib.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
 7. **Mandatory Checkpoint Directory Naming Convention**:
    All model checkpoint directories MUST follow the standard pattern:
    `data/checkpoints/run_[version]_[start date]_[start time]`

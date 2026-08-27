@@ -4,9 +4,9 @@ import json
 import gzip
 import torch
 import numpy as np
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, cast
 import ts_engine as ts
-from tools.eval.player_agent import load_agent, NeuralAgent
+from tools.lib.player_agent import load_agent, NeuralAgent
 from bindings.action_encoder import ActionEncoder
 
 def get_temperature_for_profile(profile_idx: int, turn: int) -> float:
@@ -142,7 +142,7 @@ def generate_warmup_dataset(
                     avg_temp = float(np.mean(temps))
                     
                     with torch.no_grad():
-                        act_t, _, _, _, _ = m.sample_action(obs_sub, mask_sub, temperature=avg_temp, deterministic=(avg_temp <= 0.05))
+                        act_t, _, _, _, _ = cast(Any, m).sample_action(obs_sub, mask_sub, temperature=avg_temp, deterministic=(avg_temp <= 0.05))
                     act_list = act_t.cpu().numpy().tolist()
                     
                     for sub_i, env_i in enumerate(env_indices):
@@ -162,7 +162,8 @@ def generate_warmup_dataset(
             # Write batch of finished games to compressed JSONL
             for g in game_histories:
                 gz_out.write(json.dumps(g) + chr(10))
-                total_steps_recorded += g.get("total_steps", len(g["actions"]))
+                steps_val = g.get("total_steps")
+                total_steps_recorded += int(steps_val) if isinstance(steps_val, int) else len(cast(list, g.get("actions", [])))
                 
             games_completed += current_batch
             batch_idx += 1
