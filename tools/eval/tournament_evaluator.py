@@ -4,7 +4,7 @@ import time
 from typing import Dict, List, Any, Optional
 import numpy as np
 import ts_engine as ts
-from ai.eval.player_agent import PlayerAgent
+from tools.eval.player_agent import PlayerAgent
 
 
 def classify_game_ending_reason(state: ts.GameState) -> str:

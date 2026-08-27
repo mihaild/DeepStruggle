@@ -3,8 +3,8 @@
 from typing import Tuple, Dict, Any, List, Optional
 import numpy as np
 import ts_engine as ts
-from ai.env.action_encoder import ActionEncoder
-from ai.env.reward_calculator import RewardCalculator, ZeroSumTerminalReward, BlunderAwareRewardCalculator
+from bindings.action_encoder import ActionEncoder
+from ai.rewards.reward_calculator import RewardCalculator, ZeroSumTerminalReward, BlunderAwareRewardCalculator
 
 
 class TsEnv:

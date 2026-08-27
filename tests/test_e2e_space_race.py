@@ -4,7 +4,7 @@ import time
 import socket
 import uvicorn
 from playwright.sync_api import sync_playwright
-from server.main import app
+from web.server.main import app
 
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

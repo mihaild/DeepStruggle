@@ -18,12 +18,12 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
-from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
-from ai.env.ts_env import TsVectorizedEnv
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
+from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.warmup_dataset_loader import WarmupDataset
-from ai.eval.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
-from ai.eval.tournament_evaluator import TournamentEvaluator
+from tools.eval.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
+from tools.eval.tournament_evaluator import TournamentEvaluator
 
 
 def run_behavioral_cloning_warmup(

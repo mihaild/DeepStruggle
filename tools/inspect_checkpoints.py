@@ -40,7 +40,7 @@ def inspect_checkpoint(path: str) -> dict:
 
 
 def main():
-    chkpt_root = os.path.join(_root, "checkpoints")
+    chkpt_root = os.path.join(_root, "data", "checkpoints") if os.path.exists(os.path.join(_root, "data", "checkpoints")) else os.path.join(_root, "checkpoints")
     all_checkpoints = []
 
     for root, _, files in os.walk(chkpt_root):

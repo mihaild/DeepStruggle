@@ -5,10 +5,10 @@ import numpy as np
 import torch
 
 import ts_engine as ts
-from ai.env import ActionEncoder, TsSingleEnv, TsVectorizedEnv
+from bindings import ActionEncoder, TsSingleEnv, TsVectorizedEnv
 from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldwar_net_v2, ColdWarNetV3, create_coldwar_net_v3
 from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer
-from ai.eval import ArenaEvaluator
+from tools.eval.arena import ArenaEvaluator
 from bot.neural_bot import NeuralBot
 
 

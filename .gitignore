@@ -24,15 +24,16 @@ __pycache__/
 .pytest_cache/
 
 # Node / Frontend
-frontend/node_modules/
-frontend/dist/
+web/ui/node_modules/
+node_modules/
+web/ui/dist/
+dist/
 frontend/.vite/
 
 # Replays & Logs
-replays/*.tslog.json
-replays/*.txt
-replays/*.json
-!replays/.gitkeep
+replays/
+data/replays/*
+!data/replays/.gitkeep
 *.log
 .system_generated/
 scratch/
@@ -47,6 +48,7 @@ scratch/
 
 # Model checkpoints
 checkpoints/
+data/checkpoints/*
 *.pt
-!checkpoints/.gitkeep
+!data/checkpoints/.gitkeep
 .triton_cache/

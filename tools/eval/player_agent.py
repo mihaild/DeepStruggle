@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 
 import ts_engine as ts
-from ai.env.action_encoder import ActionEncoder
+from bindings.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import HeuristicPolicy, OldHeuristicPolicy
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2

@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.env.ts_env import TsVectorizedEnv
+from bindings.ts_env import TsVectorizedEnv
 from .rollout_buffer import RolloutBuffer
 
 

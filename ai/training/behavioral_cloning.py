@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.env.action_encoder import ActionEncoder
+from bindings.action_encoder import ActionEncoder
 # ArenaEvaluator imported in train.py
 
 

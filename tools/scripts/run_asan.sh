@@ -14,6 +14,6 @@ fi
 
 export LD_PRELOAD="$LIBASAN"
 export ASAN_OPTIONS="detect_leaks=0:verify_asan_link_order=0"
-export PYTHONPATH="$(pwd)/build_san:${PYTHONPATH:-$(pwd)}"
+export PYTHONPATH="$(pwd)/build/asan:${PYTHONPATH:-$(pwd)}"
 
 exec "$@"

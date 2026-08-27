@@ -8,9 +8,9 @@ import pytest
 from typing import Dict, Any
 
 import ts_engine as ts
-from ai.eval.self_play import generate_self_play_replay
-from server.replay import ReplayLogger, ReplayManager, REPLAYS_DIR
-from server.replay_types import (
+from tools.eval.self_play import generate_self_play_replay
+from web.server.replay import ReplayLogger, ReplayManager, REPLAYS_DIR
+from web.server.replay_types import (
     GameStateDict,
     ReplayLogDict,
     ReplayStepDict,
@@ -23,10 +23,10 @@ from server.replay_types import (
 def test_pyrefly_type_checking():
     """Runs pyrefly check on core typed modules and asserts zero type errors."""
     files_to_check = [
-        "server/replay_types.py",
-        "server/replay.py",
-        "ai/eval/self_play.py",
-        "scripts/generate_replay_match.py",
+        "web/server/replay_types.py",
+        "web/server/replay.py",
+        "tools/eval/self_play.py",
+        "tools/generate_replay.py",
     ]
     cmd = [sys.executable, "-m", "pyrefly", "check"] + files_to_check
     proc = subprocess.run(cmd, capture_output=True, text=True)

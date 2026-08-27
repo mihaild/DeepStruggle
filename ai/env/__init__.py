@@ -1,5 +1,19 @@
-"""Twilight Struggle Environment Wrappers and Action Encoders."""
-from .action_encoder import ActionEncoder
-from .ts_env import TsVectorizedEnv, TsSingleEnv
+"""Backward-compatibility shim for environment wrappers and action encoders."""
+from bindings.action_encoder import ActionEncoder
+from bindings.ts_env import TsVectorizedEnv, TsSingleEnv
+from ai.rewards.reward_calculator import (
+    RewardCalculator,
+    ZeroSumTerminalReward,
+    BlunderAwareRewardCalculator,
+    ShapedZeroSumReward,
+)
 
-__all__ = ["ActionEncoder", "TsVectorizedEnv", "TsSingleEnv"]
+__all__ = [
+    "ActionEncoder",
+    "TsVectorizedEnv",
+    "TsSingleEnv",
+    "RewardCalculator",
+    "ZeroSumTerminalReward",
+    "BlunderAwareRewardCalculator",
+    "ShapedZeroSumReward",
+]

@@ -1,4 +1,4 @@
-from server.replay_types import AuditGameReportDict, AuditLogEntryDict
+from web.server.replay_types import AuditGameReportDict, AuditLogEntryDict
 #!/usr/bin/env python3
 """
 Direct In-Conversation LLM Subagent Match Engine for Twilight Struggle

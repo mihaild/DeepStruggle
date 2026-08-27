@@ -6,8 +6,8 @@ import torch
 import numpy as np
 from typing import Dict, List, Tuple, Any
 import ts_engine as ts
-from ai.eval.player_agent import load_agent, NeuralAgent
-from ai.env import ActionEncoder
+from tools.eval.player_agent import load_agent, NeuralAgent
+from bindings.action_encoder import ActionEncoder
 
 def get_temperature_for_profile(profile_idx: int, turn: int) -> float:
     if profile_idx == 0:  # Profile 1: Grandmaster Crisp

@@ -9,9 +9,9 @@ import torch
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.env.action_encoder import ActionEncoder
-from server.replay import ReplayLogger, REPLAYS_DIR
-from server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
+from bindings.action_encoder import ActionEncoder
+from web.server.replay import ReplayLogger, REPLAYS_DIR
+from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 
 
 def generate_self_play_replay(
@@ -32,7 +32,7 @@ def generate_self_play_replay(
     dev: torch.device = torch.device(device if torch.cuda.is_available() and str(device) == "cuda" else "cpu")
 
     if model is None:
-        from ai.eval.player_agent import load_agent, NeuralAgent
+        from tools.eval.player_agent import load_agent, NeuralAgent
         candidates = [
             model_path,
             "checkpoints/snapshot_20m.pt",

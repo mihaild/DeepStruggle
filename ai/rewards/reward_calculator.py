@@ -16,7 +16,7 @@ class RewardCalculator(Protocol):
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
-        states: Optional[List[ts.GameState]] = None,
+        states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         """Computes per-environment step rewards from the perspective of the acting player."""
         ...
@@ -46,7 +46,7 @@ class ZeroSumTerminalReward:
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
-        states: Optional[List[ts.GameState]] = None,
+        states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
         return rewards.astype(np.float32)
@@ -79,7 +79,7 @@ class BlunderAwareRewardCalculator:
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
-        states: Optional[List[ts.GameState]] = None,
+        states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         N = len(acting_players)
         rewards = np.zeros(N, dtype=np.float32)
@@ -153,7 +153,7 @@ class ShapedZeroSumReward:
         terminal_utilities: np.ndarray,
         prev_victory_points: np.ndarray,
         curr_victory_points: np.ndarray,
-        states: Optional[List[ts.GameState]] = None,
+        states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         term_rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
         delta_vp_us = (curr_victory_points - prev_victory_points).astype(np.float32)

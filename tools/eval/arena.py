@@ -7,7 +7,7 @@ import torch
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.env.action_encoder import ActionEncoder
+from bindings.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import HeuristicPolicy
 
 

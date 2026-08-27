@@ -15,8 +15,8 @@ except ImportError:
     import ts_engine as ts
 
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.env.action_encoder import ActionEncoder
-from bot.bot_client import BaseBot
+from bindings.action_encoder import ActionEncoder
+from bot.base_bot import BaseBot
 
 
 class NeuralBot(BaseBot):
@@ -35,19 +35,19 @@ class NeuralBot(BaseBot):
         self.temperature = temperature
 
         if model_path and os.path.exists(model_path):
-            state_dict = torch.load(model_path, map_location=self.device)
-            self.model.load_state_dict(state_dict)
+            weights_dict = torch.load(model_path, map_location=self.device)
+            self.model.load_state_dict(weights_dict)
             print(f"[NeuralBot] Loaded trained checkpoint from {model_path}")
         else:
             if model_path:
                 print(f"[NeuralBot] Warning: checkpoint {model_path} not found; using initialized model.")
         self.model.eval()
 
-    def select_action(self, state_dict: dict, legal_actions_dict: dict) -> Optional[dict]:
+    def select_action(self, state: Dict[str, Any], legal_actions: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Selects micro-action using ColdWarNet forward inference."""
-        valid_ids = legal_actions_dict.get("valid_ids", [])
-        d_type = legal_actions_dict.get("decision_type", 0)
-        allow_early_stop = legal_actions_dict.get("allow_early_stop", False)
+        valid_ids = legal_actions.get("valid_ids", [])
+        d_type = legal_actions.get("decision_type", 0)
+        allow_early_stop = legal_actions.get("allow_early_stop", False)
 
         if not valid_ids and not allow_early_stop:
             return None
@@ -95,7 +95,7 @@ class NeuralBot(BaseBot):
         side_sign = 1.0 if my_is_us else -1.0
 
         # Board features (Canonical Myself vs Opponent)
-        countries = state_dict.get("countries", [])
+        countries = state.get("countries", [])
         for c in countries:
             cid = c.get("id", 0)
             if 0 <= cid < 84:
@@ -118,18 +118,18 @@ class NeuralBot(BaseBot):
                 obs[offset + 7] = 1.0 if (controlled_by == "NONE") else 0.0
 
         # Global features (Canonical Myself vs Opponent)
-        raw_vp = float(state_dict.get("victory_points", 0))
+        raw_vp = float(state.get("victory_points", 0))
         my_vp = raw_vp if my_is_us else -raw_vp
         obs[3672 + 0] = my_vp / 20.0
-        obs[3672 + 1] = float(state_dict.get("defcon", 5)) / 5.0
+        obs[3672 + 1] = float(state.get("defcon", 5)) / 5.0
         
-        my_mil = float(state_dict.get("us_mil_ops", 0) if my_is_us else state_dict.get("ussr_mil_ops", 0))
-        opp_mil = float(state_dict.get("ussr_mil_ops", 0) if my_is_us else state_dict.get("us_mil_ops", 0))
+        my_mil = float(state.get("us_mil_ops", 0) if my_is_us else state.get("ussr_mil_ops", 0))
+        opp_mil = float(state.get("ussr_mil_ops", 0) if my_is_us else state.get("us_mil_ops", 0))
         obs[3672 + 2] = my_mil / 5.0
         obs[3672 + 3] = opp_mil / 5.0
 
-        obs[3672 + 6] = float(state_dict.get("turn", 1)) / 10.0
-        obs[3672 + 7] = float(state_dict.get("action_round", 0)) / 8.0
+        obs[3672 + 6] = float(state.get("turn", 1)) / 10.0
+        obs[3672 + 7] = float(state.get("action_round", 0)) / 8.0
         
         # Explicit side flags
         obs[3672 + 61] = 1.0 if my_is_us else 0.0

@@ -8,37 +8,52 @@ This repository contains the complete AI, simulation engine, web workbench, and 
 
 ```mermaid
 graph TD
-    subgraph Frontend ["Web Client (frontend/)"]
-        UI["Vite + TypeScript + SVG Deluxe Map"]
+    subgraph WebWorkbench ["Web Workbench (web/)"]
+        UI["Vite + TypeScript + SVG Deluxe Map (web/ui/)"]
         HUD["Decision HUD & Action Dispatcher"]
         Replayer["Replay & Timeline Player"]
-        Debug["State Inspector & Override Tools"]
-    end
-
-    subgraph Server ["Backend Server (server/)"]
-        FastAPI["FastAPI App (REST & Static Files)"]
+        Server["FastAPI REST & WebSocket Game Server (web/server/)"]
         WS["WebSocket Game Session Manager"]
         Logger["Replay Recorder (.tslog.json)"]
+        UI <-->|WebSocket: JSON State / Actions| WS
+        WS <--> Server
+        Server <--> Logger
     end
 
     subgraph NeuralAI ["Neural Network & RL (ai/)"]
-        ColdWarNet["ColdWarNet (GNN + Card + ResNet Fusion)"]
-        NashPG["NashPG Trainer (Iterative KL Self-Play)"]
-        BC["Behavioral Cloning (Phase 0 Pre-training)"]
-        VecEnv["Vectorized C++ Batch Runner (100k+ step/s)"]
-        Arena["Arena Tournament Evaluator"]
+        ColdWarNet["ColdWarNet (ai/models/)"]
+        NashPG["NashPG Trainer (ai/training/)"]
+        BC["Behavioral Cloning (ai/training/)"]
+        Rewards["BlunderAware / Shaped Rewards (ai/rewards/)"]
     end
 
-    subgraph Bot ["Bot Client (bot/)"]
-        Runner["bot_client.py Client"]
-        NeuralBotClient["NeuralBot (ColdWarNet PyTorch)"]
-        Heuristic["Heuristic Baseline Bot"]
-        Random["Random / Fuzz Bot"]
+    subgraph Bot ["Bot Clients & Agents (bot/)"]
+        BaseBot["Generic BaseBot Class (bot/base_bot.py)"]
+        Runner["WebSocket bot_client.py"]
+        NeuralBotClient["NeuralBot (PyTorch)"]
+        Heuristic["HeuristicBot Baseline"]
+        Random["RandomBot Baseline"]
         AgentPlayer["Agent Interactive Player CLI"]
+        BaseBot --> Heuristic
+        BaseBot --> Random
+        BaseBot --> NeuralBotClient
+        BaseBot --> AgentPlayer
     end
 
-    subgraph Bridge ["Native Python Bindings (bindings/)"]
+    subgraph Tools ["Generic CLI Tools & Evaluation (tools/)"]
+        TrainRunner["Unified Training CLI (tools/train.py)"]
+        TourneyRunner["Massive Tournament CLI (tools/tournament.py)"]
+        EvalCLI["Head-to-Head Evaluator (tools/evaluate.py)"]
+        ReplayGen["Replay Generator (tools/generate_replay.py)"]
+        Inspector["Checkpoint Inspector (tools/inspect_checkpoints.py)"]
+        GenericEval["Generic Evaluation & Self-Play (tools/eval/)"]
+        Scripts["Shell Automation (tools/scripts/)"]
+    end
+
+    subgraph Bridge ["Native Python Bindings & Envs (bindings/)"]
         Nanobind["nanobind Extension Module (ts_engine)"]
+        ActionCodec["212-dim ActionEncoder (bindings/action_encoder.py)"]
+        VecEnv["Vectorized C++ Batch Runner Wrapper (bindings/ts_env.py)"]
     end
 
     subgraph CoreEngine ["C++ Simulation Core (engine/)"]
@@ -50,18 +65,16 @@ graph TD
         Cards["ts::CardData (110 Cards Event Logic)"]
     end
 
-    UI <-->|WebSocket: JSON State / Actions| WS
     Runner <-->|WebSocket: JSON State / Actions| WS
-    WS <--> FastAPI
-    WS <--> Logger
     WS <--> Nanobind
     Nanobind <--> CoreEngine
     VecEnv <--> Nanobind
     VecEnv <--> NashPG
     NashPG <--> ColdWarNet
+    Rewards <--> NashPG
     ColdWarNet --> NeuralBotClient
     NeuralBotClient --> Runner
-    Arena <--> ColdWarNet
+    GenericEval <--> ColdWarNet
 ```
 
 ---
@@ -70,32 +83,10 @@ graph TD
 
 ```
 .
-├── AGENTS.md                   # Top-level instructions and architecture overview (this file)
-├── CMakeLists.txt              # Root build configuration for C++ core and nanobind module
+├── CMakeLists.txt              # Minimal root CMake configuration (orchestrates engine & bindings)
 ├── .gitignore                  # Git ignore rules for build, venv, node, logs, and rules/
 ├── .python-version             # Python runtime version pinned for environment
-│
-├── ai/                         # Neural Network & Reinforcement Learning (NashPG / ColdWarNet)
-│   ├── env/                    # Environment wrappers & flat action codecs
-│   │   ├── action_encoder.py   # 212-dim Flat Action <-> MicroAction bidirectional codec
-│   │   └── ts_env.py           # Single & Vectorized batched C++ simulation wrapper
-│   ├── models/                 # Neural network architectures
-│   │   └── coldwar_net.py      # ColdWarNet (GNN GraphConv + Card + Global ResNet + Masked Heads)
-│   ├── training/               # Training pipelines & algorithms
-│   │   ├── rollout_buffer.py   # Trajectory storage & GAE advantage calculator
-│   │   ├── behavioral_cloning.py # Phase 0 supervised pre-training
-│   │   ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization)
-│   │   └── train.py            # Unified CLI training & evaluation runner
-│   └── eval/                   # Tournament evaluation & arena metrics
-│       └── arena.py            # Automated tournament evaluator vs HeuristicBot / RandomBot
-│
-├── rules/                      # [GIT IGNORED] General game rules, PDF, map & card descriptions
-│   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
-│   ├── rules.md / rules.json   # Formal mathematical rules specification
-│   ├── cards.json / primitives # 110 cards metadata and state machine primitives
-│   ├── flags.json              # 47 persistent continuous effect & state bits
-│   ├── map.json / map.md       # 84-country graph topology & coordinates
-│   └── render_map.py           # Reference topology layout generator
+├── pyrefly.toml / pytest.ini   # Static typing and test configuration
 │
 ├── engine/                     # Core C++20 simulation engine (see engine/AGENTS.md)
 │   ├── CMakeLists.txt          # Engine library, unit tests, fuzzer, benchmark targets
@@ -104,10 +95,47 @@ graph TD
 │   ├── src/                    # Implementation files (scoring, ops, cards, state machine)
 │   └── tests/                  # C++ test suites (ts_tests, ts_fuzz, ts_benchmark)
 │
-├── bindings/                   # Native Python bridge via nanobind (see bindings/AGENTS.md)
-│   ├── CMakeLists.txt          # Module build instructions
-│   ├── AGENTS.md               # Specific instructions for maintaining the Python bindings
-│   └── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
+├── bindings/                   # Native Python bridge via nanobind & Python environment wrappers
+│   ├── CMakeLists.txt          # nanobind module build configuration
+│   ├── AGENTS.md               # Specific instructions for maintaining Python bindings
+│   ├── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
+│   ├── ts_engine.pyi           # Python type stubs for IDE and static typing
+│   ├── action_encoder.py       # 212-dim Flat Action <-> MicroAction bidirectional codec
+│   └── ts_env.py               # Single & Vectorized batched C++ simulation wrapper
+│
+├── ai/                         # Neural Network, Training & Reward Strategy (ai/AGENTS.md)
+│   ├── models/                 # Neural network architectures
+│   │   ├── coldwar_net.py      # ColdWarNet (GNN GraphConv + Card + Global ResNet + Masked Heads)
+│   │   └── coldwar_net_architecture.svg # Architecture diagram
+│   ├── rewards/                # Perspective-aligned reward strategies
+│   │   └── reward_calculator.py# BlunderAwareRewardCalculator, ZeroSumTerminalReward, ShapedZeroSumReward
+│   └── training/               # Training pipelines & algorithms
+│       ├── rollout_buffer.py   # Trajectory storage & GAE advantage calculator
+│       ├── behavioral_cloning.py # Phase 0 supervised pre-training
+│       ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization)
+│       ├── warmup_dataset_loader.py # Memory-bounded demonstration streaming
+│       └── train.py            # CLI training entry point
+│
+├── bot/                        # Bot clients & interactive players (see bot/AGENTS.md)
+│   ├── AGENTS.md               # Specific instructions for developing AI bots
+│   ├── base_bot.py             # Generic BaseBot abstract class defining bot interface
+│   ├── random_bot.py           # RandomBot baseline
+│   ├── heuristic_bot.py        # HeuristicBot rule-based baseline
+│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints
+│   ├── agent_player.py         # Rich CLI & interactive agent player interface
+│   └── bot_client.py           # WebSocket network bot runner for live matches
+│
+├── web/                        # Web Workbench (UI + Backend Server)
+│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (was frontend/)
+│   │   ├── index.html
+│   │   ├── package.json / vite.config.ts
+│   │   └── src/                # Map view, HUD, tracks, debug panel, replay controls
+│   └── server/                 # FastAPI Game Server and Replay Manager (was server/)
+│       ├── AGENTS.md           # Instructions for server maintainers
+│       ├── main.py             # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
+│       ├── session.py          # GameSession class, action router, state broadcasting
+│       ├── replay.py           # ReplayLogger and ReplayManager
+│       └── replay_types.py     # TypedDict specifications for state, action, and logs
 │
 ├── tools/                      # Reusable agent & developer CLI tools (see tools/README.md)
 │   ├── README.md               # Tool descriptions, CLI flags, and usage examples
@@ -115,20 +143,30 @@ graph TD
 │   ├── tournament.py           # Massive vectorized round-robin tournament & Elo matrix evaluator
 │   ├── evaluate.py             # Head-to-head match evaluation CLI
 │   ├── generate_replay.py      # Self-play or head-to-head replay generator (.tslog.json)
-│   └── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & metadata inspector
+│   ├── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & metadata inspector
+│   ├── generate_warmup_dataset.py # Demonstration rollout generator
+│   ├── eval/                   # Generic agent evaluation & self-play utilities
+│   │   ├── player_agent.py     # Unified Agent loader (random, heuristic, neural)
+│   │   ├── tournament_evaluator.py # Matchup runner & loss cause classifier
+│   │   ├── self_play.py        # Self-play simulation & .tslog.json recorder
+│   │   ├── batch_tournament.py # Vectorized batch tournament runner
+│   │   └── arena.py            # Tournament evaluator vs baselines
+│   └── scripts/                # Shell automation scripts
+│       ├── train_and_tournament.sh # Unified training & tournament bash runner
+│       ├── train_direct_rl.sh  # Direct RL self-play runner
+│       └── run_asan.sh         # AddressSanitizer execution script
 │
-├── server/                     # FastAPI game server and replay manager (see server/AGENTS.md)
-│   ├── AGENTS.md               # Specific instructions for server maintainers
-│   ├── main.py                 # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
-│   └── session.py              # GameSession class, micro-action router, state broadcasting
+├── data/                       # Datasets, Checkpoints & Recorded Replays
+│   ├── checkpoints/            # Model weights (run_v3_*, coldwar_net_v3_warmup.pt)
+│   ├── replays/                # Saved game logs (*.tslog.json)
+│   └── datasets/               # Demonstration datasets (warmup_5k_games.jsonl.gz)
 │
-├── bot/                        # Bot clients & interactive players (see bot/AGENTS.md)
-│   ├── AGENTS.md               # Specific instructions for developing AI bots
-│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints
-│   ├── bot_client.py           # CLI bot runner (RandomBot, HeuristicBot, NeuralBot)
-│   └── agent_player.py         # Rich CLI & interactive agent player interface
+├── external/                   # External integrations & differential engines
+│   ├── README.md               # Integration guide
+│   └── struggler/              # External reference engine (Rust/Python)
 │
-├── tests/                      # Python pytest integration test suite (343 tests)
+├── tests/                      # Python pytest integration test suite (368 tests)
+│   ├── test_credit_assignment.py # Unit tests for reward propagation & Rule 4.3 headlines
 │   ├── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
 │   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
 │   ├── test_all_110_cards_differential.py # Exhaustive 110-card cross-engine validation (131 tests)
@@ -136,9 +174,20 @@ graph TD
 │   ├── test_card_fixes.py      # Dedicated verification suite for card rules fixes
 │   ├── test_bindings.py        # Validates Python nanobind module
 │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation
+│   ├── test_types_and_json_schemas.py # Validates replay JSON schema and pyrefly typing
+│   ├── test_web_workbench.py   # FastAPI client and UI metadata endpoint tests
 │   └── test_e2e_space_race.py  # Playwright E2E browser tests
 │
-└── replays/                    # Recorded game logs in standardized .tslog.json format
+├── rules/                      # [GIT IGNORED] General game rules, PDF, map & card descriptions
+│   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
+│   ├── rules.md / rules.json   # Formal mathematical rules specification
+│   ├── cards.json / primitives # 110 cards metadata and state machine primitives
+│   ├── flags.json              # 47 persistent continuous effect & state bits
+│   └── map.json / map.md       # 84-country graph topology & coordinates
+│
+└── build/                      # Build outputs (.gitignored)
+    ├── release/                # Standard release CMake build
+    └── asan/                   # AddressSanitizer / UBSan debug build
 ```
 
 ---
@@ -152,15 +201,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install nanobind fastapi "uvicorn[standard]" websockets pytest numpy pydantic httpx torch torchvision
 
-# 2. Frontend dependencies & production build
-cd frontend && npm install && npm run build && cd ..
+# 2. Web UI dependencies & production build
+cd web/ui && npm install && npm run build && cd ../..
 ```
 
 ### 3.2 Build C++ Engine & Nanobind Extension
 ```bash
 # Standard Release Build
-cmake -B build -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
-cmake --build build -j
+cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
+cmake --build build/release -j
 ```
 
 ### 3.3 Generic Scheme for Training & Tournament Pipelines
@@ -168,9 +217,9 @@ cmake --build build -j
 ```mermaid
 graph TD
     subgraph Phase0 ["Phase 0: Supervised BC Warmup"]
-        Demonstrations["Demonstration Dataset (5,000 Games, data/warmup_5k_games.jsonl.gz)"]
+        Demonstrations["Demonstration Dataset (5,000 Games, data/datasets/warmup_5k_games.jsonl.gz)"]
         Streamer["WarmupDataset.stream_batches (B=1024, Reservoir Buffer, RAM < 70MB)"]
-        WarmupModel["Warmup Checkpoint: checkpoints/coldwar_net_v3_warmup.pt (90% vs Heuristic)"]
+        WarmupModel["Warmup Checkpoint: data/checkpoints/coldwar_net_v3_warmup.pt (90% vs Heuristic)"]
         Demonstrations --> Streamer --> WarmupModel
     end
 
@@ -213,118 +262,59 @@ graph TD
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --mode warmup \
   --arch v3 \
-  --warmup-dataset data/warmup_5k_games.jsonl.gz \
+  --warmup-dataset data/datasets/warmup_5k_games.jsonl.gz \
   --bc-epochs 2 \
   --batch-size 1024 \
-  --output-dir checkpoints/coldwar_net_v3_warmup.pt
+  --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
 
 # 2. Phase 1 & 2 & 3: Unified RL Training + Live Snapshots + Post-Training Tournament
-# (or simply use ./scripts/train_and_tournament.sh v3 7200 1200 checkpoints/coldwar_net_v3_warmup.pt)
+# (or simply use ./tools/scripts/train_and_tournament.sh v3 7200 1200 data/checkpoints/coldwar_net_v3_warmup.pt)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v3 \
   --duration-seconds 7200 \
   --snapshot-interval-seconds 1200 \
-  --warmup-checkpoint checkpoints/coldwar_net_v3_warmup.pt \
+  --warmup-checkpoint data/checkpoints/coldwar_net_v3_warmup.pt \
   --reward-scheme blunder_aware \
-  --eval-opponents heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --eval-games-per-side 50 \
   --post-tournament \
-  --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500
 
 # 3. Standalone Post-Tournament & Elo Evaluation Across Any Checkpoint Directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --checkpoint-dir checkpoints/run_v3_20260827_205207 \
+  --checkpoint-dir data/checkpoints/run_v3_20260827_205207 \
   --games-per-side 500 \
   --anchor-model HeuristicBot \
   --anchor-elo 1500.0 \
-  --output-report checkpoints/run_v3_20260827_205207/massive_tournament_report.md
+  --output-report data/checkpoints/run_v3_20260827_205207/massive_tournament_report.md
 ```
 
 ### 3.4 Launch Web Workbench & Play Against NeuralBot
 ```bash
 # 1. Start backend server (serves web UI on port 8000)
-PYTHONPATH=. .venv/bin/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --type neural --model-path checkpoints/coldwar_net.pt
+PYTHONPATH=. .venv/bin/python -m bot.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt
 
 # 3. Open browser at:
 # http://localhost:8000/?game_id=game-1&role=US
 ```
 
-### 3.6 Reusable Agent CLI Tools (`tools/`) & Helper Scripts (`scripts/`)
-
-> **Agent Guideline: Prefer Generic CLI Tools Over Ad-Hoc Scripts**
-> Agents must prioritize extending and utilizing generic, configurable CLI tools in `tools/` (with appropriate flags/arguments) rather than creating ad-hoc, throwaway wrapper scripts (e.g. one-off bash scripts). All training, tournament, replay, and evaluation features should be parameterized cleanly in `tools/`.
+### 3.5 Reusable Agent CLI Tools (`tools/`)
 
 #### Standard CLI Tools (`tools/`)
 1. **Unified Training Runner (`tools/train.py`)**:
-   Starts time-bounded RL with live snapshot tournaments, blunder-aware reward shielding, and optional post-training massive tournament benchmarking:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/train.py \
-     --arch v3 \
-     --duration-seconds 7200 \
-     --snapshot-interval-seconds 600 \
-     --reward-scheme blunder_aware \
-     --post-tournament \
-     --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt
-   ```
-
+   Starts time-bounded RL with live snapshot tournaments, blunder-aware reward shielding, and optional post-training massive tournament benchmarking.
 2. **Massive Vectorized Tournament & Elo Rating (`tools/tournament.py`)**:
-   Runs ultra-fast parallel tournaments (300-800 games/sec) across all checkpoints in a directory, calculating Bradley-Terry Elo ratings, total/USSR/US winning matrices, and side-specific loss cause breakdowns:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/tournament.py \
-     --checkpoint-dir checkpoints/run_v2_blunder_aware_9h \
-     --games-per-side 1000 \
-     --output-report checkpoints/run_v2_blunder_aware_9h/massive_tournament_report.md
-   ```
-
+   Runs ultra-fast parallel tournaments (300-800 games/sec) across all checkpoints in a directory, calculating Bradley-Terry Elo ratings, total/USSR/US winning matrices, and side-specific loss cause breakdowns.
 3. **Generate Game Replay (`tools/generate_replay.py`)**:
-   Runs self-play or head-to-head matches and logs standardized `.tslog.json` replays with the exact Web Workbench viewer URL:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/generate_replay.py \
-     --model checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
-     --game-id snapshot_21601s_selfplay
-   # Open browser at: http://localhost:8000/?replay=snapshot_21601s_selfplay.tslog.json
-   ```
-
+   Runs self-play or head-to-head matches and logs standardized `.tslog.json` replays with the exact Web Workbench viewer URL.
 4. **Head-to-Head Match Evaluator (`tools/evaluate.py`)**:
-   Runs a fast match between any two agents, breaking down US and USSR win rates and exact loss reasons:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/evaluate.py \
-     --agent-a checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
-     --agent-b heuristic \
-     --games-per-side 50
-   ```
-
+   Runs a fast match between any two agents, breaking down US and USSR win rates and exact loss reasons.
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
-   Scans `checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures:
-   ```bash
-   PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
-   ```
-
-#### Existing Helper Scripts (`scripts/`)
-- `scripts/train_direct_rl.sh`: Generic runner for time-bounded RL self-play that avoids memory-heavy BC datasets, adheres to the timestamped checkpoint naming convention, and runs post-training tournament benchmarks.
-- `scripts/massive_tournament.py`: Vectorized parallel round-robin tournament and MLE Elo rating benchmark engine (underlying implementation for `tools/tournament.py`).
-- `scripts/evaluate.py`: Fast head-to-head match evaluation CLI between two agents or checkpoints (underlying implementation for `tools/evaluate.py`).
-- `scripts/generate_replay_match.py`: Generates standardized `.tslog.json` match replays for Web Workbench (underlying implementation for `tools/generate_replay.py`).
-- `scripts/generate_warmup_dataset.py`: Rollout generator for multi-temperature demonstration datasets (`.jsonl.gz`) across 500 parallel environments.
-- `scripts/run_asan.sh`: AddressSanitizer and UndefinedBehaviorSanitizer test execution script for C++ engine verification.
-- `scripts/train.py`: CLI training entry point (redirects to `ai.training.train`).
-
-### 3.5 Run Test Suites
-```bash
-# C++ Unit Tests (299 tests) & Performance Benchmark
-./build/engine/ts_tests
-./build/engine/ts_benchmark
-
-# Python Integration Tests (343 tests including Neural & NashPG suite)
-PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
-
-# Static Type Checking with Pyrefly
-.venv/bin/pyrefly check
-```
+   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures.
 
 ---
 
@@ -333,18 +323,33 @@ PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
 1. **Zero Heap Allocations in Engine Core**:
    `ts::GameState` must remain trivially copyable (`std::is_trivially_copyable_v<GameState>`) and within 4 KB.
 2. **212-Dimensional Flat Action Space**:
-   All neural network policy heads and action masks operate over the exact 212 flat action space mapped by `ActionEncoder` and `ActionMask::generate_flat_mask_212`.
+   All neural network policy heads and action masks operate over the exact 212 flat action space mapped by `bindings.ActionEncoder` and `ActionMask::generate_flat_mask_212`.
 3. **NashPG Reference Regularization**:
    The active policy $\pi_\theta$ is regularized against the frozen outer-loop snapshot $\pi_{\text{ref}}^{(k)}$ with fixed $\eta$, ensuring monotonic convergence to Nash equilibrium without strategy cycling.
 4. **Deterministic PRNG**:
    All simulation randomness uses `state.rng_state` with SplitMix64 (`ts::Prng`).
 5. **Strict Type Annotations & Mandatory Type Checking**:
-   All Python types must be explicitly annotated (using `TypedDict` definitions in `server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
+   All Python types must be explicitly annotated (using `TypedDict` definitions in `web/server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
 6. **Unified Self-Play & Replay Generation**:
-   All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `ai.eval.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
+   All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.eval.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
 7. **Mandatory Checkpoint Directory Naming Convention**:
    All model checkpoint directories MUST follow the standard pattern:
-   `checkpoints/run_[version]_[start date]_[start time]`
-   (e.g., `checkpoints/run_v3_20260826_231500` or `checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v3_2h`) are strictly forbidden.
+   `data/checkpoints/run_[version]_[start date]_[start time]`
+   (e.g., `data/checkpoints/run_v3_20260826_231500` or `data/checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v3_2h`) are strictly forbidden.
 8. **Bounded Dataset Streaming & OOM Prevention**:
    Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.
+
+---
+
+## 5. Run Test Suites
+```bash
+# C++ Unit Tests (304 tests) & Performance Benchmark
+./build/release/engine/ts_tests
+./build/release/engine/ts_benchmark
+
+# Python Integration Tests (368 tests including Neural & NashPG suite)
+PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
+
+# Static Type Checking with Pyrefly (must return 0 errors)
+.venv/bin/pyrefly check
+```

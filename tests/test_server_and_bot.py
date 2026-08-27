@@ -1,6 +1,6 @@
 import pytest
 from starlette.testclient import TestClient
-from server.main import app
+from web.server.main import app
 from bot.bot_client import HeuristicBot, RandomBot
 import ts_engine
 import json
@@ -126,7 +126,7 @@ def test_replay_loading():
 
 def test_die_roll_logged_in_action_stream():
     """Validates that structured die rolls (e.g. Korean War, Coups) are explicitly recorded in session action logs."""
-    from server.session import describe_action_and_deltas
+    from web.server.session import describe_action_and_deltas
     
     state_before = {
         "decision_context": {

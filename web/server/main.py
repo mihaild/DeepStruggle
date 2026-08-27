@@ -1,18 +1,18 @@
-from server.replay_types import ReplaySummaryDict, ReplayLogDict, GameStateDict
+from web.server.replay_types import ReplaySummaryDict, ReplayLogDict, GameStateDict
 import os
 import sys
 import json
 import argparse
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from server.session import GameSession
-from server.replay import ReplayManager
+from web.server.session import GameSession
+from web.server.replay import ReplayManager
 
 def setup_server_logging(log_file: Optional[str] = None, log_level_name: str = "DEBUG"):
     """Configures detailed logging using Python's standard logging module."""
@@ -20,7 +20,7 @@ def setup_server_logging(log_file: Optional[str] = None, log_level_name: str = "
     log_format = "%(asctime)s [%(levelname)s] [%(name)s]: %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    handlers = []
+    handlers: List[logging.Handler] = []
     if log_file:
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -103,7 +103,7 @@ async def get_replay(filename: str) -> ReplayLogDict:
 
 @app.get("/api/metadata/map")
 async def get_map_metadata():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     map_path = os.path.join(base_dir, "rules", "map.json")
     if not os.path.exists(map_path):
         map_path = os.path.join(base_dir, "map.json")
@@ -112,7 +112,7 @@ async def get_map_metadata():
 
 @app.get("/api/metadata/cards")
 async def get_cards_metadata():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     cards_path = os.path.join(base_dir, "rules", "cards.json")
     if not os.path.exists(cards_path):
         cards_path = os.path.join(base_dir, "cards.json")
@@ -149,7 +149,8 @@ async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERV
         session.disconnect(websocket)
 
 # Mount frontend if dist exists
-dist_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+dist_dir = os.path.join(_ROOT_DIR, "web", "ui", "dist")
 if os.path.exists(dist_dir):
     app.mount("/", StaticFiles(directory=dist_dir, html=True), name="frontend")
 

@@ -9,8 +9,8 @@ import numpy as np
 import torch
 
 import ts_engine as ts
-from ai.eval.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, RandomAgent, load_agent, resolve_device
-from ai.eval.tournament_evaluator import classify_game_ending_reason
+from tools.eval.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, RandomAgent, load_agent, resolve_device
+from tools.eval.tournament_evaluator import classify_game_ending_reason
 
 
 class BatchMatchRunner:

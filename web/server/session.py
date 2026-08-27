@@ -1,10 +1,10 @@
-from server.replay_types import GameStateDict, ReplayActionDict
+from web.server.replay_types import GameStateDict, ReplayActionDict
 import os
 import sys
 import json
 import random
 import logging
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, cast
 from fastapi import WebSocket
 try:
     import ts_engine
@@ -14,11 +14,11 @@ except ImportError:
     if os.path.exists(_build) and _build not in sys.path:
         sys.path.insert(0, _build)
     import ts_engine
-from server.replay import ReplayLogger
+from web.server.replay import ReplayLogger
 
 logger = logging.getLogger("ts_server.session")
 
-def describe_action_and_deltas(state_before: dict, state_after: dict, action: ts_engine.MicroAction) -> List[str]:
+def describe_action_and_deltas(state_before: Any, state_after: Any, action: ts_engine.MicroAction) -> List[str]:
     """Generates detailed human-readable log messages and state deltas for an executed action."""
     d_type = action.decision_type
     primary = action.primary_id
@@ -302,7 +302,7 @@ class GameSession:
             "US": self.us_player,
             "USSR": self.ussr_player
         }
-        return d
+        return cast(GameStateDict, d)
 
     async def connect(self, websocket: WebSocket, role: str):
         await websocket.accept()
@@ -383,7 +383,7 @@ class GameSession:
             return False
 
         self.step_index += 1
-        state_after = self.state.to_dict()
+        state_after = cast(GameStateDict, self.state.to_dict())
         delta_lines = describe_action_and_deltas(state_before, state_after, action)
 
         main_desc = delta_lines[0] if delta_lines else f"Action type={int(d_type)}"

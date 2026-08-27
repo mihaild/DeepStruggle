@@ -2,7 +2,7 @@ import os
 import json
 import pytest
 from starlette.testclient import TestClient
-from server.main import app
+from web.server.main import app
 
 client = TestClient(app)
 

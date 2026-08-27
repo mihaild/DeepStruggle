@@ -1,4 +1,4 @@
-from server.replay_types import AuditGameReportDict, AuditLogEntryDict
+from web.server.replay_types import AuditGameReportDict, AuditLogEntryDict
 #!/usr/bin/env python3
 """
 Plays a full Twilight Struggle game against itself with exhaustive rule and action mask validation on every single step.

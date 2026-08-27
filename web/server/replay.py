@@ -2,7 +2,7 @@ import json
 import os
 import time
 from typing import List, Dict, Any, Optional
-from server.replay_types import (
+from web.server.replay_types import (
     ReplayLogDict,
     ReplayStepDict,
     ReplaySummaryDict,
@@ -12,7 +12,8 @@ from server.replay_types import (
     ReplayActionDict,
 )
 
-REPLAYS_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "replays")
+_ROOT_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPLAYS_DIR: str = os.path.join(_ROOT_DIR, "data", "replays")
 
 
 class ReplayLogger:

@@ -9,8 +9,8 @@ import pytest
 import numpy as np
 import torch
 import ts_engine as ts
-from ai.env.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
-from ai.env.ts_env import TsVectorizedEnv
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator
+from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 
 

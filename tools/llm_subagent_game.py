@@ -1,4 +1,4 @@
-from server.replay_types import AuditGameReportDict, AuditLogEntryDict
+from web.server.replay_types import AuditGameReportDict, AuditLogEntryDict
 #!/usr/bin/env python3
 """
 Autonomous LLM Subagent System for Twilight Struggle

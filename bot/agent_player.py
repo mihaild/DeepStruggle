@@ -1,4 +1,4 @@
-from server.replay_types import SavedGameSessionDict
+from web.server.replay_types import SavedGameSessionDict
 #!/usr/bin/env python3
 """
 Twilight Struggle Agent Player & CLI Tool
@@ -197,7 +197,7 @@ class AgentGameClient:
         import asyncio
 
         async def _send_ws():
-            ws_url = f"{self.server_url.replace('http', 'ws')}/ws/game/{self.game_id}?role={self.role}"
+            ws_url = f"{(self.server_url or "").replace('http', 'ws')}/ws/game/{self.game_id}?role={self.role}"
             async with websockets.connect(ws_url) as ws:
                 # Receive initial state
                 await ws.recv()
@@ -233,7 +233,7 @@ class AgentGameClient:
                 side = info.get("side", "neutral")
                 era = info.get("era_name", "")
                 one_time = "★" if info.get("one_time") else ""
-                desc = f"#{cid} {card_name} {one_time} ({ops} Ops, {side.upper()}, {era.upper()})"
+                desc = f"#{cid} {card_name} {one_time} ({ops} Ops, {str(side).upper()}, {str(era).upper()})"
                 choices.append({
                     "index": len(choices) + 1,
                     "id": cid,
@@ -414,7 +414,7 @@ def format_state_summary(state: Dict[str, Any], client: Optional[AgentGameClient
     remaining = ctx.get("remaining_steps", 0)
     resolving = ctx.get("resolving_card_name", "")
 
-    lines = []
+    lines: List[str] = []
     lines.append("=" * 65)
     lines.append(f"★ TWILIGHT STRUGGLE STATE | Turn {turn} | Phase: {phase} | AR: {ar}")
     lines.append(f"DEFCON: {defcon} | VP: {vp_str} | Phasing: {phasing}")
