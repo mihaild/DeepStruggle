@@ -163,17 +163,82 @@ cmake -B build -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build -j
 ```
 
-### 3.3 Training & Evaluating Neural Networks (ColdWarNet / NashPG)
+### 3.3 Generic Scheme for Training & Tournament Pipelines
 
+```mermaid
+graph TD
+    subgraph Phase0 ["Phase 0: Supervised BC Warmup"]
+        Demonstrations["Demonstration Dataset (5,000 Games, data/warmup_5k_games.jsonl.gz)"]
+        Streamer["WarmupDataset.stream_batches (B=1024, Reservoir Buffer, RAM < 70MB)"]
+        WarmupModel["Warmup Checkpoint: checkpoints/coldwar_net_v3_warmup.pt (90% vs Heuristic)"]
+        Demonstrations --> Streamer --> WarmupModel
+    end
+
+    subgraph Phase1 ["Phase 1: Vectorized NashPG RL Pipeline (tools/train.py)"]
+        VecEnv["C++ VectorizedBatchRunner (512 Envs, 5,000+ step/s)"]
+        ActiveNet["Active Policy π_θ (Stratified Temperatures 0.10 - 0.50)"]
+        RefNet["Frozen Reference Policy π_ref (Outer-loop KL Anchor)"]
+        Rollout["RolloutBuffer (512 envs × 128 steps = 65,536 transitions)"]
+        BlunderCalc["BlunderAwareRewardCalculator (Event Traps +1.0, Unprovoked -1.0, Shielding 0.0)"]
+        GAE["Alternating Zero-Sum GAE (λ=0.98, γ=0.999)"]
+        NashLoss["PPO Loss + η·D_KL(π_θ || π_ref) - c_ent·H(π_θ)"]
+
+        WarmupModel --> ActiveNet
+        ActiveNet <--> VecEnv
+        VecEnv --> BlunderCalc --> Rollout --> GAE --> NashLoss --> ActiveNet
+        ActiveNet -.->|Periodic Snapshot| RefNet
+    end
+
+    subgraph Phase2 ["Phase 2: Live Snapshot Evaluations"]
+        Snapshots["Snapshots Saved Every N Seconds (snapshot_1200s.pt, snapshot_2400s.pt...)"]
+        LiveEval["Live Match Evaluator vs HeuristicBot, RandomBot, & Historical Champions"]
+        ActiveNet --> Snapshots --> LiveEval
+    end
+
+    subgraph Phase3 ["Phase 3: Post-Training Massive Tournament (tools/tournament.py)"]
+        RoundRobin["Massive Vectorized Round-Robin (1,000 Games / Pair, 200+ games/s)"]
+        EloCalc["Bradley-Terry MLE Elo Rating Matrix (Anchor: HeuristicBot = 1500.0)"]
+        Causes["Diagnostic Loss Causes (Provoked vs Unprovoked DEFCON, Sudden Death VP, Scoring)"]
+        Reports["Comprehensive Markdown & JSON Reports (final_tournament_report.md)"]
+
+        Snapshots --> RoundRobin
+        RoundRobin --> EloCalc --> Reports
+        RoundRobin --> Causes --> Reports
+    end
+```
+
+#### Standard Execution Commands
 ```bash
-# Phase 0: Supervised Behavioral Cloning Pre-Training
-PYTHONPATH=. .venv/bin/python -m ai.training.train --mode bc --bc-games 1000 --bc-epochs 10 --save-path checkpoints/coldwar_net_bc.pt
+# 1. Phase 0: Bounded Streaming BC Warmup (Full 5,000 games in ~3 minutes, <70 MB RAM)
+TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
+  --mode warmup \
+  --arch v3 \
+  --warmup-dataset data/warmup_5k_games.jsonl.gz \
+  --bc-epochs 2 \
+  --batch-size 1024 \
+  --output-dir checkpoints/coldwar_net_v3_warmup.pt
 
-# Phase 1: NashPG (Nash Policy Gradient) Self-Play Reinforcement Learning
-PYTHONPATH=. .venv/bin/python -m ai.training.train --mode nashpg --load-path checkpoints/coldwar_net_bc.pt --num-envs 64 --buffer-size 128 --iterations 100 --eta 0.1 --save-path checkpoints/coldwar_net.pt
+# 2. Phase 1 & 2 & 3: Unified RL Training + Live Snapshots + Post-Training Tournament
+# (or simply use ./scripts/train_and_tournament.sh v3 7200 1200 checkpoints/coldwar_net_v3_warmup.pt)
+TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
+  --arch v3 \
+  --duration-seconds 7200 \
+  --snapshot-interval-seconds 1200 \
+  --warmup-checkpoint checkpoints/coldwar_net_v3_warmup.pt \
+  --reward-scheme blunder_aware \
+  --eval-opponents heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-games-per-side 50 \
+  --post-tournament \
+  --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-games 500
 
-# Phase 2: Tournament Evaluation
-PYTHONPATH=. .venv/bin/python -m ai.training.train --mode eval --load-path checkpoints/coldwar_net.pt --eval-games 100 --eval-opponent heuristic
+# 3. Standalone Post-Tournament & Elo Evaluation Across Any Checkpoint Directory
+PYTHONPATH=. .venv/bin/python tools/tournament.py \
+  --checkpoint-dir checkpoints/run_v3_20260827_205207 \
+  --games-per-side 500 \
+  --anchor-model HeuristicBot \
+  --anchor-elo 1500.0 \
+  --output-report checkpoints/run_v3_20260827_205207/massive_tournament_report.md
 ```
 
 ### 3.4 Launch Web Workbench & Play Against NeuralBot
