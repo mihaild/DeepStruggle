@@ -8,7 +8,7 @@ set -euo pipefail
 ARCH="${1:-v3}"
 DURATION="${2:-7200}"                 # Default: 2 hours (7200s)
 SNAPSHOT_INTERVAL="${3:-1200}"        # Default: 20 minutes (1200s)
-WARMUP_CHECKPOINT="${4:-checkpoints/coldwar_net_v3_warmup.pt}"
+WARMUP_CHECKPOINT="${4:-data/checkpoints/coldwar_net_v3_warmup.pt}"
 
 EXTRA_ARGS=()
 if [ -n "$WARMUP_CHECKPOINT" ] && [ -f "$WARMUP_CHECKPOINT" ]; then
@@ -27,9 +27,9 @@ PYTHONPATH=. .venv/bin/python tools/train.py \
   --duration-seconds "$DURATION" \
   --snapshot-interval-seconds "$SNAPSHOT_INTERVAL" \
   --reward-scheme blunder_aware \
-  --eval-opponents heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --eval-games-per-side 50 \
   --post-tournament \
-  --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500 \
   "${EXTRA_ARGS[@]}"

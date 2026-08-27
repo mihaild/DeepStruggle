@@ -395,7 +395,7 @@ class BehavioralCloningTrainer:
         print(f"Collected {len(actions_np):,} transition steps from {num_games} games.")
         return TrajectoryDataset(obs_np, masks_np, actions_np, values_np)
 
-    def train(self, dataset: TrajectoryDataset, epochs: int = 10, batch_size: int = 256, save_path: str = "checkpoints/coldwar_net_bc.pt") -> Dict[str, List[float]]:
+    def train(self, dataset: TrajectoryDataset, epochs: int = 10, batch_size: int = 256, save_path: str = "data/checkpoints/coldwar_net_bc.pt") -> Dict[str, List[float]]:
         self.batch_size = batch_size
         history = self.train_epochs(dataset, epochs=epochs)
         if save_path:

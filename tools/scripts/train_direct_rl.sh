@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ColdWarNet reinforcement learning directly without memory-heavy BC warmup datasets,
-# automatically creating checkpoints in checkpoints/run_[version]_[start date]_[start time]
+# automatically creating checkpoints in data/checkpoints/run_[version]_[start date]_[start time]
 # and running a massive tournament benchmark upon completion.
 
 set -e
@@ -16,8 +16,8 @@ PYTHONPATH=. .venv/bin/python tools/train.py \
   --duration-seconds "$DURATION" \
   --snapshot-interval-seconds "$SNAPSHOT_INTERVAL" \
   --reward-scheme blunder_aware \
-  --eval-opponents heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --eval-games-per-side 50 \
   --post-tournament \
-  --post-tournament-models heuristic random checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500

@@ -47,7 +47,7 @@ def main():
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped"], help="Reward calculation scheme")
-    parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: checkpoints/run_[version]_[start date]_[start time])")
+    parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
 
     args = parser.parse_args()
@@ -86,7 +86,7 @@ def main():
             model = create_coldwar_net_v2(dev)
         else:
             model = create_coldwar_net(dev)
-        out_save = args.output_dir or f"checkpoints/coldwar_net_{args.arch}_warmup.pt"
+        out_save = args.output_dir or f"data/checkpoints/coldwar_net_{args.arch}_warmup.pt"
         run_behavioral_cloning_warmup(
             model=model,
             dataset_path=args.warmup_dataset,

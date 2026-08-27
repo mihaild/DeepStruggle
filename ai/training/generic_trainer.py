@@ -113,7 +113,7 @@ def train_pipeline(
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    out_dir = output_dir or os.path.join("checkpoints", f"run_{arch}_{timestamp}")
+    out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
     os.makedirs(out_dir, exist_ok=True)
 
     log_path = os.path.join(out_dir, "training_metrics.jsonl")
@@ -395,7 +395,7 @@ def train_pipeline(
     print(f"=== Training Complete. Final Checkpoint: {final_snap_path} ===", flush=True)
 
     if post_tournament:
-        from scripts.massive_tournament import run_massive_tournament
+        from tools.tournament import run_massive_tournament
         print("\n" + "=" * 80, flush=True)
         print(" LAUNCHING POST-TRAINING MASSIVE TOURNAMENT BENCHMARK", flush=True)
         print("=" * 80 + "\n", flush=True)
