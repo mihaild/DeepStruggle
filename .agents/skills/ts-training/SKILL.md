@@ -9,7 +9,15 @@ description: >-
 
 # Twilight Struggle AI: Model Training Runbook
 
-This skill provides step-by-step instructions and standard execution commands for training ColdWarNet neural networks (V1, V2, V3) on the C++ simulation engine.
+This skill provides step-by-step instructions and standard execution commands for training ColdWarNet neural networks on the C++ simulation engine.
+
+> [!IMPORTANT]
+> **Dynamic Versions, Checkpoints & Datasets**:
+> Model architectures (`v1`, `v2`, `v3`, `v4`...), checkpoint directories, and demonstration datasets evolve continuously over time:
+> - **Architecture**: Check `ai/models/` or current SOTA flag (e.g. `--arch v3`). Never assume a fixed architecture version across runs.
+> - **Warmup Seed Checkpoint**: Inspect available models via `python tools/inspect_checkpoints.py` to select the current champion or warmup checkpoint.
+> - **Datasets**: Check `data/datasets/` for the latest demonstration dataset (e.g. `data/datasets/*.jsonl.gz`).
+> - The paths shown in the examples below use representative placeholders `<arch>`, `<warmup_seed.pt>`, and `<dataset.jsonl.gz>`.
 
 ---
 
@@ -19,28 +27,29 @@ This skill provides step-by-step instructions and standard execution commands fo
 Runs vectorized NashPG self-play across 512 parallel C++ environments, with blunder-aware reward shielding, live snapshot evaluation every $N$ seconds, and an automated post-training massive tournament:
 
 ```bash
-# 2-Hour training run for ColdWarNet V3 starting from supervised warmup seed:
+# Example RL training run starting from a supervised warmup seed:
+# (Replace --arch, --warmup-checkpoint, and eval opponents with active champion models)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v3 \
+  --arch <arch> \
   --duration-seconds 7200 \
   --snapshot-interval-seconds 1200 \
-  --warmup-checkpoint data/checkpoints/coldwar_net_v3_warmup.pt \
+  --warmup-checkpoint data/checkpoints/<latest_warmup_or_champion>.pt \
   --reward-scheme blunder_aware \
-  --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-opponents heuristic random data/checkpoints/<historical_champion>.pt \
   --eval-games-per-side 50 \
   --post-tournament \
-  --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-models heuristic random data/checkpoints/<historical_champion>.pt \
   --post-tournament-games 500
 ```
 > [!NOTE]
-> If `--output-dir` is not explicitly passed, `tools/train.py` automatically generates a compliant timestamped directory: `data/checkpoints/run_v3_YYYYMMDD_HHMMSS`.
+> If `--output-dir` is not explicitly passed, `tools/train.py` automatically generates a compliant timestamped directory using the current architecture: `data/checkpoints/run_<arch>_YYYYMMDD_HHMMSS`.
 
 ### B. Fast Smoke-Test / Sanity Check (30 Seconds)
 Use this whenever verifying code changes, new loss functions, or architecture modifications before launching a long training session:
 
 ```bash
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v3 \
+  --arch <arch> \
   --duration-seconds 30 \
   --snapshot-interval-seconds 15 \
   --num-envs 64 \
@@ -52,26 +61,27 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 ```
 
 ### C. Phase 0: Supervised BC Demonstration Warmup
-Pre-trains a raw model directly on demonstration datasets (`data/datasets/warmup_5k_games.jsonl.gz`) using memory-bounded streaming (<70 MB RAM):
+Pre-trains a raw model directly on demonstration datasets using memory-bounded streaming (<70 MB RAM):
 
 ```bash
+# Locate latest dataset in data/datasets/ (e.g. warmup_5k_games.jsonl.gz)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --mode warmup \
-  --arch v3 \
-  --warmup-dataset data/datasets/warmup_5k_games.jsonl.gz \
+  --arch <arch> \
+  --warmup-dataset data/datasets/<latest_dataset>.jsonl.gz \
   --bc-epochs 2 \
   --batch-size 1024 \
-  --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
+  --output-dir data/checkpoints/coldwar_net_<arch>_warmup.pt
 ```
 
 ### D. Demonstration Dataset Generation
-Generates 5,000 games in parallel using 500 C++ environments and multi-temperature schedules:
+Generates thousands of games in parallel using 500 C++ environments and multi-temperature exploration schedules:
 
 ```bash
 PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
   --total-games 5000 \
   --batch-size 500 \
-  --output data/datasets/warmup_5k_games.jsonl.gz
+  --output data/datasets/warmup_<date>_<N>k_games.jsonl.gz
 ```
 
 ---
@@ -79,27 +89,26 @@ PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
 ## 2. Mandatory Rules & Invariants for Training
 
 1. **Mandatory Checkpoint Directory Naming**:
-   All checkpoint runs **MUST** follow:
+   All checkpoint runs **MUST** follow the versioned timestamp pattern:
    `data/checkpoints/run_[version]_[start date]_[start time]`
-   *(e.g., `data/checkpoints/run_v3_20260827_205207`). Never use ad-hoc names like `run_2h`.*
+   *(e.g., `data/checkpoints/run_v3_20260827_205207`). Never use hardcoded or ad-hoc names like `run_2h`.*
 
 2. **Environment Variables**:
    Always prefix training invocations with:
    `TRITON_CACHE_DIR=.triton_cache PYTHONPATH=.`
-   This avoids Triton cache permission collisions in shared environments.
+   This prevents Triton cache permission collisions in shared environments.
 
 3. **Reward Scheme Selection**:
    - `blunder_aware` (Default & Strongly Recommended): Shields the agent from learning spurious event traps (+1.0 for setting DEFCON traps, -1.0 for unprovoked DEFCON suicide, 0.0 for falling into opponent traps).
    - `zero_sum`: Terminal win/loss only (+1.0 / -1.0).
    - `shaped`: Zero-sum with heuristic milestones (VP swing shaping).
 
-4. **Architecture Selection**:
-   - `--arch v3` (Current SOTA): Dual Pointer Co-Attention between graph countries and hand cards.
-   - `--arch v2`: Cross-Attention between countries and hand cards.
-   - `--arch v1`: Flat node + card fusion.
+4. **Architecture Evolution**:
+   - Always check current architectures available in `ai/models/` (e.g. `v3` dual pointer co-attention, `v2` cross-attention).
+   - Ensure the `--arch` flag matches the network architecture being trained or fine-tuned.
 
 5. **Memory-Bounded Dataset Streaming**:
-   When training BC, never load full datasets into monolithic memory tensors. Always use `WarmupDataset.stream_batches`.
+   When training BC, never load full datasets into monolithic memory tensors. Always use bounded streaming via `WarmupDataset.stream_batches`.
 
 ---
 

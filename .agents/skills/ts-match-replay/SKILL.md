@@ -11,32 +11,41 @@ description: >-
 
 This skill provides step-by-step instructions for running offline matches between any two agents, playing interactively in the terminal, and inspecting replays via the Web Workbench.
 
+> [!IMPORTANT]
+> **Dynamic Checkpoints**:
+> Checkpoint paths evolve as new models are trained.
+> - Run `python tools/inspect_checkpoints.py` to view all saved models and architectures.
+> - You can pass `--us neural` or `--ussr neural` without a path to **automatically select the latest trained checkpoint**.
+> - Specific paths shown in examples below (e.g. `<checkpoint_path>.pt`) should be replaced with current models.
+
 ---
 
 ## 1. Quick Reference: Match & Replay Commands
 
-### A. Simulating a Match Between Two Different Checkpoints
+### A. Simulating a Match Between Two Checkpoints
 ```bash
+# Pit two checkpoints against each other:
+# (Replace with paths discovered via tools/inspect_checkpoints.py, or use 'neural' for latest)
 PYTHONPATH=. .venv/bin/python tools/play_match.py \
-  --us data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt \
-  --ussr data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
-  --game-id v3_vs_v2 \
+  --us data/checkpoints/<run_A>/<snapshot_A>.pt \
+  --ussr data/checkpoints/<run_B>/<snapshot_B>.pt \
+  --game-id match_vA_vs_vB \
   --seed 42
 ```
-*Output*: Dumps `data/replays/v3_vs_v2.tslog.json` and prints the direct Web Workbench viewer URL:
-`http://localhost:8000/?replay=v3_vs_v2.tslog.json`
+*Output*: Dumps `data/replays/match_vA_vs_vB.tslog.json` and prints the direct Web Workbench viewer URL:
+`http://localhost:8000/?replay=match_vA_vs_vB.tslog.json`
 
 ### B. Interactive Terminal Play (Human vs AI Bot)
 Allows a human to play Twilight Struggle directly in the terminal with numbered move prompts:
 
 ```bash
-# Play as US against a trained NeuralBot as USSR:
+# Play as US against the latest trained NeuralBot as USSR:
 PYTHONPATH=. .venv/bin/python tools/play_match.py \
   --us human \
-  --ussr data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt \
+  --ussr neural \
   --game-id my_human_game
 ```
-*Replay is automatically saved so you can review your game on the web map afterward.*
+*The replay is automatically saved to `data/replays/` so you can review your game on the web map afterward.*
 
 ### C. Match with Strategic Commentary & Regional Scoring Audits
 Embeds strategic rationale, chain-of-thought lines, and regional scoring calculations directly into the replay metadata:
@@ -61,12 +70,12 @@ PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --po
 ### Step 2: Connect Bot Client via WebSocket
 In a separate terminal, start the bot for the opponent side:
 ```bash
-# Connect NeuralBot as USSR:
+# Connect NeuralBot as USSR (replace with target model checkpoint):
 PYTHONPATH=. .venv/bin/python -m web.bot_client \
   --game-id game-1 \
   --role USSR \
   --type neural \
-  --model-path data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt
+  --model-path data/checkpoints/<target_run>/<snapshot>.pt
 
 # Or connect HeuristicBot as USSR:
 PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type heuristic
@@ -88,4 +97,4 @@ When using `--us`, `--ussr`, or `--agent` in `tools/play_match.py`:
 - `exploratory`: Exploration agent testing Space Race, coups, and edge cases ([`ExploratoryBot`](../../bot/exploratory_bot.py)).
 - `human`: Interactive terminal player prompting for stdin input ([`HumanBot`](../../bot/human_bot.py)).
 - `neural`: Auto-discovers and loads the latest trained `.pt` checkpoint.
-- Path to any `.pt` file (e.g. `data/checkpoints/.../snapshot_1200s.pt`): Loads that specific checkpoint, auto-detecting V1, V2, or V3 architecture.
+- Path to any `.pt` file (e.g. `data/checkpoints/<run>/<snapshot>.pt`): Loads that specific checkpoint, auto-detecting V1, V2, or V3 architecture.

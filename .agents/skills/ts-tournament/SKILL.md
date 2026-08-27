@@ -10,6 +10,15 @@ description: >-
 
 This skill provides step-by-step instructions and standard execution commands for benchmarking Twilight Struggle models using vectorized parallel simulation (300–800 games/sec).
 
+> [!IMPORTANT]
+> **Dynamic Checkpoints & Architecture Versions**:
+> The checkpoint paths (e.g. `data/checkpoints/run_v3_...`) and architecture versions (`v1`, `v2`, `v3`, etc.) shown throughout this runbook are **illustrative examples**.
+> Checkpoints, runs, and champion models will evolve over time. Always run:
+> ```bash
+> PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
+> ```
+> to discover currently available checkpoints, their timestamps, and their detected architectures before launching an evaluation.
+
 ---
 
 ## 1. Quick Reference: Evaluation & Tournament Commands
@@ -19,8 +28,9 @@ Evaluates a single pair of models with granular side-by-side performance and exa
 
 ```bash
 # Evaluate a snapshot against HeuristicBot for 100 games (50 US / 50 USSR):
+# (Replace with your target checkpoint path discovered via tools/inspect_checkpoints.py)
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --models data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt heuristic \
+  --models data/checkpoints/<target_run>/<snapshot>.pt heuristic \
   --games-per-side 50 \
   --device cpu
 ```
@@ -28,7 +38,7 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 ```bash
 # Compare two different neural checkpoints directly:
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --models data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --models data/checkpoints/<run_A>/<snapshot_A>.pt data/checkpoints/<run_B>/<snapshot_B>.pt \
   --games-per-side 100 \
   --device cpu
 ```
@@ -37,14 +47,15 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 Runs full round-robin matches across all checkpoints in a folder plus baseline heuristics, generating a Bradley-Terry MLE Elo leaderboard:
 
 ```bash
+# Run tournament across any target run directory:
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --checkpoint-dir data/checkpoints/run_v3_20260827_205207 \
+  --checkpoint-dir data/checkpoints/<target_run_directory> \
   --games-per-side 500 \
   --batch-chunk-size 1000 \
   --anchor-model HeuristicBot \
   --anchor-elo 1500.0 \
-  --output-report data/checkpoints/run_v3_20260827_205207/massive_tournament_report.md \
-  --output-json data/checkpoints/run_v3_20260827_205207/massive_tournament_results.json \
+  --output-report data/checkpoints/<target_run_directory>/massive_tournament_report.md \
+  --output-json data/checkpoints/<target_run_directory>/massive_tournament_results.json \
   --device cpu
 ```
 
@@ -64,8 +75,8 @@ PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
 - **Interpretation**:
   - `RandomBot`: Typically ~1340 – 1350 Elo.
   - `HeuristicBot`: 1500.0 Elo (Baseline standard).
-  - `ColdWarNet V3 (Supervised Warmup)`: ~1650 – 1700 Elo (>85% win rate vs Heuristic).
-  - `ColdWarNet V3 (Trained RL SOTA)`: ~1800 – 1950+ Elo.
+  - `Supervised Warmup Checkpoints`: Typically ~1650 – 1700 Elo (>85% win rate vs Heuristic).
+  - `Trained RL SOTA Checkpoints`: Typically ~1800 – 1950+ Elo.
 
 ### 2. Side-Specific Win Rate Asymmetry
 Twilight Struggle has a well-known historical balance dynamic:
