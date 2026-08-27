@@ -369,7 +369,11 @@ class TestBlunderAwareRewardCalculator:
         calc = BlunderAwareRewardCalculator()
         st = ts.GameState()
         ts.Engine.init_game(st, 100)
-        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Asia Scoring held by USSR
+        # Clear all scoring cards so only the intended player holds one
+        for card_idx in range(1, 111):
+            if ts.CardData.get_card_info(card_idx).get("is_scoring"):
+                st.set_card_location(card_idx, ts.CardLocation.DISCARD_PILE)
+        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Only USSR holds Asia Scoring
         st.turn = 3
 
         # If USSR is acting player when game ends due to held scoring:
@@ -383,7 +387,7 @@ class TestBlunderAwareRewardCalculator:
         )
         assert r_ussr[0] == -1.0, f"Blundering loser (USSR) must receive -1.0 penalty, got {r_ussr[0]}"
 
-        # If US is acting player when USSR held scoring card:
+        # If US is acting player when only USSR held scoring card:
         r_us = calc.compute_step_rewards(
             acting_players=np.array([1], dtype=np.int8),
             dones=np.array([True]),
@@ -392,15 +396,37 @@ class TestBlunderAwareRewardCalculator:
             curr_victory_points=np.array([0], dtype=np.int8),
             states=[st],
         )
-        assert r_us[0] == 0.0, f"Winner (US) must be shielded with 0.0 reward, got {r_us[0]}"
+        assert r_us[0] == 0.0, f"Winner (US) not holding scoring must be shielded with 0.0 reward, got {r_us[0]}"
+
+        # If BOTH players hold scoring cards at turn end: each side holding scoring receives -1.0 penalty
+        st.set_card_location(2, ts.CardLocation.HAND_US)  # US also holds Europe Scoring
+        r_us_both = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        r_ussr_both = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([True]),
+            terminal_utilities=np.array([1.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert r_us_both[0] == -1.0, f"US holding scoring card when both hold must receive -1.0, got {r_us_both[0]}"
+        assert r_ussr_both[0] == -1.0, f"USSR holding scoring card when both hold must receive -1.0, got {r_ussr_both[0]}"
 
     def test_voluntary_defcon_coup_suicide_reward_shielding(self):
         calc = BlunderAwareRewardCalculator()
         st = ts.GameState()
         ts.Engine.init_game(st, 200)
         st.defcon = 1  # DEFCON 1 Nuclear suicide
+        st.phasing_player = ts.Player.USSR
 
-        # USSR commits suicide -> USSR acting player gets -1.0
+        # USSR commits unprovoked suicide on USSR turn (acting_player == phasing_player) -> -1.0
         r_ussr = calc.compute_step_rewards(
             acting_players=np.array([-1], dtype=np.int8),
             dones=np.array([True]),
@@ -411,16 +437,17 @@ class TestBlunderAwareRewardCalculator:
         )
         assert r_ussr[0] == -1.0, "Suiciding player must receive -1.0 penalty"
 
-        # Winner (US) is shielded from unearned +1.0
+        # US commits unprovoked suicide on US turn (acting_player == phasing_player) -> -1.0
+        st.phasing_player = ts.Player.US
         r_us = calc.compute_step_rewards(
             acting_players=np.array([1], dtype=np.int8),
             dones=np.array([True]),
-            terminal_utilities=np.array([1.0], dtype=np.float32),  # US won
+            terminal_utilities=np.array([-1.0], dtype=np.float32),  # USSR won
             prev_victory_points=np.array([0], dtype=np.int8),
             curr_victory_points=np.array([0], dtype=np.int8),
             states=[st],
         )
-        assert r_us[0] == 0.0, "Winner must receive 0.0 reward on opponent suicide"
+        assert r_us[0] == -1.0, "US suiciding on US turn must receive -1.0 penalty"
 
     def test_strategic_win_preserves_full_zero_sum(self):
         calc = BlunderAwareRewardCalculator()
@@ -508,7 +535,7 @@ class TestTurnBoundaryCreditSlicing:
         st = ts.GameState()
         ts.Engine.init_game(st, 300)
         st.defcon = 1
-        st.set_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
+        st.phasing_player = ts.Player.USSR  # USSR turn, but US acts -> provoked suicide!
 
         # US is acting player who executed the coup, US won
         r_us = calc.compute_step_rewards(

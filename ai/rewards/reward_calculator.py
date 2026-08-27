@@ -97,38 +97,48 @@ class BlunderAwareRewardCalculator:
 
             # Check if this was a blunder if state is available
             st = states[i] if states is not None and i < len(states) else None
-            is_blunder = False
-            loser_player = -1 if term_util > 0 else 1  # USSR is -1, US is 1
 
             if st is not None:
                 if st.defcon <= 1:
-                    # Unprovoked DEFCON suicide (direct coup/degradation) is a blunder.
-                    # Provoked DEFCON suicide (event trap where opponent executed coup) is a strategic win!
-                    if not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
-                        is_blunder = True
-                else:
-                    # Held scoring blunder applies only if the LOSING player held a scoring card
-                    if loser_player == 1:
-                        is_blunder = any(
-                            st.get_card_location(c) == ts.CardLocation.HAND_US
-                            and ts.CardData.get_card_info(c).get("is_scoring")
-                            for c in range(1, 111)
-                        )
+                    # Unprovoked DEFCON suicide is a blunder (acting_player == phasing_player).
+                    # Provoked DEFCON suicide (event trap where opponent executed coup) is a strategic win (acting_player != phasing_player).
+                    p_phasing = int(st.phasing_player)
+                    is_provoked = (p_phasing != 0 and p_act != p_phasing)
+                    if is_provoked:
+                        # Strategic win via event trap: acting player provoked opponent DEFCON suicide (+1.0)
+                        rewards[i] = term_util * p_act
                     else:
-                        is_blunder = any(
-                            st.get_card_location(c) == ts.CardLocation.HAND_USSR
-                            and ts.CardData.get_card_info(c).get("is_scoring")
-                            for c in range(1, 111)
-                        )
-            if is_blunder:
-                # Shield winner (r_winner = 0.0), heavily penalize loser (r_loser = -1.0)
-                if p_act == loser_player:
-                    rewards[i] = -1.0
+                        # Unprovoked DEFCON suicide: acting player dropped DEFCON to 1 on their own turn (-1.0)
+                        rewards[i] = -1.0
+                    continue
                 else:
-                    rewards[i] = 0.0
-            else:
-                # Standard strategic win: Winner +1.0, Loser -1.0
-                rewards[i] = term_util * p_act
+                    # Check Rule 4.4 held scoring cards at game end
+                    held_scoring_us = any(
+                        st.get_card_location(c) == ts.CardLocation.HAND_US
+                        and ts.CardData.get_card_info(c).get("is_scoring")
+                        for c in range(1, 111)
+                    )
+                    held_scoring_ussr = any(
+                        st.get_card_location(c) == ts.CardLocation.HAND_USSR
+                        and ts.CardData.get_card_info(c).get("is_scoring")
+                        for c in range(1, 111)
+                    )
+                    loser_player = -1 if term_util > 0 else 1  # USSR is -1, US is 1
+                    loser_held_scoring = held_scoring_us if loser_player == 1 else held_scoring_ussr
+
+                    if loser_held_scoring:
+                        # Game ended because of holding scoring cards (Rule 4.4).
+                        # Give reward -1.0 to each side that holds scoring cards (in case both sides hold scorings).
+                        # A side not holding scoring cards is shielded (0.0).
+                        act_holds_scoring = held_scoring_us if p_act == 1 else held_scoring_ussr
+                        if act_holds_scoring:
+                            rewards[i] = -1.0
+                        else:
+                            rewards[i] = 0.0
+                        continue
+
+            # Standard strategic win: Winner +1.0, Loser -1.0
+            rewards[i] = term_util * p_act
 
         return rewards
 
