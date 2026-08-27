@@ -107,6 +107,7 @@ TEST(StatesTest, DecisionType_AllTypes_ActionMaskGeneration) {
 
     // 1. SELECT_CARD
     state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_US;
@@ -115,10 +116,17 @@ TEST(StatesTest, DecisionType_AllTypes_ActionMaskGeneration) {
     ASSERT_EQ(mask[ts::card_ids::DEFECTORS], 1);
 
     // 2. SELECT_PLAY_MODE
+    // Defectors CANNOT be played as event by US during Action Round
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
     state.ctx().pending_op_card = ts::card_ids::DEFECTORS;
     ts::ActionMask::generate_mask(state, mask, &out_size);
     ASSERT_EQ(out_size, 4);
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 0);
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);
+
+    // Friendly card with valid event (Duck and Cover) CAN be played as Event or Ops
+    state.ctx().pending_op_card = ts::card_ids::DUCK_AND_COVER;
+    ts::ActionMask::generate_mask(state, mask, &out_size);
     ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 1);
     ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);
 

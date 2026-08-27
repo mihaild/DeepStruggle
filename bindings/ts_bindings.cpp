@@ -623,6 +623,8 @@ NB_MODULE(ts_engine, m) {
         .def_static("trigger_event", [](ts::GameState& s, uint8_t card_id, ts::Player p, uint8_t forced_roll) {
             return ts::CardHandlers::trigger_event(s, card_id, p, forced_roll);
         }, nb::arg("state"), nb::arg("card_id"), nb::arg("player"), nb::arg("forced_roll") = 0)
+        .def_static("can_trigger_event", &ts::CardHandlers::can_trigger_event,
+                    nb::arg("state"), nb::arg("card_id"), nb::arg("player"))
         .def_static("handle_event_step", &ts::CardHandlers::handle_event_step);
 
     // Scoring helpers

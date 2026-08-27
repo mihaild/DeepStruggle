@@ -466,10 +466,29 @@ def test_fix_defectors_no_vp_on_us_action_round():
     s.current_phase = ts.Phase.ACTION_ROUND
     s.phasing_player = ts.Player.US
     s.victory_points = 0
-    
-    # US plays Defectors event on US AR
+
+    # 1. can_trigger_event returns False for US on Action Round
+    assert not ts.CardHandlers.can_trigger_event(s, 103, ts.Player.US)
+
+    # 2. SELECT_PLAY_MODE mask has EVENT=0, OPS=1
+    s.ctx().decision_type = ts.DecisionType.SELECT_PLAY_MODE
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().pending_op_card = 103
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[int(ts.PlayMode.EVENT)] == 0
+    assert mask[int(ts.PlayMode.OPS)] == 1
+
+    flat_mask = ts.Engine.get_flat_action_mask(s)
+    assert flat_mask[110] == 0
+    assert flat_mask[111] == 1
+
+    # 3. StateMachine rejects EVENT play mode
+    step_ok = ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.EVENT), 0, 0))
+    assert not step_ok
+
+    # 4. Trigger event directly does not change VP
     ts.CardHandlers.trigger_event(s, 103, ts.Player.US)
-    assert s.victory_points == 0 # NO VP awarded to US!
+    assert s.victory_points == 0
 
 def test_fix_cambridge_five_reveals_up_to_seven_scoring_cards():
     s = make_state()

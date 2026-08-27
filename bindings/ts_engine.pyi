@@ -571,6 +571,9 @@ class MapData:
 
 class CardHandlers:
     @staticmethod
+    def can_trigger_event(state: GameState, card_id: int, player: Player) -> bool: ...
+
+    @staticmethod
     def trigger_event(state: GameState, card_id: int, player: Player, forced_roll: int = 0) -> bool: ...
 
     @staticmethod

@@ -127,6 +127,12 @@ bool CardHandlers::can_trigger_event(const GameState& state, uint8_t card_id, Pl
     }
 
     switch (card_id) {
+        case card_ids::DEFECTORS: {
+            if (player == Player::US && state.current_phase == Phase::ACTION_ROUND && state.phasing_player != Player::USSR) {
+                return false;
+            }
+            return true;
+        }
         case card_ids::NATO:
             return state.has_flag(effect_bits::MARSHALL_PLAN_PLAYED) || state.has_flag(effect_bits::WARSAW_PACT_PLAYED);
         case card_ids::SOCIALIST_GOVERNMENTS:
@@ -1645,8 +1651,14 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
         for (uint8_t i = 0; i < 112; ++i) mask_out[i] = 0;
 
         switch (card) {
-            case card_ids::SALT_NEGOTIATIONS:
             case card_ids::STAR_WARS:
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (state.card_locations[i] == CardLocation::DISCARD_PILE && !CardData::is_scoring_card(i) && CardHandlers::can_trigger_event(state, i, Player::US)) {
+                        mask_out[i] = 1;
+                    }
+                }
+                break;
+            case card_ids::SALT_NEGOTIATIONS:
                 for (uint8_t i = 1; i <= 110; ++i) {
                     if (state.card_locations[i] == CardLocation::DISCARD_PILE && !CardData::is_scoring_card(i)) {
                         mask_out[i] = 1;

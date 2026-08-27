@@ -665,7 +665,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::EVENT) {
-                    if (card == card_ids::THE_CHINA_CARD || CardData::is_opponent_card(card, p) || !CardHandlers::can_trigger_event(state, card, p)) {
+                    if (card == card_ids::THE_CHINA_CARD ||
+                        (card == card_ids::DEFECTORS && p == Player::US && state.current_phase == Phase::ACTION_ROUND) ||
+                        CardData::is_opponent_card(card, p) ||
+                        !CardHandlers::can_trigger_event(state, card, p)) {
                         return false; // Illegal event play
                     }
                     const auto& c_info = CardData::get_card(card);

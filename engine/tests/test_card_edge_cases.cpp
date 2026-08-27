@@ -1164,6 +1164,32 @@ TEST(CardEdgeCasesTest, OneSmallStep_Advances2SpacesWhenBehind_AwardsVPWhenLandi
     ASSERT_EQ(state.victory_points, 0);
 }
 
+TEST(CardEdgeCasesTest, Defectors_USActionRound_CannotBePlayedAsEvent) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.ctx().decision_player = ts::Player::US;
+
+    // 1. can_trigger_event returns false for US during Action Round
+    ASSERT_FALSE(ts::CardHandlers::can_trigger_event(state, ts::card_ids::DEFECTORS, ts::Player::US));
+
+    // 2. Action mask for SELECT_PLAY_MODE must NOT have EVENT bit set
+    state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = ts::card_ids::DEFECTORS;
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(out_size, 4);
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 0); // Event is illegal!
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);   // Ops is legal
+
+    // 3. Attempting to step with PlayMode::EVENT must be rejected by StateMachine
+    bool step_result = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ASSERT_FALSE(step_result); // Rejected as illegal move
+}
+
 TEST(CardEdgeCasesTest, Defectors_PlayedByUSSRDuringActionRound_Awards1VPToUS) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);

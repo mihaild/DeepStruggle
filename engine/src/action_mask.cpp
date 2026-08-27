@@ -141,6 +141,15 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
+            // Defectors cannot be played as an event by US during Action Round
+            if (card == card_ids::DEFECTORS && p == Player::US && state.current_phase == Phase::ACTION_ROUND) {
+                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                if (SpaceRace::can_attempt_space(state, p, card)) {
+                    mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
+                }
+                return;
+            }
+
             // Event play: legal ONLY for friendly or neutral cards (excluding China Card),
             // and only if event prerequisites are met.
             if (!CardData::is_opponent_card(card, p) && CardHandlers::can_trigger_event(state, card, p)) {
