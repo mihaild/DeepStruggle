@@ -1,6 +1,15 @@
-"""Twilight Struggle Training Algorithms (NashPG, Behavioral Cloning, PPO)."""
+"""Training infrastructure, rollout storage, and algorithms for Twilight Struggle AI."""
+
 from .rollout_buffer import RolloutBuffer
 from .behavioral_cloning import BehavioralCloningTrainer
-from .nash_pg import NashPGTrainer
+from .nash_pg import BaseNashPGTrainer, NashPGTrainer, OracleGuidedNashPGTrainer
+from .warmup_dataset_loader import WarmupDataset
 
-__all__ = ["RolloutBuffer", "BehavioralCloningTrainer", "NashPGTrainer"]
+__all__ = [
+    "RolloutBuffer",
+    "BehavioralCloningTrainer",
+    "BaseNashPGTrainer",
+    "NashPGTrainer",
+    "OracleGuidedNashPGTrainer",
+    "WarmupDataset",
+]

@@ -6,8 +6,8 @@ import torch
 
 import ts_engine as ts
 from bindings import ActionEncoder, TsSingleEnv, TsVectorizedEnv
-from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldwar_net_v2, ColdWarNetV3, create_coldwar_net_v3
-from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer
+from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldwar_net_v2, ColdWarNetV3, create_coldwar_net_v3, ColdWarNetV4, create_coldwar_net_v4
+from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer, OracleGuidedNashPGTrainer
 from tools.lib import TournamentEvaluator, NeuralAgent, RandomAgent
 from bot.neural_bot import NeuralBot
 
@@ -177,7 +177,7 @@ class TestTrainingPipelines:
             ref_update_freq=500,
             device=device,
         )
-        history = trainer.train_iterations(num_iterations=2, log_interval=1)
+        history = [trainer.train_iteration() for _ in range(2)]
         assert len(history) == 2
         assert "loss" in history[0]
         assert "policy_loss" in history[0]
@@ -246,3 +246,73 @@ class TestColdWarNetV3:
 
         eval_lp, eval_ent, eval_vw, eval_vvp = model.evaluate_actions(dummy_obs, dummy_mask, actions)
         assert torch.allclose(eval_lp, log_probs, atol=1e-5)
+
+
+class TestColdWarNetV4:
+    @pytest.fixture
+    def device(self):
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def test_v4_forward_pass_belief_and_oracle(self, device):
+        model = create_coldwar_net_v4(device)
+        B = 4
+        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
+        dummy_mask[:, [0, 50, 110, 119, 150, 211]] = 1
+
+        logits, v_win, v_vp = model(dummy_obs, dummy_mask)
+        assert logits.shape == (B, 212)
+        assert v_win.shape == (B, 1)
+        assert v_vp.shape == (B, 1)
+        assert torch.all(v_win >= -1.0) and torch.all(v_win <= 1.0)
+
+        # Illegal actions must be masked out to -1e9
+        illegal = (dummy_mask == 0)
+        assert torch.all(logits[illegal] <= -1e8)
+
+        # Opponent Belief Head Prediction (B, 110) in [0, 1]
+        belief = model.predict_belief(dummy_obs)
+        assert belief.shape == (B, 110)
+        assert torch.all(belief >= 0.0) and torch.all(belief <= 1.0)
+
+        # Privileged Oracle Critic Head (B, 1) in [-1, 1]
+        dummy_opp_cards = torch.zeros(B, 110, device=device)
+        dummy_opp_cards[:, [10, 25, 40]] = 1.0
+        v_oracle = model.evaluate_oracle(dummy_obs, dummy_opp_cards)
+        assert v_oracle.shape == (B, 1)
+        assert torch.all(v_oracle >= -1.0) and torch.all(v_oracle <= 1.0)
+
+        # Sampling and Action Evaluation
+        model.eval()
+        actions, log_probs, v_win_s, v_vp_s, entropy = model.sample_action(dummy_obs, dummy_mask, temperature=1.0)
+        assert actions.shape == (B,)
+        assert log_probs.shape == (B,)
+        assert v_win_s.shape == (B,)
+        assert v_vp_s.shape == (B,)
+
+        eval_lp, eval_ent, eval_vw, eval_vvp = model.evaluate_actions(dummy_obs, dummy_mask, actions)
+        assert torch.allclose(eval_lp, log_probs, atol=1e-5)
+
+
+    def test_oracle_guided_nash_pg_trainer_step(self, device):
+        model = create_coldwar_net_v4(device)
+        env = TsVectorizedEnv(num_envs=4, base_seed=42)
+        trainer = OracleGuidedNashPGTrainer(
+            active_net=model,
+            env=env,
+            num_envs=4,
+            buffer_size=8,
+            batch_size=16,
+            num_epochs=1,
+            device=device,
+        )
+
+        metrics = trainer.train_iteration()
+        assert metrics['steps'] == 32
+        assert 'loss' in metrics
+        assert 'belief_loss' in metrics
+        assert 'oracle_loss' in metrics
+        assert 'distill_loss' in metrics
+        assert metrics['belief_loss'] >= 0.0
+        assert metrics['oracle_loss'] >= 0.0
+        assert metrics['distill_loss'] >= 0.0

@@ -113,7 +113,13 @@ PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
 
 ## 3. Mandatory Rules & Invariants for Training
 
-1. **Never Write Ad-Hoc Scripts**:
+1. **Pre-Training Commit & Metadata Record**:
+   Before launching any training run:
+   - Create a clean git commit on the active branch recording all codebase modifications (without pushing / advancing remote master).
+   - Ensure a short description of the changes and training intent is provided via `--description "<text>"`.
+   - `tools/train.py` automatically captures the git commit hash, commit message, training mode, and description, writing `metadata.json` into the checkpoint directory.
+
+2. **Never Write Ad-Hoc Scripts**:
    All training, BC warmup, and fine-tuning **MUST** be invoked through `tools/train.py`. Writing standalone Python scripts or scratch files violates repository architecture.
 
 2. **Mandatory Checkpoint Directory Naming**:

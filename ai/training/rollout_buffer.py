@@ -36,6 +36,8 @@ class RolloutBuffer:
         self.vps = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
         self.held_scoring_ussr = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
+        self.opp_hands = torch.zeros((buffer_size, num_envs, 110), dtype=torch.float32, device=self.device)
+        self.oracle_values = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
 
         # Computed targets
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
@@ -65,6 +67,8 @@ class RolloutBuffer:
         vps: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
+        opp_hands: Optional[np.ndarray | torch.Tensor] = None,
+        oracle_values: Optional[torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -107,6 +111,12 @@ class RolloutBuffer:
             if isinstance(held_scoring_ussr, np.ndarray):
                 held_scoring_ussr = torch.from_numpy(held_scoring_ussr)
             self.held_scoring_ussr[self.step].copy_(held_scoring_ussr)
+        if opp_hands is not None:
+            if isinstance(opp_hands, np.ndarray):
+                opp_hands = torch.from_numpy(opp_hands)
+            self.opp_hands[self.step].copy_(opp_hands)
+        if oracle_values is not None:
+            self.oracle_values[self.step].copy_(oracle_values)
 
         self.step += 1
         if self.step >= self.buffer_size:
@@ -233,4 +243,35 @@ class RolloutBuffer:
                 flat_advantages[batch_idx],
                 flat_returns_win[batch_idx],
                 flat_returns_vp[batch_idx],
+            )
+
+    def get_batches_with_oracle(
+        self, batch_size: int
+    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
+        """Yields randomized mini-batches including opponent hands and oracle value targets for V4 training."""
+        total_steps = self.buffer_size * self.num_envs
+        indices = torch.randperm(total_steps, device=self.device)
+
+        flat_obs = self.obs.view(total_steps, self.obs_dim)
+        flat_masks = self.masks.view(total_steps, self.action_dim)
+        flat_actions = self.actions.view(total_steps)
+        flat_log_probs = self.log_probs.view(total_steps)
+        flat_advantages = self.advantages.view(total_steps)
+        flat_returns_win = self.returns_win.view(total_steps)
+        flat_returns_vp = self.returns_vp.view(total_steps)
+        flat_opp_hands = self.opp_hands.view(total_steps, 110)
+        flat_oracle_values = self.oracle_values.view(total_steps)
+
+        for start_idx in range(0, total_steps, batch_size):
+            batch_idx = indices[start_idx : start_idx + batch_size]
+            yield (
+                flat_obs[batch_idx],
+                flat_masks[batch_idx],
+                flat_actions[batch_idx],
+                flat_log_probs[batch_idx],
+                flat_advantages[batch_idx],
+                flat_returns_win[batch_idx],
+                flat_returns_vp[batch_idx],
+                flat_opp_hands[batch_idx],
+                flat_oracle_values[batch_idx],
             )

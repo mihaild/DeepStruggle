@@ -184,17 +184,34 @@ def generate_warmup_dataset(
     print("="*80 + "\n")
 
 if __name__ == "__main__":
-    top_checkpoints = {
-        "Snapshot_21601s": "checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
-        "Snapshot_18003s": "checkpoints/run_v2_blunder_aware_9h/snapshot_18003s.pt",
-        "Snapshot_14402s": "checkpoints/run_v2_blunder_aware_9h/snapshot_14402s.pt",
-        "Snapshot_Final": "checkpoints/run_v2_blunder_aware_9h/snapshot_final.pt",
-    }
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate high-quality demonstration datasets from top neural snapshots")
+    parser.add_argument("--models", nargs="+", default=None, help="List of model checkpoint paths")
+    parser.add_argument("--total-games", type=int, default=5000, help="Total games to generate")
+    parser.add_argument("--batch-size", type=int, default=500, help="Parallel batch size")
+    parser.add_argument("--output-path", type=str, default="data/datasets/warmup_5k_games.jsonl.gz", help="Output .jsonl.gz path")
+    parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
+    
+    args = parser.parse_args()
+    
+    if args.models:
+        top_checkpoints = {os.path.splitext(os.path.basename(m))[0]: m for m in args.models}
+    else:
+        top_checkpoints = {
+            "v3_snapshot_12606s": "data/checkpoints/run_v3_20260828_093322/snapshot_12606s.pt",
+            "v3_snapshot_10810s": "data/checkpoints/run_v3_20260828_093322/snapshot_10810s.pt",
+            "v3_snapshot_14412s": "data/checkpoints/run_v3_20260828_093322/snapshot_14412s.pt",
+            "v2_snapshot_21601s": "data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
+        }
+        # Filter existing
+        top_checkpoints = {k: v for k, v in top_checkpoints.items() if os.path.exists(v)}
+        if not top_checkpoints:
+            top_checkpoints = {"v2_champ": "data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt"}
     
     generate_warmup_dataset(
         checkpoints=top_checkpoints,
-        total_games=5000,
-        batch_size=500,
-        output_path="data/warmup_5k_games.jsonl.gz",
-        device_str="cuda"
+        total_games=args.total_games,
+        batch_size=args.batch_size,
+        output_path=args.output_path,
+        device_str=args.device
     )

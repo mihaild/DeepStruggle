@@ -18,7 +18,7 @@ from ai.models.coldwar_net_v3 import create_coldwar_net_v3
 
 def main():
     parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
-    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "v3"], help="Model architecture: v1 (ColdWarNet) or v2 (ColdWarNetV2 Cross-Attention)")
+    parser.add_argument("--arch", type=str, default="v4", choices=["v1", "v2", "v3", "v4"], help="Model architecture: v1, v2, v3, or v4 (ColdWarNetV4 Deep Card-Transformer + Belief Head)")
     parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval", "curriculum"], help="Execution mode")
 
     # Warm-up / Checkpoint options
@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
     parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
+    parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
 
     args = parser.parse_args()
@@ -73,6 +74,7 @@ def main():
             entropy_coef=args.entropy_coef,
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,
+            description=args.description,
             device=args.device,
             post_tournament=args.post_tournament,
             post_tournament_models=args.post_tournament_models,

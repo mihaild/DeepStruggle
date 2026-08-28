@@ -833,6 +833,20 @@ NB_MODULE(ts_engine, m) {
             return res;
         }
 
+        std::vector<float> get_opponent_hands(const std::vector<int8_t>& acting_players) const {
+            std::vector<float> res(num_envs * 110, 0.0f);
+            for (size_t i = 0; i < num_envs; ++i) {
+                ts::Player active_p = (i < acting_players.size()) ? static_cast<ts::Player>(acting_players[i]) : ts::Player::US;
+                ts::CardLocation opp_loc = (active_p == ts::Player::US) ? ts::CardLocation::HAND_USSR : ts::CardLocation::HAND_US;
+                for (size_t c = 1; c <= 110; ++c) {
+                    if (states[i].card_locations[c] == opp_loc) {
+                        res[i * 110 + (c - 1)] = 1.0f;
+                    }
+                }
+            }
+            return res;
+        }
+
         std::vector<int8_t> get_turns() const {
             std::vector<int8_t> res(num_envs);
             for (size_t i = 0; i < num_envs; ++i) {
@@ -853,6 +867,7 @@ NB_MODULE(ts_engine, m) {
         .def("get_terminals", &VectorizedBatchRunner::get_terminals)
         .def("get_terminal_utilities", &VectorizedBatchRunner::get_terminal_utilities)
         .def("get_victory_points", &VectorizedBatchRunner::get_victory_points)
+        .def("get_opponent_hands", &VectorizedBatchRunner::get_opponent_hands)
         .def("get_turns", &VectorizedBatchRunner::get_turns)
         .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal)
         .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
