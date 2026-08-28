@@ -31,6 +31,11 @@ public:
     static bool is_terminal(const GameState& state) noexcept;
     static float get_terminal_utility(const GameState& state) noexcept; // +1.0 (US), -1.0 (USSR), 0.0 (Draw)
 
+    // Rule 4.4 Held Scoring Card Detection (Turn End only)
+    static bool has_held_scoring_card(const GameState& state, Player p) noexcept;
+    static bool is_held_scoring_game_over(const GameState& state) noexcept;
+    static bool is_held_scoring_loss(const GameState& state, Player p) noexcept;
+
     // Serialization & Inspection
     static void serialize(const GameState& state, uint8_t* out_bytes, size_t max_bytes) noexcept;
     static void deserialize(GameState& state, const uint8_t* in_bytes, size_t in_size) noexcept;

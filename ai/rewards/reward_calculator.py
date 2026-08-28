@@ -112,26 +112,10 @@ class BlunderAwareRewardCalculator:
                         rewards[i] = -1.0
                     continue
                 else:
-                    # Check Rule 4.4 held scoring cards at game end
-                    held_scoring_us = any(
-                        st.get_card_location(c) == ts.CardLocation.HAND_US
-                        and ts.CardData.get_card_info(c).get("is_scoring")
-                        for c in range(1, 111)
-                    )
-                    held_scoring_ussr = any(
-                        st.get_card_location(c) == ts.CardLocation.HAND_USSR
-                        and ts.CardData.get_card_info(c).get("is_scoring")
-                        for c in range(1, 111)
-                    )
-                    loser_player = -1 if term_util > 0 else 1  # USSR is -1, US is 1
-                    loser_held_scoring = held_scoring_us if loser_player == 1 else held_scoring_ussr
-
-                    if loser_held_scoring:
-                        # Game ended because of holding scoring cards (Rule 4.4).
-                        # Give reward -1.0 to each side that holds scoring cards (in case both sides hold scorings).
-                        # A side not holding scoring cards is shielded (0.0).
-                        act_holds_scoring = held_scoring_us if p_act == 1 else held_scoring_ussr
-                        if act_holds_scoring:
+                    # Check Rule 4.4 held scoring cards at game end (strictly after end of turn)
+                    if ts.Engine.is_held_scoring_game_over(st):
+                        p_enum = ts.Player.US if p_act == 1 else (ts.Player.USSR if p_act == -1 else ts.Player.NONE)
+                        if ts.Engine.is_held_scoring_loss(st, p_enum):
                             rewards[i] = -1.0
                         else:
                             rewards[i] = 0.0
@@ -183,14 +167,11 @@ class UsefulActionsReward(BlunderAwareRewardCalculator):
     """Reward calculator encouraging usually useful actions via strategic potential shaping.
 
     Inherits endgame blunder-shielded terminal rewards from BlunderAwareRewardCalculator,
-    and augments intermediate steps with the potential difference Delta Phi:
-        R_step = Phi(s', p_act) - Phi(s, p_act)
-
-    Potential Function Phi(s, p) consists of 4 normalized components:
-    1. (vp in favor of current player) / 20, weight 0.5
-    2. (battlegrounds controlled by player - battlegrounds controlled by opponent) / total_bgs, weight 0.3
-    3. (sum across all unscored regions of (vp region would give) / (control_vp + num_bg)) / 6, weight 0.1
-    4. (countries player has access to - countries opponent has access to) / 84, weight 0.1
+    and augments intermediate steps with the potential difference Delta Phi defined
+    strictly from the US perspective:
+        Phi(s) in [-1.0, 1.0] from US perspective
+        Delta_Phi_US = Phi(s') - Phi(s)
+        R_step = p_act * Delta_Phi_US * potential_scale
     """
 
     needs_all_states: bool = True
@@ -200,14 +181,22 @@ class UsefulActionsReward(BlunderAwareRewardCalculator):
         self.potential_scale: float = potential_scale
         self.prev_potentials: Optional[np.ndarray] = None
 
-    def compute_potential(self, state: ts.GameState, player: int) -> float:
-        """Compute the strategic potential Phi(s, p) in [-1.0, 1.0] for the given player."""
-        p_enum = ts.Player.US if player == 1 else (ts.Player.USSR if player == -1 else ts.Player.NONE)
-        return float(ts.Scoring.compute_useful_actions_potential(state, p_enum))
+    def compute_potential(self, state: ts.GameState, player: Optional[int] = None) -> float:
+        """Compute strategic potential Phi(s) in [-1.0, 1.0] strictly from US perspective."""
+        return float(ts.Scoring.compute_useful_actions_potential(state, ts.Player.US))
 
     def reset(self) -> None:
         """Reset internal potential tracking."""
         self.prev_potentials = None
+
+    def on_env_reset(self, env_idx: int, state: ts.GameState) -> None:
+        """Called when a single environment resets to initialize its baseline potential to s_0."""
+        if self.prev_potentials is not None and env_idx < len(self.prev_potentials):
+            self.prev_potentials[env_idx] = self.compute_potential(state)
+
+    def on_all_reset(self, states: List[ts.GameState]) -> None:
+        """Called when all environments reset to initialize all baselines."""
+        self.prev_potentials = np.array([self.compute_potential(st) for st in states], dtype=np.float32)
 
     def compute_step_rewards(
         self,
@@ -229,23 +218,25 @@ class UsefulActionsReward(BlunderAwareRewardCalculator):
             states=states,
         )
 
-        # 2. Intermediate potential delta shaping
+        # 2. Intermediate potential delta shaping defined strictly from US perspective
         if states is not None and len(states) == N:
             if self.prev_potentials is None or len(self.prev_potentials) != N:
                 self.prev_potentials = np.zeros(N, dtype=np.float32)
                 for i in range(N):
                     st = states[i]
                     if st is not None:
-                        self.prev_potentials[i] = self.compute_potential(st, int(acting_players[i]))
+                        self.prev_potentials[i] = self.compute_potential(st)
 
             for i in range(N):
                 st = states[i]
                 if st is not None:
-                    p_act = int(acting_players[i])
-                    curr_pot = self.compute_potential(st, p_act)
+                    curr_pot = self.compute_potential(st)
                     if not dones[i]:
-                        delta_pot = curr_pot - self.prev_potentials[i]
-                        rewards[i] = float(delta_pot * self.potential_scale)
-                    self.prev_potentials[i] = 0.0 if dones[i] else curr_pot
+                        delta_us = curr_pot - self.prev_potentials[i]
+                        p_act = int(acting_players[i])
+                        rewards[i] = float(p_act * delta_us * self.potential_scale)
+                        self.prev_potentials[i] = curr_pot
+                    else:
+                        self.prev_potentials[i] = curr_pot
 
         return rewards.astype(np.float32)

@@ -101,28 +101,70 @@ class NeuralBot(BaseBot):
         my_is_us = (self.role == "US")
         side_sign = 1.0 if my_is_us else -1.0
 
+        opp_role = "USSR" if my_is_us else "US"
         countries = state.get("countries", {})
-        if isinstance(countries, dict):
-            for c_name, c_data in countries.items():
-                cid = c_data.get("id", 0)
-                if 0 <= cid < 84:
-                    offset = cid * 28
-                    us_inf = float(c_data.get("us_influence", 0))
-                    ussr_inf = float(c_data.get("ussr_influence", 0))
-                    my_inf = us_inf if my_is_us else ussr_inf
-                    opp_inf = ussr_inf if my_is_us else us_inf
-                    stab = float(c_data.get("stability", 1))
+        c_list = countries.values() if isinstance(countries, dict) else countries
+        for c_data in c_list:
+            cid = c_data.get("id", 0)
+            if 0 <= cid < 84:
+                offset = cid * 28
+                us_inf = float(c_data.get("us_influence", 0))
+                ussr_inf = float(c_data.get("ussr_influence", 0))
+                my_inf = us_inf if my_is_us else ussr_inf
+                opp_inf = ussr_inf if my_is_us else us_inf
+                stab = max(1.0, float(c_data.get("stability", 1)))
 
-                    obs[offset + 0] = my_inf / 10.0
-                    obs[offset + 1] = opp_inf / 10.0
-                    obs[offset + 2] = (my_inf - opp_inf) / 10.0
-                    obs[offset + 3] = stab / 5.0
-                    obs[offset + 4] = 1.0 if c_data.get("battleground", False) else 0.0
+                obs[offset + 0] = my_inf / 10.0
+                obs[offset + 1] = opp_inf / 10.0
+                obs[offset + 2] = (my_inf - opp_inf) / 10.0
+                obs[offset + 3] = stab / 5.0
+                obs[offset + 4] = 1.0 if c_data.get("battleground", False) else 0.0
 
-                    controlled_by = c_data.get("controlled_by", "NONE")
-                    obs[offset + 5] = 1.0 if (controlled_by == self.role) else 0.0
-                    obs[offset + 6] = 1.0 if (controlled_by not in (self.role, "NONE")) else 0.0
-                    obs[offset + 7] = 1.0 if (controlled_by == "NONE") else 0.0
+                controlled_by = c_data.get("controlled_by", "NONE")
+                obs[offset + 5] = 1.0 if (controlled_by == self.role) else 0.0
+                obs[offset + 6] = 1.0 if (controlled_by not in (self.role, "NONE")) else 0.0
+                obs[offset + 7] = 1.0 if (controlled_by == "NONE") else 0.0
+
+                # 26 & 27: Influence deficits to control
+                my_def = max(0.0, stab - my_inf, opp_inf + stab - my_inf)
+                opp_def = max(0.0, stab - opp_inf, my_inf + stab - opp_inf)
+                obs[offset + 26] = min(my_def / 5.0, 2.0)
+                obs[offset + 27] = min(opp_def / 5.0, 2.0)
+
+        # Populate Card features: offset 2352..3671 (110 * 12 features)
+        hands = state.get("hands", {})
+        my_hand = set(hands.get(self.role, []))
+        opp_hand = set(hands.get(opp_role, []))
+        discard_pile = set(state.get("discard_pile", []))
+        removed_cards = set(state.get("removed_cards", []))
+        card_locs = state.get("card_locations", {})
+
+        for cid in range(1, 111):
+            c_offset = 2352 + (cid - 1) * 12
+            c_info = ts.CardData.get_card_info(cid)
+
+            if cid in my_hand or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == ("HAND_US" if my_is_us else "HAND_USSR")):
+                canon_loc = 1
+            elif cid in opp_hand or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == ("HAND_USSR" if my_is_us else "HAND_US")):
+                canon_loc = 2
+            elif cid in discard_pile or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "DISCARD_PILE"):
+                canon_loc = 3
+            elif cid in removed_cards or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "REMOVED_FROM_GAME"):
+                canon_loc = 4
+            else:
+                canon_loc = 0
+
+            obs[c_offset + canon_loc] = 1.0
+            ops = float(c_info.get("ops", 0))
+            side_str = c_info.get("side", "NEUTRAL")
+            rel_side = 1.0 if side_str == self.role else (-1.0 if side_str == opp_role else 0.0)
+            era_val = 0.0 if c_info.get("era") == "EARLY" else (0.5 if c_info.get("era") == "MID" else 1.0)
+
+            obs[c_offset + 7] = ops / 4.0
+            obs[c_offset + 8] = rel_side
+            obs[c_offset + 9] = era_val
+            obs[c_offset + 10] = 1.0 if c_info.get("one_time", False) else 0.0
+            obs[c_offset + 11] = 1.0 if c_info.get("is_scoring", False) else 0.0
 
         raw_vp = float(state.get("victory_points", 0))
         my_vp = raw_vp if my_is_us else -raw_vp

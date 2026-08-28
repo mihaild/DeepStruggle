@@ -264,12 +264,14 @@ def train_pipeline(
                 scaled_logits = logits / torch.from_numpy(env_temps).unsqueeze(-1).to(dev)
                 dist = torch.distributions.Categorical(logits=scaled_logits)
                 actions_t = dist.sample()
-                log_probs_t = dist.log_prob(actions_t)
+                # Log prob evaluated at unscaled T=1.0 for PPO importance ratio alignment
+                unscaled_dist = torch.distributions.Categorical(logits=logits)
+                log_probs_t = unscaled_dist.log_prob(actions_t)
 
             actions_np = actions_t.cpu().numpy()
             next_obs_np, next_masks_np, rewards_np, dones_np, info = env.step(actions_np)
 
-            # Store exact acting players
+            # Store exact acting players and step metadata
             buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -280,6 +282,10 @@ def train_pipeline(
                 rewards=torch.from_numpy(rewards_np).float().to(dev),
                 dones=torch.from_numpy(dones_np).float().to(dev),
                 players=torch.from_numpy(info["acting_players"]).to(dev),
+                turns=torch.from_numpy(info["turns"]).to(dev),
+                vps=torch.from_numpy(info["victory_points"]).float().to(dev),
+                held_scoring_us=torch.from_numpy(info["held_scoring_us"]).to(dev),
+                held_scoring_ussr=torch.from_numpy(info["held_scoring_ussr"]).to(dev),
             )
 
             obs_np = next_obs_np
@@ -291,7 +297,7 @@ def train_pipeline(
         with torch.no_grad():
             _, last_v_win, last_v_vp = model(last_obs_t, last_masks_t)
             last_dones = torch.from_numpy(dones_np).to(dev)
-            last_players = torch.from_numpy(info["acting_players"]).to(dev)
+            last_players = torch.from_numpy(env._get_batch_info()["decision_players"]).to(dev)
 
         buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),

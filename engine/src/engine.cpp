@@ -2,6 +2,7 @@
 #include "ts/state_machine.hpp"
 #include "ts/action_mask.hpp"
 #include "ts/serialization.hpp"
+#include "ts/card_data.hpp"
 
 namespace ts {
 
@@ -36,6 +37,31 @@ float Engine::get_terminal_utility(const GameState& state) noexcept {
     if (state.victory_points > 0) return 1.0f;
     if (state.victory_points < 0) return -1.0f;
     return 0.0f;
+}
+
+bool Engine::has_held_scoring_card(const GameState& state, Player p) noexcept {
+    CardLocation target_loc = (p == Player::US) ? CardLocation::HAND_US :
+                              ((p == Player::USSR) ? CardLocation::HAND_USSR : CardLocation::UNAVAILABLE);
+    if (target_loc == CardLocation::UNAVAILABLE) return false;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (CardData::is_scoring_card(i) && state.card_locations[i] == target_loc) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Engine::is_held_scoring_game_over(const GameState& state) noexcept {
+    if (state.current_phase != Phase::GAME_OVER) return false;
+    if (state.defcon <= 1) return false;
+    uint8_t max_ar = (state.turn <= 3) ? 6 : 7;
+    if (state.action_round <= max_ar) return false;
+    return has_held_scoring_card(state, Player::US) || has_held_scoring_card(state, Player::USSR);
+}
+
+bool Engine::is_held_scoring_loss(const GameState& state, Player p) noexcept {
+    if (!is_held_scoring_game_over(state)) return false;
+    return has_held_scoring_card(state, p);
 }
 
 void Engine::serialize(const GameState& state, uint8_t* out_bytes, size_t max_bytes) noexcept {

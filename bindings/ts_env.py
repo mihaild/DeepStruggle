@@ -123,6 +123,8 @@ class TsVectorizedEnv:
             self.runner.refresh_all()
         self.ep_lengths.fill(0)
         self.ep_rewards.fill(0.0)
+        if hasattr(self.reward_calc, "on_all_reset"):
+            self.reward_calc.on_all_reset([self.runner.get_state(i) for i in range(self.num_envs)])
         obs = np.array(self.runner.get_observations(), copy=False)
         masks = np.array(self.runner.get_action_masks(), copy=False)
         return obs, masks, self._get_batch_info()
@@ -138,6 +140,7 @@ class TsVectorizedEnv:
         """Steps all N environments in parallel with exact acting player attribution."""
         # 1. Capture exact acting players BEFORE stepping simulation
         acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
+        acting_turns = np.array(self.runner.get_turns(), dtype=np.int8)
         prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
         # 2. Step C++ simulation in parallel
@@ -148,6 +151,17 @@ class TsVectorizedEnv:
         dones = np.array(self.runner.get_terminals(), dtype=bool)
         term_utils = np.array(self.runner.get_terminal_utilities(), dtype=np.float32)
         curr_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
+
+        # Rule 4.4 Held scoring card detection for terminal states
+        held_scoring_us = np.zeros(self.num_envs, dtype=bool)
+        held_scoring_ussr = np.zeros(self.num_envs, dtype=bool)
+        if np.any(dones):
+            for i in range(self.num_envs):
+                if dones[i]:
+                    st = self.runner.get_state(i)
+                    if ts.Engine.is_held_scoring_game_over(st):
+                        held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
+                        held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
@@ -188,6 +202,8 @@ class TsVectorizedEnv:
                     })
                     new_seed = int(np.random.randint(1, 1_000_000_000))
                     self.runner.reset_game(i, new_seed)
+                    if hasattr(self.reward_calc, "on_env_reset"):
+                        self.reward_calc.on_env_reset(i, self.runner.get_state(i))
                     self.ep_lengths[i] = 0
                     self.ep_rewards[i] = 0.0
 
@@ -200,6 +216,9 @@ class TsVectorizedEnv:
         info = self._get_batch_info()
         info["completed_episodes"] = completed_episodes
         info["acting_players"] = acting_players
+        info["turns"] = acting_turns
+        info["held_scoring_us"] = held_scoring_us
+        info["held_scoring_ussr"] = held_scoring_ussr
         info["dones"] = dones
 
         return obs, masks, rewards, dones, info
@@ -207,6 +226,7 @@ class TsVectorizedEnv:
     def _get_batch_info(self) -> Dict[str, Any]:
         return {
             "decision_players": np.array(self.runner.get_decision_players(), dtype=np.int8),
+            "turns": np.array(self.runner.get_turns(), dtype=np.int8),
             "victory_points": np.array(self.runner.get_victory_points(), dtype=np.int8),
             "terminals": np.array(self.runner.get_terminals(), dtype=bool),
             "terminal_utilities": np.array(self.runner.get_terminal_utilities(), dtype=np.float32),

@@ -375,6 +375,8 @@ class TestBlunderAwareRewardCalculator:
                 st.set_card_location(card_idx, ts.CardLocation.DISCARD_PILE)
         st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Only USSR holds Asia Scoring
         st.turn = 3
+        st.action_round = 7
+        st.current_phase = ts.Phase.GAME_OVER
 
         # If USSR is acting player when game ends due to held scoring:
         r_ussr = calc.compute_step_rewards(
@@ -644,13 +646,12 @@ class TestUsefulActionsRewardCalculator:
         st = ts.GameState()
         ts.Engine.init_game(st, 100)
 
-        base_us = calc.compute_potential(st, 1)
-        base_ussr = calc.compute_potential(st, -1)
-        assert abs(base_us + base_ussr) < 1e-5, "Potential must be symmetric opposite at initial state"
+        base_us = calc.compute_potential(st)
+        assert -1.0 <= base_us <= 1.0
 
         # Increase VP by +2 for US
         st.victory_points += 2
-        pot_us = calc.compute_potential(st, 1)
+        pot_us = calc.compute_potential(st)
         delta = pot_us - base_us
         expected_delta = (2.0 / 20.0) * 0.5  # weight 0.5
         assert abs(delta - expected_delta) < 1e-4, f"VP delta must be {expected_delta}, got {delta}"
@@ -753,5 +754,145 @@ class TestUsefulActionsRewardCalculator:
         calc = UsefulActionsReward()
         for i in range(8):
             st = runner.get_state(i)
-            expected = calc.compute_potential(st, acting_players[i])
+            expected = calc.compute_potential(st)
             assert abs(pots[i] - expected) < 1e-5, f"Vectorized potential at env {i} must match scalar calculation"
+
+
+class TestHeldScoringAndPotentialFixes:
+    """Verifies Bug 1 and Bug 2 specific fixes, engine detection, and GAE credit slicing."""
+
+    def test_engine_held_scoring_detection(self):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 42)
+        assert not ts.Engine.is_held_scoring_game_over(st)
+
+        # Clear scoring cards
+        for c in range(1, 111):
+            if ts.CardData.get_card_info(c).get("is_scoring"):
+                st.set_card_location(c, ts.CardLocation.DISCARD_PILE)
+
+        # Put Asia Scoring in USSR hand
+        st.set_card_location(1, ts.CardLocation.HAND_USSR)
+        assert ts.Engine.has_held_scoring_card(st, ts.Player.USSR)
+        assert not ts.Engine.has_held_scoring_card(st, ts.Player.US)
+
+        # Mid-turn game over (e.g. Europe Control during AR 2) -> NOT held scoring game over!
+        st.current_phase = ts.Phase.GAME_OVER
+        st.turn = 1
+        st.action_round = 2
+        st.victory_points = 20
+        assert not ts.Engine.is_held_scoring_game_over(st)
+        assert not ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+
+        # Turn-end game over (action_round > max_ar, turn 1 max_ar = 6) -> IS held scoring game over!
+        st.action_round = 7
+        assert ts.Engine.is_held_scoring_game_over(st)
+        assert ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+        assert not ts.Engine.is_held_scoring_loss(st, ts.Player.US)
+
+    def test_both_hold_scoring_cards_detection(self):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 42)
+        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Asia
+        st.set_card_location(2, ts.CardLocation.HAND_US)    # Europe
+        st.current_phase = ts.Phase.GAME_OVER
+        st.turn = 4
+        st.action_round = 8  # Mid/late war ends after AR 7
+        assert ts.Engine.is_held_scoring_game_over(st)
+        assert ts.Engine.is_held_scoring_loss(st, ts.Player.US)
+        assert ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+
+    def test_held_scoring_gae_turn_slicing_and_opponent_shielding(self):
+        from ai.training.rollout_buffer import RolloutBuffer
+        device = torch.device("cpu")
+        buffer = RolloutBuffer(buffer_size=6, num_envs=1, device=device)
+
+        obs = np.zeros((1, 4293), dtype=np.float32)
+        mask = np.zeros((1, 212), dtype=np.uint8)
+        mask[0, 0] = 1
+
+        steps = [
+            (2, 1, 0.0, False, False, False),
+            (2, -1, 0.0, False, False, False),
+            (3, 1, 0.0, False, False, False),
+            (3, -1, 0.0, False, False, False),
+            (3, 1, 0.0, False, False, False),
+            (3, 1, 0.0, True, False, True),  # USSR held scoring card blunder!
+        ]
+
+        for s_idx, (turn, player, rew, done, hs_us, hs_ussr) in enumerate(steps):
+            buffer.add(
+                obs=obs,
+                masks=mask,
+                actions=np.array([0]),
+                log_probs=torch.tensor([0.0]),
+                rewards=np.array([rew], dtype=np.float32),
+                dones=np.array([done], dtype=bool),
+                values_win=torch.tensor([0.0]),
+                values_vp=torch.tensor([0.0]),
+                players=np.array([player], dtype=np.int8),
+                turns=np.array([turn], dtype=np.int8),
+                held_scoring_us=np.array([hs_us], dtype=bool),
+                held_scoring_ussr=np.array([hs_ussr], dtype=bool),
+            )
+
+        buffer.compute_gae(
+            last_v_win=torch.tensor([0.0]),
+            last_v_vp=torch.tensor([0.0]),
+            last_dones=torch.tensor([True]),
+            last_players=torch.tensor([1]),
+            slice_turn_boundaries=True,
+        )
+
+        # USSR actions in Turn 3 (step 3) must receive -1.0 target return
+        assert buffer.returns_win[3, 0].item() == -1.0
+
+        # US actions in Turn 3 (steps 2, 4, 5) must receive baseline 0.0 return (shielded from opponent's blunder!)
+        assert buffer.returns_win[2, 0].item() == 0.0
+        assert buffer.returns_win[4, 0].item() == 0.0
+        assert buffer.returns_win[5, 0].item() == 0.0
+
+        # Steps in Turn 2 (steps 0, 1) must be sliced before Turn 3: baseline 0.0 return
+        assert buffer.returns_win[0, 0].item() == 0.0
+        assert buffer.returns_win[1, 0].item() == 0.0
+
+        # Normalized advantages: USSR advantage is strongly penalized relative to shielded US
+        assert buffer.advantages[3, 0].item() < -1.0
+        assert buffer.advantages[2, 0].item() > buffer.advantages[3, 0].item()
+
+    def test_potential_shaping_zero_on_turn_switches(self):
+        calc = UsefulActionsReward(potential_scale=1.0)
+        st = ts.GameState()
+        ts.Engine.init_game(st, 100)
+
+        # Initial step with US
+        r_us = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([False]),
+            terminal_utilities=np.array([0.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+
+        # Next step with USSR on unchanged board
+        r_ussr = calc.compute_step_rewards(
+            acting_players=np.array([-1], dtype=np.int8),
+            dones=np.array([False]),
+            terminal_utilities=np.array([0.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert abs(r_ussr[0]) < 1e-6, f"Reward on unchanged board during player switch must be 0.0, got {r_ussr[0]}"
+
+        # Next step with US again on unchanged board
+        r_us_again = calc.compute_step_rewards(
+            acting_players=np.array([1], dtype=np.int8),
+            dones=np.array([False]),
+            terminal_utilities=np.array([0.0], dtype=np.float32),
+            prev_victory_points=np.array([0], dtype=np.int8),
+            curr_victory_points=np.array([0], dtype=np.int8),
+            states=[st],
+        )
+        assert abs(r_us_again[0]) < 1e-6, f"Reward on unchanged board must be 0.0, got {r_us_again[0]}"

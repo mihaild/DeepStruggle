@@ -351,6 +351,7 @@ class BehavioralCloningTrainer:
         all_actions = []
         all_players = []
         all_game_indices = []
+        game_outcomes = []
 
         total_steps = 0
         for g_idx in range(num_games):
@@ -375,6 +376,9 @@ class BehavioralCloningTrainer:
                 ts.Engine.step_flat(state, action_idx)
                 total_steps += 1
 
+            term_util = float(ts.Engine.get_terminal_utility(state))
+            game_outcomes.append(term_util)
+
         obs_np = np.array(all_obs, dtype=np.float32)
         masks_np = np.array(all_masks, dtype=np.uint8)
         actions_np = np.array(all_actions, dtype=np.int64)
@@ -386,11 +390,12 @@ class BehavioralCloningTrainer:
         for g_idx in unique_games:
             idxs = np.where(np.array(all_game_indices) == g_idx)[0]
             if len(idxs) > 0:
-                last_idx = idxs[-1]
+                term_util = game_outcomes[g_idx] if g_idx < len(game_outcomes) else 0.0
                 # Canonical win value: +1 if acting player wins, -1 if opponent wins
                 for idx in idxs:
                     p = all_players[idx]
-                    values_np[idx] = 1.0 if p == ts.Player.US else -1.0
+                    p_sign = 1.0 if p == ts.Player.US else -1.0
+                    values_np[idx] = term_util * p_sign
 
         print(f"Collected {len(actions_np):,} transition steps from {num_games} games.")
         return TrajectoryDataset(obs_np, masks_np, actions_np, values_np)

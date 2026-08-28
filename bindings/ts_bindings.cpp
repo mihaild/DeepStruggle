@@ -559,11 +559,18 @@ NB_MODULE(ts_engine, m) {
         .def("to_json", [](const ts::GameState& s) { return ts::Serializer::to_json(s); });
 
     // Engine class
+        m.def("has_held_scoring_card", &ts::Engine::has_held_scoring_card);
+    m.def("is_held_scoring_game_over", &ts::Engine::is_held_scoring_game_over);
+    m.def("is_held_scoring_loss", &ts::Engine::is_held_scoring_loss);
+
     nb::class_<ts::Engine>(m, "Engine")
         .def_static("init_game", &ts::Engine::init_game)
         .def_static("step", &ts::Engine::step)
         .def_static("is_terminal", &ts::Engine::is_terminal)
         .def_static("get_terminal_utility", &ts::Engine::get_terminal_utility)
+        .def_static("has_held_scoring_card", &ts::Engine::has_held_scoring_card)
+        .def_static("is_held_scoring_game_over", &ts::Engine::is_held_scoring_game_over)
+        .def_static("is_held_scoring_loss", &ts::Engine::is_held_scoring_loss)
         .def_static("get_legal_action_mask", [](const ts::GameState& state) {
             uint8_t mask[128];
             size_t out_size = 0;
@@ -824,6 +831,14 @@ NB_MODULE(ts_engine, m) {
             }
             return res;
         }
+
+        std::vector<int8_t> get_turns() const {
+            std::vector<int8_t> res(num_envs);
+            for (size_t i = 0; i < num_envs; ++i) {
+                res[i] = static_cast<int8_t>(states[i].turn);
+            }
+            return res;
+        }
     };
 
     nb::class_<VectorizedBatchRunner>(m, "VectorizedBatchRunner")
@@ -837,14 +852,15 @@ NB_MODULE(ts_engine, m) {
         .def("get_terminals", &VectorizedBatchRunner::get_terminals)
         .def("get_terminal_utilities", &VectorizedBatchRunner::get_terminal_utilities)
         .def("get_victory_points", &VectorizedBatchRunner::get_victory_points)
+        .def("get_turns", &VectorizedBatchRunner::get_turns)
         .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal)
         .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
             size_t n = self.num_envs;
             std::vector<float> potentials(n);
             #pragma omp parallel for schedule(static)
             for (size_t i = 0; i < n; ++i) {
-                ts::Player p = (acting_players[i] == 1) ? ts::Player::US : (acting_players[i] == -1 ? ts::Player::USSR : ts::Player::NONE);
-                potentials[i] = ts::Scoring::compute_useful_actions_potential(self.states[i], p);
+                // Strategic potential Phi(s) strictly defined from US perspective
+                potentials[i] = ts::Scoring::compute_useful_actions_potential(self.states[i], ts::Player::US);
             }
             return potentials;
         });

@@ -33,6 +33,9 @@ class RolloutBuffer:
         self.values_vp = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.players = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
         self.turns = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
+        self.vps = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
+        self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
+        self.held_scoring_ussr = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
 
         # Computed targets
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
@@ -59,6 +62,9 @@ class RolloutBuffer:
         values_vp: torch.Tensor,
         players: np.ndarray | torch.Tensor,
         turns: Optional[np.ndarray | torch.Tensor] = None,
+        vps: Optional[np.ndarray | torch.Tensor] = None,
+        held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
+        held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -86,7 +92,21 @@ class RolloutBuffer:
         self.values_vp[self.step].copy_(values_vp)
         self.players[self.step].copy_(players)
         if turns is not None:
+            if isinstance(turns, np.ndarray):
+                turns = torch.from_numpy(turns)
             self.turns[self.step].copy_(turns)
+        if vps is not None:
+            if isinstance(vps, np.ndarray):
+                vps = torch.from_numpy(vps)
+            self.vps[self.step].copy_(vps)
+        if held_scoring_us is not None:
+            if isinstance(held_scoring_us, np.ndarray):
+                held_scoring_us = torch.from_numpy(held_scoring_us)
+            self.held_scoring_us[self.step].copy_(held_scoring_us)
+        if held_scoring_ussr is not None:
+            if isinstance(held_scoring_ussr, np.ndarray):
+                held_scoring_ussr = torch.from_numpy(held_scoring_ussr)
+            self.held_scoring_ussr[self.step].copy_(held_scoring_ussr)
 
         self.step += 1
         if self.step >= self.buffer_size:
@@ -105,31 +125,82 @@ class RolloutBuffer:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment."""
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
 
+        pending_hs_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        pending_hs_us = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        pending_hs_ussr = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        pending_hs_turn = torch.zeros(self.num_envs, dtype=torch.int8, device=self.device)
+
+        last_ret_vp = last_v_vp.clone()
+
         for t in reversed(range(self.buffer_size)):
             curr_p = self.players[t]
             non_terminal = 1.0 - self.dones[t].float()
 
             if t == self.buffer_size - 1:
-                # Sign alignment with bootstrap state player (+1 if same player, -1 if opponent)
                 sign = (curr_p * last_players).float()
                 next_val = sign * last_v_win
+                next_ret_vp = sign * last_ret_vp
             else:
-                # Sign alignment between step t and step t+1
                 next_p = self.players[t + 1]
                 sign = (curr_p * next_p).float()
                 next_val = sign * self.values_win[t + 1]
+                next_ret_vp = sign * self.returns_vp[t + 1]
 
-                # Optional Turn Boundary Credit Slicing
                 if slice_turn_boundaries:
                     turn_boundary_mask = (self.turns[t] == self.turns[t + 1]).float()
                     non_terminal = non_terminal * turn_boundary_mask
 
-            # TD error delta from perspective of acting player at step t
-            delta = self.rewards[t] + gamma * next_val * non_terminal - self.values_win[t]
-            last_gae = delta + gamma * gae_lambda * sign * non_terminal * last_gae
-            self.advantages[t] = last_gae
-            self.returns_win[t] = self.advantages[t] + self.values_win[t]
-            self.returns_vp[t] = self.values_vp[t]
+            # Update pending held scoring blunder states for terminal steps
+            for e in range(self.num_envs):
+                if self.dones[t, e]:
+                    if self.held_scoring_us[t, e] or self.held_scoring_ussr[t, e]:
+                        pending_hs_active[e] = True
+                        pending_hs_us[e] = self.held_scoring_us[t, e]
+                        pending_hs_ussr[e] = self.held_scoring_ussr[t, e]
+                        pending_hs_turn[e] = self.turns[t, e]
+                    else:
+                        pending_hs_active[e] = False
+
+            # Check if pending held-scoring blunder applies to step t
+            for e in range(self.num_envs):
+                if pending_hs_active[e]:
+                    if self.turns[t, e] == pending_hs_turn[e]:
+                        p = int(curr_p[e])
+                        if p == 1:  # US
+                            if pending_hs_us[e]:
+                                self.returns_win[t, e] = -1.0
+                                self.advantages[t, e] = -1.0 - self.values_win[t, e]
+                            else:
+                                self.returns_win[t, e] = self.values_win[t, e]
+                                self.advantages[t, e] = 0.0
+                        else:  # USSR
+                            if pending_hs_ussr[e]:
+                                self.returns_win[t, e] = -1.0
+                                self.advantages[t, e] = -1.0 - self.values_win[t, e]
+                            else:
+                                self.returns_win[t, e] = self.values_win[t, e]
+                                self.advantages[t, e] = 0.0
+                        last_gae[e] = self.advantages[t, e]
+                        continue
+                    else:
+                        # Turn boundary reached! Do not propagate held scoring blunder before current turn
+                        pending_hs_active[e] = False
+                        last_gae[e] = 0.0
+
+                # Standard zero-sum Bellman TD error & GAE
+                delta = self.rewards[t, e] + gamma * next_val[e] * non_terminal[e] - self.values_win[t, e]
+                last_gae[e] = delta + gamma * gae_lambda * sign[e] * non_terminal[e] * last_gae[e]
+                self.advantages[t, e] = last_gae[e]
+                self.returns_win[t, e] = self.advantages[t, e] + self.values_win[t, e]
+
+            # VP Return: real VP ground truth at terminal / delta VP
+            # vps[t] is normalized VP in [-1.0, 1.0] from player perspective
+            curr_vp_norm = self.vps[t] * curr_p.float() / 20.0
+            self.returns_vp[t] = torch.where(
+                self.dones[t],
+                curr_vp_norm,
+                curr_vp_norm * 0.1 + 0.9 * non_terminal * next_ret_vp
+            )
 
         # Normalize advantages per rollout batch
         flat_adv = self.advantages.view(-1)

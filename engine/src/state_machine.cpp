@@ -352,19 +352,24 @@ void StateMachine::end_turn(GameState& state) noexcept {
 
 void StateMachine::finish_end_turn(GameState& state) noexcept {
     // Phase F: Check held cards (Scoring cards cannot be held!)
+    bool us_holds = false;
+    bool ussr_holds = false;
     for (uint8_t i = 1; i <= 110; ++i) {
         if (CardData::is_scoring_card(i)) {
-            if (state.card_locations[i] == CardLocation::HAND_US) {
-                state.victory_points = -20;
-                state.current_phase = Phase::GAME_OVER;
-                return;
-            }
-            if (state.card_locations[i] == CardLocation::HAND_USSR) {
-                state.victory_points = 20;
-                state.current_phase = Phase::GAME_OVER;
-                return;
-            }
+            if (state.card_locations[i] == CardLocation::HAND_US) us_holds = true;
+            if (state.card_locations[i] == CardLocation::HAND_USSR) ussr_holds = true;
         }
+    }
+    if (us_holds || ussr_holds) {
+        state.current_phase = Phase::GAME_OVER;
+        if (us_holds && ussr_holds) {
+            state.victory_points = 0;
+        } else if (us_holds) {
+            state.victory_points = -20;
+        } else {
+            state.victory_points = 20;
+        }
+        return;
     }
 
     // Phase G: Flip China Card face up

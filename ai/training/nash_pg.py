@@ -106,6 +106,10 @@ class NashPGTrainer:
                 values_win=v_win_t,
                 values_vp=v_vp_t,
                 players=prev_players,
+                turns=info.get("turns"),
+                vps=info.get("victory_points"),
+                held_scoring_us=info.get("held_scoring_us"),
+                held_scoring_ussr=info.get("held_scoring_ussr"),
             )
 
             if "completed_episodes" in info and info["completed_episodes"]:
@@ -129,6 +133,7 @@ class NashPGTrainer:
             last_players=last_players,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
+            slice_turn_boundaries=True,
         )
 
         steps_collected = self.buffer_size * self.num_envs
