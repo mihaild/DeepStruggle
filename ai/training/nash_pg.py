@@ -303,7 +303,10 @@ class OracleGuidedNashPGTrainer(BaseNashPGTrainer):
         distill_loss_coef: float = 0.25,   # Weight for public critic distillation MSE
         **kwargs: Any,
     ):
+        if "batch_size" in kwargs and kwargs["batch_size"] > 1024:
+            kwargs["batch_size"] = 1024
         super().__init__(active_net=active_net, reference_net=reference_net, env=env, **kwargs)
+        self.batch_size = min(self.batch_size, 1024)
         self.belief_loss_coef = belief_loss_coef
         self.oracle_loss_coef = oracle_loss_coef
         self.distill_loss_coef = distill_loss_coef
@@ -324,9 +327,18 @@ class OracleGuidedNashPGTrainer(BaseNashPGTrainer):
 
         for _ in range(self.num_epochs):
             for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp, b_opp_hands, _ in self.buffer.get_batches_with_oracle(self.batch_size):
-                cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
-                cur_v_win = cur_v_win.squeeze(-1)
-                cur_v_vp = cur_v_vp.squeeze(-1)
+                if hasattr(self.active_net, "forward_all"):
+                    forward_all_fn = getattr(self.active_net, "forward_all")
+                    cur_logits, cur_v_win, cur_v_vp, b_pred_belief, b_oracle_val = forward_all_fn(b_obs, b_mask, b_opp_hands)
+                    cur_v_win = cur_v_win.squeeze(-1)
+                    cur_v_vp = cur_v_vp.squeeze(-1)
+                    b_oracle_val = b_oracle_val.squeeze(-1)
+                else:
+                    cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
+                    cur_v_win = cur_v_win.squeeze(-1)
+                    cur_v_vp = cur_v_vp.squeeze(-1)
+                    b_pred_belief = getattr(self.active_net, "predict_belief")(b_obs)
+                    b_oracle_val = getattr(self.active_net, "evaluate_oracle")(b_obs, b_opp_hands).squeeze(-1)
 
                 cur_dist = torch.distributions.Categorical(logits=cur_logits)
                 cur_lp = cur_dist.log_prob(b_act)
@@ -351,13 +363,9 @@ class OracleGuidedNashPGTrainer(BaseNashPGTrainer):
                 val_loss = F.mse_loss(cur_v_win, b_ret_win) + self.vp_coef * F.mse_loss(cur_v_vp, b_ret_vp)
 
                 # 1. Opponent Belief Head Loss (BCE against ground truth hidden cards)
-                predict_fn = getattr(self.active_net, "predict_belief")
-                b_pred_belief = predict_fn(b_obs)
                 belief_loss = F.binary_cross_entropy(b_pred_belief, b_opp_hands.float())
 
                 # 2. Privileged Oracle Critic Loss & Public Value Distillation
-                oracle_fn = getattr(self.active_net, "evaluate_oracle")
-                b_oracle_val = oracle_fn(b_obs, b_opp_hands).squeeze(-1)
                 oracle_loss = F.mse_loss(b_oracle_val, b_ret_win)
                 distill_loss = F.mse_loss(cur_v_win, b_oracle_val.detach())
 
