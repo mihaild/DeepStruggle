@@ -189,6 +189,10 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         break;
                     }
                 }
+            } else {
+                // Junta & Tear Down This Wall: bonus coup/realign is optional.
+                // Selecting INFLUENCE mode acts as declining/skipping the bonus action.
+                mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
             }
 
             // Check if coup is possible (KAL-007 & Glasnost forbid Coups)

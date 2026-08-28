@@ -130,9 +130,9 @@ def test_fix_card_47_junta_free_ops_restricted_to_ca_sa():
     ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, nicaragua_id))
     assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
     assert s.ctx().pending_op_card == 47
-    # In SELECT_OP_MODE, INFLUENCE mode is illegal for Junta
+    # In SELECT_OP_MODE, INFLUENCE mode is legal for Junta to allow declining bonus coup/realign
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[0] == 0 # INFLUENCE illegal
+    assert mask[0] == 1 # INFLUENCE legal (decline option)
     assert mask[1] == 1 # COUP legal
 
 def test_fix_card_50_we_will_bury_you_pending_ar_check():
@@ -246,7 +246,7 @@ def test_fix_card_96_tear_down_this_wall_europe_only():
     assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
     assert s.ctx().pending_op_card == 96
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[0] == 0 # INFLUENCE forbidden
+    assert mask[0] == 1 # INFLUENCE allowed (decline option)
 
 def test_fix_card_105_special_relationship_nato_branch():
     s = make_state()
@@ -607,3 +607,178 @@ def test_fix_card_66_puppet_governments_canada_selection():
 def test_fix_card_14_comecon_metadata():
     card_info = ts.CardData.get_card_info(14)
     assert card_info["name"] == "Comecon"
+
+
+def test_fix_card_12_romanian_abdication_preserves_higher_ussr_influence():
+    s = make_state()
+    rom_id = cid("Romania")
+    # USSR already has 5 influence, US has 2
+    set_inf(s, rom_id, 2, 5)
+    ts.CardHandlers.trigger_event(s, 12, ts.Player.USSR)
+    assert s.get_country(rom_id).us_influence == 0
+    assert s.get_country(rom_id).ussr_influence == 5 # Does not downgrade 5 to 3
+
+    # When USSR has 1 influence, tops up to 3
+    s2 = make_state()
+    set_inf(s2, rom_id, 1, 1)
+    ts.CardHandlers.trigger_event(s2, 12, ts.Player.USSR)
+    assert s2.get_country(rom_id).us_influence == 0
+    assert s2.get_country(rom_id).ussr_influence == 3
+
+
+def test_fix_card_13_arab_israeli_war_checks_israel_us_control():
+    s = make_state()
+    israel_id = cid("Israel")
+    # US controls Israel (stab 4, US 4, USSR 0)
+    set_inf(s, israel_id, 4, 0)
+    # Adjacent countries are uncontrolled
+    for c in ["Egypt", "Jordan", "Lebanon", "Syria"]:
+        set_inf(s, cid(c), 0, 0)
+    # Forced roll 4 with Israel US controlled: modifier is -1, total = 3 -> Failure
+    ts.CardHandlers.trigger_event(s, 13, ts.Player.USSR, 4)
+    assert s.victory_points == 0
+    assert s.get_country(israel_id).us_influence == 4
+
+    # Forced roll 5 with Israel US controlled: total = 4 -> Success
+    s2 = make_state()
+    set_inf(s2, israel_id, 4, 0)
+    for c in ["Egypt", "Jordan", "Lebanon", "Syria"]:
+        set_inf(s2, cid(c), 0, 0)
+    ts.CardHandlers.trigger_event(s2, 13, ts.Player.USSR, 5)
+    assert s2.victory_points == -2
+    assert s2.get_country(israel_id).ussr_influence == 4
+
+
+def test_fix_card_14_comecon_prevents_duplicate_country_placement():
+    s = make_state()
+    poland_id = cid("Poland")
+    set_inf(s, poland_id, 0, 0)
+    done = ts.CardHandlers.trigger_event(s, 14, ts.Player.USSR)
+    assert not done
+    # Step 1: place 1 on Poland
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, poland_id))
+    assert res == False
+    assert s.get_country(poland_id).ussr_influence == 1
+
+    # Step 2: raw action attempting to place on Poland again must be rejected (returns False and does not increment)
+    res2 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, poland_id))
+    assert res2 == False
+    assert s.get_country(poland_id).ussr_influence == 1
+
+
+def test_fix_card_27_us_japan_pact_guarantees_us_control_with_existing_ussr_inf():
+    s = make_state()
+    japan_id = cid("Japan")
+    # USSR has 2 influence in Japan. Japan stability is 4. US needs 2 + 4 = 6 for Control.
+    set_inf(s, japan_id, 0, 2)
+    ts.CardHandlers.trigger_event(s, 27, ts.Player.US)
+    assert s.get_country(japan_id).us_influence == 6
+    assert ts.Scoring.is_controlled_by(s, japan_id, ts.Player.US)
+
+
+def test_fix_card_32_un_intervention_applies_ops_modifiers():
+    s = make_state()
+    # USSR plays Red Scare/Purge on US
+    s.set_flag(EB.PURGE_US_ACTIVE)
+    # US holds UN Intervention (32) and Arab-Israeli War (13, 2 Ops USSR card)
+    s.set_card_location(32, ts.CardLocation.HAND_US)
+    s.set_card_location(13, ts.CardLocation.HAND_US)
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # US plays UN Intervention as event
+    done = ts.CardHandlers.trigger_event(s, 32, ts.Player.US)
+    assert not done
+    # US selects Arab-Israeli War (13)
+    done2 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 13))
+    assert not done2
+    # Pending ops value should be 2 - 1 = 1 (Red Scare applied)
+    assert s.ctx().pending_ops_value == 1
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+
+
+def test_fix_card_47_junta_allows_optional_bonus_op_decline():
+    s = make_state()
+    nicaragua_id = cid("Nicaragua")
+    set_inf(s, nicaragua_id, 0, 2) # USSR has influence in CA
+    # US plays Junta
+    s.ctx().decision_player = ts.Player.US
+    s.ctx().decision_type = ts.DecisionType.POINT_NODE
+    done = ts.CardHandlers.trigger_event(s, 47, ts.Player.US)
+    assert not done
+    # Step 1: Place 2 influence in Nicaragua
+    done2 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, nicaragua_id))
+    assert not done2
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    # Action mask MUST allow INFLUENCE (mode 0) as option to decline bonus coup/realign
+    mask = ts.Engine.get_legal_action_mask(s)
+    assert mask[int(ts.OpMode.INFLUENCE)] == 1
+    # Selecting INFLUENCE mode cleanly finishes the card ops immediately
+    step_ok = ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
+    assert step_ok == True
+
+
+def test_fix_card_73_shuttle_diplomacy_excluded_from_final_scoring():
+    s = make_state()
+    s.set_flag(EB.SHUTTLE_DIPLOMACY_ACTIVE)
+    # Middle East setup:
+    # Egypt (BG): USSR 2 (controlled)
+    # Israel (BG): US 4 (controlled)
+    # Iraq (BG): USSR 3 (controlled)
+    # Saudi Arabia (BG): USSR 3 (controlled)
+    # Total ME BG: 5 (Egypt, Israel, Iraq, Saudi Arabia, Libya)
+    # USSR has 3 BG, US has 1 BG.
+    set_inf(s, cid("Egypt"), 0, 2)
+    set_inf(s, cid("Israel"), 4, 0)
+    set_inf(s, cid("Iraq"), 0, 3)
+    set_inf(s, cid("Saudi Arabia"), 0, 3)
+    set_inf(s, cid("Libya"), 0, 0)
+    # During normal scoring, Shuttle Diplomacy reduces USSR effective BG from 3 to 2
+    me_normal = ts.Scoring.evaluate_region(s, ts.Region.MIDDLE_EAST, False)
+    assert me_normal.ussr_battlegrounds == 3
+
+    # During final scoring, Shuttle Diplomacy is NOT applied
+    s.victory_points = 0
+    ts.Scoring.execute_final_scoring(s)
+    # In final scoring, Shuttle Diplomacy flag is cleared and card moved to discard
+    assert not s.has_flag(EB.SHUTTLE_DIPLOMACY_ACTIVE)
+
+
+def test_fix_card_76_ussuri_river_skirmish_adds_us_influence():
+    s = make_state()
+    s.china_card_holder = ts.Player.US # US already holds China Card
+    japan_id = cid("Japan") # Asia
+    set_inf(s, japan_id, 0, 0)
+    done = ts.CardHandlers.trigger_event(s, 76, ts.Player.US)
+    assert not done
+    assert s.ctx().decision_type == ts.DecisionType.POINT_NODE
+    assert s.ctx().remaining_steps == 4
+
+    # US places 2 influence in Japan
+    step1 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, japan_id))
+    assert step1 == False
+    assert s.get_country(japan_id).us_influence == 1
+    assert s.ctx().remaining_steps == 3
+
+    step2 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, japan_id))
+    assert step2 == False
+    assert s.get_country(japan_id).us_influence == 2
+    assert s.ctx().remaining_steps == 2
+
+
+def test_fix_card_106_norad_triggers_on_olympic_games_boycott_defcon_2():
+    s = make_state()
+    s.defcon = 3
+    s.turn = 4
+    s.current_phase = ts.Phase.ACTION_ROUND
+    s.set_flag(EB.NORAD_ACTIVE)
+    set_inf(s, cid("Canada"), 2, 0) # US controls Canada
+    # USSR plays Olympic Games as event
+    done = ts.CardHandlers.trigger_event(s, 20, ts.Player.USSR)
+    assert not done
+    assert s.ctx().decision_player == ts.Player.US # US decides to participate or boycott
+    # US boycotts (branch 1)
+    done_boycott = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 1))
+    assert not done_boycott
+    assert s.defcon == 2
+    assert s.defcon_dropped_to_2_in_ar == 1

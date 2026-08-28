@@ -517,6 +517,7 @@ NB_MODULE(ts_engine, m) {
         .def_rw("ussr_space_track", &ts::GameState::ussr_space_track)
         .def_rw("turn", &ts::GameState::turn)
         .def_rw("action_round", &ts::GameState::action_round)
+        .def_rw("defcon_dropped_to_2_in_ar", &ts::GameState::defcon_dropped_to_2_in_ar)
         .def_rw("phasing_player", &ts::GameState::phasing_player)
         .def_rw("headline_us_card", &ts::GameState::headline_us_card)
         .def_rw("headline_ussr_card", &ts::GameState::headline_ussr_card)
@@ -664,7 +665,7 @@ NB_MODULE(ts_engine, m) {
         .def_static("score_southeast_asia", &ts::Scoring::score_southeast_asia)
         .def_static("execute_final_scoring", &ts::Scoring::execute_final_scoring)
         .def_static("evaluate_military_ops", &ts::Scoring::evaluate_military_ops)
-        .def_static("evaluate_region", &ts::Scoring::evaluate_region)
+        .def_static("evaluate_region", &ts::Scoring::evaluate_region, nb::arg("state"), nb::arg("region"), nb::arg("is_final_scoring") = false)
         .def_static("get_country_control", &ts::Scoring::get_country_control)
         .def_static("is_controlled_by", &ts::Scoring::is_controlled_by)
         .def_static("compute_useful_actions_potential", &ts::Scoring::compute_useful_actions_potential);

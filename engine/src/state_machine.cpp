@@ -761,6 +761,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 state.ctx().op_mode = op_mode;
 
                 if (op_mode == OpMode::INFLUENCE) {
+                    if (state.ctx().pending_op_card == card_ids::JUNTA || state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                        advance_after_ops(state);
+                        return true;
+                    }
                     snapshot_op_influence(state, p);
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = ops;

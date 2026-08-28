@@ -26,7 +26,7 @@ bool Scoring::is_controlled_by(const GameState& state, uint8_t country_id, Playe
     return get_country_control(state, country_id) == p;
 }
 
-RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r) noexcept {
+RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bool is_final_scoring) noexcept {
     RegionScoreSummary summary{};
     if (r == Region::NONE_REGION) return summary;
 
@@ -58,7 +58,7 @@ RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r) no
     }
 
     uint8_t effective_ussr_bg = summary.ussr_battlegrounds;
-    if ((r == Region::MIDDLE_EAST || r == Region::ASIA) && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+    if (!is_final_scoring && (r == Region::MIDDLE_EAST || r == Region::ASIA) && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
         if (effective_ussr_bg > 0) effective_ussr_bg--;
     }
 
@@ -242,12 +242,12 @@ void Scoring::execute_final_scoring(GameState& state) noexcept {
     // Europe
     total_vp += europe_summary.net_delta;
 
-    // Asia
-    auto asia_summary = evaluate_region(state, Region::ASIA);
+    // Asia (Shuttle Diplomacy does not affect final scoring)
+    auto asia_summary = evaluate_region(state, Region::ASIA, /*is_final_scoring=*/true);
     total_vp += asia_summary.net_delta;
 
-    // Middle East
-    auto me_summary = evaluate_region(state, Region::MIDDLE_EAST);
+    // Middle East (Shuttle Diplomacy does not affect final scoring)
+    auto me_summary = evaluate_region(state, Region::MIDDLE_EAST, /*is_final_scoring=*/true);
     total_vp += me_summary.net_delta;
 
     // Africa

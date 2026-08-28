@@ -337,7 +337,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).in_eastern_europe && !Scoring::is_controlled_by(state, cid, Player::US)) {
+            if (cid < 84 && MapData::get_country(cid).in_eastern_europe && !Scoring::is_controlled_by(state, cid, Player::US) && !state.ctx().is_visited(cid)) {
                 state.countries[cid].add_influence(Player::USSR, 1);
                 state.ctx().node_counts[cid]++;
                 state.ctx().mark_visited(cid);
@@ -475,6 +475,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 Player sponsor = get_opponent(state.ctx().decision_player);
                 if (state.defcon > 1) {
                     state.defcon--;
+                    if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
                 }
                 if (state.defcon == 1) {
                     state.current_phase = Phase::GAME_OVER;
@@ -658,7 +659,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (CardData::get_card(chosen_card).side == opp && !CardData::is_scoring_card(chosen_card)) {
                     state.card_locations[chosen_card] = CardLocation::DISCARD_PILE;
                     state.ctx().pending_op_card = chosen_card;
-                    state.ctx().pending_ops_value = CardData::get_card(chosen_card).ops;
+                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().resolving_card = 0;
                     return false;
@@ -1044,6 +1045,24 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).region == Region::CENTRAL_AMERICA && state.ctx().node_counts[cid] < 2) {
                 state.countries[cid].add_influence(Player::USSR, 1);
+                state.ctx().node_counts[cid]++;
+                if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
+                if (state.ctx().remaining_steps == 0) {
+                    state.ctx().resolving_card = 0;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        case card_ids::USSURI_RIVER_SKIRMISH: {
+            if (action.is_confirm_done()) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
+            uint8_t cid = action.primary_id;
+            if (cid < 84 && MapData::get_country(cid).region == Region::ASIA && state.ctx().node_counts[cid] < 2) {
+                state.countries[cid].add_influence(Player::US, 1);
                 state.ctx().node_counts[cid]++;
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {

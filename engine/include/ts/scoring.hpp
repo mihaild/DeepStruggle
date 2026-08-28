@@ -32,7 +32,7 @@ public:
     static bool is_controlled_by(const GameState& state, uint8_t country_id, Player p) noexcept;
 
     // Evaluates a region and returns detailed score breakdown
-    static RegionScoreSummary evaluate_region(const GameState& state, Region r) noexcept;
+    static RegionScoreSummary evaluate_region(const GameState& state, Region r, bool is_final_scoring = false) noexcept;
 
     // Scores a region, updates state.victory_points (clamped to [-20, 20]), checks instant win
     static void score_region(GameState& state, Region r) noexcept;

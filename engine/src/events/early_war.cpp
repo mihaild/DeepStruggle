@@ -167,7 +167,7 @@ bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll) noexcep
 
 bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
     state.countries[countries::ROMANIA].us_influence = 0;
-    state.countries[countries::ROMANIA].ussr_influence = 3;
+    state.countries[countries::ROMANIA].ussr_influence = std::max(state.countries[countries::ROMANIA].ussr_influence, static_cast<uint8_t>(3));
     return true;
 }
 
@@ -177,6 +177,7 @@ bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) n
     state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
 
     int16_t mod = 0;
+    if (Scoring::is_controlled_by(state, countries::ISRAEL, Player::US)) mod--;
     if (Scoring::is_controlled_by(state, countries::EGYPT, Player::US)) mod--;
     if (Scoring::is_controlled_by(state, countries::JORDAN, Player::US)) mod--;
     if (Scoring::is_controlled_by(state, countries::LEBANON, Player::US)) mod--;
@@ -352,8 +353,8 @@ bool trigger_cia_created(GameState& state, Player p) noexcept {
 
 bool trigger_us_japan_pact(GameState& state, Player p) noexcept {
     state.set_flag(effect_bits::US_JAPAN_PACT_ACTIVE);
-    uint8_t cur_us = state.countries[countries::JAPAN].us_influence;
-    if (cur_us < 4) state.countries[countries::JAPAN].us_influence = 4;
+    uint8_t required_us = static_cast<uint8_t>(state.countries[countries::JAPAN].ussr_influence + 4);
+    state.countries[countries::JAPAN].us_influence = std::max(state.countries[countries::JAPAN].us_influence, required_us);
     return true;
 }
 
