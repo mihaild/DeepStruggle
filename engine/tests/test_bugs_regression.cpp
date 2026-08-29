@@ -5,6 +5,7 @@
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/card_handlers.hpp"
 
 using namespace ts;
 
@@ -304,5 +305,65 @@ TEST(RegressionTest, ObservationActionHistoryDerotation) {
         size_t h_off = h * 32;
         float diff = std::abs(obs.history_sequence[h_off + 2] - expected_card_norm);
         ASSERT_TRUE(diff < 1e-5f);
+    }
+}
+
+// DEFCON-1 losses are classified by *agency*, not by side. A player who chooses the
+// action that drops DEFCON to 1 committed an avoidable blunder (flag clear); a player
+// forced to fire an opponent-associated event while playing that card for Operations was
+// squeezed and had no safe alternative (flag set). Before this was unified, the Duck and
+// Cover and KAL-007 sites keyed the flag off `loser == USSR`, so the label depended on
+// which side lost rather than on who chose the action.
+TEST(RegressionTest, DefconOneProvokedFlagTracksAgencyNotSide) {
+    // Case 1: US is phasing and fires its OWN event (Duck and Cover) at DEFCON 2.
+    // Entirely avoidable -> unprovoked.
+    {
+        GameState state{};
+        Engine::init_game(state, 7);
+        state.current_phase = Phase::ACTION_ROUND;
+        state.phasing_player = Player::US;
+        state.defcon = 2;
+        state.clear_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+
+        CardHandlers::trigger_event(state, card_ids::DUCK_AND_COVER, Player::US);
+
+        ASSERT_EQ(static_cast<int>(state.current_phase), static_cast<int>(Phase::GAME_OVER));
+        ASSERT_EQ(static_cast<int>(state.victory_points), -20); // phasing US loses
+        ASSERT_TRUE(!state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
+    }
+
+    // Case 2: USSR is phasing and plays the same US-associated card for Operations, so
+    // the US event fires against them. Forced -> provoked.
+    {
+        GameState state{};
+        Engine::init_game(state, 7);
+        state.current_phase = Phase::ACTION_ROUND;
+        state.phasing_player = Player::USSR;
+        state.defcon = 2;
+        state.clear_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+
+        CardHandlers::trigger_event(state, card_ids::DUCK_AND_COVER, Player::US);
+
+        ASSERT_EQ(static_cast<int>(state.current_phase), static_cast<int>(Phase::GAME_OVER));
+        ASSERT_EQ(static_cast<int>(state.victory_points), 20); // phasing USSR loses
+        ASSERT_TRUE(state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
+    }
+
+    // Case 3: the mirror of case 1 on the other side. USSR fires KAL-007 (a US event)
+    // while US is phasing -> US loses and it is provoked, i.e. the flag is driven by
+    // agency and NOT by "USSR is the loser" as the old side-based check assumed.
+    {
+        GameState state{};
+        Engine::init_game(state, 7);
+        state.current_phase = Phase::ACTION_ROUND;
+        state.phasing_player = Player::US;
+        state.defcon = 2;
+        state.clear_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+
+        CardHandlers::trigger_event(state, card_ids::SOVIETS_SHOOT_DOWN_KAL_007, Player::USSR);
+
+        ASSERT_EQ(static_cast<int>(state.current_phase), static_cast<int>(Phase::GAME_OVER));
+        ASSERT_EQ(static_cast<int>(state.victory_points), -20); // phasing US loses
+        ASSERT_TRUE(state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
     }
 }

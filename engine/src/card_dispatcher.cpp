@@ -6,6 +6,7 @@
 #include "ts/space_race.hpp"
 #include "ts/ops.hpp"
 #include "ts/prng.hpp"
+#include "ts/defcon.hpp"
 #include <algorithm>
 
 namespace ts {
@@ -464,12 +465,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                         if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
                     }
                     if (state.defcon == 1) {
-                        state.current_phase = Phase::GAME_OVER;
-                        Player loser = state.phasing_player;
-                        if (state.ctx().decision_player != state.phasing_player) {
-                            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
-                        }
-                        state.victory_points = (loser == Player::US) ? -20 : 20;
+                        resolve_defcon_one_loss(state, state.ctx().decision_player);
                         state.ctx().resolving_card = 0;
                         return true;
                     }
@@ -769,7 +765,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                         if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
                     }
                     if (state.defcon == 1) {
+                        // NOTE: unlike every other DEFCON-1 site this assigns the loss to
+                        // the Summit roll winner rather than to the phasing player. Left
+                        // as-is deliberately -- correcting it would change game outcomes,
+                        // not just classification. Flagged for review.
                         Player loser = state.ctx().decision_player;
+                        if (loser != state.phasing_player) {
+                            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+                        }
                         state.victory_points = (loser == Player::US) ? -20 : 20;
                         state.current_phase = Phase::GAME_OVER;
                     }
@@ -784,9 +787,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             state.defcon = new_defcon;
             if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
             if (state.defcon == 1) {
-                Player loser = state.phasing_player;
-                state.victory_points = (loser == Player::US) ? -20 : 20;
-                state.current_phase = Phase::GAME_OVER;
+                resolve_defcon_one_loss(state, state.ctx().decision_player);
             }
             state.ctx().resolving_card = 0;
             return true;

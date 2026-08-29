@@ -6,6 +6,7 @@
 #include "ts/space_race.hpp"
 #include "ts/ops.hpp"
 #include "ts/prng.hpp"
+#include "ts/defcon.hpp"
 #include <algorithm>
 
 namespace ts {
@@ -94,12 +95,7 @@ bool trigger_soviets_shoot_down_kal(GameState& state, Player p) noexcept {
         if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
     }
     if (state.defcon == 1) {
-        Player loser = state.phasing_player;
-        if (loser == Player::USSR) {
-            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
-        }
-        state.victory_points = (loser == Player::US) ? -20 : 20;
-        state.current_phase = Phase::GAME_OVER;
+        resolve_defcon_one_loss(state, p);
         return true;
     }
     state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));

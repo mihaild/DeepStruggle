@@ -6,6 +6,7 @@
 #include "ts/space_race.hpp"
 #include "ts/ops.hpp"
 #include "ts/prng.hpp"
+#include "ts/defcon.hpp"
 #include <algorithm>
 
 namespace ts {
@@ -19,12 +20,7 @@ bool trigger_duck_and_cover(GameState& state, Player p) noexcept {
     }
     // Check DEFCON suicide
     if (state.defcon == 1) {
-        Player loser = state.phasing_player;
-        if (loser == Player::USSR) {
-            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
-        }
-        state.victory_points = (loser == Player::US) ? -20 : 20;
-        state.current_phase = Phase::GAME_OVER;
+        resolve_defcon_one_loss(state, p);
         return true;
     }
     int16_t vp_gain = 5 - state.defcon;

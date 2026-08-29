@@ -3,6 +3,7 @@
 #include "ts/card_data.hpp"
 #include "ts/scoring.hpp"
 #include "ts/prng.hpp"
+#include "ts/defcon.hpp"
 #include "ts/constants.hpp"
 #include <algorithm>
 
@@ -221,12 +222,7 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
             // DEFCON suicide check: if DEFCON reached 1, phasing player loses immediately!
             if (state.defcon == 1) {
                 res.caused_defcon_suicide = true;
-                Player loser = state.phasing_player;
-                if (p != state.phasing_player) {
-                    state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
-                }
-                state.victory_points = (loser == Player::US) ? -20 : 20;
-                state.current_phase = Phase::GAME_OVER;
+                resolve_defcon_one_loss(state, p);
                 return res;
             }
         }

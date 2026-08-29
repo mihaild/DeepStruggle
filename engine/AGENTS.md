@@ -39,6 +39,7 @@ engine/
 │   ├── card_data.hpp           // 110 cards static metadata (Ops, side, era, asterisk, scoring)
 │   ├── scoring.hpp             // Region scoring formulas (Presence/Domination/Control), victory evaluation
 │   ├── ops.hpp                 // Influence placement, Coup mechanics, Realignment rolls, dynamic costs
+│   ├── defcon.hpp              // Shared DEFCON-1 game-end resolution and provoked/unprovoked classification
 │   ├── space_race.hpp          // Space race tracks, milestone rewards, and special abilities
 │   ├── card_handlers.hpp       // Card event handlers and sub-decision dispatch declarations
 │   ├── action_mask.hpp         // Legal action mask generator (per DecisionType and unified 212-dim flat mask)
