@@ -197,3 +197,44 @@ def test_full_game_invariant_audit(seed: int):
     steps, violations = run_invariant_audit_game(seed)
     assert len(violations) == 0, f"Encountered {len(violations)} invariant violations:\n" + "\n".join(violations[:15])
     assert steps > 30, f"Game ended prematurely at step {steps}"
+
+
+def test_canonical_game_ending_reasons():
+    """Validates that classify_game_ending_reason cleanly distinguishes 20 VP from DEFCON 1 and outputs only canonical categories."""
+    from tools.lib.tournament_evaluator import classify_game_ending_reason
+
+    st = ts_engine.GameState()
+    ts_engine.Engine.init_game(st, 42)
+
+    # 1. DEFCON 1 (own decision) - e.g. unprovoked suicide
+    st.defcon = 1
+    st.victory_points = 20  # Engine sets VP to +/-20 on DEFCON 1
+    assert classify_game_ending_reason(st) == "DEFCON 1 (own decision)"
+
+    # 2. DEFCON 1 (opponent decision) - provoked event trap
+    st.defcon = 1
+    st.victory_points = -20
+    st.set_flag(ts_engine.EffectBits.DEFCON_SUICIDE_PROVOKED)
+    assert classify_game_ending_reason(st) == "DEFCON 1 (opponent decision)"
+
+    # 3. 20 VP - Milestone VP swing or Europe Control at DEFCON > 1
+    st.clear_flag(ts_engine.EffectBits.DEFCON_SUICIDE_PROVOKED)
+    st.defcon = 2
+    st.victory_points = 20
+    assert classify_game_ending_reason(st) == "20 VP"
+
+    st.victory_points = -20
+    assert classify_game_ending_reason(st) == "20 VP"
+
+    # 4. Final Scoring (Turn 10)
+    st.defcon = 2
+    st.victory_points = 6
+    st.turn = 10
+    st.current_phase = ts_engine.Phase.GAME_OVER
+    assert classify_game_ending_reason(st) == "final scoring"
+
+    # 5. Wargames (#100) - Early game termination before Turn 10 with DEFCON 2 and abs(VP) < 20
+    st.turn = 8
+    st.victory_points = 4
+    st.current_phase = ts_engine.Phase.GAME_OVER
+    assert classify_game_ending_reason(st) == "wargames"

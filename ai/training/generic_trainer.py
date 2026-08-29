@@ -117,8 +117,8 @@ def evaluate_and_log_snapshot(
         wr_us = res["win_rate_a_as_us"] * 100.0
         wr_ussr = res["win_rate_a_as_ussr"] * 100.0
 
-        top_us = ", ".join([f"{k} ({v})" for k, v in list(res["causes_loss_us"].items())[:3]]) or "None (0 losses)"
-        top_ussr = ", ".join([f"{k} ({v})" for k, v in list(res["causes_loss_ussr"].items())[:3]]) or "None (0 losses)"
+        top_us = ", ".join([f"{k} ({v})" for k, v in sorted(res["causes_loss_us"].items(), key=lambda x: x[1], reverse=True)]) or "None (0 losses)"
+        top_ussr = ", ".join([f"{k} ({v})" for k, v in sorted(res["causes_loss_ussr"].items(), key=lambda x: x[1], reverse=True)]) or "None (0 losses)"
 
         print(f"  vs {opp.name:<25s} -> Overall: {wr_tot:5.1f}% ({res['a_wins']}W-{res['b_wins']}L) | US: {wr_us:5.1f}% ({res['a_wins_as_us']}W-{res['a_losses_as_us']}L) | USSR: {wr_ussr:5.1f}% ({res['a_wins_as_ussr']}W-{res['a_losses_as_ussr']}L)", flush=True)
         print(f"       Losses as US:   {top_us}", flush=True)

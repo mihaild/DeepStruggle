@@ -85,13 +85,12 @@ Twilight Struggle has a well-known historical balance dynamic:
 - When analyzing evaluation reports, always inspect both **US Win Rate** and **USSR Win Rate** separately.
 
 ### 3. Diagnostic Loss Causes Breakdown
-`tools/tournament.py` automatically classifies the exact cause of every game loss:
-- **`DEFCON suicide (unprovoked)`**: The player played a card for Ops (or Space failure) that triggered opponent event while DEFCON was at 2, degrading DEFCON to 1 on their own turn. Indicates card-avoidance blindness.
-- **`DEFCON suicide (provoked)`**: The opponent forced the loss (e.g. via Duck and Cover or We Will Bury You headline trap).
-- **`Held scoring`**: Player failed to play a required regional scoring card before the end of the turn (Rule 4.4), automatically losing 20 VP.
-- **`+20 VP Sudden Death` / `-20 VP Sudden Death`**: Game ended early due to VP milestone margin.
-- **`Final Scoring (Turn 10)`**: Game reached end of turn 10 and was decided on regional final scoring.
-- **`Europe Control`**: Instant game-ending control of Europe.
+`tools/tournament.py` and `TournamentEvaluator` classify every game ending into 5 canonical, exhaustive categories:
+- **`DEFCON 1 (own decision)`**: The player made a 1-step avoidable decision that reduced DEFCON to 1 (e.g. couping a battleground country at DEFCON 2, couping when *Cuban Missile Crisis* continuous effect is active, or playing an event that lowers DEFCON at DEFCON 2).
+- **`DEFCON 1 (opponent decision)`**: The player was forced to drop DEFCON to 1 by an opponent's decision (e.g. playing an opponent's card for Operations whose event triggers and degrades DEFCON, or opponent conducts an event coup).
+- **`20 VP`**: Game ended early due to the victory point track reaching $+20$ or hBc20$ margin (including Europe Control, regional scoring cards, event VP swings, space race, or held scoring cards at turn end).
+- **`final scoring`**: Game reached the end of Turn 10 and was decided on regional final scoring and Chinese Civil War bonus.
+- **`wargames`**: Game ended early by the execution of Card #100 *Wargames* event.
 
 ---
 

@@ -15,6 +15,7 @@ except ImportError:
         sys.path.insert(0, _build)
     import ts_engine
 from web.server.replay import ReplayLogger
+from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 logger = logging.getLogger("ts_server.session")
 
@@ -421,7 +422,7 @@ class GameSession:
         if ts_engine.Engine.is_terminal(self.state):
             util = ts_engine.Engine.get_terminal_utility(self.state)
             winner = "US" if util > 0 else ("USSR" if util < 0 else "DRAW")
-            reason = "Victory Point Threshold (±20)" if abs(self.state.victory_points) >= 20 else "Game Over"
+            reason = classify_game_ending_reason(self.state)
             logger.info(f"[{self.game_id}] Game reached terminal state! Winner: {winner}, VP: {self.state.victory_points}, Reason: {reason}")
             self.replay_logger.set_result(winner, int(self.state.victory_points), int(self.state.turn), reason)
             self.replay_logger.save()
