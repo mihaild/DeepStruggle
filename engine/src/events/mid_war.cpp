@@ -1,4 +1,5 @@
 #include "ts/card_handlers.hpp"
+#include "ts/war_events.hpp"
 #include "ts/card_data.hpp"
 #include "ts/map_data.hpp"
 #include "ts/scoring.hpp"
@@ -12,11 +13,7 @@ namespace ts {
 namespace mid_war {
 
 bool trigger_brush_war(GameState& state, Player p) noexcept {
-    state.ctx().decision_player = p;
-    state.ctx().decision_type = DecisionType::POINT_NODE;
-    state.ctx().remaining_steps = 1;
-    state.ctx().resolving_card = card_ids::BRUSH_WAR;
-    return false;
+    return war_helpers::trigger_war(state, card_ids::BRUSH_WAR, p);
 }
 
 

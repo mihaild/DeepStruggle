@@ -1,3 +1,4 @@
+#include "ts/observation.hpp"
 #include "test_framework.hpp"
 #include "ts/state_machine.hpp"
 #include "ts/engine.hpp"
@@ -230,4 +231,78 @@ TEST(RegressionTest, WarsawPactEasternEuropeOnlyAndMax2) {
     // Poland reached 2 placements -> Poland mask must now be 0!
     ActionMask::generate_mask(state, mask, &out_size);
     ASSERT_EQ(mask[countries::POLAND], 0);
+}
+
+TEST(RegressionTest, ObservationHiddenOpponentHand) {
+    GameState state{};
+    Engine::init_game(state, 42);
+
+    state.card_locations[5] = CardLocation::HAND_USSR;
+    state.card_locations[10] = CardLocation::HAND_US;
+    state.card_locations[12] = CardLocation::DISCARD_PILE;
+
+    ObservationBuffer obs_us{};
+    Observation::extract(state, Player::US, &obs_us);
+
+    // Card 10 (US hand) from US perspective is MY_HAND (canon_loc = 1)
+    size_t off_10 = (10 - 1) * 12;
+    ASSERT_TRUE(obs_us.card_features[off_10 + 1] == 1.0f);
+    ASSERT_TRUE(obs_us.card_features[off_10 + 0] == 0.0f);
+    ASSERT_TRUE(obs_us.card_features[off_10 + 2] == 0.0f);
+
+    // Card 5 (USSR hand) from US perspective must be HIDDEN (canon_loc = 0)
+    size_t off_5 = (5 - 1) * 12;
+    ASSERT_TRUE(obs_us.card_features[off_5 + 0] == 1.0f);
+    ASSERT_TRUE(obs_us.card_features[off_5 + 1] == 0.0f);
+    ASSERT_TRUE(obs_us.card_features[off_5 + 2] == 0.0f);
+
+    // Global feature 70 is opp_hand_cnt / 10.0f (public count is preserved)
+    ASSERT_TRUE(obs_us.global_features[70] > 0.0f);
+
+    ObservationBuffer obs_ussr{};
+    Observation::extract(state, Player::USSR, &obs_ussr);
+
+    // Card 5 (USSR hand) from USSR perspective is MY_HAND (canon_loc = 1)
+    ASSERT_TRUE(obs_ussr.card_features[off_5 + 1] == 1.0f);
+    ASSERT_TRUE(obs_ussr.card_features[off_5 + 0] == 0.0f);
+    ASSERT_TRUE(obs_ussr.card_features[off_5 + 2] == 0.0f);
+
+    // Card 10 (US hand) from USSR perspective must be HIDDEN (canon_loc = 0)
+    ASSERT_TRUE(obs_ussr.card_features[off_10 + 0] == 1.0f);
+    ASSERT_TRUE(obs_ussr.card_features[off_10 + 1] == 0.0f);
+    ASSERT_TRUE(obs_ussr.card_features[off_10 + 2] == 0.0f);
+}
+
+TEST(RegressionTest, ObservationActionHistoryDerotation) {
+    GameState state{};
+    Engine::init_game(state, 42);
+
+    // Record 20 action tokens with sequential card_ids 1..20
+    for (uint8_t i = 1; i <= 20; ++i) {
+        ActionToken tok{};
+        tok.acting_player = (i % 2 == 1) ? Player::US : Player::USSR;
+        tok.action_type = ActionType::PLAY_EVENT;
+        tok.card_id = i;
+        tok.target_id = i;
+        tok.ops_value = 2;
+        tok.die_roll = 3;
+        tok.us_inf_delta = 1;
+        tok.ussr_inf_delta = 0;
+        tok.defcon_after = 4;
+        state.action_history.record(tok);
+    }
+
+    ObservationBuffer obs{};
+    Observation::extract(state, Player::US, &obs);
+
+    // History sequence has 16 items.
+    // Index 15 must be the most recent action (token with card_id = 20)
+    // Index 0 must be the oldest action in the 16-token window (token with card_id = 5)
+    for (size_t h = 0; h < 16; ++h) {
+        uint8_t expected_card_id = 5 + h; // 5..20
+        float expected_card_norm = static_cast<float>(expected_card_id) / 110.0f;
+        size_t h_off = h * 32;
+        float diff = std::abs(obs.history_sequence[h_off + 2] - expected_card_norm);
+        ASSERT_TRUE(diff < 1e-5f);
+    }
 }

@@ -336,7 +336,7 @@ class OracleGuidedNashPGTrainer(BaseNashPGTrainer):
         num_updates = 0
 
         for _ in range(self.num_epochs):
-            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp, b_opp_hands, _ in self.buffer.get_batches_with_oracle(self.batch_size):
+            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp, b_opp_hands in self.buffer.get_batches_with_oracle(self.batch_size):
                 if hasattr(self.active_net, "forward_all"):
                     forward_all_fn = getattr(self.active_net, "forward_all")
                     cur_logits, cur_v_win, cur_v_vp, b_pred_belief, b_oracle_val = forward_all_fn(b_obs, b_mask, b_opp_hands)

@@ -88,6 +88,29 @@ class TestObservationExtraction:
             assert not np.isinf(obs).any(), "Observation must not contain Infs"
             assert np.all(obs >= -2.0) and np.all(obs <= 2.0), f"Observation values out of expected range: min={obs.min()}, max={obs.max()}"
 
+    def test_observation_hides_opponent_hand(self):
+        state = ts.GameState()
+        ts.Engine.init_game(state, 42)
+
+        # USSR holds card 5, US holds card 10
+        state.set_card_location(5, ts.CardLocation.HAND_USSR)
+        state.set_card_location(10, ts.CardLocation.HAND_US)
+
+        # US perspective
+        obs_us = ts.extract_observation(state, ts.Player.US)
+        off_10 = 2352 + (10 - 1) * 12
+        off_5 = 2352 + (5 - 1) * 12
+        assert obs_us[off_10 + 1] == 1.0  # MY_HAND
+        assert obs_us[off_5 + 0] == 1.0   # Hidden: folded into DRAW_DECK/UNKNOWN (slot 0)
+        assert obs_us[off_5 + 2] == 0.0   # Slot 2 must be 0
+        assert obs_us[3672 + 70] > 0.0    # Public opponent hand count
+
+        # USSR perspective
+        obs_ussr = ts.extract_observation(state, ts.Player.USSR)
+        assert obs_ussr[off_5 + 1] == 1.0   # MY_HAND
+        assert obs_ussr[off_10 + 0] == 1.0  # Hidden: folded into DRAW_DECK/UNKNOWN (slot 0)
+        assert obs_ussr[off_10 + 2] == 0.0  # Slot 2 must be 0
+
 
 class TestColdWarNet:
     @pytest.fixture
@@ -335,6 +358,20 @@ class TestColdWarNetV4:
 
         eval_lp, eval_ent, eval_vw, eval_vvp = model.evaluate_actions(dummy_obs, dummy_mask, actions)
         assert torch.allclose(eval_lp, log_probs, atol=1e-5)
+
+        # Verify latent consistency across forward_all, predict_belief, and evaluate_oracle
+        model.eval()
+        with torch.no_grad():
+            f_logits, f_win, f_vp, f_belief, f_oracle = model.forward_all(dummy_obs, dummy_mask, dummy_opp_cards)
+            pb_belief = model.predict_belief(dummy_obs)
+            eo_oracle = model.evaluate_oracle(dummy_obs, dummy_opp_cards)
+            assert torch.allclose(pb_belief, f_belief, atol=1e-6), "predict_belief must match forward_all belief"
+            assert f_oracle is not None
+            assert torch.allclose(eo_oracle, f_oracle, atol=1e-6), "evaluate_oracle must match forward_all oracle"
+
+        # Verify positional embeddings exist for history transformer
+        assert hasattr(model, "hist_pos_emb")
+        assert model.hist_pos_emb.shape == (1, 16, 64)
 
 
     def test_oracle_guided_nash_pg_trainer_step(self, device):

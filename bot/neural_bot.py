@@ -148,8 +148,6 @@ class NeuralBot(BaseBot):
 
             if cid in my_hand or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == ("HAND_US" if my_is_us else "HAND_USSR")):
                 canon_loc = 1
-            elif cid in opp_hand or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == ("HAND_USSR" if my_is_us else "HAND_US")):
-                canon_loc = 2
             elif cid in discard_pile or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "DISCARD_PILE"):
                 canon_loc = 3
             elif cid in removed_cards or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "REMOVED_FROM_GAME"):
@@ -185,6 +183,7 @@ class NeuralBot(BaseBot):
         obs[3672 + 61] = 1.0 if my_is_us else 0.0
         obs[3672 + 62] = 1.0 if not my_is_us else 0.0
         obs[3672 + 63] = side_sign
+        obs[3672 + 70] = float(len(opp_hand)) / 10.0
         obs[4292] = side_sign
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)

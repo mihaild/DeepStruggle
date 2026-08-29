@@ -1,4 +1,5 @@
 #include "ts/card_handlers.hpp"
+#include "ts/war_events.hpp"
 #include "ts/card_data.hpp"
 #include "ts/map_data.hpp"
 #include "ts/scoring.hpp"
@@ -278,12 +279,7 @@ bool trigger_solidarity(GameState& state, Player p) noexcept {
 }
 
 bool trigger_iran_iraq_war(GameState& state, Player p) noexcept {
-    // Player chooses target: Iran or Iraq (POINT_NODE)
-    state.ctx().decision_player = p;
-    state.ctx().decision_type = DecisionType::POINT_NODE;
-    state.ctx().remaining_steps = 1;
-    state.ctx().resolving_card = card_ids::IRAN_IRAQ_WAR;
-    return false;
+    return war_helpers::trigger_war(state, card_ids::IRAN_IRAQ_WAR, p);
 }
 
 bool trigger_yuri_and_samantha(GameState& state, Player p) noexcept {

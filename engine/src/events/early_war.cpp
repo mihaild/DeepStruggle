@@ -1,4 +1,5 @@
 #include "ts/card_handlers.hpp"
+#include "ts/war_events.hpp"
 #include "ts/card_data.hpp"
 #include "ts/map_data.hpp"
 #include "ts/scoring.hpp"
@@ -121,14 +122,7 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
 }
 
 bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
-    state.ctx().decision_player = Player::NONE;
-    state.ctx().decision_type = DecisionType::ROLL_DIE;
-    state.ctx().resolving_card = card_ids::KOREAN_WAR;
-    state.ctx().temp_cards[0] = countries::SOUTH_KOREA;
-    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
-    state.ctx().temp_cards[2] = forced_roll;
-    state.ctx().temp_cards[3] = static_cast<uint8_t>(p);
-    return false;
+    return war_helpers::trigger_war(state, card_ids::KOREAN_WAR, p, forced_roll);
 }
 
 bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
@@ -138,15 +132,7 @@ bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
 }
 
 bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
-    if (state.has_flag(effect_bits::CAMP_DAVID_PLAYED)) return true;
-    state.ctx().decision_player = Player::NONE;
-    state.ctx().decision_type = DecisionType::ROLL_DIE;
-    state.ctx().resolving_card = card_ids::ARAB_ISRAELI_WAR;
-    state.ctx().temp_cards[0] = countries::ISRAEL;
-    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
-    state.ctx().temp_cards[2] = forced_roll;
-    state.ctx().temp_cards[3] = static_cast<uint8_t>(p);
-    return false;
+    return war_helpers::trigger_war(state, card_ids::ARAB_ISRAELI_WAR, p, forced_roll);
 }
 
 bool trigger_comecon(GameState& state, Player p) noexcept {
@@ -261,11 +247,7 @@ bool trigger_marshall_plan(GameState& state, Player p) noexcept {
 }
 
 bool trigger_indo_pakistani_war(GameState& state, Player p) noexcept {
-    state.ctx().decision_player = p;
-    state.ctx().decision_type = DecisionType::POINT_NODE; // Target India or Pakistan
-    state.ctx().remaining_steps = 1;
-    state.ctx().resolving_card = card_ids::INDO_PAKISTANI_WAR;
-    return false;
+    return war_helpers::trigger_war(state, card_ids::INDO_PAKISTANI_WAR, p);
 }
 
 bool trigger_containment(GameState& state, Player p) noexcept {

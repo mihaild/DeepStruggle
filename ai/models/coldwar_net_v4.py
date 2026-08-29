@@ -1,7 +1,18 @@
-"""ColdWarNetV4: Deep Card Transformer, Causal History, Opponent Belief Head & Oracle Critic."""
+"""ColdWarNetV4: Deluxe Deep Card Transformer + Opponent Hand Belief + Oracle Critic Architecture.
+
+Implements ColdWarNetV4 with:
+- GCN + Multi-Head Self-Attention for the 84-Country Graph.
+- Deep 4-Layer Card Transformer with Self-Attention and Card-Location Embeddings.
+- 16-Step Action History Transformer with Positional Encoding.
+- Shared Latent Trunk with Pre-LN Residual MLP Blocks.
+- Dual Pointer-Generator Action Head over Cards and Countries.
+- Dual Value Heads: Win/Loss [-1, 1] + VP [-20, 20].
+- Opponent Hand Belief Head: beta_opp in [0, 1]^110.
+- Privileged Oracle Critic Head: Value conditioned on true opponent hand (Suphx Oracle Guiding).
+"""
 
 import math
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -148,12 +159,15 @@ class ColdWarNetV4(nn.Module):
             nn.GELU(),
         )
 
-        # 3. Action History Sequence Encoder (Causal Transformer over 16 MicroActions)
+        # 3. Action History Sequence Encoder (Transformer over 16 MicroActions with Positional Encoding)
         self.hist_in = nn.Sequential(
             nn.Linear(32, hist_dim),
             nn.LayerNorm(hist_dim),
             nn.GELU(),
         )
+        self.hist_pos_emb = nn.Parameter(torch.zeros(1, 16, hist_dim))
+        nn.init.trunc_normal_(self.hist_pos_emb, std=0.02)
+
         hist_layer = nn.TransformerEncoderLayer(
             d_model=hist_dim,
             nhead=2,
@@ -231,10 +245,8 @@ class ColdWarNetV4(nn.Module):
         h_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
         return b_raw, c_raw, g_raw, h_raw
 
-    def forward(
-        self, obs: torch.Tensor, legal_mask: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Forward pass computing masked action logits and dual value predictions."""
+    def _forward_backbone(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Shared backbone extracting fused latent representation, country node representations, and card representations."""
         b_raw, c_raw, g_raw, h_raw = self._extract_inputs(obs)
         B = obs.size(0)
 
@@ -253,18 +265,23 @@ class ColdWarNetV4(nn.Module):
         b_max = h_nodes_res.max(dim=1).values
         b_rep = self.board_proj(torch.cat([b_mean, b_max], dim=-1))
 
-        # 2. Deep Card Transformer Encoding
+        # 2. Deep Card Transformer Encoding with 1-hot Location Extraction and Removed Padding Mask
         c_nodes = c_raw.view(B, 110, 12)
-        loc_idx = c_nodes[:, :, 0].long().clamp(0, 6)
-        c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(loc_idx)
-        h_cards = self.card_transformer(c_feat)
+        card_loc_indices = torch.argmax(c_nodes[:, :, 0:7], dim=-1)
+        c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(card_loc_indices)
 
+        # Key padding mask: mask cards removed from the game (index 4)
+        removed_mask = (card_loc_indices == 4)
+        all_removed = removed_mask.all(dim=-1, keepdim=True)
+        key_padding_mask = removed_mask & (~all_removed)
+
+        h_cards = self.card_transformer(c_feat, src_key_padding_mask=key_padding_mask)
         c_mean = h_cards.mean(dim=1)
         c_rep = self.card_proj(c_mean)
 
-        # 3. Action History Encoding
+        # 3. Action History Encoding with Positional Embedding
         h_steps = h_raw.view(B, 16, 32)
-        h_seq = self.hist_in(h_steps)
+        h_seq = self.hist_in(h_steps) + self.hist_pos_emb
         h_trans = self.hist_transformer(h_seq)
         h_rep = self.hist_proj(h_trans[:, -1, :])
 
@@ -276,6 +293,14 @@ class ColdWarNetV4(nn.Module):
         latent = self.fusion_in(fused)
         for block in self.res_blocks:
             latent = block(latent)
+
+        return latent, h_nodes_res, h_cards
+
+    def forward(
+        self, obs: torch.Tensor, legal_mask: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Forward pass computing masked action logits and dual value predictions."""
+        latent, h_nodes_res, h_cards = self._forward_backbone(obs)
 
         # 6. Dual Pointer-Generator Action Logits
         pol_latent = self.policy_trunk(latent)
@@ -313,57 +338,14 @@ class ColdWarNetV4(nn.Module):
         true_opp_cards: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Unified multi-task forward pass computing policy, values, belief, and oracle in 1 single pass."""
-        b_raw, c_raw, g_raw, h_raw = self._extract_inputs(obs)
-        B = obs.size(0)
+        latent, h_nodes_res, h_cards = self._forward_backbone(obs)
 
-        # 1. Country Graph Encoding
-        b_nodes = b_raw.view(B, 84, 28)
-        norm_adj = self.norm_adj.to(obs.device)
-        h_gcn1 = self.gconv1(b_nodes, norm_adj)
-        h_gcn2 = self.gconv2(h_gcn1, norm_adj)
-        r_emb = self.region_emb(self.country_regions.to(obs.device)).unsqueeze(0).expand(B, -1, -1)
-        h_nodes = h_gcn2 + r_emb
-
-        h_nodes_attn, _ = self.board_self_attn(h_nodes, h_nodes, h_nodes)
-        h_nodes_res = self.board_self_ln(h_nodes + h_nodes_attn)
-
-        b_mean = h_nodes_res.mean(dim=1)
-        b_max = h_nodes_res.max(dim=1).values
-        b_rep = self.board_proj(torch.cat([b_mean, b_max], dim=-1))
-
-        # 2. Deep Card Transformer Encoding
-        c_nodes = c_raw.view(B, 110, 12)
-        loc_idx = c_nodes[:, :, 0].long().clamp(0, 6)
-        c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(loc_idx)
-        h_cards = self.card_transformer(c_feat)
-
-        c_mean = h_cards.mean(dim=1)
-        c_rep = self.card_proj(c_mean)
-
-        # 3. Action History Encoding
-        h_steps = h_raw.view(B, 16, 32)
-        h_seq = self.hist_in(h_steps)
-        h_trans = self.hist_transformer(h_seq)
-        h_rep = self.hist_proj(h_trans[:, -1, :])
-
-        # 4. Global Scalars
-        g_rep = self.global_fc(g_raw)
-
-        # 5. Fusion & ResNet Trunk
-        fused = torch.cat([b_rep, c_rep, h_rep, g_rep], dim=-1)
-        latent = self.fusion_in(fused)
-        for block in self.res_blocks:
-            latent = block(latent)
-
-        # 6. Dual Pointer-Generator Action Logits
         pol_latent = self.policy_trunk(latent)
         base_logits = self.modal_head(pol_latent)
 
-        # Card Pointers (0..109)
         q_card = self.card_pointer_proj(pol_latent).unsqueeze(1)
         card_scores = (q_card * h_cards).sum(dim=-1) / math.sqrt(self.card_dim)
 
-        # Country Pointers (119..202)
         q_node = self.node_pointer_proj(pol_latent).unsqueeze(1)
         node_scores = (q_node * h_nodes_res).sum(dim=-1) / math.sqrt(self.node_dim)
 
@@ -390,58 +372,12 @@ class ColdWarNetV4(nn.Module):
 
     def predict_belief(self, obs: torch.Tensor) -> torch.Tensor:
         """Predicts opponent hand card probabilities beta_opp in [0, 1]^110."""
-        b_raw, c_raw, g_raw, h_raw = self._extract_inputs(obs)
-        B = obs.size(0)
-
-        b_nodes = b_raw.view(B, 84, 28)
-        norm_adj = self.norm_adj.to(obs.device)
-        h_gcn = self.gconv2(self.gconv1(b_nodes, norm_adj), norm_adj)
-        r_emb = self.region_emb(self.country_regions.to(obs.device)).unsqueeze(0).expand(B, -1, -1)
-        h_nodes, _ = self.board_self_attn(h_gcn + r_emb, h_gcn + r_emb, h_gcn + r_emb)
-        b_rep = self.board_proj(torch.cat([h_nodes.mean(dim=1), h_nodes.max(dim=1).values], dim=-1))
-
-        c_nodes = c_raw.view(B, 110, 12)
-        loc_idx = c_nodes[:, :, 0].long().clamp(0, 6)
-        c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(loc_idx)
-        h_cards = self.card_transformer(c_feat)
-        c_rep = self.card_proj(h_cards.mean(dim=1))
-
-        h_seq = self.hist_transformer(self.hist_in(h_raw.view(B, 16, 32)))
-        h_rep = self.hist_proj(h_seq[:, -1, :])
-        g_rep = self.global_fc(g_raw)
-
-        latent = self.fusion_in(torch.cat([b_rep, c_rep, h_rep, g_rep], dim=-1))
-        for block in self.res_blocks:
-            latent = block(latent)
-
+        latent, _, _ = self._forward_backbone(obs)
         return self.belief_head(latent)
 
     def evaluate_oracle(self, obs: torch.Tensor, true_opponent_cards: torch.Tensor) -> torch.Tensor:
         """Evaluates privileged oracle value head conditioned on true hidden opponent cards."""
-        b_raw, c_raw, g_raw, h_raw = self._extract_inputs(obs)
-        B = obs.size(0)
-
-        b_nodes = b_raw.view(B, 84, 28)
-        norm_adj = self.norm_adj.to(obs.device)
-        h_gcn = self.gconv2(self.gconv1(b_nodes, norm_adj), norm_adj)
-        r_emb = self.region_emb(self.country_regions.to(obs.device)).unsqueeze(0).expand(B, -1, -1)
-        h_nodes, _ = self.board_self_attn(h_gcn + r_emb, h_gcn + r_emb, h_gcn + r_emb)
-        b_rep = self.board_proj(torch.cat([h_nodes.mean(dim=1), h_nodes.max(dim=1).values], dim=-1))
-
-        c_nodes = c_raw.view(B, 110, 12)
-        loc_idx = c_nodes[:, :, 0].long().clamp(0, 6)
-        c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(loc_idx)
-        h_cards = self.card_transformer(c_feat)
-        c_rep = self.card_proj(h_cards.mean(dim=1))
-
-        h_seq = self.hist_transformer(self.hist_in(h_raw.view(B, 16, 32)))
-        h_rep = self.hist_proj(h_seq[:, -1, :])
-        g_rep = self.global_fc(g_raw)
-
-        latent = self.fusion_in(torch.cat([b_rep, c_rep, h_rep, g_rep], dim=-1))
-        for block in self.res_blocks:
-            latent = block(latent)
-
+        latent, _, _ = self._forward_backbone(obs)
         oracle_in = torch.cat([latent, true_opponent_cards.float()], dim=-1)
         return self.oracle_critic_head(oracle_in)
 

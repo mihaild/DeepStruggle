@@ -163,7 +163,7 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
             my_hand_cnt++;
         } else if ((loc == CardLocation::HAND_US && my_player == Player::USSR) ||
                    (loc == CardLocation::HAND_USSR && my_player == Player::US)) {
-            canon_loc = 2; // OPPONENT_HAND
+            canon_loc = 0; // OPPONENT_HAND is hidden: fold into slot 0 (UNKNOWN/UNAVAILABLE)
             opp_hand_cnt++;
         } else if (loc == CardLocation::DISCARD_PILE) {
             canon_loc = 3;
@@ -253,7 +253,8 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
 
     // 5. History sequence (16 * 32) - Canonical (Myself vs Opponent)
     for (size_t h = 0; h < 16; ++h) {
-        const auto& tok = state.action_history.ring_buffer[h];
+        size_t ring_idx = (state.action_history.head_idx + h) & 15;
+        const auto& tok = state.action_history.ring_buffer[ring_idx];
         size_t h_off = h * 32;
         float tok_acting = (tok.acting_player == my_player) ? 1.0f : ((tok.acting_player == opp_player) ? -1.0f : 0.0f);
         out_buf->history_sequence[h_off + 0] = tok_acting;

@@ -1,3 +1,4 @@
+#include "ts/engine.hpp"
 #include "ts/action_mask.hpp"
 #include "test_framework.hpp"
 #include "ts/card_handlers.hpp"
@@ -2066,4 +2067,141 @@ TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
     // Verification: AR finishes cleanly and advances to next turn
     ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+}
+
+TEST(CardEdgeCasesTest, WarEvents_UnifiedWrapper_Suite) {
+    // 1. Arab-Israeli War disabled by Camp David
+    {
+        ts::GameState state;
+        ts::Engine::init_game(state, 42);
+        state.set_flag(ts::effect_bits::CAMP_DAVID_PLAYED);
+        bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::ARAB_ISRAELI_WAR, ts::Player::USSR);
+        ASSERT_TRUE(done); // Immediately completed with no effect
+    }
+
+    // 2. Arab-Israeli War checks Israel control & modifiers
+    {
+        ts::GameState state;
+        ts::Engine::init_game(state, 42);
+        state.countries[ts::countries::ISRAEL].us_influence = 4; // US controls Israel (stab 4) -> -1 modifier
+        state.countries[ts::countries::EGYPT].us_influence = 2;  // US controls Egypt (stab 2) -> -1 modifier
+        state.ussr_mil_ops = 0;
+        state.victory_points = 0;
+
+        // Roll 5 + (-2 mod) = 3 < 4 -> Failure
+        bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::ARAB_ISRAELI_WAR, ts::Player::USSR);
+        ASSERT_FALSE(done);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+        done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 5, 0, 0});
+        ASSERT_TRUE(done);
+        ASSERT_EQ(state.ussr_mil_ops, 2); // MilOps awarded regardless of outcome
+        ASSERT_EQ(state.victory_points, 0); // No VP on failure
+        ASSERT_EQ(state.countries[ts::countries::ISRAEL].us_influence, 4);
+
+        // Roll 6 + (-2 mod) = 4 >= 4 -> Success
+        done = ts::CardHandlers::trigger_event(state, ts::card_ids::ARAB_ISRAELI_WAR, ts::Player::USSR);
+        ASSERT_FALSE(done);
+        done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+        ASSERT_TRUE(done);
+        ASSERT_EQ(state.victory_points, -2);
+        ASSERT_EQ(state.countries[ts::countries::ISRAEL].us_influence, 0);
+        ASSERT_EQ(state.countries[ts::countries::ISRAEL].ussr_influence, 4);
+    }
+
+    // 3. Indo-Pakistani War Target Selection & Flower Power
+    {
+        ts::GameState state;
+        ts::Engine::init_game(state, 42);
+        state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
+        state.countries[ts::countries::INDIA].ussr_influence = 3;
+        state.us_mil_ops = 0;
+        state.victory_points = 0;
+
+        bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::INDO_PAKISTANI_WAR, ts::Player::US);
+        ASSERT_FALSE(done);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+        // Invalid target (Canada) rejected
+        bool step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0});
+        ASSERT_FALSE(step_ok);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+        // Target India with roll 5 -> Success -> +2 VP for war, -2 VP for Flower Power -> net 0 VP
+        step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::INDIA, 0, 0});
+        ASSERT_FALSE(step_ok);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+
+        done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 5, 0, 0});
+        ASSERT_TRUE(done);
+        ASSERT_EQ(state.us_mil_ops, 2);
+        ASSERT_EQ(state.victory_points, 0); // +2 war - 2 Flower Power = 0
+        ASSERT_EQ(state.countries[ts::countries::INDIA].ussr_influence, 0);
+        ASSERT_EQ(state.countries[ts::countries::INDIA].us_influence, 3);
+    }
+
+    // 4. Brush War NATO Protection, Stability Validation & MilOps +3
+    {
+        ts::GameState state;
+        ts::Engine::init_game(state, 42);
+        state.set_flag(ts::effect_bits::NATO_ACTIVE);
+        state.countries[ts::countries::GREECE].us_influence = 2; // US controls Greece (Europe)
+        state.countries[ts::countries::MEXICO].us_influence = 2; // CA, stab 2
+        state.countries[ts::countries::ITALY].us_influence = 3;  // stab 3 (illegal for Brush War)
+        state.ussr_mil_ops = 0;
+        state.victory_points = 0;
+
+        bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::BRUSH_WAR, ts::Player::USSR);
+        ASSERT_FALSE(done);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+        // Target Italy (stab 3) rejected
+        bool step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ITALY, 0, 0});
+        ASSERT_FALSE(step_ok);
+
+        // Target Greece (protected by NATO) rejected for USSR
+        step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::GREECE, 0, 0});
+        ASSERT_FALSE(step_ok);
+
+        // Target Mexico (stab 2) accepted -> roll 3 is success -> +3 MilOps, 1 VP
+        step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::MEXICO, 0, 0});
+        ASSERT_FALSE(step_ok);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+
+        done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 3, 0, 0});
+        ASSERT_TRUE(done);
+        ASSERT_EQ(state.ussr_mil_ops, 3); // Brush war gives 3 MilOps
+        ASSERT_EQ(state.victory_points, -1); // USSR gets 1 VP
+        ASSERT_EQ(state.countries[ts::countries::MEXICO].us_influence, 0);
+        ASSERT_EQ(state.countries[ts::countries::MEXICO].ussr_influence, 2);
+    }
+
+    // 5. Iran-Iraq War Target Selection
+    {
+        ts::GameState state;
+        ts::Engine::init_game(state, 42);
+        state.countries[ts::countries::IRAN].us_influence = 0;
+        state.countries[ts::countries::IRAN].ussr_influence = 2;
+        state.us_mil_ops = 0;
+        state.victory_points = 0;
+
+        bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::IRAN_IRAQ_WAR, ts::Player::US);
+        ASSERT_FALSE(done);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+        // Invalid target (Israel) rejected
+        bool step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ISRAEL, 0, 0});
+        ASSERT_FALSE(step_ok);
+
+        // Target Iran accepted -> roll 4 -> Success -> 2 VP, 2 MilOps
+        step_ok = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0});
+        ASSERT_FALSE(step_ok);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+
+        done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
+        ASSERT_TRUE(done);
+        ASSERT_EQ(state.us_mil_ops, 2);
+        ASSERT_EQ(state.victory_points, 2);
+        ASSERT_EQ(state.countries[ts::countries::IRAN].ussr_influence, 0);
+        ASSERT_EQ(state.countries[ts::countries::IRAN].us_influence, 2);
+    }
 }
