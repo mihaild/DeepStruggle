@@ -367,3 +367,50 @@ TEST(RegressionTest, DefconOneProvokedFlagTracksAgencyNotSide) {
         ASSERT_TRUE(state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
     }
 }
+
+// Summit (#45): the roll winner may raise or lower DEFCON. Lowering it to 1 ends the game
+// with the PHASING player losing, as at every other DEFCON-1 site -- so a non-phasing
+// Summit winner at DEFCON 2 wins outright by degrading, rather than losing. This site
+// previously assigned the loss to the roll winner (decision_player), inverting that.
+TEST(RegressionTest, SummitDefconOneLossFallsOnPhasingPlayer) {
+    // USSR is phasing; US wins the Summit roll and chooses to degrade DEFCON from 2 to 1.
+    // The phasing USSR takes the loss (+20 VP = US win), and it is provoked for USSR.
+    {
+        GameState state{};
+        Engine::init_game(state, 11);
+        state.current_phase = Phase::ACTION_ROUND;
+        state.phasing_player = Player::USSR;
+        state.defcon = 2;
+        state.clear_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+        state.ctx().resolving_card = card_ids::SUMMIT;
+        state.ctx().decision_player = Player::US;
+        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+
+        MicroAction degrade(DecisionType::CHOOSE_BRANCH, 1, 0, 0);
+        CardHandlers::handle_event_step(state, degrade);
+
+        ASSERT_EQ(static_cast<int>(state.current_phase), static_cast<int>(Phase::GAME_OVER));
+        ASSERT_EQ(static_cast<int>(state.victory_points), 20); // phasing USSR loses
+        ASSERT_TRUE(state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
+    }
+
+    // Mirror: US is phasing and also wins the roll, so degrading is self-inflicted.
+    {
+        GameState state{};
+        Engine::init_game(state, 11);
+        state.current_phase = Phase::ACTION_ROUND;
+        state.phasing_player = Player::US;
+        state.defcon = 2;
+        state.clear_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+        state.ctx().resolving_card = card_ids::SUMMIT;
+        state.ctx().decision_player = Player::US;
+        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+
+        MicroAction degrade(DecisionType::CHOOSE_BRANCH, 1, 0, 0);
+        CardHandlers::handle_event_step(state, degrade);
+
+        ASSERT_EQ(static_cast<int>(state.current_phase), static_cast<int>(Phase::GAME_OVER));
+        ASSERT_EQ(static_cast<int>(state.victory_points), -20); // phasing US loses
+        ASSERT_TRUE(!state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
+    }
+}
