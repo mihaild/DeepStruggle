@@ -42,11 +42,31 @@ class WarmupDataset:
                     vp_ret = (final_vp / 20.0) * sign
                     
                     flat_act = a['flat_action']
+
+                    # Skip transitions the replay cannot reproduce. A desynchronised
+                    # replay yields an empty mask or an illegal demonstrated action;
+                    # training on those regresses cross-entropy against -1e9 masked
+                    # logits and destroys the run.
+                    if mask.sum() == 0 or flat_act < 0 or flat_act >= mask.shape[0] or mask[flat_act] == 0:
+                        break
+
                     yield obs, mask, flat_act, win_ret, vp_ret
-                    
+
                     ma = ts.decode_flat_action(st, flat_act)
                     ts.Engine.step(st, ma)
-                    
+
+                    # Datasets are generated through VectorizedBatchRunner::step_flat_all,
+                    # which resolves ROLL_DIE chance nodes internally and therefore records
+                    # only player decisions. Drain those same chance nodes here or the
+                    # replay stalls at the first die roll, misapplies every subsequent
+                    # recorded action, and diverges the RNG stream along with the hands.
+                    while (
+                        not ts.Engine.is_terminal(st)
+                        and st.ctx().decision_player == ts.Player.NONE
+                        and st.ctx().decision_type == ts.DecisionType.ROLL_DIE
+                    ):
+                        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
                 game_count += 1
 
 
