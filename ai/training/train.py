@@ -49,6 +49,10 @@ def main():
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
     parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
+    parser.add_argument("--slice-turn-boundaries", type=str, default="auto", choices=["auto", "on", "off"],
+                        help="Truncate GAE bootstrapping at game-turn boundaries. 'auto' (default) enables it for blunder_aware, matching historical behaviour. Note this truncates the outcome signal for ALL episodes, including clean wins, not only blunder losses.")
+    parser.add_argument("--ref-update-freq", type=int, default=200_000,
+                        help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
@@ -81,6 +85,8 @@ def main():
             post_tournament_games=args.post_tournament_games,
             curriculum_switch_seconds=args.curriculum_switch_seconds,
             curriculum_switch_fraction=args.curriculum_switch_fraction,
+            slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
+            ref_update_freq=args.ref_update_freq,
         )
     elif args.mode == "warmup":
         if not args.warmup_dataset:

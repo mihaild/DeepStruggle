@@ -207,6 +207,8 @@ def train_pipeline(
     post_tournament_games: int = 500,
     curriculum_switch_seconds: Optional[int] = None,
     curriculum_switch_fraction: float = 0.5,
+    slice_turn_boundaries: Optional[bool] = None,
+    ref_update_freq: int = 200_000,
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -310,9 +312,11 @@ def train_pipeline(
         gamma=0.999,
         gae_lambda=0.98,
         num_epochs=4,
-        ref_update_freq=200_000,
+        ref_update_freq=ref_update_freq,
         max_grad_norm=1.0,
-        slice_turn_boundaries=(reward_scheme == "blunder_aware"),
+        slice_turn_boundaries=(
+            (reward_scheme == "blunder_aware") if slice_turn_boundaries is None else slice_turn_boundaries
+        ),
         temperature_schedule=True,
         device=dev,
     )
@@ -362,7 +366,7 @@ def train_pipeline(
         if is_curriculum and not curriculum_switched and elapsed >= curriculum_switch_at:
             curriculum_switched = True
             trainer.set_reward_calculator(BlunderAwareRewardCalculator())
-            trainer.set_slice_turn_boundaries(True)
+            trainer.set_slice_turn_boundaries(True if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with BlunderAwareRewardCalculator at elapsed={elapsed:.1f}s / {duration_seconds}s", flush=True)
             print(f"{'=' * 80}\n", flush=True)
