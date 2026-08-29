@@ -215,6 +215,7 @@ class TsVectorizedEnv:
         masks = np.array(self.runner.get_action_masks(), copy=False)
 
         info = self._get_batch_info()
+        info["victory_points"] = curr_vp
         info["completed_episodes"] = completed_episodes
         info["acting_players"] = acting_players
         info["opponent_hands"] = opp_hands

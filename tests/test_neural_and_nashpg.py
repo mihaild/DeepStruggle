@@ -152,6 +152,49 @@ class TestVectorizedEnvironment:
             assert rewards.shape == (num_envs,)
             assert dones.shape == (num_envs,)
 
+    def test_vectorized_env_auto_reset_preserves_terminal_vp(self):
+        num_envs = 4
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=42, auto_reset=True)
+        env.reset_all()
+
+        st = env.runner.get_state(0)
+        # Step through setup to AR1
+        for _ in range(50):
+            if st.current_phase == ts.Phase.ACTION_ROUND:
+                break
+            mask = ts.get_flat_action_mask(st)
+            legal = [i for i, m in enumerate(mask) if m == 1]
+            if not legal:
+                break
+            ts.Engine.step_flat(st, legal[0])
+
+        st.defcon = 2
+        st.phasing_player = ts.Player.USSR
+        st.ctx().decision_player = ts.Player.USSR
+        st.set_country(17, 2, 0) # Iran has US influence -> BG coup target
+
+        st.set_card_location(5, ts.CardLocation.HAND_USSR) # 5op card
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
+        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+
+        # Step coup on Iran (primary_id=17 -> flat action 182) in env 0, dummy actions for others
+        actions = [182]
+        for e in range(1, num_envs):
+            m = env.runner.get_action_masks()[e]
+            legal = [i for i, val in enumerate(m) if val == 1]
+            actions.append(legal[0] if legal else 211)
+
+        _, _, rewards, dones, info = env.step(actions)
+        assert bool(dones[0]) is True
+        # info['victory_points'][0] must preserve the terminal VP (+20 for US win on USSR DEFCON suicide)
+        # instead of 0 from the post-reset new game
+        assert int(info["victory_points"][0]) == 20
+        # Post-reset game state in runner is reset to 0
+        assert int(env.runner.get_victory_points()[0]) == 0
+
 
 class TestTrainingPipelines:
     @pytest.fixture

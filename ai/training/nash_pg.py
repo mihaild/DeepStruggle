@@ -133,6 +133,9 @@ class BaseNashPGTrainer:
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
 
+                # Multi-temperature exploration: Sample actions from temperature-scaled
+                # behavior distribution beta(a|s) = softmax(logits / tau) with stratified per-env
+                # temperatures (tau in [0.10, 0.50]) to encourage diverse trajectory exploration.
                 if self.temperature_schedule and self.num_envs > 1:
                     scaled_logits = logits / self.env_temps
                     scaled_probs = F.softmax(scaled_logits, dim=-1)
@@ -140,6 +143,13 @@ class BaseNashPGTrainer:
                 else:
                     actions_t = torch.multinomial(F.softmax(logits, dim=-1), 1).squeeze(1)
 
+                # NOTE (Design Choice): Store canonical (tau=1.0) log-probabilities rather than
+                # temperature-scaled log-probs log(beta(a|s)). This ensures the PPO importance ratio
+                # r_t(theta) = exp(cur_lp - old_lp) = pi_theta(a) / pi_theta_old(a) initializes at exactly
+                # 1.0 at step 0, allowing PPO clipping [1 - eps, 1 + eps] to operate smoothly without
+                # immediately saturating the clip bounds on modal actions under low temperatures.
+                # Stratified temperature sampling thus acts as pure exploration noise for optimizing
+                # the underlying canonical policy parameterization pi_theta.
                 unscaled_log_probs = F.log_softmax(logits, dim=-1)
                 log_probs_t = unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
