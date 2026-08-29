@@ -574,7 +574,9 @@ class TestAdvancedCardEventsDifferential:
         old_mil = ts_state.ussr_mil_ops
 
         # Trigger Arab-Israeli War with forced roll 6
-        ts_engine.CardHandlers.trigger_event(ts_state, 13, ts_engine.Player.USSR, forced_roll=6)
+        ts_engine.CardHandlers.trigger_event(ts_state, 13, ts_engine.Player.USSR)
+        if ts_state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE:
+            ts_engine.CardHandlers.handle_event_step(ts_state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         assert ts_state.victory_points == old_vp - 2
         assert ts_state.ussr_mil_ops == old_mil + 2
         assert ts_state.get_country(isr_id).us_influence == 0
@@ -600,7 +602,9 @@ class TestAdvancedCardEventsDifferential:
         old_vp = ts_state.victory_points
         old_mil = ts_state.ussr_mil_ops
 
-        ts_engine.CardHandlers.trigger_event(ts_state, 11, ts_engine.Player.USSR, forced_roll=5)
+        ts_engine.CardHandlers.trigger_event(ts_state, 11, ts_engine.Player.USSR)
+        if ts_state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE:
+            ts_engine.CardHandlers.handle_event_step(ts_state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 5, 0, 0))
         assert ts_state.victory_points == old_vp - 2
         assert ts_state.ussr_mil_ops == old_mil + 2
         assert ts_state.get_country(sk_id).us_influence == 0

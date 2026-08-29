@@ -34,6 +34,7 @@ static const char* decision_type_to_str(ts::DecisionType dt) {
         case ts::DecisionType::SELECT_OP_MODE: return "SELECT_OP_MODE";
         case ts::DecisionType::POINT_NODE: return "POINT_NODE";
         case ts::DecisionType::CHOOSE_BRANCH: return "CHOOSE_BRANCH";
+        case ts::DecisionType::ROLL_DIE: return "ROLL_DIE";
         default: return "UNKNOWN";
     }
 }
@@ -426,6 +427,7 @@ NB_MODULE(ts_engine, m) {
         .value("SELECT_OP_MODE", ts::DecisionType::SELECT_OP_MODE)
         .value("POINT_NODE", ts::DecisionType::POINT_NODE)
         .value("CHOOSE_BRANCH", ts::DecisionType::CHOOSE_BRANCH)
+        .value("ROLL_DIE", ts::DecisionType::ROLL_DIE)
         .export_values();
 
     nb::enum_<ts::PlayMode>(m, "PlayMode", nb::is_arithmetic())
@@ -749,6 +751,13 @@ NB_MODULE(ts_engine, m) {
         }
 
         void refresh_single(size_t idx) {
+            while (states[idx].current_phase != ts::Phase::GAME_OVER &&
+                   states[idx].victory_points < 20 && states[idx].victory_points > -20 &&
+                   states[idx].ctx().decision_player == ts::Player::NONE &&
+                   states[idx].ctx().decision_type == ts::DecisionType::ROLL_DIE) {
+                ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
+                ts::StateMachine::step(states[idx], chance_ma);
+            }
             ts::Player p = (states[idx].ctx().decision_player != ts::Player::NONE)
                 ? states[idx].ctx().decision_player : states[idx].phasing_player;
             ts::ObservationBuffer ob;
@@ -778,6 +787,13 @@ NB_MODULE(ts_engine, m) {
                 }
                 ts::MicroAction ma = ts::ActionMask::decode_flat_action_212(states[i], actions[i]);
                 bool ok = ts::StateMachine::step(states[i], ma);
+                while (ok && states[i].current_phase != ts::Phase::GAME_OVER &&
+                       states[i].victory_points < 20 && states[i].victory_points > -20 &&
+                       states[i].ctx().decision_player == ts::Player::NONE &&
+                       states[i].ctx().decision_type == ts::DecisionType::ROLL_DIE) {
+                    ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
+                    ok = ts::StateMachine::step(states[i], chance_ma);
+                }
                 results[i] = ok ? 1 : 0;
                 refresh_single(static_cast<size_t>(i));
             }

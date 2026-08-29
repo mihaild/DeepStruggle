@@ -146,6 +146,8 @@ class DecisionType(enum.IntEnum):
 
     CHOOSE_BRANCH = 6
 
+    ROLL_DIE = 7
+
 SELECT_CARD: DecisionType = DecisionType.SELECT_CARD
 
 SELECT_PLAY_MODE: DecisionType = DecisionType.SELECT_PLAY_MODE
@@ -157,6 +159,8 @@ SELECT_OP_MODE: DecisionType = DecisionType.SELECT_OP_MODE
 POINT_NODE: DecisionType = DecisionType.POINT_NODE
 
 CHOOSE_BRANCH: DecisionType = DecisionType.CHOOSE_BRANCH
+
+ROLL_DIE: DecisionType = DecisionType.ROLL_DIE
 
 class PlayMode(enum.IntEnum):
     EVENT = 0

@@ -17,6 +17,7 @@ TEST(CardInteractionTest, FlowerPower_Awards2VP_OnKoreanWarEventPlayByUS) {
     state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
     state.victory_points = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::KOREAN_WAR, ts::Player::US);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     // Korean War played by US -> Flower Power gives -2 VP (to USSR)
     ASSERT_EQ(state.victory_points, -2);
 }
@@ -26,6 +27,7 @@ TEST(CardInteractionTest, FlowerPower_Awards2VP_OnArabIsraeliWarEventPlayByUS) {
     state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
     state.victory_points = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::ARAB_ISRAELI_WAR, ts::Player::US);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -36,6 +38,7 @@ TEST(CardInteractionTest, FlowerPower_Awards2VP_OnIndoPakistaniWarEventPlayByUS)
     ts::CardHandlers::trigger_event(state, ts::card_ids::INDO_PAKISTANI_WAR, ts::Player::US);
     // US selects target Pakistan
     ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::PAKISTAN, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     // Indo-Pakistani War played by US -> Flower Power gives -2 VP (to USSR)
     ASSERT_TRUE(state.victory_points <= -2);
 }
@@ -48,6 +51,7 @@ TEST(CardInteractionTest, FlowerPower_Awards2VP_OnBrushWarEventPlayByUS) {
     // Secondary_id = 1 (roll fails -> 0 VP from Brush War, but -2 VP from Flower Power)
     ts::MicroAction act{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 1, 0};
     ts::CardHandlers::handle_event_step(state, act);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 1, 0, 0));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -59,6 +63,7 @@ TEST(CardInteractionTest, FlowerPower_Awards2VP_OnIranIraqWarEventPlayByUS) {
     // Forced roll 1 (fails -> 0 VP from Iran-Iraq War, -2 VP from Flower Power)
     ts::MicroAction act{ts::DecisionType::POINT_NODE, ts::countries::IRAN, 1, 0};
     ts::CardHandlers::handle_event_step(state, act);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 1, 0, 0));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -78,6 +83,8 @@ TEST(CardInteractionTest, FlowerPower_NoVP_WhenWarCardSpacedByUS) {
     // US plays Korean War for Space Race (secondary_id = 1 for forced roll 1 -> success)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::KOREAN_WAR, 0, 0});
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 1, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 1, 0, 0});
 
     // Space race awards +2 VP to US (first to box 1), but Flower Power did NOT award -2 VP to USSR because event did not occur!
     ASSERT_EQ(state.victory_points, 2);
@@ -113,6 +120,7 @@ TEST(CardInteractionTest, FlowerPower_CampDavidBlocksArabIsraeliWar_NoVPForArabI
     ts::CardHandlers::trigger_event(state, ts::card_ids::BRUSH_WAR, ts::Player::US);
     ts::MicroAction act{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 1, 0};
     ts::CardHandlers::handle_event_step(state, act);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 1, 0, 0));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -128,6 +136,7 @@ TEST(CardInteractionTest, FlowerPower_AnEvilEmpireCancelsFlowerPower_NoVPOnWarCa
 
     // Now Korean War played by US awards NO VP to USSR
     ts::CardHandlers::trigger_event(state, ts::card_ids::KOREAN_WAR, ts::Player::US);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     ASSERT_EQ(state.victory_points, 1); // Unchanged
 }
 
@@ -205,6 +214,8 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
 
     // 3. US coups Egypt with forced roll 6
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 6, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
 
     // DEFCON remains 2 due to Nuclear Subs, and USSR did NOT lose!
     ASSERT_EQ(state.defcon, 2);
@@ -235,6 +246,8 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
 
     // 3. US coups Egypt Battleground -> DEFCON drops from 2 to 1 on USSR turn -> USSR LOSES!
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 6, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
 
     ASSERT_EQ(state.defcon, 1);
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
@@ -251,6 +264,7 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUSSR_USPlaysLoneGunman_USSR
     state.defcon = 2;
     state.set_flag(ts::effect_bits::CMC_ACTIVE_US); // CMC active against USSR
     state.countries[ts::countries::MEXICO].us_influence = 2;
+    state.countries[ts::countries::CUBA].ussr_influence = 0;
 
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.action_round = 1;
@@ -271,6 +285,8 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUSSR_USPlaysLoneGunman_USSR
 
     // 3. USSR coups Mexico without clearing CMC -> USSR LOSES immediately!
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::MEXICO, 4, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
 
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
     ASSERT_EQ(state.victory_points, 20); // US wins!
@@ -282,6 +298,8 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     state.defcon = 2;
     state.set_flag(ts::effect_bits::CMC_ACTIVE_USSR); // CMC active against US
     state.countries[ts::countries::EGYPT].ussr_influence = 2;
+    state.countries[ts::countries::WEST_GERMANY].us_influence = 0;
+    state.countries[ts::countries::TURKEY].us_influence = 0;
 
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.action_round = 1;
@@ -300,6 +318,8 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
 
     // 3. US coups Egypt under CMC -> US LOSES immediately!
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 4, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
 
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
     ASSERT_EQ(state.victory_points, -20); // USSR wins!
@@ -445,7 +465,9 @@ TEST(CardInteractionTest, Quagmire_MaskOnlyAllows2PlusOpsCards) {
     ASSERT_EQ(mask[ts::card_ids::TRUMAN_DOCTRINE], 0);
 
     // US discards Duck and Cover and rolls 3 -> escapes Quagmire!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 3, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 3, 0, 0});
     ASSERT_FALSE(state.has_flag(ts::effect_bits::QUAGMIRE_ACTIVE));
 }
 

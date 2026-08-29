@@ -230,6 +230,7 @@ TEST(CardEdgeCasesTest, KoreanWar_FailedRoll_AwardsMilOps_NoVPOrInfluence) {
 
     // Trigger with forced roll 2 (failure: 2 <= 3)
     CardHandlers::trigger_event(state, card_ids::KOREAN_WAR, Player::USSR, 2);
+    CardHandlers::handle_event_step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0));
     ASSERT_EQ(state.ussr_mil_ops, 2); // Mil Ops awarded
     ASSERT_EQ(state.victory_points, 0); // 0 VP
     ASSERT_EQ(state.countries[countries::SOUTH_KOREA].us_influence, 2); // Influence untouched
@@ -246,6 +247,7 @@ TEST(CardEdgeCasesTest, ArabIsraeliWar_FailedRoll_WithAdjacentModifiers) {
 
     // Total modifier is -3. Forced roll 5: 5 - 3 = 2 <= 3 (failure)
     CardHandlers::trigger_event(state, card_ids::ARAB_ISRAELI_WAR, Player::USSR, 5);
+    CardHandlers::handle_event_step(state, MicroAction(DecisionType::ROLL_DIE, 5, 0, 0));
     ASSERT_EQ(state.ussr_mil_ops, 2);
     ASSERT_EQ(state.victory_points, 0);
     ASSERT_EQ(state.countries[countries::ISRAEL].us_influence, 2);
@@ -264,6 +266,9 @@ TEST(CardEdgeCasesTest, IndoPakistaniWar_FailedRoll_And_MilOps) {
 
     // Choose to invade India with forced roll 2
     done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::POINT_NODE, countries::INDIA, 2, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+    done = CardHandlers::handle_event_step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.ussr_mil_ops, 2);
     ASSERT_EQ(state.victory_points, 0);
@@ -288,6 +293,9 @@ TEST(CardEdgeCasesTest, BrushWar_FailedRoll_And_StabilityRestriction) {
 
     // Invade Zaire with forced roll 2 (failure)
     done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::POINT_NODE, countries::ZAIRE, 2, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+    done = CardHandlers::handle_event_step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.us_mil_ops, 3); // +3 Mil Ops awarded
     ASSERT_EQ(state.victory_points, 0);
@@ -305,6 +313,9 @@ TEST(CardEdgeCasesTest, IranIraqWar_FailedRoll_And_MilOps) {
 
     // Invade Iraq with forced roll 1
     done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::POINT_NODE, countries::IRAQ, 1, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+    done = CardHandlers::handle_event_step(state, MicroAction(DecisionType::ROLL_DIE, 1, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.ussr_mil_ops, 2);
     ASSERT_EQ(state.victory_points, 0);
@@ -380,9 +391,15 @@ TEST(CardEdgeCasesTest, Summit_DefconSuicide_WhenDegradedTo1) {
     state.defcon = 2;
     state.phasing_player = Player::US;
 
-    // US wins summit with forced high roll
+    // US triggers Summit -> chance node for die rolls
     bool done = CardHandlers::trigger_event(state, card_ids::SUMMIT, Player::US);
     ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+
+    // Roll die: US rolls 6, USSR rolls 1 -> US wins Summit by 5
+    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::ROLL_DIE, 6, 1, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::CHOOSE_BRANCH);
 
     // US chooses to degrade DEFCON by 1 -> DEFCON 1 -> Game Over
     done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::CHOOSE_BRANCH, 1, 0, 0});
@@ -1680,9 +1697,11 @@ TEST(CardEdgeCasesTest, DieRollRecord_ResetToNoneOnNextStep) {
     ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, 1, 0, 0));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
 
-    // Step 2: USSR points node (Iran) with forced roll 5
+    // Step 2: USSR points node (Iran) -> transitions to ROLL_DIE
     state.countries[ts::countries::IRAN].us_influence = 2;
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::IRAN, 5, 0));
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0));
 
     ASSERT_EQ(state.last_roll.type, ts::RollType::COUP);
     ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);
@@ -1718,9 +1737,11 @@ TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
 
-    // Step 3: USSR points to Brazil (#78, stability 2) with forced roll 4
+    // Step 3: USSR points to Brazil (#78, stability 2) -> transitions to ROLL_DIE
     state.countries[ts::countries::BRAZIL].us_influence = 2;
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::BRAZIL, 4, 0));
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::BRAZIL, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 4, 0, 0));
 
     ASSERT_EQ(state.last_roll.type, ts::RollType::WAR_EVENT);
     ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);
@@ -1728,4 +1749,321 @@ TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
     ASSERT_EQ(state.last_roll.country_id, ts::countries::BRAZIL);
     ASSERT_EQ(state.last_roll.roll1, 4);
     ASSERT_TRUE(state.last_roll.success);
+}
+
+
+// =============================================================================
+// COMPLEX EVENT CHAINS & FULL ACTION ROUND RE-ENTRANCY TESTS
+// =============================================================================
+
+// Scenario 1:
+// US plays Five Year Plan (#5) -> discards Grain Sales (#67) from USSR hand.
+// Grain Sales triggers as US event -> US draws Star Wars (#85) from USSR hand and plays it.
+// Star Wars triggers -> US retrieves ABM Treaty (#57) from discard pile.
+// ABM Treaty triggers -> DEFCON +1, US gets 4 Ops to coup / realign.
+// Complete Coup and Realignment -> entire Action Round finishes and advances to USSR AR.
+TEST(CardEdgeCasesTest, Chain_FYP_GrainSales_StarWars_ABMTreaty_Full_AR) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    // Setup: Turn 7 Mid/Late War, AR 1, US phasing
+    state.turn = 7;
+    state.action_round = 1;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.defcon = 4;
+    state.us_space_track = 4;
+    state.ussr_space_track = 1; // Star Wars prerequisite met (US > USSR space track)
+
+    // Put all cards in draw deck initially
+    for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+
+    // US hand has Five Year Plan (#5)
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_US;
+    // USSR hand has Grain Sales (#67) and Star Wars (#85)
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    // Discard pile has ABM Treaty (#57)
+    state.card_locations[ts::card_ids::ABM_TREATY] = ts::CardLocation::DISCARD_PILE;
+
+    // Target battleground: Iran (ID 25) with USSR influence 2, US 0
+    state.countries[ts::countries::IRAN].ussr_influence = 2;
+    state.countries[ts::countries::IRAN].us_influence = 0;
+
+    // Initial decision context for US Action Round start
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // Step 1: US selects Five Year Plan (#5)
+    bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+
+    // Step 2: US selects Play Mode: EVENT
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ASSERT_TRUE(ok);
+
+    // If Grain Sales triggers -> US draws Star Wars and chooses Branch 0 (play drawn card)
+    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // Now Star Wars prompts US to select card from discard pile
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+
+    // Step 3: US selects ABM Treaty (#57) from discard pile
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::ABM_TREATY, 0, 0});
+    ASSERT_TRUE(ok);
+
+    // ABM Treaty triggers: DEFCON improved to 5, US gets 4 Ops
+    ASSERT_EQ(state.defcon, 5);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_ops_value, 4);
+
+    // Step 4: US chooses Op Mode: COUP (1)
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+    // Step 5: US targets Iran (ID 25) -> transitions to ROLL_DIE
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0});
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 5, 0, 0});
+    ASSERT_TRUE(ok);
+
+    // Iran coup resolved: DEFCON degraded from 5 to 4, US military ops updated
+    ASSERT_EQ(state.defcon, 4);
+    ASSERT_EQ(state.us_mil_ops, 4);
+
+    // Verification: The entire Action Round has completed cleanly!
+    // Next state must be USSR Action Round (AR 1)
+    ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
+    ASSERT_EQ(state.phasing_player, ts::Player::USSR);
+    ASSERT_EQ(state.action_round, 2);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+}
+
+// Scenario 2:
+// US plays Star Wars (#85) -> retrieves Five Year Plan (#5) from discard.
+// Five Year Plan discards Grain Sales (#67) from USSR hand.
+// Grain Sales draws Glasnost (#90) from USSR hand.
+// Scenario 2.1: US plays Glasnost for Coup, then USSR executes Glasnost event / Realignment.
+// Full AR completes cleanly.
+TEST(CardEdgeCasesTest, Chain_StarWars_FYP_GrainSales_Glasnost_Full_AR) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    state.turn = 9;
+    state.action_round = 2;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.defcon = 4;
+    state.us_space_track = 5;
+    state.ussr_space_track = 2;
+
+    for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GLASNOST] = ts::CardLocation::HAND_USSR;
+
+    // Influence in Cuba (ID 67) for Coup target
+    state.countries[ts::countries::CUBA].ussr_influence = 3;
+    state.countries[ts::countries::CUBA].us_influence = 0;
+
+    // Influence in Poland (ID 3) for realignment target
+    state.countries[ts::countries::POLAND].ussr_influence = 2;
+    state.countries[ts::countries::POLAND].us_influence = 1;
+
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // 1. US plays Star Wars (#85)
+    bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::STAR_WARS, 0, 0});
+    ASSERT_TRUE(ok);
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ASSERT_TRUE(ok);
+
+    // 2. Star Wars selects Five Year Plan (#5) from discard
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
+    ASSERT_TRUE(ok);
+
+    // 3. FYP discards Grain Sales (#67) -> Grain Sales draws Glasnost (#90) -> Prompt branch 0
+    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // 4. US now plays Glasnost (#90) for OPS
+    if (state.ctx().decision_type == ts::DecisionType::SELECT_PLAY_MODE) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // If timing branch prompt appears: US chooses OPS_FIRST (0)
+    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_TIMING_BRANCH) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // 5. US selects Op Mode: COUP (1)
+    if (state.ctx().decision_type == ts::DecisionType::SELECT_OP_MODE) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // 6. US targets Cuba (ID 67) with roll 4
+    if (state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CUBA, 0, 0});
+        ASSERT_TRUE(ok);
+        if (state.ctx().decision_type == ts::DecisionType::ROLL_DIE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
+            ASSERT_TRUE(ok);
+        }
+    }
+
+    // 7. USSR Glasnost event triggers (USSR gets Realignment or Ops if prompted)
+    while (state.ctx().decision_player == ts::Player::USSR && state.ctx().decision_type != ts::DecisionType::SELECT_CARD) {
+        if (state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+            if (state.ctx().allow_early_stop) {
+                ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, 255, 0, ts::action_flags::CONFIRM_DONE});
+            } else {
+                ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::POLAND, 0, 0});
+            }
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::SELECT_OP_MODE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::REALIGN), 0, 0});
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::ROLL_DIE || state.ctx().decision_player == ts::Player::NONE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0});
+            ASSERT_TRUE(ok);
+        } else {
+            break;
+        }
+    }
+
+    // Verification: AR finishes and advances to USSR turn
+    ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
+    ASSERT_EQ(state.phasing_player, ts::Player::USSR);
+    ASSERT_EQ(state.action_round, 3);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+}
+
+// Scenario 3:
+// USSR plays Grain Sales (#67) as Ops.
+// US event triggers on Grain Sales -> draws Star Wars (#85) from USSR hand.
+// US uses Star Wars to retrieve Five Year Plan (#5) from discard.
+// Five Year Plan discards Soviets Shoot Down KAL-007 (#89) from USSR hand.
+// KAL-007 triggers as US event -> US conducts Realignment in South Korea/Asia.
+// Once complete, USSR conducts its Grain Sales Ops and the entire AR completes cleanly.
+TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    state.turn = 9;
+    state.action_round = 3;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::USSR;
+    state.defcon = 4;
+    state.us_space_track = 6;
+    state.ussr_space_track = 3;
+
+    for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+
+    // Influence in South Korea and Japan
+    state.countries[ts::countries::SOUTH_KOREA].us_influence = 4;
+    state.countries[ts::countries::SOUTH_KOREA].ussr_influence = 1;
+    state.countries[ts::countries::JAPAN].us_influence = 3;
+
+    // Target for USSR ops later: Afghanistan
+    state.countries[ts::countries::AFGHANISTAN].ussr_influence = 0;
+
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // 1. USSR plays Grain Sales (#67) for Ops
+    bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
+    ASSERT_TRUE(ok);
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_TRUE(ok);
+
+    // 2. Grain Sales is opponent event -> Event triggers first or prompt timing
+    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_TIMING_BRANCH) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // 3. Grain Sales US prompt: Branch 0 (play drawn Star Wars #85)
+    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // Give USSR KAL-007 (#89) before Five Year Plan executes
+    state.card_locations[ts::card_ids::SOVIETS_SHOOT_DOWN_KAL_007] = ts::CardLocation::HAND_USSR;
+
+    // 3b. US selects Play Mode for Star Wars (#85): EVENT (0)
+    if (state.ctx().decision_type == ts::DecisionType::SELECT_PLAY_MODE) {
+        ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+        ASSERT_TRUE(ok);
+    }
+
+    // 4. Star Wars prompts US to select card from discard -> Selects Five Year Plan (#5)
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
+    ASSERT_TRUE(ok);
+
+    // 5. FYP discards KAL-007 (#89) -> KAL-007 triggers as US event (US gets Ops for realignment)
+    while (state.ctx().decision_player == ts::Player::US && state.ctx().decision_type != ts::DecisionType::SELECT_CARD) {
+        if (state.ctx().decision_type == ts::DecisionType::SELECT_OP_MODE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::REALIGN), 0, 0});
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+            if (state.ctx().allow_early_stop) {
+                ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, 255, 0, ts::action_flags::CONFIRM_DONE});
+            } else {
+                ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_KOREA, 0, 0});
+            }
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+            ASSERT_TRUE(ok);
+        } else {
+            break;
+        }
+    }
+
+    // 6. After US event chain completes, USSR gets to conduct its Grain Sales Ops (2 Ops)
+    while (state.ctx().decision_player == ts::Player::USSR && state.ctx().decision_type != ts::DecisionType::SELECT_CARD) {
+        if (state.ctx().decision_type == ts::DecisionType::SELECT_OP_MODE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+            ASSERT_TRUE(ok);
+        } else if (state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+            ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::AFGHANISTAN, 0, 0});
+            ASSERT_TRUE(ok);
+        } else {
+            break;
+        }
+    }
+
+    // Verification: AR finishes cleanly and advances to next turn
+    ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 }

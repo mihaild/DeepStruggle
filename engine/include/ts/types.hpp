@@ -67,7 +67,8 @@ enum class DecisionType : uint8_t {
     CHOOSE_TIMING_BRANCH = 3, // Choose timing for opponent card: 0 = OPS_FIRST, 1 = EVENT_FIRST
     SELECT_OP_MODE       = 4, // Select Op usage type: 0 = INFLUENCE, 1 = COUP, 2 = REALIGN
     POINT_NODE           = 5, // Select single country node (Influence/Coup/Realign/Event target)
-    CHOOSE_BRANCH        = 6  // Discrete branch (0..7) or CONFIRM_DONE (bit 7 set / 0x80)
+    CHOOSE_BRANCH        = 6, // Discrete branch (0..7) or CONFIRM_DONE (bit 7 set / 0x80)
+    ROLL_DIE             = 7  // Stochastic Chance node / Nature micro-decision
 };
 
 // Micro-Action Types recorded in action history

@@ -69,12 +69,17 @@ def fire_war_card_both(ts_state: ts_engine.GameState, s_eng: SEngine, cid: int, 
         s_eng.step(s_eng.pending_decision.options[0])
 
     # 2. Trigger in ts_ai
-    ts_engine.CardHandlers.trigger_event(ts_state, cid, player, forced_roll=forced_roll)
-    ma = ts_engine.MicroAction()
-    ma.decision_type = ts_engine.DecisionType.POINT_NODE
-    ma.primary_id = ts_engine.MapData.get_country_by_name(target_country)
-    ma.secondary_id = forced_roll
-    ts_engine.CardHandlers.handle_event_step(ts_state, ma)
+    ts_engine.CardHandlers.trigger_event(ts_state, cid, player)
+    if ts_state.ctx().decision_type == ts_engine.DecisionType.POINT_NODE:
+        ma = ts_engine.MicroAction()
+        ma.decision_type = ts_engine.DecisionType.POINT_NODE
+        ma.primary_id = ts_engine.MapData.get_country_by_name(target_country)
+        ts_engine.CardHandlers.handle_event_step(ts_state, ma)
+    if ts_state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE:
+        ma_roll = ts_engine.MicroAction()
+        ma_roll.decision_type = ts_engine.DecisionType.ROLL_DIE
+        ma_roll.primary_id = forced_roll
+        ts_engine.CardHandlers.handle_event_step(ts_state, ma_roll)
 
 
 # =============================================================================

@@ -115,7 +115,9 @@ def test_fix_card_40_cuban_missile_crisis_cancellation():
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # OPS
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1)) # COUP
     # Coup Colombia with roll 3 -> removes 2 from Cuba, clears CMC, executes coup
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, colombia_id, 3))
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, colombia_id, 0))
+    assert s.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 3, 0, 0))
     
     # CMC flag must now be cancelled and 2 influence removed from Cuba!
     assert not s.has_flag(EB.CMC_ACTIVE_US)
@@ -563,8 +565,11 @@ def test_fix_card_36_brush_war_nato_validation_us_control():
     ts.CardHandlers.trigger_event(s, 36, ts.Player.USSR)
     mask = ts.Engine.get_legal_action_mask(s)
     assert mask[spain_id] == 1
-    # Step targeting Spain/Portugal is accepted
-    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, spain_id, 6))
+    # Step targeting Spain/Portugal is accepted -> transitions to ROLL_DIE
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, spain_id, 0))
+    assert res == False
+    assert s.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    res = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 6, 0, 0))
     assert res == True
 
     # 2. US-controlled European country (e.g. Greece, stab 2, US inf 2) cannot be targeted by USSR
@@ -635,16 +640,20 @@ def test_fix_card_13_arab_israeli_war_checks_israel_us_control():
     for c in ["Egypt", "Jordan", "Lebanon", "Syria"]:
         set_inf(s, cid(c), 0, 0)
     # Forced roll 4 with Israel US controlled: modifier is -1, total = 3 -> Failure
-    ts.CardHandlers.trigger_event(s, 13, ts.Player.USSR, 4)
+    ts.CardHandlers.trigger_event(s, 13, ts.Player.USSR)
+    assert s.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 4, 0, 0))
     assert s.victory_points == 0
     assert s.get_country(israel_id).us_influence == 4
 
     # Forced roll 5 with Israel US controlled: total = 4 -> Success
     s2 = make_state()
     set_inf(s2, israel_id, 4, 0)
-    for c in ["Egypt", "Jordan", "Lebanon", "Syria"]:
-        set_inf(s2, cid(c), 0, 0)
-    ts.CardHandlers.trigger_event(s2, 13, ts.Player.USSR, 5)
+    for c_name in ["Egypt", "Jordan", "Lebanon", "Syria"]:
+        set_inf(s2, cid(c_name), 0, 0)
+    ts.CardHandlers.trigger_event(s2, 13, ts.Player.USSR)
+    assert s2.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    ts.CardHandlers.handle_event_step(s2, ts.MicroAction(ts.DecisionType.ROLL_DIE, 5, 0, 0))
     assert s2.victory_points == -2
     assert s2.get_country(israel_id).ussr_influence == 4
 
@@ -782,3 +791,221 @@ def test_fix_card_106_norad_triggers_on_olympic_games_boycott_defcon_2():
     assert not done_boycott
     assert s.defcon == 2
     assert s.defcon_dropped_to_2_in_ar == 1
+
+
+def test_chain_scenario_1_fyp_grainsales_starwars_abmtreaty_full_ar():
+    """Scenario 1: US plays FYP -> Grain Sales -> Star Wars -> ABM Treaty -> Coup -> AR complete."""
+    st = ts.GameState()
+    ts.Engine.init_game(st, 42)
+
+    st.turn = 7
+    st.action_round = 1
+    st.current_phase = ts.Phase.ACTION_ROUND
+    st.phasing_player = ts.Player.US
+    st.defcon = 4
+    st.us_space_track = 4
+    st.ussr_space_track = 1
+
+    for i in range(1, 111):
+        st.set_card_location(i, ts.CardLocation.DRAW_DECK)
+
+    st.set_card_location(5, ts.CardLocation.HAND_US) # Five Year Plan
+    st.set_card_location(67, ts.CardLocation.HAND_USSR) # Grain Sales
+    st.set_card_location(85, ts.CardLocation.HAND_USSR) # Star Wars
+    st.set_card_location(57, ts.CardLocation.DISCARD_PILE) # ABM Treaty
+
+    st.set_country(25, 0, 2) # Iran (ID 25)
+
+    st.ctx().decision_player = ts.Player.US
+    st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # 1. US plays Five Year Plan (#5) for EVENT
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0))
+
+    # 2. Grain Sales prompts Branch 0 (play drawn Star Wars)
+    if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+
+    # 3. Star Wars prompts SELECT_CARD from discard
+    assert st.ctx().decision_player == ts.Player.US
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 57, 0, 0)) # ABM Treaty
+
+    # 4. ABM Treaty triggers: DEFCON 5, 4 Ops
+    assert st.defcon == 5
+    assert st.ctx().decision_player == ts.Player.US
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    assert st.ctx().pending_ops_value == 4
+
+    # 5. US chooses COUP (1) on Iran with forced roll 5
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 25, 0, 0))
+    assert st.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 5, 0, 0))
+
+    assert st.defcon == 4
+    assert st.us_mil_ops == 4
+
+    # Verification: Full AR finishes cleanly and advances to USSR AR 2
+    assert st.current_phase == ts.Phase.ACTION_ROUND
+    assert st.phasing_player == ts.Player.USSR
+    assert st.action_round == 2
+    assert st.ctx().decision_player == ts.Player.USSR
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+
+
+def test_chain_scenario_2_starwars_fyp_grainsales_glasnost_full_ar():
+    """Scenario 2: US plays Star Wars -> FYP -> Grain Sales -> Glasnost -> Coup -> USSR Realign -> AR complete."""
+    st = ts.GameState()
+    ts.Engine.init_game(st, 42)
+
+    st.turn = 9
+    st.action_round = 2
+    st.current_phase = ts.Phase.ACTION_ROUND
+    st.phasing_player = ts.Player.US
+    st.defcon = 4
+    st.us_space_track = 5
+    st.ussr_space_track = 2
+
+    for i in range(1, 111):
+        st.set_card_location(i, ts.CardLocation.DRAW_DECK)
+
+    st.set_card_location(85, ts.CardLocation.HAND_US) # Star Wars
+    st.set_card_location(5, ts.CardLocation.DISCARD_PILE) # Five Year Plan
+    st.set_card_location(67, ts.CardLocation.HAND_USSR) # Grain Sales
+    st.set_card_location(90, ts.CardLocation.HAND_USSR) # Glasnost
+
+    st.set_country(67, 0, 3) # Cuba
+    st.set_country(3, 1, 2)  # Poland
+
+    st.ctx().decision_player = ts.Player.US
+    st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # 1. US plays Star Wars (#85) for EVENT
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 85, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0))
+
+    # 2. Star Wars selects Five Year Plan (#5) from discard
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
+
+    # 3. FYP discards Grain Sales -> Grain Sales draws Glasnost -> Branch 0
+    if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+
+    # 4. US plays Glasnost (#90) for OPS
+    if st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0)) # OPS
+
+    if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0)) # OPS_FIRST
+
+    # 5. US chooses COUP (1) on Cuba with roll 4
+    if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))
+    if st.ctx().decision_type == ts.DecisionType.POINT_NODE:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 67, 0, 0))
+    if st.ctx().decision_type == ts.DecisionType.ROLL_DIE:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 4, 0, 0))
+
+    # 6. USSR Glasnost event resolves
+    while st.ctx().decision_player == ts.Player.USSR and st.ctx().decision_type != ts.DecisionType.SELECT_CARD:
+        if st.ctx().decision_type == ts.DecisionType.POINT_NODE:
+            if st.ctx().allow_early_stop:
+                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 255, 0, 0x80))
+            else:
+                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 3, 0, 0))
+        elif st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+        elif st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 2, 0, 0)) # REALIGN
+        elif st.ctx().decision_type == ts.DecisionType.ROLL_DIE or st.ctx().decision_player == ts.Player.NONE:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+        else:
+            break
+
+    # Verification: Full AR finishes cleanly and advances to USSR AR 3
+    assert st.current_phase == ts.Phase.ACTION_ROUND
+    assert st.phasing_player == ts.Player.USSR
+    assert st.action_round == 3
+    assert st.ctx().decision_player == ts.Player.USSR
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+
+
+def test_chain_scenario_3_ussr_grainsales_starwars_fyp_kal007_full_ar():
+    """Scenario 3: USSR plays Grain Sales -> Star Wars -> FYP -> KAL-007 -> Realign -> USSR Ops -> AR complete."""
+    st = ts.GameState()
+    ts.Engine.init_game(st, 42)
+
+    st.turn = 9
+    st.action_round = 3
+    st.current_phase = ts.Phase.ACTION_ROUND
+    st.phasing_player = ts.Player.USSR
+    st.defcon = 4
+    st.us_space_track = 6
+    st.ussr_space_track = 3
+
+    for i in range(1, 111):
+        st.set_card_location(i, ts.CardLocation.DRAW_DECK)
+
+    st.set_card_location(67, ts.CardLocation.HAND_USSR)
+    st.set_card_location(5, ts.CardLocation.DISCARD_PILE)
+    st.set_card_location(85, ts.CardLocation.HAND_USSR)
+
+    st.set_country(44, 4, 1) # South Korea (ID 44)
+    st.set_country(26, 3, 0) # Japan
+    st.set_country(29, 0, 0) # Afghanistan
+
+    st.ctx().decision_player = ts.Player.USSR
+    st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # 1. USSR plays Grain Sales for OPS
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 67, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))
+
+    # 2. EVENT_FIRST
+    if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 1, 0, 0))
+
+    # 3. US chooses Branch 0 (play drawn Star Wars)
+    if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+
+    st.set_card_location(89, ts.CardLocation.HAND_USSR) # Give USSR KAL-007
+
+    # 3b. US plays Star Wars for EVENT
+    if st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE:
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0))
+
+    # 4. Star Wars selects Five Year Plan from discard
+    assert st.ctx().decision_player == ts.Player.US
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
+
+    # 5. FYP discards KAL-007 -> US executes realignment
+    while st.ctx().decision_player == ts.Player.US and st.ctx().decision_type != ts.DecisionType.SELECT_CARD:
+        if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 2, 0, 0)) # REALIGN
+        elif st.ctx().decision_type == ts.DecisionType.POINT_NODE:
+            if st.ctx().allow_early_stop:
+                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 255, 0, 0x80))
+            else:
+                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 44, 0, 0))
+        elif st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+        else:
+            break
+
+    # 6. USSR executes Grain Sales Ops
+    while st.ctx().decision_player == ts.Player.USSR and st.ctx().decision_type != ts.DecisionType.SELECT_CARD:
+        if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0)) # INFLUENCE
+        elif st.ctx().decision_type == ts.DecisionType.POINT_NODE:
+            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 29, 0, 0))
+        else:
+            break
+
+    # Verification: AR finishes cleanly and advances
+    assert st.current_phase == ts.Phase.ACTION_ROUND
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD

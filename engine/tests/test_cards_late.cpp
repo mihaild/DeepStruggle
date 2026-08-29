@@ -333,6 +333,9 @@ TEST(LateCardsTest, Card102_IranIraqWar) {
 
     // Target Iran with forced roll 5 -> success
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::IRAN, 5, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::IRAN].us_influence, 2);
     ASSERT_EQ(state.countries[ts::countries::IRAN].ussr_influence, 0);

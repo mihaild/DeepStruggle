@@ -214,6 +214,7 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 }
 
 void StateMachine::advance_after_ops(GameState& state) noexcept {
+    if (state.current_phase == Phase::GAME_OVER) return;
     if (state.current_phase == Phase::HEADLINE) {
         advance_headline_step(state);
         return;
@@ -263,6 +264,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
 }
 
 void StateMachine::advance_after_action_round(GameState& state) noexcept {
+    if (state.current_phase == Phase::GAME_OVER) return;
     // Check NORAD
     if (state.defcon_dropped_to_2_in_ar && state.has_flag(effect_bits::NORAD_ACTIVE) &&
         Scoring::is_controlled_by(state, countries::CANADA, Player::US)) {
@@ -591,27 +593,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     const auto& c_info = CardData::get_card(card);
                     if (c_info.ops >= 2) {
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
-                        uint8_t roll = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : Prng::roll_d6(state.rng_state);
-                        state.last_die_roll = roll;
-                        bool escaped = (roll <= 4);
-                        if (escaped) {
-                            if (p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
-                            else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);
-                        }
-                        state.last_roll = DieRollRecord{
-                            .type = RollType::TRAP_ESCAPE,
-                            .roller = p,
-                            .card_id = card,
-                            .country_id = 255,
-                            .roll1 = roll,
-                            .mod1 = 0,
-                            .roll2 = 0,
-                            .mod2 = 4, // escape threshold
-                            .success = escaped,
-                            .net_delta = 0
-                        };
-                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
-                        else advance_after_action_round(state);
+                        state.ctx().temp_cards[0] = card;
+                        state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::TRAP_ESCAPE);
+                        state.ctx().temp_cards[2] = action.secondary_id;
+                        state.ctx().decision_player = Player::NONE;
+                        state.ctx().decision_type = DecisionType::ROLL_DIE;
                         return true;
                     }
                 }
@@ -661,11 +647,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::SPACE) {
-                    SpaceRace::attempt_space(state, p, card, action.secondary_id);
-                    if (state.current_phase != Phase::GAME_OVER) {
-                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
-                        else advance_after_action_round(state);
-                    }
+                    state.ctx().temp_cards[0] = card;
+                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::SPACE_RACE);
+                    state.ctx().temp_cards[2] = action.secondary_id;
+                    state.ctx().decision_player = Player::NONE;
+                    state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
                 }
 
@@ -809,42 +795,26 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE)) {
                         coup_ops = Operations::get_effective_ops(state, op_card, p, c_info.in_southeast_asia ? Region::ASIA : Region::NONE_REGION);
                     }
-                    Operations::execute_coup(state, p, cid, coup_ops, forced_roll);
-                    if (state.current_phase != Phase::GAME_OVER) {
-                        advance_after_ops(state);
-                    }
+                    state.ctx().temp_cards[0] = cid;
+                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
+                    state.ctx().temp_cards[2] = forced_roll;
+                    state.ctx().temp_cards[3] = (p == Player::US) ? 1 : (p == Player::USSR ? 2 : 0);
+                    state.ctx().pending_ops_value = coup_ops;
+                    state.ctx().decision_player = Player::NONE;
+                    state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
                 }
 
                 if (state.ctx().op_mode == OpMode::REALIGN) {
                     uint8_t forced_us = (p == Player::US) ? forced_roll : forced_opp_roll;
                     uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
-                    Operations::execute_realign(state, p, cid, forced_us, forced_ussr);
-                    state.ctx().remaining_steps -= 1;
-
-                    uint8_t op_card = state.ctx().pending_op_card;
-                    const auto& c_info = MapData::get_country(cid);
-                    if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
-                        uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
-                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                        if (total_spent >= non_asia_base) {
-                            state.ctx().remaining_steps = 0;
-                        } else {
-                            state.ctx().remaining_steps = non_asia_base - total_spent;
-                        }
-                    } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
-                        uint8_t non_se_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
-                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                        if (total_spent >= non_se_base) {
-                            state.ctx().remaining_steps = 0;
-                        } else {
-                            state.ctx().remaining_steps = non_se_base - total_spent;
-                        }
-                    }
-
-                    if (state.ctx().remaining_steps == 0) {
-                        advance_after_ops(state);
-                    }
+                    state.ctx().temp_cards[0] = cid;
+                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::REALIGNMENT);
+                    state.ctx().temp_cards[2] = forced_us;
+                    state.ctx().temp_cards[3] = forced_ussr;
+                    state.ctx().temp_cards[4] = (p == Player::US) ? 1 : (p == Player::USSR ? 2 : 0);
+                    state.ctx().decision_player = Player::NONE;
+                    state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
                 }
 
@@ -886,6 +856,101 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     advance_after_ops(state);
                     return true;
                 }
+                return false;
+            }
+
+                        case DecisionType::ROLL_DIE: {
+                RollType rt = static_cast<RollType>(state.ctx().temp_cards[1]);
+                uint8_t forced_r1 = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t forced_r2 = action.secondary_id != 0 ? action.secondary_id : state.ctx().temp_cards[3];
+
+                if (rt == RollType::COUP) {
+                    uint8_t cid = state.ctx().temp_cards[0];
+                    uint8_t coup_ops = state.ctx().pending_ops_value;
+                    Player coup_player = (state.ctx().temp_cards[3] == 1) ? Player::US : ((state.ctx().temp_cards[3] == 2) ? Player::USSR : state.phasing_player);
+                    Operations::execute_coup(state, coup_player, cid, coup_ops, forced_r1);
+                    if (state.current_phase != Phase::GAME_OVER) {
+                        advance_after_ops(state);
+                    }
+                    return true;
+                }
+
+                if (rt == RollType::REALIGNMENT) {
+                    uint8_t cid = state.ctx().temp_cards[0];
+                    Player realign_player = (state.ctx().temp_cards[4] == 1) ? Player::US : ((state.ctx().temp_cards[4] == 2) ? Player::USSR : state.phasing_player);
+                    uint8_t forced_us = (realign_player == Player::US) ? forced_r1 : forced_r2;
+                    uint8_t forced_ussr = (realign_player == Player::USSR) ? forced_r1 : forced_r2;
+                    Operations::execute_realign(state, realign_player, cid, forced_us, forced_ussr);
+                    state.ctx().remaining_steps -= 1;
+
+                    uint8_t op_card = state.ctx().pending_op_card;
+                    const auto& c_info = MapData::get_country(cid);
+                    if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
+                        uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, realign_player, Region::NONE_REGION);
+                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                        if (total_spent >= non_asia_base) {
+                            state.ctx().remaining_steps = 0;
+                        } else {
+                            state.ctx().remaining_steps = non_asia_base - total_spent;
+                        }
+                    } else if (realign_player == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
+                        uint8_t non_se_base = Operations::get_effective_ops(state, op_card, realign_player, Region::NONE_REGION);
+                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
+                        if (total_spent >= non_se_base) {
+                            state.ctx().remaining_steps = 0;
+                        } else {
+                            state.ctx().remaining_steps = non_se_base - total_spent;
+                        }
+                    }
+
+                    if (state.ctx().remaining_steps == 0) {
+                        advance_after_ops(state);
+                    } else {
+                        state.ctx().decision_player = realign_player;
+                        state.ctx().decision_type = DecisionType::POINT_NODE;
+                        state.ctx().allow_early_stop = 1;
+                    }
+                    return true;
+                }
+
+                if (rt == RollType::SPACE_RACE) {
+                    uint8_t card = state.ctx().temp_cards[0];
+                    Player space_player = state.phasing_player;
+                    SpaceRace::attempt_space(state, space_player, card, forced_r1);
+                    if (state.current_phase != Phase::GAME_OVER) {
+                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                        else advance_after_action_round(state);
+                    }
+                    return true;
+                }
+
+                if (rt == RollType::TRAP_ESCAPE) {
+                    uint8_t card = state.ctx().temp_cards[0];
+                    Player trapped_p = state.phasing_player;
+                    uint8_t roll = (forced_r1 >= 1 && forced_r1 <= 6) ? forced_r1 : Prng::roll_d6(state.rng_state);
+                    state.last_die_roll = roll;
+                    bool escaped = (roll <= 4);
+                    if (escaped) {
+                        if (trapped_p == Player::US) state.clear_flag(effect_bits::QUAGMIRE_ACTIVE);
+                        else state.clear_flag(effect_bits::BEAR_TRAP_ACTIVE);
+                    }
+                    state.last_roll = DieRollRecord{
+                        .type = RollType::TRAP_ESCAPE,
+                        .roller = trapped_p,
+                        .card_id = card,
+                        .country_id = 255,
+                        .roll1 = roll,
+                        .mod1 = 0,
+                        .roll2 = 0,
+                        .mod2 = 4, // escape threshold
+                        .success = escaped,
+                        .net_delta = 0
+                    };
+                    if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                    else advance_after_action_round(state);
+                    return true;
+                }
+
                 return false;
             }
 

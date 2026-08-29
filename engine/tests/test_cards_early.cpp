@@ -190,6 +190,7 @@ TEST(EarlyCardsTest, Card11_KoreanWar_Success) {
     state.ussr_mil_ops = 0;
     // No US controlled neighbors -> unmod roll. We test with default PRNG
     ts::CardHandlers::trigger_event(state, ts::card_ids::KOREAN_WAR, ts::Player::USSR);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     ASSERT_EQ(state.ussr_mil_ops, 2);
 }
 
@@ -212,6 +213,7 @@ TEST(EarlyCardsTest, Card13_ArabIsraeliWar_Success) {
     state.ussr_mil_ops = 0;
     // Forced roll = 5, no US controlled neighbors -> success
     ts::CardHandlers::trigger_event(state, ts::card_ids::ARAB_ISRAELI_WAR, ts::Player::USSR, 5);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0));
     ASSERT_EQ(state.countries[ts::countries::ISRAEL].us_influence, 0);
     ASSERT_EQ(state.countries[ts::countries::ISRAEL].ussr_influence, 2);
     ASSERT_EQ(state.victory_points, -2);
@@ -372,6 +374,8 @@ TEST(EarlyCardsTest, Card24_IndoPakistaniWar) {
     ts::CardHandlers::trigger_event(state, ts::card_ids::INDO_PAKISTANI_WAR, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::PAKISTAN, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 0, 0, 0));
     ASSERT_EQ(state.us_mil_ops, 2);
 }
 

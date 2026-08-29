@@ -47,7 +47,7 @@ TEST(FullGameTest, FullGame_Turn1ToFinalScoring_DominationAndControlRequirements
 }
 
 TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
-    ts::GameTestWrapper wrapper(3);
+    ts::GameTestWrapper wrapper(5);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
 
     // Verify Turn 1 starts in SETUP phase
@@ -78,7 +78,7 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
 }
 
 TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
-    ts::GameTestWrapper wrapper(3);
+    ts::GameTestWrapper wrapper(5);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
 
     wrapper.run_to_completion(policy, 5000);

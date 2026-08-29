@@ -138,8 +138,10 @@ class TestEarlyWarCards:
         state = make_clean_state()
         set_inf(state, "South Korea", 3, 0)
         old_vp = state.victory_points
-        done = ts_engine.CardHandlers.trigger_event(state, 11, ts_engine.Player.USSR, 6)
-        assert done == True
+        done = ts_engine.CardHandlers.trigger_event(state, 11, ts_engine.Player.USSR)
+        assert done == False
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         us_inf, ussr_inf = get_inf(state, "South Korea")
         assert us_inf == 0
         assert ussr_inf == 3
@@ -157,8 +159,10 @@ class TestEarlyWarCards:
     def test_13_arab_israeli_war(self):
         state = make_clean_state()
         set_inf(state, "Israel", 2, 0)
-        done = ts_engine.CardHandlers.trigger_event(state, 13, ts_engine.Player.USSR, 6)
-        assert done == True
+        done = ts_engine.CardHandlers.trigger_event(state, 13, ts_engine.Player.USSR)
+        assert done == False
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         us_inf, ussr_inf = get_inf(state, "Israel")
         assert us_inf == 0
         assert ussr_inf == 2
@@ -270,7 +274,9 @@ class TestEarlyWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 24, ts_engine.Player.US)
         assert done == False
         india_id = country_id("India")
-        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, india_id, 6))
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, india_id, 0))
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         us_inf, ussr_inf = get_inf(state, "India")
         assert us_inf == 2
         assert ussr_inf == 0
@@ -421,7 +427,9 @@ class TestMidWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 36, ts_engine.Player.US)
         assert done == False
         greece_id = country_id("Greece")
-        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, greece_id, 6))
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, greece_id, 0))
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         us_inf, ussr_inf = get_inf(state, "Greece")
         assert us_inf == 2
         assert ussr_inf == 0
@@ -1001,7 +1009,9 @@ class TestLateWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 102, ts_engine.Player.US)
         assert done == False
         iran_id = country_id("Iran")
-        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, iran_id, 6))
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, iran_id, 0))
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 6, 0, 0))
         us_inf, ussr_inf = get_inf(state, "Iran")
         assert us_inf == 2
         assert ussr_inf == 0

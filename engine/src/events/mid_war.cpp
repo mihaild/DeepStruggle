@@ -89,68 +89,11 @@ bool trigger_bear_trap(GameState& state, Player p) noexcept {
 }
 
 bool trigger_summit(GameState& state, Player p) noexcept {
-    uint8_t us_dom_count = 0;
-    uint8_t ussr_dom_count = 0;
-
-    for (uint8_t r = 0; r < 6; ++r) {
-        auto summary = Scoring::evaluate_region(state, static_cast<Region>(r));
-        if (summary.us_status == RegionalStatus::DOMINATION || summary.us_status == RegionalStatus::CONTROL) {
-            us_dom_count++;
-        }
-        if (summary.ussr_status == RegionalStatus::DOMINATION || summary.ussr_status == RegionalStatus::CONTROL) {
-            ussr_dom_count++;
-        }
-    }
-
-    uint8_t us_roll = Prng::roll_d6(state.rng_state);
-    uint8_t ussr_roll = Prng::roll_d6(state.rng_state);
-    state.last_die_roll = us_roll;
-    state.last_opp_die_roll = ussr_roll;
-
-    int16_t us_total = us_roll + us_dom_count;
-    int16_t ussr_total = ussr_roll + ussr_dom_count;
-
-    bool us_wins = (us_total > ussr_total);
-    bool ussr_wins = (ussr_total > us_total);
-    Player summit_winner = us_wins ? Player::US : (ussr_wins ? Player::USSR : Player::NONE);
-
-    state.last_roll = DieRollRecord{
-        .type = RollType::SUMMIT,
-        .roller = p,
-        .card_id = card_ids::SUMMIT,
-        .country_id = 255,
-        .roll1 = us_roll,
-        .mod1 = static_cast<int8_t>(us_dom_count),
-        .roll2 = ussr_roll,
-        .mod2 = static_cast<int8_t>(ussr_dom_count),
-        .success = (summit_winner != Player::NONE),
-        .net_delta = static_cast<int8_t>(us_wins ? 2 : (ussr_wins ? -2 : 0))
-    };
-
-    if (us_total > ussr_total) {
-        state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
-        if (state.victory_points >= 20) {
-            state.current_phase = Phase::GAME_OVER;
-            return true;
-        }
-        // US chooses DEFCON change: Branch 0 = improve, 1 = degrade, 2 = no change
-        state.ctx().decision_player = Player::US;
-        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
-        state.ctx().resolving_card = card_ids::SUMMIT;
-        return false;
-    } else if (ussr_total > us_total) {
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-        if (state.victory_points <= -20) {
-            state.current_phase = Phase::GAME_OVER;
-            return true;
-        }
-        // USSR chooses DEFCON change
-        state.ctx().decision_player = Player::USSR;
-        state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
-        state.ctx().resolving_card = card_ids::SUMMIT;
-        return false;
-    }
-    return true;
+    state.ctx().decision_player = Player::NONE;
+    state.ctx().decision_type = DecisionType::ROLL_DIE;
+    state.ctx().resolving_card = card_ids::SUMMIT;
+    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::SUMMIT);
+    return false;
 }
 
 bool trigger_how_i_learned_to_stop_worrying(GameState& state, Player p) noexcept {

@@ -169,6 +169,11 @@ public:
 
     bool auto_step(const PolicyFn& policy) {
         if (is_terminal()) return false;
+        while (!is_terminal() && state.ctx().decision_player == Player::NONE && state.ctx().decision_type == DecisionType::ROLL_DIE) {
+            step(MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+            if (is_terminal()) return true;
+        }
+        if (is_terminal()) return false;
         auto legal = get_legal_actions();
         MicroAction action = policy(state, legal, step_count);
         return step(action);

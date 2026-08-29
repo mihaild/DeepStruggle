@@ -35,7 +35,7 @@ def validate_legal_choices(state_dict: Dict[str, Any]) -> List[str]:
 
         if res_card in (43, 85):  # SALT_NEGOTIATIONS, STAR_WARS (pick from discard)
             for cid in valid_ids:
-                if cid not in discard:
+                if cid > 0 and cid not in discard:
                     violations.append(f"Card #{cid} proposed from discard for card #{res_card} but not in discard {discard}")
         elif res_card == 108:  # OUR_MAN_IN_TEHRAN
             pass
@@ -160,6 +160,9 @@ def run_invariant_audit_game(seed: int) -> Tuple[int, List[str]]:
     all_violations: List[str] = []
 
     while not ts_engine.Engine.is_terminal(state) and step_count < 1500:
+        if state.ctx().decision_player == ts_engine.Player.NONE and state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE:
+            ts_engine.Engine.step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 0, 0, 0))
+            continue
         d = state.to_dict()
         legal = d.get("legal_actions", {})
         d_player = "US" if state.ctx().decision_player == ts_engine.Player.US else "USSR"

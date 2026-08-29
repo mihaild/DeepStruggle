@@ -121,48 +121,14 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
 }
 
 bool trigger_korean_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
-    // Add MilOps to USSR
-    state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
-
-    // Modifiers: -1 per US controlled adjacent (North Korea, Japan, Taiwan)
-    int16_t mod = 0;
-    if (Scoring::is_controlled_by(state, countries::NORTH_KOREA, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::JAPAN, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::TAIWAN, Player::US)) mod--;
-
-    uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
-    state.last_die_roll = roll;
-    int16_t total = roll + mod;
-    bool success = (total >= 4);
-
-    state.last_roll = DieRollRecord{
-        .type = RollType::WAR_EVENT,
-        .roller = Player::USSR,
-        .card_id = card_ids::KOREAN_WAR,
-        .country_id = countries::SOUTH_KOREA,
-        .roll1 = roll,
-        .mod1 = static_cast<int8_t>(mod),
-        .roll2 = 0,
-        .mod2 = 4, // Target total
-        .success = success,
-        .net_delta = static_cast<int8_t>(success ? 2 : 0)
-    };
-
-    if (success) {
-        // USSR receives 2 VP and replaces all US influence in South Korea
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-        uint8_t us_inf = state.countries[countries::SOUTH_KOREA].us_influence;
-        state.countries[countries::SOUTH_KOREA].us_influence = 0;
-        state.countries[countries::SOUTH_KOREA].ussr_influence = us_inf;
-        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-    }
-
-    if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-    }
-
-    return true;
+    state.ctx().decision_player = Player::NONE;
+    state.ctx().decision_type = DecisionType::ROLL_DIE;
+    state.ctx().resolving_card = card_ids::KOREAN_WAR;
+    state.ctx().temp_cards[0] = countries::SOUTH_KOREA;
+    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
+    state.ctx().temp_cards[2] = forced_roll;
+    state.ctx().temp_cards[3] = static_cast<uint8_t>(p);
+    return false;
 }
 
 bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
@@ -173,48 +139,14 @@ bool trigger_romanian_abdication(GameState& state, Player p) noexcept {
 
 bool trigger_arab_israeli_war(GameState& state, Player p, uint8_t forced_roll) noexcept {
     if (state.has_flag(effect_bits::CAMP_DAVID_PLAYED)) return true;
-
-    state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
-
-    int16_t mod = 0;
-    if (Scoring::is_controlled_by(state, countries::ISRAEL, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::EGYPT, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::JORDAN, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::LEBANON, Player::US)) mod--;
-    if (Scoring::is_controlled_by(state, countries::SYRIA, Player::US)) mod--;
-
-    uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
-    state.last_die_roll = roll;
-    int16_t total = roll + mod;
-    bool success = (total >= 4);
-
-    state.last_roll = DieRollRecord{
-        .type = RollType::WAR_EVENT,
-        .roller = Player::USSR,
-        .card_id = card_ids::ARAB_ISRAELI_WAR,
-        .country_id = countries::ISRAEL,
-        .roll1 = roll,
-        .mod1 = static_cast<int8_t>(mod),
-        .roll2 = 0,
-        .mod2 = 4,
-        .success = success,
-        .net_delta = static_cast<int8_t>(success ? 2 : 0)
-    };
-
-    if (success) {
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-        uint8_t us_inf = state.countries[countries::ISRAEL].us_influence;
-        state.countries[countries::ISRAEL].us_influence = 0;
-        state.countries[countries::ISRAEL].ussr_influence = us_inf;
-        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-    }
-
-    if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
-        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-        if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-    }
-
-    return true;
+    state.ctx().decision_player = Player::NONE;
+    state.ctx().decision_type = DecisionType::ROLL_DIE;
+    state.ctx().resolving_card = card_ids::ARAB_ISRAELI_WAR;
+    state.ctx().temp_cards[0] = countries::ISRAEL;
+    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
+    state.ctx().temp_cards[2] = forced_roll;
+    state.ctx().temp_cards[3] = static_cast<uint8_t>(p);
+    return false;
 }
 
 bool trigger_comecon(GameState& state, Player p) noexcept {

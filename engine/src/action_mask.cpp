@@ -341,6 +341,14 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
             break;
         }
+
+        case DecisionType::ROLL_DIE: {
+            *out_size = 7;
+            std::memset(mask_out, 0, 7);
+            mask_out[0] = 1; // 0 = Auto-roll
+            for (uint8_t r = 1; r <= 6; ++r) mask_out[r] = 1; // 1..6 = Forced roll
+            break;
+        }
     }
 }
 

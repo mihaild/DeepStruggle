@@ -120,6 +120,8 @@ TEST(RegressionTest, RealignmentOnlyTargetsCountriesWithOpponentInfluenceAndRoll
     // US should win by 5, removing all 2 USSR influence from Italy
     MicroAction realign_act(DecisionType::POINT_NODE, countries::ITALY, 6, 1);
     Engine::step(state, realign_act);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+    Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 6, 1, 0));
     ASSERT_EQ(state.countries[countries::ITALY].ussr_influence, 0);
 }
 
@@ -142,6 +144,8 @@ TEST(RegressionTest, ArabIsraeliWarWithRoll2Fails) {
     Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::ARAB_ISRAELI_WAR, 0, 0));
     // 2. Select Play Mode EVENT with forced roll = 2
     Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 2, 0));
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
+    Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0));
 
     // Roll 2 - 1 = 1 (< 4), so Arab-Israeli War fails!
     // Israel must still have 2 US influence and 0 USSR influence

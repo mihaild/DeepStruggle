@@ -19,6 +19,9 @@ TEST(MidCardsTest, Card36_BrushWar_Success) {
     // Secondary_id = 5 (forced roll 5 -> success)
     ts::MicroAction act{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 5, 0};
     bool done = ts::CardHandlers::handle_event_step(state, act);
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0));
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::ARGENTINA].us_influence, 2);
     ASSERT_EQ(state.countries[ts::countries::ARGENTINA].ussr_influence, 0);

@@ -295,7 +295,7 @@ bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player playe
 
 bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action) noexcept {
     uint8_t card = state.ctx().resolving_card;
-    Player p = state.ctx().decision_player;
+    Player p = (state.ctx().decision_player != Player::NONE) ? state.ctx().decision_player : ((state.ctx().decision_type == DecisionType::ROLL_DIE && state.ctx().temp_cards[3] != 0) ? ((state.ctx().temp_cards[3] == 1) ? Player::US : Player::USSR) : state.phasing_player);
 
     switch (card) {
         case card_ids::BLOCKADE: {
@@ -350,6 +350,93 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             return false;
         }
 
+        case card_ids::KOREAN_WAR: {
+            state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+
+            int16_t mod = 0;
+            if (Scoring::is_controlled_by(state, countries::NORTH_KOREA, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::JAPAN, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::TAIWAN, Player::US)) mod--;
+
+            uint8_t forced_roll = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+            uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
+            state.last_die_roll = roll;
+            int16_t total = roll + mod;
+            bool success = (total >= 4);
+
+            state.last_roll = DieRollRecord{
+                .type = RollType::WAR_EVENT,
+                .roller = Player::USSR,
+                .card_id = card_ids::KOREAN_WAR,
+                .country_id = countries::SOUTH_KOREA,
+                .roll1 = roll,
+                .mod1 = static_cast<int8_t>(mod),
+                .roll2 = 0,
+                .mod2 = 4, // Target total
+                .success = success,
+                .net_delta = static_cast<int8_t>(success ? 2 : 0)
+            };
+
+            if (success) {
+                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                uint8_t us_inf = state.countries[countries::SOUTH_KOREA].us_influence;
+                state.countries[countries::SOUTH_KOREA].us_influence = 0;
+                state.countries[countries::SOUTH_KOREA].ussr_influence = us_inf;
+                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+            }
+
+            if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+            }
+            state.ctx().resolving_card = 0;
+            return true;
+        }
+
+        case card_ids::ARAB_ISRAELI_WAR: {
+            state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+
+            int16_t mod = 0;
+            if (Scoring::is_controlled_by(state, countries::ISRAEL, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::EGYPT, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::JORDAN, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::LEBANON, Player::US)) mod--;
+            if (Scoring::is_controlled_by(state, countries::SYRIA, Player::US)) mod--;
+
+            uint8_t forced_roll = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+            uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
+            state.last_die_roll = roll;
+            int16_t total = roll + mod;
+            bool success = (total >= 4);
+
+            state.last_roll = DieRollRecord{
+                .type = RollType::WAR_EVENT,
+                .roller = Player::USSR,
+                .card_id = card_ids::ARAB_ISRAELI_WAR,
+                .country_id = countries::ISRAEL,
+                .roll1 = roll,
+                .mod1 = static_cast<int8_t>(mod),
+                .roll2 = 0,
+                .mod2 = 4,
+                .success = success,
+                .net_delta = static_cast<int8_t>(success ? 2 : 0)
+            };
+
+            if (success) {
+                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                uint8_t us_inf = state.countries[countries::ISRAEL].us_influence;
+                state.countries[countries::ISRAEL].us_influence = 0;
+                state.countries[countries::ISRAEL].ussr_influence = us_inf;
+                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+            }
+
+            if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+            }
+            state.ctx().resolving_card = 0;
+            return true;
+        }
         case card_ids::WARSAW_PACT: {
             if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
                 if (action.primary_id == 0) {
@@ -441,12 +528,44 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::OLYMPIC_GAMES: {
-            if (action.primary_id == 0) {
-                // Participate: both roll 1d6 (sponsor gets +2)
-                Player sponsor = get_opponent(state.ctx().decision_player);
-                uint8_t sp_roll = Prng::roll_d6(state.rng_state) + 2;
-                uint8_t opp_roll = Prng::roll_d6(state.rng_state);
-                while (sp_roll == opp_roll) {
+            if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
+                if (action.primary_id == 0) {
+                    // Participate: transition to ROLL_DIE
+                    state.ctx().decision_player = Player::NONE;
+                    state.ctx().decision_type = DecisionType::ROLL_DIE;
+                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::OLYMPIC_GAMES);
+                    return false;
+                } else {
+                    // Boycott: DEFCON degrades by 1, and sponsor conducts Operations (as if played 4 Ops)
+                    Player sponsor = get_opponent(state.ctx().decision_player);
+                    if (state.defcon > 1) {
+                        state.defcon--;
+                        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+                    }
+                    if (state.defcon == 1) {
+                        state.current_phase = Phase::GAME_OVER;
+                        Player loser = state.phasing_player;
+                        if (state.ctx().decision_player != state.phasing_player) {
+                            state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
+                        }
+                        state.victory_points = (loser == Player::US) ? -20 : 20;
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
+                    state.ctx().pending_op_card = card_ids::OLYMPIC_GAMES;
+                    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, sponsor);
+                    state.ctx().decision_player = sponsor;
+                    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                    state.ctx().resolving_card = 0;
+                    return false;
+                }
+            } else if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                Player sponsor = state.phasing_player;
+                uint8_t forced_sp = (action.primary_id >= 1 && action.primary_id <= 6) ? action.primary_id : 0;
+                uint8_t forced_opp = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : 0;
+                uint8_t sp_roll = (forced_sp > 0) ? (forced_sp + 2) : (Prng::roll_d6(state.rng_state) + 2);
+                uint8_t opp_roll = (forced_opp > 0) ? forced_opp : Prng::roll_d6(state.rng_state);
+                while (sp_roll == opp_roll && forced_sp == 0 && forced_opp == 0) {
                     sp_roll = Prng::roll_d6(state.rng_state) + 2;
                     opp_roll = Prng::roll_d6(state.rng_state);
                 }
@@ -470,32 +589,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
                 state.ctx().resolving_card = 0;
                 return true;
-            } else {
-                // Boycott: DEFCON degrades by 1, and sponsor conducts Operations (as if played 4 Ops)
-                Player sponsor = get_opponent(state.ctx().decision_player);
-                if (state.defcon > 1) {
-                    state.defcon--;
-                    if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
-                }
-                if (state.defcon == 1) {
-                    state.current_phase = Phase::GAME_OVER;
-                    Player loser = state.phasing_player;
-                    if (state.ctx().decision_player != state.phasing_player) {
-                        state.set_flag(effect_bits::DEFCON_SUICIDE_PROVOKED);
-                    }
-                    state.victory_points = (loser == Player::US) ? -20 : 20;
-                    state.ctx().resolving_card = 0;
-                    return true;
-                }
-                state.ctx().pending_op_card = card_ids::OLYMPIC_GAMES;
-                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, sponsor);
-                state.ctx().decision_player = sponsor;
-                state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                state.ctx().resolving_card = 0;
-                return false;
             }
+            return true;
         }
-
         case card_ids::INDEPENDENT_REDS: {
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
@@ -534,55 +630,66 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::INDO_PAKISTANI_WAR: {
-            uint8_t target = action.primary_id;
-            if (target != countries::INDIA && target != countries::PAKISTAN) return false;
-            Player opp = get_opponent(p);
+            if (state.ctx().decision_type == DecisionType::POINT_NODE) {
+                uint8_t target = action.primary_id;
+                if (target != countries::INDIA && target != countries::PAKISTAN) return false;
+                state.ctx().temp_cards[0] = target;
+                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
+                state.ctx().temp_cards[2] = action.secondary_id;
+                state.ctx().temp_cards[3] = (p == Player::US) ? 1 : 2;
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
+                return false;
+            } else if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                uint8_t target = state.ctx().temp_cards[0];
+                Player opp = get_opponent(p);
 
-            if (p == Player::US) {
-                state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 2));
-            } else {
-                state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+                if (p == Player::US) {
+                    state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 2));
+                } else {
+                    state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+                }
+
+                int16_t mod = 0;
+                const auto& c_info = MapData::get_country(target);
+                for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
+                    if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
+                }
+
+                uint8_t forced_roll = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
+                state.last_die_roll = roll;
+                bool success = (roll + mod >= 4);
+                state.last_roll = DieRollRecord{
+                    .type = RollType::WAR_EVENT,
+                    .roller = p,
+                    .card_id = card_ids::INDO_PAKISTANI_WAR,
+                    .country_id = target,
+                    .roll1 = roll,
+                    .mod1 = static_cast<int8_t>(mod),
+                    .roll2 = 0,
+                    .mod2 = 4,
+                    .success = success,
+                    .net_delta = static_cast<int8_t>(success ? 2 : 0)
+                };
+                if (success) {
+                    int32_t vp_delta = (p == Player::US) ? 2 : -2;
+                    state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
+                    uint8_t opp_inf = state.countries[target].get_influence(opp);
+                    state.countries[target].remove_influence(opp, opp_inf);
+                    state.countries[target].add_influence(p, opp_inf);
+                    if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
+
+                if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                    if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
+                state.ctx().resolving_card = 0;
+                return true;
             }
-
-            int16_t mod = 0;
-            const auto& c_info = MapData::get_country(target);
-            for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
-                if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
-            }
-
-            uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
-            state.last_die_roll = roll;
-            bool success = (roll + mod >= 4);
-            state.last_roll = DieRollRecord{
-                .type = RollType::WAR_EVENT,
-                .roller = p,
-                .card_id = card_ids::INDO_PAKISTANI_WAR,
-                .country_id = target,
-                .roll1 = roll,
-                .mod1 = static_cast<int8_t>(mod),
-                .roll2 = 0,
-                .mod2 = 4,
-                .success = success,
-                .net_delta = static_cast<int8_t>(success ? 2 : 0)
-            };
-            if (success) {
-                int32_t vp_delta = (p == Player::US) ? 2 : -2;
-                state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
-                uint8_t opp_inf = state.countries[target].get_influence(opp);
-                state.countries[target].remove_influence(opp, opp_inf);
-                state.countries[target].add_influence(p, opp_inf);
-                if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-            }
-
-            if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
-                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-            }
-
-            state.ctx().resolving_card = 0;
             return true;
         }
-
         case card_ids::SUEZ_CRISIS: {
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
@@ -717,61 +824,73 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::BRUSH_WAR: {
-            uint8_t cid = action.primary_id;
-            if (cid >= 84 || MapData::get_country(cid).stability > 2) return false;
+            if (state.ctx().decision_type == DecisionType::POINT_NODE) {
+                uint8_t cid = action.primary_id;
+                if (cid >= 84 || MapData::get_country(cid).stability > 2) return false;
 
-            // NATO check: US controlled countries in Europe cannot be attacked by Brush War
-            const auto& c_info = MapData::get_country(cid);
-            bool nato_canceled_for_country = (cid == countries::WEST_GERMANY && state.has_flag(effect_bits::NATO_CANCELED_WEST_GERMANY)) ||
-                                             (cid == countries::FRANCE && state.has_flag(effect_bits::NATO_CANCELED_FRANCE));
-            if (p == Player::USSR && state.has_flag(effect_bits::NATO_ACTIVE) &&
-                c_info.region == Region::EUROPE && Scoring::is_controlled_by(state, cid, Player::US) &&
-                !nato_canceled_for_country) {
+                const auto& c_info = MapData::get_country(cid);
+                bool nato_canceled_for_country = (cid == countries::WEST_GERMANY && state.has_flag(effect_bits::NATO_CANCELED_WEST_GERMANY)) ||
+                                                 (cid == countries::FRANCE && state.has_flag(effect_bits::NATO_CANCELED_FRANCE));
+                if (p == Player::USSR && state.has_flag(effect_bits::NATO_ACTIVE) &&
+                    c_info.region == Region::EUROPE && Scoring::is_controlled_by(state, cid, Player::US) &&
+                    !nato_canceled_for_country) {
+                    return false;
+                }
+
+                state.ctx().temp_cards[0] = cid;
+                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
+                state.ctx().temp_cards[2] = action.secondary_id;
+                state.ctx().temp_cards[3] = (p == Player::US) ? 1 : 2;
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
                 return false;
+            } else if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                uint8_t cid = state.ctx().temp_cards[0];
+                const auto& c_info = MapData::get_country(cid);
+
+                if (p == Player::US) state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 3));
+                else state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 3));
+
+                Player opp = get_opponent(p);
+                int16_t mod = 0;
+                for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
+                    if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
+                }
+
+                uint8_t forced_roll = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
+                state.last_die_roll = roll;
+                bool success = (roll + mod >= 3);
+                state.last_roll = DieRollRecord{
+                    .type = RollType::WAR_EVENT,
+                    .roller = p,
+                    .card_id = card_ids::BRUSH_WAR,
+                    .country_id = cid,
+                    .roll1 = roll,
+                    .mod1 = static_cast<int8_t>(mod),
+                    .roll2 = 0,
+                    .mod2 = 3,
+                    .success = success,
+                    .net_delta = static_cast<int8_t>(success ? 1 : 0)
+                };
+                if (success) {
+                    int32_t vp_delta = (p == Player::US) ? 1 : -1;
+                    state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
+                    uint8_t opp_inf = state.countries[cid].get_influence(opp);
+                    state.countries[cid].remove_influence(opp, opp_inf);
+                    state.countries[cid].add_influence(p, opp_inf);
+                    if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
+
+                if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                    if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
+                state.ctx().resolving_card = 0;
+                return true;
             }
-
-            if (p == Player::US) state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 3));
-            else state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 3));
-
-            Player opp = get_opponent(p);
-            int16_t mod = 0;
-            for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
-                if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
-            }
-
-            uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
-            state.last_die_roll = roll;
-            bool success = (roll + mod >= 3);
-            state.last_roll = DieRollRecord{
-                .type = RollType::WAR_EVENT,
-                .roller = p,
-                .card_id = card_ids::BRUSH_WAR,
-                .country_id = cid,
-                .roll1 = roll,
-                .mod1 = static_cast<int8_t>(mod),
-                .roll2 = 0,
-                .mod2 = 3,
-                .success = success,
-                .net_delta = static_cast<int8_t>(success ? 1 : 0)
-            };
-            if (success) {
-                int32_t vp_delta = (p == Player::US) ? 1 : -1;
-                state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
-                uint8_t opp_inf = state.countries[cid].get_influence(opp);
-                state.countries[cid].remove_influence(opp, opp_inf);
-                state.countries[cid].add_influence(p, opp_inf);
-                if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-            }
-
-            if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
-                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-            }
-
-            state.ctx().resolving_card = 0;
             return true;
         }
-
         case card_ids::SALT_NEGOTIATIONS: {
             uint8_t card_retrieved = action.primary_id;
             if (card_retrieved >= 1 && card_retrieved <= 110 && state.card_locations[card_retrieved] == CardLocation::DISCARD_PILE) {
@@ -782,23 +901,92 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::SUMMIT: {
-            if (action.primary_id == 0) {
-                state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
-            } else if (action.primary_id == 1) {
-                if (state.defcon > 1) {
-                    state.defcon--;
-                    if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+            if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                uint8_t us_dom_count = 0;
+                uint8_t ussr_dom_count = 0;
+
+                for (uint8_t r = 0; r < 6; ++r) {
+                    auto summary = Scoring::evaluate_region(state, static_cast<Region>(r));
+                    if (summary.us_status == RegionalStatus::DOMINATION || summary.us_status == RegionalStatus::CONTROL) {
+                        us_dom_count++;
+                    }
+                    if (summary.ussr_status == RegionalStatus::DOMINATION || summary.ussr_status == RegionalStatus::CONTROL) {
+                        ussr_dom_count++;
+                    }
+                }
+
+                uint8_t forced_us = (action.primary_id >= 1 && action.primary_id <= 6) ? action.primary_id : 0;
+                uint8_t forced_ussr = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : 0;
+                uint8_t us_roll = (forced_us > 0) ? forced_us : Prng::roll_d6(state.rng_state);
+                uint8_t ussr_roll = (forced_ussr > 0) ? forced_ussr : Prng::roll_d6(state.rng_state);
+                state.last_die_roll = us_roll;
+                state.last_opp_die_roll = ussr_roll;
+
+                int16_t us_total = us_roll + us_dom_count;
+                int16_t ussr_total = ussr_roll + ussr_dom_count;
+
+                bool us_wins = (us_total > ussr_total);
+                bool ussr_wins = (ussr_total > us_total);
+                Player summit_winner = us_wins ? Player::US : (ussr_wins ? Player::USSR : Player::NONE);
+
+                state.last_roll = DieRollRecord{
+                    .type = RollType::SUMMIT,
+                    .roller = p,
+                    .card_id = card_ids::SUMMIT,
+                    .country_id = 255,
+                    .roll1 = us_roll,
+                    .mod1 = static_cast<int8_t>(us_dom_count),
+                    .roll2 = ussr_roll,
+                    .mod2 = static_cast<int8_t>(ussr_dom_count),
+                    .success = (summit_winner != Player::NONE),
+                    .net_delta = static_cast<int8_t>(us_wins ? 2 : (ussr_wins ? -2 : 0))
+                };
+
+                if (us_total == ussr_total) {
+                    state.ctx().resolving_card = 0;
+                    return true;
+                }
+
+                if (us_total > ussr_total) {
+                    state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
+                    if (state.victory_points >= 20) {
+                        state.current_phase = Phase::GAME_OVER;
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
+                    state.ctx().decision_player = Player::US;
+                    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+                    return false;
+                } else {
+                    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                    if (state.victory_points <= -20) {
+                        state.current_phase = Phase::GAME_OVER;
+                        state.ctx().resolving_card = 0;
+                        return true;
+                    }
+                    state.ctx().decision_player = Player::USSR;
+                    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+                    return false;
+                }
+            } else if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
+                if (action.primary_id == 0) {
+                    state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
+                } else if (action.primary_id == 1) {
+                    if (state.defcon > 1) {
+                        state.defcon--;
+                        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+                    }
                     if (state.defcon == 1) {
-                        Player loser = state.phasing_player;
+                        Player loser = state.ctx().decision_player;
                         state.victory_points = (loser == Player::US) ? -20 : 20;
                         state.current_phase = Phase::GAME_OVER;
                     }
                 }
+                state.ctx().resolving_card = 0;
+                return true;
             }
-            state.ctx().resolving_card = 0;
             return true;
         }
-
         case card_ids::HOW_I_LEARNED_TO_STOP_WORRYING: {
             uint8_t new_defcon = std::clamp(action.primary_id, static_cast<uint8_t>(1), static_cast<uint8_t>(5));
             state.defcon = new_defcon;
@@ -1184,50 +1372,61 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::IRAN_IRAQ_WAR: {
-            uint8_t target_cid = action.primary_id;
-            if (target_cid != countries::IRAN && target_cid != countries::IRAQ) return false;
-            Player opp = get_opponent(p);
-            if (p == Player::US) state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 2));
-            else state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
+            if (state.ctx().decision_type == DecisionType::POINT_NODE) {
+                uint8_t target_cid = action.primary_id;
+                if (target_cid != countries::IRAN && target_cid != countries::IRAQ) return false;
+                state.ctx().temp_cards[0] = target_cid;
+                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
+                state.ctx().temp_cards[2] = action.secondary_id;
+                state.ctx().temp_cards[3] = (p == Player::US) ? 1 : 2;
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
+                return false;
+            } else if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                uint8_t target_cid = state.ctx().temp_cards[0];
+                Player opp = get_opponent(p);
+                if (p == Player::US) state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + 2));
+                else state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + 2));
 
-            int16_t mod = 0;
-            const auto& c_info = MapData::get_country(target_cid);
-            for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
-                if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
-            }
-            uint8_t roll = (action.secondary_id > 0) ? action.secondary_id : Prng::roll_d6(state.rng_state);
-            state.last_die_roll = roll;
-            bool success = (roll + mod >= 4);
-            state.last_roll = DieRollRecord{
-                .type = RollType::WAR_EVENT,
-                .roller = p,
-                .card_id = card_ids::IRAN_IRAQ_WAR,
-                .country_id = target_cid,
-                .roll1 = roll,
-                .mod1 = static_cast<int8_t>(mod),
-                .roll2 = 0,
-                .mod2 = 4,
-                .success = success,
-                .net_delta = static_cast<int8_t>(success ? 2 : 0)
-            };
-            if (success) {
-                int32_t vp_delta = (p == Player::US) ? 2 : -2;
-                state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
-                uint8_t opp_inf = state.countries[target_cid].get_influence(opp);
-                state.countries[target_cid].remove_influence(opp, opp_inf);
-                state.countries[target_cid].add_influence(p, opp_inf);
-                if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
-            }
+                int16_t mod = 0;
+                const auto& c_info = MapData::get_country(target_cid);
+                for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
+                    if (Scoring::is_controlled_by(state, c_info.neighbors[i], opp)) mod--;
+                }
+                uint8_t forced_roll = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t roll = (forced_roll > 0) ? forced_roll : Prng::roll_d6(state.rng_state);
+                state.last_die_roll = roll;
+                bool success = (roll + mod >= 4);
+                state.last_roll = DieRollRecord{
+                    .type = RollType::WAR_EVENT,
+                    .roller = p,
+                    .card_id = card_ids::IRAN_IRAQ_WAR,
+                    .country_id = target_cid,
+                    .roll1 = roll,
+                    .mod1 = static_cast<int8_t>(mod),
+                    .roll2 = 0,
+                    .mod2 = 4,
+                    .success = success,
+                    .net_delta = static_cast<int8_t>(success ? 2 : 0)
+                };
+                if (success) {
+                    int32_t vp_delta = (p == Player::US) ? 2 : -2;
+                    state.victory_points = static_cast<int8_t>(std::clamp(static_cast<int32_t>(state.victory_points) + vp_delta, -20, 20));
+                    uint8_t opp_inf = state.countries[target_cid].get_influence(opp);
+                    state.countries[target_cid].remove_influence(opp, opp_inf);
+                    state.countries[target_cid].add_influence(p, opp_inf);
+                    if (state.victory_points >= 20 || state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
 
-            if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
-                state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-                if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                if (p == Player::US && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                    state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+                    if (state.victory_points <= -20) state.current_phase = Phase::GAME_OVER;
+                }
+                state.ctx().resolving_card = 0;
+                return true;
             }
-
-            state.ctx().resolving_card = 0;
             return true;
         }
-
         case card_ids::THE_CAMBRIDGE_FIVE: {
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
