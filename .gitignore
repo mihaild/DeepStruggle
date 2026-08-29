@@ -4,7 +4,6 @@ rules/
 # Build & CMake
 build*/
 bin/
-lib/
 CMakeUserPresets.json
 compile_commands.json
 
