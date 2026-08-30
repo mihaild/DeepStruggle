@@ -205,6 +205,7 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     CHECK_FLAG(SPACE_USSR_ATTEMPT_1, "SPACE_USSR_ATTEMPT_1");
     CHECK_FLAG(SPACE_USSR_ATTEMPT_2, "SPACE_USSR_ATTEMPT_2");
     CHECK_FLAG(DEFCON_SUICIDE_PROVOKED, "DEFCON_SUICIDE_PROVOKED");
+    CHECK_FLAG(CMC_SUICIDE_LOSS, "CMC_SUICIDE_LOSS");
     #undef CHECK_FLAG
     d["flags"] = flags;
     d["persistent_effects"] = state.persistent_effects;
@@ -946,4 +947,5 @@ NB_MODULE(ts_engine, m) {
     eb.attr("SPACE_USSR_ATTEMPT_1") = ts::effect_bits::SPACE_USSR_ATTEMPT_1;
     eb.attr("SPACE_USSR_ATTEMPT_2") = ts::effect_bits::SPACE_USSR_ATTEMPT_2;
     eb.attr("DEFCON_SUICIDE_PROVOKED") = ts::effect_bits::DEFCON_SUICIDE_PROVOKED;
+    eb.attr("CMC_SUICIDE_LOSS") = ts::effect_bits::CMC_SUICIDE_LOSS;
 }

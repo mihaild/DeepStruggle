@@ -282,6 +282,7 @@ namespace effect_bits {
     constexpr uint64_t SPACE_USSR_ATTEMPT_1        = 1ULL << 45; // USSR 1st space race attempt used this turn
     constexpr uint64_t SPACE_USSR_ATTEMPT_2        = 1ULL << 46; // USSR 2nd space race attempt used this turn
     constexpr uint64_t DEFCON_SUICIDE_PROVOKED     = 1ULL << 47; // DEFCON degraded to 1 by opponent action (event trap)
+    constexpr uint64_t CMC_SUICIDE_LOSS            = 1ULL << 48; // Lost by couping under Cuban Missile Crisis without the influence to cancel it
 
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |

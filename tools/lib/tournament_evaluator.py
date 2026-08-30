@@ -15,6 +15,13 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     - final scoring
     - wargames
     """
+    # 0. Cuban Missile Crisis suicide: couping while CMC is active without the influence
+    # to cancel it. The engine ends the game at +/-20 VP and deliberately leaves DEFCON
+    # alone, so without this check the loss is indistinguishable from a legitimate 20 VP
+    # win -- and it is a self-inflicted loss, not a win by anyone's play.
+    if state.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
+        return "DEFCON 1 (own decision)"
+
     # 1. DEFCON 1 (Takes absolute precedence over VP)
     if state.defcon <= 1:
         is_provoked = state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)

@@ -219,6 +219,12 @@ class TsVectorizedEnv:
                     held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
                 elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
                     defcon_blunder[i] = int(st.phasing_player)
+                elif st.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
+                    # Couping under Cuban Missile Crisis. The engine ends the game without
+                    # touching DEFCON, so the check above cannot see it, and these
+                    # self-inflicted losses were being credited as ordinary outcomes
+                    # instead of windowed as blunders.
+                    defcon_blunder[i] = int(st.phasing_player)
                 ending_reasons[i] = _classify_ending(
                     st, bool(held_scoring_us[i] or held_scoring_ussr[i])
                 )

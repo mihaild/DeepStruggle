@@ -177,7 +177,12 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
             state.countries[countries::CUBA].remove_influence(Player::USSR, 2);
             state.clear_flag(effect_bits::CMC_ACTIVE_US);
         } else {
-            // USSR loses immediately!
+            // USSR loses immediately. DEFCON is deliberately NOT set to 1: this is a Cuban
+            // Missile Crisis loss, not a thermonuclear one. The flag records it so the loss
+            // is distinguishable from a legitimate 20 VP win, which otherwise looks
+            // identical from the outside -- same victory_points, same GAME_OVER, DEFCON
+            // untouched.
+            state.set_flag(effect_bits::CMC_SUICIDE_LOSS);
             state.victory_points = 20;
             state.current_phase = Phase::GAME_OVER;
             res.caused_defcon_suicide = true;
@@ -192,7 +197,8 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
             state.countries[countries::TURKEY].remove_influence(Player::US, 2);
             state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
         } else {
-            // US loses immediately!
+            // US loses immediately. See the note above on why DEFCON stays put.
+            state.set_flag(effect_bits::CMC_SUICIDE_LOSS);
             state.victory_points = -20;
             state.current_phase = Phase::GAME_OVER;
             res.caused_defcon_suicide = true;
