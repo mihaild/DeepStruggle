@@ -184,11 +184,12 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             if (done) state.pop_context();
             return done;
         } else {
-            // Use for Ops
+            // Use for Ops (opponent event does NOT occur)
             state.ctx().pending_op_card = chosen_card;
             state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
             state.ctx().decision_player = p;
             state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+            state.ctx().timing_branch = 255;
             state.ctx().resolving_card = 0;
             return false;
         }

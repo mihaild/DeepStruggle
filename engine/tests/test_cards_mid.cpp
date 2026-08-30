@@ -192,6 +192,97 @@ TEST(MidCardsTest, Card48_KitchenDebates_Lead) {
 }
 
 // Card 49: Missile Envy
+TEST(MidCardsTest, Card49_MissileEnvy_OpponentCardNoEvent) {
+    ts::GameState state{};
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US; // 3 Ops US card
+    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US; // 2 Ops
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::CardLocation::HAND_USSR;
+    state.phasing_player = ts::Player::USSR;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.defcon = 2;
+    state.victory_points = 0;
+    state.countries[ts::countries::URUGUAY].ussr_influence = 1;
+
+    // USSR triggers Missile Envy event
+    ts::CardHandlers::trigger_event(state, ts::card_ids::MISSILE_ENVY, ts::Player::USSR);
+
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
+    ASSERT_EQ(state.ctx().pending_ops_value, 3);
+
+    // USSR spends 3 Ops on Influence
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0));
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+
+    // Duck and Cover event must NOT fire: DEFCON must remain 2, VP remains 0, game not over
+    ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);
+    ASSERT_EQ(state.defcon, 2);
+    ASSERT_EQ(state.victory_points, 0);
+    ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 42);
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US || state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.forced_card_player = ts::Player::US;
+    state.forced_card_id = ts::card_ids::MISSILE_ENVY;
+    state.phasing_player = ts::Player::US;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    state.countries[ts::countries::URUGUAY].us_influence = 1;
+
+    // At SELECT_CARD, US must ONLY be allowed to select Missile Envy
+    uint8_t card_mask[112] = {0};
+    size_t card_out_size = 0;
+    ts::ActionMask::generate_mask(state, card_mask, &card_out_size);
+    ASSERT_EQ(card_mask[ts::card_ids::MISSILE_ENVY], 1);
+    ASSERT_EQ(card_mask[ts::card_ids::FIDEL], 0);
+    ASSERT_EQ(card_mask[ts::card_ids::DUCK_AND_COVER], 0);
+
+    // US selects forced Missile Envy
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::MISSILE_ENVY, 0, 0));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+
+    uint8_t mask[4] = {0};
+    size_t out_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &out_size);
+
+    // PlayMode::OPS (index 1) must be legal (1).
+    // PlayMode::EVENT (index 0) and PlayMode::SPACE (index 2) must be ILLEGAL (0).
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0);
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 0);
+
+    // Attempting EVENT must fail
+    bool event_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    ASSERT_FALSE(event_accepted);
+
+    // Step OPS (index 1)
+    bool ops_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+    ASSERT_TRUE(ops_accepted);
+
+    // Spend 2 ops on influence
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0));
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+
+    // After play completes:
+    ASSERT_EQ(state.forced_card_id, 0);
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
+    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::DISCARD_PILE);
+}
+
 TEST(MidCardsTest, Card49_MissileEnvy_SingleHighest) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);

@@ -141,6 +141,12 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
+            // Forced play (Missile Envy recipient must play for Operations)
+            if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
+                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                return;
+            }
+
             // Defectors cannot be played as an event by US during Action Round
             if (card == card_ids::DEFECTORS && p == Player::US && state.current_phase == Phase::ACTION_ROUND) {
                 mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;

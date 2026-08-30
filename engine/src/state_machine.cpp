@@ -586,11 +586,6 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
                 state.ctx().pending_op_card = card;
 
-                if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == 0)) {
-                    state.forced_card_player = Player::NONE;
-                    state.forced_card_id = 0;
-                }
-
                 // Quagmire / Bear Trap handling
                 bool trapped = (p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
                                (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE));
@@ -598,6 +593,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 if (trapped) {
                     const auto& c_info = CardData::get_card(card);
                     if (c_info.ops >= 2) {
+                        if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == 0)) {
+                            state.forced_card_player = Player::NONE;
+                            state.forced_card_id = 0;
+                        }
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
                         state.ctx().temp_cards[0] = card;
                         state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::TRAP_ESCAPE);
@@ -639,6 +638,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             case DecisionType::SELECT_PLAY_MODE: {
                 uint8_t card = state.ctx().pending_op_card;
                 PlayMode mode = static_cast<PlayMode>(action.primary_id);
+
+                // Forced play (Missile Envy recipient must play for Operations)
+                if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
+                    if (mode != PlayMode::OPS) {
+                        return false;
+                    }
+                }
 
                 // We Will Bury You check on US Action Round when playing UN Intervention
                 if (p == Player::US && state.current_phase == Phase::ACTION_ROUND && state.has_flag(effect_bits::WE_WILL_BURY_YOU_PENDING)) {
@@ -685,6 +691,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::OPS) {
+                    if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY || state.forced_card_id == 0)) {
+                        state.forced_card_player = Player::NONE;
+                        state.forced_card_id = 0;
+                    }
                     if (p == Player::US && CardData::is_war_card(card) && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
                         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
                         if (state.victory_points <= -20) {

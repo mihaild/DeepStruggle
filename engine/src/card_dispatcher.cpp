@@ -851,6 +851,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p_player);
                 state.ctx().decision_player = p_player;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                state.ctx().timing_branch = 255;
                 state.ctx().resolving_card = 0;
                 return false;
             }

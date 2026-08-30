@@ -106,3 +106,87 @@ def test_the_card_passes_to_the_opponent_who_must_play_it() -> None:
         ts.Engine.step_flat(st, int(legal[0]))
 
     pytest.fail("the US never reached a card-selection node")
+
+def test_duck_and_cover_event_does_not_trigger_when_ussr_completes_ops() -> None:
+    """Bug 1 reproduction: When USSR takes Duck and Cover via Missile Envy, USSR gets Ops and NO event occurs."""
+    st = PositionBuilder(
+        hand=[MISSILE_ENVY, 14, 16], side=ts.Player.USSR, turn=6, defcon=2,
+        opponent_hand=[DUCK_AND_COVER, 1, 2],
+        influence=[(83, ts.Player.USSR, 1)],
+    ).build()
+
+    # USSR plays Missile Envy for Event
+    ts.Engine.step_flat(st, MISSILE_ENVY - 1)
+    ts.Engine.step_flat(st, PLAY_MODE_ACTION["event"])
+
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
+    assert st.ctx().decision_player == ts.Player.USSR
+    assert int(st.ctx().pending_op_card) == DUCK_AND_COVER
+    assert int(st.ctx().pending_ops_value) == 3
+
+    # USSR uses Ops for Influence
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0))
+    # Place 3 influence in Uruguay (#83)
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+
+    # Duck and Cover event MUST NOT have triggered:
+    # 1. Game must NOT be over (DEFCON did not drop to 1)
+    assert not ts.Engine.is_terminal(st), "DEFCON 1 suicide must not occur because opponent event should not trigger"
+    assert int(st.defcon) == 2, "DEFCON must remain at 2 (no Duck and Cover event)"
+    assert int(st.victory_points) == 0, "US must not gain VP from Duck and Cover"
+    assert st.get_card_location(DUCK_AND_COVER) == ts.CardLocation.DISCARD_PILE
+
+
+def test_forced_missile_envy_can_only_be_played_for_ops() -> None:
+    """Bug 2 reproduction: The recipient of Missile Envy MUST use it for Operations on their next AR (no Event, no Space)."""
+    st = PositionBuilder(
+        hand=[MISSILE_ENVY, 14, 16], side=ts.Player.USSR, turn=6, defcon=4,
+        opponent_hand=[DUCK_AND_COVER, 1, 2],
+        influence=[(83, ts.Player.USSR, 1)],
+    ).build()
+
+    # USSR plays Missile Envy for Event
+    ts.Engine.step_flat(st, MISSILE_ENVY - 1)
+    ts.Engine.step_flat(st, PLAY_MODE_ACTION["event"])
+
+    # USSR spends Ops (Influence)
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+
+    # Advance to US turn
+    assert st.phasing_player == ts.Player.US
+    assert int(st.forced_card_id) == MISSILE_ENVY
+    assert st.forced_card_player == ts.Player.US
+
+    # At SELECT_CARD, US must ONLY be allowed to select Missile Envy, even holding other cards (1, 2)
+    card_mask = ActionEncoder.get_legal_mask(st)
+    legal_cards = [int(a) + 1 for a in np.flatnonzero(card_mask) if a < 110]
+    assert legal_cards == [MISSILE_ENVY], f"US must be forced to select only Missile Envy, got {legal_cards}"
+
+    # US selects Missile Envy
+    ts.Engine.step_flat(st, MISSILE_ENVY - 1)
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
+
+    # Legal play modes must ONLY include OPS (flat action 111)
+    mask = ActionEncoder.get_legal_mask(st)
+    legal_actions = np.flatnonzero(mask)
+
+    assert 111 in legal_actions, "PlayMode::OPS (111) must be legal"
+    assert 110 not in legal_actions, "PlayMode::EVENT (110) must be ILLEGAL when forced to play for Ops"
+    assert 112 not in legal_actions, "PlayMode::SPACE (112) must be ILLEGAL when forced to play for Ops"
+
+    # Step OPS (111) and place influence
+    ts.Engine.step_flat(st, PLAY_MODE_ACTION["ops"])
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+
+    # After forced play completes:
+    assert int(st.forced_card_id) == 0, "forced_card_id must be cleared after playing"
+    assert st.forced_card_player == ts.Player.NONE, "forced_card_player must be cleared after playing"
+    assert st.get_card_location(MISSILE_ENVY) == ts.CardLocation.DISCARD_PILE, "Missile Envy must be discarded after ops"
+
