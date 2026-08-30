@@ -131,6 +131,17 @@ def generate_self_play_replay(
         phase_before = str(state.current_phase).replace("Phase.", "")
 
         ok = ts.Engine.step_flat(state, action_idx)
+
+        # Resolve any chance nodes the action lands on, exactly as the vectorized runner
+        # does in VectorizedBatchRunner::step_flat_all. Asking the agent to choose at a
+        # ROLL_DIE node instead is not equivalent: for Summit (#45) it leaves the engine
+        # with a different phasing_player, which changes who acts next and who loses a
+        # DEFCON-1 ending, and games collapse to a fraction of their true length.
+        while (not ts.Engine.is_terminal(state)
+               and state.ctx().decision_player == ts.Player.NONE
+               and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+            ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
         state_after_dict: GameStateDict = cast(GameStateDict, ts.state_to_dict(state))
 
         replay_logger.log_step(
