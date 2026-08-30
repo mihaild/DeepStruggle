@@ -158,6 +158,11 @@ class TsVectorizedEnv:
         # Rule 4.4 Held scoring card detection for terminal states
         held_scoring_us = np.zeros(self.num_envs, dtype=bool)
         held_scoring_ussr = np.zeros(self.num_envs, dtype=bool)
+        # Unprovoked DEFCON-1 suicide: the player who chose the losing action, else 0.
+        # A provoked suicide stays 0 on purpose. There the phasing player was forced to fire
+        # an opponent-associated event, so the mistake lies in the earlier card management
+        # rather than the final move, and its credit must keep propagating backwards.
+        defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         if np.any(dones):
             for i in range(self.num_envs):
                 if dones[i]:
@@ -165,6 +170,8 @@ class TsVectorizedEnv:
                     if ts.Engine.is_held_scoring_game_over(st):
                         held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
                         held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+                    elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
+                        defcon_blunder[i] = int(st.phasing_player)
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
@@ -224,6 +231,7 @@ class TsVectorizedEnv:
         info["turns"] = acting_turns
         info["held_scoring_us"] = held_scoring_us
         info["held_scoring_ussr"] = held_scoring_ussr
+        info["defcon_blunder"] = defcon_blunder
         info["dones"] = dones
 
         return obs, masks, rewards, dones, info

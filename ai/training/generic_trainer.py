@@ -208,6 +208,7 @@ def train_pipeline(
     curriculum_switch_seconds: Optional[int] = None,
     curriculum_switch_fraction: float = 0.5,
     slice_turn_boundaries: Optional[bool] = None,
+    blunder_window: bool = True,
     ref_update_freq: int = 200_000,
 ) -> None:
     dev = resolve_device(device)
@@ -314,9 +315,11 @@ def train_pipeline(
         num_epochs=4,
         ref_update_freq=ref_update_freq,
         max_grad_norm=1.0,
-        slice_turn_boundaries=(
-            (reward_scheme == "blunder_aware") if slice_turn_boundaries is None else slice_turn_boundaries
-        ),
+        # "auto" (None) means: rely on per-episode blunder windowing, not the blunt
+        # global truncation. Global slicing measurably degrades the policy -- it strips
+        # the outcome signal from clean wins too -- so it is opt-in for ablations only.
+        slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
+        blunder_window=blunder_window,
         temperature_schedule=True,
         device=dev,
     )
@@ -366,7 +369,7 @@ def train_pipeline(
         if is_curriculum and not curriculum_switched and elapsed >= curriculum_switch_at:
             curriculum_switched = True
             trainer.set_reward_calculator(BlunderAwareRewardCalculator())
-            trainer.set_slice_turn_boundaries(True if slice_turn_boundaries is None else slice_turn_boundaries)
+            trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with BlunderAwareRewardCalculator at elapsed={elapsed:.1f}s / {duration_seconds}s", flush=True)
             print(f"{'=' * 80}\n", flush=True)

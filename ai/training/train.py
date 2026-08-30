@@ -50,7 +50,9 @@ def main():
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
     parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
     parser.add_argument("--slice-turn-boundaries", type=str, default="auto", choices=["auto", "on", "off"],
-                        help="Truncate GAE bootstrapping at game-turn boundaries. 'auto' (default) enables it for blunder_aware, matching historical behaviour. Note this truncates the outcome signal for ALL episodes, including clean wins, not only blunder losses.")
+                        help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off and relies on per-episode blunder windowing instead.")
+    parser.add_argument("--no-blunder-window", action="store_true",
+                        help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
@@ -87,6 +89,7 @@ def main():
             curriculum_switch_fraction=args.curriculum_switch_fraction,
             slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
             ref_update_freq=args.ref_update_freq,
+            blunder_window=not args.no_blunder_window,
         )
     elif args.mode == "warmup":
         if not args.warmup_dataset:

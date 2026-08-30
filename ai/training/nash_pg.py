@@ -45,6 +45,7 @@ class BaseNashPGTrainer:
         ref_update_freq: int = 200_000,# Outer-loop reference update frequency in steps
         max_grad_norm: float = 1.0,
         slice_turn_boundaries: bool = False,
+        blunder_window: bool = True,
         temperature_schedule: bool = True,
         device: torch.device | str = "cuda",
     ):
@@ -72,6 +73,7 @@ class BaseNashPGTrainer:
         self.ref_update_freq = ref_update_freq
         self.max_grad_norm = max_grad_norm
         self.slice_turn_boundaries = slice_turn_boundaries
+        self.blunder_window = blunder_window
         self.temperature_schedule = temperature_schedule
 
         self.optimizer = torch.optim.AdamW(self.active_net.parameters(), lr=lr, weight_decay=1e-4)
@@ -172,6 +174,7 @@ class BaseNashPGTrainer:
                 vps=torch.from_numpy(self._info["victory_points"]).float().to(self.device) if "victory_points" in self._info else None,
                 held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device) if "held_scoring_us" in self._info else None,
                 held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device) if "held_scoring_ussr" in self._info else None,
+                defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
                 opp_hands=opp_hands,
             )
 
@@ -197,6 +200,7 @@ class BaseNashPGTrainer:
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             slice_turn_boundaries=self.slice_turn_boundaries,
+            blunder_window=self.blunder_window,
         )
 
         steps_collected = self.buffer_size * self.num_envs

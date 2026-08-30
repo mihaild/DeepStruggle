@@ -36,6 +36,7 @@ class RolloutBuffer:
         self.vps = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
         self.held_scoring_ussr = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
+        self.defcon_blunder = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
         self.opp_hands = torch.zeros((buffer_size, num_envs, 110), dtype=torch.float32, device=self.device)
 
         # Computed targets
@@ -66,6 +67,7 @@ class RolloutBuffer:
         vps: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
+        defcon_blunder: Optional[np.ndarray | torch.Tensor] = None,
         opp_hands: Optional[np.ndarray | torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
@@ -109,6 +111,10 @@ class RolloutBuffer:
             if isinstance(held_scoring_ussr, np.ndarray):
                 held_scoring_ussr = torch.from_numpy(held_scoring_ussr)
             self.held_scoring_ussr[self.step].copy_(held_scoring_ussr)
+        if defcon_blunder is not None:
+            if isinstance(defcon_blunder, np.ndarray):
+                defcon_blunder = torch.from_numpy(defcon_blunder)
+            self.defcon_blunder[self.step].copy_(defcon_blunder)
         if opp_hands is not None:
             if isinstance(opp_hands, np.ndarray):
                 opp_hands = torch.from_numpy(opp_hands)
@@ -127,10 +133,25 @@ class RolloutBuffer:
         gamma: float = 0.999,
         gae_lambda: float = 0.98,
         slice_turn_boundaries: bool = False,
+        blunder_window: bool = True,
     ) -> None:
-        """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment."""
+        """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
+
+        Credit for an *unprovoked* blunder loss -- holding a scoring card past the end of a
+        turn, or driving DEFCON to 1 by one's own choice -- is confined to the turn the
+        blunder happened in, and the opponent is shielded from the resulting windfall. The
+        play that preceded the blunder was not necessarily bad, and the opponent did not
+        earn the win, so neither should be credited for it.
+
+        This is deliberately conditional on the episode actually ending in a blunder.
+        ``slice_turn_boundaries`` applies the same truncation to *every* episode including
+        clean wins, which strips the outcome signal from all but the final turn of the
+        ~80% of games that end normally; it is retained only as an ablation knob and
+        defaults off.
+        """
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
 
+        # Pending blunder window, armed at a terminal step and disarmed at the turn boundary.
         pending_hs_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         pending_hs_us = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         pending_hs_ussr = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -156,13 +177,23 @@ class RolloutBuffer:
                     turn_boundary_mask = (self.turns[t] == self.turns[t + 1]).float()
                     non_terminal = non_terminal * turn_boundary_mask
 
-            # Update pending held scoring blunder states for terminal steps
+            # Arm/disarm the blunder window at terminal steps. Held scoring can implicate
+            # both players at once; an unprovoked DEFCON-1 suicide implicates exactly the
+            # player who chose it.
             for e in range(self.num_envs):
                 if self.dones[t, e]:
-                    if self.held_scoring_us[t, e] or self.held_scoring_ussr[t, e]:
+                    blunder_us = bool(self.held_scoring_us[t, e])
+                    blunder_ussr = bool(self.held_scoring_ussr[t, e])
+                    if blunder_window:
+                        db = int(self.defcon_blunder[t, e])
+                        if db == 1:
+                            blunder_us = True
+                        elif db == -1:
+                            blunder_ussr = True
+                    if blunder_window and (blunder_us or blunder_ussr):
                         pending_hs_active[e] = True
-                        pending_hs_us[e] = self.held_scoring_us[t, e]
-                        pending_hs_ussr[e] = self.held_scoring_ussr[t, e]
+                        pending_hs_us[e] = blunder_us
+                        pending_hs_ussr[e] = blunder_ussr
                         pending_hs_turn[e] = self.turns[t, e]
                     else:
                         pending_hs_active[e] = False
