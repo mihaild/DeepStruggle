@@ -33,26 +33,50 @@ def validate_legal_choices(state_dict: Dict[str, Any]) -> List[str]:
         china = state_dict.get("china_card", {})
         discard = state_dict.get("discard_pile", [])
 
+        opp_player = "USSR" if d_player == "US" else "US"
+        opp_hand = state_dict.get("hands", {}).get(f"{opp_player}_cards", [])
+        opp_hand_ids = [c["id"] for c in opp_hand] if opp_hand and isinstance(opp_hand[0], dict) else [c for c in opp_hand]
+
         if res_card in (43, 85):  # SALT_NEGOTIATIONS, STAR_WARS (pick from discard)
             for cid in valid_ids:
                 if cid > 0 and cid not in discard:
-                    violations.append(f"Card #{cid} proposed from discard for card #{res_card} but not in discard {discard}")
+                    violations.append(f"Card #{cid} proposed from discard for card #{res_card} ({ctx.get('resolving_card_name')}) but not in discard {discard}")
         elif res_card == 108:  # OUR_MAN_IN_TEHRAN
             pass
+        elif res_card == 98:  # ALDRICH_AMES (USSR chooses from US hand)
+            for cid in valid_ids:
+                if cid > 0 and cid not in opp_hand_ids:
+                    violations.append(f"Card #{cid} proposed to {d_player} for Aldrich Ames (#{res_card}) but not in opponent hand {opp_hand_ids}")
+        elif res_card == 49:  # MISSILE_ENVY
+            for cid in valid_ids:
+                if cid > 0 and cid not in opp_hand_ids and cid not in hand_ids:
+                    violations.append(f"Card #{cid} proposed to {d_player} for Missile Envy (#{res_card}) but not in hand {hand_ids} or opp {opp_hand_ids}")
         elif res_card == 10:  # BLOCKADE
             for cid in valid_ids:
                 if cid > 0 and cid not in hand_ids:
                     violations.append(f"Blockade proposed card #{cid} but not in hand {hand_ids}")
+        elif res_card == 95:  # LATIN_AMERICAN_DEBT_CRISIS
+            for cid in valid_ids:
+                if cid > 0 and cid not in hand_ids:
+                    violations.append(f"Latin American Debt Crisis proposed card #{cid} but not in hand {hand_ids}")
+        elif res_card == 77:  # ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU
+            for cid in valid_ids:
+                if cid > 0 and cid not in hand_ids:
+                    violations.append(f"Ask Not proposed card #{cid} but not in hand {hand_ids}")
         elif res_card == 250:  # Space Walk discard
-            pass
+            for cid in valid_ids:
+                if cid > 0 and cid not in hand_ids:
+                    violations.append(f"Space Walk discard proposed card #{cid} but not in hand {hand_ids}")
         else:
             for cid in valid_ids:
-                if cid == 6:  # China Card
+                if cid == 0:
+                    pass
+                elif cid == 6:  # China Card
                     if china.get("holder") != d_player or not china.get("playable", False):
-                        violations.append(f"The China Card proposed to {d_player} but holder={china.get('holder')}, playable={china.get('playable')}")
+                        violations.append(f"The China Card proposed to {d_player} (res_card={res_card}) but holder={china.get('holder')}, playable={china.get('playable')}")
                 else:
                     if phase != 0 and cid not in hand_ids and ctx.get("pending_op_card") != cid:
-                        violations.append(f"Card #{cid} proposed to {d_player} but not in hand {hand_ids}")
+                        violations.append(f"Card #{cid} proposed to {d_player} (res_card={res_card}) but not in hand {hand_ids}")
 
     # 2. SELECT_PLAY_MODE
     elif d_type == 2:
