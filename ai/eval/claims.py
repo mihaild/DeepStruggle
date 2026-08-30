@@ -4,6 +4,20 @@ Only claims whose precondition is mechanically checkable and whose answer key su
 review are encoded here. Each carries its claim id so a failure points straight back at
 the documented rationale.
 
+Tiers separate two very different kinds of mistake:
+
+* ``L`` -- **instant loss**. The action ends the game immediately with the acting player
+  losing: firing a DEFCON-degrading event at DEFCON 2, or handing the opponent a free
+  battleground coup there. Verified by stepping the engine to a terminal state. These are
+  objective and catastrophic, so they carry a much tighter probability ceiling.
+* ``S`` -- **strategic waste**. The action is poor value but not fatal: burning a 4-Ops
+  card on a weak event, or triggering an event whose effect is already achieved. Real
+  mistakes, but a policy can be competent overall while occasionally making them.
+* ``B`` -- **comparative preference**. An ordering between two options in one position.
+
+Mixing L and S in a single pass rate hides the thing that matters most, since a policy
+that never loses outright but wastes Ops is in far better shape than the reverse.
+
 Note on phrasing: an opponent-associated card can never be played *as* an event
 (`action_mask.cpp` offers EVENT mode only when `!is_opponent_card`). Playing it for Ops is
 what fires the owner's event. So claims about "USSR triggering a US event" are encoded as
@@ -30,12 +44,19 @@ COMECON = 14
 ROMANIAN_ABDICATION = 12
 FIVE_YEAR_PLAN = 5
 NUCLEAR_TEST_BAN = 34
+ORTEGA = 91
 
 # Country ids
 FRANCE = 8
 JAPAN = 45
 POLAND = 15
 EAST_GERMANY = 14
+CUBA = 71
+
+# An instant loss must be all but absent from the distribution; strategic waste is a
+# softer claim, so it gets the looser ceiling.
+LOSS_CEILING = 0.05
+STRATEGY_CEILING = 0.20
 
 EVENT = PLAY_MODE_ACTION["event"]
 OPS = PLAY_MODE_ACTION["ops"]
@@ -54,8 +75,8 @@ def build_claims() -> List[BehavioralTest]:
             hand=[NATO, MARSHALL_PLAN, US_JAPAN], side=ts.Player.US,
             flags=[ts.EffectBits.WARSAW_PACT_PLAYED], turn=2, defcon=3, victory_points=2),
         play_card_first=NATO,
-        assertion=NeverArgmax(EVENT, "NATO as event"),
-        tier="A",
+        assertion=NeverArgmax(EVENT, "NATO as event", max_prob=STRATEGY_CEILING),
+        tier="S",
     ))
 
     # --- a-04: US/Japan is only worth the event if the USSR actually holds Japan. ----
@@ -66,8 +87,8 @@ def build_claims() -> List[BehavioralTest]:
             hand=[US_JAPAN, MARSHALL_PLAN], side=ts.Player.US, turn=3,
             influence=[(JAPAN, ts.Player.US, 4)], clear_influence=[(JAPAN, ts.Player.USSR)]),
         play_card_first=US_JAPAN,
-        assertion=NeverArgmax(EVENT, "US/Japan as event"),
-        tier="A",
+        assertion=NeverArgmax(EVENT, "US/Japan as event", max_prob=STRATEGY_CEILING),
+        tier="S",
     ))
 
     # --- a-05: De Gaulle is pointless when the USSR already holds France. -----------
@@ -78,8 +99,8 @@ def build_claims() -> List[BehavioralTest]:
             hand=[DE_GAULLE, COMECON], side=ts.Player.USSR, turn=2,
             influence=[(FRANCE, ts.Player.USSR, 6)], clear_influence=[(FRANCE, ts.Player.US)]),
         play_card_first=DE_GAULLE,
-        assertion=NeverArgmax(EVENT, "De Gaulle as event"),
-        tier="A",
+        assertion=NeverArgmax(EVENT, "De Gaulle as event", max_prob=STRATEGY_CEILING),
+        tier="S",
     ))
 
     # --- n-01: burn NATO while its event cannot fire. -------------------------------
@@ -92,7 +113,7 @@ def build_claims() -> List[BehavioralTest]:
             hand=[NATO, NUCLEAR_TEST_BAN], side=ts.Player.USSR, turn=2, defcon=4),
         assertion=Prefer(card_action(NATO), card_action(NUCLEAR_TEST_BAN),
                          "play NATO", "play Nuclear Test Ban"),
-        tier="N",
+        tier="B",
     ))
 
     # --- n-02: even once live, NATO goes before the other big US cards. -------------
@@ -104,7 +125,7 @@ def build_claims() -> List[BehavioralTest]:
             flags=[ts.EffectBits.WARSAW_PACT_PLAYED]),
         assertion=Prefer(card_action(NATO), card_action(MARSHALL_PLAN),
                          "play NATO", "play Marshall Plan"),
-        tier="N",
+        tier="B",
     ))
 
     tests.append(BehavioralTest(
@@ -115,7 +136,7 @@ def build_claims() -> List[BehavioralTest]:
             flags=[ts.EffectBits.WARSAW_PACT_PLAYED]),
         assertion=Prefer(card_action(NATO), card_action(US_JAPAN),
                          "play NATO", "play US/Japan"),
-        tier="N",
+        tier="B",
     ))
 
     # --- c-03 (reviewer-conditioned): Warsaw Pact is a deterrent, not an event. ------
@@ -129,8 +150,8 @@ def build_claims() -> List[BehavioralTest]:
             influence=[(POLAND, ts.Player.USSR, 4), (EAST_GERMANY, ts.Player.USSR, 4)],
             clear_influence=[(POLAND, ts.Player.US), (EAST_GERMANY, ts.Player.US)]),
         play_card_first=WARSAW_PACT,
-        assertion=NeverArgmax(EVENT, "Warsaw Pact as event"),
-        tier="A",
+        assertion=NeverArgmax(EVENT, "Warsaw Pact as event", max_prob=STRATEGY_CEILING),
+        tier="S",
     ))
 
     # --- a-01: Duck and Cover at DEFCON 2 -- the blunder is Ops, not holding the card.
@@ -149,9 +170,9 @@ def build_claims() -> List[BehavioralTest]:
         builder=PositionBuilder(
             hand=[DUCK_AND_COVER, COMECON], side=ts.Player.USSR, turn=4, defcon=2),
         play_card_first=DUCK_AND_COVER,
-        assertion=NeverArgmax(OPS, "Duck and Cover for Ops"),
+        assertion=NeverArgmax(OPS, "Duck and Cover for Ops", max_prob=LOSS_CEILING),
         requires_legal=(SPACE,),
-        tier="A",
+        tier="L",
     ))
 
     # --- a-02: Olympic Games at DEFCON 2, own card, so a genuine event choice. ------
@@ -161,8 +182,25 @@ def build_claims() -> List[BehavioralTest]:
         builder=PositionBuilder(
             hand=[OLYMPIC_GAMES, MARSHALL_PLAN], side=ts.Player.US, turn=4, defcon=2),
         play_card_first=OLYMPIC_GAMES,
-        assertion=NeverArgmax(EVENT, "Olympic Games as event"),
-        tier="A",
+        assertion=NeverArgmax(EVENT, "Olympic Games as event", max_prob=LOSS_CEILING),
+        tier="L",
+    ))
+
+    # --- a-15: Ortega at DEFCON 2 while the US holds influence in Cuba. -------------
+    # Ortega is USSR-owned, so the US choice is Ops or Space. Playing it for Ops fires the
+    # USSR event, which grants a free coup adjacent to Nicaragua -- Cuba is a battleground,
+    # so the coup drops DEFCON to 1 and the phasing US loses. Verified by stepping to a
+    # terminal state: defcon=1, VP=-20, utility -1.0. Spacing it is the safe disposal.
+    tests.append(BehavioralTest(
+        claim_id="a-15-ortega-us-space-not-ops-at-defcon2",
+        description="US must space Ortega rather than play it for Ops at DEFCON 2 with influence in Cuba",
+        builder=PositionBuilder(
+            hand=[ORTEGA, MARSHALL_PLAN], side=ts.Player.US, turn=7, defcon=2,
+            influence=[(CUBA, ts.Player.US, 3)]),
+        play_card_first=ORTEGA,
+        assertion=NeverArgmax(OPS, "Ortega for Ops", max_prob=LOSS_CEILING),
+        requires_legal=(SPACE,),
+        tier="L",
     ))
 
     # --- b-01: Five Year Plan is a US card the US should simply spend. --------------
