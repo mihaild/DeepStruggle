@@ -1,5 +1,7 @@
 """NeuralBot: Deep Reinforcement Learning Player Client for Twilight Struggle."""
 
+import base64
+import logging
 import os
 import sys
 from typing import Dict, Optional, Any
@@ -20,6 +22,8 @@ from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from bindings.action_encoder import ActionEncoder
 from bot.base_bot import BaseBot
+
+logger = logging.getLogger(__name__)
 
 
 class NeuralBot(BaseBot):
@@ -99,7 +103,29 @@ class NeuralBot(BaseBot):
         if allow_early_stop:
             mask[ActionEncoder.CONFIRM_DONE_INDEX] = 1
 
-        # Build canonical observation from state dict
+        # Prefer the engine's own observation when the server supplies it. The Python
+        # reconstruction below duplicates Observation::extract across ~4300 fields, and a
+        # policy fed even a slightly different encoding than it was trained on plays close
+        # to randomly -- replays generated through this path once ended on turn 1 while the
+        # same checkpoint played to turn 10 through the engine extractor. The fallback is
+        # kept only so an older server still works.
+        engine_obs = state.get("observation_b64")
+        if isinstance(engine_obs, str) and engine_obs:
+            try:
+                decoded = np.frombuffer(base64.b64decode(engine_obs), dtype=np.float32)
+                if decoded.size == 4293:
+                    return self._select_from_observation(decoded, mask, d_type, valid_ids,
+                                                         allow_early_stop)
+                logger.warning("observation_b64 had %d floats, expected 4293; "
+                               "falling back to local reconstruction", decoded.size)
+            except Exception as exc:
+                logger.warning("could not decode observation_b64 (%s); "
+                               "falling back to local reconstruction", exc)
+        else:
+            logger.debug("server sent no observation_b64; using local reconstruction, "
+                         "which may drift from the engine")
+
+        # Fallback: rebuild the observation from the state dict.
         obs = np.zeros(4293, dtype=np.float32)
         my_is_us = (self.role == "US")
         side_sign = 1.0 if my_is_us else -1.0
@@ -186,7 +212,18 @@ class NeuralBot(BaseBot):
         obs[3672 + 70] = float(len(opp_hand)) / 10.0
         obs[4292] = side_sign
 
-        obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
+        return self._select_from_observation(obs, mask, d_type, valid_ids, allow_early_stop)
+
+    def _select_from_observation(
+        self,
+        obs: np.ndarray,
+        mask: np.ndarray,
+        d_type: int,
+        valid_ids: Any,
+        allow_early_stop: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """Runs the policy on an observation and decodes the flat action for this node."""
+        obs_t = torch.from_numpy(np.array(obs, dtype=np.float32, copy=True)).float().unsqueeze(0).to(self.device)
         mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
 
         with torch.no_grad():

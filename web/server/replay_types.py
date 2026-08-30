@@ -64,6 +64,9 @@ class ActionLogEntryDict(TypedDict, total=False):
 
 class GameStateDict(TypedDict, total=False):
     """Complete GameState dictionary serialized by ts.state_to_dict."""
+    # The engine's own observation for the player whose move it is, base64 float32.
+    # Present only for that player: it encodes their hand, which the opponent must not see.
+    observation_b64: str
     victory_points: int
     defcon: int
     mil_ops: Dict[str, int]

@@ -4,7 +4,10 @@ import sys
 import json
 import random
 import logging
+import base64
 from typing import Dict, List, Optional, Set, Any, cast
+
+import numpy as np
 from fastapi import WebSocket
 try:
     import ts_engine
@@ -292,7 +295,7 @@ class GameSession:
             "text": f"Game started (Seed: {self.seed}). USSR setup: Place 6 Influence in Eastern Europe."
         })
 
-    def get_state_dict(self) -> GameStateDict:
+    def get_state_dict(self, for_role: Optional[str] = None) -> GameStateDict:
         d = self.state.to_dict()
         d["game_id"] = self.game_id
         d["seed"] = self.seed
@@ -303,7 +306,42 @@ class GameSession:
             "US": self.us_player,
             "USSR": self.ussr_player
         }
+        obs = self._observation_for(for_role)
+        if obs is not None:
+            d["observation_b64"] = obs
         return cast(GameStateDict, d)
+
+    def _observation_for(self, role: Optional[str]) -> Optional[str]:
+        """The engine's own observation for `role`, base64 float32, when it is their move.
+
+        A network client that rebuilds the observation itself will drift from
+        Observation::extract, and a policy fed a slightly different encoding than it was
+        trained on plays close to randomly. So the authoritative extractor -- the same one
+        training uses -- runs here, where the real GameState lives.
+
+        It is emitted only to the player whose decision it is, because the observation
+        contains that player's own hand: broadcasting it to the opponent would leak hidden
+        information that the encoding is specifically built to withhold.
+        """
+        if role not in ("US", "USSR"):
+            return None
+        ctx = self.state.ctx()
+        decider = ctx.decision_player if ctx.decision_player != ts_engine.Player.NONE else self.state.phasing_player
+        want = ts_engine.Player.US if role == "US" else ts_engine.Player.USSR
+        if decider != want:
+            return None
+        try:
+            arr = np.asarray(ts_engine.extract_observation(self.state, want), dtype=np.float32)
+            return base64.b64encode(arr.tobytes()).decode("ascii")
+        except Exception as exc:  # never let a diagnostic aid break the game loop
+            logger.debug(f"[{self.game_id}] observation extraction failed: {exc}")
+            return None
+
+    def _role_of(self, websocket: WebSocket) -> Optional[str]:
+        for role, sockets in self.role_connections.items():
+            if websocket in sockets:
+                return role
+        return None
 
     async def connect(self, websocket: WebSocket, role: str):
         await websocket.accept()
@@ -319,7 +357,7 @@ class GameSession:
         # Send full initial state immediately
         await websocket.send_json({
             "type": "STATE_UPDATE",
-            "state": self.get_state_dict()
+            "state": self.get_state_dict(for_role=role)
         })
 
     def disconnect(self, websocket: WebSocket):
@@ -331,14 +369,19 @@ class GameSession:
     async def broadcast_state(self):
         if not self.connections:
             return
-        payload = {
-            "type": "STATE_UPDATE",
-            "state": self.get_state_dict()
-        }
+        # Built per role, since the observation is perspective-specific and must not be
+        # sent to the opponent.
+        by_role: Dict[Optional[str], Dict[str, Any]] = {}
         dead_sockets = set()
         for ws in self.connections:
+            role = self._role_of(ws)
+            if role not in by_role:
+                by_role[role] = {
+                    "type": "STATE_UPDATE",
+                    "state": self.get_state_dict(for_role=role),
+                }
             try:
-                await ws.send_json(payload)
+                await ws.send_json(by_role[role])
             except Exception as e:
                 logger.debug(f"[{self.game_id}] Error broadcasting to client: {e}")
                 dead_sockets.add(ws)
