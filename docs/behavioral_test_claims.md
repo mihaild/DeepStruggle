@@ -149,6 +149,16 @@ genuinely required opponent hand-knowledge were excluded; see "Excluded / out of
 - **confidence:** high (mechanical caveat: the card's stated eligibility condition references being "ahead on the Space Race," which needs verifying against the actual engine implementation for who can legally trigger it before hard-coding this test)
 - **source:** #85, "As USSR" ("I have never seen a discard pile safe enough to play Star Wars as the USSR")
 - **review:** include, after engine test, and when discard pile contains powerful US or neutral events. Hard-invariant on DEFCON 2 and discard pile contains card that degrade defcon, or when DEFCON is anything and discard pile contains "How I learned".
+- **engine verified (2026-08-30):** `card_dispatcher.cpp:157` gates the event on
+  `us_space_track > ussr_space_track`, and `late_war.cpp:41` hands the discard choice to
+  `Player::US` regardless of who played the card. So the guide's "USSR triggering Star
+  Wars" does mean the USSR playing it for Ops and the US picking. The event is a no-op
+  when the US is not ahead, or when the discard pile holds no non-scoring card, so the
+  precondition must include both. The reviewer's hard-invariant sub-case checks out: the
+  US pick resolves as an event under the USSR's action round, so a DEFCON-degrading pick
+  at DEFCON 2 -- or "How I Learned to Stop Worrying" (#87) at any DEFCON, which sets
+  DEFCON directly via `clamp(primary_id, 1, 5)` -- ends the game with the phasing USSR
+  losing.
 
 ### a-12-tdtw-ussr-always-space
 - **cards:** #96 Tear Down this Wall
