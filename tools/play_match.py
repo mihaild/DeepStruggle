@@ -280,6 +280,24 @@ def main():
     ussr_agent = args.agent if args.agent is not None else args.ussr
     match_seed = args.seed if args.seed is not None else random.randint(1, 1000000)
 
+    # Neural self-play goes through the canonical generator, which reads observations from
+    # Observation::extract and resolves chance nodes exactly as the training env does. The
+    # bot loop below reaches the network through NeuralBot, which rebuilds the 4293-dim
+    # observation in Python; that duplicate has drifted from the engine, and replays made
+    # with it do not reproduce the games training actually plays.
+    if args.agent is not None and os.path.exists(args.agent):
+        from tools.lib.self_play import generate_self_play_replay
+        generate_self_play_replay(
+            model_path=args.agent,
+            seed=match_seed,
+            temperature=args.temperature,
+            game_id=args.game_id,
+            output_path=args.output,
+            device=args.device,
+            verbose=True,
+        )
+        return
+
     run_match(
         agent_us_spec=us_agent,
         agent_ussr_spec=ussr_agent,
