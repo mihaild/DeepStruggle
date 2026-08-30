@@ -74,7 +74,11 @@ class TournamentEvaluator:
 
         for g_idx in range(total_games):
             a_is_ussr = (g_idx < games_per_side)
-            seed = base_seed + g_idx
+            # Paired deals: game g and game g + games_per_side share a seed and so share
+            # an identical shuffle, with the sides swapped. Deal luck then cancels between
+            # the two halves instead of contributing variance to the difference, which is
+            # what makes small effect sizes measurable at a fixed game count.
+            seed = base_seed + (g_idx % games_per_side)
 
             st = ts.GameState()
             ts.Engine.init_game(st, seed)

@@ -62,6 +62,14 @@ class BatchMatchRunner:
             seed_start = base_seed + (chunk_idx * chunk_size)
 
             runner = ts.VectorizedBatchRunner(cur_games, seed_start)
+            # Paired deals: env i and env i + cur_half are the same matchup with the sides
+            # swapped, so give them the same seed and therefore the same shuffle. Deal luck
+            # then cancels between the halves rather than adding variance to the result.
+            for i in range(cur_half):
+                paired_seed = seed_start + i
+                runner.reset_game(i, paired_seed)
+                runner.reset_game(i + cur_half, paired_seed)
+            runner.refresh_all()
             active = np.ones(cur_games, dtype=bool)
             steps = 0
 
