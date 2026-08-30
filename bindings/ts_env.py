@@ -207,18 +207,21 @@ class TsVectorizedEnv:
         # rather than the final move, and its credit must keep propagating backwards.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
-        if np.any(dones):
-            for i in range(self.num_envs):
-                if dones[i]:
-                    st = self.runner.get_state(i)
-                    if ts.Engine.is_held_scoring_game_over(st):
-                        held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
-                        held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
-                    elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
-                        defcon_blunder[i] = int(st.phasing_player)
-                    ending_reasons[i] = _classify_ending(
-                        st, bool(held_scoring_us[i] or held_scoring_ussr[i])
-                    )
+        done_idx = np.flatnonzero(dones)
+        if len(done_idx):
+            # Only a handful of the envs finish on any given step, so walk the terminal
+            # ones directly rather than testing all num_envs in Python.
+            for raw in done_idx:
+                i = int(raw)
+                st = self.runner.get_state(i)
+                if ts.Engine.is_held_scoring_game_over(st):
+                    held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
+                    held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+                elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
+                    defcon_blunder[i] = int(st.phasing_player)
+                ending_reasons[i] = _classify_ending(
+                    st, bool(held_scoring_us[i] or held_scoring_ussr[i])
+                )
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
@@ -226,9 +229,10 @@ class TsVectorizedEnv:
         if needs_all_states:
             for i in range(self.num_envs):
                 states.append(self.runner.get_state(i))
-        elif np.any(dones):
-            for i in range(self.num_envs):
-                states.append(self.runner.get_state(i) if dones[i] else None)
+        elif len(done_idx):
+            states = [None] * self.num_envs
+            for i in done_idx:
+                states[int(i)] = self.runner.get_state(int(i))
         else:
             states = [None] * self.num_envs
 

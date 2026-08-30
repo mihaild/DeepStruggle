@@ -201,58 +201,49 @@ class RolloutBuffer:
                     turn_boundary_mask = (self.turns[t] == self.turns[t + 1]).float()
                     non_terminal = non_terminal * turn_boundary_mask
 
-            # Arm/disarm the blunder window at terminal steps. Held scoring can implicate
-            # both players at once; an unprovoked DEFCON-1 suicide implicates exactly the
-            # player who chose it.
-            for e in range(self.num_envs):
-                if self.dones[t, e]:
-                    blunder_us = bool(self.held_scoring_us[t, e])
-                    blunder_ussr = bool(self.held_scoring_ussr[t, e])
-                    if blunder_window:
-                        db = int(self.defcon_blunder[t, e])
-                        if db == 1:
-                            blunder_us = True
-                        elif db == -1:
-                            blunder_ussr = True
-                    if blunder_window and (blunder_us or blunder_ussr):
-                        pending_hs_active[e] = True
-                        pending_hs_us[e] = blunder_us
-                        pending_hs_ussr[e] = blunder_ussr
-                        pending_hs_turn[e] = self.turns[t, e]
-                    else:
-                        pending_hs_active[e] = False
+            # Arm/disarm the blunder window at terminal steps, vectorized across envs.
+            # The timestep loop must stay sequential because GAE is a backward recursion,
+            # but every env at a given t is independent, so the whole inner loop collapses
+            # into masked tensor ops. Held scoring can implicate both players at once; an
+            # unprovoked DEFCON-1 suicide implicates exactly the player who chose it.
+            done_t = self.dones[t]
+            b_us = self.held_scoring_us[t].clone()
+            b_ussr = self.held_scoring_ussr[t].clone()
+            if blunder_window:
+                db = self.defcon_blunder[t]
+                b_us = b_us | (db == 1)
+                b_ussr = b_ussr | (db == -1)
+                arm = done_t & (b_us | b_ussr)
+            else:
+                arm = torch.zeros_like(done_t)
 
-            # Check if pending held-scoring blunder applies to step t
-            for e in range(self.num_envs):
-                if pending_hs_active[e]:
-                    if self.turns[t, e] == pending_hs_turn[e]:
-                        p = int(curr_p[e])
-                        if p == 1:  # US
-                            if pending_hs_us[e]:
-                                self.returns_win[t, e] = -1.0
-                                self.advantages[t, e] = -1.0 - self.values_win[t, e]
-                            else:
-                                self.returns_win[t, e] = self.values_win[t, e]
-                                self.advantages[t, e] = 0.0
-                        else:  # USSR
-                            if pending_hs_ussr[e]:
-                                self.returns_win[t, e] = -1.0
-                                self.advantages[t, e] = -1.0 - self.values_win[t, e]
-                            else:
-                                self.returns_win[t, e] = self.values_win[t, e]
-                                self.advantages[t, e] = 0.0
-                        last_gae[e] = self.advantages[t, e]
-                        continue
-                    else:
-                        # Turn boundary reached! Do not propagate held scoring blunder before current turn
-                        pending_hs_active[e] = False
-                        last_gae[e] = 0.0
+            # A terminal step that is not a blunder clears any window instead of leaving
+            # a stale one armed across the episode boundary.
+            pending_hs_active = torch.where(done_t, arm, pending_hs_active)
+            pending_hs_us = torch.where(arm, b_us, pending_hs_us)
+            pending_hs_ussr = torch.where(arm, b_ussr, pending_hs_ussr)
+            pending_hs_turn = torch.where(arm, self.turns[t], pending_hs_turn)
 
-                # Standard zero-sum Bellman TD error & GAE
-                delta = self.rewards[t, e] + gamma * next_val[e] * non_terminal[e] - self.values_win[t, e]
-                last_gae[e] = delta + gamma * gae_lambda * sign[e] * non_terminal[e] * last_gae[e]
-                self.advantages[t, e] = last_gae[e]
-                self.returns_win[t, e] = self.advantages[t, e] + self.values_win[t, e]
+            # The window covers only the turn the blunder happened in.
+            in_window = pending_hs_active & (self.turns[t] == pending_hs_turn)
+            expired = pending_hs_active & (~in_window)
+            pending_hs_active = pending_hs_active & in_window
+            last_gae = torch.where(expired, torch.zeros_like(last_gae), last_gae)
+
+            # Inside the window: the blunderer eats -1, and the opponent is pinned to its
+            # own value so its advantage is exactly zero -- it did not earn the windfall.
+            is_blunderer = torch.where(curr_p == 1, pending_hs_us, pending_hs_ussr)
+            v_t = self.values_win[t]
+            win_ret = torch.where(is_blunderer, -torch.ones_like(v_t), v_t)
+            win_adv = torch.where(is_blunderer, -1.0 - v_t, torch.zeros_like(v_t))
+
+            # Outside it: the ordinary zero-sum Bellman TD error and GAE recursion.
+            delta = self.rewards[t] + gamma * next_val * non_terminal - v_t
+            std_gae = delta + gamma * gae_lambda * sign * non_terminal * last_gae
+
+            last_gae = torch.where(in_window, win_adv, std_gae)
+            self.advantages[t] = last_gae
+            self.returns_win[t] = torch.where(in_window, win_ret, last_gae + v_t)
 
             # VP Return: real VP ground truth at terminal / delta VP
             # vps[t] is normalized VP in [-1.0, 1.0] from player perspective
