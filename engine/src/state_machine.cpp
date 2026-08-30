@@ -187,7 +187,7 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
             state.ctx().resolving_card = h2_card;
 
             bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
-            if (h2_card != card_ids::KITCHEN_DEBATES) {
+            if (h2_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, h2_card)) {
                 if (h2_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
                     state.card_locations[h2_card] = CardLocation::ONGOING_EVENT;
                 } else {
@@ -238,7 +238,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         state.ctx().timing_branch = 255; // cleared
 
         bool done = CardHandlers::trigger_event(state, card, opp);
-        if (card != card_ids::KITCHEN_DEBATES) {
+        if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
             if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
                 state.card_locations[card] = CardLocation::ONGOING_EVENT;
             } else {
@@ -258,7 +258,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         if (p == Player::US) {
             state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
         }
-    } else if (card != 0) {
+    } else if (card != 0 && !keeps_own_card_location(state, card)) {
         const auto& c_info = CardData::get_card(card);
         if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
             state.card_locations[card] = CardLocation::ONGOING_EVENT;
@@ -521,7 +521,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         state.ctx().resolving_card = first_card;
 
         bool done = CardHandlers::trigger_event(state, first_card, exec_player);
-        if (first_card != card_ids::KITCHEN_DEBATES) {
+        if (first_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, first_card)) {
             if (first_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
                 state.card_locations[first_card] = CardLocation::ONGOING_EVENT;
             } else {
@@ -670,7 +670,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     }
                     const auto& c_info = CardData::get_card(card);
                     bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
-                    if (card != card_ids::KITCHEN_DEBATES) {
+                    if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
                         if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
                             state.card_locations[card] = CardLocation::ONGOING_EVENT;
                         } else {
@@ -730,7 +730,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.ctx().resolving_card = card;
 
                     bool done = CardHandlers::trigger_event(state, card, opp);
-                    if (card != card_ids::KITCHEN_DEBATES) {
+                    if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
                         state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
                     }
                     if (done) {

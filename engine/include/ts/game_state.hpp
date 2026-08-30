@@ -322,4 +322,16 @@ struct alignas(64) ObservationBuffer {
     float active_player;               // +1.0 (US), -1.0 (USSR)
 };
 
+// Missile Envy moves itself into the opponent's hand, who must play it on their next
+// action round. The generic post-play cleanup would discard it straight back out of that
+// hand, stranding forced_card_id on a card nobody holds -- and the action mask, which only
+// forces a card that is actually in hand, then drops the forced play without a trace.
+// When the opponent held nothing eligible the card was never handed over, so it discards
+// normally; checking the location rather than the id alone keeps both cases right.
+inline bool keeps_own_card_location(const GameState& state, uint8_t card) noexcept {
+    if (card != card_ids::MISSILE_ENVY) return false;
+    const CardLocation loc = state.card_locations[card];
+    return loc == CardLocation::HAND_US || loc == CardLocation::HAND_USSR;
+}
+
 } // namespace ts
