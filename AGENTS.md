@@ -115,9 +115,9 @@ graph TD
 │   ├── rewards/                # Perspective-aligned reward strategies
 │   │   └── reward_calculator.py# BlunderAwareRewardCalculator, ZeroSumTerminalReward, ShapedZeroSumReward
 │   └── training/               # Training pipelines & algorithms
-│       ├── rollout_buffer.py   # Trajectory storage & GAE advantage calculator
+│       ├── rollout_buffer.py   # Trajectory storage, GAE advantage calculator & value/advantage diagnostics
 │       ├── behavioral_cloning.py # Phase 0 supervised pre-training
-│       ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization)
+│       ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization) + FixedEntropyProbe
 │       ├── warmup_dataset_loader.py # Memory-bounded demonstration streaming
 │       └── train.py            # CLI training entry point
 │
@@ -288,6 +288,10 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --post-tournament \
   --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500
+
+# 2b. Watch a live (or finished) run: every training_metrics.jsonl metric is mirrored to
+#     <output-dir>/tb/ as TensorBoard event files. Pass --no-tensorboard to write JSONL only.
+.venv/bin/python -m tensorboard.main --logdir data/checkpoints/run_v3_<timestamp>/tb
 
 # 3. Standalone Post-Tournament & Elo Evaluation Across Any Checkpoint Directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \

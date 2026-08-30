@@ -58,6 +58,8 @@ def main():
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
+    parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True,
+                        help="Mirror every training_metrics.jsonl metric to TensorBoard event files in <output-dir>/tb (default: on). Use --no-tensorboard to disable.")
 
     args = parser.parse_args()
 
@@ -90,6 +92,7 @@ def main():
             slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
             ref_update_freq=args.ref_update_freq,
             blunder_window=not args.no_blunder_window,
+            tensorboard=args.tensorboard,
         )
     elif args.mode == "warmup":
         if not args.warmup_dataset:

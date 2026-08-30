@@ -1,10 +1,51 @@
 """TsVectorizedEnv: High-performance vectorized wrapper for ts::VectorizedBatchRunner."""
 
-from typing import Tuple, Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, List, Optional, Callable
 import numpy as np
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 from ai.rewards.reward_calculator import RewardCalculator, ZeroSumTerminalReward, BlunderAwareRewardCalculator
+
+# Canonical short keys for the game-ending reasons reported per completed episode.
+# The long-form strings come from tools.lib.tournament_evaluator.classify_game_ending_reason,
+# which stays the single source of truth for the classification itself.
+ENDING_REASON_KEYS: Tuple[str, ...] = (
+    "20vp",
+    "final_scoring",
+    "defcon1_self",
+    "defcon1_provoked",
+    "held_scoring",
+    "wargames",
+)
+
+_ENDING_REASON_MAP: Dict[str, str] = {
+    "20 VP": "20vp",
+    "final scoring": "final_scoring",
+    "DEFCON 1 (own decision)": "defcon1_self",
+    "DEFCON 1 (opponent decision)": "defcon1_provoked",
+    "wargames": "wargames",
+}
+
+_ending_classifier: Optional[Callable[[ts.GameState], str]] = None
+
+
+def _classify_ending(state: ts.GameState, held_scoring: bool) -> str:
+    """Maps a terminal state to one of ENDING_REASON_KEYS.
+
+    Imported lazily: tools.lib.tournament_evaluator pulls in torch and the model zoo,
+    which the environment itself has no need for.
+    """
+    global _ending_classifier
+    if _ending_classifier is None:
+        from tools.lib.tournament_evaluator import classify_game_ending_reason
+        _ending_classifier = classify_game_ending_reason
+    reason = _ending_classifier(state)
+    key = _ENDING_REASON_MAP.get(reason, "20vp")
+    # DEFCON 1 keeps absolute precedence (as in the classifier); otherwise an
+    # unplayed scoring card is the more specific cause than the VP total it produced.
+    if held_scoring and not key.startswith("defcon1"):
+        key = "held_scoring"
+    return key
 
 
 class TsEnv:
@@ -154,6 +195,8 @@ class TsVectorizedEnv:
         dones = np.array(self.runner.get_terminals(), dtype=bool)
         term_utils = np.array(self.runner.get_terminal_utilities(), dtype=np.float32)
         curr_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
+        # Post-step turn, read before any auto-reset rewinds the game to turn 1.
+        curr_turns = np.array(self.runner.get_turns(), dtype=np.int8)
 
         # Rule 4.4 Held scoring card detection for terminal states
         held_scoring_us = np.zeros(self.num_envs, dtype=bool)
@@ -163,6 +206,7 @@ class TsVectorizedEnv:
         # an opponent-associated event, so the mistake lies in the earlier card management
         # rather than the final move, and its credit must keep propagating backwards.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
+        ending_reasons: List[str] = [""] * self.num_envs
         if np.any(dones):
             for i in range(self.num_envs):
                 if dones[i]:
@@ -172,6 +216,9 @@ class TsVectorizedEnv:
                         held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
                     elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
                         defcon_blunder[i] = int(st.phasing_player)
+                    ending_reasons[i] = _classify_ending(
+                        st, bool(held_scoring_us[i] or held_scoring_ussr[i])
+                    )
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
@@ -198,7 +245,7 @@ class TsVectorizedEnv:
         self.ep_lengths += 1
         self.ep_rewards += rewards
 
-        completed_episodes = []
+        completed_episodes: List[Dict[str, Any]] = []
         if self.auto_reset:
             for i in range(self.num_envs):
                 if dones[i]:
@@ -209,6 +256,8 @@ class TsVectorizedEnv:
                         "terminal_utility": float(term_utils[i]),
                         "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
                         "victory_points": int(curr_vp[i]),
+                        "turn": int(curr_turns[i]),
+                        "ending_reason": ending_reasons[i],
                     })
                     new_seed = int(np.random.randint(1, 1_000_000_000))
                     self.runner.reset_game(i, new_seed)
@@ -232,6 +281,8 @@ class TsVectorizedEnv:
         info["held_scoring_us"] = held_scoring_us
         info["held_scoring_ussr"] = held_scoring_ussr
         info["defcon_blunder"] = defcon_blunder
+        info["ending_reasons"] = ending_reasons
+        info["terminal_turns"] = curr_turns
         info["dones"] = dones
 
         return obs, masks, rewards, dones, info
