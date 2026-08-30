@@ -5,8 +5,9 @@ Two implementations, for two different jobs:
 * :func:`classify_legal_actions` -- a **rule-based** detector, fast enough to run inside a
   bot's move loop. Its rules are derived from, and verified against, the engine; the card
   list lives in ``docs/instant_decisions.md`` with the observed terminal values.
-* :func:`search_classify_action` -- a **search-based** verifier, far too slow for play, used
-  offline to confirm the rules and to look for cases the rules miss.
+Coup targets are the one exception: `DecisionContext` does not expose `op_mode` to Python,
+so a coup cannot be told from an influence placement by inspection, and that case applies
+the action and checks for a terminal state instead -- exact, and one step deep.
 
 The rule-based path is deliberately the one used in anger. A general minimax over this game
 exhausts any sane node budget on breadth (a single influence-placement node offers 30+
@@ -114,15 +115,29 @@ def classify_legal_actions(
                 out[a] = "win" if lead - 6 > 0 else ("loss" if lead - 6 < 0 else "normal")
 
     # --- couping a battleground at DEFCON 2 ---------------------------------------------
-    if defcon <= 2 and ctx.decision_type == ts.DecisionType.POINT_NODE and ctx.op_mode == ts.OpMode.COUP:
+    # DecisionContext does not expose op_mode to Python, so a coup target cannot be told
+    # from an influence placement by inspection. Apply the action instead and see whether
+    # the game ends: one step plus any forced die rolls is cheap, and it is exact.
+    if defcon <= 2 and ctx.decision_type == ts.DecisionType.POINT_NODE:
         for a in legal:
-            if a >= NODE_OFFSET:
-                cid = a - NODE_OFFSET
-                try:
-                    if ts.MapData.get_country_info(cid)["is_battleground"]:
-                        out[a] = "loss"
-                except Exception:
-                    pass
+            if a < NODE_OFFSET:
+                continue
+            probe = state.clone()
+            try:
+                ts.Engine.step_flat(probe, a)
+                for _ in range(4):
+                    if ts.Engine.is_terminal(probe):
+                        break
+                    pctx = probe.ctx()
+                    if pctx.decision_type != ts.DecisionType.ROLL_DIE:
+                        break
+                    ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+            except Exception:
+                continue
+            if ts.Engine.is_terminal(probe):
+                util = float(ts.Engine.get_terminal_utility(probe))
+                mine = util if who == ts.Player.US else -util
+                out[a] = "win" if mine > 0 else ("loss" if mine < 0 else "normal")
 
     return out
 

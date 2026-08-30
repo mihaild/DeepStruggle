@@ -121,11 +121,11 @@ class BatchMatchRunner:
                         with torch.no_grad():
                             act_t, _, _, _, _ = agent_a.model.sample_action(obs_t, mask_t, temperature=0.1, deterministic=True)
                         actions[a_indices] = act_t.cpu().numpy()
-                    elif isinstance(agent_a, HeuristicAgent):
+                    elif hasattr(agent_a, "select_action"):
                         for idx in a_indices:
                             st = runner.get_state(int(idx))
                             actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])))
-                    else:  # Random
+                    else:  # RandomAgent, or anything without a state-based interface
                         for idx in a_indices:
                             leg = np.where(masks[idx] > 0)[0]
                             actions[idx] = np.random.choice(leg) if len(leg) > 0 else 0
@@ -139,11 +139,11 @@ class BatchMatchRunner:
                         with torch.no_grad():
                             act_t, _, _, _, _ = agent_b.model.sample_action(obs_t, mask_t, temperature=0.1, deterministic=True)
                         actions[b_indices] = act_t.cpu().numpy()
-                    elif isinstance(agent_b, HeuristicAgent):
+                    elif hasattr(agent_b, "select_action"):
                         for idx in b_indices:
                             st = runner.get_state(int(idx))
                             actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])))
-                    else:  # Random
+                    else:  # RandomAgent, or anything without a state-based interface
                         for idx in b_indices:
                             leg = np.where(masks[idx] > 0)[0]
                             actions[idx] = np.random.choice(leg) if len(leg) > 0 else 0

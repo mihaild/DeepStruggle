@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
@@ -151,10 +151,24 @@ class HeuristicPolicy:
     """Updated heuristic player that prioritizes controlling new battlegrounds and prevents overcontrol."""
 
     @staticmethod
-    def select_action(state: ts.GameState) -> int:
+    def select_action_restricted(state: ts.GameState, allowed: Sequence[int]) -> int:
+        """Applies the same preferences, but only over `allowed` actions.
+
+        Used by the safety layer once losing moves have been filtered out, so the fallback
+        still reflects the policy's ordering rather than an arbitrary legal action.
+        """
+        return HeuristicPolicy.select_action(state, allowed=allowed)
+
+    @staticmethod
+    def select_action(state: ts.GameState, allowed: Optional[Sequence[int]] = None) -> int:
         ctx = state.ctx()
         mask = ActionEncoder.get_legal_mask(state)
         legal_indices = [int(i) for i in np.where(mask > 0)[0]]
+        if allowed is not None:
+            permitted = {int(a) for a in allowed}
+            restricted = [i for i in legal_indices if i in permitted]
+            if restricted:
+                legal_indices = restricted
         if not legal_indices:
             return ActionEncoder.CONFIRM_DONE_INDEX
 

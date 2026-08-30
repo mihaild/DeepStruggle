@@ -95,6 +95,47 @@ class HeuristicAgent:
         return int(HeuristicPolicy.select_action(state))
 
 
+class HeuristicV2Agent:
+    """HeuristicBot with an instant-win / instant-loss safety layer.
+
+    The v1 policy walks into forced losses: measured on constructed positions it plays
+    Duck and Cover for Ops at DEFCON 2 with probability 1.000, and Ortega for Ops with
+    probability 1.000, both of which end the game against it on the spot.
+
+    That matters beyond the bot's own strength. HeuristicBot is the Elo anchor and a
+    self-play reference, so an opponent that neither commits nor punishes these mistakes
+    makes them invisible to training and to evaluation alike.
+
+    This wrapper changes nothing else: it takes a forced win when one exists, removes
+    losing moves from consideration otherwise, and delegates every remaining decision to
+    the same v1 policy.
+    """
+
+    def __init__(self, name: str = "HeuristicBotV2", avoid_risky: bool = True):
+        self.name = name
+        self.avoid_risky = avoid_risky
+
+    def select_action(
+        self,
+        state: ts.GameState,
+        player: ts.Player,
+        temperature: float = 0.1,
+    ) -> int:
+        from ai.eval.safety import find_instant_win, safe_actions
+
+        win = find_instant_win(state, player)
+        if win is not None:
+            return int(win)
+
+        choice = int(HeuristicPolicy.select_action(state))
+        allowed = safe_actions(state, player, avoid_risky=self.avoid_risky)
+        if choice in allowed or not allowed:
+            return choice
+        # The policy picked a losing move. Re-ask it with the losing options masked out, so
+        # the fallback still reflects its preferences rather than an arbitrary legal move.
+        return int(HeuristicPolicy.select_action_restricted(state, allowed))
+
+
 class NeuralAgent:
     """Neural network agent supporting ColdWarNet (V1, V2, V3, V4)."""
 
@@ -170,4 +211,6 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         return OldHeuristicAgent()
     if s.lower() in ["heuristic", "heuristicbot", "heur", "new_heuristic", "new_heuristicbot"]:
         return HeuristicAgent()
+    if s.lower() in ["heuristic_v2", "heuristicbotv2", "heuristicv2", "heur2"]:
+        return HeuristicV2Agent()
     return NeuralAgent.from_checkpoint(s, device=device)

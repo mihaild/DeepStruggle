@@ -30,7 +30,7 @@ def load_policy(spec: str, device: str) -> PolicyFn:
     import ts_engine as ts
     from tools.lib.player_agent import NeuralAgent, load_agent
 
-    if spec in ("random", "heuristic"):
+    if spec in ("random", "heuristic", "heuristic_v2"):
         agent = load_agent(spec, device=device)
 
         def bot_policy(state: "ts.GameState", obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
