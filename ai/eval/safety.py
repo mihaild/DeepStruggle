@@ -114,32 +114,59 @@ def classify_legal_actions(
             if a == trigger:
                 out[a] = "win" if lead - 6 > 0 else ("loss" if lead - 6 < 0 else "normal")
 
-    # --- couping a battleground at DEFCON 2 ---------------------------------------------
-    # DecisionContext does not expose op_mode to Python, so a coup target cannot be told
-    # from an influence placement by inspection. Apply the action instead and see whether
-    # the game ends: one step plus any forced die rolls is cheap, and it is exact.
-    if defcon <= 2 and ctx.decision_type == ts.DecisionType.POINT_NODE:
-        for a in legal:
-            if a < NODE_OFFSET:
-                continue
-            probe = state.clone()
-            try:
-                ts.Engine.step_flat(probe, a)
-                for _ in range(4):
-                    if ts.Engine.is_terminal(probe):
-                        break
-                    pctx = probe.ctx()
-                    if pctx.decision_type != ts.DecisionType.ROLL_DIE:
-                        break
-                    ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
-            except Exception:
-                continue
-            if ts.Engine.is_terminal(probe):
-                util = float(ts.Engine.get_terminal_utility(probe))
-                mine = util if who == ts.Player.US else -util
-                out[a] = "win" if mine > 0 else ("loss" if mine < 0 else "normal")
+    # --- forced resolutions: VP thresholds, scoring cards, coups ------------------------
+    # Apply each action and follow only FORCED continuations -- chance nodes, and nodes
+    # with a single legal action. Anything that ends the game along that path is decisive
+    # no matter what either player would have chosen, so this needs no card list and picks
+    # up every VP-threshold crossing (26 sites in the engine), every scoring card that
+    # reaches +/-20, and every coup that takes DEFCON to 1.
+    #
+    # Following only forced steps is what keeps this both cheap and sound: it can miss a
+    # decisive line that needed a choice, but it never reports one that does not exist.
+    for a in legal:
+        if out[a] != "normal":
+            continue
+        result = _probe_forced(state, a, who)
+        if result is not None:
+            out[a] = result
 
     return out
+
+
+def _probe_forced(
+    state: ts.GameState,
+    action: int,
+    player: ts.Player,
+    max_forced: int = 6,
+) -> Optional[str]:
+    """Applies `action`, follows forced continuations, and reports a decisive outcome."""
+    probe = state.clone()
+    try:
+        ts.Engine.step_flat(probe, action)
+    except Exception:
+        return None
+
+    for _ in range(max_forced):
+        if ts.Engine.is_terminal(probe):
+            util = float(ts.Engine.get_terminal_utility(probe))
+            mine = util if player == ts.Player.US else -util
+            return "win" if mine > 0 else ("loss" if mine < 0 else None)
+        pctx = probe.ctx()
+        if pctx.decision_type == ts.DecisionType.ROLL_DIE:
+            try:
+                ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+            except Exception:
+                return None
+            continue
+        forced = np.flatnonzero(ActionEncoder.get_legal_mask(probe))
+        if len(forced) != 1:
+            return None
+        try:
+            ts.Engine.step_flat(probe, int(forced[0]))
+        except Exception:
+            return None
+
+    return None
 
 
 def _side_name(player: ts.Player) -> str:
