@@ -133,15 +133,24 @@ def build_claims() -> List[BehavioralTest]:
         tier="A",
     ))
 
-    # --- a-01: Duck and Cover at DEFCON 2 is suicide for whoever fires it. ----------
-    # US-owned, so as the USSR this is an Ops choice, not an event choice: playing it for
-    # Ops fires the US event, drops DEFCON to 1 and loses the game for the phasing USSR.
+    # --- a-01: Duck and Cover at DEFCON 2 -- the blunder is Ops, not holding the card.
+    # Duck and Cover is US-owned, so the USSR's legal modes here are exactly Ops and
+    # Space. Choosing Ops fires the US event whichever timing branch is taken, dropping
+    # DEFCON to 1 and losing the game for the phasing USSR (verified by stepping the
+    # engine to a terminal state: defcon=1, VP=+20, utility +1.0 to the US).
+    #
+    # Selecting the card is NOT itself a mistake: sending it to space discards it without
+    # firing the event, which is the standard way to dispose of a dangerous opponent card.
+    # So the assertion lives at the play-mode node, and the position must offer space --
+    # otherwise "prefer space" would be vacuous.
     tests.append(BehavioralTest(
-        claim_id="a-01-duck-and-cover-ussr-not-ops-at-defcon2",
-        description="USSR must not play Duck and Cover for Ops at DEFCON 2 (self-inflicted loss)",
+        claim_id="a-01-duck-and-cover-ussr-space-not-ops-at-defcon2",
+        description="USSR must space Duck and Cover rather than play it for Ops at DEFCON 2",
         builder=PositionBuilder(
             hand=[DUCK_AND_COVER, COMECON], side=ts.Player.USSR, turn=4, defcon=2),
-        assertion=NeverArgmax(card_action(DUCK_AND_COVER), "select Duck and Cover"),
+        play_card_first=DUCK_AND_COVER,
+        assertion=NeverArgmax(OPS, "Duck and Cover for Ops"),
+        requires_legal=(SPACE,),
         tier="A",
     ))
 

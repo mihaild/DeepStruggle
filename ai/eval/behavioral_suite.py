@@ -113,6 +113,10 @@ class BehavioralTest:
     # SELECT_PLAY_MODE node rather than at SELECT_CARD.
     play_card_first: Optional[int] = None
     tier: str = "A"
+    # Actions that MUST be legal for the claim to be meaningful. A "prefer space over
+    # ops" claim is vacuous if space is unavailable, so the suite errors instead of
+    # silently scoring a degenerate position.
+    requires_legal: Sequence[int] = field(default_factory=tuple)
 
     def position(self) -> ts.GameState:
         state = self.builder.build()
@@ -205,6 +209,11 @@ def run_suite(policy: PolicyFn, tests: Sequence[BehavioralTest]) -> SuiteResult:
             mask = legal_mask(state)
             if mask.sum() == 0:
                 raise ValueError("position has no legal actions")
+            missing = [a for a in t.requires_legal if mask[a] != 1]
+            if missing:
+                raise ValueError(
+                    f"claim requires actions {missing} to be legal, but they are masked out"
+                )
             obs = np.array(ts.extract_observation(state, state.ctx().decision_player), copy=True)
             probs = policy(state, obs, mask)
             outcome = t.assertion.check(probs)
