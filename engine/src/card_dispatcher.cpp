@@ -893,6 +893,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::STAR_WARS: {
+            if (action.is_confirm_done() || action.primary_id == 0 || action.primary_id == 255) {
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             uint8_t card_id = action.primary_id;
             if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::DISCARD_PILE) {
                 state.push_context();

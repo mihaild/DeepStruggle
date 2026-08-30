@@ -258,7 +258,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         if (p == Player::US) {
             state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
         }
-    } else if (card != 0 && !keeps_own_card_location(state, card)) {
+    } else if (card != 0) {
         const auto& c_info = CardData::get_card(card);
         if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
             state.card_locations[card] = CardLocation::ONGOING_EVENT;
