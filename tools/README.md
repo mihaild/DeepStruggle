@@ -21,6 +21,21 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --output-dir data/checkpoints/my_new_run
 ```
 
+Every iteration is logged to `<output-dir>/training_metrics.jsonl` and mirrored to TensorBoard
+event files in `<output-dir>/tb/` (`--no-tensorboard` disables the mirror; the JSONL is always
+written, and a missing/broken `tensorboard` install only prints a warning). Watch a live run with:
+
+```bash
+.venv/bin/python -m tensorboard.main --logdir data/checkpoints/my_new_run/tb
+```
+
+Beyond the loss terms, each iteration records `explained_variance` (`1 - Var(G - V) / Var(G)` for
+the win-value head — the primary read on whether the critic is learning), advantage-distribution
+health (`adv_std`, `adv_std_raw`, `adv_frac_near_zero`), game length (`mean_turn`, `median_turn`,
+`episodes_completed`), the ending-reason mix (`ending_frac_*`), and `entropy_fixed_probe` — mean
+masked policy entropy on a pool of ~2,000 (observation, mask) pairs frozen at the start of the run,
+which unlike the on-policy `entropy` cannot be masked by state-distribution drift.
+
 ---
 
 ## 2. `tools/tournament.py` (Unified Tournament & Head-to-Head Evaluator)

@@ -1,8 +1,29 @@
 """Vectorized Rollout Buffer for Masked Multi-Agent Twilight Struggle Training with GAE Credit Slicing."""
 
-from typing import Generator, Tuple, Optional
+from typing import Dict, Generator, Tuple, Optional
 import torch
 import numpy as np
+
+# Advantages below this magnitude (post-normalisation) carry effectively no learning
+# signal for the decision they are attached to.
+NEAR_ZERO_ADVANTAGE_EPS = 0.01
+
+
+def explained_variance(returns: torch.Tensor, values: torch.Tensor) -> float:
+    """Fraction of the return variance the value head accounts for: ``1 - Var(G - V) / Var(G)``.
+
+    1.0 means the critic predicts returns exactly, 0.0 means it does no better than
+    predicting the mean return, and negative means it is worse than that constant.
+    Returns 0.0 when the returns are (near-)constant, where the ratio is undefined.
+    """
+    y = returns.detach().reshape(-1).float()
+    v = values.detach().reshape(-1).float()
+    if y.numel() == 0 or y.numel() != v.numel():
+        return 0.0
+    var_y = torch.var(y, unbiased=False)
+    if float(var_y) < 1e-12:
+        return 0.0
+    return float(1.0 - torch.var(y - v, unbiased=False) / var_y)
 
 
 class RolloutBuffer:
@@ -46,6 +67,9 @@ class RolloutBuffer:
 
         self.step = 0
         self.full = False
+        # Standard deviation of the advantages before per-rollout normalisation, kept
+        # for diagnostics (post-normalisation std is ~1.0 by construction).
+        self.raw_advantage_std = 0.0
 
     def reset(self) -> None:
         """Resets the buffer pointer."""
@@ -243,7 +267,23 @@ class RolloutBuffer:
         flat_adv = self.advantages.view(-1)
         mean_adv = flat_adv.mean()
         std_adv = flat_adv.std() + 1e-8
+        self.raw_advantage_std = float(std_adv)
         self.advantages = (self.advantages - mean_adv) / std_adv
+
+    def diagnostics(self) -> Dict[str, float]:
+        """Value-head and advantage-distribution health metrics for the current rollout.
+
+        Must be called after ``compute_gae``; the advantage figures describe the
+        normalised advantages that the policy update actually consumes.
+        """
+        adv = self.advantages.detach().reshape(-1)
+        near_zero = (adv.abs() < NEAR_ZERO_ADVANTAGE_EPS).float().mean() if adv.numel() > 0 else torch.zeros(())
+        return {
+            "explained_variance": explained_variance(self.returns_win, self.values_win),
+            "adv_std": float(adv.std()) if adv.numel() > 1 else 0.0,
+            "adv_std_raw": self.raw_advantage_std,
+            "adv_frac_near_zero": float(near_zero),
+        }
 
     def get_batches(
         self, batch_size: int

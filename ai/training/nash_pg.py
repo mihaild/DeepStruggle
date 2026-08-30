@@ -21,6 +21,81 @@ import torch.nn.functional as F
 from bindings.ts_env import TsVectorizedEnv
 from .rollout_buffer import RolloutBuffer
 
+# Fixed-probe entropy: number of (observation, mask) pairs frozen at the start of
+# training, and how often (in iterations) the probe is re-evaluated.
+ENTROPY_PROBE_SIZE = 2000
+ENTROPY_PROBE_INTERVAL = 10
+
+
+class FixedEntropyProbe:
+    """A frozen pool of (observation, action-mask) pairs for drift-free entropy tracking.
+
+    On-policy entropy is measured on whatever states the current policy happens to visit,
+    so it moves with the state distribution and can hide (or fake) policy collapse. This
+    pool is sampled exactly once and never resampled, so its entropy is comparable across
+    the whole run.
+    """
+
+    def __init__(self, size: int = ENTROPY_PROBE_SIZE, chunk_size: int = 256, seed: int = 20240517) -> None:
+        self.size = size
+        self.chunk_size = chunk_size
+        self.seed = seed
+        self.obs: Optional[torch.Tensor] = None
+        self.masks: Optional[torch.Tensor] = None
+
+    @property
+    def is_filled(self) -> bool:
+        return self.obs is not None and self.masks is not None
+
+    def fill_from(self, obs: torch.Tensor, masks: torch.Tensor) -> bool:
+        """Populates the pool from a flat (N, obs_dim) / (N, action_dim) sample.
+
+        No-op once filled -- that permanence is the whole point of the probe.
+        Returns True only on the call that actually filled it.
+        """
+        if self.is_filled:
+            return False
+        flat_obs = obs.reshape(obs.shape[0], -1)
+        flat_masks = masks.reshape(masks.shape[0], -1)
+        # Only states with a real choice to make: a forced single-action state has zero
+        # entropy by construction and would just dilute the signal.
+        eligible = torch.nonzero(flat_masks.sum(dim=-1) >= 2, as_tuple=False).reshape(-1)
+        if eligible.numel() == 0:
+            return False
+        n_eligible = int(eligible.numel())
+        n = min(self.size, n_eligible)
+        rng = np.random.RandomState(self.seed)
+        picked = rng.choice(n_eligible, size=n, replace=False)
+        idx = eligible[torch.from_numpy(picked).long().to(eligible.device)]
+        self.obs = flat_obs[idx].detach().clone().float()
+        self.masks = flat_masks[idx].detach().clone()
+        return True
+
+    def mean_entropy(self, net: nn.Module) -> Optional[float]:
+        """Mean masked policy entropy over the frozen pool, or None if not yet filled."""
+        if self.obs is None or self.masks is None:
+            return None
+        was_training = net.training
+        net.eval()
+        total = 0.0
+        count = 0
+        try:
+            with torch.no_grad():
+                for start in range(0, self.obs.shape[0], self.chunk_size):
+                    chunk_obs = self.obs[start : start + self.chunk_size]
+                    chunk_masks = self.masks[start : start + self.chunk_size]
+                    out = net(chunk_obs, chunk_masks)
+                    logits = out[0] if isinstance(out, (tuple, list)) else out
+                    logits = logits.float().masked_fill(chunk_masks == 0, -1e9)
+                    log_p = F.log_softmax(logits, dim=-1)
+                    entropy = -(log_p.exp() * log_p).sum(dim=-1)
+                    total += float(entropy.sum().item())
+                    count += int(entropy.shape[0])
+        finally:
+            if was_training:
+                net.train()
+        return total / max(1, count)
+
 
 class BaseNashPGTrainer:
     """Abstract base class for Nash Policy Gradient self-play trainers."""
@@ -105,6 +180,10 @@ class BaseNashPGTrainer:
         self.total_env_steps = 0
         self.steps_since_ref_update = 0
         self.total_iterations = 0
+
+        # Frozen entropy probe, filled from the very first rollout and never resampled.
+        self.entropy_probe = FixedEntropyProbe(size=ENTROPY_PROBE_SIZE)
+        self.entropy_probe_interval = ENTROPY_PROBE_INTERVAL
 
     def set_reward_calculator(self, reward_calc: Any) -> None:
         self.env.reward_calc = reward_calc
@@ -203,22 +282,31 @@ class BaseNashPGTrainer:
             blunder_window=self.blunder_window,
         )
 
+        # Freeze the entropy probe pool from the first rollout only.
+        if not self.entropy_probe.is_filled:
+            self.entropy_probe.fill_from(
+                self.buffer.obs.reshape(-1, self.buffer.obs_dim),
+                self.buffer.masks.reshape(-1, self.buffer.action_dim),
+            )
+
         steps_collected = self.buffer_size * self.num_envs
         self.total_env_steps += steps_collected
         self.steps_since_ref_update += steps_collected
         rollout_time = time.time() - t0
 
-        return {
+        metrics: Dict[str, Any] = {
             "steps": steps_collected,
             "rollout_time": rollout_time,
             "fps": steps_collected / max(rollout_time, 1e-6),
             "completed_episodes": completed_episodes,
         }
+        metrics.update(self.buffer.diagnostics())
+        return metrics
 
     def train_step(self) -> Dict[str, float]:
         raise NotImplementedError("Subclasses must implement train_step")
 
-    def train_iteration(self) -> Dict[str, float]:
+    def train_iteration(self) -> Dict[str, Any]:
         """Runs one full training iteration (rollout collection + inner SGD epochs + reference check)."""
         self.total_iterations += 1
         rollout_metrics = self.collect_rollouts()
@@ -228,7 +316,15 @@ class BaseNashPGTrainer:
             self.update_reference_policy()
             self.steps_since_ref_update = 0
 
-        combined = {**rollout_metrics, **train_metrics}
+        combined: Dict[str, Any] = {**rollout_metrics, **train_metrics}
+
+        # Fixed-probe entropy: evaluated on the frozen pool every N iterations, so it is
+        # directly comparable across the run unlike the on-policy "entropy" above.
+        if self.total_iterations == 1 or self.total_iterations % self.entropy_probe_interval == 0:
+            probe_entropy = self.entropy_probe.mean_entropy(self.active_net)
+            if probe_entropy is not None:
+                combined["entropy_fixed_probe"] = probe_entropy
+
         return combined
 
 

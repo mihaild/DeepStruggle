@@ -25,8 +25,144 @@ from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
 from ai.training.warmup_dataset_loader import WarmupDataset
+from bindings.ts_env import ENDING_REASON_KEYS
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.tournament_evaluator import TournamentEvaluator
+
+# TensorBoard is optional: a missing (or broken) install must never take down a
+# multi-hour training run, so the writer degrades to a no-op and JSONL logging carries on.
+_SUMMARY_WRITER_CLS: Optional[Any] = None
+_SUMMARY_WRITER_IMPORT_ERROR: Optional[str] = None
+try:
+    from torch.utils.tensorboard import SummaryWriter as _ImportedSummaryWriter
+    _SUMMARY_WRITER_CLS = _ImportedSummaryWriter
+except Exception as _tb_err:  # pragma: no cover - depends on the local install
+    _SUMMARY_WRITER_IMPORT_ERROR = str(_tb_err)
+
+
+# Maps training_metrics.jsonl keys to TensorBoard tags. Every JSONL metric is mirrored;
+# anything not listed here lands under "misc/" so new metrics cannot silently go missing.
+TB_TAGS: Dict[str, str] = {
+    "elapsed_seconds": "progress/elapsed_seconds",
+    "total_steps": "progress/total_steps",
+    "steps_per_sec": "progress/steps_per_sec",
+    "loss": "train/loss",
+    "policy_loss": "train/policy_loss",
+    "value_loss": "train/value_loss",
+    "kl_div": "train/kl_div",
+    "entropy": "train/entropy",
+    "clip_frac": "train/clip_frac",
+    "belief_loss": "train/belief_loss",
+    "oracle_loss": "train/oracle_loss",
+    "distill_loss": "train/distill_loss",
+    "explained_variance": "diagnostics/explained_variance",
+    "adv_std": "diagnostics/adv_std",
+    "adv_std_raw": "diagnostics/adv_std_raw",
+    "adv_frac_near_zero": "diagnostics/adv_frac_near_zero",
+    "entropy_fixed_probe": "diagnostics/entropy_fixed_probe",
+    "episodes_completed": "game/episodes_completed",
+    "mean_turn": "game/mean_turn",
+    "median_turn": "game/median_turn",
+    "ending_frac_20vp": "endings/20vp",
+    "ending_frac_final_scoring": "endings/final_scoring",
+    "ending_frac_defcon1_self": "endings/defcon1_self",
+    "ending_frac_defcon1_provoked": "endings/defcon1_provoked",
+    "ending_frac_held_scoring": "endings/held_scoring",
+    "ending_frac_wargames": "endings/wargames",
+}
+
+# Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
+# iteration where no game finished, so they are held back from TensorBoard then.
+EPISODE_DEPENDENT_KEYS = frozenset(
+    ["mean_turn", "median_turn"] + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
+)
+
+
+class TensorBoardLogger:
+    """Best-effort TensorBoard writer. Any failure disables it instead of raising."""
+
+    def __init__(self, log_dir: str, enabled: bool = True) -> None:
+        self.log_dir = log_dir
+        self.writer: Optional[Any] = None
+        if not enabled:
+            return
+        if _SUMMARY_WRITER_CLS is None:
+            print(
+                f"Warning: TensorBoard logging unavailable ({_SUMMARY_WRITER_IMPORT_ERROR}); "
+                f"continuing with JSONL metrics only. Install with: pip install tensorboard",
+                flush=True,
+            )
+            return
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            self.writer = _SUMMARY_WRITER_CLS(log_dir=log_dir)
+            print(f"TensorBoard logging enabled -> {log_dir}  (tensorboard --logdir {log_dir})", flush=True)
+        except Exception as e:
+            self.writer = None
+            print(f"Warning: Could not start TensorBoard writer at {log_dir}: {e}. Continuing without it.", flush=True)
+
+    @property
+    def active(self) -> bool:
+        return self.writer is not None
+
+    def log_metrics(self, metrics: Dict[str, Any], step: int, skip_keys: Optional[frozenset[str]] = None) -> None:
+        if self.writer is None:
+            return
+        try:
+            for key, value in metrics.items():
+                if key == "iteration" or (skip_keys is not None and key in skip_keys):
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                self.writer.add_scalar(TB_TAGS.get(key, f"misc/{key}"), float(value), step)
+        except Exception as e:
+            print(f"Warning: TensorBoard logging failed ({e}); disabling TensorBoard for the rest of the run.", flush=True)
+            self.writer = None
+
+    def log_text(self, tag: str, text: str, step: int) -> None:
+        if self.writer is None:
+            return
+        try:
+            self.writer.add_text(tag, text, step)
+        except Exception:
+            pass
+
+    def flush(self) -> None:
+        if self.writer is None:
+            return
+        try:
+            self.writer.flush()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        if self.writer is None:
+            return
+        try:
+            self.writer.close()
+        except Exception:
+            pass
+        self.writer = None
+
+
+def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Aggregates the episodes that finished during one iteration into scalar metrics.
+
+    Game length is reported at the game-turn granularity (mean and median terminal turn),
+    and the ending-reason mix as a fraction of the episodes completed this iteration.
+    """
+    stats: Dict[str, float] = {"episodes_completed": float(len(episodes))}
+    turns = [float(ep["turn"]) for ep in episodes if "turn" in ep]
+    stats["mean_turn"] = float(np.mean(turns)) if turns else 0.0
+    stats["median_turn"] = float(np.median(turns)) if turns else 0.0
+
+    reasons = [str(ep.get("ending_reason", "")) for ep in episodes]
+    counted = [r for r in reasons if r]
+    for key in ENDING_REASON_KEYS:
+        stats[f"ending_frac_{key}"] = (
+            float(sum(1 for r in counted if r == key)) / float(len(counted)) if counted else 0.0
+        )
+    return stats
 
 
 def run_behavioral_cloning_warmup(
@@ -210,6 +346,7 @@ def train_pipeline(
     slice_turn_boundaries: Optional[bool] = None,
     blunder_window: bool = True,
     ref_update_freq: int = 200_000,
+    tensorboard: bool = True,
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -218,6 +355,7 @@ def train_pipeline(
 
     log_path = os.path.join(out_dir, "training_metrics.jsonl")
     report_path = os.path.join(out_dir, "tournament_report.md")
+    tb = TensorBoardLogger(os.path.join(out_dir, "tb"), enabled=tensorboard)
 
     # Write metadata.json recording git commit, training mode, and description
     git_commit = "unknown"
@@ -247,6 +385,7 @@ def train_pipeline(
     }
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata_info, f, indent=2)
+    tb.log_text("run/metadata", "```json\n" + json.dumps(metadata_info, indent=2) + "\n```", 0)
 
     # 1. Initialize Model
     if arch == "v4":
@@ -377,9 +516,10 @@ def train_pipeline(
         it += 1
         iteration_metrics = trainer.train_iteration()
         total_env_steps = trainer.total_env_steps
+        episode_stats = summarize_completed_episodes(iteration_metrics.get("completed_episodes", []))
 
         # Log training step metrics
-        step_metrics = {
+        step_metrics: Dict[str, Any] = {
             "iteration": it,
             "elapsed_seconds": int(elapsed),
             "total_steps": total_env_steps,
@@ -393,14 +533,31 @@ def train_pipeline(
             "belief_loss": iteration_metrics.get("belief_loss", 0.0),
             "oracle_loss": iteration_metrics.get("oracle_loss", 0.0),
             "distill_loss": iteration_metrics.get("distill_loss", 0.0),
+            "explained_variance": float(iteration_metrics.get("explained_variance", 0.0)),
+            "adv_std": float(iteration_metrics.get("adv_std", 0.0)),
+            "adv_std_raw": float(iteration_metrics.get("adv_std_raw", 0.0)),
+            "adv_frac_near_zero": float(iteration_metrics.get("adv_frac_near_zero", 0.0)),
         }
+        step_metrics.update(episode_stats)
+        if "entropy_fixed_probe" in iteration_metrics:
+            step_metrics["entropy_fixed_probe"] = float(iteration_metrics["entropy_fixed_probe"])
+
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(step_metrics) + "\n")
+
+        tb.log_metrics(
+            step_metrics,
+            step=it,
+            skip_keys=EPISODE_DEPENDENT_KEYS if episode_stats["episodes_completed"] == 0.0 else None,
+        )
+        if it % 10 == 0:
+            tb.flush()
 
         if it % 10 == 0:
             print(
                 f"[{int(elapsed)}s/{duration_seconds}s] It {it:4d} | Steps: {total_env_steps:,} ({step_metrics['steps_per_sec']:,} st/s) | "
-                f"Loss: {step_metrics['loss']:.3f} | KL: {step_metrics['kl_div']:.4f} | Ent: {step_metrics['entropy']:.3f} | Clip: {step_metrics['clip_frac']*100:.1f}%",
+                f"Loss: {step_metrics['loss']:.3f} | KL: {step_metrics['kl_div']:.4f} | Ent: {step_metrics['entropy']:.3f} | Clip: {step_metrics['clip_frac']*100:.1f}% | "
+                f"EV: {step_metrics['explained_variance']:+.3f} | Turn: {step_metrics['mean_turn']:.1f}",
                 flush=True,
             )
 
@@ -435,6 +592,9 @@ def train_pipeline(
         add_to_opponents_after=False,
         arch=arch,
     )
+
+    tb.flush()
+    tb.close()
 
     print(f"\n=== Training Complete. Final Checkpoint: {final_snap_path} ===", flush=True)
 
