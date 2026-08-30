@@ -55,6 +55,10 @@ def main():
                         help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
+    parser.add_argument("--gamma", type=float, default=1.0,
+                        help="Discount factor. Keep at 1.0: the game is zero-sum and decided at the end, so any discount biases against the endgame (0.999 attenuates a terminal reward by ~26%% over a full game).")
+    parser.add_argument("--priority-alpha", type=float, default=0.0,
+                        help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
@@ -92,6 +96,8 @@ def main():
             slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
             ref_update_freq=args.ref_update_freq,
             blunder_window=not args.no_blunder_window,
+            gamma=args.gamma,
+            priority_alpha=args.priority_alpha,
             tensorboard=args.tensorboard,
         )
     elif args.mode == "warmup":

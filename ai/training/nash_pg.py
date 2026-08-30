@@ -114,13 +114,18 @@ class BaseNashPGTrainer:
         ent_coef: float = 0.01,        # Entropy exploration coefficient
         vf_coef: float = 0.5,          # Value loss coefficient
         vp_coef: float = 0.05,         # Auxiliary VP loss weight
-        gamma: float = 0.999,          # Game outcome discount factor
+        gamma: float = 1.0,            # Undiscounted: see note below
+        # gamma must be exactly 1.0. Twilight Struggle is zero-sum and decided only at the
+        # end, so any discount biases the agent against the endgame. At 0.999 over the
+        # ~300 micro-decisions of a full game a terminal reward arrives attenuated by
+        # ~26%, which is largest precisely where instant wins and losses live.
         gae_lambda: float = 0.98,      # GAE lambda
         num_epochs: int = 4,           # Inner-loop optimization epochs per iteration
         ref_update_freq: int = 200_000,# Outer-loop reference update frequency in steps
         max_grad_norm: float = 1.0,
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
+        priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
         device: torch.device | str = "cuda",
     ):
@@ -149,6 +154,7 @@ class BaseNashPGTrainer:
         self.max_grad_norm = max_grad_norm
         self.slice_turn_boundaries = slice_turn_boundaries
         self.blunder_window = blunder_window
+        self.priority_alpha = priority_alpha
         self.temperature_schedule = temperature_schedule
 
         self.optimizer = torch.optim.AdamW(self.active_net.parameters(), lr=lr, weight_decay=1e-4)
@@ -343,7 +349,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         num_updates = 0
 
         for _ in range(self.num_epochs):
-            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp in self.buffer.get_batches(self.batch_size):
+            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp in self.buffer.get_batches(self.batch_size, self.priority_alpha):
                 cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
                 cur_v_win = cur_v_win.squeeze(-1)
                 cur_v_vp = cur_v_vp.squeeze(-1)

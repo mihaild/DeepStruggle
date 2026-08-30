@@ -60,6 +60,10 @@ TB_TAGS: Dict[str, str] = {
     "adv_std_raw": "diagnostics/adv_std_raw",
     "adv_frac_near_zero": "diagnostics/adv_frac_near_zero",
     "entropy_fixed_probe": "diagnostics/entropy_fixed_probe",
+    "decisive_win_take_rate": "decisive/win_take_rate",
+    "decisive_loss_avoid_rate": "decisive/loss_avoid_rate",
+    "decisive_win_available": "decisive/win_available",
+    "decisive_loss_avoidable": "decisive/loss_avoidable",
     "episodes_completed": "game/episodes_completed",
     "mean_turn": "game/mean_turn",
     "median_turn": "game/median_turn",
@@ -237,10 +241,28 @@ def evaluate_and_log_snapshot(
     device: Optional[Union[torch.device, str]] = None,
     add_to_opponents_after: bool = True,
     arch: str = "v2",
-) -> None:
+    decisive_games: int = 30,
+) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
     current_agent = NeuralAgent(model=model, device=dev, name=snap_name)
+
+    # Decisive-decision rates. These move long before win rate does, because a forced win
+    # or avoidable forced loss arises at well under 1% of decisions -- rare enough to be
+    # invisible in aggregate results, decisive enough that each one is a whole game.
+    decisive_metrics: Dict[str, float] = {}
+    try:
+        from ai.eval.decisive_probe import measure_decisive
+        stats = measure_decisive(
+            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
+            num_games=decisive_games,
+        )
+        decisive_metrics = stats.as_metrics()
+        print(f"  decisive: takes {stats.win_take_rate * 100:.0f}% of {stats.win_available} forced wins | "
+              f"avoids {stats.loss_avoid_rate * 100:.0f}% of {stats.loss_avoidable} avoidable losses",
+              flush=True)
+    except Exception as exc:
+        print(f"  (decisive probe unavailable: {exc})", flush=True)
 
     print(f"\n--- Evaluating Newest Snapshot @ {elapsed_seconds}s against {len(opponents)} Opponents ({games_per_side*2} games each) ---", flush=True)
     report_entry = [f"### Snapshot @ {elapsed_seconds}s (Evaluated against {len(opponents)} baselines / past snapshots)\n\n"]
@@ -281,6 +303,8 @@ def evaluate_and_log_snapshot(
         frozen_net.to(dev)
         frozen_net.eval()
         opponents.append(NeuralAgent(model=frozen_net, device=dev, name=f"Snapshot_{elapsed_seconds}s"))
+
+    return decisive_metrics
 
 
 def run_post_training_tournament(
@@ -345,6 +369,8 @@ def train_pipeline(
     curriculum_switch_fraction: float = 0.5,
     slice_turn_boundaries: Optional[bool] = None,
     blunder_window: bool = True,
+    gamma: float = 1.0,
+    priority_alpha: float = 0.0,
     ref_update_freq: int = 200_000,
     tensorboard: bool = True,
 ) -> None:
@@ -449,7 +475,7 @@ def train_pipeline(
         lr=lr,
         eta=eta,
         ent_coef=entropy_coef,
-        gamma=0.999,
+        gamma=gamma,
         gae_lambda=0.98,
         num_epochs=4,
         ref_update_freq=ref_update_freq,
@@ -459,6 +485,7 @@ def train_pipeline(
         # the outcome signal from clean wins too -- so it is opt-in for ablations only.
         slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
         blunder_window=blunder_window,
+        priority_alpha=priority_alpha,
         temperature_schedule=True,
         device=dev,
     )
@@ -565,7 +592,7 @@ def train_pipeline(
         if elapsed >= next_eval_time:
             snap_path = os.path.join(out_dir, f"snapshot_{int(elapsed)}s.pt")
             torch.save(model.state_dict(), snap_path)
-            evaluate_and_log_snapshot(
+            decisive = evaluate_and_log_snapshot(
                 model=model,
                 opponents=opponents,
                 elapsed_seconds=int(elapsed),
@@ -576,6 +603,11 @@ def train_pipeline(
                 add_to_opponents_after=True,
                 arch=arch,
             )
+            if decisive:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"iteration": it, "elapsed_seconds": int(elapsed), **decisive}) + "\n")
+                if tb is not None:
+                    tb.log_metrics(decisive, it)
             next_eval_time += snapshot_interval_seconds
 
     # Final Snapshot
