@@ -83,7 +83,7 @@ def test_draining_chance_nodes_lengthens_games() -> None:
     )
 
 
-def test_generator_never_asks_the_policy_at_a_chance_node() -> None:
+def test_generator_never_asks_the_policy_at_a_chance_node(tmp_path) -> None:
     """The contract, stated policy-independently.
 
     A chance node is not a decision. If any logged step carries decision_type ROLL_DIE
@@ -93,9 +93,12 @@ def test_generator_never_asks_the_policy_at_a_chance_node() -> None:
     pytest.importorskip("torch")
     from tools.lib.self_play import generate_self_play_replay
 
+    # Write into tmp_path: the workbench lists data/replays non-recursively, and a test
+    # artefact appearing beside real games is how a stale replay gets reviewed by mistake.
     log, _ = generate_self_play_replay(
         model_path=None, seed=91004, temperature=0.3,
         game_id="pytest_replay_contract", device="cpu", verbose=False,
+        output_path=str(tmp_path / "pytest_replay_contract.tslog.json"),
     )
     steps = log.get("steps", [])
     assert steps, "generator produced no steps"
