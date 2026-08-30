@@ -223,7 +223,13 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     Player p = state.phasing_player;
     uint8_t timing = state.ctx().timing_branch;
 
-    if (timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
+    // Only the phasing player's own card play can owe an opponent event here. When the
+    // opponent is spending Ops granted BY that event -- Grain Sales handing the US two Ops,
+    // say -- a frame is pushed, and the pushed frame starts zeroed. Zero is OPS_FIRST, so
+    // without the depth guard this fires again on an EVENT_FIRST play: the opponent
+    // resolves the event twice and the phasing player loses the Ops they paid for.
+    if (state.ctx_stack_depth == 0 &&
+        timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
         // Trigger opponent event!
         Player opp = get_opponent(p);
         const auto& c_info = CardData::get_card(card);

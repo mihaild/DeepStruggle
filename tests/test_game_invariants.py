@@ -125,11 +125,15 @@ def validate_legal_choices(state_dict: Dict[str, Any]) -> List[str]:
         else:
             # Action Round Ops
             if op_mode == 1:  # COUP
+                # Tear Down This Wall (#96) grants the US free Coup or Realignment attempts
+                # in Europe regardless of DEFCON (ops.cpp), so the Rule 8.1.5 regional
+                # restriction does not apply while it is the card being resolved.
+                tdtw = (ctx.get("pending_op_card") == 96 or res_card == 96)
                 for nid in valid_ids:
                     if nid < 84:
                         c_info = ts_engine.MapData.get_country_info(nid)
                         r = c_info.get("region")
-                        if defcon <= 4 and (r == 0 or r == "Europe"):
+                        if defcon <= 4 and (r == 0 or r == "Europe") and not tdtw:
                             violations.append(f"Coup allowed in Europe at DEFCON {defcon}: ID {nid}")
                         if defcon <= 3 and (r == 1 or r == "Asia"):
                             violations.append(f"Coup allowed in Asia at DEFCON {defcon}: ID {nid}")
