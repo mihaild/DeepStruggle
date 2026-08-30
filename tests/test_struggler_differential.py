@@ -131,6 +131,7 @@ class TestSetupPhaseDifferential:
 
         # USSR Setup: 6 points in Eastern Europe
         for step_i in range(6):
+            assert s_eng.pending_decision is not None
             assert s_eng.pending_decision.actor == SSide.USSR
             assert s_eng.pending_decision.kind == SDecisionKind.PLACE_INFLUENCE
 
@@ -154,6 +155,7 @@ class TestSetupPhaseDifferential:
 
         # US Setup: 7 points in Western Europe
         for step_i in range(7):
+            assert s_eng.pending_decision is not None
             assert s_eng.pending_decision.actor == SSide.US
             assert s_eng.pending_decision.kind == SDecisionKind.PLACE_INFLUENCE
 

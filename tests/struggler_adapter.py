@@ -169,8 +169,10 @@ def get_ts_legal_country_names(ts_state: ts_engine.GameState) -> set[str]:
     return {ts_engine.MapData.get_country_name(idx) for idx in indices}
 
 
-def get_struggler_legal_country_names(decision: SDecision) -> set[str]:
+def get_struggler_legal_country_names(decision: SDecision | None) -> set[str]:
     """Extract target country names from a struggler Decision."""
+    if decision is None:
+        return set()
     names = set()
     for opt in decision.options:
         if "country" in opt.payload:

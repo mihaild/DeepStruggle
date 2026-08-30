@@ -81,7 +81,7 @@ class BatchMatchRunner:
                 newly_finished = active & terms
                 if np.any(newly_finished):
                     for idx in np.where(newly_finished)[0]:
-                        st = runner.get_state(idx)
+                        st = runner.get_state(int(idx))
                         chunk_utils[idx] = float(ts.Engine.get_terminal_utility(st))
                         chunk_vps[idx] = int(st.victory_points)
                         chunk_turns[idx] = int(st.turn)
@@ -115,8 +115,8 @@ class BatchMatchRunner:
                         actions[a_indices] = act_t.cpu().numpy()
                     elif isinstance(agent_a, HeuristicAgent):
                         for idx in a_indices:
-                            st = runner.get_state(idx)
-                            actions[idx] = agent_a.select_action(st, ts.Player(d_players[idx]))
+                            st = runner.get_state(int(idx))
+                            actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])))
                     else:  # Random
                         for idx in a_indices:
                             leg = np.where(masks[idx] > 0)[0]
@@ -133,14 +133,14 @@ class BatchMatchRunner:
                         actions[b_indices] = act_t.cpu().numpy()
                     elif isinstance(agent_b, HeuristicAgent):
                         for idx in b_indices:
-                            st = runner.get_state(idx)
-                            actions[idx] = agent_b.select_action(st, ts.Player(d_players[idx]))
+                            st = runner.get_state(int(idx))
+                            actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])))
                     else:  # Random
                         for idx in b_indices:
                             leg = np.where(masks[idx] > 0)[0]
                             actions[idx] = np.random.choice(leg) if len(leg) > 0 else 0
 
-                runner.step_flat_all(actions)
+                runner.step_flat_all(actions.tolist())
                 steps += 1
 
             # Accumulate Chunk Results

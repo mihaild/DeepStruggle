@@ -1,19 +1,6 @@
-def resolve_device(device: Optional[Union[torch.device, str]] = None) -> torch.device:
-    if device is None:
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if isinstance(device, torch.device):
-        if device.type == "cuda" and not torch.cuda.is_available():
-            return torch.device("cpu")
-        return device
-    if isinstance(device, str):
-        if "cuda" in device and not torch.cuda.is_available():
-            return torch.device("cpu")
-        return torch.device(device)
-    return torch.device("cpu")
-
 """Player Agent Abstractions for Twilight Struggle Bots and Neural Models."""
 
-from typing import Protocol, Optional, Dict, Any, Union
+from typing import Protocol, Optional, Dict, Any, Union, cast
 import os
 import numpy as np
 import torch
@@ -26,6 +13,22 @@ from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
+
+ColdWarModel = Union[ColdWarNet, ColdWarNetV2, ColdWarNetV3, ColdWarNetV4]
+
+
+def resolve_device(device: Optional[Union[torch.device, str]] = None) -> torch.device:
+    if device is None:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if isinstance(device, torch.device):
+        if device.type == "cuda" and not torch.cuda.is_available():
+            return torch.device("cpu")
+        return device
+    if isinstance(device, str):
+        if "cuda" in device and not torch.cuda.is_available():
+            return torch.device("cpu")
+        return torch.device(device)
+    return torch.device("cpu")
 
 
 class PlayerAgent(Protocol):
@@ -93,16 +96,18 @@ class HeuristicAgent:
 
 
 class NeuralAgent:
-    """Neural network agent supporting ColdWarNet (V1) and ColdWarNetV2 (Cross-Attention)."""
+    """Neural network agent supporting ColdWarNet (V1, V2, V3, V4)."""
+
+    model: ColdWarModel
 
     def __init__(
         self,
-        model: nn.Module,
+        model: Union[ColdWarModel, nn.Module],
         name: str = "NeuralBot",
-        device: Optional[torch.device | str] = None,
+        device: Optional[Union[torch.device, str]] = None,
     ):
         self.device = resolve_device(device) if device is not None else next(model.parameters()).device
-        self.model = model.to(self.device)
+        self.model = cast(ColdWarModel, model.to(self.device))
         self.model.eval()
         self.name = name
 
@@ -111,7 +116,7 @@ class NeuralAgent:
         cls,
         checkpoint_path: str,
         name: Optional[str] = None,
-        device: torch.device | str = "cuda",
+        device: Union[torch.device, str] = "cuda",
     ) -> "NeuralAgent":
         """Loads a NeuralAgent from checkpoint with automatic architecture detection."""
         dev = resolve_device(device)
@@ -124,6 +129,7 @@ class NeuralAgent:
         is_v3 = any("node_pointer_proj" in k or "cross_b2c" in k for k in state_dict.keys())
         is_v2 = any("cross_attn" in k or "cross_card_proj" in k for k in state_dict.keys())
 
+        model: ColdWarModel
         if is_v4:
             model = create_coldwar_net_v4(dev)
         elif is_v3:
@@ -155,7 +161,7 @@ class NeuralAgent:
         return int(action_t.item())
 
 
-def load_agent(spec: str, device: torch.device | str = "cuda") -> PlayerAgent:
+def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAgent:
     """Factory function loading agents from string specifier (random, heuristic, or checkpoint path)."""
     s = spec.strip()
     if s.lower() in ["random", "randombot", "rand"]:
