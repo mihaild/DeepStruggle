@@ -64,6 +64,9 @@ class RolloutBuffer:
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.returns_win = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.returns_vp = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
+        # Auxiliary target for the DEFCON-risk head: 1 where the acting player is about to
+        # lose the game to its own DEFCON-1 choice within defcon_risk_horizon steps.
+        self.defcon_risk_target = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
 
         self.step = 0
         self.full = False
@@ -158,6 +161,7 @@ class RolloutBuffer:
         gae_lambda: float = 0.98,
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
+        defcon_risk_horizon: int = 4,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -182,6 +186,13 @@ class RolloutBuffer:
         pending_hs_turn = torch.zeros(self.num_envs, dtype=torch.int8, device=self.device)
 
         last_ret_vp = last_v_vp.clone()
+
+        # Backward-filled label for the auxiliary DEFCON-risk head. Armed at a terminal
+        # step that the acting player brought on itself, then counted down over the
+        # preceding steps so only the run-up is marked, not the whole episode.
+        risk_us = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        risk_ussr = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        risk_left = torch.zeros(self.num_envs, dtype=torch.int16, device=self.device)
 
         for t in reversed(range(self.buffer_size)):
             curr_p = self.players[t]
@@ -244,6 +255,22 @@ class RolloutBuffer:
             last_gae = torch.where(in_window, win_adv, std_gae)
             self.advantages[t] = last_gae
             self.returns_win[t] = torch.where(in_window, win_ret, last_gae + v_t)
+
+            # DEFCON-risk label. defcon_blunder is non-zero only for a loss the losing
+            # player chose (an unprovoked DEFCON-1, or a Cuban Missile Crisis coup), which
+            # is exactly the class val_win_head is blind to.
+            db_t = self.defcon_blunder[t]
+            risk_arm = done_t & (db_t != 0)
+            risk_us = torch.where(risk_arm, db_t == 1, risk_us)
+            risk_ussr = torch.where(risk_arm, db_t == -1, risk_ussr)
+            risk_left = torch.where(
+                risk_arm,
+                torch.full_like(risk_left, int(defcon_risk_horizon)),
+                torch.where(done_t, torch.zeros_like(risk_left), risk_left),
+            )
+            doomed = torch.where(curr_p == 1, risk_us, risk_ussr)
+            self.defcon_risk_target[t] = ((risk_left > 0) & doomed).float()
+            risk_left = torch.clamp(risk_left - 1, min=0)
 
             # VP Return: real VP ground truth at terminal / delta VP
             # vps[t] is normalized VP in [-1.0, 1.0] from player perspective
@@ -311,7 +338,7 @@ class RolloutBuffer:
 
     def get_batches(
         self, batch_size: int, priority_alpha: float = 0.0
-    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
+    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
         """Yields mini-batches for inner-loop SGD updates."""
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
@@ -323,6 +350,7 @@ class RolloutBuffer:
         flat_advantages = self.advantages.view(total_steps)
         flat_returns_win = self.returns_win.view(total_steps)
         flat_returns_vp = self.returns_vp.view(total_steps)
+        flat_defcon_risk = self.defcon_risk_target.view(total_steps)
 
         for start_idx in range(0, total_steps, batch_size):
             batch_idx = indices[start_idx : start_idx + batch_size]
@@ -334,6 +362,7 @@ class RolloutBuffer:
                 flat_advantages[batch_idx],
                 flat_returns_win[batch_idx],
                 flat_returns_vp[batch_idx],
+                flat_defcon_risk[batch_idx],
             )
 
     def get_batches_with_oracle(

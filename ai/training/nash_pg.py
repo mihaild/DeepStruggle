@@ -114,6 +114,7 @@ class BaseNashPGTrainer:
         ent_coef: float = 0.01,        # Entropy exploration coefficient
         vf_coef: float = 0.5,          # Value loss coefficient
         vp_coef: float = 0.05,         # Auxiliary VP loss weight
+        defcon_coef: float = 0.0,      # Auxiliary DEFCON-risk loss weight (0 disables the head)
         gamma: float = 1.0,            # Undiscounted: see note below
         # gamma must be exactly 1.0. Twilight Struggle is zero-sum and decided only at the
         # end, so any discount biases the agent against the endgame. At 0.999 over the
@@ -147,6 +148,14 @@ class BaseNashPGTrainer:
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.vp_coef = vp_coef
+        self.defcon_coef = defcon_coef
+        if defcon_coef > 0.0 and not hasattr(self.active_net, "forward_with_risk"):
+            raise ValueError(
+                f"--defcon-coef={defcon_coef} was requested but "
+                f"{type(self.active_net).__name__} has no DEFCON-risk head. It is "
+                f"implemented for v1 and v2; adding it to another architecture means "
+                f"giving that class defcon_risk_head and forward_with_risk."
+            )
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.num_epochs = num_epochs
@@ -343,14 +352,23 @@ class NashPGTrainer(BaseNashPGTrainer):
         total_loss_accum = 0.0
         policy_loss_accum = 0.0
         val_loss_accum = 0.0
+        risk_loss_accum = 0.0
         kl_accum = 0.0
         entropy_accum = 0.0
         clip_frac_accum = 0.0
         num_updates = 0
 
         for _ in range(self.num_epochs):
-            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp in self.buffer.get_batches(self.batch_size, self.priority_alpha):
-                cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
+            for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
+                 b_defcon_risk) in self.buffer.get_batches(self.batch_size, self.priority_alpha):
+                use_risk = self.defcon_coef > 0.0
+                if use_risk:
+                    forward_with_risk = getattr(self.active_net, "forward_with_risk")
+                    cur_logits, cur_v_win, cur_v_vp, cur_risk = forward_with_risk(b_obs, b_mask)
+                    cur_risk = cur_risk.squeeze(-1)
+                else:
+                    cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
+                    cur_risk = None
                 cur_v_win = cur_v_win.squeeze(-1)
                 cur_v_vp = cur_v_vp.squeeze(-1)
 
@@ -377,6 +395,18 @@ class NashPGTrainer(BaseNashPGTrainer):
                 val_loss = F.mse_loss(cur_v_win, b_ret_win) + self.vp_coef * F.mse_loss(cur_v_vp, b_ret_vp)
                 loss = policy_loss + self.vf_coef * val_loss
 
+                # Auxiliary DEFCON-risk objective. Positives are rare (a few percent of
+                # steps), so the loss is weighted towards them rather than letting the
+                # constant-zero solution dominate.
+                if cur_risk is not None:
+                    pos = b_defcon_risk.sum()
+                    pos_weight = ((b_defcon_risk.numel() - pos) / pos.clamp(min=1.0)).clamp(1.0, 100.0)
+                    risk_loss = F.binary_cross_entropy_with_logits(
+                        cur_risk, b_defcon_risk, pos_weight=pos_weight
+                    )
+                    loss = loss + self.defcon_coef * risk_loss
+                    risk_loss_accum += risk_loss.item()
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
@@ -392,6 +422,7 @@ class NashPGTrainer(BaseNashPGTrainer):
 
         return {
             "loss": total_loss_accum / max(1, num_updates),
+            "defcon_risk_loss": risk_loss_accum / max(1, num_updates),
             "policy_loss": policy_loss_accum / max(1, num_updates),
             "val_loss": val_loss_accum / max(1, num_updates),
             "kl_div": kl_accum / max(1, num_updates),

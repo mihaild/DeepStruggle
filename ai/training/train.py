@@ -57,6 +57,8 @@ def main():
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
     parser.add_argument("--gamma", type=float, default=1.0,
                         help="Discount factor. Keep at 1.0: the game is zero-sum and decided at the end, so any discount biases against the endgame (0.999 attenuates a terminal reward by ~26%% over a full game).")
+    parser.add_argument("--defcon-coef", type=float, default=0.0,
+                        help="Weight of the auxiliary DEFCON-risk head, which predicts whether the player to move is about to lose the game to its own DEFCON-1 choice (0 = head disabled). Added because val_win_head largely restates the VP margin -- corr(v_win, v_vp) = 0.86 -- so it reads self-inflicted DEFCON-1 deaths as roughly even positions while pricing ordinary losing positions correctly. Try 0.1.")
     parser.add_argument("--priority-alpha", type=float, default=0.0,
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
@@ -83,6 +85,7 @@ def main():
             batch_size=args.batch_size,
             lr=args.lr,
             eta=args.eta,
+            defcon_coef=args.defcon_coef,
             entropy_coef=args.entropy_coef,
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,

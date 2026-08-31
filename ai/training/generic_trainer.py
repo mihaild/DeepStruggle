@@ -52,6 +52,7 @@ TB_TAGS: Dict[str, str] = {
     "kl_div": "train/kl_div",
     "entropy": "train/entropy",
     "clip_frac": "train/clip_frac",
+    "defcon_risk_loss": "train/defcon_risk_loss",
     "belief_loss": "train/belief_loss",
     "oracle_loss": "train/oracle_loss",
     "distill_loss": "train/distill_loss",
@@ -371,6 +372,7 @@ def train_pipeline(
     blunder_window: bool = True,
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
+    defcon_coef: float = 0.0,
     ref_update_freq: int = 200_000,
     tensorboard: bool = True,
 ) -> None:
@@ -426,7 +428,8 @@ def train_pipeline(
     # 2. Handle Warm-up
     if warmup_checkpoint and os.path.exists(warmup_checkpoint):
         print(f"Loading Warm-up Checkpoint from: {warmup_checkpoint}", flush=True)
-        model.load_state_dict(torch.load(warmup_checkpoint, map_location=dev, weights_only=True))
+        from tools.lib.player_agent import load_checkpoint_into
+        load_checkpoint_into(model, torch.load(warmup_checkpoint, map_location=dev, weights_only=True))
         model.to(dev)
     elif warmup_dataset and os.path.exists(warmup_dataset):
         warmup_save_path = os.path.join(out_dir, f"coldwar_net_{arch}_warmup.pt")
@@ -486,6 +489,7 @@ def train_pipeline(
         slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
         blunder_window=blunder_window,
         priority_alpha=priority_alpha,
+        defcon_coef=defcon_coef,
         temperature_schedule=True,
         device=dev,
     )
@@ -557,6 +561,7 @@ def train_pipeline(
             "kl_div": iteration_metrics["kl_div"],
             "entropy": iteration_metrics["entropy"],
             "clip_frac": iteration_metrics.get("clip_frac", 0.0),
+            "defcon_risk_loss": iteration_metrics.get("defcon_risk_loss", 0.0),
             "belief_loss": iteration_metrics.get("belief_loss", 0.0),
             "oracle_loss": iteration_metrics.get("oracle_loss", 0.0),
             "distill_loss": iteration_metrics.get("distill_loss", 0.0),

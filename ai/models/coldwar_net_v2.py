@@ -176,6 +176,16 @@ class ColdWarNetV2(nn.Module):
             nn.Linear(128, 1),
         )
 
+        # Auxiliary DEFCON-risk head: logit of "the player to move loses to DEFCON 1 (or a
+        # Cuban Missile Crisis coup) within the next few of its own plies". See the note in
+        # coldwar_net.py; inert unless --defcon-coef is set. Emits a logit.
+        self.defcon_risk_head = nn.Sequential(
+            nn.Linear(hidden_dim, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),
+            nn.Linear(128, 1),
+        )
+
     def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
         """Extracts fused latent state representation and optional cross-attention maps."""
         batch_size = obs.shape[0]
@@ -252,6 +262,32 @@ class ColdWarNetV2(nn.Module):
         v_win = self.val_win_head(h)
         v_vp = self.val_vp_head(h)
         return masked_logits, v_win, v_vp
+
+    def forward_with_risk(
+        self, obs: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """forward() plus the auxiliary DEFCON-risk logit, sharing one backbone pass.
+
+        Kept separate from forward() so the existing three-value contract, which every
+        other caller depends on, is untouched.
+        """
+        h = self.extract_features(obs)
+        raw_logits = self.policy_head(h)
+        if mask is not None:
+            mask_bool = mask.bool() if mask.dtype != torch.bool else mask
+            masked_logits = torch.where(
+                mask_bool, raw_logits,
+                torch.tensor(-1e9, device=raw_logits.device, dtype=raw_logits.dtype),
+            )
+        else:
+            masked_logits = raw_logits
+        return (masked_logits, self.val_win_head(h), self.val_vp_head(h),
+                self.defcon_risk_head(h))
+
+    @torch.no_grad()
+    def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
+        """Probability that the player to move is about to lose to DEFCON 1."""
+        return torch.sigmoid(self.defcon_risk_head(self.extract_features(obs)))
 
     @torch.no_grad()
     def sample_action(

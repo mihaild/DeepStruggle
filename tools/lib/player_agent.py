@@ -17,6 +17,22 @@ from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 ColdWarModel = Union[ColdWarNet, ColdWarNetV2, ColdWarNetV3, ColdWarNetV4]
 
 
+def load_checkpoint_into(model: nn.Module, state_dict: Dict[str, Any]) -> None:
+    """Load a checkpoint, tolerating an absent auxiliary DEFCON-risk head.
+
+    The head was added after these checkpoints were written, so their state dicts have no
+    weights for it. Everything else must still match exactly: only keys belonging to the
+    aux head may be missing, and unexpected keys are never allowed.
+    """
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    stale = [k for k in missing if not k.startswith("defcon_risk_head.")]
+    if stale or unexpected:
+        raise RuntimeError(
+            f"checkpoint does not match {type(model).__name__}: "
+            f"missing {stale}, unexpected {list(unexpected)}"
+        )
+
+
 def resolve_device(device: Optional[Union[torch.device, str]] = None) -> torch.device:
     if device is None:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -180,7 +196,7 @@ class NeuralAgent:
         else:
             model = create_coldwar_net(dev)
 
-        model.load_state_dict(state_dict)
+        load_checkpoint_into(model, state_dict)
         model.to(dev)
         agent_name = name or os.path.splitext(os.path.basename(checkpoint_path))[0]
         return cls(model=model, name=agent_name, device=dev)
