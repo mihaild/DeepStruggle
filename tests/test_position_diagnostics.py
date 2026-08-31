@@ -76,6 +76,20 @@ def test_region_score_sums_add_up_over_regions() -> None:
     assert us == sum(int(ts.Scoring.evaluate_region(st, r, False).us_score) for r in REGIONS)
 
 
+def test_a_balanced_board_is_salvageable_even_when_both_sides_score_heavily() -> None:
+    """One side worth 20 across Africa and Central America, the other 20 across South
+    America and Asia, is a balanced board -- scoring it all would move the VP track by
+    nothing. The bar is on the net, not on either side's absolute holdings."""
+    from ai.eval.position_diagnostics import region_score_net, region_score_sums
+
+    st = _fresh()
+    us, ussr = region_score_sums(st)
+    net = region_score_net(st)
+    assert net == us - ussr
+    # A large but symmetric board must not be rejected.
+    assert is_salvageable(st, max_region_net=abs(net))
+
+
 def test_salvageable_rejects_decided_and_terminal_positions() -> None:
     """A decided start contributes no gradient at all, so it must never enter the pool."""
     st = _fresh()
@@ -86,7 +100,7 @@ def test_salvageable_rejects_decided_and_terminal_positions() -> None:
     assert not is_salvageable(lopsided), "a 15 VP lead is past the |VP| <= 10 bar"
 
     over = _fresh()
-    assert not is_salvageable(over, max_region_sum=0), "region-score bar must be enforced"
+    assert not is_salvageable(over, max_region_net=-1), "region-net bar must be enforced"
 
     done = _fresh()
     done.current_phase = ts.Phase.GAME_OVER
@@ -109,3 +123,29 @@ def test_profile_reports_per_turn_structure() -> None:
     assert first["reached_frac"] == 1.0, "every game passes through turn 1"
     assert 0.0 <= first["salvageable_frac"] <= 1.0
     assert set(scalar_metrics(profile["per_turn"], 5.0)) == set(profile["scalars"])
+
+
+def test_batched_profile_normalises_and_agrees_in_shape() -> None:
+    """reached_frac is a fraction of episodes started, so it cannot exceed 1.
+
+    The first version counted positions from envs still mid-game against a denominator of
+    *completed* episodes, which pushed turn-1 "reached" above 160%. It also folded
+    positions in as they happened, so stopping at N completions over-represented short
+    games -- envs that end quickly finish first. Positions are now buffered per env and
+    only counted when that episode ends.
+    """
+    from ai.models.coldwar_net_v2 import create_coldwar_net_v2
+    from ai.eval.position_diagnostics import profile_self_play_batched
+
+    profile = profile_self_play_batched(
+        create_coldwar_net_v2("cpu"), num_envs=8, num_episodes=8, max_iters=4000)
+    assert profile["num_games"] > 0, "no episode completed"
+
+    per_turn = profile["per_turn"]
+    assert per_turn[1]["reached_frac"] == 1.0, "every episode passes through turn 1"
+    for turn, row in per_turn.items():
+        assert 0.0 <= row["reached_frac"] <= 1.0, f"turn {turn}: {row['reached_frac']}"
+        assert 0.0 <= row["salvageable_frac"] <= row["reached_frac"] + 1e-9
+    turns = sorted(per_turn)
+    fracs = [per_turn[t]["reached_frac"] for t in turns]
+    assert fracs == sorted(fracs, reverse=True), "reachability must fall monotonically"

@@ -278,11 +278,10 @@ def evaluate_and_log_snapshot(
     # count stops falling rather than slowly improving.
     position_metrics: Dict[str, float] = {}
     try:
-        from ai.eval.position_diagnostics import format_report, profile_self_play
-        profile = profile_self_play(
-            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
-            num_games=position_games,
-        )
+        from ai.eval.position_diagnostics import format_report, profile_self_play_batched
+        # Batched: ~106k decisions/sec against ~890 for the one-state-at-a-time loop, so
+        # this costs seconds rather than minutes of every snapshot evaluation.
+        profile = profile_self_play_batched(model, num_envs=128, num_episodes=position_games)
         position_metrics = profile["scalars"]
         print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty "
               f"battlegrounds at turn 8 | "

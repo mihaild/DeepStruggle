@@ -36,11 +36,13 @@ BATTLEGROUNDS: List[int] = [
     cid for cid in range(84) if ts.MapData.get_country_info(cid)["battleground"]
 ]
 
-# Defaults for is_salvageable. max_region_sum is deliberately strict: at turn 8 only ~10%
-# of self-play positions pass it, which is itself the diagnosis rather than a tuning
-# problem -- see profile_self_play for the per-turn breakdown.
+# Defaults for is_salvageable. The regional bar is on the *net*, not on either side's raw
+# total: it is entirely normal for one side to be worth 20 VP across Africa and Central
+# America while the other is worth 20 across South America and Asia. That is a balanced
+# board, and scoring both would move the VP track by nothing. What disqualifies a position
+# is the imbalance -- how far scoring everything right now would swing the game.
 MAX_ABS_VP = 10
-MAX_REGION_SUM = 20
+MAX_REGION_NET = 20
 
 
 def region_score_sums(state: ts.GameState) -> tuple[int, int]:
@@ -67,12 +69,22 @@ def empty_battlegrounds(state: ts.GameState) -> List[int]:
     return out
 
 
+def region_score_net(state: ts.GameState) -> int:
+    """US minus USSR if every region were scored now; the swing the board is holding."""
+    us, ussr = region_score_sums(state)
+    return us - ussr
+
+
 def is_salvageable(
     state: ts.GameState,
     max_abs_vp: int = MAX_ABS_VP,
-    max_region_sum: int = MAX_REGION_SUM,
+    max_region_net: int = MAX_REGION_NET,
 ) -> bool:
     """Is this position worth resuming from -- undecided, with game left to play?
+
+    Two ways a position can already be settled: the VP track has run away, or the board
+    has, so that scoring the regions would immediately end it. Both are checked on the
+    balance between the sides rather than on either side's absolute holdings.
 
     A decided position is worse than useless as a start state: with terminal-only reward
     every action there returns the same value, so it contributes no gradient at all while
@@ -82,8 +94,7 @@ def is_salvageable(
         return False
     if abs(int(state.victory_points)) > max_abs_vp:
         return False
-    us, ussr = region_score_sums(state)
-    return us <= max_region_sum and ussr <= max_region_sum
+    return abs(region_score_net(state)) <= max_region_net
 
 
 def _drain(state: ts.GameState) -> None:
@@ -110,6 +121,7 @@ def profile_self_play(
     late_samples = 0
     us_scores: Dict[int, List[int]] = collections.defaultdict(list)
     ussr_scores: Dict[int, List[int]] = collections.defaultdict(list)
+    nets: Dict[int, List[int]] = collections.defaultdict(list)
     final_turns: List[int] = []
 
     for i in range(num_games):
@@ -132,6 +144,7 @@ def profile_self_play(
                 us, ussr = region_score_sums(state)
                 us_scores[turn].append(us)
                 ussr_scores[turn].append(ussr)
+                nets[turn].append(us - ussr)
                 if turn >= 6:
                     late_samples += 1
                     for cid in empty:
@@ -153,6 +166,7 @@ def profile_self_play(
             "mean_empty_battlegrounds": mean(empty_bgs[t]),
             "mean_us_region_score": mean(us_scores[t]),
             "mean_ussr_region_score": mean(ussr_scores[t]),
+            "mean_abs_region_net": mean([abs(v) for v in nets[t]]),
         }
         for t in sorted(reach)
     }
@@ -195,13 +209,13 @@ def format_report(profile: Dict[str, Any], top_battlegrounds: int = 10) -> str:
         f"(mean final turn {profile['mean_final_turn']:.2f})",
         "",
         f"{'turn':>4} {'reached':>9} {'salvageable':>12} {'empty BGs':>10} "
-        f"{'US score':>9} {'USSR score':>11}",
+        f"{'US score':>9} {'USSR score':>11} {'|net|':>7}",
     ]
     for turn, row in profile["per_turn"].items():
         lines.append(
             f"{turn:>4} {100*row['reached_frac']:>8.1f}% {100*row['salvageable_frac']:>11.1f}% "
             f"{row['mean_empty_battlegrounds']:>10.2f} {row['mean_us_region_score']:>9.1f} "
-            f"{row['mean_ussr_region_score']:>11.1f}"
+            f"{row['mean_ussr_region_score']:>11.1f} {row['mean_abs_region_net']:>7.1f}"
         )
     rates = profile.get("empty_battleground_rate_late") or {}
     if rates:
@@ -209,3 +223,137 @@ def format_report(profile: Dict[str, Any], top_battlegrounds: int = 10) -> str:
         for name, rate in list(rates.items())[:top_battlegrounds]:
             lines.append(f"  {name:<20} empty in {100*rate:5.1f}% of positions")
     return "\n".join(lines)
+
+def profile_self_play_batched(
+    model: Any,
+    num_envs: int = 256,
+    num_episodes: int = 200,
+    base_seed: int = 820_000,
+    temperature: float = 0.1,
+    max_iters: int = 20_000,
+) -> Dict[str, Any]:
+    """Same profile, driven through the vectorized runner instead of one state at a time.
+
+    Measured on this machine: the single-state loop manages ~890 decisions/sec, while 512
+    batched envs reach ~106,000 -- the engine step is the same, the difference is entirely
+    how much work each GPU call is given. Training itself runs at ~7,900 env-steps/sec
+    because of the PPO epochs, so batched sampling is cheaper than the training it
+    instruments, and the single-state version was nine times more expensive.
+
+    Positions are buffered per environment and only folded in when that episode finishes.
+    Counting them as they happen would bias the profile toward short games: envs that end
+    quickly complete first, so stopping at N completed episodes would over-represent them
+    and understate how far games actually run.
+    """
+    import numpy as np
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv
+
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
+    obs, masks, _ = env.reset_all()
+
+    reach: collections.Counter = collections.Counter()
+    salvageable: collections.Counter = collections.Counter()
+    empty_bgs: Dict[int, List[int]] = collections.defaultdict(list)
+    us_scores: Dict[int, List[int]] = collections.defaultdict(list)
+    ussr_scores: Dict[int, List[int]] = collections.defaultdict(list)
+    nets: Dict[int, List[int]] = collections.defaultdict(list)
+    per_bg_empty: collections.Counter = collections.Counter()
+    late_samples = 0
+    final_turns: List[int] = []
+    episodes = 0
+
+    pending: List[List[tuple]] = [[] for _ in range(num_envs)]
+    seen: List[set] = [set() for _ in range(num_envs)]
+
+    def flush(i: int) -> None:
+        nonlocal late_samples, episodes
+        if not pending[i]:
+            pending[i], seen[i] = [], set()
+            return
+        for (turn, salv, empty_ids, us, ussr) in pending[i]:
+            reach[turn] += 1
+            if salv:
+                salvageable[turn] += 1
+            empty_bgs[turn].append(len(empty_ids))
+            us_scores[turn].append(us)
+            ussr_scores[turn].append(ussr)
+            nets[turn].append(us - ussr)
+            if turn >= 6:
+                late_samples += 1
+                for cid in empty_ids:
+                    per_bg_empty[cid] += 1
+        final_turns.append(max(t for (t, *_rest) in pending[i]))
+        episodes += 1
+        pending[i], seen[i] = [], set()
+
+    try:
+        for _ in range(max_iters):
+            if episodes >= num_episodes:
+                break
+            for i in range(num_envs):
+                state = env.runner.get_state(i)
+                if ts.Engine.is_terminal(state):
+                    continue
+                turn = int(state.turn)
+                if turn in seen[i]:
+                    continue
+                seen[i].add(turn)
+                empty = empty_battlegrounds(state)
+                us, ussr = region_score_sums(state)
+                pending[i].append((turn, is_salvageable(state), empty, us, ussr))
+
+            obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+            mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+            with torch.no_grad():
+                actions, _, _, _, _ = model.sample_action(obs_t, mask_t, temperature=temperature)
+            obs, masks, _, dones, _ = env.step(actions.cpu().numpy())
+            for i, done in enumerate(dones):
+                if done:
+                    flush(i)
+    finally:
+        if was_training:
+            model.train()
+
+    # Episodes still in flight are dropped rather than counted half-played.
+    return _assemble(episodes, final_turns, reach, salvageable, empty_bgs,
+                     us_scores, ussr_scores, nets, per_bg_empty, late_samples)
+
+
+def _assemble(num_games, final_turns, reach, salvageable, empty_bgs,
+              us_scores, ussr_scores, nets, per_bg_empty, late_samples) -> Dict[str, Any]:
+    def mean(xs) -> float:
+        xs = list(xs)
+        return statistics.mean(xs) if xs else 0.0
+
+    # Normalise by episodes *started*, not episodes completed: envs still mid-game when
+    # the budget runs out have contributed positions but no completion, which would push
+    # reached_frac above 1. Every episode passes through turn 1, so reach[1] counts starts.
+    started = reach[1] if reach.get(1) else max(1, num_games)
+    per_turn = {
+        t: {
+            "reached_frac": reach[t] / started,
+            "salvageable_frac": salvageable[t] / started,
+            "salvageable_given_reached": salvageable[t] / reach[t] if reach[t] else 0.0,
+            "mean_empty_battlegrounds": mean(empty_bgs[t]),
+            "mean_us_region_score": mean(us_scores[t]),
+            "mean_ussr_region_score": mean(ussr_scores[t]),
+            "mean_abs_region_net": mean(abs(v) for v in nets[t]),
+        }
+        for t in sorted(reach)
+    }
+    return {
+        "num_games": num_games,
+        "mean_final_turn": mean(final_turns),
+        "per_turn": per_turn,
+        "empty_battleground_rate_late": {
+            ts.MapData.get_country_info(cid)["name"]: per_bg_empty[cid] / late_samples
+            for cid in sorted(per_bg_empty, key=lambda c: -per_bg_empty[c])
+        } if late_samples else {},
+        "scalars": scalar_metrics(per_turn, mean(final_turns)),
+    }
