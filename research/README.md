@@ -6,6 +6,9 @@ This directory documents foundational literature, game-theoretic algorithms, and
 
 ## 1. Central Evolving Document
 
+- [**experiments.md**](experiments.md): **Experiment Log — what was actually run, and what came out**  
+  *Running record of experiments against this codebase: setup, numbers, verdict, caveats. Includes the measurement bugs that invalidated earlier results, and which older numbers should no longer be quoted. Read this before trusting any figure from a previous run, and add an entry whenever an experiment finishes — including negative and inconclusive ones.*
+
 - [**ideas_and_plans.md**](ideas_and_plans.md): **Ideas, Strategic Insights & Technical Roadmap**  
   *The single, evolving design document covering domain insights (hand scheduling, DEFCON trapping, asymmetric war phase access), tabula rasa learning without demonstrations, ColdWarNetV4 architecture with Oracle Guiding, Multi-Agent League training, and the two-level NashPG + $\pi\text{KL}$ Subgame Resolving duality.*
 
