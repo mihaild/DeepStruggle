@@ -15,7 +15,7 @@ Two exclusions matter for the numbers to mean anything, both learned by getting 
 """
 
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 import numpy as np
 import ts_engine as ts
@@ -93,5 +93,107 @@ def measure_decisive(
                 ts.Engine.step_flat(state, action)
             except Exception:
                 break
+            # Resolve the chance nodes an action lands on, exactly as the vectorized
+            # runner does internally. Feeding them policy actions instead is not
+            # equivalent: it leaves a different phasing_player and collapses games to
+            # roughly half their true length, which silently truncated every decisive
+            # measurement taken through this path.
+            while (not ts.Engine.is_terminal(state)
+                   and state.ctx().decision_player == ts.Player.NONE
+                   and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+                ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
             steps += 1
     return st_out
+
+def measure_decisive_batched(
+    model: Any,
+    num_envs: int = 128,
+    num_episodes: int = 40,
+    base_seed: int = 77_000,
+    temperature: float = 0.1,
+    max_iters: int = 20_000,
+) -> DecisiveStats:
+    """measure_decisive over parallel environments, with one forward pass per batch.
+
+    Nearly all of the single-state cost is the network, not the probing: over a full game
+    the split is 96.9% policy forward, 3.0% classify_legal_actions, 0.1% engine step. So
+    handing the GPU one state at a time was the whole expense -- 890 decisions/sec against
+    ~106,000 for 512 batched envs, while training itself runs at ~7,900 env-steps/sec.
+
+    Decisions are buffered per environment and folded in only when that episode ends.
+    Counting them as they happen would bias the measurement toward short games, since envs
+    that finish quickly complete first and the run stops once num_episodes have finished --
+    and decisive positions cluster near the end of a game, exactly where that bias bites.
+    """
+    import numpy as np
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv
+
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
+    obs, masks, _ = env.reset_all()
+
+    out = DecisiveStats()
+    pending: List[List[tuple]] = [[] for _ in range(num_envs)]
+    episodes = 0
+
+    def flush(i: int) -> None:
+        nonlocal episodes
+        for (n_kinds, n_wins, n_losses, chosen_kind) in pending[i]:
+            out.decisions += 1
+            if n_wins:
+                out.win_available += 1
+                if chosen_kind == "win":
+                    out.win_taken += 1
+            if n_losses:
+                if n_losses < n_kinds:
+                    out.loss_avoidable += 1
+                    if chosen_kind == "loss":
+                        out.loss_taken += 1
+                else:
+                    out.loss_forced += 1
+        pending[i] = []
+        episodes += 1
+
+    try:
+        for _ in range(max_iters):
+            if episodes >= num_episodes:
+                break
+
+            obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+            mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+            with torch.no_grad():
+                actions_t, _, _, _, _ = model.sample_action(
+                    obs_t, mask_t, temperature=temperature)
+            actions = actions_t.cpu().numpy()
+
+            for i in range(num_envs):
+                state = env.runner.get_state(i)
+                if ts.Engine.is_terminal(state):
+                    continue
+                ctx = state.ctx()
+                if ctx.decision_type == ts.DecisionType.ROLL_DIE:
+                    continue  # no choice is being made at a chance node
+                player = (ctx.decision_player if ctx.decision_player != ts.Player.NONE
+                          else state.phasing_player)
+                kinds = classify_legal_actions(state, player)
+                if not kinds:
+                    continue
+                n_wins = sum(1 for k in kinds.values() if k == "win")
+                n_losses = sum(1 for k in kinds.values() if k == "loss")
+                pending[i].append((len(kinds), n_wins, n_losses, kinds.get(int(actions[i]))))
+
+            obs, masks, _, dones, _ = env.step(actions)
+            for i, done in enumerate(dones):
+                if done:
+                    flush(i)
+    finally:
+        if was_training:
+            model.train()
+
+    return out
+

@@ -58,18 +58,28 @@ def test_degenerate_advantages_fall_back_to_uniform() -> None:
 # --- decisive probe ---------------------------------------------------------------------
 
 def test_probe_ignores_chance_nodes() -> None:
-    """A die roll is not a decision, so it must never be scored against the policy."""
-    seen_chance = []
+    """A die roll is not a decision, so it must never be scored against the policy.
+
+    This used to require the fixture to *reach* a chance node through the policy, because
+    the probe stepped them with a policy action. It no longer does: chance nodes are
+    resolved internally, which keeps the probe on the same trajectory training generates.
+    So the contract is now the stronger one -- the policy is never consulted there at all,
+    and every scored decision is a real choice.
+    """
+    calls = []
 
     def always_first(state: ts.GameState, player: ts.Player) -> int:
-        if state.ctx().decision_type == ts.DecisionType.ROLL_DIE:
-            seen_chance.append(1)
+        calls.append(state.ctx().decision_type)
         legal = np.flatnonzero(ActionEncoder.get_legal_mask(state))
         return int(legal[0]) if len(legal) else 0
 
     stats = measure_decisive(always_first, num_games=3, max_steps=400)
-    assert seen_chance, "fixture never reached a chance node; test would be vacuous"
+    assert calls, "fixture never ran; test would be vacuous"
+    assert ts.DecisionType.ROLL_DIE not in calls, (
+        "the policy was consulted at a chance node; those must be resolved instead"
+    )
     assert stats.decisions > 0
+    assert stats.decisions <= len(calls), "scored more decisions than the policy made"
 
 
 def test_forced_positions_are_separated_from_blunders() -> None:
