@@ -289,6 +289,15 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --post-tournament-games 500
 
+# 2a. A/B experiments: budget by steps, not by wall clock. Evaluation cost scales with how
+#     long the policy's games run, so a time budget hands the two arms different amounts of
+#     training (one real 3-hour A/B finished 1024 vs 473 iterations on identical settings).
+#     --duration-seconds now counts training only; evaluation and pool refreshes are excluded.
+#     --eval-max-snapshot-opponents bounds evaluation, which is otherwise quadratic in run length.
+TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
+  --arch v2 --train-steps 60000000 --eval-max-snapshot-opponents 4 \
+  --output-dir data/checkpoints/ab_arm_on --start-pool-frac 1.0
+
 # 2b. Watch a live (or finished) run: every training_metrics.jsonl metric is mirrored to
 #     <output-dir>/tb/ as TensorBoard event files. Pass --no-tensorboard to write JSONL only.
 .venv/bin/python -m tensorboard.main --logdir data/checkpoints/run_v3_<timestamp>/tb

@@ -21,6 +21,40 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --output-dir data/checkpoints/my_new_run
 ```
 
+### Budgeting a run, and what evaluation costs
+
+`--duration-seconds` budgets **training time only**. Snapshot evaluation and start-pool
+refreshes are timed separately and excluded, so the flag means what it says.
+
+For an A/B, budget by steps instead:
+
+```bash
+# Two arms that are exactly comparable: identical step budget, one flag apart
+PYTHONPATH=. .venv/bin/python tools/train.py --arch v2 --train-steps 60000000 ... --start-pool-frac 1.0
+PYTHONPATH=. .venv/bin/python tools/train.py --arch v2 --train-steps 60000000 ... --start-pool-frac 0.0
+```
+
+A wall-clock budget cannot make two arms comparable, because steps/sec depends on the
+policy: the arm whose games run longer has costlier evaluations and gets less training.
+That is directional rather than random, and it confounded a real 3-hour A/B, whose arms
+finished 1024 and 473 iterations on identical settings. `--train-steps` removes it. Because
+a step budget says nothing about elapsed time, the progress line projects a wall-clock ETA
+from the observed rate plus measured overhead, so a step budget can still be aimed at a
+target duration:
+
+```
+[1,310,720/1,500,000 steps, ETA 130s] It   20 | Steps: 1,310,720 (15,356 st/s) | ...
+```
+
+`--eval-max-snapshot-opponents` (default 4) bounds evaluation cost. Each snapshot is
+otherwise added to the opponent list permanently, making evaluation quadratic in run
+length; the final evaluation of a 3-hour run faced 14 opponents and took 957s against a
+900s snapshot interval, leaving about one training iteration per interval. Baselines from
+`--eval-opponents` are never dropped. Pass `0` for the old unbounded behaviour.
+
+Snapshot evaluation runs through the same vectorized path as `tools/tournament.py`
+(~30x the one-game-at-a-time loop it replaced).
+
 Every iteration is logged to `<output-dir>/training_metrics.jsonl` and mirrored to TensorBoard
 event files in `<output-dir>/tb/` (`--no-tensorboard` disables the mirror; the JSONL is always
 written, and a missing/broken `tensorboard` install only prints a warning). Watch a live run with:
