@@ -59,6 +59,12 @@ def main():
                         help="Discount factor. Keep at 1.0: the game is zero-sum and decided at the end, so any discount biases against the endgame (0.999 attenuates a terminal reward by ~26%% over a full game).")
     parser.add_argument("--defcon-coef", type=float, default=0.0,
                         help="Weight of the auxiliary DEFCON-risk head, which predicts whether the player to move is about to lose the game to its own DEFCON-1 choice (0 = head disabled). Added because val_win_head largely restates the VP margin -- corr(v_win, v_vp) = 0.86 -- so it reads self-inflicted DEFCON-1 deaths as roughly even positions while pricing ordinary losing positions correctly. Try 0.1.")
+    parser.add_argument("--start-pool-frac", type=float, default=0.0,
+                        help="Enable mid-game start sampling (>0 turns it on). A share of environments resume from saved turn-boundary positions instead of the real opening, with the split set by DEFAULT_TURN_MIX: 50%% turn 1, 15%% turn 4, 15%% turn 6, 10%% turn 8, 10%% turn 10. Self-play from turn 1 reaches turn 10 in only ~20%% of games and leaves the same eight battlegrounds untouched from turn 8 on, so those states are otherwise barely sampled.")
+    parser.add_argument("--start-pool-capacity", type=int, default=512,
+                        help="Positions kept per turn bucket.")
+    parser.add_argument("--start-pool-episodes", type=int, default=600,
+                        help="Self-play episodes per pool refresh. Refreshing costs a few seconds -- batched rollout runs ~13x faster than training -- and happens at every snapshot evaluation so the pool tracks the policy rather than preserving an older one.")
     parser.add_argument("--priority-alpha", type=float, default=0.0,
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
@@ -86,6 +92,9 @@ def main():
             lr=args.lr,
             eta=args.eta,
             defcon_coef=args.defcon_coef,
+            start_pool_frac=args.start_pool_frac,
+            start_pool_capacity=args.start_pool_capacity,
+            start_pool_episodes=args.start_pool_episodes,
             entropy_coef=args.entropy_coef,
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,

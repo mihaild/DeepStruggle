@@ -887,6 +887,15 @@ NB_MODULE(ts_engine, m) {
         .def("get_opponent_hands", &VectorizedBatchRunner::get_opponent_hands)
         .def("get_turns", &VectorizedBatchRunner::get_turns)
         .def("get_state", [](VectorizedBatchRunner& self, size_t idx) -> ts::GameState& { return self.states.at(idx); }, nb::rv_policy::reference_internal)
+        // Write a whole GameState into one slot, so an environment can be started from a
+        // saved mid-game position instead of a fresh deal. GameState is trivially
+        // copyable, so this is a plain struct assignment. get_state hands back a mutable
+        // reference, but only the top DecisionContext is exposed -- not the ctx_stack --
+        // so copying field by field from Python cannot restore a position captured during
+        // nested card resolution, and would corrupt it silently.
+        .def("set_state", [](VectorizedBatchRunner& self, size_t idx, const ts::GameState& s) {
+            self.states.at(idx) = s;
+        }, nb::arg("idx"), nb::arg("state"))
         .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
             size_t n = self.num_envs;
             std::vector<float> potentials(n);

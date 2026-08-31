@@ -24,6 +24,7 @@ from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumRew
 from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
+from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
@@ -401,6 +402,9 @@ def train_pipeline(
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
     defcon_coef: float = 0.0,
+    start_pool_frac: float = 0.0,
+    start_pool_capacity: int = 512,
+    start_pool_episodes: int = 600,
     ref_update_freq: int = 200_000,
     tensorboard: bool = True,
 ) -> None:
@@ -481,7 +485,28 @@ def train_pipeline(
         reward_calc = ShapedZeroSumReward()
     else:
         reward_calc = ZeroSumTerminalReward()
-    env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
+    # Mid-game start positions. Self-play from turn 1 reaches the late game rarely and
+    # plays it badly, so a share of environments resume from saved turn-boundary positions
+    # instead. The pool is rebuilt as the policy moves on; see ai/training/start_pool.py.
+    start_pool: Optional[StartPositionPool] = None
+    env_start_turns: List[Optional[int]] = [None] * num_envs
+    if start_pool_frac > 0.0:
+        mix = dict(DEFAULT_TURN_MIX)
+        pool_turns = tuple(t for t in mix if t != 1)
+        start_pool = StartPositionPool(turns=pool_turns,
+                                       capacity_per_turn=start_pool_capacity)
+
+        def _start_provider(env_idx: int) -> Optional[Any]:
+            turn = env_start_turns[env_idx]
+            if turn is None or start_pool is None:
+                return None
+            return start_pool.sample(turn)
+
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345,
+                              reward_calculator=reward_calc,
+                              start_provider=_start_provider)
+    else:
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
 
     # Curriculum timing configuration
     if is_curriculum:
@@ -557,6 +582,25 @@ def train_pipeline(
         add_to_opponents_after=True,
         arch=arch,
     )
+
+    def _refresh_start_pool(tag: str) -> Dict[str, float]:
+        """Rebuild the pool from the current policy and re-draw which env starts where."""
+        if start_pool is None:
+            return {}
+        stats = start_pool.harvest(model, num_envs=min(256, max(32, num_envs)),
+                                   num_episodes=start_pool_episodes)
+        for i in range(num_envs):
+            env_start_turns[i] = None
+        assignment = start_pool.assign_starts(num_envs, DEFAULT_TURN_MIX)
+        for i, turn in enumerate(assignment):
+            env_start_turns[i] = turn
+        sizes = {t: start_pool.size(t) for t in sorted(start_pool.buckets)}
+        resumed = sum(1 for t in assignment if t is not None)
+        print(f"  start pool ({tag}): {sizes} | {resumed}/{num_envs} envs resume mid-game",
+              flush=True)
+        return stats.as_metrics()
+
+    _refresh_start_pool("initial")
 
     while True:
         elapsed = time.time() - t_start
@@ -636,6 +680,9 @@ def train_pipeline(
                 add_to_opponents_after=True,
                 arch=arch,
             )
+            pool_metrics = _refresh_start_pool(f"@{int(elapsed)}s")
+            if pool_metrics:
+                decisive = {**(decisive or {}), **pool_metrics}
             if decisive:
                 with open(log_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps({"iteration": it, "elapsed_seconds": int(elapsed), **decisive}) + "\n")

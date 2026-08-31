@@ -145,11 +145,18 @@ class TsVectorizedEnv:
         num_envs: int = 64,
         base_seed: int = 42,
         auto_reset: bool = True,
+        start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
         self.auto_reset = auto_reset
+        # Optional source of mid-game start positions. Called with an env index after that
+        # env resets; returning a GameState starts it there instead of from a fresh deal,
+        # returning None leaves the real opening. The provider owns cloning and reseeding:
+        # handing back a stored object would let training step it, and reusing its
+        # rng_state would give every rollout from that position the same deal and dice.
+        self.start_provider = start_provider
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
@@ -164,6 +171,8 @@ class TsVectorizedEnv:
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed)
         else:
             self.runner.refresh_all()
+        for _i in range(self.num_envs):
+            self._apply_start_position(_i)
         self.ep_lengths.fill(0)
         self.ep_rewards.fill(0.0)
         if hasattr(self.reward_calc, "on_all_reset"):
@@ -172,10 +181,18 @@ class TsVectorizedEnv:
         masks = np.array(self.runner.get_action_masks(), copy=False)
         return obs, masks, self._get_batch_info()
 
+    def _apply_start_position(self, env_idx: int) -> None:
+        if self.start_provider is None:
+            return
+        state = self.start_provider(env_idx)
+        if state is not None:
+            self.runner.set_state(env_idx, state)
+
     def reset_env(self, env_idx: int, seed: Optional[int] = None) -> None:
         """Reset a single environment by index."""
         s = seed if seed is not None else int(np.random.randint(1, 1_000_000_000))
         self.runner.reset_game(env_idx, s)
+        self._apply_start_position(env_idx)
         self.ep_lengths[env_idx] = 0
         self.ep_rewards[env_idx] = 0.0
 
@@ -271,6 +288,9 @@ class TsVectorizedEnv:
                     })
                     new_seed = int(np.random.randint(1, 1_000_000_000))
                     self.runner.reset_game(i, new_seed)
+                    # Inject before on_env_reset so the reward calculator sees the position
+                    # the episode actually begins from, not the discarded fresh deal.
+                    self._apply_start_position(i)
                     if hasattr(self.reward_calc, "on_env_reset"):
                         self.reward_calc.on_env_reset(i, self.runner.get_state(i))
                     self.ep_lengths[i] = 0

@@ -14,6 +14,7 @@ whatever else happens to be on sys.path.
 
 import os
 import pathlib
+from typing import Optional
 
 import pytest
 import ts_engine as ts
@@ -23,7 +24,7 @@ SOURCE_DIRS = ("engine", "bindings")
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h", ".cc"}
 
 
-def _newest_source() -> tuple[pathlib.Path, float]:
+def _newest_source() -> tuple[Optional[pathlib.Path], float]:
     newest, newest_mtime = None, 0.0
     for directory in SOURCE_DIRS:
         root = REPO / directory
