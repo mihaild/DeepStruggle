@@ -291,7 +291,7 @@ def evaluate_and_log_snapshot(
     add_to_opponents_after: bool = True,
     arch: str = "v2",
     decisive_games: int = 30,
-    position_games: int = 30,
+    position_games: int = 128,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
@@ -322,7 +322,7 @@ def evaluate_and_log_snapshot(
         from ai.eval.position_diagnostics import format_report, profile_self_play_batched
         # Batched: ~106k decisions/sec against ~890 for the one-state-at-a-time loop, so
         # this costs seconds rather than minutes of every snapshot evaluation.
-        profile = profile_self_play_batched(model, num_envs=128, num_episodes=position_games)
+        profile = profile_self_play_batched(model, num_envs=position_games)
         position_metrics = profile["scalars"]
         print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty "
               f"battlegrounds at turn 8 | "

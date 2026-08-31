@@ -227,7 +227,6 @@ def format_report(profile: Dict[str, Any], top_battlegrounds: int = 10) -> str:
 def profile_self_play_batched(
     model: Any,
     num_envs: int = 256,
-    num_episodes: int = 200,
     base_seed: int = 820_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
@@ -240,10 +239,18 @@ def profile_self_play_batched(
     because of the PPO epochs, so batched sampling is cheaper than the training it
     instruments, and the single-state version was nine times more expensive.
 
-    Positions are buffered per environment and only folded in when that episode finishes.
-    Counting them as they happen would bias the profile toward short games: envs that end
-    quickly complete first, so stopping at N completed episodes would over-represent them
-    and understate how far games actually run.
+    Exactly one episode is profiled per environment -- the first -- and the loop runs until
+    every env has finished it. Sample size is therefore num_envs, and which games land in
+    the sample cannot depend on how long they take.
+
+    Both halves of that matter, and an earlier version got only the first half right. It
+    buffered positions per env and folded them in on completion, but still stopped at N
+    *completed* episodes with N well below num_envs. Short games finish first, so the
+    sample was the fastest N of num_envs: at N=30 over 128 envs it reported a mean final
+    turn of 3.30 and claimed 0% of games reach turn 9, while draining the same policy
+    unbiased gave 6.14 and 21%. Every late-game metric -- empty battlegrounds at turn 8,
+    salvageability at turn 6 -- was pinned near zero by construction, because the games
+    that get that far are exactly the ones still in flight when the budget ran out.
     """
     import numpy as np
     import torch
@@ -292,11 +299,15 @@ def profile_self_play_batched(
         episodes += 1
         pending[i], seen[i] = [], set()
 
+    counted = [False] * num_envs
+
     try:
         for _ in range(max_iters):
-            if episodes >= num_episodes:
+            if all(counted):
                 break
             for i in range(num_envs):
+                if counted[i]:
+                    continue
                 state = env.runner.get_state(i)
                 if ts.Engine.is_terminal(state):
                     continue
@@ -314,13 +325,15 @@ def profile_self_play_batched(
                 actions, _, _, _, _ = model.sample_action(obs_t, mask_t, temperature=temperature)
             obs, masks, _, dones, _ = env.step(actions.cpu().numpy())
             for i, done in enumerate(dones):
-                if done:
+                if done and not counted[i]:
                     flush(i)
+                    counted[i] = True
     finally:
         if was_training:
             model.train()
 
-    # Episodes still in flight are dropped rather than counted half-played.
+    # Envs whose first episode never finished inside max_iters are dropped rather than
+    # counted half-played. That is a bounded, symmetric loss, not a length filter.
     return _assemble(episodes, final_turns, reach, salvageable, empty_bgs,
                      us_scores, ussr_scores, nets, per_bg_empty, late_samples)
 
