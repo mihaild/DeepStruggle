@@ -45,6 +45,23 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     return "20 VP"
 
 
+def _drain_chance_nodes(state: "ts.GameState") -> None:
+    """Resolve pending die rolls before asking a policy to move.
+
+    At a ROLL_DIE node ctx().decision_player is NONE. The loop below falls back to
+    phasing_player when that happens, which handed the die roll to whichever agent was
+    phasing and let a policy network pick its own dice through step_flat -- 134 such nodes
+    per 20 games, about 6.7 a game. The vectorized runner resolves them inside the engine
+    and never exposes them, which is why the two paths disagreed by more than 25 points on
+    the same matchup. Draining here makes this path agree with the batched one, and is the
+    same fix already applied to the decisive probe.
+    """
+    while (not ts.Engine.is_terminal(state)
+           and state.ctx().decision_player == ts.Player.NONE
+           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
+
 class TournamentEvaluator:
     """Runs head-to-head match evaluations between agents with full statistical profiling."""
 
@@ -55,6 +72,7 @@ class TournamentEvaluator:
         games_per_side: int = 50,
         base_seed: int = 10000,
         max_steps: int = 2000,
+        temperature: float = 0.1,
     ) -> Dict[str, Any]:
         total_games = games_per_side * 2
         a_wins = 0
@@ -89,16 +107,18 @@ class TournamentEvaluator:
 
             st = ts.GameState()
             ts.Engine.init_game(st, seed)
+            _drain_chance_nodes(st)
 
             step = 0
             while not ts.Engine.is_terminal(st) and step < max_steps:
                 p = st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE else st.phasing_player
                 if (p == ts.Player.USSR and a_is_ussr) or (p == ts.Player.US and not a_is_ussr):
-                    act_idx = agent_a.select_action(st, p, temperature=0.1)
+                    act_idx = agent_a.select_action(st, p, temperature=temperature)
                 else:
-                    act_idx = agent_b.select_action(st, p, temperature=0.1)
+                    act_idx = agent_b.select_action(st, p, temperature=temperature)
 
                 ts.Engine.step_flat(st, act_idx)
+                _drain_chance_nodes(st)
                 step += 1
 
             term_util = float(ts.Engine.get_terminal_utility(st))

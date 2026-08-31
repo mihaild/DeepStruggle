@@ -10,6 +10,7 @@ import torch
 
 from ai.training.generic_trainer import train_pipeline, run_behavioral_cloning_warmup
 from tools.lib.player_agent import load_agent
+from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
@@ -27,7 +28,22 @@ def main():
     parser.add_argument("--bc-epochs", type=int, default=5, help="Number of epochs for BC warmup")
 
     # Time & Snapshot parameters
-    parser.add_argument("--duration-seconds", "--seconds-to-train", type=int, default=3600, help="Total RL training duration in seconds")
+    parser.add_argument("--duration-seconds", "--seconds-to-train", type=int, default=3600,
+                        help="RL training duration in seconds. Counts training only -- snapshot "
+                             "evaluation and start-pool refreshes are excluded, so the budget is "
+                             "not eaten by evaluation cost that varies with the policy.")
+    parser.add_argument("--train-steps", type=int, default=0,
+                        help="Budget the run by env steps instead of by time (0 = use --duration-seconds). "
+                             "Use this for A/B arms: steps/sec depends on the policy, so a wall-clock "
+                             "budget gives the two arms different amounts of training. One 3-hour A/B "
+                             "ended 1024 iterations against 473 for exactly that reason. The progress "
+                             "line projects a wall-clock ETA so a step budget can still be aimed at a "
+                             "target duration.")
+    parser.add_argument("--eval-max-snapshot-opponents", type=int, default=4,
+                        help="Evaluate each snapshot against the baselines plus at most this many recent "
+                             "snapshots (0 = unlimited). Unlimited makes evaluation cost quadratic in run "
+                             "length: the final evaluation of a 3-hour run faced 14 opponents and took "
+                             "957s against a 900s snapshot interval.")
     parser.add_argument("--snapshot-interval-seconds", "--snapshot-every", type=int, default=600, help="Snapshot and tournament evaluation interval in seconds")
 
     # Tournament & Evaluation parameters
@@ -92,6 +108,8 @@ def main():
             lr=args.lr,
             eta=args.eta,
             defcon_coef=args.defcon_coef,
+            train_steps=args.train_steps,
+            max_snapshot_opponents=args.eval_max_snapshot_opponents,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,
@@ -142,7 +160,8 @@ def main():
 
         print(f"=== Evaluating Agent \"{agent_main.name}\" against {len(opponents)} Opponents ({args.eval_games_per_side*2} games each) ===")
         for opp in opponents:
-            res = TournamentEvaluator.play_matchup(agent_main, opp, games_per_side=args.eval_games_per_side)
+            res = BatchMatchRunner.play_parallel_matchup(
+                agent_main, opp, games_per_side=args.eval_games_per_side, temperature=0.1)
             print(f"\nMatchup: {agent_main.name} vs {opp.name}")
             print(f"  Win Rate: {res['win_rate_a']*100:.1f}% ({res['a_wins']}W - {res['b_wins']}L - {res['draws']}D)")
             print(f"  Avg Turn: {res['avg_turn']:.1f} | Avg Steps: {res['avg_steps']:.0f} | Avg VP Margin: {res['avg_vp_margin_a']:+.1f}")

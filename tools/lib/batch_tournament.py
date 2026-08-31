@@ -25,8 +25,20 @@ class BatchMatchRunner:
         base_seed: int = 10000,
         device: Optional[torch.device] = None,
         max_steps: int = 2500,
+        temperature: float = 0.1,
+        deterministic: Optional[bool] = None,
     ) -> Dict[str, Any]:
+        """Play a matchup batched. Action selection matches NeuralAgent.select_action.
+
+        temperature/deterministic are the same contract as the one-game-at-a-time path in
+        TournamentEvaluator.play_matchup: sampling at the given temperature unless it is low
+        enough to be indistinguishable from an argmax. This used to be hard-coded to
+        deterministic=True here while the sequential path sampled at 0.1, so the two
+        disagreed on win rate (0.450 vs 0.610 on one 100-game matchup) and could not be
+        swapped for one another.
+        """
         dev = resolve_device(device)
+        greedy = (temperature <= 0.05) if deterministic is None else deterministic
         total_games = games_per_side * 2
         half_per_chunk = min(games_per_side, batch_chunk_size // 2)
         chunk_size = half_per_chunk * 2
@@ -119,12 +131,12 @@ class BatchMatchRunner:
                         obs_t = torch.from_numpy(obs[a_indices]).float().to(dev)
                         mask_t = torch.from_numpy(masks[a_indices]).to(dev)
                         with torch.no_grad():
-                            act_t, _, _, _, _ = agent_a.model.sample_action(obs_t, mask_t, temperature=0.1, deterministic=True)
+                            act_t, _, _, _, _ = agent_a.model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=greedy)
                         actions[a_indices] = act_t.cpu().numpy()
                     elif hasattr(agent_a, "select_action"):
                         for idx in a_indices:
                             st = runner.get_state(int(idx))
-                            actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])))
+                            actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])), temperature=temperature)
                     else:  # RandomAgent, or anything without a state-based interface
                         for idx in a_indices:
                             leg = np.where(masks[idx] > 0)[0]
@@ -137,12 +149,12 @@ class BatchMatchRunner:
                         obs_t = torch.from_numpy(obs[b_indices]).float().to(dev)
                         mask_t = torch.from_numpy(masks[b_indices]).to(dev)
                         with torch.no_grad():
-                            act_t, _, _, _, _ = agent_b.model.sample_action(obs_t, mask_t, temperature=0.1, deterministic=True)
+                            act_t, _, _, _, _ = agent_b.model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=greedy)
                         actions[b_indices] = act_t.cpu().numpy()
                     elif hasattr(agent_b, "select_action"):
                         for idx in b_indices:
                             st = runner.get_state(int(idx))
-                            actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])))
+                            actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])), temperature=temperature)
                     else:  # RandomAgent, or anything without a state-based interface
                         for idx in b_indices:
                             leg = np.where(masks[idx] > 0)[0]

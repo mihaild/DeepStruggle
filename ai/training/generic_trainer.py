@@ -29,6 +29,7 @@ from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
+from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
 
 # TensorBoard is optional: a missing (or broken) install must never take down a
@@ -292,6 +293,8 @@ def evaluate_and_log_snapshot(
     arch: str = "v2",
     decisive_games: int = 30,
     position_games: int = 128,
+    num_baselines: int = 0,
+    max_snapshot_opponents: int = 4,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
@@ -341,7 +344,8 @@ def evaluate_and_log_snapshot(
     report_entry.append("|:---|:---:|:---:|:---:|:---|:---|\n")
 
     for opp in opponents:
-        res = TournamentEvaluator.play_matchup(current_agent, opp, games_per_side=games_per_side)
+        res = BatchMatchRunner.play_parallel_matchup(
+            current_agent, opp, games_per_side=games_per_side, device=dev, temperature=0.1)
         wr_tot = res["win_rate_a"] * 100.0
         wr_us = res["win_rate_a_as_us"] * 100.0
         wr_ussr = res["win_rate_a_as_ussr"] * 100.0
@@ -374,6 +378,16 @@ def evaluate_and_log_snapshot(
         frozen_net.to(dev)
         frozen_net.eval()
         opponents.append(NeuralAgent(model=frozen_net, device=dev, name=f"Snapshot_{elapsed_seconds}s"))
+        # Evaluate against the baselines plus only the most recent snapshots. The opponent
+        # list otherwise grows by one every interval, so eval cost is quadratic in run
+        # length: the last evaluation of a 3-hour run faced 14 opponents and took 957s
+        # against a 900s snapshot interval, which starved training entirely. Older
+        # snapshots are also the least informative comparison for a policy that has moved
+        # well past them.
+        if max_snapshot_opponents > 0:
+            excess = len(opponents) - num_baselines - max_snapshot_opponents
+            if excess > 0:
+                del opponents[num_baselines:num_baselines + excess]
 
     return {**decisive_metrics, **position_metrics}
 
@@ -420,6 +434,8 @@ def train_pipeline(
     warmup_dataset: Optional[str] = None,
     bc_epochs: int = 5,
     duration_seconds: int = 3600,
+    train_steps: int = 0,
+    max_snapshot_opponents: int = 4,
     snapshot_interval_seconds: int = 600,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
@@ -598,12 +614,33 @@ def train_pipeline(
             print(f"Warning: Could not load opponent \"{spec}\": {e}", flush=True)
 
     t_start = time.time()
+    # Evaluation and pool refreshes are charged to their own clock, not to the training
+    # budget. Previously they came out of the same wall clock as training: one 3-hour run
+    # spent 61% of its budget evaluating and completed 473 iterations while its A/B partner
+    # completed 1024, purely because the arm that plays longer games has costlier
+    # evaluations. That made a wall-clock budget silently policy-dependent.
+    overhead_seconds = 0.0
     next_eval_time = snapshot_interval_seconds
+    # A step budget makes two arms of an experiment exactly comparable; a time budget
+    # cannot, because steps/sec depends on the policy. duration_seconds still bounds
+    # wall time when no step budget is given.
+    step_budget = int(train_steps)
+    next_eval_steps = 0
+    eval_every_steps = 0
+    if step_budget > 0:
+        evals_planned = max(1, duration_seconds // max(1, snapshot_interval_seconds))
+        eval_every_steps = max(1, step_budget // evals_planned)
+        next_eval_steps = eval_every_steps
     it = 0
 
     print("=" * 80, flush=True)
     print(f"STARTING GENERIC TRAINING PIPELINE ({duration_seconds}s, Snapshots every {snapshot_interval_seconds}s)", flush=True)
-    print(f"Arch: {arch} | Envs: {num_envs} | Opponents to evaluate: {[o.name for o in opponents]}", flush=True)
+    num_baselines = len(opponents)
+    budget_desc = (f"{train_steps:,} steps" if train_steps > 0
+                   else f"{duration_seconds}s of training (evaluation excluded)")
+    print(f"Arch: {arch} | Envs: {num_envs} | Budget: {budget_desc} | "
+          f"Opponents to evaluate: {[o.name for o in opponents]} "
+          f"(+ up to {max_snapshot_opponents} recent snapshots)", flush=True)
     print("=" * 80, flush=True)
 
     with open(report_path, "w", encoding="utf-8") as f:
@@ -622,6 +659,8 @@ def train_pipeline(
         device=dev,
         add_to_opponents_after=True,
         arch=arch,
+        num_baselines=num_baselines,
+        max_snapshot_opponents=max_snapshot_opponents,
     )
 
     def _refresh_start_pool(tag: str) -> Dict[str, float]:
@@ -641,11 +680,28 @@ def train_pipeline(
               flush=True)
         return stats.as_metrics()
 
+    def _progress_label(train_elapsed: float, steps_done: int) -> str:
+        """Show progress against the active budget, with a projected wall-clock finish.
+
+        A step budget is what makes two arms comparable, but it says nothing about how long
+        the run will take, so project the finish from the rate observed so far and include
+        evaluation overhead measured to date.
+        """
+        if step_budget <= 0:
+            return f"{int(train_elapsed)}s/{duration_seconds}s"
+        rate = steps_done / max(train_elapsed, 1e-6)
+        remaining = max(0, step_budget - steps_done) / max(rate, 1e-6)
+        eta = int(train_elapsed + overhead_seconds + remaining)
+        return f"{steps_done:,}/{step_budget:,} steps, ETA {eta}s"
+
     _refresh_start_pool("initial")
 
     while True:
-        elapsed = time.time() - t_start
-        if elapsed >= duration_seconds:
+        elapsed = time.time() - t_start - overhead_seconds
+        if step_budget > 0:
+            if trainer.total_env_steps >= step_budget:
+                break
+        elif elapsed >= duration_seconds:
             break
 
         # Curriculum stage switch from UsefulActionsReward to BlunderAwareRewardCalculator
@@ -701,14 +757,16 @@ def train_pipeline(
 
         if it % 10 == 0:
             print(
-                f"[{int(elapsed)}s/{duration_seconds}s] It {it:4d} | Steps: {total_env_steps:,} ({step_metrics['steps_per_sec']:,} st/s) | "
+                f"[{_progress_label(elapsed, total_env_steps)}] It {it:4d} | Steps: {total_env_steps:,} ({step_metrics['steps_per_sec']:,} st/s) | "
                 f"Loss: {step_metrics['loss']:.3f} | KL: {step_metrics['kl_div']:.4f} | Ent: {step_metrics['entropy']:.3f} | Clip: {step_metrics['clip_frac']*100:.1f}% | "
                 f"EV: {step_metrics['explained_variance']:+.3f} | Turn: {step_metrics['mean_turn']:.1f}",
                 flush=True,
             )
 
         # Snapshot Evaluation
-        if elapsed >= next_eval_time:
+        due = (total_env_steps >= next_eval_steps) if step_budget > 0 else (elapsed >= next_eval_time)
+        if due:
+            t_eval0 = time.time()
             snap_path = os.path.join(out_dir, f"snapshot_{int(elapsed)}s.pt")
             torch.save(model.state_dict(), snap_path)
             decisive = evaluate_and_log_snapshot(
@@ -721,6 +779,8 @@ def train_pipeline(
                 device=dev,
                 add_to_opponents_after=True,
                 arch=arch,
+                num_baselines=num_baselines,
+                max_snapshot_opponents=max_snapshot_opponents,
             )
             pool_metrics = _refresh_start_pool(f"@{int(elapsed)}s")
             if pool_metrics:
@@ -730,7 +790,11 @@ def train_pipeline(
                     f.write(json.dumps({"iteration": it, "elapsed_seconds": int(elapsed), **decisive}) + "\n")
                 if tb is not None:
                     tb.log_metrics(decisive, it)
-            next_eval_time += snapshot_interval_seconds
+            if step_budget > 0:
+                next_eval_steps += eval_every_steps
+            else:
+                next_eval_time += snapshot_interval_seconds
+            overhead_seconds += time.time() - t_eval0
 
     # Final Snapshot
     final_snap_path = os.path.join(out_dir, "snapshot_final.pt")
@@ -745,6 +809,8 @@ def train_pipeline(
         device=dev,
         add_to_opponents_after=False,
         arch=arch,
+        num_baselines=num_baselines,
+        max_snapshot_opponents=max_snapshot_opponents,
     )
 
     tb.flush()
