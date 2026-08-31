@@ -6,6 +6,9 @@ This directory documents foundational literature, game-theoretic algorithms, and
 
 ## 1. Central Evolving Document
 
+- [**next_step_brief.md**](next_step_brief.md): **Self-contained briefing for an outside reviewer**  
+  *Where the agent is stuck, what has been tried, the measured diagnosis, and ten open questions. Written to be readable with no prior context — hand it to a fresh model or collaborator when asking for a plan. Regenerate rather than patch once the situation has moved on.*
+
 - [**experiments.md**](experiments.md): **Experiment Log — what was actually run, and what came out**  
   *Running record of experiments against this codebase: setup, numbers, verdict, caveats. Includes the measurement bugs that invalidated earlier results, and which older numbers should no longer be quoted. Read this before trusting any figure from a previous run, and add an entry whenever an experiment finishes — including negative and inconclusive ones.*
 
