@@ -238,6 +238,55 @@ initialization onward and never improves.
 training does not fix the deficiency, so a longer run of the current algorithm is not worth
 buying, at any architecture, as a way of finding out.
 
+### 4.2 Why forced wins are missed — not rarity, and not sampling
+
+Three candidate explanations, measured on the same checkpoint (512 games each).
+
+**Is the opportunity too rare to learn from? No.**
+
+| | greedy | temperature 0.1 |
+|:---|---:|---:|
+| instant-win opportunities | 348 | 382 |
+| share of all decisions | 0.175% | 0.196% |
+| per game | 0.68 | 0.75 |
+| games with at least one | 55.9% | 59.2% |
+| implied count over a 78M-step run | **~137,000** | ~153,000 |
+
+Opportunities are spread evenly across turns 2-10 (36-54 each), so they are not confined to
+a phase the agent rarely reaches. ~137k instances in a single run is not a data-starved
+regime.
+
+For scale, avoidable losses arise about **11x more often** (4,290 per 512 games, 8.4 a game)
+and are handled at 94.4% against 80.5% for forced wins. Frequency and competence do correlate
+across the two, so rarity is not irrelevant -- but 137k opportunities is far from too few.
+
+**Is it sampling noise from evaluating at temperature 0.1? No.**
+Greedy take rate is **80.5%** against 79.3% when sampling. The failures survive argmax.
+
+**It is low advantage.** The policy is not blind in general -- it puts a median **0.980**
+probability mass on the winning action, above 0.5 in 77.0% of opportunities, against a
+uniform baseline of 0.285 over ~6.7 legal actions. Only 4.6% of opportunities see it assign
+under 0.01.
+
+The misses are concentrated by *critic optimism*:
+
+| critic v_win at the opportunity (+1 = certain win) | mean |
+|:---|---:|
+| win **was taken** (n=280) | +0.419 |
+| win was **missed** (n=68) | **+0.626** |
+
+The agent skips the immediate win precisely when it already believes it is winning
+comfortably. If the critic says +0.63, ending the game now is worth only ~0.37 more than
+playing on, so there is little gradient pressure to prefer it -- and the critic is
+systematically overconfident in exactly those positions, since "probably winning" is not
+"won".
+
+**Consequence for the roadmap.** The fix is not more data and not more capacity. It is making
+the terminal consequence visible where the critic is optimistic: one ply of lookahead reveals
+it directly, which is what search buys. This also predicts the same failure in the unclaimed
+battlegrounds -- a critic that cannot distinguish "winning" from "won" will not distinguish
+"comfortable" from "needs another battleground" either.
+
 ---
 
 ## 5. Open questions
