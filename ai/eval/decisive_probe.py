@@ -28,6 +28,7 @@ ActionFn = Callable[[ts.GameState, ts.Player], int]
 
 @dataclass
 class DecisiveStats:
+    episodes: int = 0
     decisions: int = 0
     win_available: int = 0
     win_taken: int = 0
@@ -108,7 +109,6 @@ def measure_decisive(
 def measure_decisive_batched(
     model: Any,
     num_envs: int = 128,
-    num_episodes: int = 40,
     base_seed: int = 77_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
@@ -120,10 +120,16 @@ def measure_decisive_batched(
     handing the GPU one state at a time was the whole expense -- 890 decisions/sec against
     ~106,000 for 512 batched envs, while training itself runs at ~7,900 env-steps/sec.
 
-    Decisions are buffered per environment and folded in only when that episode ends.
-    Counting them as they happen would bias the measurement toward short games, since envs
-    that finish quickly complete first and the run stops once num_episodes have finished --
-    and decisive positions cluster near the end of a game, exactly where that bias bites.
+    Exactly one episode is measured per environment -- the first -- and the loop runs until
+    every env has finished it, so the sample is num_envs games and cannot be selected by
+    length.
+
+    An earlier version buffered decisions per env and folded them in on completion, which
+    fixed attribution, but still stopped once num_episodes episodes had finished with
+    num_episodes well below num_envs. That made the sample the fastest N of num_envs. Its
+    own docstring named the reason this matters and kept the bug anyway: decisive positions
+    cluster near the end of a game, and the games that run long are exactly the ones still
+    in flight when the budget expires. The position profiler had the identical defect.
     """
     import numpy as np
     import torch
@@ -139,6 +145,7 @@ def measure_decisive_batched(
 
     out = DecisiveStats()
     pending: List[List[tuple]] = [[] for _ in range(num_envs)]
+    counted = [False] * num_envs
     episodes = 0
 
     def flush(i: int) -> None:
@@ -158,10 +165,11 @@ def measure_decisive_batched(
                     out.loss_forced += 1
         pending[i] = []
         episodes += 1
+        out.episodes += 1
 
     try:
         for _ in range(max_iters):
-            if episodes >= num_episodes:
+            if all(counted):
                 break
 
             obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
@@ -172,6 +180,8 @@ def measure_decisive_batched(
             actions = actions_t.cpu().numpy()
 
             for i in range(num_envs):
+                if counted[i]:
+                    continue
                 state = env.runner.get_state(i)
                 if ts.Engine.is_terminal(state):
                     continue
@@ -189,8 +199,9 @@ def measure_decisive_batched(
 
             obs, masks, _, dones, _ = env.step(actions)
             for i, done in enumerate(dones):
-                if done:
+                if done and not counted[i]:
                     flush(i)
+                    counted[i] = True
     finally:
         if was_training:
             model.train()

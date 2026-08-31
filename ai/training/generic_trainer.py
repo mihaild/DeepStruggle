@@ -291,7 +291,7 @@ def evaluate_and_log_snapshot(
     device: Optional[Union[torch.device, str]] = None,
     add_to_opponents_after: bool = True,
     arch: str = "v2",
-    decisive_games: int = 30,
+    decisive_games: int = 128,
     position_games: int = 128,
     num_baselines: int = 0,
     max_snapshot_opponents: int = 4,
@@ -308,7 +308,7 @@ def evaluate_and_log_snapshot(
         from ai.eval.decisive_probe import measure_decisive_batched
         # Batched: the single-state loop spends 96.9% of its time in the policy forward,
         # so handing the GPU one state at a time was the whole cost.
-        stats = measure_decisive_batched(model, num_envs=128, num_episodes=decisive_games)
+        stats = measure_decisive_batched(model, num_envs=decisive_games)
         decisive_metrics = stats.as_metrics()
         print(f"  decisive: takes {stats.win_take_rate * 100:.0f}% of {stats.win_available} forced wins | "
               f"avoids {stats.loss_avoid_rate * 100:.0f}% of {stats.loss_avoidable} avoidable losses",

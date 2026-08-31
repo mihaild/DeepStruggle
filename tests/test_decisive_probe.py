@@ -57,7 +57,7 @@ def test_batched_probe_agrees_with_the_single_state_one() -> None:
     from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 
     net = create_coldwar_net_v2("cpu")
-    batched = measure_decisive_batched(net, num_envs=8, num_episodes=8, base_seed=51000)
+    batched = measure_decisive_batched(net, num_envs=8, base_seed=51000)
 
     assert batched.decisions > 0, "no decisions recorded"
     # Rates are only meaningful when the situation actually arose.
@@ -67,3 +67,27 @@ def test_batched_probe_agrees_with_the_single_state_one() -> None:
         assert 0.0 <= batched.win_take_rate <= 1.0
     assert batched.loss_taken <= batched.loss_avoidable
     assert batched.win_taken <= batched.win_available
+
+
+def test_probe_measures_every_env_exactly_once() -> None:
+    """The sample must be one episode per env, not the first N episodes to finish.
+
+    The probe used to stop once num_episodes episodes had completed, with num_episodes well
+    below num_envs, so the sample was the fastest N of num_envs games. Its own docstring
+    named why that matters -- decisive positions cluster near the end of a game -- and kept
+    the bug anyway. It mattered: on the control's final checkpoint the biased sample put the
+    instant-win take rate at 89.5%, while measuring one episode per env puts it at 76.6%.
+    Nearly a quarter of forced wins are missed, not a tenth.
+    """
+    from ai.eval.decisive_probe import measure_decisive_batched
+    from ai.models.coldwar_net_v2 import create_coldwar_net_v2
+
+    num_envs = 12
+    stats = measure_decisive_batched(create_coldwar_net_v2("cpu"), num_envs=num_envs,
+                                     base_seed=52_000, max_iters=20_000)
+
+    assert stats.episodes == num_envs, (
+        f"measured {stats.episodes} episodes across {num_envs} envs; the sample is "
+        f"length-selected unless it is exactly one episode per env"
+    )
+    assert stats.decisions > 0, "no decisions examined; the fixture proves nothing"
