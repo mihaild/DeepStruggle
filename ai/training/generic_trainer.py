@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import time
+import collections
 import json
 import argparse
 from typing import List, Optional, Dict, Any, Union
@@ -83,11 +84,34 @@ TB_TAGS: Dict[str, str] = {
     "ending_frac_wargames": "endings/wargames",
 }
 
+# Per-start-turn variants. With mid-game start sampling on, a pooled game metric mixes
+# real games with resumed ones; these keep the series separable in TensorBoard.
+for _t in (1, 4, 6, 8, 10):
+    TB_TAGS[f"episodes_completed_start{_t}"] = f"game_start{_t}/episodes_completed"
+    TB_TAGS[f"mean_turn_start{_t}"] = f"game_start{_t}/mean_turn"
+    TB_TAGS[f"median_turn_start{_t}"] = f"game_start{_t}/median_turn"
+    for _k in ENDING_REASON_KEYS:
+        TB_TAGS[f"ending_frac_{_k}_start{_t}"] = f"endings_start{_t}/{_k}"
+
 # Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
 # iteration where no game finished, so they are held back from TensorBoard then.
 EPISODE_DEPENDENT_KEYS = frozenset(
     ["mean_turn", "median_turn"] + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
 )
+
+
+def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
+    """Which keys of `stats` are episode-dependent, including per-start-turn variants.
+
+    A per-start-turn group is only emitted when that start turn actually completed an
+    episode, so the suffixed keys cannot be enumerated up front -- publishing zeros for
+    absent groups would be the misleading thing this hold-back exists to prevent.
+    """
+    return frozenset(
+        k for k in stats
+        if k in EPISODE_DEPENDENT_KEYS
+        or any(k.startswith(f"{stem}_start") for stem in EPISODE_DEPENDENT_KEYS)
+    )
 
 
 class TensorBoardLogger:
@@ -157,23 +181,40 @@ class TensorBoardLogger:
         self.writer = None
 
 
+def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[str, float]:
+    stats: Dict[str, float] = {f"episodes_completed{suffix}": float(len(episodes))}
+    turns = [float(ep["turn"]) for ep in episodes if "turn" in ep]
+    stats[f"mean_turn{suffix}"] = float(np.mean(turns)) if turns else 0.0
+    stats[f"median_turn{suffix}"] = float(np.median(turns)) if turns else 0.0
+
+    reasons = [str(ep.get("ending_reason", "")) for ep in episodes]
+    counted = [r for r in reasons if r]
+    for key in ENDING_REASON_KEYS:
+        stats[f"ending_frac_{key}{suffix}"] = (
+            float(sum(1 for r in counted if r == key)) / float(len(counted)) if counted else 0.0
+        )
+    return stats
+
+
 def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, float]:
     """Aggregates the episodes that finished during one iteration into scalar metrics.
 
     Game length is reported at the game-turn granularity (mean and median terminal turn),
     and the ending-reason mix as a fraction of the episodes completed this iteration.
-    """
-    stats: Dict[str, float] = {"episodes_completed": float(len(episodes))}
-    turns = [float(ep["turn"]) for ep in episodes if "turn" in ep]
-    stats["mean_turn"] = float(np.mean(turns)) if turns else 0.0
-    stats["median_turn"] = float(np.median(turns)) if turns else 0.0
 
-    reasons = [str(ep.get("ending_reason", "")) for ep in episodes]
-    counted = [r for r in reasons if r]
-    for key in ENDING_REASON_KEYS:
-        stats[f"ending_frac_{key}"] = (
-            float(sum(1 for r in counted if r == key)) / float(len(counted)) if counted else 0.0
-        )
+    Everything is also reported per *start* turn. With mid-game start sampling on, half the
+    environments begin partway through a game, so a pooled mean turn or ending mix
+    describes neither the real game nor the resumed one -- a run reads a mean turn of 8
+    while its turn-1 games still end at 6. The unsuffixed keys keep the pooled figures for
+    continuity; read the _start1 series when comparing against runs without a pool.
+    """
+    stats = _episode_group_stats(episodes, "")
+
+    by_start: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
+    for ep in episodes:
+        by_start[int(ep.get("start_turn", 1))].append(ep)
+    for start_turn, group in by_start.items():
+        stats.update(_episode_group_stats(group, f"_start{start_turn}"))
     return stats
 
 
@@ -652,7 +693,8 @@ def train_pipeline(
         tb.log_metrics(
             step_metrics,
             step=it,
-            skip_keys=EPISODE_DEPENDENT_KEYS if episode_stats["episodes_completed"] == 0.0 else None,
+            skip_keys=(episode_dependent_in(episode_stats)
+                       if episode_stats["episodes_completed"] == 0.0 else None),
         )
         if it % 10 == 0:
             tb.flush()

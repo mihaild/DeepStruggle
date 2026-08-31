@@ -157,6 +157,11 @@ class TsVectorizedEnv:
         # handing back a stored object would let training step it, and reusing its
         # rng_state would give every rollout from that position the same deal and dice.
         self.start_provider = start_provider
+        # Which game turn each env's current episode began on. 1 unless a mid-game start
+        # position was injected. Reported with completed episodes so training metrics can
+        # be split by start turn: with half the envs resuming mid-game, a pooled mean turn
+        # or explained variance describes neither the real game nor the resumed one.
+        self.env_start_turn = np.ones(num_envs, dtype=np.int16)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
@@ -182,11 +187,15 @@ class TsVectorizedEnv:
         return obs, masks, self._get_batch_info()
 
     def _apply_start_position(self, env_idx: int) -> None:
+        self.env_start_turn[env_idx] = 1
         if self.start_provider is None:
             return
         state = self.start_provider(env_idx)
         if state is not None:
             self.runner.set_state(env_idx, state)
+            # Positions are stored pre-deal, one turn before the turn they target, so the
+            # episode's effective start turn is the next one.
+            self.env_start_turn[env_idx] = int(state.turn) + 1
 
     def reset_env(self, env_idx: int, seed: Optional[int] = None) -> None:
         """Reset a single environment by index."""
@@ -285,6 +294,7 @@ class TsVectorizedEnv:
                         "victory_points": int(curr_vp[i]),
                         "turn": int(curr_turns[i]),
                         "ending_reason": ending_reasons[i],
+                        "start_turn": int(self.env_start_turn[i]),
                     })
                     new_seed = int(np.random.randint(1, 1_000_000_000))
                     self.runner.reset_game(i, new_seed)
