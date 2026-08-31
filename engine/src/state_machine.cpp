@@ -306,6 +306,25 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
         return;
     }
 
+    // The eighth Action Round belongs only to the player who earned it. max_ar is a
+    // property of the turn, so raising it for one side handed the extra round to both:
+    // North Sea Oil gave the USSR a free action round, and so did a Space Station only
+    // the opponent had reached. Skip whoever is not entitled, and end the turn once the
+    // entitled player has taken theirs.
+    if (state.action_round == 8) {
+        while (true) {
+            bool entitled = (state.phasing_player == Player::US) ? us_has_ar8 : ussr_has_ar8;
+            if (entitled) break;
+            if (state.phasing_player == Player::USSR) {
+                state.phasing_player = Player::US;  // not owed to the USSR; offer to the US
+            } else {
+                end_turn(state);                    // both sides done with round eight
+                return;
+            }
+        }
+        state.ctx().decision_player = state.phasing_player;
+    }
+
     // Start next Action Round
     state.ctx() = DecisionContext{};
     state.ctx().decision_player = state.phasing_player;

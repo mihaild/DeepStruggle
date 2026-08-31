@@ -623,15 +623,20 @@ export class CardsView {
     const usSpace = state.space?.US || 0;
     const ussrSpace = state.space?.USSR || 0;
 
-    if (usSpace >= 2) effectCards.push({ title: "US: Animal in Space (#2)", side: "US", badge: "Space Perk", desc: "US may attempt Space Race twice per turn." });
-    if (usSpace >= 4) effectCards.push({ title: "US: Lunar Orbit (#4)", side: "US", badge: "Space Perk", desc: "USSR must select & reveal headline card before US chooses." });
-    if (usSpace >= 6) effectCards.push({ title: "US: Space Walk (#6)", side: "US", badge: "Space Perk", desc: "US may discard 1 held card at end of turn." });
-    if (usSpace >= 8) effectCards.push({ title: "US: Moon Landing (#8)", side: "US", badge: "Space Perk", desc: "US gains an 8th Action Round each turn." });
+    // A space perk is held only while the opponent has not reached the same box: once
+    // both sides are on it, neither side has the ability. The engine already works this
+    // way (SpaceRace::has_animal_in_space and friends all require opp_track < box), so
+    // testing only one's own track showed perks that were not actually in effect --
+    // "US may attempt Space Race twice" with the USSR level with them, for instance.
+    if (usSpace >= 2 && ussrSpace < 2) effectCards.push({ title: "US: Animal in Space (#2)", side: "US", badge: "Space Perk", desc: "US may attempt Space Race twice per turn." });
+    if (usSpace >= 4 && ussrSpace < 4) effectCards.push({ title: "US: Lunar Orbit (#4)", side: "US", badge: "Space Perk", desc: "USSR must select & reveal headline card before US chooses." });
+    if (usSpace >= 6 && ussrSpace < 6) effectCards.push({ title: "US: Space Walk (#6)", side: "US", badge: "Space Perk", desc: "US may discard 1 held card at end of turn." });
+    if (usSpace >= 8 && ussrSpace < 8) effectCards.push({ title: "US: Moon Landing (#8)", side: "US", badge: "Space Perk", desc: "US gains an 8th Action Round each turn." });
 
-    if (ussrSpace >= 2) effectCards.push({ title: "USSR: Animal in Space (#2)", side: "USSR", badge: "Space Perk", desc: "USSR may attempt Space Race twice per turn." });
-    if (ussrSpace >= 4) effectCards.push({ title: "USSR: Lunar Orbit (#4)", side: "USSR", badge: "Space Perk", desc: "US must select & reveal headline card before USSR chooses." });
-    if (ussrSpace >= 6) effectCards.push({ title: "USSR: Space Walk (#6)", side: "USSR", badge: "Space Perk", desc: "USSR may discard 1 held card at end of turn." });
-    if (ussrSpace >= 8) effectCards.push({ title: "USSR: Moon Landing (#8)", side: "USSR", badge: "Space Perk", desc: "USSR gains an 8th Action Round each turn." });
+    if (ussrSpace >= 2 && usSpace < 2) effectCards.push({ title: "USSR: Animal in Space (#2)", side: "USSR", badge: "Space Perk", desc: "USSR may attempt Space Race twice per turn." });
+    if (ussrSpace >= 4 && usSpace < 4) effectCards.push({ title: "USSR: Lunar Orbit (#4)", side: "USSR", badge: "Space Perk", desc: "US must select & reveal headline card before USSR chooses." });
+    if (ussrSpace >= 6 && usSpace < 6) effectCards.push({ title: "USSR: Space Walk (#6)", side: "USSR", badge: "Space Perk", desc: "USSR may discard 1 held card at end of turn." });
+    if (ussrSpace >= 8 && usSpace < 8) effectCards.push({ title: "USSR: Moon Landing (#8)", side: "USSR", badge: "Space Perk", desc: "USSR gains an 8th Action Round each turn." });
 
     if (effectCards.length === 0) {
       flagsContainer.innerHTML = "<div style=\"font-size: 11px; color: var(--text-dim); text-align: center; padding: 10px;\">No active continuous effects</div>";

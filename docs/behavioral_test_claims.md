@@ -193,6 +193,18 @@ genuinely required opponent hand-knowledge were excluded; see "Excluded / out of
 - **source:** #91, "As US" ("Ortega is the hipster's DEFCON suicide card. If you have any influence in Cuba, then Ortega is unplayable at DEFCON 2")
 - **review:** include.
 
+### a-17-never-trigger-an-event-with-no-effect
+- **cards:** #80 "One Small Step…" (first instance); generalises to any event whose precondition currently fails
+- **side:** either
+- **era:** any
+- **precondition:** The event's own precondition is false, so triggering it changes no game state. For One Small Step this is `own space track >= opponent space track` — the handler advances the marker only when `cur_track < opp_track`, so at parity or ahead the event is a no-op.
+- **claim:** An event that provably cannot change any game state must never be chosen over playing the same card for Operations. The Ops are strictly positive; the event is strictly zero.
+- **assertion:** never-argmax under this precondition.
+- **confidence:** high
+- **source:** observed in review_91042 — the USSR triggered One Small Step for no effect while not behind on the space track. Generalises `a-14` (AWACS with Muslim Revolution gone), which is the same principle stated for one specific card.
+- **note:** worth widening beyond One Small Step. The same shape covers any conditional event whose condition is checkable from the board alone, and it is a rule the agent could learn once rather than per card. Candidates to enumerate: events gated on a track position, on controlling a country the player already controls, or on a card already removed from the game.
+- **review:** proposed, not yet implemented.
+
 ### b-01-five-year-plan-us-prefer-ops
 - **cards:** #5 Five Year Plan
 - **side:** US
