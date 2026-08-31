@@ -61,6 +61,12 @@ TB_TAGS: Dict[str, str] = {
     "adv_std_raw": "diagnostics/adv_std_raw",
     "adv_frac_near_zero": "diagnostics/adv_frac_near_zero",
     "entropy_fixed_probe": "diagnostics/entropy_fixed_probe",
+    "diag/mean_final_turn": "positions/mean_final_turn",
+    "diag/frac_reaching_turn9": "positions/frac_reaching_turn9",
+    "diag/empty_battlegrounds_turn8": "positions/empty_battlegrounds_turn8",
+    "diag/empty_battlegrounds_turn5": "positions/empty_battlegrounds_turn5",
+    "diag/salvageable_frac_turn6": "positions/salvageable_frac_turn6",
+    "diag/salvageable_given_reached_turn6": "positions/salvageable_given_reached_turn6",
     "decisive_win_take_rate": "decisive/win_take_rate",
     "decisive_loss_avoid_rate": "decisive/loss_avoid_rate",
     "decisive_win_available": "decisive/win_available",
@@ -243,6 +249,7 @@ def evaluate_and_log_snapshot(
     add_to_opponents_after: bool = True,
     arch: str = "v2",
     decisive_games: int = 30,
+    position_games: int = 30,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
@@ -264,6 +271,29 @@ def evaluate_and_log_snapshot(
               flush=True)
     except Exception as exc:
         print(f"  (decisive probe unavailable: {exc})", flush=True)
+
+    # Position diagnostics. Win rate plateaus while the play underneath stays incoherent;
+    # these read the board instead. empty_battlegrounds_turn8 is the sharpest -- roughly a
+    # quarter of battlegrounds sit untouched from turn 8 on, always the same ones, and the
+    # count stops falling rather than slowly improving.
+    position_metrics: Dict[str, float] = {}
+    try:
+        from ai.eval.position_diagnostics import format_report, profile_self_play
+        profile = profile_self_play(
+            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
+            num_games=position_games,
+        )
+        position_metrics = profile["scalars"]
+        print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty "
+              f"battlegrounds at turn 8 | "
+              f"{100 * profile['scalars']['diag/frac_reaching_turn9']:.0f}% reach turn 9 | "
+              f"{100 * profile['scalars']['diag/salvageable_frac_turn6']:.0f}% salvageable at turn 6",
+              flush=True)
+        with open(report_path, "a", encoding="utf-8") as f:
+            f.write(f"\n<details><summary>Positions @ {elapsed_seconds}s</summary>\n\n```\n"
+                    f"{format_report(profile)}\n```\n</details>\n\n")
+    except Exception as exc:
+        print(f"  (position diagnostics unavailable: {exc})", flush=True)
 
     print(f"\n--- Evaluating Newest Snapshot @ {elapsed_seconds}s against {len(opponents)} Opponents ({games_per_side*2} games each) ---", flush=True)
     report_entry = [f"### Snapshot @ {elapsed_seconds}s (Evaluated against {len(opponents)} baselines / past snapshots)\n\n"]
@@ -305,7 +335,7 @@ def evaluate_and_log_snapshot(
         frozen_net.eval()
         opponents.append(NeuralAgent(model=frozen_net, device=dev, name=f"Snapshot_{elapsed_seconds}s"))
 
-    return decisive_metrics
+    return {**decisive_metrics, **position_metrics}
 
 
 def run_post_training_tournament(
