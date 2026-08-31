@@ -20,7 +20,7 @@ class _Dummy:
         self.name = name
 
 
-def _trim(opponents: List[object], num_baselines: int, cap: int) -> None:
+def _trim(opponents: List["_Dummy"], num_baselines: int, cap: int) -> None:
     """The trimming rule used after a new snapshot is appended."""
     if cap > 0:
         excess = len(opponents) - num_baselines - cap
@@ -29,7 +29,7 @@ def _trim(opponents: List[object], num_baselines: int, cap: int) -> None:
 
 
 def test_opponent_list_keeps_baselines_and_drops_oldest_snapshots() -> None:
-    opponents: List[object] = [_Dummy("RandomBot"), _Dummy("HeuristicBot")]
+    opponents: List[_Dummy] = [_Dummy("RandomBot"), _Dummy("HeuristicBot")]
     num_baselines = len(opponents)
 
     for i in range(12):
@@ -52,7 +52,7 @@ def test_opponent_list_keeps_baselines_and_drops_oldest_snapshots() -> None:
 
 
 def test_cap_of_zero_means_unlimited() -> None:
-    opponents: List[object] = [_Dummy("HeuristicBot")]
+    opponents: List[_Dummy] = [_Dummy("HeuristicBot")]
     for i in range(6):
         opponents.append(_Dummy(f"Snapshot_{i}"))
         _trim(opponents, 1, cap=0)

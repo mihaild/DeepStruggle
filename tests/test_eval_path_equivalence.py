@@ -84,3 +84,68 @@ def test_batched_path_honours_temperature() -> None:
     assert len(set(hot)) > 1 or hot[0] != greedy_1["a_wins"], (
         "temperature had no effect on the batched path"
     )
+
+
+def test_matchup_can_resume_from_supplied_positions() -> None:
+    """Resuming from saved positions is how the start-pool regime gets measured directly.
+
+    Each supplied position is played twice with the sides swapped, from one pre-deal state,
+    so both copies draw the same cards and deal luck cancels between the halves.
+    """
+    import ts_engine as ts
+    from tools.lib.batch_tournament import BatchMatchRunner
+
+    a, b = _agent(11), _agent(12)
+
+    positions = []
+    for seed in range(5):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 7000 + seed)
+        _drain_chance_nodes(st)
+        positions.append(st.clone())
+
+    res = BatchMatchRunner.play_parallel_matchup(
+        a, b, start_states=positions, device="cpu", temperature=0.0)
+
+    assert res["total_games"] == 2 * len(positions), (
+        f"each position must be played from both sides: got {res['total_games']} games "
+        f"from {len(positions)} positions"
+    )
+    assert res["a_wins"] + res["b_wins"] + res["draws"] == res["total_games"]
+    # games_per_side is implied by the number of positions, not the default argument.
+    assert res["games_per_side"] == len(positions)
+
+
+def test_supplied_positions_actually_change_the_games() -> None:
+    """A mid-game start must not silently fall back to dealing fresh openings."""
+    import numpy as np
+    import ts_engine as ts
+    from tools.lib.batch_tournament import BatchMatchRunner
+
+    a, b = _agent(13), _agent(14)
+
+    # Advance a few games well past the opening, then resume from there.
+    advanced = []
+    for seed in range(4):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 8100 + seed)
+        _drain_chance_nodes(st)
+        for _ in range(220):
+            if ts.Engine.is_terminal(st):
+                break
+            legal = np.flatnonzero(np.asarray(ts.ActionMask.generate_flat_mask(st)))
+            ts.Engine.step_flat(st, int(legal[0]) if len(legal) else 0)
+            _drain_chance_nodes(st)
+        if not ts.Engine.is_terminal(st):
+            advanced.append(st.clone())
+
+    assert advanced, "fixture produced no non-terminal mid-game positions"
+    start_turn = min(int(s.turn) for s in advanced)
+    assert start_turn > 1, "fixture did not actually advance past turn 1"
+
+    res = BatchMatchRunner.play_parallel_matchup(
+        a, b, start_states=advanced, device="cpu", temperature=0.0)
+    assert res["avg_turn"] >= start_turn, (
+        f"games ended at mean turn {res['avg_turn']:.1f} but were resumed from turn "
+        f"{start_turn}; the supplied positions were ignored"
+    )

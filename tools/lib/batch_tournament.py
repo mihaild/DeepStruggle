@@ -4,7 +4,7 @@ import os
 import sys
 import time
 import json
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Sequence, Union
 import numpy as np
 import torch
 
@@ -23,10 +23,11 @@ class BatchMatchRunner:
         games_per_side: int = 1000,
         batch_chunk_size: int = 1000,
         base_seed: int = 10000,
-        device: Optional[torch.device] = None,
+        device: Optional[Union[torch.device, str]] = None,
         max_steps: int = 2500,
         temperature: float = 0.1,
         deterministic: Optional[bool] = None,
+        start_states: Optional[Sequence["ts.GameState"]] = None,
     ) -> Dict[str, Any]:
         """Play a matchup batched. Action selection matches NeuralAgent.select_action.
 
@@ -39,6 +40,13 @@ class BatchMatchRunner:
         """
         dev = resolve_device(device)
         greedy = (temperature <= 0.05) if deterministic is None else deterministic
+
+        # Resume from supplied positions instead of dealing fresh games. Each position is
+        # played twice with the sides swapped, which is the same pairing the seeded path
+        # uses: both copies resume from one pre-deal state, so they draw the same cards and
+        # deal luck cancels between the halves rather than adding variance to the result.
+        if start_states is not None:
+            games_per_side = len(start_states)
         total_games = games_per_side * 2
         half_per_chunk = min(games_per_side, batch_chunk_size // 2)
         chunk_size = half_per_chunk * 2
@@ -77,10 +85,17 @@ class BatchMatchRunner:
             # Paired deals: env i and env i + cur_half are the same matchup with the sides
             # swapped, so give them the same seed and therefore the same shuffle. Deal luck
             # then cancels between the halves rather than adding variance to the result.
-            for i in range(cur_half):
-                paired_seed = seed_start + i
-                runner.reset_game(i, paired_seed)
-                runner.reset_game(i + cur_half, paired_seed)
+            if start_states is not None:
+                offset = chunk_idx * half_per_chunk
+                for i in range(cur_half):
+                    pos = start_states[offset + i]
+                    runner.set_state(i, pos)
+                    runner.set_state(i + cur_half, pos)
+            else:
+                for i in range(cur_half):
+                    paired_seed = seed_start + i
+                    runner.reset_game(i, paired_seed)
+                    runner.reset_game(i + cur_half, paired_seed)
             runner.refresh_all()
             active = np.ones(cur_games, dtype=bool)
             steps = 0
