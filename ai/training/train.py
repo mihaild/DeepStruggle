@@ -32,6 +32,18 @@ def main():
                         help="RL training duration in seconds. Counts training only -- snapshot "
                              "evaluation and start-pool refreshes are excluded, so the budget is "
                              "not eaten by evaluation cost that varies with the policy.")
+    parser.add_argument("--decisiveness-turns", type=float, default=0.0,
+                        help="Scale the terminal reward by (1 - turn/K), so a result on turn T is "
+                             "worth 1 - T/K instead of 1 (0 = off). With gamma=1 and terminal-only "
+                             "rewards the objective is indifferent to *when* you win: taking a forced "
+                             "win now and winning three turns later both return +1, so nothing in the "
+                             "gradient prefers the former. The control takes only 80.3%% of "
+                             "engine-verified forced wins and stops improving after ~30M steps. The "
+                             "scale applies to losses too, so a self-inflicted defeat on turn 3 costs "
+                             "more than on turn 9, which is the intended 'prolong a lost game' "
+                             "incentive. K is a slope: at 40, turn 3 is worth 0.925 and turn 10 is "
+                             "0.75. Too steep biases against build-to-final-scoring play, so watch "
+                             "the ending mix.")
     parser.add_argument("--train-steps", type=int, default=0,
                         help="Budget the run by env steps instead of by time (0 = use --duration-seconds). "
                              "Use this for A/B arms: steps/sec depends on the policy, so a wall-clock "
@@ -109,6 +121,7 @@ def main():
             eta=args.eta,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
+            decisiveness_turns=args.decisiveness_turns,
             max_snapshot_opponents=args.eval_max_snapshot_opponents,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,

@@ -435,6 +435,7 @@ def train_pipeline(
     bc_epochs: int = 5,
     duration_seconds: int = 3600,
     train_steps: int = 0,
+    decisiveness_turns: float = 0.0,
     max_snapshot_opponents: int = 4,
     snapshot_interval_seconds: int = 600,
     eval_opponents: Optional[List[str]] = None,
@@ -496,6 +497,7 @@ def train_pipeline(
         "training_mode": reward_scheme,
         "reward_scheme": reward_scheme,
         "duration_seconds": duration_seconds,
+        "decisiveness_turns": decisiveness_turns,
         "snapshot_interval_seconds": snapshot_interval_seconds,
         "num_envs": num_envs,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
@@ -537,7 +539,7 @@ def train_pipeline(
     if is_curriculum or reward_scheme == "useful_actions":
         reward_calc = UsefulActionsReward()
     elif reward_scheme == "blunder_aware":
-        reward_calc = BlunderAwareRewardCalculator()
+        reward_calc = BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns)
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
     else:
@@ -707,7 +709,8 @@ def train_pipeline(
         # Curriculum stage switch from UsefulActionsReward to BlunderAwareRewardCalculator
         if is_curriculum and not curriculum_switched and elapsed >= curriculum_switch_at:
             curriculum_switched = True
-            trainer.set_reward_calculator(BlunderAwareRewardCalculator())
+            trainer.set_reward_calculator(
+                BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns))
             trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with BlunderAwareRewardCalculator at elapsed={elapsed:.1f}s / {duration_seconds}s", flush=True)

@@ -70,7 +70,37 @@ class BlunderAwareRewardCalculator:
        - Winner receives r = 0.0.
     3. Strategic Wins (Europe Control, Milestone VP, Final Scoring, Wargames, Event Traps):
        - Full zero-sum terminal outcome: Winner +1.0, Loser -1.0.
+
+    Optionally scales the terminal magnitude by how late the game ended, via
+    `decisiveness_turns` (K): a result on turn T is worth `1 - T/K` instead of 1.
+
+    This exists because with gamma = 1 and a terminal-only reward the objective is
+    *indifferent* to when you win. Taking a forced win now returns +1; declining it and
+    winning three turns later also returns +1, so the policy gradient sees no difference
+    between them and only risk separates the two. Measured on the 78M-step control, that
+    shows up as 80.3% of engine-verified forced wins taken, a rate which stops improving
+    after ~30M steps, with the misses concentrated where the critic is already optimistic
+    (v_win +0.626 when missed against +0.419 when taken). Perfect-information search does not
+    fix it either, which is expected: search maximises the same indifferent objective.
+
+    The scale applies to losses as well, so a self-inflicted defeat on turn 3 costs more than
+    the same defeat on turn 9. That is deliberate -- a losing player should prolong the game
+    rather than end it, and the sampled replays show turn-3 DEFCON-1 suicides.
+
+    K is a slope, not a threshold: at K = 40 a turn-3 result is worth 0.925 and a turn-10
+    result 0.75. Too steep a slope biases against legitimate build-to-final-scoring play, so
+    the ending mix is the guardrail to watch.
     """
+
+    def __init__(self, decisiveness_turns: float = 0.0) -> None:
+        self.decisiveness_turns = float(decisiveness_turns)
+
+    def terminal_scale(self, state: Optional[ts.GameState]) -> float:
+        """Multiplier on the terminal magnitude; 1.0 when disabled or the turn is unknown."""
+        if self.decisiveness_turns <= 0.0 or state is None:
+            return 1.0
+        turn = float(state.turn)
+        return max(0.05, 1.0 - turn / self.decisiveness_turns)
 
     def compute_step_rewards(
         self,
@@ -97,6 +127,7 @@ class BlunderAwareRewardCalculator:
 
             # Check if this was a blunder if state is available
             st = states[i] if states is not None and i < len(states) else None
+            scale = self.terminal_scale(st)
 
             if st is not None:
                 if st.defcon <= 1:
@@ -106,23 +137,23 @@ class BlunderAwareRewardCalculator:
                     is_provoked = (p_phasing != 0 and p_act != p_phasing)
                     if is_provoked:
                         # Strategic win via event trap: acting player provoked opponent DEFCON suicide (+1.0)
-                        rewards[i] = term_util * p_act
+                        rewards[i] = term_util * p_act * scale
                     else:
                         # Unprovoked DEFCON suicide: acting player dropped DEFCON to 1 on their own turn (-1.0)
-                        rewards[i] = -1.0
+                        rewards[i] = -1.0 * scale
                     continue
                 else:
                     # Check Rule 4.4 held scoring cards at game end (strictly after end of turn)
                     if ts.Engine.is_held_scoring_game_over(st):
                         p_enum = ts.Player.US if p_act == 1 else (ts.Player.USSR if p_act == -1 else ts.Player.NONE)
                         if ts.Engine.is_held_scoring_loss(st, p_enum):
-                            rewards[i] = -1.0
+                            rewards[i] = -1.0 * scale
                         else:
                             rewards[i] = 0.0
                         continue
 
-            # Standard strategic win: Winner +1.0, Loser -1.0
-            rewards[i] = term_util * p_act
+            # Standard strategic win: Winner +1.0, Loser -1.0, scaled by decisiveness.
+            rewards[i] = term_util * p_act * scale
 
         return rewards
 
