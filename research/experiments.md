@@ -362,6 +362,49 @@ US's 92, while K=40 evens that to 147/145 and lifts the US win rate by 3.3 point
 investigating on its own; a US-side weakness this large is a bigger strength gap than
 anything in §4.2.
 
+## 4.6 The US late-war recovery is missing
+
+**Question.** Does the agent reproduce the standard arc -- USSR strong through the Early War,
+US strengthening through Mid and Late War as its cards arrive?
+
+**Setup.** 400 self-play games per arm, VP recorded at each turn boundary (US-positive).
+
+Mean VP by turn:
+
+| turn | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | +0.15 | -1.02 | -1.87 | -3.03 | -3.58 | -3.91 | -3.11 | -2.49 | -4.47 |
+| K=40 | +0.01 | -0.91 | -2.26 | -1.96 | -2.20 | -2.31 | -1.95 | -1.68 | -2.18 |
+
+US win rate by how long the game ran:
+
+| | ends turns 1-4 | ends turns 7-10 |
+|:---|---:|---:|
+| control | 44.8% | 39.5% |
+| K=40 | 38.7% | 42.0% |
+
+**Reproduced:** the USSR early lead. VP turns negative by turn 3 in both arms and the US is
+ahead in only 35-40% of positions.
+
+**Not reproduced:** the US comeback. The control gets *worse* late -- VP deepens to -3.91 by
+turn 7 and long games favour the USSR more than short ones, the opposite of real play. K=40
+shows a real but weak recovery (-2.31 at turn 7 to -1.68 at turn 9, long games favouring the
+US). Neither arm reaches parity at any turn.
+
+This is the same deficiency as the turn-8 battleground plateau (§4) seen from another angle:
+the US late-war edge comes from cards that need board presence, and the agent has stopped
+contesting the map by then. K=40 reaches turn 10 in 28% of games against the control's 14%,
+so it gets twice the late-war experience -- plausibly part of why it is stronger, independent
+of the blunder reduction.
+
+**Caveat.** These are conditional-on-reaching statistics and the population shifts by turn:
+US-winning games end sooner on 20 VP, so what survives to turn 10 skews USSR-favourable. The
+within-arm trend and the ending-turn win rates are the more trustworthy signals.
+
+**Setup rules are not the cause.** The optional +2 US bonus placement is implemented and
+unconditional (`state_machine.cpp:467`), verified empirically: US makes 9 setup placements
+(7 Western Europe + 2 bonus) to USSR's 6, on every seed.
+
 ---
 
 ## 5. Open questions
