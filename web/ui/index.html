@@ -124,8 +124,16 @@
       <!-- Live Action Log Stream -->
       <div class="log-stream-container">
         <div class="log-header-row">
-          <span class="log-header">ACTION STREAM</span>
-          <span class="log-count-badge" id="log-count">0 events</span>
+          <div class="log-header-left">
+            <span class="log-header">ACTION STREAM</span>
+            <span class="log-count-badge" id="log-count">0 events</span>
+          </div>
+          <div class="log-header-right">
+            <label class="log-filter-checkbox" title="Filter log to only show lines affecting VP and 2 context lines before and 2 context lines after">
+              <input type="checkbox" id="chk-filter-vp">
+              <span>🎯 VP Events (±2 Context)</span>
+            </label>
+          </div>
         </div>
         <div class="log-messages" id="action-log-stream"></div>
       </div>

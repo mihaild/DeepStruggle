@@ -1,10 +1,36 @@
 import { GameState, MapMetadata } from "./types";
 
+export interface RegionScoreAudit {
+  regionId: number;
+  regionName: string;
+  badgePos: [number, number]; // [x, y]
+  color: string;
+  scoringCardName: string;
+  totalBattlegrounds: number;
+  usCountries: number;
+  ussrCountries: number;
+  usBattlegrounds: number;
+  ussrBattlegrounds: number;
+  usSuperpowerAdjacent: number;
+  ussrSuperpowerAdjacent: number;
+  usStatus: "NONE" | "PRESENCE" | "DOMINATION" | "CONTROL";
+  ussrStatus: "NONE" | "PRESENCE" | "DOMINATION" | "CONTROL";
+  usBaseVp: number;
+  ussrBaseVp: number;
+  usTotalVp: number;
+  ussrTotalVp: number;
+  netVpUs: number;
+  isInstantWinUs?: boolean;
+  isInstantWinUssr?: boolean;
+  details: string[];
+}
+
 export class MapView {
   private svg: SVGSVGElement;
   private mapData: MapMetadata | null = null;
   private lastState: GameState | null = null;
   private onCountryClick: (countryId: number) => void;
+  private tooltipEl: HTMLElement | null = null;
 
   // Pan and zoom state
   private viewBox = { x: 0, y: 0, w: 1000, h: 650 };
@@ -14,6 +40,7 @@ export class MapView {
   constructor(svgElement: SVGSVGElement, onCountryClick: (countryId: number) => void) {
     this.svg = svgElement;
     this.onCountryClick = onCountryClick;
+    this.tooltipEl = document.getElementById("card-tooltip");
     this.setupPanAndZoom();
     this.updateViewBox();
     this.fetchMetadata();
@@ -65,7 +92,7 @@ export class MapView {
 
   private setupPanAndZoom() {
     this.svg.addEventListener("mousedown", (e) => {
-      if ((e.target as HTMLElement).closest(".svg-country-node")) return;
+      if ((e.target as HTMLElement).closest(".svg-country-node") || (e.target as HTMLElement).closest(".svg-region-badge")) return;
       this.isPanning = true;
       this.startPoint = { x: e.clientX, y: e.clientY };
     });
@@ -89,6 +116,231 @@ export class MapView {
       const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
       this.zoom(zoomFactor);
     }, { passive: false });
+  }
+
+  public calculateRegionalScoring(state: GameState): RegionScoreAudit[] {
+    if (!this.mapData) return [];
+
+    const countries = this.mapData.countries || [];
+    const flags = new Set(state.flags || []);
+
+    const formosanActive = flags.has("FORMOSAN_RESOLUTION_ACTIVE");
+    const shuttleActive = flags.has("SHUTTLE_DIPLOMACY_ACTIVE");
+
+    const regionConfigs: Array<{
+      id: number;
+      name: string;
+      cardName: string;
+      color: string;
+      pos: [number, number];
+      baseVps: { PRESENCE: number; DOMINATION: number; CONTROL: number };
+    }> = [
+      { id: 0, name: "EUROPE", cardName: "Europe Scoring (#2)", color: "#3B82F6", pos: [440, 24], baseVps: { PRESENCE: 3, DOMINATION: 7, CONTROL: 0 } },
+      { id: 1, name: "ASIA", cardName: "Asia Scoring (#1)", color: "#EA580C", pos: [830, 180], baseVps: { PRESENCE: 3, DOMINATION: 7, CONTROL: 9 } },
+      { id: 2, name: "MIDDLE EAST", cardName: "Middle East Scoring (#3)", color: "#0284C7", pos: [630, 230], baseVps: { PRESENCE: 3, DOMINATION: 5, CONTROL: 7 } },
+      { id: 3, name: "AFRICA", cardName: "Africa Scoring (#79)", color: "#D97706", pos: [425, 535], baseVps: { PRESENCE: 1, DOMINATION: 4, CONTROL: 6 } },
+      { id: 4, name: "CENTRAL AMERICA", cardName: "Central America Scoring (#88)", color: "#16A34A", pos: [115, 260], baseVps: { PRESENCE: 1, DOMINATION: 3, CONTROL: 5 } },
+      { id: 5, name: "SOUTH AMERICA", cardName: "South America Scoring (#81)", color: "#059669", pos: [232, 465], baseVps: { PRESENCE: 2, DOMINATION: 5, CONTROL: 6 } },
+    ];
+
+    const audits: RegionScoreAudit[] = [];
+
+    // 1. Standard 6 Regions
+    regionConfigs.forEach(cfg => {
+      const regCountries = countries.filter(c => {
+        const cRegionName = c.region.toUpperCase();
+        return cRegionName === cfg.name || (cfg.id === 0 && cRegionName === "EUROPE") || (cfg.id === 1 && cRegionName === "ASIA") || (cfg.id === 2 && cRegionName.includes("MIDDLE")) || (cfg.id === 3 && cRegionName === "AFRICA") || (cfg.id === 4 && cRegionName.includes("CENTRAL")) || (cfg.id === 5 && cRegionName.includes("SOUTH"));
+      });
+
+      let taiwanIsBg = false;
+      if (cfg.id === 1 && formosanActive) {
+        const twState = state.countries ? state.countries["Taiwan"] : null;
+        if (twState && twState.controlled_by === "US") {
+          taiwanIsBg = true;
+        }
+      }
+
+      let totalBg = regCountries.filter(c => c.battleground).length + (taiwanIsBg ? 1 : 0);
+
+      let usCountries = 0;
+      let ussrCountries = 0;
+      let usBg = 0;
+      let ussrBg = 0;
+      let usSpAdj = 0;
+      let ussrSpAdj = 0;
+
+      const usControlledList: string[] = [];
+      const ussrControlledList: string[] = [];
+
+      regCountries.forEach(c => {
+        const cState = state.countries ? state.countries[c.name] : null;
+        const ctrl = cState ? cState.controlled_by : "NONE";
+        const isBg = c.battleground || (c.name === "Taiwan" && taiwanIsBg);
+
+        if (ctrl === "US") {
+          usCountries++;
+          if (isBg) usBg++;
+          if (c.superpower_adjacent === "USSR") usSpAdj++;
+          usControlledList.push(`${c.name}${isBg ? " ★" : ""}`);
+        } else if (ctrl === "USSR") {
+          ussrCountries++;
+          if (isBg) ussrBg++;
+          if (c.superpower_adjacent === "USA") ussrSpAdj++;
+          ussrControlledList.push(`${c.name}${isBg ? " ★" : ""}`);
+        }
+      });
+
+      let effectiveUssrBg = ussrBg;
+      if (shuttleActive && (cfg.id === 1 || cfg.id === 2) && effectiveUssrBg > 0) {
+        effectiveUssrBg--;
+      }
+
+      const usNonBg = Math.max(0, usCountries - usBg);
+      const ussrNonBg = Math.max(0, ussrCountries - effectiveUssrBg);
+
+      // Evaluate US Status
+      let usStatus: "NONE" | "PRESENCE" | "DOMINATION" | "CONTROL" = "NONE";
+      if (usCountries > ussrCountries && usBg === totalBg) {
+        usStatus = "CONTROL";
+      } else if (usCountries > ussrCountries && usBg > effectiveUssrBg && usBg >= 1 && usNonBg >= 1) {
+        usStatus = "DOMINATION";
+      } else if (usCountries >= 1) {
+        usStatus = "PRESENCE";
+      }
+
+      // Evaluate USSR Status
+      let ussrStatus: "NONE" | "PRESENCE" | "DOMINATION" | "CONTROL" = "NONE";
+      if (ussrCountries > usCountries && effectiveUssrBg === totalBg) {
+        ussrStatus = "CONTROL";
+      } else if (ussrCountries > usCountries && effectiveUssrBg > usBg && effectiveUssrBg >= 1 && ussrNonBg >= 1) {
+        ussrStatus = "DOMINATION";
+      } else if (ussrCountries >= 1) {
+        ussrStatus = "PRESENCE";
+      }
+
+      const usBase = usStatus !== "NONE" ? cfg.baseVps[usStatus] : 0;
+      const ussrBase = ussrStatus !== "NONE" ? cfg.baseVps[ussrStatus] : 0;
+
+      let isInstantWinUs = false;
+      let isInstantWinUssr = false;
+      let usTotal = 0;
+      let ussrTotal = 0;
+      let netVp = 0;
+
+      if (cfg.id === 0) { // Europe
+        if (usStatus === "CONTROL") {
+          isInstantWinUs = true;
+          usTotal = 20;
+          netVp = 20;
+        } else if (ussrStatus === "CONTROL") {
+          isInstantWinUssr = true;
+          ussrTotal = 20;
+          netVp = -20;
+        } else {
+          usTotal = usBase + usBg + usSpAdj;
+          ussrTotal = ussrBase + ussrBg + ussrSpAdj;
+          netVp = usTotal - ussrTotal;
+        }
+      } else {
+        usTotal = usBase + usBg + usSpAdj;
+        ussrTotal = ussrBase + (shuttleActive && (cfg.id === 1 || cfg.id === 2) ? effectiveUssrBg : ussrBg) + ussrSpAdj;
+        netVp = usTotal - ussrTotal;
+      }
+
+      const details: string[] = [
+        `📊 ${cfg.name} SCORING BREAKDOWN (${cfg.cardName})`,
+        `• Total Regional Battlegrounds: ${totalBg}`,
+        `• US Controlled (${usCountries} total, ${usBg} BG): ${usControlledList.length ? usControlledList.join(", ") : "None"}`,
+        `• USSR Controlled (${ussrCountries} total, ${ussrBg} BG): ${ussrControlledList.length ? ussrControlledList.join(", ") : "None"}`,
+        `• US Standing: ${usStatus} -> Base: ${usBase} VP + ${usBg} BGs${usSpAdj > 0 ? ` + ${usSpAdj} Superpower Adj` : ""} = ${usTotal} VP`,
+        `• USSR Standing: ${ussrStatus} -> Base: ${ussrBase} VP + ${ussrBg} BGs${ussrSpAdj > 0 ? ` + ${ussrSpAdj} Superpower Adj` : ""} = ${ussrTotal} VP`,
+        `• Current Net VP for US: ${netVp > 0 ? "+" + netVp : netVp} VP ${isInstantWinUs ? "(US INSTANT WIN)" : (isInstantWinUssr ? "(USSR INSTANT WIN)" : "")}`
+      ];
+
+      audits.push({
+        regionId: cfg.id,
+        regionName: cfg.name,
+        badgePos: cfg.pos,
+        color: cfg.color,
+        scoringCardName: cfg.cardName,
+        totalBattlegrounds: totalBg,
+        usCountries,
+        ussrCountries,
+        usBattlegrounds: usBg,
+        ussrBattlegrounds: ussrBg,
+        usSuperpowerAdjacent: usSpAdj,
+        ussrSuperpowerAdjacent: ussrSpAdj,
+        usStatus,
+        ussrStatus,
+        usBaseVp: usBase,
+        ussrBaseVp: ussrBase,
+        usTotalVp: usTotal,
+        ussrTotalVp: ussrTotal,
+        netVpUs: netVp,
+        isInstantWinUs,
+        isInstantWinUssr,
+        details
+      });
+    });
+
+    // 2. Southeast Asia Scoring (Card #38)
+    const seCountryNames = ["Burma", "Laos/Cambodia", "Vietnam", "Malaysia", "Indonesia", "Philippines"];
+    let seUsVp = 0;
+    let seUssrVp = 0;
+    const seUsList: string[] = [];
+    const seUssrList: string[] = [];
+
+    seCountryNames.forEach(cName => {
+      const cState = state.countries ? state.countries[cName] : null;
+      if (cState?.controlled_by === "US") {
+        seUsVp += 1;
+        seUsList.push(`${cName} (1 VP)`);
+      } else if (cState?.controlled_by === "USSR") {
+        seUssrVp += 1;
+        seUssrList.push(`${cName} (1 VP)`);
+      }
+    });
+
+    const thaiState = state.countries ? state.countries["Thailand"] : null;
+    if (thaiState?.controlled_by === "US") {
+      seUsVp += 2;
+      seUsList.push("★ Thailand (2 VP)");
+    } else if (thaiState?.controlled_by === "USSR") {
+      seUssrVp += 2;
+      seUssrList.push("★ Thailand (2 VP)");
+    }
+
+    const seNetVp = seUsVp - seUssrVp;
+    audits.push({
+      regionId: 6,
+      regionName: "SOUTHEAST ASIA",
+      badgePos: [875, 485],
+      color: "#F59E0B",
+      scoringCardName: "Southeast Asia Scoring (#38)",
+      totalBattlegrounds: 1,
+      usCountries: seUsList.length,
+      ussrCountries: seUssrList.length,
+      usBattlegrounds: thaiState?.controlled_by === "US" ? 1 : 0,
+      ussrBattlegrounds: thaiState?.controlled_by === "USSR" ? 1 : 0,
+      usSuperpowerAdjacent: 0,
+      ussrSuperpowerAdjacent: 0,
+      usStatus: seUsVp > 0 ? "PRESENCE" : "NONE",
+      ussrStatus: seUssrVp > 0 ? "PRESENCE" : "NONE",
+      usBaseVp: seUsVp,
+      ussrBaseVp: seUssrVp,
+      usTotalVp: seUsVp,
+      ussrTotalVp: seUssrVp,
+      netVpUs: seNetVp,
+      details: [
+        "📊 SOUTHEAST ASIA SCORING BREAKDOWN (Card #38)",
+        "• 1 VP each for Burma, Laos/Cambodia, Vietnam, Malaysia, Indonesia, Philippines. 2 VP for Thailand.",
+        `• US Controlled: ${seUsList.length ? seUsList.join(", ") : "None"} (${seUsVp} VP)`,
+        `• USSR Controlled: ${seUssrList.length ? seUssrList.join(", ") : "None"} (${seUssrVp} VP)`,
+        `• Current Net VP for US: ${seNetVp > 0 ? "+" + seNetVp : seNetVp} VP`
+      ]
+    });
+
+    return audits;
   }
 
   public render(state: GameState) {
@@ -155,8 +407,9 @@ export class MapView {
             line.setAttribute("x2", sp.pos[0].toString());
             line.setAttribute("y2", sp.pos[1].toString());
             line.setAttribute("stroke", sp.stroke);
-            line.setAttribute("stroke-width", "2.2");
-            line.setAttribute("opacity", "0.9");
+            line.setAttribute("stroke-width", "2.0");
+            line.setAttribute("stroke-dasharray", "4,4");
+            line.setAttribute("opacity", "0.8");
             linesGroup.appendChild(line);
           }
         }
@@ -164,13 +417,13 @@ export class MapView {
     });
     this.svg.appendChild(linesGroup);
 
-    // 2. Superpower Connection Boxes (US on west, USSR on east)
+    // 2. Superpower Nodes
     const spGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    spGroup.setAttribute("id", "superpowers");
+    spGroup.setAttribute("id", "superpower-nodes");
 
     superpowers.forEach(sp => {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const w = 110, h = 28;
+      const w = 90, h = 24;
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("x", (sp.pos[0] - w/2).toString());
       rect.setAttribute("y", (sp.pos[1] - h/2).toString());
@@ -196,7 +449,10 @@ export class MapView {
     });
     this.svg.appendChild(spGroup);
 
-    // 3. Country Nodes
+    // 3. Regional Scoring Overlay Badges (Showing current net points for US)
+    this.renderRegionalScoringBadges(state);
+
+    // 4. Country Nodes
     const legalNodes = new Set(
       state.legal_actions && state.legal_actions.decision_type === 5
         ? (state.legal_actions.valid_ids || []).filter((id: number) => id < 84)
@@ -355,5 +611,125 @@ export class MapView {
     });
 
     this.svg.appendChild(nodesGroup);
+  }
+
+  private renderRegionalScoringBadges(state: GameState) {
+    const audits = this.calculateRegionalScoring(state);
+    if (!audits.length) return;
+
+    const overlayGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    overlayGroup.setAttribute("id", "regional-scoring-overlay");
+
+    audits.forEach(audit => {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "svg-region-badge");
+      g.setAttribute("data-region", audit.regionName);
+      g.style.cursor = "pointer";
+
+      const x = audit.badgePos[0];
+      const y = audit.badgePos[1];
+      const badgeW = 76;
+      const badgeH = 22;
+
+      // Card Background
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", (x - badgeW/2).toString());
+      rect.setAttribute("y", (y - badgeH/2).toString());
+      rect.setAttribute("width", badgeW.toString());
+      rect.setAttribute("height", badgeH.toString());
+      rect.setAttribute("rx", "3.5");
+      rect.setAttribute("fill", "rgba(15, 23, 42, 0.90)");
+      rect.setAttribute("stroke", audit.color);
+      rect.setAttribute("stroke-width", "1.2");
+      rect.setAttribute("filter", "drop-shadow(0px 2px 4px rgba(0,0,0,0.5))");
+      g.appendChild(rect);
+
+      // Region Title text
+      const titleText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      titleText.setAttribute("x", (x - badgeW/2 + 4).toString());
+      titleText.setAttribute("y", (y - badgeH/2 + 6.5).toString());
+      titleText.setAttribute("fill", "#94A3B8");
+      titleText.setAttribute("font-size", "3.6");
+      titleText.setAttribute("font-weight", "800");
+      titleText.setAttribute("letter-spacing", "0.5");
+      titleText.textContent = audit.regionName;
+      g.appendChild(titleText);
+
+      // Value Pill / Net VP for US
+      let vpText = `${audit.netVpUs > 0 ? "+" + audit.netVpUs : audit.netVpUs} VP`;
+      let vpColor = "#94A3B8";
+      if (audit.isInstantWinUs) {
+        vpText = "★ US WIN";
+        vpColor = "#3B82F6";
+      } else if (audit.isInstantWinUssr) {
+        vpText = "★ USSR WIN";
+        vpColor = "#EF4444";
+      } else if (audit.netVpUs > 0) {
+        vpText = `+${audit.netVpUs} (US)`;
+        vpColor = "#60A5FA";
+      } else if (audit.netVpUs < 0) {
+        vpText = `${audit.netVpUs} (USSR)`;
+        vpColor = "#F87171";
+      } else {
+        vpText = "0 VP (Tie)";
+        vpColor = "#CBD5E1";
+      }
+
+      const valText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      valText.setAttribute("x", (x + badgeW/2 - 4).toString());
+      valText.setAttribute("y", (y - badgeH/2 + 6.5).toString());
+      valText.setAttribute("text-anchor", "end");
+      valText.setAttribute("fill", vpColor);
+      valText.setAttribute("font-size", "4.0");
+      valText.setAttribute("font-weight", "900");
+      valText.textContent = vpText;
+      g.appendChild(valText);
+
+      // Sub-row: US standing vs USSR standing
+      const subText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      subText.setAttribute("x", x.toString());
+      subText.setAttribute("y", (y + badgeH/2 - 3.5).toString());
+      subText.setAttribute("text-anchor", "middle");
+      subText.setAttribute("fill", "#E2E8F0");
+      subText.setAttribute("font-size", "3.2");
+      subText.setAttribute("font-weight", "600");
+      subText.textContent = `US: ${audit.usStatus.substring(0,4)} (${audit.usTotalVp}) | USSR: ${audit.ussrStatus.substring(0,4)} (${audit.ussrTotalVp})`;
+      g.appendChild(subText);
+
+      // Hover / Tooltip listeners
+      g.addEventListener("mouseenter", (e) => this.showRegionTooltip(e, audit));
+      g.addEventListener("mouseleave", () => this.hideRegionTooltip());
+
+      overlayGroup.appendChild(g);
+    });
+
+    this.svg.appendChild(overlayGroup);
+  }
+
+  private showRegionTooltip(e: MouseEvent, audit: RegionScoreAudit) {
+    if (!this.tooltipEl) return;
+
+    this.tooltipEl.innerHTML = `
+      <div style="font-weight: bold; font-size: 13px; color: #F8FAFC; margin-bottom: 4px;">
+        ${audit.scoringCardName}
+      </div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">
+        CURRENT US NET VALUE: <strong style="color: ${audit.netVpUs > 0 ? '#60A5FA' : (audit.netVpUs < 0 ? '#F87171' : '#CBD5E1')}; font-size: 12px;">${audit.netVpUs > 0 ? '+' + audit.netVpUs : audit.netVpUs} VP</strong>
+      </div>
+      <div style="font-size: 11px; color: #E2E8F0; line-height: 1.4; display: flex; flex-direction: column; gap: 3px;">
+        ${audit.details.map(d => `<div>${d}</div>`).join("")}
+      </div>
+    `;
+
+    this.tooltipEl.classList.remove("hidden");
+    const x = Math.min(window.innerWidth - 340, e.clientX + 15);
+    const y = Math.min(window.innerHeight - 250, e.clientY + 15);
+    this.tooltipEl.style.left = `${x}px`;
+    this.tooltipEl.style.top = `${y}px`;
+  }
+
+  private hideRegionTooltip() {
+    if (!this.tooltipEl) return;
+    this.tooltipEl.classList.add("hidden");
   }
 }

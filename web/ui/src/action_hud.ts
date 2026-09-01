@@ -194,7 +194,7 @@ export class ActionHud {
             </button>
           `;
         });
-        if ([9, 11].includes(ctx.pending_op_card)) {
+        if ([9, 11].includes(ctx.pending_op_card) || validIds.includes(2)) {
           showDieSelector = true;
         }
         break;
@@ -240,19 +240,94 @@ export class ActionHud {
 
       case 5: // POINT_NODE
         const isWarEvent = [9, 11, 23, 36, 84, 18, 70, 72, 97, 106].includes(ctx.resolving_card);
-        const isCoupOrRealign = (legal as any).op_mode === 1 || (legal as any).op_mode === 2 || (ctx as any).op_mode === 1 || (ctx as any).op_mode === 2;
+        const isCoup = (legal as any).op_mode === 1 || (ctx as any).op_mode === 1;
+        const isRealign = (legal as any).op_mode === 2 || (ctx as any).op_mode === 2;
+        const isCoupOrRealign = isCoup || isRealign;
 
         if (phaseName === "SETUP") {
           const region = player === "USSR" ? "Eastern Europe" : "Western Europe";
-          promptText = `<strong>${player} Setup Phase:</strong> Click highlighted countries in ${region} to place influence (<strong>${ctx.remaining_steps} remaining</strong>).`;
+          promptText = `<strong>${player} Setup Phase:</strong> Click highlighted countries in ${region} to place influence (<strong>${ctx.remaining_steps} remaining</strong>):`;
         } else if (ctx.resolving_card > 0) {
           const resCard = ctx.resolving_card_name || `Card #${ctx.resolving_card}`;
-          promptText = `<strong>${player}:</strong> Resolving event <em>${resCard}</em>. Click a highlighted target country (<strong>${ctx.remaining_steps} remaining</strong>):`;
+          promptText = `<strong>${player}:</strong> Resolving event <em>${resCard}</em>. Select target country (<strong>${ctx.remaining_steps} remaining</strong>):`;
           if (isWarEvent) showDieSelector = true;
+        } else if (isCoup) {
+          promptText = `<strong>${player}:</strong> Select target country to <strong>COUP</strong> with <strong>${ctx.pending_ops_value} Ops</strong> (or click on map):`;
+          showDieSelector = true;
+        } else if (isRealign) {
+          promptText = `<strong>${player}:</strong> Select target country for <strong>REALIGNMENT</strong> (or click on map):`;
+          showDieSelector = true;
         } else {
           const remaining = ctx.remaining_steps > 0 ? ` (${ctx.remaining_steps} Ops remaining)` : "";
-          promptText = `<strong>${player}:</strong> Click a highlighted country on the map to target${remaining}:`;
-          if (isCoupOrRealign) showDieSelector = true;
+          promptText = `<strong>${player}:</strong> Select a target country${remaining}:`;
+        }
+
+        // Render Candidate Targets List
+        if (validIds.length > 0 && (isCoupOrRealign || isWarEvent || validIds.length <= 12)) {
+          let targetsHtml = "";
+          validIds.filter(id => id < 84).forEach(cid => {
+            const country = Object.values(state.countries || {}).find(c => c.id === cid) || (state.countries ? (state.countries as any)[cid] : null);
+            const cName = country?.name || `Country #${cid}`;
+            const cStab = country?.stability || 1;
+            const isBg = country?.battleground || false;
+            const usInf = country?.us_influence || 0;
+            const ussrInf = country?.ussr_influence || 0;
+
+            let badgeHtml = "";
+            let calculusHtml = "";
+
+            if (isCoup) {
+              const ops = ctx.pending_ops_value;
+              const def = cStab * 2;
+              const minRoll = Math.max(1, def - ops + 1);
+              const prob = minRoll <= 1 ? 100 : (minRoll > 6 ? 0 : Math.round(((7 - minRoll) / 6) * 100));
+
+              if (isBg) {
+                if (state.defcon === 2) {
+                  badgeHtml = `<span class="badge" style="background: #DC2626; color: #FFF; font-weight: bold; font-size: 10px; margin-left: 6px;">🚨 DEFCON 1 SUICIDE</span>`;
+                } else {
+                  badgeHtml = `<span class="badge" style="background: #EF4444; color: #FFF; font-size: 10px; margin-left: 6px;">DEFCON ${state.defcon}→${state.defcon - 1}</span>`;
+                }
+              }
+
+              if (this.selectedDieRoll > 0) {
+                const total = ops + this.selectedDieRoll;
+                const net = Math.max(0, total - def);
+                calculusHtml = net > 0 
+                  ? `<span style="color: #34D399; font-weight: bold;">🎲 Roll ${this.selectedDieRoll}: Ops ${ops} + ${this.selectedDieRoll} vs ${def} Def -> Net +${net} Inf (Success)</span>`
+                  : `<span style="color: #F87171;">🎲 Roll ${this.selectedDieRoll}: Ops ${ops} + ${this.selectedDieRoll} vs ${def} Def -> 0 Net (Fails)</span>`;
+              } else {
+                calculusHtml = `<span>🎲 Auto: Roll ≥ ${minRoll} needed (${prob}% chance) • Def: ${def} (2×${cStab})</span>`;
+              }
+            } else if (isRealign) {
+              calculusHtml = `<span>🎲 Opposed Die Rolls • US:${usInf} vs USSR:${ussrInf} (Stab ${cStab})</span>`;
+            } else if (isWarEvent) {
+              calculusHtml = `<span>🎲 War Event: Roll vs Target Threshold</span>`;
+            } else {
+              calculusHtml = `<span>Stab ${cStab} • US:${usInf} / USSR:${ussrInf}</span>`;
+            }
+
+            targetsHtml += `
+              <button class="btn btn-secondary btn-block btn-hud-action btn-target-card" data-primary="${cid}" data-secondary="${this.selectedDieRoll}" style="margin-bottom: 6px; text-align: left; padding: 8px 10px; border: 1px solid rgba(255,255,255,0.12);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-weight: bold; font-size: 13px;">${isBg ? '★ ' : ''}${cName} (Stab ${cStab}) ${badgeHtml}</span>
+                  <span style="font-size: 11px; opacity: 0.85;">US:<strong>${usInf}</strong> / USSR:<strong>${ussrInf}</strong></span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 3px;">${calculusHtml}</div>
+              </button>
+            `;
+          });
+
+          if (targetsHtml) {
+            buttonsHtml += `
+              <div class="hud-target-list-header" style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin: 8px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                Available Target Actions (${validIds.length}):
+              </div>
+              <div class="hud-targets-scroll-list" style="max-height: 200px; overflow-y: auto; padding-right: 2px;">
+                ${targetsHtml}
+              </div>
+            `;
+          }
         }
 
         if (allowEarlyStop) {

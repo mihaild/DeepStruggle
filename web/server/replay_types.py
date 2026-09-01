@@ -55,11 +55,14 @@ class LegalActionsDict(TypedDict, total=False):
 
 class ActionLogEntryDict(TypedDict, total=False):
     """Individual action log entry."""
+    step_index: int
     turn: int
     ar: int
+    phase: str
     player: str
     text: str
     details: Optional[List[str]]
+    vp_delta: int
 
 
 class GameStateDict(TypedDict, total=False):
