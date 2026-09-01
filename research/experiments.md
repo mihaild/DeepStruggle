@@ -289,6 +289,81 @@ battlegrounds -- a critic that cannot distinguish "winning" from "won" will not 
 
 ---
 
+## 4.3 Length-scaled terminal reward (`--decisiveness-turns`) — SETTLED, adopt K=40
+
+**Question.** With gamma = 1 and terminal-only rewards the objective is indifferent to *when*
+you win. Does making a result on turn T worth `1 - T/K` fix the forced-win floor?
+
+**Setup.** arch v2, `--train-steps 78000000` (all arms landed on exactly 1,191 iterations),
+512 envs. Control is `sp2_pool_off` from §3.2, reusable because training never touches
+`classify_legal_actions`, so the §1 diagnostic fixes do not invalidate it.
+
+**Result** (tournament 1,500 games/pair; take rate engine-verified on all three arms with
+current code):
+
+| | control | K=40 | K=20 |
+|:---|---:|---:|---:|
+| vs control | — | **54.6%** (z~3.6) | 43.5% |
+| Elo | 1766.5 | **1818.8** | 1719.6 |
+| vs HeuristicBot | 79.8% | **88.9%** | 76.9% |
+| forced-win take | 81.2% | 72.4% | 69.2% |
+| self-inflicted DEFCON-1 | 0.247 | 0.178 | 0.121 |
+| final-scoring endings | 0.045 | 0.069 | 0.091 |
+
+**Verdict.** Adopt K=40. K=20 suppresses blunders harder but loses games, so the slope
+matters and K=40 is near the useful end of it. The guardrail did not trigger: final-scoring
+wins rose rather than collapsed.
+
+**The pre-registered prediction failed and the reason matters.** Take rate *fell* (81.2% ->
+72.4%) while strength rose. §4.4 explains why that is not a regression.
+
+## 4.4 Declining a forced win is usually free — which is why the metric misleads
+
+**Question.** When a forced win is declined, does the declining player actually lose?
+
+**Setup.** 400 games per configuration, engine-verified wins only (12 die streams per
+candidate), split by side.
+
+| configuration | declines | -> lost | cost of declining |
+|:---|---:|---:|---:|
+| control self-play | 55 | 10 | **18.2%** |
+| K=40 self-play | 87 | 9 | **10.6%** |
+| K=40 vs control: control | 36 | 6 | 16.7% |
+| K=40 vs control: K=40 | 44 | 2 | **4.5%** |
+
+**A declined win is still won 82-95% of the time.** Games actually thrown away this way are
+~2.5% of the total (control: 10 of 400). So the ~20-30% miss rate is worth roughly *two
+points* of win rate, not ten -- which is why the metric does not track strength, why
+PI-MCTS improved win rate 85% without moving it, and why K=40 got stronger while its take
+rate fell.
+
+**K=40's lower take rate is better judgement, not worse play.** Its declines cost the game
+4.5-10.6% against the control's 16.7-18.2%: it declines when it can afford to. The direction
+is consistent across all three configurations, though each comparison alone is underpowered
+(z ~ 1.2-1.75).
+
+**Consequence.** Stop treating forced-win take rate as an optimisation target. It is a floor
+check, worth watching for gross regressions, but it is close to uncorrelated with strength.
+
+## 4.5 Side imbalance — USSR wins 60-65%
+
+Measured incidentally in §4.4, and large enough to matter:
+
+| configuration | US win rate | US / USSR forced-win opportunities |
+|:---|---:|:---|
+| control self-play | **35.0%** | 92 / 158 |
+| K=40 self-play | 38.3% | 147 / 145 |
+| K=40 vs control | 40.2% | — |
+
+Real Twilight Struggle is close to balanced with a slight USSR edge, so 60-65% is well beyond
+what the game explains: the agent plays US materially worse than USSR. The opportunity counts
+say the same thing more sharply -- under the control, USSR gets 158 winning chances to the
+US's 92, while K=40 evens that to 147/145 and lifts the US win rate by 3.3 points. Worth
+investigating on its own; a US-side weakness this large is a bigger strength gap than
+anything in §4.2.
+
+---
+
 ## 5. Open questions
 
 - **Does more *capacity* fix the forced-win misses?** More *training* does not (§4.1). The
