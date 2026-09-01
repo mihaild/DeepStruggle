@@ -133,31 +133,74 @@ def classify_legal_actions(
     return out
 
 
+_GOLDEN = 0x9E3779B97F4A7C15
+_UINT64 = 1 << 64
+
+
 def _probe_forced(
     state: ts.GameState,
     action: int,
     player: ts.Player,
     max_forced: int = 6,
+    die_samples: int = 6,
+    node_budget: int = 64,
 ) -> Optional[str]:
-    """Applies `action`, follows forced continuations, and reports a decisive outcome."""
+    """Applies `action`, follows forced continuations, and reports a decisive outcome.
+
+    A chance node is only decisive if *every* die outcome agrees. Stepping the die once and
+    trusting the result -- which this did -- reports a win whenever that single sampled roll
+    happens to succeed, so a coup or war that wins on 3-6 and leaves the game running on 1-2
+    was labelled a forced win. Measured against the engine, 6% of "win" labels were
+    die-dependent in that way: Brush War, Lone Gunman and similar VP-on-success cards, at
+    9/16 to 14/16 win rates.
+
+    Roll-independent lines survive this unchanged. A coup at DEFCON 2 degrades DEFCON to 1
+    whatever the roll, ending the game against the phasing player, so every branch agrees
+    and the label stands.
+
+    Die outcomes are varied by mixing the probe's own rng_state, so the classifier stays a
+    pure function of the position and remains reproducible.
+    """
     probe = state.clone()
     try:
         ts.Engine.step_flat(probe, action)
     except Exception:
         return None
+    return _follow_forced(probe, player, max_forced, die_samples, [node_budget])
 
-    for _ in range(max_forced):
+
+def _follow_forced(
+    probe: ts.GameState,
+    player: ts.Player,
+    budget: int,
+    die_samples: int,
+    nodes: List[int],
+) -> Optional[str]:
+    for _ in range(budget):
+        nodes[0] -= 1
+        if nodes[0] <= 0:
+            return None
         if ts.Engine.is_terminal(probe):
             util = float(ts.Engine.get_terminal_utility(probe))
             mine = util if player == ts.Player.US else -util
             return "win" if mine > 0 else ("loss" if mine < 0 else None)
+
         pctx = probe.ctx()
         if pctx.decision_type == ts.DecisionType.ROLL_DIE:
-            try:
-                ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
-            except Exception:
-                return None
-            continue
+            verdicts = set()
+            base = int(probe.rng_state)
+            for i in range(die_samples):
+                branch = probe.clone()
+                branch.rng_state = (base + (i + 1) * _GOLDEN) % _UINT64
+                try:
+                    ts.Engine.step(branch, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+                except Exception:
+                    return None
+                verdicts.add(_follow_forced(branch, player, budget - 1, die_samples, nodes))
+                if len(verdicts) > 1:
+                    return None      # outcome depends on the die: not forced
+            return verdicts.pop() if len(verdicts) == 1 else None
+
         forced = np.flatnonzero(ActionEncoder.get_legal_mask(probe))
         if len(forced) != 1:
             return None

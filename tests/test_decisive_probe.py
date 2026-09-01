@@ -91,3 +91,68 @@ def test_probe_measures_every_env_exactly_once() -> None:
         f"length-selected unless it is exactly one episode per env"
     )
     assert stats.decisions > 0, "no decisions examined; the fixture proves nothing"
+
+
+def test_a_die_dependent_win_is_not_labelled_forced() -> None:
+    """A chance node is decisive only if every outcome agrees.
+
+    _probe_forced used to step a ROLL_DIE node once and trust the sampled result, so a card
+    that awards VP on a successful roll -- Brush War and similar -- was labelled a forced win
+    whenever that one roll happened to succeed. Measured against the engine, 6% of "win"
+    labels were die-dependent that way, at 9/16 to 14/16 win rates. Roll-independent lines
+    are unaffected: a coup at DEFCON 2 degrades DEFCON whatever the roll.
+    """
+    import random
+
+    import numpy as np
+    import ts_engine as ts
+    from ai.eval.safety import classify_legal_actions
+    from ai.search.pimcts import acting_player, drain_chance_nodes
+
+    rng = random.Random(11)
+    checked = 0
+
+    for g in range(60):
+        st = ts.GameState()
+        ts.Engine.init_game(st, 610_000 + g)
+        drain_chance_nodes(st)
+        for _ in range(600):
+            if ts.Engine.is_terminal(st) or checked >= 40:
+                break
+            mover = acting_player(st)
+            for a, kind in classify_legal_actions(st, mover).items():
+                if kind != "win":
+                    continue
+                checked += 1
+                # Every die stream must agree that this ends the game in the mover's favour.
+                for _ in range(12):
+                    probe = st.clone()
+                    probe.rng_state = rng.getrandbits(64) % (1 << 64)
+                    ts.Engine.step_flat(probe, int(a))
+                    for _ in range(8):
+                        if ts.Engine.is_terminal(probe):
+                            break
+                        pctx = probe.ctx()
+                        if pctx.decision_type == ts.DecisionType.ROLL_DIE:
+                            ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+                            continue
+                        legal = np.flatnonzero(ActionEncoder.get_legal_mask(probe))
+                        if len(legal) != 1:
+                            break
+                        ts.Engine.step_flat(probe, int(legal[0]))
+                    if ts.Engine.is_terminal(probe):
+                        u = float(ts.Engine.get_terminal_utility(probe))
+                        assert (u > 0) == (mover == ts.Player.US), (
+                            f"action {a} labelled 'win' for "
+                            f"{'US' if mover == ts.Player.US else 'USSR'} but a die stream "
+                            f"ended the game against them"
+                        )
+            legal = np.flatnonzero(ActionEncoder.get_legal_mask(st))
+            if len(legal) == 0:
+                break
+            ts.Engine.step_flat(st, int(rng.choice(list(legal))))
+            drain_chance_nodes(st)
+        if checked >= 40:
+            break
+
+    assert checked > 0, "no 'win' labels encountered; the fixture proves nothing"
