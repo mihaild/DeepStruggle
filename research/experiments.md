@@ -445,6 +445,53 @@ Random ends too early to test it and the heuristic is too weak to separate "engi
 scoring or turn structure would be the place to look -- starting with whether the Mid/Late War
 deck additions are introduced correctly.
 
+## 4.8 Dominance suite: local decisions with a position-independent right answer
+
+**Why.** Most evaluation here compares against "the better move", which depends on position, so
+disagreement is not proof of error. Dominance pairs remove that: two options identical in
+printed Ops, differing only in a way that is weakly better in *every* position. Preferring the
+dominated one is wrong with no judgement to argue about. `ai/eval/dominance.py`; measurement
+only, never fed to the agent.
+
+**Rules.** At equal printed Ops, (a) discarding an opponent *recurring* event under Quagmire /
+Bear Trap beats discarding your own or a neutral card, and (b) the same for what you spend on
+the space track. Excluded from the dominant side: **Five Year Plan** (#5, the one recurring
+event whose firing can help its non-owner), **one-time starred events** (removing them
+permanently is a different and stronger argument), scoring cards, and the China Card. Eight
+tests pin each exception.
+
+**There is no rule about playing an opponent card for its Event** -- the engine already makes
+that illegal, verified over 971 play-mode decisions on opponent cards with EVENT legal in none.
+
+**Results** (200 self-play games each):
+
+| | control | K=40 |
+|:---|---:|---:|
+| Quagmire: chose a dominated card | 37.5% | **30.7%** |
+| Quagmire: pairs ranked wrongly | **64.5%** | 52.7% |
+| Bear Trap: chose a dominated card | 32.8% | **18.2%** |
+| Bear Trap: pairs ranked wrongly | 51.2% | 35.4% |
+| Space: chose a dominated card | 18.1% | **12.6%** |
+
+**Normalise by opportunity.** Only ~20% of space plays (498 of 2,356) offer an equal-Ops
+opponent alternative at all. Against all space plays the violation rate reads 2.4%, which is
+the wrong denominator and badly understates the error; against decidable cases it is 12.6-18.1%.
+
+**Two findings.** The control's Quagmire pair ranking is **64.5% wrong -- worse than a coin
+flip**, so it is not merely ignoring the relation but actively inverting it. And K=40 is better
+on *every* dominance measure, which says the decisiveness reward improved local decision
+quality and not only endgame behaviour -- a broader effect than §4.3 alone suggested.
+
+Bear Trap is handled better than Quagmire in both models, matching the US-side weakness in
+§4.5 and §4.7 on the same architecture and the same bit.
+
+**Capacity is not the blocker.** Flipping the trap bit moves the policy by TV 0.13 (Quagmire)
+to 0.36 (Bear Trap), so the network plainly conditions on it; `extract_features` fuses board,
+card and global streams into one trunk and `policy_head` scores all 212 actions from it, so any
+global feature can reach any card logit. It has the capacity and has not learned what to do
+with it -- the same conclusion as §4.2 and §4.4, and the strongest argument yet for
+demonstrations, since one human game shows the reversal that RL needs thousands to notice.
+
 ---
 
 ## 5. Open questions
