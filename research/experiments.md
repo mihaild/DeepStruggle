@@ -405,6 +405,46 @@ within-arm trend and the ending-turn win rates are the more trustworthy signals.
 unconditional (`state_machine.cpp:467`), verified empirically: US makes 9 setup placements
 (7 Western Europe + 2 bonus) to USSR's 6, on every seed.
 
+## 4.7 The side imbalance is a symptom, and the encoding is not at fault
+
+**Encoding audited, clean.** `extract_observation` is canonical (me vs opponent). Over 132
+sampled positions, all seven my/opp board pairs -- influence 0/1, control 5/6, superpower
+adjacency 8/9, can-place 19/20, can-coup 21/22, can-realign 23/24, control-deficit 26/27 --
+swap exactly when perspective flips (77,616 comparisons, zero mismatches), and the signed
+realignment column 2 negates correctly. The only unpaired perspective feature is column 7
+(`is_coup_nuclear_hazard` for the mover), which is structurally identical for both sides.
+The card block folds the opponent's hand into the unknown slot, so there is no
+hidden-information leak. **The encoding does not explain the US deficit.**
+
+**Nor does setup** -- the +2 US bonus placement is unconditional and verified (§4.6).
+
+**Baselines locate the cause:**
+
+| | US win rate | mean final turn |
+|:---|---:|---:|
+| random self-play | **51.3% +/- 5.1** | 2.73 |
+| heuristic self-play | **22.5% +/- 5.0** | 8.23 |
+| control (learned) | 37.4% | 6.28 |
+| K=40 (learned) | 39.1% | 6.80 |
+
+Random play is even, so there is no gross engine bias -- but random games end on turn 2.7,
+before the asymmetry can express itself, so it is a weak control. The informative number is
+the hand-written heuristic at **22.5%**: a non-learning player, in 8-turn games, is far more
+USSR-skewed than either trained agent. The imbalance is therefore not an artifact of learned
+policy; our agents are the *least* imbalanced players we have.
+
+**Synthesis.** This is the same defect as §4.6 and the turn-8 battleground plateau. The USSR
+early advantage is real and every agent reproduces it. The compensating US advantage is a
+late-war one that must be *converted*, and none of these agents can convert it, so the USSR
+edge stands unopposed. The ordering is consistent across three independent measurements:
+K=40 has the best US win rate, the best late-war VP recovery, and reaches turn 10 most often.
+
+**Not ruled out:** a subtle rules bug favouring the USSR that only shows in long games.
+Random ends too early to test it and the heuristic is too weak to separate "engine bias" from
+"cannot play the late war". Card behaviour is covered by the struggler differential tests, so
+scoring or turn structure would be the place to look -- starting with whether the Mid/Late War
+deck additions are introduced correctly.
+
 ---
 
 ## 5. Open questions
