@@ -479,6 +479,37 @@ def _logged_board(raw: Optional[Dict]) -> Dict[int, Tuple[int, int]]:
     return out
 
 
+def _force_random_discard(state: ts.GameState, action: int, cards: List[int],
+                          tries: int = 400) -> bool:
+    """Seed the rng so that stepping `action` discards the card the log says was discarded.
+
+    Five Year Plan discards at random from the USSR hand and, if the card is a US event, plays
+    it. Which card comes out therefore decides what happens next, and the log records it -- but
+    it is drawn inside the event, so there is no action to steer. At turn 3's headline of
+    replay 119 the engine drew Marshall Plan where the log drew Duck and Cover, and seven US
+    influence went into Western Europe that the human game never placed.
+    """
+    def discarded(probe: ts.GameState) -> bool:
+        return all(probe.get_card_location(c) not in (ts.CardLocation.HAND_US,
+                                                      ts.CardLocation.HAND_USSR)
+                   for c in cards)
+
+    base = int(state.rng_state)
+    for k in range(tries + 1):
+        probe = state.clone()
+        if k:                       # k == 0 tries the seed the engine already has
+            probe.rng_state = (base + k * _GOLDEN) % _UINT64
+        try:
+            ts.Engine.step_flat(probe, int(action))
+        except Exception:
+            continue
+        if discarded(probe):
+            if k:
+                state.rng_state = (base + k * _GOLDEN) % _UINT64
+            return True
+    return False
+
+
 def _find_confirm_done(state: ts.GameState, legal) -> Optional[int]:
     """The 'decline / stop here' action, when the engine offers one."""
     for a in legal:
@@ -515,6 +546,10 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     guessed = False
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
     reveal_queue = [c for c in (card_id(nm) for nm in (e.revealed or [])) if c]
+    # Five Year Plan draws its discard at random from the USSR hand, and the drawn card's event
+    # then plays out, so which card comes out changes the whole entry. The log names it.
+    plays_five_year_plan = cid_target == _FIVE_YEAR_PLAN or _FIVE_YEAR_PLAN in headline_ids.values()
+    random_discards = list(discard_queue) if plays_five_year_plan else []
     seeded_peek = False
     seeded_reveal = False
     # A war with a fixed target resolves in a chance node, so its outcome has to be steered
@@ -854,6 +889,12 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     "could not reproduce outcome",
                     f"no rng_state reproduced the logged "
                     f"{e.mode or e.event_mode or 'war'} result"))
+
+        if random_discards:
+            # Do this on whichever step actually fires the event; the search accepts the seed
+            # the engine already has, so steps that discard nothing cost one clone and pass.
+            if _force_random_discard(state, int(chosen), random_discards):
+                random_discards = []
 
         if informative:
             obs = np.asarray(ts.extract_observation(state, mover), dtype=np.float32)
