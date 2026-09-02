@@ -288,6 +288,25 @@ def section_queue(section) -> List[int]:
     return q or list(section.targets)
 
 
+def section_outcomes(section) -> List[Tuple[int, int, int]]:
+    """Per-roll expected board values inside one Ops section, in log order.
+
+    A realignment rolls once per target and prints the running result of each, so every line is
+    its own expectation. A coup rolls once and prints a line per side whose influence moved, so
+    the country's settled value is the last line naming it. Scoping this to the section matters
+    when one entry couples twice at the same country: at turn 4's headline of replay 119 the
+    USSR coups Venezuela to [0][2] and the US then coups it to [1][0], and taking the entry's
+    final value as the USSR's expectation matched no roll at all -- a USSR coup cannot hand the
+    US influence -- so the roll went unforced and the US was left with nothing to coup.
+    """
+    if section.mode == "realign":
+        return [(cid, us, ussr) for _s, _d, cid, us, ussr in section.influence]
+    last: Dict[int, Tuple[int, int]] = {}
+    for _s, _d, cid, us, ussr in section.influence:
+        last[cid] = (us, ussr)
+    return [(cid, us, ussr) for cid, (us, ussr) in last.items()]
+
+
 def event_queue(e: Entry) -> List[int]:
     """Targets the card's event asks the player to choose, in log order.
 
@@ -441,7 +460,8 @@ def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) ->
 
 
 def _choose_branch(state: ts.GameState, legal, wanted: List[int],
-                   raw: Optional[Dict], e: Optional[Entry] = None) -> Optional[int]:
+                   raw: Optional[Dict], e: Optional[Entry] = None,
+                   returned_cid: Optional[int] = None) -> Optional[int]:
     """Pick the branch of a two-sided event that leads where the log went.
 
     Events like Warsaw Pact Formed offer a genuine choice -- remove US influence from Eastern
@@ -460,6 +480,14 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
             continue
         _drain(probe)
         score = 0
+        # The log says the card was handed back unplayed, so reject any branch that goes on to
+        # play it. At turn 4's headline of replay 119 the US returned Brezhnev Doctrine and
+        # took Grain Sales' own 2 Ops; the branch that plays the card instead left the engine
+        # mid-headline, and every later entry inherited that.
+        if returned_cid is not None:
+            plays_it = (int(probe.ctx().pending_op_card) == returned_cid
+                        or int(probe.ctx().resolving_card) == returned_cid)
+            score += 0 if plays_it else 2000
         # Some branches are a numeric setting rather than a target: How I Learned To Stop
         # Worrying picks the new DEFCON, and with no targets to tell the options apart the
         # first legal one -- DEFCON 1 -- ended the game at turn 4's headline of replay 101.
@@ -571,6 +599,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # Five Year Plan draws its discard at random from the USSR hand, and the drawn card's event
     # then plays out, so which card comes out changes the whole entry. The log names it.
     plays_five_year_plan = cid_target == _FIVE_YEAR_PLAN or _FIVE_YEAR_PLAN in headline_ids.values()
+    plays_grain_sales = cid_target == _GRAIN_SALES or _GRAIN_SALES in headline_ids.values()
+    returned_cid = card_id(e.returned_card) if e.returned_card else None
     random_discards = list(discard_queue) if plays_five_year_plan else []
     seeded_peek = False
     seeded_reveal = False
@@ -620,11 +650,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             _seed_peeked_set(state, discard_queue)
             seeded_peek = True
             ctx = state.ctx()
-        elif (int(ctx.resolving_card) == _GRAIN_SALES and not seeded_reveal
-                and e.played_card is not None):
-            revealed = card_id(e.played_card)
-            if revealed:
-                _seed_revealed_card(state, revealed)
+        elif (plays_grain_sales and not seeded_reveal and reveal_queue
+                and dt == ts.DecisionType.CHOOSE_BRANCH):
+            # Grain Sales takes a card from the USSR hand at random and offers it to the US, so
+            # the branch decision is about a card the engine chose for itself. Correct it to the
+            # one the log reveals before that decision is read. Keying this off resolving_card
+            # missed the headline case, where it is never set: at turn 4's headline of replay
+            # 119 the engine drew Indo-Pakistani War instead of Brezhnev Doctrine, the US then
+            # played *that* for Ops, and the headline never ended.
+            _seed_revealed_card(state, reveal_queue[0])
             seeded_reveal = True
             ctx = state.ctx()
         mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
@@ -817,6 +851,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             mode = section.mode if section is not None else e.mode
             if section is not None:
                 pq[:] = section_queue(section)
+                step_outcomes[:] = section_outcomes(section)
             if mode in _OP_MODE:
                 om = int(_OP_MODE[mode])
                 # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching
@@ -828,7 +863,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.CHOOSE_BRANCH:
-            chosen = _choose_branch(state, legal, eq + pq, raw, e)
+            chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
             informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and (pq or eq):

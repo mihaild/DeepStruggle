@@ -54,6 +54,7 @@ RE_MODE = re.compile(r"(Place Influence|Coup|Realignment|Realign|Space Race) \((
 RE_TARGET = re.compile(r"Target: (.+)$")
 RE_WAR = re.compile(r"War in (.+?)\.?$")
 RE_REVEALS = re.compile(r"(US|USSR) reveals (.+?)(?: from hand)?\.?$")
+RE_RETURNS = re.compile(r"(US|USSR) returns (.+?) to (?:US|USSR)\.?$")
 RE_IN_PLAY = re.compile(r"(.+?) is now in play\.")
 RE_OUT_OF_PLAY = re.compile(r"(.+?) is no longer in play\.")
 RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
@@ -117,6 +118,10 @@ class Entry:
     # reveal a whole hand -- but where the engine asks which card to hand over, this is the
     # answer: Missile Envy's tie between two 3 Ops cards is settled by what the log reveals.
     revealed: List[str] = field(default_factory=list)
+    # A card handed over and given back unplayed: "US returns Brezhnev Doctrine* to USSR" is
+    # the US declining what Grain Sales offered and taking that card's Ops instead. Without it
+    # the choice is invisible and the wrong branch plays the opponent's card.
+    returned_card: Optional[str] = None
     coup_roll: Optional[int] = None
     coup_success: Optional[bool] = None
     realign_rolls: List[Tuple[str, int, int, int]] = field(default_factory=list)
@@ -192,6 +197,11 @@ def parse_entry(raw: Dict) -> Entry:
                 e.event_first = False
         if RE_EVENT.search(line):
             in_event = True
+
+        m = RE_RETURNS.search(line)
+        if m:
+            e.returned_card = m.group(2).strip()
+            continue
 
         m = RE_REVEALS.search(line)
         if m:
