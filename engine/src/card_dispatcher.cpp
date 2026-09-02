@@ -474,7 +474,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                         return true;
                     }
                     state.ctx().pending_op_card = card_ids::OLYMPIC_GAMES;
-                    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, sponsor);
+                    state.ctx().pending_ops_value = Operations::grant_ops(state, 4, sponsor);
                     state.ctx().decision_player = sponsor;
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().resolving_card = 0;
@@ -632,8 +632,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     // printed Ops: at turn 2 AR4 of ts-replayer game 108 the USSR named CIA
                     // Created under Vietnam Revolts and placed influence in two Southeast
                     // Asian countries, where the engine could afford only one.
-                    state.ctx().pending_ops_value =
-                        Operations::get_effective_ops(state, chosen_card, p, Region::ASIA);
+                    state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, chosen_card, p);
                     // UN Intervention uses the named card's Ops "without triggering the Event".
                     // advance_after_ops otherwise sees an opponent card sitting in
                     // pending_op_card on the default OPS_FIRST branch and fires it -- turn 1
@@ -814,7 +813,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.countries[cid].add_influence(p, 2);
                 // Transition to Ops in CA/SA
                 state.ctx().pending_op_card = card_ids::JUNTA;
-                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 2, state.ctx().decision_player);
+                state.ctx().pending_ops_value = Operations::grant_ops(state, 2, state.ctx().decision_player);
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;
@@ -865,7 +864,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return done;
             } else {
                 state.ctx().pending_op_card = chosen_card;
-                state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p_player);
+                state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, chosen_card, p_player);
                 state.ctx().decision_player = p_player;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 state.ctx().timing_branch = 255;
@@ -886,7 +885,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             } else {
                 // Return card, US conducts 2 Ops
                 state.ctx().pending_op_card = card_ids::GRAIN_SALES;
-                state.ctx().pending_ops_value = Operations::get_modified_ops(state, 2, Player::US);
+                state.ctx().pending_ops_value = Operations::grant_ops(state, 2, Player::US);
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;

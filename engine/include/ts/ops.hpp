@@ -31,6 +31,17 @@ public:
     static uint8_t get_modified_ops(const GameState& state, uint8_t base_ops, Player player, Region target_region = Region::NONE_REGION) noexcept;
     static uint8_t get_effective_ops(const GameState& state, uint8_t card_id, Player player, Region target_region = Region::NONE_REGION) noexcept;
 
+    // The Ops budget to hand a player who is about to conduct Operations, whether from playing
+    // a card for Ops or from an Event that grants them. Conditional region bonuses -- Vietnam
+    // Revolts, and the China Card's Asia bonus -- are granted up front, and the budget ladder
+    // in the state machine withdraws them if the player spends outside the region. Every grant
+    // goes through these so none can quietly omit the region: passing the default
+    // NONE_REGION instead left UN Intervention's named card worth only its printed Ops, and at
+    // turn 2 AR4 of ts-replayer game 108 the USSR could afford one Southeast Asian placement
+    // where the human made two.
+    static uint8_t grant_ops_for_card(const GameState& state, uint8_t card_id, Player player) noexcept;
+    static uint8_t grant_ops(const GameState& state, uint8_t base_ops, Player player) noexcept;
+
     // Influence Placement
     static bool can_place_influence(const GameState& state, Player p, uint8_t country_id) noexcept;
     static uint8_t get_influence_cost(const GameState& state, Player p, uint8_t country_id) noexcept;

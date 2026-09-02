@@ -753,7 +753,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         return true;
                     }
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
+                    state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
                     return true;
                 }
                 return false;
@@ -766,13 +766,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                 if (branch == TimingBranch::OPS_FIRST) {
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
+                    state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
                     return true;
                 }
 
                 if (branch == TimingBranch::EVENT_FIRST) {
                     state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, card, p, Region::ASIA);
+                    state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().decision_player = p;
                     state.push_context();

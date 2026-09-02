@@ -257,7 +257,7 @@ bool trigger_cia_created(GameState& state, Player p) noexcept {
     // US conducts Operations using card Ops value (1 Op base)
     state.ctx().decision_player = Player::US;
     state.ctx().pending_op_card = card_ids::CIA_CREATED;
-    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 1, Player::US);
+    state.ctx().pending_ops_value = Operations::grant_ops(state, 1, Player::US);
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
     state.ctx().resolving_card = 0;
     return false;

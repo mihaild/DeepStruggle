@@ -58,6 +58,15 @@ uint8_t Operations::get_effective_ops(const GameState& state, uint8_t card_id, P
     return static_cast<uint8_t>(std::clamp<int16_t>(ops, 1, 6));
 }
 
+uint8_t Operations::grant_ops_for_card(const GameState& state, uint8_t card_id,
+                                       Player player) noexcept {
+    return get_effective_ops(state, card_id, player, Region::ASIA);
+}
+
+uint8_t Operations::grant_ops(const GameState& state, uint8_t base_ops, Player player) noexcept {
+    return get_modified_ops(state, base_ops, player, Region::ASIA);
+}
+
 bool Operations::can_place_influence(const GameState& state, Player p, uint8_t country_id) noexcept {
     if (country_id >= 84 || p == Player::NONE) return false;
 

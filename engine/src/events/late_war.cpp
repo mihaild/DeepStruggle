@@ -107,7 +107,7 @@ bool trigger_soviets_shoot_down_kal(GameState& state, Player p) noexcept {
     if (Scoring::is_controlled_by(state, countries::SOUTH_KOREA, Player::US)) {
         state.ctx().decision_player = Player::US;
         state.ctx().pending_op_card = card_ids::SOVIETS_SHOOT_DOWN_KAL_007;
-        state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, Player::US);
+        state.ctx().pending_ops_value = Operations::grant_ops(state, 4, Player::US);
         // These Ops are the event's free action, whose restrictions differ from those on the
         // card played for Ops -- the action mask reads this to tell the two apart.
         state.ctx().event_granted_ops = 1;
@@ -129,7 +129,7 @@ bool trigger_glasnost(GameState& state, Player p) noexcept {
     if (state.has_flag(effect_bits::THE_REFORMER_PLAYED)) {
         state.ctx().decision_player = Player::USSR;
         state.ctx().pending_op_card = card_ids::GLASNOST;
-        state.ctx().pending_ops_value = Operations::get_modified_ops(state, 4, Player::USSR);
+        state.ctx().pending_ops_value = Operations::grant_ops(state, 4, Player::USSR);
         state.ctx().event_granted_ops = 1;
         state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
         state.ctx().resolving_card = 0;
@@ -223,7 +223,7 @@ bool trigger_tear_down_this_wall(GameState& state, Player p) noexcept {
     // US performs free Coup or Realignment in Europe with 3 Ops
     state.ctx().decision_player = Player::US;
     state.ctx().pending_op_card = card_ids::TEAR_DOWN_THIS_WALL;
-    state.ctx().pending_ops_value = Operations::get_modified_ops(state, 3, Player::US);
+    state.ctx().pending_ops_value = Operations::grant_ops(state, 3, Player::US);
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
     state.ctx().resolving_card = 0;
     return false;
