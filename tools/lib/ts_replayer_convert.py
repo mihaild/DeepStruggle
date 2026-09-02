@@ -49,6 +49,8 @@ CARD_INDEX, CARD_PREFIX = _build_cards()
 _EFFECT_BITS: Dict[str, Tuple[int, ...]] = {
     _norm("Cuban Missile Crisis*"): (ts.EffectBits.CMC_ACTIVE_US,
                                      ts.EffectBits.CMC_ACTIVE_USSR),
+    _norm("Bear Trap*"): (ts.EffectBits.BEAR_TRAP_ACTIVE,),
+    _norm("Quagmire*"): (ts.EffectBits.QUAGMIRE_ACTIVE,),
 }
 
 
@@ -709,6 +711,12 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # The log states the space race die outright, so it is handed to the chance node rather
     # than searched for. Any other roll in a space entry belongs to something else.
     space_roll = int(e.die_rolls[0][0]) if (e.mode == "space" and e.die_rolls) else 0
+    # A Quagmire or Bear Trap discard is an entry with no play at all: the log records the card
+    # discarded and the die rolled to escape ("Trap Roll: 4 <= 4 -- Trap Escaped"). The engine
+    # asks for the card and then rolls, so the logged die is handed to that chance node the
+    # same way a space race roll is -- at turn 6 AR1 of replay 111 the USSR escapes Bear Trap.
+    if not space_roll and e.trap_rolls:
+        space_roll = int(e.trap_rolls[0][0])
     # Realignment only. It rolls once per target and prints the running result of each, so the
     # results have to be consumed in order. A coup rolls once but prints a line per side whose
     # influence moved, where only the last line is the country's settled value.
@@ -794,6 +802,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
 
         mover = _acting(state)
         chosen: Optional[int] = None
+        # Reset per decision: a stale value would misread the next target's provenance.
+        target_from_ops = False
         informative = False
 
         if (dt == ts.DecisionType.SELECT_CARD and picked_card
@@ -963,6 +973,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
             informative = chosen is not None
 
+        elif dt == ts.DecisionType.POINT_NODE and not pq and not eq and sections:
+            # A further Ops section that the engine never announces with a play mode. Che
+            # grants the USSR a second coup when the first removes influence, and offers it
+            # straight as another target choice, so waiting for a SELECT_OP_MODE to advance
+            # the section left the second coup with no target -- at turn 4 AR4 of replay 103
+            # the USSR coups Sudan and then Saharan States under two headers.
+            section = sections.pop(0)
+            pq[:] = section_queue(section)
+            step_outcomes[:] = section_outcomes(section)
+            cur_mode = section.mode
+            continue
+
         elif dt == ts.DecisionType.POINT_NODE and (pq or eq):
             # Ask the queue that matches what the engine is doing: while a card is resolving,
             # these are the event's own placements, otherwise they are the Ops. Within a queue
@@ -976,6 +998,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
                     if chosen is not None:
                         queue.pop(slot)
+                        # Which queue answered decides whether a die follows: the Ops queue
+                        # holds coup and realignment targets, the event queue holds placements.
+                        target_from_ops = queue is pq
                         informative = True
                         break
                 if chosen is not None:
@@ -1031,14 +1056,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # happens to be a war or coup target rolls nothing, and searching for a seed to
             # match it can never succeed: at turn 1 AR2 of replay 109 the US places two
             # influence in South Korea, the country the USSR had just lost the Korean War in.
-            # A coup or realignment target is only rolled for while spending Ops; the same
-            # country reached during the card's event is an ordinary placement. At turn 4 AR7
-            # of replay 101 South African Unrest places USSR influence in Angola and the US
-            # then realigns it, and forcing a die at the placement could never match.
-            in_event = int(ctx.resolving_card) != 0
-            rolled = ((not in_event and cur_mode in ("coup", "realign")
+            # Which queue answered decides it, not whether a card is resolving: Che's free
+            # coups happen inside its own event, while at turn 4 AR7 of replay 101 South
+            # African Unrest places influence in Angola -- an ordinary placement -- in the very
+            # country the US then realigns. The Ops queue holds coup and realignment targets;
+            # the event queue holds placements.
+            rolled = ((target_from_ops and cur_mode in ("coup", "realign")
                        and target in e.targets)
-                      or (in_event and target in e.war_targets))
+                      or (int(ctx.resolving_card) != 0 and target in e.war_targets))
             # Constrain only the country this operation resolves against. The entry's other
             # influence has not happened yet at this point: at turn 2 AR1 of replay 101 the
             # USSR coups Panama and only then does Independent Reds place US influence in
