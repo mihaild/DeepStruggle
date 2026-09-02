@@ -96,7 +96,9 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
     bool has_3ops = false;
     for (uint8_t i = 1; i <= 110; ++i) {
         if (state.card_locations[i] == CardLocation::HAND_US) {
-            if (CardData::get_card(i).ops >= 3) {
+            // Effective Ops, as the discard itself is judged: Containment's +1 can make a
+            // printed 2 qualify, and this test decides whether the US is asked at all.
+            if (Operations::get_effective_ops(state, i, Player::US) >= 3) {
                 has_3ops = true;
                 break;
             }

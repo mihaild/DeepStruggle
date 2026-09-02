@@ -307,7 +307,11 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t card_id = action.primary_id;
-            if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US && CardData::get_card(card_id).ops >= 3) {
+            // The escape needs 3 or more Ops as the US would actually get them: Containment's +1
+            // makes a printed 2 enough, Red Scare's -1 makes a printed 3 insufficient. All nine
+            // sub-3 escapes across the 287 downloaded human games have Containment in play.
+            if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US &&
+                Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                 state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                 state.ctx().resolving_card = 0;
                 return true;
@@ -1125,7 +1129,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     return false;
                 }
                 uint8_t card_id = action.primary_id;
-                if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US && CardData::get_card(card_id).ops >= 3) {
+                // Effective Ops, as for Blockade above.
+                if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US &&
+                    Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                     state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                     state.ctx().resolving_card = 0;
                     return true;
@@ -1634,7 +1640,9 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
             case card_ids::BLOCKADE:
             case card_ids::LATIN_AMERICAN_DEBT_CRISIS:
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == CardLocation::HAND_US && CardData::get_card(i).ops >= 3) {
+                    // Effective Ops, matching what both dispatchers accept.
+                    if (state.card_locations[i] == CardLocation::HAND_US &&
+                        Operations::get_effective_ops(state, i, Player::US) >= 3) {
                         mask_out[i] = 1;
                     }
                 }

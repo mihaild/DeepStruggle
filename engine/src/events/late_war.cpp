@@ -187,7 +187,9 @@ bool trigger_latin_debt_crisis(GameState& state, Player p) noexcept {
     // Check if US has 3+ Ops card
     bool has_3ops = false;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_US && CardData::get_card(i).ops >= 3) {
+        // Effective Ops, as the discard itself is judged.
+        if (state.card_locations[i] == CardLocation::HAND_US &&
+            Operations::get_effective_ops(state, i, Player::US) >= 3) {
             has_3ops = true;
             break;
         }
