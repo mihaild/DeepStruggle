@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <nanobind/ndarray.h>
 #include "ts/observation.hpp"
@@ -507,6 +508,22 @@ NB_MODULE(ts_engine, m) {
         .def_rw("max_per_country", &ts::DecisionContext::max_per_country)
         .def_rw("allow_early_stop", &ts::DecisionContext::allow_early_stop)
         .def_rw("resolving_card", &ts::DecisionContext::resolving_card)
+        .def_rw("temp_card_cnt", &ts::DecisionContext::temp_card_cnt)
+        // Exposed so a replay can be reconstructed against a log that records only part of a
+        // peeked set: Our Man in Tehran prints which cards the US discarded but not which it
+        // saw, and this is the buffer the legal-action mask is built from.
+        .def_prop_rw(
+            "temp_cards",
+            [](const ts::DecisionContext& c) {
+                return std::vector<uint8_t>(c.temp_cards.begin(),
+                                            c.temp_cards.begin() + c.temp_card_cnt);
+            },
+            [](ts::DecisionContext& c, const std::vector<uint8_t>& v) {
+                const size_t n = std::min(v.size(), c.temp_cards.size());
+                c.temp_cards.fill(0);
+                std::copy_n(v.begin(), n, c.temp_cards.begin());
+                c.temp_card_cnt = static_cast<uint8_t>(n);
+            })
         .def("is_visited", &ts::DecisionContext::is_visited);
 
     nb::class_<ts::GameState>(m, "GameState")

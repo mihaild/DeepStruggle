@@ -453,7 +453,11 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
 
     if (action_idx == 211) {
         if (ctx.decision_type == DecisionType::SELECT_CARD) {
-            return MicroAction{DecisionType::SELECT_CARD, 0, 0, 0};
+            // primary_id stays 0, which every card sub-decision already accepts as "decline",
+            // but the flag has to be set too: without it is_confirm_done() reported false for
+            // the one action that means exactly that, so a caller inspecting the decoded
+            // action read a pass as a request to discard card 0.
+            return MicroAction{DecisionType::SELECT_CARD, 0, 0, action_flags::CONFIRM_DONE};
         }
         return MicroAction{ctx.decision_type, 255, 0, action_flags::CONFIRM_DONE};
     }

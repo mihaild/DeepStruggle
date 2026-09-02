@@ -262,37 +262,75 @@ def force_outcome(state: ts.GameState, action: int,
     return False
 
 
-def _logged_board(raw: Optional[Dict]) -> Dict[int, Tuple[int, int]]:
-    """The entry's own board snapshot, as country id -> (US, USSR)."""
-    out: Dict[int, Tuple[int, int]] = {}
-    for key, c in ((raw or {}).get("countries") or {}).items():
-        cid = country_id(key)
-        if cid is None:
-            continue
-        try:
-            out[cid] = (int(c["inflUS"]), int(c["inflUSSR"]))
-        except (KeyError, TypeError, ValueError):
-            continue
-    return out
+_FIVE_YEAR_PLAN = 5
+_UN_INTERVENTION = 32
+_GRAIN_SALES = 67
+_OUR_MAN_IN_TEHRAN = 108
 
 
-def _reconstruct_target(state: ts.GameState, legal, raw: Optional[Dict]) -> Optional[int]:
-    """Pick the legal target whose resolution leaves the board as the log records it.
+def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
+    """Make the card the engine drew at random be the one the log says was revealed.
 
-    Used only where the log omits an operation's target entirely. Dice are searched the same
-    way force_outcome does, so a target is accepted only if some roll makes the whole board
-    agree -- not merely the target country.
+    Grain Sales takes a random card from the USSR hand and offers it to the US; the log names
+    it ("USSR reveals NATO*"), so the draw is not really a chance node for our purposes.
     """
-    board = _logged_board(raw)
-    if not board:
-        return None
+    if state.get_card_location(cid) != ts.CardLocation.HAND_USSR:
+        state.set_card_location(cid, ts.CardLocation.HAND_USSR)
+    state.ctx().temp_cards = [cid]
+
+
+def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) -> None:
+    """Make the engine's peeked set the cards the log implies, padded with plausible keeps.
+
+    Our Man in Tehran lets the US look at the top five cards and discard any of them, but the
+    log records only the discards -- never the full five. The discards are known, so the only
+    invention is the remainder. We fill with US-associated events, which the US would plainly
+    keep, so the reconstruction stays consistent with it having discarded everything else.
+    Five Year Plan is excluded: it is the one US card whose event hurts the US, so keeping it
+    would not be the obvious choice this padding relies on.
+
+    This does lose a little training signal -- the model never sees which *neutral* events the
+    US chose to keep -- but the log cannot tell us that, and the discards themselves are real.
+    """
+    for c in range(1, 111):
+        if state.get_card_location(c) == ts.CardLocation.PEEKED_TEMP:
+            state.set_card_location(c, ts.CardLocation.DRAW_DECK)
+
+    # The discards are deck cards wherever the reconstruction currently has them. The log's
+    # per-turn hand island lists them as held -- turn 5 credits the US with twelve cards, four
+    # more than a mid-war hand -- because the US saw them, so _apply_hands seats them in the
+    # hand and they would otherwise be missing from the peek entirely.
+    peek: List[int] = []
+    for c in discards:
+        if c not in peek:
+            state.set_card_location(c, ts.CardLocation.DRAW_DECK)
+            peek.append(c)
+    fillers = [
+        c for c in range(1, 111)
+        if c not in peek and c != _FIVE_YEAR_PLAN
+        and state.get_card_location(c) == ts.CardLocation.DRAW_DECK
+        and str(ts.CardData.get_card_info(c)["side"]) == "US"
+        and not ts.CardData.get_card_info(c)["is_scoring"]
+    ]
+    need = max(0, min(size, len(peek) + len(fillers)) - len(peek))
+    if need > len(fillers):
+        # Loud on purpose: silently peeking a short set would quietly change which cards the
+        # US could have discarded, and the mismatch would surface far from its cause.
+        raise ValueError(
+            f"cannot reconstruct a {size}-card peek: {len(peek)} logged discards are in the "
+            f"draw deck but only {len(fillers)} US event cards remain there to pad with")
+    peek.extend(fillers[:need])
+
+    for c in peek:
+        state.set_card_location(c, ts.CardLocation.PEEKED_TEMP)
+    state.ctx().temp_cards = peek
+    state.ctx().remaining_steps = len(peek)
+
+
+def _find_confirm_done(state: ts.GameState, legal) -> Optional[int]:
+    """The 'decline / stop here' action, when the engine offers one."""
     for a in legal:
-        ma = ts.ActionMask.decode_flat_action(state, int(a))
-        if int(ma.decision_type) != int(ts.DecisionType.POINT_NODE):
-            continue
-        # force_outcome never steps; on success it leaves the winning seed on `state` itself,
-        # which is exactly what the caller needs before it steps this action.
-        if force_outcome(state, int(a), board):
+        if ts.ActionMask.decode_flat_action(state, int(a)).is_confirm_done():
             return int(a)
     return None
 
@@ -316,9 +354,16 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     picked_card = cid_target is None
     # A card whose event makes the player name and use a second card (UN Intervention) asks
     # for two SELECT_CARDs in one entry. Breaking at the second one left the Ops unspent.
-    second_cid = card_id(e.played_card) if e.played_card else None
+    # Only UN Intervention names its second card through a SELECT_CARD. Other cards that put
+    # an opponent's card into play stage it themselves (Grain Sales), so treating every
+    # "X plays Y" line as a card to select would have the driver play Y a second time.
+    second_cid = (card_id(e.played_card)
+                  if e.played_card and cid_target == _UN_INTERVENTION else None)
     picked_mode = False
     guessed = False
+    discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
+    seeded_peek = False
+    seeded_reveal = False
 
     for _ in range(max_steps):
         _drain(state)
@@ -326,6 +371,19 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             break
         ctx = state.ctx()
         dt = ctx.decision_type
+        # Before the mask is read, since the mask for a peek is built from that very set.
+        if (int(ctx.resolving_card) == _OUR_MAN_IN_TEHRAN and not seeded_peek
+                and dt == ts.DecisionType.SELECT_CARD):
+            _seed_peeked_set(state, discard_queue)
+            seeded_peek = True
+            ctx = state.ctx()
+        elif (int(ctx.resolving_card) == _GRAIN_SALES and not seeded_reveal
+                and e.played_card is not None):
+            revealed = card_id(e.played_card)
+            if revealed:
+                _seed_revealed_card(state, revealed)
+            seeded_reveal = True
+            ctx = state.ctx()
         mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
         legal = np.flatnonzero(mask)
         if len(legal) == 0:
@@ -348,7 +406,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                           lambda ma: int(ma.primary_id) == second_cid) is not None):
             pass  # second card of this entry; select it below rather than ending the entry
 
-        elif picked_card and dt == ts.DecisionType.SELECT_CARD:
+        elif (picked_card and dt == ts.DecisionType.SELECT_CARD
+                and int(ctx.resolving_card) == 0):
+            # Only a card request from the engine itself ends the entry. A SELECT_CARD raised
+            # while a card is still resolving is that card's own sub-decision -- which of the
+            # five peeked cards to discard, say -- and belongs to this entry.
             # Do not require a play mode to have been chosen: a scoring card has no
             # SELECT_PLAY_MODE at all, its event fires on selection. Requiring one meant the
             # driver sailed past the entry into the opponent's action round and played an
@@ -368,6 +430,19 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if chosen is not None:
                 second_cid = None
                 informative = True
+
+        elif dt == ts.DecisionType.SELECT_CARD and int(ctx.resolving_card) != 0:
+            # A card resolving a sub-decision over cards: take the next logged discard, and
+            # once they are all spent decline the rest, which returns them to the deck.
+            for slot, want_c in enumerate(discard_queue):
+                chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                               lambda ma, w=want_c: int(ma.primary_id) == w)
+                if chosen is not None:
+                    discard_queue.pop(slot)
+                    informative = True
+                    break
+            if chosen is None:
+                chosen = _find_confirm_done(state, legal)
 
         elif dt == ts.DecisionType.SELECT_CARD and headline_ids:
             side = "US" if mover == ts.Player.US else "USSR"
@@ -422,15 +497,23 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         elif dt == ts.DecisionType.SELECT_PLAY_MODE and not picked_mode:
             # An opponent's card can only be played for Ops -- its event fires on its own,
             # so "Event: X" in the text does not mean the play mode was Event.
-            side = str(ts.CardData.get_card_info(cid_target)["side"]) if cid_target else "NONE"
+            # Ask about the card the engine is actually playing, which need not be the entry's
+            # own: at turn 7's headline Grain Sales hands the US the USSR's NATO, and this
+            # decision is NATO's. Judging it by the headline entry instead made it look like a
+            # neutral card played as an Event, so the US never got to coup with it.
+            play_cid = int(ctx.pending_op_card) or cid_target
+            side = str(ts.CardData.get_card_info(play_cid)["side"]) if play_cid else "NONE"
             mine = "US" if mover == ts.Player.US else "USSR"
             opponent_card = side not in ("NONE", mine)
-            if e.played_card:
+            if e.played_card and cid_target == _UN_INTERVENTION:
                 # UN Intervention is played as its Event; the Ops that follow are the named
                 # card's. Reading the "Place Influence" header as the play mode instead had
                 # the engine spend UN Intervention's own Ops and never ask for NORAD.
                 want = PLAY_MODE_ACTION["event"]
-            elif not opponent_card and e.event_first and e.events:
+            elif cid_target and not opponent_card and e.event_first and e.events:
+                # Only for the entry's own card. A headline entry has none, and the play mode
+                # it reaches belongs to a card an event put into play -- NATO, via Grain Sales
+                # -- whose Ops header is the real signal.
                 # Own or neutral card whose "Event:" line precedes the Ops header: it was
                 # played as an Event and the Ops belong to the event (ABM Treaty grants the
                 # US 4 Ops). Reading that header as the play mode had the engine spend the
@@ -510,17 +593,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 break
 
         if chosen is None and dt == ts.DecisionType.POINT_NODE and not pq and not eq:
-            # The log sometimes prints an Ops header with nothing under it: at turn 4 AR2 Che's
-            # free USSR coup is "Coup (3 Ops):" and then nothing -- no target, no result, no
-            # military ops line. The board snapshot is still authoritative, so pick whichever
-            # legal target reproduces it rather than guessing and inventing influence.
-            chosen = _reconstruct_target(state, legal, raw)
-            if chosen is not None:
-                conv.mismatches.append(Mismatch(
-                    conv.replay_id, e.turn, e.phase, e.player, e.card,
-                    "log gap: unrecorded operation",
-                    f"{e.mode or e.event_mode or 'operation'} has no target in the log; "
-                    f"reconstructed the one consistent with the entry's board"))
+            # An Ops header with nothing under it means the player declined. Che offers the
+            # USSR a coup rather than requiring one, and at turn 4 AR2 the US held no influence
+            # in any non-battleground country of the Americas or Africa, so there was nothing
+            # worth couping and the USSR passed: "Coup (3 Ops):" and then no target, no result,
+            # no military ops line. The engine already allows this, so take the pass.
+            chosen = _find_confirm_done(state, legal)
+            informative = chosen is not None
 
         if chosen is None:
             chosen = int(legal[0])
