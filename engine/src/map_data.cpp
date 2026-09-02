@@ -31,7 +31,7 @@ constexpr std::array<CountryInfo, 84> COUNTRIES = {{
     // 11: Greece
     {11, "Greece", 2, false, Region::EUROPE, true, false, false, Player::NONE, 4, {10,18,20,12,0,0}, {(1ULL<<10)|(1ULL<<18)|(1ULL<<20)|(1ULL<<12), 0}},
     // 12: Turkey
-    {12, "Turkey", 2, false, Region::EUROPE, true, false, false, Player::USSR, 4, {11,20,19,22,0,0}, {(1ULL<<11)|(1ULL<<20)|(1ULL<<19)|(1ULL<<22), 0}},
+    {12, "Turkey", 2, false, Region::EUROPE, true, false, false, Player::NONE, 4, {11,20,19,22,0,0}, {(1ULL<<11)|(1ULL<<20)|(1ULL<<19)|(1ULL<<22), 0}},
     // 13: Austria
     {13, "Austria", 4, false, Region::EUROPE, true, true, false, Player::NONE, 4, {7,14,10,17,0,0}, {(1ULL<<7)|(1ULL<<14)|(1ULL<<10)|(1ULL<<17), 0}},
     // 14: East Germany
