@@ -185,3 +185,67 @@ def test_leaving_asia_directly_forfeits_both_bonuses() -> None:
     assert left == [5, 2], (
         f"expected 5 left after Southeast Asia and 2 after leaving Asia entirely, got {left}"
     )
+
+
+def test_vietnam_revolts_un_intervention_thailand_vs_controlled_italy() -> None:
+    """Vietnam Revolts active; US controls Italy and Thailand; USSR has influence in Austria and Vietnam.
+
+    USSR plays UN Intervention (1 Op) for operations, selecting influence placement.
+    - Thailand is in Southeast Asia, so the Vietnam Revolts bonus applies (1 base + 1 bonus = 2 Ops).
+      Placing in US-controlled Thailand costs 2 Ops, so USSR can afford it (Thailand is legal).
+    - Italy is outside Southeast Asia, so the Vietnam Revolts bonus does not apply (1 Op plain).
+      Placing in US-controlled Italy costs 2 Ops, so USSR cannot afford it (Italy is NOT legal).
+    """
+    import numpy as np
+
+    st = ts.GameState()
+    ts.Engine.init_game(st, 4242)
+    st.defcon = 5
+    st.current_phase = ts.Phase.ACTION_ROUND
+    st.action_round = 1
+    st.phasing_player = ts.Player.USSR
+    st.set_flag(VIETNAM_REVOLTS_ACTIVE)
+
+    italy_id = country_id("Italy")
+    thailand_id = country_id("Thailand")
+    austria_id = country_id("Austria")
+    vietnam_id = country_id("Vietnam")
+    assert italy_id is not None and thailand_id is not None
+    assert austria_id is not None and vietnam_id is not None
+
+    # US controls Italy (stability 2) and Thailand (stability 2)
+    st.set_country(italy_id, 2, 0)
+    st.set_country(thailand_id, 2, 0)
+
+    # USSR has influence in Austria (adjacent to Italy) and Vietnam (adjacent to Thailand)
+    st.set_country(austria_id, 0, 1)
+    st.set_country(vietnam_id, 0, 1)
+
+    un_intervention = 32
+    st.set_card_location(un_intervention, ts.CardLocation.HAND_USSR)
+    st.ctx().decision_player = ts.Player.USSR
+    st.ctx().decision_type = ts.DecisionType.SELECT_CARD
+
+    # Play UN Intervention for Operations -> Influence
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, un_intervention, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE), 0, 0))
+
+    assert st.ctx().decision_type == ts.DecisionType.POINT_NODE
+    # Initial optimistic offer is 2 Ops (1 base + 1 SE Asia)
+    assert int(st.ctx().pending_ops_value) == 2
+    assert int(st.ctx().remaining_steps) == 2
+
+    # Query action mask
+    mask = np.asarray(ts.ActionMask.generate_flat_mask(st))
+    assert mask[119 + thailand_id] == 1, (
+        "Thailand (SE Asia) should be legal because Vietnam Revolts bonus gives 2 Ops to pay cost 2"
+    )
+    assert mask[119 + italy_id] == 0, (
+        "Italy (Europe, cost 2) must NOT be legal because non-SE placements only have 1 Op"
+    )
+
+    # Placing influence into Thailand succeeds and consumes all 2 Ops
+    ts.Engine.step_flat(st, 119 + thailand_id)
+    assert st.get_country(thailand_id).ussr_influence == 1
+    assert int(st.ctx().remaining_steps) == 0
