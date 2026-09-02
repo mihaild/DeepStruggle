@@ -706,3 +706,40 @@ TEST(CardInteractionTest, CIACreated_EventFirst_USSRStillSpendsItsOwnOpAfterUSOp
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
 }
+
+// Events nest, and every finished frame has to unwind. Five Year Plan makes the USSR discard a
+// card and that card's own event runs a frame deeper, so on an EVENT_FIRST play the stack is
+// two deep. Popping once landed on Five Year Plan's own frame -- not SELECT_OP_MODE -- and the
+// action round ended, costing the USSR the Ops they had paid for: at turn 2 AR6 of ts-replayer
+// game 105 their influence in Iran never went in.
+TEST(CardInteractionTest, FiveYearPlan_EventFirst_USSRStillSpendsItsOwnOpsAfterNestedEvent) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+
+    state.defcon = 5;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    // Five Year Plan discards at random, so give the USSR exactly one other card to lose and
+    // make it a US event that resolves without asking anything: Truman Doctrine needs a target,
+    // so use one that resolves on its own instead.
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DISCARD_PILE;
+        }
+    }
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+
+    // Whatever the nested event did, the USSR is owed Five Year Plan's own Ops.
+    ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+}

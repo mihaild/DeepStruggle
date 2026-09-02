@@ -53,6 +53,9 @@ RE_INFLUENCE = re.compile(r"^(US|USSR) ([+-]\d+) in (.+?) \[(\d+)\]\[(\d+)\]$")
 RE_MODE = re.compile(r"(Place Influence|Coup|Realignment|Realign|Space Race) \((\d+) Ops\):$")
 RE_TARGET = re.compile(r"Target: (.+)$")
 RE_WAR = re.compile(r"War in (.+?)\.?$")
+RE_REVEALS = re.compile(r"(US|USSR) reveals (.+?)(?: from hand)?\.?$")
+RE_IN_PLAY = re.compile(r"(.+?) is now in play\.")
+RE_OUT_OF_PLAY = re.compile(r"(.+?) is no longer in play\.")
 RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
 RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+) \(([+-]\d+)\) = (-?\d+)$")
 RE_DIE = re.compile(r"Die roll: (\d+) -- (Success!|Failed!) \(Needed (\d+) or less\)$")
@@ -105,6 +108,15 @@ class Entry:
     # can hold several: CIA Created reveals the USSR hand, gives the US 1 Op to coup with, and
     # only then spends its own Op for the USSR. Keeping a single mode dropped the second.
     sections: List["Section"] = field(default_factory=list)
+    # Ongoing effects the entry starts or ends. An effect that should have expired but did not
+    # can make later play illegal outright -- a stale Cuban Missile Crisis turns every USSR
+    # coup into an instant loss -- so expiry has to be reconciled from the log like the board.
+    in_play: List[str] = field(default_factory=list)
+    out_of_play: List[str] = field(default_factory=list)
+    # Cards named by a "reveals" line. Usually informational -- Lone Gunman and CIA Created
+    # reveal a whole hand -- but where the engine asks which card to hand over, this is the
+    # answer: Missile Envy's tie between two 3 Ops cards is settled by what the log reveals.
+    revealed: List[str] = field(default_factory=list)
     coup_roll: Optional[int] = None
     coup_success: Optional[bool] = None
     realign_rolls: List[Tuple[str, int, int, int]] = field(default_factory=list)
@@ -180,6 +192,20 @@ def parse_entry(raw: Dict) -> Entry:
                 e.event_first = False
         if RE_EVENT.search(line):
             in_event = True
+
+        m = RE_REVEALS.search(line)
+        if m:
+            e.revealed.append(m.group(2).strip())
+            continue
+
+        m = RE_OUT_OF_PLAY.search(line)
+        if m:
+            e.out_of_play.append(m.group(1).strip())
+            continue
+        m = RE_IN_PLAY.search(line)
+        if m:
+            e.in_play.append(m.group(1).strip())
+            continue
 
         m = RE_PLAYS.search(line)
         if m and e.played_card is None:

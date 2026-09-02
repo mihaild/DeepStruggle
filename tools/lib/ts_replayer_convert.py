@@ -40,6 +40,14 @@ def _build_cards() -> Tuple[Dict[str, int], Dict[str, int]]:
 
 CARD_INDEX, CARD_PREFIX = _build_cards()
 
+# Ongoing effects whose expiry the log records and whose lingering presence changes what is
+# legal rather than merely what is scored. Both Cuban Missile Crisis bits are cleared together
+# because the log names the card, not the side that played it.
+_EFFECT_BITS: Dict[str, Tuple[int, ...]] = {
+    _norm("Cuban Missile Crisis*"): (ts.EffectBits.CMC_ACTIVE_US,
+                                     ts.EffectBits.CMC_ACTIVE_USSR),
+}
+
 
 def card_id(name: Optional[str]) -> Optional[int]:
     if not name:
@@ -119,6 +127,14 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
             state.us_mil_ops = int(level)
         else:
             state.ussr_mil_ops = int(level)
+    # Clear ongoing effects the log says have ended. An effect that outlives its expiry can
+    # make later play illegal outright: a stale Cuban Missile Crisis makes every USSR coup an
+    # instant loss, which is how turn 6 AR3 of replay 104 ended the game at DEFCON 3 with the
+    # score at 20 while the log has the coup simply succeeding.
+    for name in (entry.out_of_play or []):
+        for bit in _EFFECT_BITS.get(_norm(name), ()):
+            state.persistent_effects &= ~bit
+
     if entry.score is not None:
         state.victory_points = int(entry.score)
     if entry.defcon is not None and 1 <= int(entry.defcon) <= 5:
@@ -195,7 +211,15 @@ def point_queue(e: Entry) -> List[int]:
     if e.mode == "space":
         return []
     if e.mode in ("coup", "realign"):
-        return list(e.targets)
+        # Influence in a country that is not a target belongs to something else the action
+        # round set off, and that is a decision of its own: NORAD lets the US add 1 Influence
+        # after an action round in which it lost some, which is the "US +1 in Poland" trailing
+        # the USSR's Panama coup at turn 6 AR3 of replay 104.
+        extra: List[int] = []
+        for _side, delta, cid, _u, _s in (e.influence or []):
+            if cid not in e.targets:
+                extra.extend([cid] * abs(int(delta)))
+        return list(e.targets) + extra
 
     q: List[int] = []
     for _side, delta, cid, _u, _s in (e.ops_influence or []):
@@ -401,8 +425,11 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
             offered = {int(ts.ActionMask.decode_flat_action(probe, int(x)).primary_id)
                        for x in np.flatnonzero(np.asarray(
                            ts.ActionMask.generate_flat_mask(probe)))}
-            if any(c in offered for c in wanted):
-                score += 1000
+            # How many of the logged targets this branch can reach, not merely whether it
+            # reaches one. Warsaw Pact Formed's two branches both offer Romania -- the USSR
+            # added influence there and the US had influence to remove -- so a yes/no test
+            # tied, and the wrong branch stripped the US instead of reinforcing the USSR.
+            score += 1000 * sum(1 for c in set(wanted) if c in offered)
         # Tiebreak on how much of the logged board this branch already reproduces, which
         # settles branches that resolve fully on their own and ask nothing further.
         score += sum(1 for cid, (us, ussr) in board.items()
@@ -462,6 +489,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     picked_mode = False
     guessed = False
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
+    reveal_queue = [c for c in (card_id(nm) for nm in (e.revealed or [])) if c]
     seeded_peek = False
     seeded_reveal = False
     # A war with a fixed target resolves in a chance node, so its outcome has to be steered
@@ -574,6 +602,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     discard_queue.pop(slot)
                     informative = True
                     break
+            if chosen is None:
+                # Then whatever the log says was revealed. Where the engine asks which card to
+                # hand over -- Missile Envy tying NORAD against Cuban Missile Crisis at both
+                # 3 Ops -- the reveal is the answer. Guessing gave away Cuban Missile Crisis
+                # and fired its event, after which every USSR coup was an instant loss.
+                for slot, want_c in enumerate(reveal_queue):
+                    chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                                   lambda ma, w=want_c: int(ma.primary_id) == w)
+                    if chosen is not None:
+                        reveal_queue.pop(slot)
+                        informative = True
+                        break
             if chosen is None:
                 chosen = _find_confirm_done(state, legal)
 
@@ -726,6 +766,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                         break
                 if chosen is not None:
                     break
+            if chosen is None:
+                # An event can ask for more than the board can give: Suez Crisis removes four
+                # US Influence across France, the UK and Israel, and at turn 2 AR6 of replay
+                # 105 only three were there to remove. The engine offers the pass; taking it
+                # finishes the event and leaves the entry's own Ops still to spend, where
+                # abandoning the entry lost them.
+                chosen = _find_confirm_done(state, legal)
             if chosen is None:
                 names = ", ".join(ts.MapData.get_country_info(c)["name"] for c in (pq + eq))
                 conv.mismatches.append(Mismatch(

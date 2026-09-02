@@ -588,12 +588,22 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             if (finished || action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 if (state.ctx_stack_depth > 0) {
-                    state.pop_context();
-                    if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
-                        // Resumed from EVENT_FIRST
-                    } else {
-                        // Resumed from nested card execution (Missile Envy, Five Year Plan, Star Wars)
+                    // Unwind every finished frame, not just one. Events nest: Five Year Plan
+                    // makes the USSR discard a card and that card's own event runs a frame
+                    // deeper, so on an EVENT_FIRST play the stack is two deep and a single pop
+                    // landed on Five Year Plan's own frame -- which is not SELECT_OP_MODE, so
+                    // the action round ended and the USSR lost the Ops they had paid for. At
+                    // turn 2 AR6 of ts-replayer game 105 their influence in Iran never went in.
+                    bool resumed = false;
+                    while (state.ctx_stack_depth > 0) {
+                        state.pop_context();
+                        if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+                            resumed = true;   // the player's own Ops are still owed
+                            break;
+                        }
                         state.ctx().resolving_card = 0;
+                    }
+                    if (!resumed) {
                         if (state.current_phase == Phase::HEADLINE) {
                             advance_headline_step(state);
                         } else {
