@@ -7,16 +7,22 @@ namespace ts {
 
 namespace {
 
+// {min_ops, max_roll, vp_first, vp_second}. The roll thresholds for boxes 3 to 7 were the
+// wrong way round, alternating 4/3/4/3/4 where the game alternates 3/4/3/4/3, which the box
+// names alongside them show the cause of: boxes 3 and 4 were labelled in the wrong order, and
+// so on up the track. Every one of the 1,190 space attempts in the 287 downloaded human games
+// agrees with the values below and disagrees with the old ones. The Ops requirements, the VP
+// awards and the box numbers each benefit hangs off were all already right.
 constexpr std::array<SpaceBoxInfo, 9> SPACE_BOXES = {{
     {0, 0, 0, 0}, // Box 0 (Start)
     {2, 3, 2, 1}, // Box 1: Earth Satellite (2 Ops, 1-3, 2/1 VP)
-    {2, 4, 0, 0}, // Box 2: Animal in Space (2 Ops, 1-4, 0/0 VP, 2 attempts/turn)
-    {2, 4, 2, 0}, // Box 3: Man in Orbit (2 Ops, 1-4, 2/0 VP)
-    {2, 3, 0, 0}, // Box 4: Man in Space (2 Ops, 1-3, 0/0 VP, Opponent reveals headline first)
-    {3, 4, 3, 1}, // Box 5: Lunar Probe (3 Ops, 1-4, 3/1 VP)
-    {3, 3, 0, 0}, // Box 6: Space Walk (3 Ops, 1-3, 0/0 VP, Discard held card)
-    {3, 4, 4, 2}, // Box 7: Space Station (3 Ops, 1-4, 4/2 VP)
-    {4, 2, 2, 0}  // Box 8: Eagle/Bear Landed (4 Ops, 1-2, 2/0 VP, 8 ARs)
+    {2, 4, 0, 0}, // Box 2: Animal in Space (2 Ops, 1-4, 2 attempts/turn)
+    {2, 3, 2, 0}, // Box 3: Man in Space (2 Ops, 1-3, 2/0 VP)
+    {2, 4, 0, 0}, // Box 4: Man in Earth Orbit (2 Ops, 1-4, opponent headlines first)
+    {3, 3, 3, 1}, // Box 5: Lunar Orbit (3 Ops, 1-3, 3/1 VP)
+    {3, 4, 0, 0}, // Box 6: Eagle/Bear Has Landed (3 Ops, 1-4, discard a held card)
+    {3, 3, 4, 2}, // Box 7: Space Shuttle (3 Ops, 1-3, 4/2 VP)
+    {4, 2, 2, 0}  // Box 8: Space Station (4 Ops, 1-2, 2/0 VP, 8 action rounds)
 }};
 
 } // namespace
