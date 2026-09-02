@@ -1226,6 +1226,17 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 if cid not in _hand_after(turn_hands[side], played[side]):
                     conv.hand_misses += 1
                 played[side].add(cid)
+        # A card spent by being *named* rather than selected leaves the hand just the same. UN
+        # Intervention names one of the player's own cards and uses its Ops, and leaving it in
+        # the tracked hand meant the USSR still held CIA Created at turn 2 AR6 of replay 108,
+        # where the log says they had nothing left: Five Year Plan then discarded it, its event
+        # opened a decision nobody answered, and the frame was still open at the next entry.
+        # Harmless where the named card was never in that player's hand, since _hand_after
+        # only ever removes from the logged hand.
+        if e.played_card and e.player in ("US", "USSR"):
+            named = card_id(e.played_card)
+            if named:
+                played[e.player].add(named)
 
         before = len(conv.samples)
         if prev_entry is not None:
