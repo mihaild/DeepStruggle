@@ -672,3 +672,37 @@ TEST(CardInteractionTest, Purge_ReducesOpsValue_Minimum1Op) {
     uint8_t effective_3op = ts::Operations::get_effective_ops(state, ts::card_ids::DUCK_AND_COVER, ts::Player::US);
     ASSERT_EQ(effective_3op, 2);
 }
+
+// Ops granted to the opponent by an event run in a pushed frame, and finishing them must
+// return to the frame underneath rather than end the action round. On an EVENT_FIRST play that
+// frame holds the phasing player's own Ops: CIA Created reveals the USSR hand and hands the US
+// one Op, after which the USSR still owes the card's own Op. The action round used to end
+// instead, silently costing the USSR the Ops they paid for -- at turn 2 AR1 of ts-replayer
+// game 103 their influence in Poland never went in.
+TEST(CardInteractionTest, CIACreated_EventFirst_USSRStillSpendsItsOwnOpAfterUSOp) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+
+    state.defcon = 5;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+
+    // The US spends the granted Op on influence, which keeps the test off the dice.
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0});
+
+    // Control returns to the USSR for CIA Created's own Op, still in the same action round.
+    ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+}

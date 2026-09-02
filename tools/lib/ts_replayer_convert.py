@@ -205,6 +205,18 @@ def point_queue(e: Entry) -> List[int]:
     return q
 
 
+def section_queue(section) -> List[int]:
+    """Countries the player pointed at within one Ops section."""
+    if section.mode == "space":
+        return []
+    if section.mode in ("coup", "realign"):
+        return list(section.targets)
+    q: List[int] = []
+    for _side, delta, cid, _u, _s in section.influence:
+        q.extend([cid] * abs(int(delta)))
+    return q or list(section.targets)
+
+
 def event_queue(e: Entry) -> List[int]:
     """Targets the card's event asks the player to choose, in log order.
 
@@ -457,6 +469,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # of the entry has not happened yet at that point.
     _want = expected_counts(e, raw)
     war_outcome = {c: _want[c] for c in e.war_targets if c in _want}
+    # Only where the entry really holds several. With one section the existing queue already
+    # describes it, and re-deriving it per decision only risks disagreeing with itself.
+    sections = list(e.sections) if len(e.sections or []) > 1 else []
     seed_settled = False
     # Realignment only. It rolls once per target and prints the running result of each, so the
     # results have to be consumed in order. A coup rolls once but prints a line per side whose
@@ -671,14 +686,24 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                            lambda ma: int(ma.primary_id) == want_branch)
             informative = chosen is not None
 
-        elif dt == ts.DecisionType.SELECT_OP_MODE and e.mode in _OP_MODE:
-            om = int(_OP_MODE[e.mode])
-            # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching
-            # either field silently selected the first legal action -- REALIGN -- and the
-            # engine then correctly offered a realignment mask, which looked like a mask bug.
-            chosen = _find(state, legal, ts.DecisionType.SELECT_OP_MODE,
-                           lambda ma: int(ma.primary_id) == om)
-            informative = chosen is not None
+        elif dt == ts.DecisionType.SELECT_OP_MODE and (sections or e.mode in _OP_MODE):
+            # An entry can hold more than one Ops section, and they are asked for in the order
+            # the log prints them: CIA Created reveals the USSR hand, hands the US 1 Op to coup
+            # with, and only then spends its own Op for the USSR. Taking the entry's single
+            # mode for every such decision lost the second operation entirely.
+            section = sections.pop(0) if sections else None
+            mode = section.mode if section is not None else e.mode
+            if section is not None:
+                pq[:] = section_queue(section)
+            if mode in _OP_MODE:
+                om = int(_OP_MODE[mode])
+                # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching
+                # either field silently selected the first legal action -- REALIGN -- and the
+                # engine then correctly offered a realignment mask, which looked like a mask
+                # bug.
+                chosen = _find(state, legal, ts.DecisionType.SELECT_OP_MODE,
+                               lambda ma: int(ma.primary_id) == om)
+                informative = chosen is not None
 
         elif dt == ts.DecisionType.CHOOSE_BRANCH:
             chosen = _choose_branch(state, legal, eq + pq, raw, e)

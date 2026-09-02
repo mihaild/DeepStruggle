@@ -72,6 +72,16 @@ RE_PLAYS = re.compile(r"(US|USSR) plays (.+?)\.?$")
 
 
 @dataclass
+class Section:
+    """One Ops header and the lines under it, in log order."""
+    mode: str
+    ops: int
+    event: bool                      # header appeared inside the event's own text
+    influence: List[Tuple[str, int, int, int, int]] = field(default_factory=list)
+    targets: List[int] = field(default_factory=list)
+
+
+@dataclass
 class Entry:
     turn: int
     player: str
@@ -91,6 +101,10 @@ class Entry:
     # A second Ops header inside the event section, e.g. Che's free coup for the USSR.
     event_mode: Optional[str] = None
     event_ops: Optional[int] = None
+    # Every Ops header in the entry, in order, each owning the lines that follow it. One entry
+    # can hold several: CIA Created reveals the USSR hand, gives the US 1 Op to coup with, and
+    # only then spends its own Op for the USSR. Keeping a single mode dropped the second.
+    sections: List["Section"] = field(default_factory=list)
     coup_roll: Optional[int] = None
     coup_success: Optional[bool] = None
     realign_rolls: List[Tuple[str, int, int, int]] = field(default_factory=list)
@@ -182,12 +196,15 @@ def parse_entry(raw: Dict) -> Entry:
                 e.influence.append(rec)
                 if not in_event:
                     e.ops_influence.append(rec)
+                if e.sections:
+                    e.sections[-1].influence.append(rec)
             continue
         m = RE_MODE.search(line)
         if m:
             mode = {"Place Influence": "influence", "Coup": "coup",
                     "Realignment": "realign", "Realign": "realign",
                     "Space Race": "space"}[m.group(1)]
+            e.sections.append(Section(mode=mode, ops=int(m.group(2)), event=in_event))
             if e.mode is None:
                 # First header is how the card itself was played. A later one belongs to the
                 # event -- Che grants the USSR a free coup after the US already spent Che's
@@ -213,6 +230,8 @@ def parse_entry(raw: Dict) -> Entry:
                 e.unparsed.append(line)
             else:
                 e.targets.append(tid)
+                if e.sections:
+                    e.sections[-1].targets.append(tid)
                 if e.coup_target is None:
                     e.coup_target = tid
             continue

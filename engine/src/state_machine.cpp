@@ -219,6 +219,20 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         advance_headline_step(state);
         return;
     }
+    // Ops spent inside a pushed frame were granted by an event, and finishing them has to
+    // return to the frame underneath rather than end the action round. On an EVENT_FIRST play
+    // that frame holds the phasing player's own Ops: CIA Created reveals the USSR hand and
+    // hands the US one Op, and the USSR then still owes the card's own Op. Ending the round
+    // here dropped it -- at turn 2 AR1 of ts-replayer game 103 the USSR's influence in Poland
+    // never went in. The SELECT_OP_MODE test mirrors how the resolving_card path resumes.
+    if (state.ctx_stack_depth > 0) {
+        state.pop_context();
+        if (state.ctx().decision_type != DecisionType::SELECT_OP_MODE) {
+            advance_after_action_round(state);
+        }
+        return;
+    }
+
     uint8_t card = state.ctx().pending_op_card;
     Player p = state.phasing_player;
     uint8_t timing = state.ctx().timing_branch;
