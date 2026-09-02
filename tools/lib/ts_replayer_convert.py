@@ -78,6 +78,9 @@ class Conversion:
     decisions_emitted: int = 0
     board_resyncs: int = 0
     vp_drift: int = 0
+    entries_board_mismatch: int = 0
+    hand_misses: int = 0
+    first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     mismatches: List[Mismatch] = field(default_factory=list)
 
@@ -143,12 +146,19 @@ def _acting(state: ts.GameState) -> ts.Player:
 
 
 def point_queue(e: Entry) -> List[int]:
-    """Countries the log says were pointed at, one entry per influence point."""
+    """Countries the player actually pointed at -- decisions, not consequences.
+
+    Under a coup or realignment the only choice is the target; the influence lines that
+    follow are the *result* of the roll. Queuing those as placements made the engine try to
+    place influence where the coup had removed it.
+    """
+    if e.mode in ("coup", "realign"):
+        return list(e.targets)
     q: List[int] = []
-    for _side, delta, cid, _u, _s in (e.ops_influence or []):
+    for _side, delta, cid, _u, _s in (e.influence or []):
         q.extend([cid] * abs(int(delta)))
-    if e.coup_target is not None:
-        q.append(e.coup_target)
+    if not q and e.targets:
+        q = list(e.targets)
     return q
 
 
@@ -158,6 +168,49 @@ from ai.eval.positions import PLAY_MODE_ACTION  # noqa: E402
 
 _OP_MODE = {"influence": ts.OpMode.INFLUENCE, "coup": ts.OpMode.COUP,
             "realign": ts.OpMode.REALIGN}
+
+
+_GOLDEN = 0x9E3779B97F4A7C15
+_UINT64 = 1 << 64
+
+
+def expected_counts(e) -> Dict[int, Tuple[int, int]]:
+    """Final [US][USSR] per country named in this entry, from the log's own arithmetic."""
+    out: Dict[int, Tuple[int, int]] = {}
+    for _side, _delta, cid, res_us, res_ussr in e.influence:
+        out[cid] = (res_us, res_ussr)
+    return out
+
+
+def force_outcome(state: ts.GameState, action: int,
+                  expected: Dict[int, Tuple[int, int]], tries: int = 400) -> bool:
+    """Search rng_state so that stepping `action` reproduces the logged result.
+
+    Coups, wars and realignments resolve on a die the engine rolls itself, so without this the
+    resulting influence differs from the log and the entry fails verification even when the
+    decision was parsed perfectly -- the check could no longer tell a parse error from an
+    unlucky roll. The engine exposes no die value, so we match the *outcome* instead, which is
+    the stronger condition anyway.
+    """
+    if not expected:
+        return True
+    base = int(state.rng_state)
+    for k in range(tries):
+        cand = (base + (k + 1) * _GOLDEN) % _UINT64
+        probe = state.clone()
+        probe.rng_state = cand
+        try:
+            ts.Engine.step_flat(probe, int(action))
+        except Exception:
+            continue
+        _drain(probe)
+        if all(int(probe.get_country(c).us_influence) == us
+               and int(probe.get_country(c).ussr_influence) == ussr
+               for c, (us, ussr) in expected.items()):
+            # the PRE-step candidate, not probe.rng_state -- stepping has advanced that
+            state.rng_state = cand
+            return True
+    return False
 
 
 def _find(state, legal, want_type, match) -> Optional[int]:
@@ -191,8 +244,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             break
 
         # Entry is done once its intents are spent and the engine wants a new card.
-        if (picked_card and picked_mode and not pq and not headline_ids
-                and dt == ts.DecisionType.SELECT_CARD):
+        # A headline entry has no play-mode decision of its own, so it is finished once both
+        # cards are chosen and the engine has left the Headline phase. Without this the driver
+        # ran on into the next action round and played an extra card.
+        if e.headlines:
+            if not headline_ids and state.current_phase != ts.Phase.HEADLINE:
+                break
+        elif picked_card and picked_mode and dt == ts.DecisionType.SELECT_CARD:
             break
 
         mover = _acting(state)
@@ -302,6 +360,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             chosen = int(legal[0])
             guessed = True
 
+        if (dt == ts.DecisionType.POINT_NODE and chosen is not None
+                and e.mode in ("coup", "realign") and not pq):
+            if not force_outcome(state, chosen, expected_counts(e)):
+                conv.mismatches.append(Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "could not reproduce outcome",
+                    f"no rng_state reproduced the logged {e.mode} result"))
+
         if informative:
             obs = np.asarray(ts.extract_observation(state, mover), dtype=np.float32)
             conv.samples.append((obs, mask.copy(), int(chosen),
@@ -315,7 +381,51 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     return True
 
 
+def _hand_after(turn_hand, played):
+    """Cards still held: the turn's logged hand minus what has been played so far."""
+    return [c for c in turn_hand if c not in played]
+
+
+def _apply_hands(state, us_cards, ussr_cards) -> None:
+    for c in range(1, 111):
+        loc = state.get_card_location(c)
+        if loc in (ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR):
+            state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
+    for c in us_cards:
+        state.set_card_location(c, ts.CardLocation.HAND_US)
+    for c in ussr_cards:
+        state.set_card_location(c, ts.CardLocation.HAND_USSR)
+
+
+def _board_matches(state, countries) -> int:
+    bad = 0
+    for key, c in (countries or {}).items():
+        cid = country_id(key)
+        if cid is None:
+            continue
+        try:
+            lus, lussr = int(c["inflUS"]), int(c["inflUSSR"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        cur = state.get_country(cid)
+        if int(cur.us_influence) != lus or int(cur.ussr_influence) != lussr:
+            bad += 1
+    return bad
+
+
 def convert_game(game: Dict) -> Conversion:
+    """Rebuild each entry's position from the log, drive it, and verify the outcome.
+
+    Two things make this per-entry rather than a forward simulation of the whole game. Drift
+    cannot accumulate: every entry starts from the logged position, so one mis-parsed entry
+    does not poison the rest. And the forward step is the *check* -- if the actions we
+    extracted are right, replaying them must reproduce the log's next board, so a parse error
+    shows up as a board mismatch on that entry instead of passing silently into the dataset.
+
+    Hands are tracked across the turn, since the log records them only per turn: the hand at
+    an entry is the turn's logged hand minus what has already been played. The card a player
+    plays must be in that tracked hand, which is itself a check on the hand model.
+    """
     conv = Conversion(replay_id=int(game.get("replay_id", -1)))
     raws = game.get("all_turns", [])
     hands = game.get("hands", {}) or {}
@@ -325,41 +435,75 @@ def convert_game(game: Dict) -> Conversion:
     _drain(state)
 
     cur_turn = None
-    prev_countries = None
+    turn_hands = {"US": [], "USSR": []}
+    played = {"US": set(), "USSR": set()}
+    prev_raw = None
     prev_entry = None
+
     for raw in raws:
         e = parse_entry(raw)
-        if prev_countries is not None:
-            _reconcile_board(state, prev_countries)
-        if prev_entry is not None:
-            _reconcile_scalars(state, prev_entry)
         conv.entries_total += 1
+
         if e.turn and e.turn != cur_turn:
             cur_turn = e.turn
-            h = hands.get(str(e.turn))
-            if h:
-                _set_hand(state, ts.Player.US, h.get("us", []))
-                _set_hand(state, ts.Player.USSR, h.get("ussr", []))
-        if ts.Engine.is_terminal(state):
-            conv.mismatches.append(Mismatch(
-                conv.replay_id, e.turn, e.phase, e.player, e.card,
-                "engine ended the game early",
-                f"log continues; engine vp={int(state.victory_points)}, "
-                f"log score={e.score}"))
-            break
-        if _drive_entry(state, e, conv, raw):
+            h = hands.get(str(e.turn)) or {}
+            turn_hands = {
+                "US": [c for c in (card_id(n) for n in h.get("us", [])) if c],
+                "USSR": [c for c in (card_id(n) for n in h.get("ussr", [])) if c],
+            }
+            played = {"US": set(), "USSR": set()}
+
+        # --- rebuild the position this entry was decided from ---
+        if prev_raw is not None:
+            _reconcile_board(state, prev_raw.get("countries"))
+        if prev_entry is not None:
+            _reconcile_scalars(state, prev_entry)
+        if state.current_phase == ts.Phase.GAME_OVER:
+            state.current_phase = ts.Phase.ACTION_ROUND
+        _apply_hands(state,
+                     _hand_after(turn_hands["US"], played["US"]),
+                     _hand_after(turn_hands["USSR"], played["USSR"]))
+
+        # --- the card(s) this entry uses must be in the tracked hand ---
+        for side, nm in (e.headlines or {}).items():
+            cid = card_id(nm)
+            if cid and cid not in _hand_after(turn_hands[side], played[side]):
+                conv.hand_misses += 1
+            if cid:
+                played[side].add(cid)
+        if e.card and " & " not in e.card:
+            cid = card_id(e.card)
+            side = "US" if e.player == "US" else "USSR"
+            if cid and e.player in ("US", "USSR"):
+                if cid not in _hand_after(turn_hands[side], played[side]):
+                    conv.hand_misses += 1
+                played[side].add(cid)
+
+        before = len(conv.samples)
+        _drive_entry(state, e, conv, raw)
+
+        # --- did replaying our parsed actions reproduce the log's board? ---
+        bad = _board_matches(state, raw.get("countries"))
+        if bad == 0:
             conv.entries_converted += 1
-        # Compare BEFORE reconciling: engine VP drifting from the log is the earliest and
-        # sharpest signal that this entry was reconstructed wrongly.
+        else:
+            conv.entries_board_mismatch += 1
+            if conv.first_board_mismatch is None:
+                conv.first_board_mismatch = Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "board mismatch after replay",
+                    f"{bad} countries differ from the log after applying parsed actions")
+                conv.mismatches.append(conv.first_board_mismatch)
+            del conv.samples[before:]          # unverified actions are not training data
+            conv.decisions_emitted -= 0
+
         if e.score is not None and int(state.victory_points) != int(e.score):
             conv.vp_drift += 1
-            if conv.first_vp_drift is None:
-                conv.first_vp_drift = Mismatch(
-                    conv.replay_id, e.turn, e.phase, e.player, e.card, "VP drift",
-                    f"engine {int(state.victory_points)} vs log {int(e.score)}")
-                conv.mismatches.append(conv.first_vp_drift)
+
         conv.board_resyncs += _reconcile_board(state, raw.get("countries"))
         _reconcile_scalars(state, e)
-        prev_countries = raw.get("countries")
+        prev_raw = raw
         prev_entry = e
+
+    conv.decisions_emitted = len(conv.samples)
     return conv
