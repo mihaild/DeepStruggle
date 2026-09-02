@@ -161,9 +161,31 @@ def _reconcile_turn(state: ts.GameState, entry: Entry) -> None:
         state.phasing_player = ts.Player.US
     elif entry.player == "USSR":
         state.phasing_player = ts.Player.USSR
+    # An entry the driver could not finish leaves the engine mid-decision, and the next entry
+    # then inherits that instead of being played: at turn 4 AR1 of replay 119 the engine was
+    # still inside the turn 4 headline on a POINT_NODE for Indo-Pakistani War, offering Panama
+    # alone, so the USSR never got to play Special Relationship or place the influence the log
+    # puts in Japan. Discard such a decision -- but only then. An entry that ended cleanly is
+    # left exactly as it is, since the engine's own bookkeeping is the more reliable of the two.
+    want_phase = ts.Phase.ACTION_ROUND if m else ts.Phase.HEADLINE
     ctx = state.ctx()
-    if ctx.decision_type == ts.DecisionType.SELECT_CARD and int(ctx.resolving_card) == 0:
-        ctx.decision_player = state.phasing_player
+    stale = (ctx.decision_type != ts.DecisionType.SELECT_CARD
+             or int(ctx.resolving_card) != 0
+             or int(state.ctx_stack_depth) != 0
+             or state.current_phase != want_phase)
+    if stale:
+        state.current_phase = want_phase
+        state.ctx_stack_depth = 0
+        ctx = state.ctx()
+        ctx.resolving_card = 0
+        ctx.pending_op_card = 0
+        ctx.pending_ops_value = 0
+        ctx.remaining_steps = 0
+        ctx.max_per_country = 0
+        ctx.allow_early_stop = 0
+        ctx.temp_cards = []      # also clears the headline's own step bookkeeping
+        ctx.decision_type = ts.DecisionType.SELECT_CARD
+    ctx.decision_player = state.phasing_player
 
 
 def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
@@ -1012,7 +1034,10 @@ def convert_game(game: Dict) -> Conversion:
                 played[side].add(cid)
 
         before = len(conv.samples)
-        _reconcile_turn(state, e)
+        if prev_entry is not None:
+            # Not on the first entry: that one carries the setup placements, and the engine's
+            # own initialisation is the position they belong to.
+            _reconcile_turn(state, e)
         _drive_entry(state, e, conv, raw)
 
         # --- did replaying our parsed actions reproduce the log's board? ---
