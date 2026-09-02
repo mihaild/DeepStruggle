@@ -626,7 +626,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (CardData::get_card(chosen_card).side == opp && !CardData::is_scoring_card(chosen_card)) {
                     state.card_locations[chosen_card] = CardLocation::DISCARD_PILE;
                     state.ctx().pending_op_card = chosen_card;
-                    state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
+                    // Region::ASIA grants the conditional bonuses up front exactly as a normal
+                    // Ops play does, leaving the budget ladder to withdraw them if the player
+                    // steps out of the region. Without it the named card was worth only its
+                    // printed Ops: at turn 2 AR4 of ts-replayer game 108 the USSR named CIA
+                    // Created under Vietnam Revolts and placed influence in two Southeast
+                    // Asian countries, where the engine could afford only one.
+                    state.ctx().pending_ops_value =
+                        Operations::get_effective_ops(state, chosen_card, p, Region::ASIA);
                     // UN Intervention uses the named card's Ops "without triggering the Event".
                     // advance_after_ops otherwise sees an opponent card sitting in
                     // pending_op_card on the default OPS_FIRST branch and fires it -- turn 1
