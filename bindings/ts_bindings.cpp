@@ -567,6 +567,10 @@ NB_MODULE(ts_engine, m) {
     m.def("is_held_scoring_game_over", &ts::Engine::is_held_scoring_game_over);
     m.def("is_held_scoring_loss", &ts::Engine::is_held_scoring_loss);
 
+    nb::class_<ts::StateMachine>(m, "StateMachine")
+        .def_static("advance_headline_step", &ts::StateMachine::advance_headline_step)
+        .def_static("advance_after_action_round", &ts::StateMachine::advance_after_action_round);
+
     nb::class_<ts::Engine>(m, "Engine")
         .def_static("init_game", &ts::Engine::init_game)
         .def_static("step", &ts::Engine::step)

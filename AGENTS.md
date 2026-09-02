@@ -369,6 +369,8 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    Before launching any model training run:
    - A git commit MUST be created recording the current codebase state (commit locally on the active branch without pushing or advancing remote master).
    - The commit hash, training mode, and a short description of what was changed and the training goal MUST be recorded in `metadata.json` within the checkpoint directory (`data/checkpoints/run_.../metadata.json`). The training CLI (`tools/train.py --description "..."`) automatically records these metadata fields at startup.
+11. **Engine Change Restriction Invariant**:
+   Agents must **NEVER make any changes to the C++ engine (`engine/`) without explicitly asking the user and obtaining prior confirmation**. Every engine modification requires prior user approval without exception.
 
 ---
 
