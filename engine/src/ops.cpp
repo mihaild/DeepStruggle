@@ -52,7 +52,10 @@ uint8_t Operations::get_effective_ops(const GameState& state, uint8_t card_id, P
         ops += 1;
     }
 
-    return static_cast<uint8_t>(std::clamp<int16_t>(ops, 1, 5));
+    // Ceiling of 6, not 5: the China Card played in Southeast Asia by the USSR with Vietnam
+    // Revolts active is 4 base + 1 (all Ops in Asia) + 1 (all Ops in Southeast Asia). A limit
+    // of 5 silently swallowed one of the two bonuses whenever they stacked.
+    return static_cast<uint8_t>(std::clamp<int16_t>(ops, 1, 6));
 }
 
 bool Operations::can_place_influence(const GameState& state, Player p, uint8_t country_id) noexcept {

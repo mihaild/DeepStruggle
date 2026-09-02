@@ -862,22 +862,48 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                         uint8_t op_card = state.ctx().pending_op_card;
                         const auto& c_info = MapData::get_country(cid);
-                        if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
-                            uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
-                            uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                            if (total_spent >= non_asia_base) {
-                                state.ctx().remaining_steps = 0;
-                            } else {
-                                state.ctx().remaining_steps = non_asia_base - total_spent;
+
+                        // Conditional Ops bonuses are granted up front and withdrawn the
+                        // moment their region condition breaks. Track the *current* budget in
+                        // pending_ops_value and derive what is left from what has been spent;
+                        // the previous version rewrote remaining_steps against a recomputed
+                        // base while leaving pending_ops_value at the optimistic figure, so
+                        // the next withdrawal charged the player a second time.
+                        //
+                        // The bonuses form a ladder. All Ops in Southeast Asia keeps both;
+                        // stepping out to Asia forfeits Vietnam Revolts; leaving Asia forfeits
+                        // the China Card bonus as well, and doing it in one step forfeits both.
+                        const bool china_card = (op_card == card_ids::THE_CHINA_CARD);
+                        const bool vietnam_bonus =
+                            (p == Player::USSR
+                             && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE));
+
+                        // Only engage when a conditional bonus is actually in play, and only
+                        // when pending_ops_value is being maintained. Event-driven placements
+                        // set remaining_steps directly and leave pending_ops_value at 0;
+                        // recomputing from a zero budget there would wipe out the remaining
+                        // Ops.
+                        if ((china_card || vietnam_bonus) && state.ctx().pending_ops_value > 0) {
+                            uint8_t budget = state.ctx().pending_ops_value;
+                            uint8_t spent = static_cast<uint8_t>(
+                                (budget > state.ctx().remaining_steps)
+                                    ? (budget - state.ctx().remaining_steps) : 0);
+
+                            uint8_t plain = Operations::get_effective_ops(
+                                state, op_card, p, Region::NONE_REGION);
+                            uint8_t asia_ok = static_cast<uint8_t>(
+                                plain + (china_card ? 1 : 0));
+
+                            if (vietnam_bonus && !c_info.in_southeast_asia) {
+                                budget = std::min<uint8_t>(budget, asia_ok);
                             }
-                        } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
-                            uint8_t non_se_base = Operations::get_effective_ops(state, op_card, p, Region::NONE_REGION);
-                            uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                            if (total_spent >= non_se_base) {
-                                state.ctx().remaining_steps = 0;
-                            } else {
-                                state.ctx().remaining_steps = non_se_base - total_spent;
+                            if (china_card && c_info.region != Region::ASIA) {
+                                budget = std::min<uint8_t>(budget, plain);
                             }
+
+                            state.ctx().pending_ops_value = budget;
+                            state.ctx().remaining_steps = (spent >= budget)
+                                ? 0 : static_cast<uint8_t>(budget - spent);
                         }
 
                         if (state.ctx().remaining_steps == 0) {

@@ -45,9 +45,23 @@ def _ussr_ops_state(card: int, vietnam: bool) -> ts.GameState:
         legal = np.flatnonzero(np.asarray(ts.ActionMask.generate_flat_mask(st)))
         ts.Engine.step_flat(st, int(legal[0]))
 
+    # Play out the headline, or the card under test would be spent as a headline event
+    # rather than for Ops, and we would measure the wrong thing entirely.
+    import numpy as np
+    for _ in range(40):
+        if st.current_phase == ts.Phase.ACTION_ROUND:
+            break
+        legal = np.flatnonzero(np.asarray(ts.ActionMask.generate_flat_mask(st)))
+        if len(legal) == 0:
+            break
+        ts.Engine.step_flat(st, int(legal[0]))
+    assert st.current_phase == ts.Phase.ACTION_ROUND, "fixture never reached an action round"
+
     # A foothold next to each target so placement is legal everywhere we test.
     for nm, ussr in ((SE_ASIA, 1), (ASIA_NOT_SE, 1), (NOT_ASIA, 1)):
-        st.set_country(country_id(nm), 0, ussr)
+        cid = country_id(nm)
+        assert cid is not None
+        st.set_country(cid, 0, ussr)
     if vietnam:
         st.set_flag(VIETNAM_REVOLTS_ACTIVE)
     if card == CHINA_CARD:
@@ -64,6 +78,7 @@ def _remaining_after(st: ts.GameState, places) -> "list[int]":
     out = []
     for nm in places:
         cid = country_id(nm)
+        assert cid is not None
         mask = np.asarray(ts.ActionMask.generate_flat_mask(st))
         legal = np.flatnonzero(mask)
         act = None
@@ -114,9 +129,6 @@ def _drive_to_placement(st: ts.GameState, card: int) -> None:
     raise AssertionError("never reached a placement decision")
 
 
-@pytest.mark.xfail(strict=True, reason="engine: conditional-Ops bonus accounting "
-                   "double-counts the claw-back, and the final clamp caps the "
-                   "combined China+Vietnam bonus at 5")
 def test_vietnam_revolts_two_placements_outside_southeast_asia() -> None:
     """3-Ops card, +1 only if all in SE Asia. Two non-SE placements must leave 1 Op."""
     card = _ussr_card_with_ops(3)
@@ -130,9 +142,6 @@ def test_vietnam_revolts_two_placements_outside_southeast_asia() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="engine: conditional-Ops bonus accounting "
-                   "double-counts the claw-back, and the final clamp caps the "
-                   "combined China+Vietnam bonus at 5")
 def test_china_card_two_placements_outside_asia() -> None:
     """China Card is 4 Ops, +1 only if all in Asia. Two non-Asia placements leave 2."""
     st = _ussr_ops_state(CHINA_CARD, vietnam=False)
@@ -143,9 +152,6 @@ def test_china_card_two_placements_outside_asia() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="engine: conditional-Ops bonus accounting "
-                   "double-counts the claw-back, and the final clamp caps the "
-                   "combined China+Vietnam bonus at 5")
 def test_china_card_and_vietnam_revolts_together() -> None:
     """Both bonuses at once: each is lost the moment its region condition breaks.
 
@@ -162,4 +168,20 @@ def test_china_card_and_vietnam_revolts_together() -> None:
     left = _remaining_after(st, [SE_ASIA, ASIA_NOT_SE, NOT_ASIA])
     assert left == [5, 3, 1], (
         f"expected 5 left after SE Asia, 3 after Asia, 1 after leaving Asia; got {left}"
+    )
+
+
+def test_leaving_asia_directly_forfeits_both_bonuses() -> None:
+    """Stepping straight out of Asia loses the China and Vietnam Ops together.
+
+    6 on offer. One Op in Southeast Asia keeps both, leaving 5. The next Op outside Asia
+    breaks both conditions at once, so the budget falls to the plain 4 with 2 spent -- 2 left,
+    not the 3 that would remain if only the Vietnam bonus had lapsed.
+    """
+    st = _ussr_ops_state(CHINA_CARD, vietnam=True)
+    _drive_to_placement(st, CHINA_CARD)
+    assert int(st.ctx().pending_ops_value) == 6
+    left = _remaining_after(st, [SE_ASIA, NOT_ASIA])
+    assert left == [5, 2], (
+        f"expected 5 left after Southeast Asia and 2 after leaving Asia entirely, got {left}"
     )

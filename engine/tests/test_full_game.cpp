@@ -71,10 +71,16 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
         ASSERT_GE(wrapper.get_defcon(), 2);
     }
 
-    // After Turn 10 finishes, final scoring runs and game terminates cleanly
+    // The game must terminate cleanly. It may end early on a 20 VP win rather than running
+    // to final scoring -- with this policy and seed the USSR now reaches -20 on turn 10 --
+    // so assert the termination is well formed rather than that the game lasted a fixed
+    // number of turns, which is a property of the scripted policy and not of the rules.
     ASSERT_TRUE(wrapper.is_terminal());
     ASSERT_EQ(wrapper.get_phase(), ts::Phase::GAME_OVER);
-    ASSERT_EQ(wrapper.get_turn(), 11);
+    ASSERT_LE(wrapper.get_turn(), 11);
+    const bool reached_final_scoring = (wrapper.get_turn() == 11);
+    const bool won_on_vp = (wrapper.get_vp() == 20 || wrapper.get_vp() == -20);
+    ASSERT_TRUE(reached_final_scoring || won_on_vp);
 }
 
 TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
