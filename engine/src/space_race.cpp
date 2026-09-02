@@ -1,5 +1,6 @@
 #include "ts/space_race.hpp"
 #include "ts/card_data.hpp"
+#include "ts/ops.hpp"
 #include "ts/prng.hpp"
 #include <algorithm>
 
@@ -77,9 +78,13 @@ bool SpaceRace::can_attempt_space(const GameState& state, Player p, uint8_t card
     uint8_t max_attempts = has_animal_in_space(state, p) ? 2 : 1;
     if (turns_used >= max_attempts) return false;
 
+    // Effective Ops, not printed: the Ops modifiers that decide what a card can buy on the
+    // board decide what it can buy on the space track too. At turn 4 AR3 of ts-replayer game
+    // 113 the USSR raced with OAS Founded -- 1 printed Op, but Brezhnev Doctrine was active,
+    // making it the 2 that box 3 requires. No region applies: the China Card cannot be raced
+    // at all, and Vietnam Revolts pays only for Operations in Southeast Asia.
     const auto& next_box = SPACE_BOXES[cur_track + 1];
-    const auto& c_info = CardData::get_card(card_id);
-    return c_info.ops >= next_box.min_ops;
+    return Operations::get_effective_ops(state, card_id, p) >= next_box.min_ops;
 }
 
 bool SpaceRace::attempt_space(GameState& state, Player p, uint8_t card_id, uint8_t forced_roll) noexcept {
