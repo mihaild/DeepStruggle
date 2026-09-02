@@ -2205,3 +2205,26 @@ TEST(CardEdgeCasesTest, WarEvents_UnifiedWrapper_Suite) {
         ASSERT_EQ(state.countries[ts::countries::IRAN].us_influence, 2);
     }
 }
+
+// The two-attempts benefit is held by whoever reached box 2 and is still ahead, not by whoever
+// reached it while the opponent stayed below it. The engine cancelled it as soon as the
+// opponent got to box 2 at all, even trailing: at turn 4 AR4 of ts-replayer game 112 the USSR
+// raced a second time from box 3 with the US on 2, and Space Race was not even offered as a
+// play mode. A tie still cancels it, which the surrounding tests already pin.
+TEST(CardEdgeCasesTest, SpaceRace_AnimalInSpace_SurvivesOpponentReachingBox2Behind) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+
+    state.ussr_space_track = 3;
+    state.us_space_track = 2;
+    ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+
+    state.set_space_turns_used(ts::Player::USSR, 1);
+    ASSERT_TRUE(ts::SpaceRace::can_attempt_space(state, ts::Player::USSR, ts::card_ids::DUCK_AND_COVER));
+
+    // Caught up: nobody leads, so nobody keeps it.
+    state.us_space_track = 3;
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
+    ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
+}

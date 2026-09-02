@@ -674,12 +674,30 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # A war with a fixed target resolves in a chance node, so its outcome has to be steered
     # there rather than at a decision. Only the war's own countries are constrained: the rest
     # of the entry has not happened yet at that point.
-    _want = expected_counts(e, raw)
-    war_outcome = {c: _want[c] for c in e.war_targets if c in _want}
+    # A war's die is settled by the event's own lines, not the entry's final board. A lost war
+    # prints no influence at all and leaves the country exactly as it was, so the expectation is
+    # its value now -- at turn 1 AR2 of replay 109 the USSR loses the Korean War and the US then
+    # places two influence in South Korea, and demanding the post-placement board matched no
+    # roll, leaving the war to chance.
+    _ops_rows = list(e.ops_influence or [])
+    _event_last: Dict[int, Tuple[int, int]] = {}
+    for _rec in (e.influence or []):
+        if _rec in _ops_rows:
+            _ops_rows.remove(_rec)
+        else:
+            _event_last[_rec[2]] = (_rec[3], _rec[4])
+    war_outcome: Dict[int, Tuple[int, int]] = {}
+    for _c in e.war_targets:
+        if _c in _event_last:
+            war_outcome[_c] = _event_last[_c]
+        else:
+            _cur = state.get_country(_c)
+            war_outcome[_c] = (int(_cur.us_influence), int(_cur.ussr_influence))
     # Only where the entry really holds several. With one section the existing queue already
     # describes it, and re-deriving it per decision only risks disagreeing with itself.
     sections = list(e.sections) if len(e.sections or []) > 1 else []
     seed_settled = False
+    cur_mode = e.mode
     # Realignment only. It rolls once per target and prints the running result of each, so the
     # results have to be consumed in order. A coup rolls once but prints a line per side whose
     # influence moved, where only the last line is the country's settled value.
@@ -916,6 +934,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # mode for every such decision lost the second operation entirely.
             section = sections.pop(0) if sections else None
             mode = section.mode if section is not None else e.mode
+            cur_mode = mode
             if section is not None:
                 pq[:] = section_queue(section)
                 step_outcomes[:] = section_outcomes(section)
@@ -997,7 +1016,12 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # events, whose target is chosen the same way but never carried an Ops mode.
         if dt == ts.DecisionType.POINT_NODE and chosen is not None:
             target = int(ts.ActionMask.decode_flat_action(state, chosen).primary_id)
-            rolled = target in e.targets or target in e.war_targets
+            # Only decisions that actually roll. An influence placement into a country that
+            # happens to be a war or coup target rolls nothing, and searching for a seed to
+            # match it can never succeed: at turn 1 AR2 of replay 109 the US places two
+            # influence in South Korea, the country the USSR had just lost the Korean War in.
+            rolled = ((cur_mode in ("coup", "realign") and target in e.targets)
+                      or (target in e.war_targets and int(ctx.resolving_card) != 0))
             # Constrain only the country this operation resolves against. The entry's other
             # influence has not happened yet at this point: at turn 2 AR1 of replay 101 the
             # USSR coups Panama and only then does Independent Reds place US influence in
@@ -1146,6 +1170,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # The log lists only the cards a player used, so a game that stops mid-turn leaves
             # hands far too small to have been the ones played from. Top them up to the size
             # the rules deal, capping Ops below anything the log records that side revealing.
+            # A new turn restores each side's space race attempt. The engine resets this when
+            # it advances the turn itself, which forcing turn numbers from the log bypasses, so
+            # a stale count made a legitimate attempt illegal: at turn 4 AR4 of replay 112 the
+            # USSR races with Duck and Cover and the engine offered only Ops modes.
+            state.set_space_turns_used(ts.Player.US, 0)
+            state.set_space_turns_used(ts.Player.USSR, 0)
+
             size = 8 if int(e.turn) <= 3 else 9
             claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
             for side in ("US", "USSR"):
