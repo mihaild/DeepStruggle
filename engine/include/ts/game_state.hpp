@@ -133,7 +133,8 @@ struct alignas(64) DecisionContext {
     std::array<uint8_t, 84> node_counts;           // Placements/removals per node during this event
     std::array<uint8_t, 16> temp_cards;            // Temp buffer for peeked/searched card IDs
     uint8_t                 temp_card_cnt;         // Number of valid cards in temp_cards
-    uint8_t                 pad[7];
+    uint8_t                 suppress_op_card_event; // 1 = do not fire pending_op_card's event
+    uint8_t                 pad[6];
 
     inline void set_start_influence(uint8_t node) noexcept {
         if (node < 64) start_influence_nodes[0] |= (1ULL << node);

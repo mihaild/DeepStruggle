@@ -228,7 +228,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     // say -- a frame is pushed, and the pushed frame starts zeroed. Zero is OPS_FIRST, so
     // without the depth guard this fires again on an EVENT_FIRST play: the opponent
     // resolves the event twice and the phasing player loses the Ops they paid for.
-    if (state.ctx_stack_depth == 0 &&
+    if (state.ctx_stack_depth == 0 && !state.ctx().suppress_op_card_event &&
         timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
         // Trigger opponent event!
         Player opp = get_opponent(p);

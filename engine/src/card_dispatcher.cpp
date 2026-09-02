@@ -623,6 +623,12 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.card_locations[chosen_card] = CardLocation::DISCARD_PILE;
                     state.ctx().pending_op_card = chosen_card;
                     state.ctx().pending_ops_value = Operations::get_effective_ops(state, chosen_card, p);
+                    // UN Intervention uses the named card's Ops "without triggering the Event".
+                    // advance_after_ops otherwise sees an opponent card sitting in
+                    // pending_op_card on the default OPS_FIRST branch and fires it -- turn 1
+                    // AR3 of ts-replayer game 100 gave the USSR Nasser's 2 Influence in Egypt
+                    // on a US action round.
+                    state.ctx().suppress_op_card_event = 1;
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().resolving_card = 0;
                     return false;

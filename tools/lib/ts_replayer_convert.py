@@ -166,11 +166,30 @@ def point_queue(e: Entry) -> List[int]:
         return []
     if e.mode in ("coup", "realign"):
         return list(e.targets)
+
     q: List[int] = []
-    for _side, delta, cid, _u, _s in (e.influence or []):
+    for _side, delta, cid, _u, _s in (e.ops_influence or []):
         q.extend([cid] * abs(int(delta)))
     if not q and e.targets:
         q = list(e.targets)
+    return q
+
+
+def event_queue(e: Entry) -> List[int]:
+    """Targets the card's event asks the player to choose, in log order.
+
+    Kept apart from the Ops queue on purpose. Neither half can be dropped -- at turn 1 AR5 of
+    replay 100 the event's Vietnam influence is automatic and never comes back as a decision,
+    while at turn 1 AR3 the USSR plays Marshall Plan for Ops and the US still chooses all seven
+    event placements -- but merging them let turn 3 AR4 spend Nasser's Op on an event target.
+    """
+    ops = list(e.ops_influence or [])
+    q: List[int] = list(e.war_targets or [])
+    for rec in (e.influence or []):
+        if rec in ops:
+            ops.remove(rec)
+            continue
+        q.extend([rec[2]] * abs(int(rec[1])))
     return q
 
 
@@ -186,11 +205,29 @@ _GOLDEN = 0x9E3779B97F4A7C15
 _UINT64 = 1 << 64
 
 
-def expected_counts(e) -> Dict[int, Tuple[int, int]]:
-    """Final [US][USSR] per country named in this entry, from the log's own arithmetic."""
+def expected_counts(e, raw: Optional[Dict] = None) -> Dict[int, Tuple[int, int]]:
+    """Final [US][USSR] per country named in this entry, from the log's own arithmetic.
+
+    Coup and war targets are added from the entry's board snapshot even when no influence line
+    mentions them. A failed coup prints no influence at all, which left force_outcome with
+    nothing to match: it accepted the first roll, and at turn 5 AR6 the US coup of SE African
+    States succeeded in the engine where the log has it fail.
+    """
     out: Dict[int, Tuple[int, int]] = {}
     for _side, _delta, cid, res_us, res_ussr in e.influence:
         out[cid] = (res_us, res_ussr)
+    countries = (raw or {}).get("countries") or {}
+    for cid in list(e.targets) + list(e.war_targets):
+        if cid in out:
+            continue
+        for key, c in countries.items():
+            if country_id(key) != cid:
+                continue
+            try:
+                out[cid] = (int(c["inflUS"]), int(c["inflUSSR"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+            break
     return out
 
 
@@ -225,6 +262,41 @@ def force_outcome(state: ts.GameState, action: int,
     return False
 
 
+def _logged_board(raw: Optional[Dict]) -> Dict[int, Tuple[int, int]]:
+    """The entry's own board snapshot, as country id -> (US, USSR)."""
+    out: Dict[int, Tuple[int, int]] = {}
+    for key, c in ((raw or {}).get("countries") or {}).items():
+        cid = country_id(key)
+        if cid is None:
+            continue
+        try:
+            out[cid] = (int(c["inflUS"]), int(c["inflUSSR"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def _reconstruct_target(state: ts.GameState, legal, raw: Optional[Dict]) -> Optional[int]:
+    """Pick the legal target whose resolution leaves the board as the log records it.
+
+    Used only where the log omits an operation's target entirely. Dice are searched the same
+    way force_outcome does, so a target is accepted only if some roll makes the whole board
+    agree -- not merely the target country.
+    """
+    board = _logged_board(raw)
+    if not board:
+        return None
+    for a in legal:
+        ma = ts.ActionMask.decode_flat_action(state, int(a))
+        if int(ma.decision_type) != int(ts.DecisionType.POINT_NODE):
+            continue
+        # force_outcome never steps; on success it leaves the winning seed on `state` itself,
+        # which is exactly what the caller needs before it steps this action.
+        if force_outcome(state, int(a), board):
+            return int(a)
+    return None
+
+
 def _find(state, legal, want_type, match) -> Optional[int]:
     for a in legal:
         ma = ts.ActionMask.decode_flat_action(state, int(a))
@@ -240,7 +312,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
     headline_ids = {k: v for k, v in headline_ids.items() if v}
     pq = point_queue(e)
+    eq = event_queue(e)
     picked_card = cid_target is None
+    # A card whose event makes the player name and use a second card (UN Intervention) asks
+    # for two SELECT_CARDs in one entry. Breaking at the second one left the Ops unspent.
+    second_cid = card_id(e.played_card) if e.played_card else None
     picked_mode = False
     guessed = False
 
@@ -260,16 +336,40 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # cards are chosen and the engine has left the Headline phase. Without this the driver
         # ran on into the next action round and played an extra card.
         if e.headlines:
-            if not headline_ids and state.current_phase != ts.Phase.HEADLINE:
+            # Not merely "out of the Headline phase": a headline can hand its Ops to the other
+            # player -- "Lone Gunman" gave the USSR the 1 Op it couped Libya with at turn 4 --
+            # and those decisions come after the phase ends. Wait for a fresh card request.
+            if (not headline_ids and state.current_phase != ts.Phase.HEADLINE
+                    and dt == ts.DecisionType.SELECT_CARD):
                 break
-        elif picked_card and picked_mode and dt == ts.DecisionType.SELECT_CARD:
+        elif (picked_card and second_cid is not None
+                and dt == ts.DecisionType.SELECT_CARD
+                and _find(state, legal, ts.DecisionType.SELECT_CARD,
+                          lambda ma: int(ma.primary_id) == second_cid) is not None):
+            pass  # second card of this entry; select it below rather than ending the entry
+
+        elif picked_card and dt == ts.DecisionType.SELECT_CARD:
+            # Do not require a play mode to have been chosen: a scoring card has no
+            # SELECT_PLAY_MODE at all, its event fires on selection. Requiring one meant the
+            # driver sailed past the entry into the opponent's action round and played an
+            # extra card -- turn 2 AR6 of replay 100 put two stray influence into Canada.
+            # Nor an empty queue: leftovers are normal whenever the event placed its own
+            # influence, and waiting for them let turn 1 AR5 run two whole cards too far.
             break
 
         mover = _acting(state)
         chosen: Optional[int] = None
         informative = False
 
-        if dt == ts.DecisionType.SELECT_CARD and headline_ids:
+        if (dt == ts.DecisionType.SELECT_CARD and picked_card
+                and second_cid is not None and not headline_ids):
+            chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                           lambda ma: int(ma.primary_id) == second_cid)
+            if chosen is not None:
+                second_cid = None
+                informative = True
+
+        elif dt == ts.DecisionType.SELECT_CARD and headline_ids:
             side = "US" if mover == ts.Player.US else "USSR"
             want_c = headline_ids.get(side)
             if want_c:
@@ -325,7 +425,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             side = str(ts.CardData.get_card_info(cid_target)["side"]) if cid_target else "NONE"
             mine = "US" if mover == ts.Player.US else "USSR"
             opponent_card = side not in ("NONE", mine)
-            if e.mode == "space" or (not e.mode and e.space):
+            if e.played_card:
+                # UN Intervention is played as its Event; the Ops that follow are the named
+                # card's. Reading the "Place Influence" header as the play mode instead had
+                # the engine spend UN Intervention's own Ops and never ask for NORAD.
+                want = PLAY_MODE_ACTION["event"]
+            elif not opponent_card and e.event_first and e.events:
+                # Own or neutral card whose "Event:" line precedes the Ops header: it was
+                # played as an Event and the Ops belong to the event (ABM Treaty grants the
+                # US 4 Ops). Reading that header as the play mode had the engine spend the
+                # card's own Ops, and the coup then never resolved.
+                want = PLAY_MODE_ACTION["event"]
+            elif e.mode == "space" or (not e.mode and e.space):
                 want = PLAY_MODE_ACTION["space"]
             elif e.mode or opponent_card:
                 want = PLAY_MODE_ACTION["ops"]
@@ -350,6 +461,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     f"legal modes {[k for k, v in PLAY_MODE_ACTION.items() if mask[v]]}"))
                 return False
 
+        elif dt == ts.DecisionType.CHOOSE_TIMING_BRANCH:
+            # Playing an opponent's card for Ops asks which resolves first. The log answers by
+            # line order: at turn 1 AR5 of replay 100 "Place Influence" precedes "Event:", so
+            # that one is Ops first. Always choosing event-first mis-sequenced those entries.
+            want_branch = 0 if e.event_first is False else 1
+            chosen = _find(state, legal, ts.DecisionType.CHOOSE_TIMING_BRANCH,
+                           lambda ma: int(ma.primary_id) == want_branch)
+            informative = chosen is not None
+
         elif dt == ts.DecisionType.SELECT_OP_MODE and e.mode in _OP_MODE:
             om = int(_OP_MODE[e.mode])
             # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching
@@ -359,31 +479,64 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                            lambda ma: int(ma.primary_id) == om)
             informative = chosen is not None
 
-        elif dt == ts.DecisionType.POINT_NODE and pq:
-            want_c = pq[0]
-            chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
-                           lambda ma: int(ma.primary_id) == want_c)
-            if chosen is not None:
-                pq.pop(0)
-                informative = True
-            else:
-                nm = ts.MapData.get_country_info(want_c)["name"]
+        elif dt == ts.DecisionType.POINT_NODE and (pq or eq):
+            # Ask the queue that matches what the engine is doing: while a card is resolving,
+            # these are the event's own placements, otherwise they are the Ops. Within a queue
+            # take the first target actually offered rather than insisting on the head, since
+            # an event may resolve some of its placements itself and never ask about them.
+            in_event = int(ctx.resolving_card) != 0
+            order = (eq, pq) if in_event else (pq, eq)
+            for queue in order:
+                for slot, want_c in enumerate(queue):
+                    chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
+                                   lambda ma, w=want_c: int(ma.primary_id) == w)
+                    if chosen is not None:
+                        queue.pop(slot)
+                        informative = True
+                        break
+                if chosen is not None:
+                    break
+            if chosen is None:
+                names = ", ".join(ts.MapData.get_country_info(c)["name"] for c in (pq + eq))
                 conv.mismatches.append(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
-                    "target not legal", f"{nm} not among legal point targets"))
-                pq.pop(0)
+                    "target not legal",
+                    f"none of the remaining targets ({names}) are legal; engine "
+                    f"(resolving={int(ctx.resolving_card)}, op_card={int(ctx.pending_op_card)}, "
+                    f"dt={str(dt).split('.')[-1]}) offers "
+                    f"{sorted(ts.MapData.get_country_info(int(p))['name'] for p in (int(ts.ActionMask.decode_flat_action(state, int(a)).primary_id) for a in legal) if 0 <= p < 84)[:12]}"))
+                pq.clear()
+                eq.clear()
+                break
+
+        if chosen is None and dt == ts.DecisionType.POINT_NODE and not pq and not eq:
+            # The log sometimes prints an Ops header with nothing under it: at turn 4 AR2 Che's
+            # free USSR coup is "Coup (3 Ops):" and then nothing -- no target, no result, no
+            # military ops line. The board snapshot is still authoritative, so pick whichever
+            # legal target reproduces it rather than guessing and inventing influence.
+            chosen = _reconstruct_target(state, legal, raw)
+            if chosen is not None:
+                conv.mismatches.append(Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "log gap: unrecorded operation",
+                    f"{e.mode or e.event_mode or 'operation'} has no target in the log; "
+                    f"reconstructed the one consistent with the entry's board"))
 
         if chosen is None:
             chosen = int(legal[0])
             guessed = True
 
-        if (dt == ts.DecisionType.POINT_NODE and chosen is not None
-                and e.mode in ("coup", "realign") and not pq):
-            if not force_outcome(state, chosen, expected_counts(e)):
+        # Anything the engine settles with a die it rolls itself: coups, realignments, and war
+        # events, whose target is chosen the same way but never carried an Ops mode.
+        if dt == ts.DecisionType.POINT_NODE and chosen is not None:
+            target = int(ts.ActionMask.decode_flat_action(state, chosen).primary_id)
+            rolled = target in e.targets or target in e.war_targets
+            if rolled and not force_outcome(state, chosen, expected_counts(e, raw)):
                 conv.mismatches.append(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "could not reproduce outcome",
-                    f"no rng_state reproduced the logged {e.mode} result"))
+                    f"no rng_state reproduced the logged "
+                    f"{e.mode or e.event_mode or 'war'} result"))
 
         if informative:
             obs = np.asarray(ts.extract_observation(state, mover), dtype=np.float32)

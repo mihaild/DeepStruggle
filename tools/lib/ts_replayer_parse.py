@@ -52,6 +52,7 @@ def country_id(name: str) -> Optional[int]:
 RE_INFLUENCE = re.compile(r"^(US|USSR) ([+-]\d+) in (.+?) \[(\d+)\]\[(\d+)\]$")
 RE_MODE = re.compile(r"(Place Influence|Coup|Realignment|Realign|Space Race) \((\d+) Ops\):$")
 RE_TARGET = re.compile(r"Target: (.+)$")
+RE_WAR = re.compile(r"War in (.+?)\.?$")
 RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
 RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+) \(([+-]\d+)\) = (-?\d+)$")
 RE_DIE = re.compile(r"Die roll: (\d+) -- (Success!|Failed!) \(Needed (\d+) or less\)$")
@@ -67,6 +68,7 @@ RE_BARE_ROLL = re.compile(r"^(US|USSR) rolls (\d+)$")
 RE_EFFECT_END = re.compile(r"^(.+) is no longer in play\.$")
 RE_HEADLINE = re.compile(r"(US|USSR) Headlines (.+)$")
 RE_DISCARD = re.compile(r"(US|USSR) discards? (.+?)\.?$")
+RE_PLAYS = re.compile(r"(US|USSR) plays (.+?)\.?$")
 
 
 @dataclass
@@ -83,6 +85,12 @@ class Entry:
     ops_influence: List[Tuple[str, int, int, int, int]] = field(default_factory=list)
     coup_target: Optional[int] = None
     targets: List[int] = field(default_factory=list)
+    # Country a war event is fought in, from "War in India". The engine asks for it as a
+    # POINT_NODE while the card resolves, so it belongs to the event queue, not the Ops queue.
+    war_targets: List[int] = field(default_factory=list)
+    # A second Ops header inside the event section, e.g. Che's free coup for the USSR.
+    event_mode: Optional[str] = None
+    event_ops: Optional[int] = None
     coup_roll: Optional[int] = None
     coup_success: Optional[bool] = None
     realign_rolls: List[Tuple[str, int, int, int]] = field(default_factory=list)
@@ -98,6 +106,10 @@ class Entry:
     score_assertions: List[int] = field(default_factory=list)
     headlines: Dict[str, str] = field(default_factory=dict)
     discards: List[Tuple[str, str]] = field(default_factory=list)
+    event_first: Optional[bool] = None
+    # Card named by another card's event, played inside the same entry: UN Intervention makes
+    # you name an opponent card and use it for Ops, and the log prints "USSR plays NORAD*".
+    played_card: Optional[str] = None
     unparsed: List[str] = field(default_factory=list)
 
 
@@ -145,8 +157,19 @@ def parse_entry(raw: Dict) -> Entry:
         line = line.strip()
         if not line:
             continue
+        # Playing an opponent's card for Ops asks which resolves first. The log answers it by
+        # line order: whichever of "Event:" or the mode header appears first.
+        if e.event_first is None:
+            if RE_EVENT.search(line):
+                e.event_first = True
+            elif RE_MODE.search(line):
+                e.event_first = False
         if RE_EVENT.search(line):
             in_event = True
+
+        m = RE_PLAYS.search(line)
+        if m and e.played_card is None:
+            e.played_card = m.group(2).strip()
 
         m = RE_INFLUENCE.match(line)
         if m:
@@ -162,12 +185,27 @@ def parse_entry(raw: Dict) -> Entry:
             continue
         m = RE_MODE.search(line)
         if m:
-            e.mode = {"Place Influence": "influence", "Coup": "coup",
-                      "Realignment": "realign", "Realign": "realign",
-                      "Space Race": "space"}[m.group(1)]
-            e.ops = int(m.group(2))
-            in_event = False
+            mode = {"Place Influence": "influence", "Coup": "coup",
+                    "Realignment": "realign", "Realign": "realign",
+                    "Space Race": "space"}[m.group(1)]
+            if e.mode is None:
+                # First header is how the card itself was played. A later one belongs to the
+                # event -- Che grants the USSR a free coup after the US already spent Che's
+                # Ops -- so it must not overwrite the play mode or end the event section.
+                e.mode, e.ops = mode, int(m.group(2))
+                in_event = False
+            else:
+                e.event_mode, e.event_ops = mode, int(m.group(2))
             continue
+        m = RE_WAR.search(line)
+        if m:
+            wid = country_id(m.group(1))
+            if wid is None:
+                e.unparsed.append(line)
+            else:
+                e.war_targets.append(wid)
+            continue
+
         m = RE_TARGET.search(line)
         if m:
             tid = country_id(m.group(1))
