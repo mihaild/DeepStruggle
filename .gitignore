@@ -30,8 +30,7 @@ dist/
 frontend/.vite/
 
 # Replays & Logs
-replays/
-data/replays/*
+/data
 !data/replays/.gitkeep
 *.log
 .system_generated/
@@ -51,3 +50,5 @@ data/checkpoints/*
 *.pt
 !data/checkpoints/.gitkeep
 .triton_cache/
+
+.claude

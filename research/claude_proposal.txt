@@ -1,0 +1,265 @@
+## Short answer on the oracle experiment
+
+Yes — but as a **diagnostic, run once, then thrown away**. Not as an initialization to anneal from. That distinction is the whole value.
+
+Train a policy that sees both hands and the deck order, same architecture, same NashPG, same budget. Then read the result:
+
+- **Oracle also plays badly** → hidden information is not your bottleneck. The problem is representation, credit assignment, exploration, or action-space granularity. Your remaining work is on those, and belief modeling is a distraction.
+- **Oracle plays well** → your bottleneck is inference, and the belief head is where to invest.
+
+My prediction: strongly the first. Neither of your named symptoms is an information problem. Over-controlling battlegrounds is a value-resolution failure — an oracle agent will do it too. Failing to use Destalinization for regional access is an exploration failure that perfect information doesn't touch, because the payoff is many turns downstream regardless of what you know about the opponent's hand.
+
+That prediction is exactly why the experiment is worth the day it costs: if I'm wrong, your priorities invert completely. Run it on the reduced config (Early War only), ~6–12 hours on the 4090.
+
+Two adjacent variants worth running in the same batch, both cheap and both more informative than the oracle alone:
+
+- **Fixed-deck oracle**: perfect information *and* no shuffling variance. Isolates how much of your trouble is dice/deal noise drowning the gradient.
+- **Random-hand ablation**: your current agent, but the belief features are replaced with an uninformative prior. If performance barely moves, your net isn't using beliefs at all yet, and any effort there is premature.
+
+---
+
+## Week 1: diagnostics before fixes
+
+You have a working agent, which means you can now measure instead of guess. Build these first — they're mostly harness code, which is exactly what coding agents are good at.
+
+**1. Behavioral test suite (~50 hand-built positions).** This is the highest-value artifact in the whole plan and you don't have it. Each position has a known-correct or known-wrong answer, checked against the policy distribution:
+
+- Country at exactly 1 influence below control, 4 ops available → does it place exactly the needed amount, or dump all 4?
+- Same, but opponent holds a high-ops card and the country is coup-viable → now over-placing is *correct*. Does the policy distinguish?
+- USSR holds Destalinization, has no influence in South America → does it use it for access, or dump it into Europe?
+- Scoring card in hand, region currently at domination → does it hold to the last action round?
+- DEFCON 2, Europe coup available → correctly masked, but is the *value* of alternatives sensible?
+
+Report pass rate as a scalar. This turns "plays poorly" into a number that moves.
+
+**2. Value probe.** Take 200 positions, generate the ±1-influence neighbors, check that V ranks them consistently with the control step function. If V is smooth across the control threshold, you've found the over-control cause directly.
+
+**3. Entropy/λ_KL sweep.** Powers of two, three seeds, Early War. If your NashPG regularization is set anywhere near single-agent RL defaults, it's probably an order of magnitude too low, and this alone can explain both symptoms. Cheapest possible experiment with the largest possible payoff.
+
+**4. Compute scaling probe.** 1×/2×/4× step budget on Early War. If the curve is already flat, more training won't help and the problem is architectural.
+
+**5. Duplicate-dealt evaluation harness.** Every matchup played twice with sides swapped and common random numbers. Without this you cannot resolve the effect sizes you're about to chase.
+
+---
+
+## Root causes and targeted fixes
+
+### Over-controlling battlegrounds
+
+Not a policy problem — a value-resolution problem. Control is a step function in influence, and your net is almost certainly representing it smoothly. Also note that over-placement is sometimes *right*, as coup insurance, so the fix is not a penalty; it's giving the network the means to price the tradeoff.
+
+- **Explicit per-country features**: ops-to-flip-control, slack above control threshold, coup-success probability at current DEFCON, expected influence loss from a coup by the opponent's plausible ops.
+- **Regional-outcome auxiliary head**: for each of the six regions, predict presence/domination/control status at the next scoring of that region. This is dense, cheap, and forces the trunk to represent battleground counts precisely. I expect this to be the single largest quality jump available to you.
+- **Coarsened placement action** (`place k in country X` as one decision) with ops-remaining in the conditioning vector, so the head can compare allocations directly rather than committing point by point.
+
+### Destalinization / Puppet Governments
+
+Classic exploration deadlock. Gaining access to a region only pays off if you follow up over subsequent turns; the follow-up policy doesn't exist yet, so access looks worthless, so the card is never used, so the follow-up never gets learned. Entropy bonuses alone won't break this — the required action sequence spans turns.
+
+Break it by **learning the value of access before the policy that acquires it**:
+
+- **Randomized board initialization for value training.** Sample plausible mid-game boards with influence scattered across regions the agent would never have reached on-policy. Train the critic on these. Once V knows that a foothold in South America is worth something, Destalinization becomes visibly positive-advantage and the policy picks it up on its own.
+- Keep a fixed fraction (I'd use 50%) of every batch on the true start distribution — off-distribution starts can bias beliefs about private information and shift the equilibrium.
+- **Card-usage exploration floor**: with small probability, force-sample from underused cards' action branches. Log per-card usage frequency as a metric; cards at near-zero usage across millions of games are your exploration blind spots, and there will be more than these two.
+
+---
+
+## Build order
+
+**Stage 1 (2 weeks) — measurement + free wins.** Test suite, value probe, duplicate eval, entropy sweep, oracle diagnostic. Add the handcrafted country features and the regional-outcome auxiliary head. These are small changes with the best ratio in the plan. *Gate: test-suite pass rate improves and the over-control probe shows a sharp value step at the control threshold.*
+
+**Stage 2 (2–3 weeks) — exploration.** Randomized-board value pretraining, card-usage floor, retune regularization on top of the new features. *Gate: Destalinization and Puppet Governments appear in >20% of games where they're held; per-card usage histogram has no dead zeros.*
+
+**Stage 3 (3–4 weeks) — architecture.** Only if Stages 1–2 plateau: d=384/L=4 trunk, all 110 cards tokenized via static embedding with two cross-attention layers, light FiLM-conditioned GNN re-run per micro-decision, ops-delta look-ahead, stateless encoder with explicit history features. Dense ΔVP reward at γ=1, λ=0.95. Oracle critic as same-timestep baseline only, infostate critic for all bootstrapping. *Gate: beats the Stage-2 agent >60% in duplicate-dealt matches.*
+
+**Stage 4 — scale.** Rerun the scaling probe. Move to cloud only if the slope is still steep, GPU utilization is above 80%, and hyperparameters are stable across seeds.
+
+## What not to do yet
+
+Belief head investment (wait for the oracle diagnostic), any form of search (it multiplies inference cost 10–100× and you have unexploited cheap wins), and oracle annealing into the real policy — the perfect-information agent plays a genuinely different equilibrium and annealing traverses between unrelated fixed points rather than transferring knowledge.
+
+The thing I'd start today is the behavioral test suite. Everything else in this plan is a hypothesis about why your agent is weak; the test suite is how you find out which hypotheses are true.
+
+
+---
+I don't even have critic yet, just poor reward (with some heuristics, potential based) driven NashPG. Should I redo it with critic?
+---
+
+## Yes — and it's the top priority, above everything in the previous plan
+
+But it's an addition, not a rewrite. And the reason it matters is more specific than "critics are good."
+
+### You already have half a critic
+
+Your potential-based shaping *is* a baseline. Work the algebra with γ=1:
+
+```
+r'_t = r_t + Φ(s_{t+1}) − Φ(s_t)
+G'_t = Σ_{k≥t} r'_k = G_t + Φ(s_T) − Φ(s_t) = G_t − Φ(s_t)     [Φ(terminal)=0]
+```
+
+The shaping telescopes, so your return-to-go is exactly the Monte Carlo return minus a state-dependent baseline. That's a hand-coded, never-updated critic. It's why the agent learns anything at all.
+
+What you're missing is **bootstrapping**, and that's where the large variance reduction lives. A baseline reduces variance by however well Φ tracks V. Bootstrapping with GAE(λ=0.95) cuts the *effective horizon* from ~1000 micro-decisions to ~20. Those are different orders of magnitude. Roughly: gradient noise scales with accumulated randomness over the credit window, and you're currently integrating every dice roll and every shuffle from turn 2 to turn 10 into the signal for a single influence placement.
+
+Expect something in the 10–50× range in effective sample efficiency. That is worth more than your entire GPU budget, and more than every architectural change I proposed earlier combined.
+
+### This explains both symptoms exactly
+
+- **Over-controlling battlegrounds.** Placing 2 versus 4 influence differs in expected value by maybe 0.02 in normalized outcome. Your current gradient noise per decision is order 1. The signal is ~50 dB below the noise floor. The agent literally cannot see this distinction — no amount of training fixes it, because the estimator variance doesn't shrink with more games at a useful rate.
+- **Destalinization for regional access.** Payoff arrives 3–5 turns later. With MC returns the credit is spread across every other decision in those turns. Hopeless.
+- **What it does learn** — not couping at DEFCON 2, not holding scoring cards — are exactly the effects large and consistent enough to clear the noise floor. Your agent's competence profile is a textbook signature of a high-variance, unbootstrapped estimator.
+
+### Implementation (small, ~2–3 days)
+
+1. **Value head on the existing trunk.** Two-layer MLP, scalar output. Keep it scalar for now; distributional is a later refinement.
+2. **Keep the shaping.** Potential-based shaping stays policy-invariant with a critic, and the critic will naturally learn `V' = V − Φ`, i.e. only the residual. That makes it easier to fit, not harder. Don't rip it out.
+3. **GAE with γ=1.0, λ=0.95.** γ must stay exactly 1 — anything less biases toward early VP and distorts the equilibrium.
+4. **Warm-start the critic.** Regress on returns from your existing self-play games before switching the policy loss over to GAE advantages. Half a day, and it avoids a chaotic first few hours where the policy chases a random critic.
+5. **Value loss coefficient 1.0**, separate advantage normalization per batch.
+6. **Infostate critic for bootstrapping.** No oracle inputs on the value path — that leaks hidden information into targets and biases the equilibrium. (You have no oracle critic yet, so just don't add one on this path later.)
+7. **Sample the value targets on all action-round-initial states**, plus a subsample of intra-AR micro-decisions.
+
+NashPG's regularization is orthogonal to all of this — it constrains the policy update direction, the critic fixes the estimator quality. They compose.
+
+### The metric that tells you it worked
+
+**Explained variance of V on held-out rollouts.** `1 − Var(G − V)/Var(G)`.
+
+- Below 0.2: still noise-dominated, credit assignment is broken.
+- 0.3–0.5: working, expect visible policy improvement.
+- Above 0.6: the estimator is no longer your bottleneck and the architectural items become worth doing.
+
+Log it from day one. It's the single number that says whether you're doing RL or doing random search.
+
+### Revised ordering
+
+1. **Critic + GAE.** Everything else waits.
+2. Explained-variance check. If it's stuck below 0.2, the trunk lacks the features to predict outcomes — that's when the handcrafted country features and the regional-outcome auxiliary head become the fix, because they're exactly what a critic needs.
+3. Re-sweep the NashPG regularization coefficient. Optimal regularization strength depends on gradient noise, and you're about to change that by an order of magnitude. Your current setting will be wrong.
+4. Re-run the behavioral test suite. I'd expect the battleground over-control to improve substantially from the critic alone.
+5. Then exploration work for Destalinization, then architecture.
+
+The oracle diagnostic I suggested last time — **skip it for now.** With this much estimator noise it can't distinguish "hidden information is the bottleneck" from "everything is noise." Run it after explained variance is above 0.4, when it can actually tell you something.
+
+---
+Do we do it with policy network that sees opponent cards to further reduce noise, or is it not needed in this setup? I am fine if I will need to retrain everything from scratch later, unless most of work done with "ts with open hands" is throw away.
+---
+## No — you get the noise reduction from an oracle *critic*, without touching the policy
+
+The variance you want to remove is "the outcome was bad because of the deal, not because of my action." That's a property of the baseline, not the policy. And there's an estimator that removes it with zero bias.
+
+The key fact: given the infostate `I`, your action is sampled from `π(·|I)` independently of the hidden state `s`. So any function of `s` used as a *same-timestep* baseline has zero expected contribution to the gradient. Bootstrapping through it is what introduces bias. So separate the two roles:
+
+```
+A_t = GAE_λ(V_I)_t  −  β·( V_s(s_t) − V_I(I_t) )
+```
+
+- `V_I(I_t)` — infostate critic, does all bootstrapping. Unbiased.
+- `V_s(s_t)` — oracle critic, appears only at time `t`. The correction term has zero conditional mean given `I_t` (since `E[V_s(s)|I] = V_I(I)` when both are exact), so the estimator stays unbiased.
+- At `λ=1` and exact critics this reduces to `G_t − V_s(s_t)`: the full oracle baseline.
+- Start `β=0.5`; `β` should be lower while `V_s` is poorly fit, and 1.0 once it isn't.
+
+This is the entire variance benefit of open hands, with none of the equilibrium distortion.
+
+### Put deck order in the oracle state, not just the opponent's hand
+
+This is the part that matters more than the hand. Your dominant noise source is almost certainly **which cards get dealt over ten turns**, not what the opponent is holding right now. An oracle critic conditioned on the full shuffle knows at turn 2 that you'll draw the Mid War cards you need at turn 5 — so it can explain away deal luck entirely. The opponent's current hand is a small slice of that.
+
+Oracle state = own hand + opponent hand + full deck order. Include a discrete "deal seed" summary if that's easier to encode than the ordering itself.
+
+Dice remain, and the oracle can't absorb them without conditioning on future rolls, which is a much stronger form of leakage. Leave dice alone.
+
+---
+
+## Still run open hands — as a config flag, not a project
+
+Set `reveal_opponent_hand` / `reveal_deck` as observation-mask flags. One day of work, and it buys you a control arm.
+
+**Transfers (roughly everything):** engine, action space, encoders, feature set, training loop, GAE implementation, logging, eval harness, behavioral test suite, and — importantly — the oracle critic itself, which is a component of your real system, not a scaffold. Also the mid-game state distribution from open-hands trajectories, which is much better material for the randomized-board critic pretraining than synthetic scattering.
+
+**Doesn't transfer:** the policy weights, and the hyperparameters.
+
+That second one deserves emphasis. With hands revealed, TS becomes near-perfect-information (the headline phase stays simultaneous, so it isn't fully). Optimal play becomes close to deterministic, so the entropy/λ_KL setting that works there will be far too low for the real game. Don't carry those numbers over — re-sweep.
+
+**What it tells you.** If the open-hands agent still over-controls battlegrounds and still ignores Destalinization, hidden information isn't your bottleneck and belief work is a distraction — which is what I'd bet on. If it plays well, the ranking flips and inference becomes the priority. Either way it also gives you an upper bound on what your architecture can express, which is worth knowing before you spend weeks tuning against a ceiling you haven't measured.
+
+What you should *not* do is train open hands and then anneal the revelation away. The revealed-hand agent converges to a different equilibrium — brazen expansion knowing the opponent has no coup, ignoring DEFCON hedging — and annealing walks between two unrelated fixed points rather than transferring anything.
+
+---
+
+## Order
+
+1. **Infostate critic + GAE (γ=1, λ=0.95).** The thing that actually fixes your credit assignment.
+2. **Explained variance** on held-out rollouts. Below 0.2 means still noise-dominated.
+3. **Oracle critic + the correction term above.** Sweep β ∈ {0, 0.25, 0.5, 1.0} — β=0 is your control, so you measure what it bought.
+4. **Open-hands control arm** in parallel, on the reduced config, purely diagnostic.
+5. Re-sweep NashPG regularization — optimal strength depends on gradient noise, which you're about to change by an order of magnitude.
+
+A cheap addition worth trying at step 3: **paired rollouts** — play each deal twice with sides swapped under common random numbers, and use the pair as its own control. It removes deal variance without any oracle at all, and it's the same machinery as your duplicate-dealt eval harness. Worth an ablation against the oracle-critic arm; if it works as well, it's simpler.
+
+---
+OK, so the next step is to introduce critic that will have access to the same information policy does? (Or what does "infostate" mean?) Give me reference to paper or better some modern review of this technique.
+Should it be completely separate network or a head?
+---
+
+Let me pull accurate references rather than cite from memory.## Terminology
+
+"Infostate" (h in the papers, information state / history) = everything you legitimately know: your hand, the board, discards, DEFCON, the full public action history. Exactly what the policy conditions on. So yes — step one is a plain **symmetric critic V(h)**, same inputs as the policy. Nothing exotic.
+
+The literature's terms map onto your setup like this:
+
+| Term | Inputs | Role here |
+|---|---|---|
+| Symmetric / history-based critic `V(h)` | same as policy | **Build this first** |
+| State-based / asymmetric critic `V(s)` | true state incl. opponent hand | Tempting, biased — avoid |
+| History-state critic `V(h,s)` | both | The correct oracle version, later |
+
+## Correction to what I told you earlier
+
+I proposed an oracle correction term `V_s(s) − V_I(I)`. The literature has a cleaner and better-founded version, and I'd use theirs instead: a critic that takes **both** the history and the state, `V(h,s)`, with the TD residual
+
+```
+δ_t = r_t + γ·V̂(h_{t+1}, s_{t+1}) − V̂(h_t, s_t)
+```
+
+This is the "unbiased asymmetric actor-critic" of Baisero & Amato. Their point is that naive asymmetric methods often lack theoretical grounding, and that the common `V(s)` variant has fundamental problems that limit its ability to handle partial observability — specifically, `E[V(s)|h]` doesn't equal `V(h)`, so a persistent estimation bias exists. Conditioning on both removes it. They also make an observation that fits TS well: once the agent plays competently and reaches lower-uncertainty belief states, the practical variance of the history-state value tends to be low.
+
+Worth reading the skeptical side too. Lyu et al. (JAIR 2023) show that centralization is not strictly beneficial, that state-based critics can introduce unbounded bias in the policy gradient, and — counterintuitively — that they can also produce *larger* gradient variance, not smaller. It's a genuine bias-variance tradeoff whose optimum is environment-dependent. That's the strongest argument for building `V(h)` first and treating `V(h,s)` as a measured upgrade rather than an assumed one.
+
+## References, in reading order
+
+1. **Schulman et al. 2015, GAE** (arXiv 1506.02438) — the actual mechanism you're adding. Read §3 on the λ tradeoff.
+2. **Baisero & Amato, "Unbiased Asymmetric Reinforcement Learning under Partial Observability"** (arXiv 2105.11674, AAMAS 2022) — the `V(h,s)` estimator, with the analysis of why `V(s)` fails.
+3. **Lyu, Baisero, Xiao, Daley, Amato, "On Centralized Critics in MARL"** (JAIR 77:295–354, 2023) — the closest thing to a modern review, with the bias/variance theory and empirical comparison across critic types. This is your main reference.
+4. **Cobbe et al., Phasic Policy Gradient** (arXiv 2009.04416) — the shared-vs-separate-trunk question, with the cleanest treatment of policy/value interference.
+5. **PerfectDou** (arXiv 2203.16406) — asymmetric training applied to a large card game; useful sanity check on what it buys in a domain closer to yours.
+
+Skip Suphx's oracle guiding for this purpose — it's about the policy, which we already agreed against.
+
+## Shared trunk or separate network
+
+**Shared trunk, separate heads, for now.** You're compute-bound on a 4090 and a separate critic network roughly doubles inference cost for zero capability gain. Every AlphaZero-lineage system shares.
+
+The known problem is interference: value regression is a different objective from policy improvement, and PPG exists specifically because they degrade each other when sharing. But the standard fixes are cheap:
+
+- **Value loss coefficient 0.5–1.0**, tuned. If policy quality degrades when you add the head, this is the first knob.
+- **Wider value head** (2 layers, 512 hidden) — value functions want more capacity per unit of trunk than policies do.
+- If interference shows up, PPG's fix: detach the value head from the trunk, give it its own small trunk, and periodically distill trunk features into it. Only do this if you measure the problem.
+
+**When you add `V(h,s)` later**, structure it as a third head:
+
+```
+trunk(public inputs) ─┬─► policy head          (public only)
+                      ├─► V(h) head            (public only)
+                      └─► [stop_grad] ⊕ oracle_features ─► V(h,s) head
+```
+
+Two rules. Oracle features enter **only** at the head — never into the trunk inputs, or you've silently leaked into the policy path. And **stop-gradient** from the `V(h,s)` head into the trunk at first, so oracle-shaped representations can't distort the policy's features. Relax the stop-gradient later as an ablation; it might help.
+
+## Concrete next steps
+
+1. Add `V(h)` head + GAE (γ=1.0, λ=0.95). Warm-start by regressing on returns from existing self-play games before switching the policy loss to GAE advantages.
+2. Log **explained variance** on held-out rollouts from the first step. Below 0.2 = still noise-dominated. 0.3–0.5 = working. Above 0.6 = the estimator is no longer your bottleneck.
+3. Re-sweep the NashPG regularization coefficient — optimal strength depends on gradient noise, which you're about to change by an order of magnitude.
+4. Only then: `V(h,s)`, with the `V(h)`-only run as your control arm so you measure what it bought rather than assuming.
