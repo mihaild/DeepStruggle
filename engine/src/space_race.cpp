@@ -26,15 +26,10 @@ const SpaceBoxInfo& SpaceRace::get_box_info(uint8_t box) noexcept {
 }
 
 bool SpaceRace::has_animal_in_space(const GameState& state, Player p) noexcept {
-    // Two attempts per turn for whoever reached the box and is still *ahead* -- not for
-    // whoever reached it while the opponent stayed below it. Requiring the opponent to be
-    // under box 2 revoked the benefit the moment they got there, even far behind: at turn 4
-    // AR4 of ts-replayer game 112 the USSR raced a second time from box 3 with the US on 2,
-    // and the engine would not offer the Space Race play mode at all.
     if (p == Player::US) {
-        return state.us_space_track >= 2 && state.us_space_track > state.ussr_space_track;
+        return state.us_space_track >= 2 && state.ussr_space_track < 2;
     } else if (p == Player::USSR) {
-        return state.ussr_space_track >= 2 && state.ussr_space_track > state.us_space_track;
+        return state.ussr_space_track >= 2 && state.us_space_track < 2;
     }
     return false;
 }
