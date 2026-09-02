@@ -172,6 +172,7 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
 
     Player opp = get_opponent(p);
     const auto& c_info = MapData::get_country(country_id);
+    bool defcon_one_loss = false;
 
     // 1. Cuban Missile Crisis check & cancellation
     if (p == Player::USSR && state.has_flag(effect_bits::CMC_ACTIVE_US)) {
@@ -228,12 +229,12 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
                 }
             }
 
-            // DEFCON suicide check: if DEFCON reached 1, phasing player loses immediately!
-            if (state.defcon == 1) {
-                res.caused_defcon_suicide = true;
-                resolve_defcon_one_loss(state, p);
-                return res;
-            }
+            // The coup that takes DEFCON to 1 still happens: the die is rolled and the
+            // influence moves, and only then does the game end with the couping player
+            // losing. Returning here instead skipped the roll entirely, so the board froze
+            // -- at turn 5's headline of ts-replayer game 102 the USSR's Panama coup removed
+            // the two US influence in the log and none in the engine. Deferred to the end.
+            defcon_one_loss = (state.defcon == 1);
         }
     }
 
@@ -304,6 +305,11 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
     size_t r_idx = static_cast<size_t>(c_info.region);
     if (p_idx < 2 && r_idx < 6) {
         state.turn_aggregates.coups_by_region[p_idx][r_idx]++;
+    }
+
+    if (defcon_one_loss) {
+        res.caused_defcon_suicide = true;
+        resolve_defcon_one_loss(state, p);
     }
 
     return res;

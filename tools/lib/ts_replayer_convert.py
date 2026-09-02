@@ -143,11 +143,41 @@ def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
     return fixed
 
 
-def _drain(state: ts.GameState) -> None:
+def _drain(state: ts.GameState,
+           expected: Optional[Dict[int, Tuple[int, int]]] = None) -> None:
+    """Resolve chance nodes, optionally steering them to the outcome the log recorded.
+
+    Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
+    War -- rolls inside the event with nothing to choose, so there is no action to force the
+    outcome through, and the roll came out however the engine's stream said: at turn 4 AR4 of
+    replay 101 the USSR won the Korean War in the log and lost it in the reconstruction.
+    """
     while (not ts.Engine.is_terminal(state)
            and state.ctx().decision_player == ts.Player.NONE
            and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        if expected:
+            _force_roll(state, expected)
         ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
+
+def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
+                tries: int = 400) -> bool:
+    """Seed the rng so the pending chance node resolves the way the log says it did."""
+    base = int(state.rng_state)
+    for k in range(tries):
+        cand = (base + (k + 1) * _GOLDEN) % _UINT64
+        probe = state.clone()
+        probe.rng_state = cand
+        try:
+            ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+        except Exception:
+            continue
+        if all(int(probe.get_country(c).us_influence) == us
+               and int(probe.get_country(c).ussr_influence) == ussr
+               for c, (us, ussr) in expected.items()):
+            state.rng_state = cand
+            return True
+    return False
 
 
 def _acting(state: ts.GameState) -> ts.Player:
@@ -327,6 +357,64 @@ def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) ->
     state.ctx().remaining_steps = len(peek)
 
 
+def _choose_branch(state: ts.GameState, legal, wanted: List[int],
+                   raw: Optional[Dict], e: Optional[Entry] = None) -> Optional[int]:
+    """Pick the branch of a two-sided event that leads where the log went.
+
+    Events like Warsaw Pact Formed offer a genuine choice -- remove US influence from Eastern
+    Europe, or add USSR influence to it -- and the log records only the consequence. Rather
+    than encode each card's branches, try each one on a clone: the right branch is the one that
+    then offers the targets the log names, or failing that the one whose board ends up closest
+    to the log's own snapshot.
+    """
+    board = _logged_board(raw)
+    best, best_score = None, -1
+    for a in legal:
+        probe = state.clone()
+        try:
+            ts.Engine.step_flat(probe, int(a))
+        except Exception:
+            continue
+        _drain(probe)
+        score = 0
+        # Some branches are a numeric setting rather than a target: How I Learned To Stop
+        # Worrying picks the new DEFCON, and with no targets to tell the options apart the
+        # first legal one -- DEFCON 1 -- ended the game at turn 4's headline of replay 101.
+        if e is not None and e.defcon is not None:
+            if int(probe.defcon) == int(e.defcon):
+                score += 500
+            if ts.Engine.is_terminal(probe):
+                score -= 5000
+        if wanted and not ts.Engine.is_terminal(probe):
+            offered = {int(ts.ActionMask.decode_flat_action(probe, int(x)).primary_id)
+                       for x in np.flatnonzero(np.asarray(
+                           ts.ActionMask.generate_flat_mask(probe)))}
+            if any(c in offered for c in wanted):
+                score += 1000
+        # Tiebreak on how much of the logged board this branch already reproduces, which
+        # settles branches that resolve fully on their own and ask nothing further.
+        score += sum(1 for cid, (us, ussr) in board.items()
+                     if int(probe.get_country(cid).us_influence) == us
+                     and int(probe.get_country(cid).ussr_influence) == ussr)
+        if score > best_score:
+            best, best_score = int(a), score
+    return best
+
+
+def _logged_board(raw: Optional[Dict]) -> Dict[int, Tuple[int, int]]:
+    """The entry's own board snapshot, as country id -> (US, USSR)."""
+    out: Dict[int, Tuple[int, int]] = {}
+    for key, c in ((raw or {}).get("countries") or {}).items():
+        cid = country_id(key)
+        if cid is None:
+            continue
+        try:
+            out[cid] = (int(c["inflUS"]), int(c["inflUSSR"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 def _find_confirm_done(state: ts.GameState, legal) -> Optional[int]:
     """The 'decline / stop here' action, when the engine offers one."""
     for a in legal:
@@ -364,9 +452,39 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
     seeded_peek = False
     seeded_reveal = False
+    # A war with a fixed target resolves in a chance node, so its outcome has to be steered
+    # there rather than at a decision. Only the war's own countries are constrained: the rest
+    # of the entry has not happened yet at that point.
+    _want = expected_counts(e, raw)
+    war_outcome = {c: _want[c] for c in e.war_targets if c in _want}
+    seed_settled = False
+    # Realignment only. It rolls once per target and prints the running result of each, so the
+    # results have to be consumed in order. A coup rolls once but prints a line per side whose
+    # influence moved, where only the last line is the country's settled value.
+    # ...and only from the section that did the realigning. At turn 4 AR7 of replay 101 South
+    # African Unrest first places USSR influence and then realigns the same countries, so
+    # taking the event's line as the roll's expected result made it look already satisfied.
+    if e.mode == "realign":
+        _rows = list(e.ops_influence or [])
+    elif e.event_mode == "realign":
+        _ops = list(e.ops_influence or [])
+        _rows = []
+        for rec in (e.influence or []):
+            if rec in _ops:
+                _ops.remove(rec)
+            else:
+                _rows.append(rec)
+    else:
+        _rows = []
+    step_outcomes = [(cid, us, ussr) for _s, _d, cid, us, ussr in _rows]
 
     for _ in range(max_steps):
-        _drain(state)
+        # A die the previous decision already chose a seed for must be left alone: force_outcome
+        # picks a seed by draining the coup's own chance node, and re-seeding here threw that
+        # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
+        # success, because the war constraint it was re-seeded against was already satisfied.
+        _drain(state, None if seed_settled else war_outcome)
+        seed_settled = False
         if ts.Engine.is_terminal(state):
             break
         ctx = state.ctx()
@@ -562,6 +680,10 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                            lambda ma: int(ma.primary_id) == om)
             informative = chosen is not None
 
+        elif dt == ts.DecisionType.CHOOSE_BRANCH:
+            chosen = _choose_branch(state, legal, eq + pq, raw, e)
+            informative = chosen is not None
+
         elif dt == ts.DecisionType.POINT_NODE and (pq or eq):
             # Ask the queue that matches what the engine is doing: while a card is resolving,
             # these are the event's own placements, otherwise they are the Ops. Within a queue
@@ -610,7 +732,26 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         if dt == ts.DecisionType.POINT_NODE and chosen is not None:
             target = int(ts.ActionMask.decode_flat_action(state, chosen).primary_id)
             rolled = target in e.targets or target in e.war_targets
-            if rolled and not force_outcome(state, chosen, expected_counts(e, raw)):
+            # Constrain only the country this operation resolves against. The entry's other
+            # influence has not happened yet at this point: at turn 2 AR1 of replay 101 the
+            # USSR coups Panama and only then does Independent Reds place US influence in
+            # Czechoslovakia, so demanding the whole entry's board matched no roll at all and
+            # the coup was left to chance -- succeeding where the log has it fail.
+            want = expected_counts(e, raw)
+            # Realignments roll once per target and the log prints the running result of each,
+            # so the country's *final* value is wrong for every roll but the last: at turn 4's
+            # headline of replay 102 North Korea goes 10 US to 5 and only then to 1. Consume
+            # the logged results in order, falling back to the entry's board for a roll that
+            # changed nothing and so printed no influence line.
+            outcome = {target: want[target]} if target in want else want
+            for slot, (cid_r, us_r, ussr_r) in enumerate(step_outcomes):
+                if cid_r == target:
+                    outcome = {target: (us_r, ussr_r)}
+                    step_outcomes.pop(slot)
+                    break
+            if rolled and force_outcome(state, chosen, outcome):
+                seed_settled = True
+            elif rolled:
                 conv.mismatches.append(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "could not reproduce outcome",
