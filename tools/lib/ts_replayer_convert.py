@@ -727,6 +727,16 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # Only where the entry really holds several. With one section the existing queue already
     # describes it, and re-deriving it per decision only risks disagreeing with itself.
     sections = list(e.sections) if len(e.sections or []) > 1 else []
+    if sections:
+        # ...and then they are the only authority, because a flat queue cannot say which
+        # operation a target belongs to -- or whose it is. At turn 9 AR2 of replay 105 the US
+        # plays Ortega Elected in Nicaragua for Ops: the USSR takes the event's free coup
+        # against Costa Rica, then the US coups Saharan States with the card's own Ops. Seeded
+        # flat, the queue answered the USSR's coup out of its own head, and the first
+        # SELECT_OP_MODE then popped the section that coup had already used, leaving the US's
+        # coup pointed at Costa Rica -- a country with no USSR Influence, which the US cannot
+        # coup at all.
+        pq[:] = []
     seed_settled = False
     cur_mode = e.mode
     # The log states the space race die outright, so it is handed to the chance node rather
