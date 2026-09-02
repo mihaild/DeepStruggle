@@ -148,7 +148,6 @@ def test_realignment_china_card_under_vietnam_revolts_in_asia_strips_asia_bonus(
 # Bug 2: Coup with China Card in non-SE Asia improperly gets Vietnam Revolts bonus
 # ======================================================================================
 
-@pytest.mark.xfail(strict=True, reason="state_machine.cpp:845-855 awards Vietnam Revolts bonus on China Card coup outside SE Asia")
 def test_coup_china_card_in_non_se_asia_must_not_receive_vietnam_revolts_bonus() -> None:
     """A USSR coup in Pakistan with China Card under Vietnam Revolts must have 5 Ops, not 6.
 

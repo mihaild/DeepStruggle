@@ -859,10 +859,20 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     uint8_t coup_ops = state.ctx().pending_ops_value;
                     uint8_t op_card = state.ctx().pending_op_card;
                     const auto& c_info = MapData::get_country(cid);
-                    if (op_card == card_ids::THE_CHINA_CARD) {
-                        coup_ops = Operations::get_effective_ops(state, op_card, p, c_info.region);
-                    } else if (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE)) {
-                        coup_ops = Operations::get_effective_ops(state, op_card, p, c_info.in_southeast_asia ? Region::ASIA : Region::NONE_REGION);
+                    const bool china_card = (op_card == card_ids::THE_CHINA_CARD);
+                    const bool vietnam_bonus =
+                        (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE));
+
+                    if (china_card || vietnam_bonus) {
+                        uint8_t plain = Operations::get_effective_ops(
+                            state, op_card, p, Region::NONE_REGION);
+                        coup_ops = plain;
+                        if (china_card && c_info.region == Region::ASIA) {
+                            coup_ops += 1;
+                        }
+                        if (vietnam_bonus && c_info.in_southeast_asia) {
+                            coup_ops += 1;
+                        }
                     }
                     state.ctx().temp_cards[0] = cid;
                     state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
