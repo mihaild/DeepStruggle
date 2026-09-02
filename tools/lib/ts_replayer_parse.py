@@ -117,7 +117,7 @@ class Entry:
     # Cards named by a "reveals" line. Usually informational -- Lone Gunman and CIA Created
     # reveal a whole hand -- but where the engine asks which card to hand over, this is the
     # answer: Missile Envy's tie between two 3 Ops cards is settled by what the log reveals.
-    revealed: List[str] = field(default_factory=list)
+    revealed: List[Tuple[str, str]] = field(default_factory=list)
     # A card handed over and given back unplayed: "US returns Brezhnev Doctrine* to USSR" is
     # the US declining what Grain Sales offered and taking that card's Ops instead. Without it
     # the choice is invisible and the wrong branch plays the opponent's card.
@@ -205,7 +205,7 @@ def parse_entry(raw: Dict) -> Entry:
 
         m = RE_REVEALS.search(line)
         if m:
-            e.revealed.append(m.group(2).strip())
+            e.revealed.append((m.group(1), m.group(2).strip()))
             continue
 
         m = RE_OUT_OF_PLAY.search(line)

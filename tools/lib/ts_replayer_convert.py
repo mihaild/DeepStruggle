@@ -6,11 +6,14 @@ every entry. Die outcomes will differ from the human game -- what behaviour clon
 faithful *observation* at each decision, not a bit-identical simulation, and reconciling keeps
 the observation faithful even when a coup roll goes the other way.
 
-Only decisions the log actually determines are emitted. Where the engine asks something the log
-does not record (an event's internal branch, say), a legal action is taken to keep the game
-moving but nothing is emitted, and the entry is marked `guessed` so it can be excluded.
+Nothing is approximated. If the engine asks something the log does not determine, or the log
+states something the engine will not do, conversion of that game stops with a ConversionFailure
+naming the turn and action round -- a dataset is only worth training on if every decision in it
+is the one the human actually made, and a plausible substitute is indistinguishable from a real
+one once it is in the file. The single approved exception is Our Man in Tehran, whose log lines
+record the discards but never the five revealed cards, so the rest of that peek is invented.
 
-Every mismatch is reported with replay id and turn/action round rather than counted, since a
+Failures are reported with replay id and turn/action round rather than counted, since a
 systematic failure in one card's handling looks identical to noise in a summary statistic.
 """
 
@@ -61,6 +64,21 @@ def card_id(name: Optional[str]) -> Optional[int]:
     return None
 
 
+class ConversionFailure(Exception):
+    """A logged entry could not be reproduced exactly.
+
+    The dataset is only worth training on if every decision in it is the one the human made,
+    so there is no approximating here: anything the log states and the engine cannot follow
+    stops the game's conversion and is reported with its turn and action round. The single
+    approved exception is Our Man in Tehran, where the log records the discards but never the
+    five revealed cards, so the remainder of the peeked set is invented.
+    """
+
+    def __init__(self, mismatch: "Mismatch") -> None:
+        super().__init__(str(mismatch))
+        self.mismatch = mismatch
+
+
 @dataclass
 class Mismatch:
     replay_id: int
@@ -90,7 +108,58 @@ class Conversion:
     hand_misses: int = 0
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
+    # Set when conversion stopped: the entry that could not be reproduced. Entries after it
+    # were never attempted, so a Conversion with a failure describes only a prefix of the game.
+    failure: Optional[Mismatch] = None
     mismatches: List[Mismatch] = field(default_factory=list)
+
+
+def _reveal_ops_cap(raws, turn: int, side: str) -> Optional[int]:
+    """Lowest Ops among cards this side is recorded revealing during the turn.
+
+    Missile Envy takes the opponent's *highest* Ops card, so padding a hand with anything that
+    matches or beats what the log says was handed over would change the decision -- either
+    making a different card the maximum, or creating a tie the log never records a choice for.
+    Padding below this leaves the logged card the only one Missile Envy could have taken.
+    """
+    cap: Optional[int] = None
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        for rev_side, name in (e.revealed or []):
+            if rev_side != side:
+                continue
+            cid = card_id(name)
+            if cid is None:
+                continue
+            ops = int(ts.CardData.get_card_info(cid)["ops"])
+            cap = ops if cap is None else min(cap, ops)
+    return cap
+
+
+def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional[int],
+              taken: set) -> List[int]:
+    """Top a short logged hand up with cards the log does not account for.
+
+    The log records only the cards a player used, so a game that ends mid-turn leaves hands
+    that are far too small: at turn 7 of replay 119 the US is credited with one card and the
+    USSR with two, where both should hold nine. Playing from a hand of one is not the decision
+    the human faced, and Missile Envy in particular reads the whole hand. Scoring cards are
+    never used as padding -- holding one at the end of a turn loses the game outright.
+    """
+    # Only where the hand is obviously truncated. A log that lists seven or eight of a nine
+    # card hand is just not naming cards that were never played, and inventing the rest would
+    # change draws and reveals the log does record; a log that lists one or two is describing a
+    # game that stopped mid-turn. Two missing is the line between the two.
+    if len(held) >= size - 2:
+        return list(held)
+    pool = [c for c in range(1, 111)
+            if c not in held and c not in taken
+            and state.get_card_location(c) == ts.CardLocation.DRAW_DECK
+            and not ts.CardData.get_card_info(c)["is_scoring"]
+            and (ops_cap is None or int(ts.CardData.get_card_info(c)["ops"]) < ops_cap)]
+    return list(held) + pool[:size - len(held)]
 
 
 def _set_hand(state: ts.GameState, player: ts.Player, names: List[str]) -> int:
@@ -144,7 +213,7 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
 _RE_AR = re.compile(r"AR(\d+)")
 
 
-def _reconcile_turn(state: ts.GameState, entry: Entry) -> None:
+def _reconcile_turn(state: ts.GameState, entry: Entry, replay_id: int = -1) -> None:
     """Force turn, action round and phasing player to the ones the log names.
 
     The engine advances these itself, and any entry it could not drive faithfully leaves them
@@ -161,30 +230,29 @@ def _reconcile_turn(state: ts.GameState, entry: Entry) -> None:
         state.phasing_player = ts.Player.US
     elif entry.player == "USSR":
         state.phasing_player = ts.Player.USSR
-    # An entry the driver could not finish leaves the engine mid-decision, and the next entry
-    # then inherits that instead of being played: at turn 4 AR1 of replay 119 the engine was
-    # still inside the turn 4 headline on a POINT_NODE for Indo-Pakistani War, offering Panama
-    # alone, so the USSR never got to play Special Relationship or place the influence the log
-    # puts in Japan. Discard such a decision -- but only then. An entry that ended cleanly is
-    # left exactly as it is, since the engine's own bookkeeping is the more reliable of the two.
+    # Every entry must begin with the engine waiting for a card. Anything else means the
+    # previous entry did not finish, and continuing from a half-resolved decision would convert
+    # a position the humans never played -- so this is a failure, not something to tidy up.
     want_phase = ts.Phase.ACTION_ROUND if m else ts.Phase.HEADLINE
     ctx = state.ctx()
-    stale = (ctx.decision_type != ts.DecisionType.SELECT_CARD
-             or int(ctx.resolving_card) != 0
-             or int(state.ctx_stack_depth) != 0
-             or state.current_phase != want_phase)
-    if stale:
-        state.current_phase = want_phase
-        state.ctx_stack_depth = 0
-        ctx = state.ctx()
-        ctx.resolving_card = 0
-        ctx.pending_op_card = 0
-        ctx.pending_ops_value = 0
-        ctx.remaining_steps = 0
-        ctx.max_per_country = 0
-        ctx.allow_early_stop = 0
-        ctx.temp_cards = []      # also clears the headline's own step bookkeeping
-        ctx.decision_type = ts.DecisionType.SELECT_CARD
+    if ts.Engine.is_terminal(state):
+        raise ConversionFailure(Mismatch(
+            replay_id, entry.turn, entry.phase, entry.player, entry.card,
+            "engine ended the game early",
+            f"the log continues but the engine is in {str(state.current_phase).split('.')[-1]} "
+            f"at {int(state.victory_points)} VP, DEFCON {int(state.defcon)}"))
+    if (ctx.decision_type != ts.DecisionType.SELECT_CARD
+            or int(ctx.resolving_card) != 0
+            or int(state.ctx_stack_depth) != 0
+            or state.current_phase != want_phase):
+        raise ConversionFailure(Mismatch(
+            replay_id, entry.turn, entry.phase, entry.player, entry.card,
+            "previous entry left the engine mid-decision",
+            f"expected a card request in {str(want_phase).split('.')[-1]}, found "
+            f"{str(ctx.decision_type).split('.')[-1]} in "
+            f"{str(state.current_phase).split('.')[-1]} "
+            f"(resolving={int(ctx.resolving_card)}, op_card={int(ctx.pending_op_card)}, "
+            f"depth={int(state.ctx_stack_depth)})"))
     ctx.decision_player = state.phasing_player
 
 
@@ -593,9 +661,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     second_cid = (card_id(e.played_card)
                   if e.played_card and cid_target == _UN_INTERVENTION else None)
     picked_mode = False
-    guessed = False
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
-    reveal_queue = [c for c in (card_id(nm) for nm in (e.revealed or [])) if c]
+    reveal_queue = [c for c in (card_id(nm) for _side, nm in (e.revealed or [])) if c]
     # Five Year Plan draws its discard at random from the USSR hand, and the drawn card's event
     # then plays out, so which card comes out changes the whole entry. The log names it.
     plays_five_year_plan = cid_target == _FIVE_YEAR_PLAN or _FIVE_YEAR_PLAN in headline_ids.values()
@@ -751,7 +818,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     informative = True
                     headline_ids.pop(side, None)
                 else:
-                    conv.mismatches.append(Mismatch(
+                    raise ConversionFailure(Mismatch(
                         conv.replay_id, e.turn, e.phase, e.player, e.card,
                         "headline card not selectable",
                         f"{side} headline #{want_c} not legal"))
@@ -777,7 +844,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if chosen is not None:
                 picked_card, informative = True, True
             else:
-                conv.mismatches.append(Mismatch(
+                raise ConversionFailure(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "card not selectable",
                     f"card #{cid_target} not among {len(legal)} legal actions"))
@@ -826,7 +893,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if want is not None and mask[want]:
                 chosen, picked_mode, informative = want, True, True
             else:
-                conv.mismatches.append(Mismatch(
+                raise ConversionFailure(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "play mode illegal",
                     f"wanted {'ops' if e.mode else ('space' if e.space else 'event')}, "
@@ -892,7 +959,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 chosen = _find_confirm_done(state, legal)
             if chosen is None:
                 names = ", ".join(ts.MapData.get_country_info(c)["name"] for c in (pq + eq))
-                conv.mismatches.append(Mismatch(
+                raise ConversionFailure(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "target not legal",
                     f"none of the remaining targets ({names}) are legal; engine "
@@ -913,8 +980,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             informative = chosen is not None
 
         if chosen is None:
-            chosen = int(legal[0])
-            guessed = True
+            offered = sorted(
+                ts.MapData.get_country_info(int(p))["name"] if 0 <= int(p) < 84 else str(int(p))
+                for p in (int(ts.ActionMask.decode_flat_action(state, int(a)).primary_id)
+                          for a in legal))
+            raise ConversionFailure(Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "decision not determined by the log",
+                f"{str(dt).split('.')[-1]} for "
+                f"{'US' if mover == ts.Player.US else 'USSR'} "
+                f"(resolving={int(ctx.resolving_card)}, op_card={int(ctx.pending_op_card)}); "
+                f"nothing in the entry says which of {len(offered)} options was taken: "
+                f"{offered[:12]}"))
 
         # Anything the engine settles with a die it rolls itself: coups, realignments, and war
         # events, whose target is chosen the same way but never carried an Ops mode.
@@ -941,7 +1018,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if rolled and force_outcome(state, chosen, outcome):
                 seed_settled = True
             elif rolled:
-                conv.mismatches.append(Mismatch(
+                raise ConversionFailure(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
                     "could not reproduce outcome",
                     f"no rng_state reproduced the logged "
@@ -961,8 +1038,6 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
 
         ts.Engine.step_flat(state, int(chosen))
 
-    if guessed:
-        conv.entries_guessed += 1
     return True
 
 
@@ -980,6 +1055,25 @@ def _apply_hands(state, us_cards, ussr_cards) -> None:
         state.set_card_location(c, ts.CardLocation.HAND_US)
     for c in ussr_cards:
         state.set_card_location(c, ts.CardLocation.HAND_USSR)
+
+
+def _board_diff(state, countries) -> str:
+    """Which countries disagree with the log, and how -- named, not counted."""
+    out = []
+    for key, c in (countries or {}).items():
+        cid = country_id(key)
+        if cid is None:
+            continue
+        try:
+            lus, lussr = int(c["inflUS"]), int(c["inflUSSR"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        cur = state.get_country(cid)
+        if int(cur.us_influence) != lus or int(cur.ussr_influence) != lussr:
+            out.append(f"{ts.MapData.get_country_info(cid)['name']} "
+                       f"engine [{int(cur.us_influence)}][{int(cur.ussr_influence)}] "
+                       f"log [{lus}][{lussr}]")
+    return "countries differ: " + "; ".join(out)
 
 
 def _board_matches(state, countries) -> int:
@@ -1019,6 +1113,19 @@ def convert_game(game: Dict) -> Conversion:
     ts.Engine.init_game(state, 12345)
     _drain(state)
 
+    try:
+        _convert_entries(state, raws, hands, conv)
+    except ConversionFailure as failure:
+        # Reported, not raised on: one unconvertible game should not stop a sweep of hundreds,
+        # and the caller decides whether a partial game is usable. conv.failure being set means
+        # the entries after it were never converted.
+        conv.failure = failure.mismatch
+        conv.mismatches.append(failure.mismatch)
+    conv.decisions_emitted = len(conv.samples)
+    return conv
+
+
+def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None:
     cur_turn = None
     turn_hands = {"US": [], "USSR": []}
     played = {"US": set(), "USSR": set()}
@@ -1036,6 +1143,16 @@ def convert_game(game: Dict) -> Conversion:
                 "US": [c for c in (card_id(n) for n in h.get("us", [])) if c],
                 "USSR": [c for c in (card_id(n) for n in h.get("ussr", [])) if c],
             }
+            # The log lists only the cards a player used, so a game that stops mid-turn leaves
+            # hands far too small to have been the ones played from. Top them up to the size
+            # the rules deal, capping Ops below anything the log records that side revealing.
+            size = 8 if int(e.turn) <= 3 else 9
+            claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
+            for side in ("US", "USSR"):
+                padded = _pad_hand(state, turn_hands[side], size,
+                                   _reveal_ops_cap(raws, e.turn, side), claimed)
+                claimed |= set(padded)
+                turn_hands[side] = padded
             played = {"US": set(), "USSR": set()}
 
         # --- rebuild the position this entry was decided from ---
@@ -1072,23 +1189,18 @@ def convert_game(game: Dict) -> Conversion:
         if prev_entry is not None:
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
-            _reconcile_turn(state, e)
+            _reconcile_turn(state, e, conv.replay_id)
         _drive_entry(state, e, conv, raw)
 
         # --- did replaying our parsed actions reproduce the log's board? ---
         bad = _board_matches(state, raw.get("countries"))
-        if bad == 0:
-            conv.entries_converted += 1
-        else:
-            conv.entries_board_mismatch += 1
-            if conv.first_board_mismatch is None:
-                conv.first_board_mismatch = Mismatch(
-                    conv.replay_id, e.turn, e.phase, e.player, e.card,
-                    "board mismatch after replay",
-                    f"{bad} countries differ from the log after applying parsed actions")
-                conv.mismatches.append(conv.first_board_mismatch)
+        if bad:
             del conv.samples[before:]          # unverified actions are not training data
-            conv.decisions_emitted -= 0
+            raise ConversionFailure(Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "board mismatch after replay",
+                f"{bad} {_board_diff(state, raw.get('countries'))}"))
+        conv.entries_converted += 1
 
         if e.score is not None and int(state.victory_points) != int(e.score):
             conv.vp_drift += 1
@@ -1097,6 +1209,3 @@ def convert_game(game: Dict) -> Conversion:
         _reconcile_scalars(state, e)
         prev_raw = raw
         prev_entry = e
-
-    conv.decisions_emitted = len(conv.samples)
-    return conv
