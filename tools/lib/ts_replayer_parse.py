@@ -50,7 +50,7 @@ def country_id(name: str) -> Optional[int]:
 # -- line grammar --------------------------------------------------------------------------
 
 RE_INFLUENCE = re.compile(r"^(US|USSR) ([+-]\d+) in (.+?) \[(\d+)\]\[(\d+)\]$")
-RE_MODE = re.compile(r"(Place Influence|Coup|Realignment|Realign) \((\d+) Ops\):$")
+RE_MODE = re.compile(r"(Place Influence|Coup|Realignment|Realign|Space Race) \((\d+) Ops\):$")
 RE_TARGET = re.compile(r"Target: (.+)$")
 RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
 RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+) \(([+-]\d+)\) = (-?\d+)$")
@@ -66,6 +66,7 @@ RE_TRAP = re.compile(r"Trap Roll: (\d+) (?:<=|>) (\d+) -- Trap (Escaped|Remains 
 RE_BARE_ROLL = re.compile(r"^(US|USSR) rolls (\d+)$")
 RE_EFFECT_END = re.compile(r"^(.+) is no longer in play\.$")
 RE_HEADLINE = re.compile(r"(US|USSR) Headlines (.+)$")
+RE_DISCARD = re.compile(r"(US|USSR) discards? (.+?)\.?$")
 
 
 @dataclass
@@ -96,6 +97,7 @@ class Entry:
     effects_ended: List[str] = field(default_factory=list)
     score_assertions: List[int] = field(default_factory=list)
     headlines: Dict[str, str] = field(default_factory=dict)
+    discards: List[Tuple[str, str]] = field(default_factory=list)
     unparsed: List[str] = field(default_factory=list)
 
 
@@ -109,14 +111,34 @@ _IGNORE = re.compile(
     r"(US|USSR) cannot |No effect|Effect:|Note:)")
 
 
+def _as_int(v) -> Optional[int]:
+    """Coerce a log scalar to int.
+
+    The log is inconsistently typed: `defcon` is an int on the setup entry and a string on
+    every entry after it. An isinstance(int) check silently dropped all the string ones, so
+    DEFCON was never reconciled and drifted -- by turn 2 AR1 of replay 100 the engine sat at
+    DEFCON 3 where the game was at 4, which bars coups in Asia and made a legal coup on
+    Pakistan look illegal.
+    """
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        t = v.strip()
+        if t.lstrip("-").isdigit():
+            return int(t)
+    return None
+
+
 def parse_entry(raw: Dict) -> Entry:
     e = Entry(
         turn=int(raw.get("num", 0)) if str(raw.get("num", "")).isdigit() else 0,
         player=str(raw.get("player", "")),
         phase=str(raw.get("phase", "")),
         card=raw.get("card"),
-        score=raw.get("score") if isinstance(raw.get("score"), int) else None,
-        defcon=raw.get("defcon") if isinstance(raw.get("defcon"), int) else None,
+        score=_as_int(raw.get("score")),
+        defcon=_as_int(raw.get("defcon")),
     )
     in_event = False
     for line in str(raw.get("text", "")).split("\n"):
@@ -141,7 +163,8 @@ def parse_entry(raw: Dict) -> Entry:
         m = RE_MODE.search(line)
         if m:
             e.mode = {"Place Influence": "influence", "Coup": "coup",
-                      "Realignment": "realign", "Realign": "realign"}[m.group(1)]
+                      "Realignment": "realign", "Realign": "realign",
+                      "Space Race": "space"}[m.group(1)]
             e.ops = int(m.group(2))
             in_event = False
             continue
@@ -211,6 +234,14 @@ def parse_entry(raw: Dict) -> Entry:
         m = RE_HEADLINE.search(line)
         if m:
             e.headlines[m.group(1)] = m.group(2).strip()
+            continue
+        m = RE_DISCARD.search(line)
+        if m:
+            # A discarded card leaves the hand just as a played one does. Missing these left
+            # scoring cards in the reconstructed hand, and the engine correctly ended the game
+            # at end of turn for holding one -- replay 100 turn 1 AR6, where Five Year Plan
+            # made the USSR discard Mideast Scoring.
+            e.discards.append((m.group(1), m.group(2).strip()))
             continue
         m = RE_EFFECT_END.match(line)
         if m:
@@ -326,9 +357,18 @@ def verify_game(game: Dict, max_notes: int = 6) -> Tuple[GameCheck, List[Entry]]
                                      f"{e.score}")
 
         # 4. DEFCON transitions must land on the entry's DEFCON
-        for _, value in e.defcon_changes:
+        # Only the last transition in an entry should match the entry's DEFCON: an entry can
+        # improve and then degrade, and the field records where it ended up.
+        if e.defcon_changes and e.defcon is not None:
             chk.defcon_checked += 1
-            if e.defcon is not None and value != e.defcon:
+            # On the last action round of a turn the line records the mid-turn change and the
+            # field records the value after end-of-turn cleanup, which improves DEFCON by one.
+            # Both are right; they describe different moments.
+            line_value = e.defcon_changes[-1][1]
+            if e.defcon not in (line_value, min(5, line_value + 1)):
                 chk.defcon_mismatch += 1
+                if len(chk.notes) < max_notes:
+                    chk.notes.append(f"T{e.turn} defcon: line says {line_value} "
+                                     f"vs entry {e.defcon}")
 
     return chk, parsed

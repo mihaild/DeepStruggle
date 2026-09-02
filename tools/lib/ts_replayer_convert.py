@@ -109,6 +109,16 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
     is why only a quarter of entries were reachable. VP is the one quantity the log disputes
     with itself (field vs ledger), so which source is used here is recorded per sample.
     """
+    for side, level in (entry.space or []):
+        if side == "US":
+            state.us_space_track = max(int(state.us_space_track), int(level))
+        else:
+            state.ussr_space_track = max(int(state.ussr_space_track), int(level))
+    for side, level in (entry.milops or []):
+        if side == "US":
+            state.us_mil_ops = int(level)
+        else:
+            state.ussr_mil_ops = int(level)
     if entry.score is not None:
         state.victory_points = int(entry.score)
     if entry.defcon is not None and 1 <= int(entry.defcon) <= 5:
@@ -152,6 +162,8 @@ def point_queue(e: Entry) -> List[int]:
     follow are the *result* of the roll. Queuing those as placements made the engine try to
     place influence where the coup had removed it.
     """
+    if e.mode == "space":
+        return []
     if e.mode in ("coup", "realign"):
         return list(e.targets)
     q: List[int] = []
@@ -313,7 +325,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             side = str(ts.CardData.get_card_info(cid_target)["side"]) if cid_target else "NONE"
             mine = "US" if mover == ts.Player.US else "USSR"
             opponent_card = side not in ("NONE", mine)
-            if e.mode or opponent_card:
+            if e.mode == "space" or (not e.mode and e.space):
+                want = PLAY_MODE_ACTION["space"]
+            elif e.mode or opponent_card:
                 want = PLAY_MODE_ACTION["ops"]
             elif e.space:
                 want = PLAY_MODE_ACTION["space"]
@@ -473,6 +487,10 @@ def convert_game(game: Dict) -> Conversion:
             if cid and cid not in _hand_after(turn_hands[side], played[side]):
                 conv.hand_misses += 1
             if cid:
+                played[side].add(cid)
+        for side, nm in (e.discards or []):
+            cid = card_id(nm)
+            if cid and side in played:
                 played[side].add(cid)
         if e.card and " & " not in e.card:
             cid = card_id(e.card)
