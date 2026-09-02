@@ -338,8 +338,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
 
         elif dt == ts.DecisionType.SELECT_OP_MODE and e.mode in _OP_MODE:
             om = int(_OP_MODE[e.mode])
+            # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching
+            # either field silently selected the first legal action -- REALIGN -- and the
+            # engine then correctly offered a realignment mask, which looked like a mask bug.
             chosen = _find(state, legal, ts.DecisionType.SELECT_OP_MODE,
-                           lambda ma: int(ma.primary_id) == om or int(ma.secondary_id) == om)
+                           lambda ma: int(ma.primary_id) == om)
             informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and pq:
