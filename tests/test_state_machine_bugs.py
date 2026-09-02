@@ -40,7 +40,6 @@ def _find_ussr_card_with_ops(ops: int) -> int:
 # Bug 1: Realignment conditional Ops budget double-deduction & ladder failure
 # ======================================================================================
 
-@pytest.mark.xfail(strict=True, reason="state_machine.cpp:983-990 double-deducts conditional ops during realignments")
 def test_realignment_vietnam_revolts_double_charges_outside_southeast_asia() -> None:
     """A 3-Ops card played for realignments outside SE Asia under Vietnam Revolts must give 3 Ops.
 
@@ -93,7 +92,6 @@ def test_realignment_vietnam_revolts_double_charges_outside_southeast_asia() -> 
     )
 
 
-@pytest.mark.xfail(strict=True, reason="state_machine.cpp:975-990 strips China Card Asia bonus on realignments in Asia")
 def test_realignment_china_card_under_vietnam_revolts_in_asia_strips_asia_bonus() -> None:
     """The China Card (4 base + 1 Asia) under Vietnam Revolts (+1 SE Asia) realigning in India.
 

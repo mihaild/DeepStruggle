@@ -980,22 +980,33 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                     uint8_t op_card = state.ctx().pending_op_card;
                     const auto& c_info = MapData::get_country(cid);
-                    if (op_card == card_ids::THE_CHINA_CARD && c_info.region != Region::ASIA) {
-                        uint8_t non_asia_base = Operations::get_effective_ops(state, op_card, realign_player, Region::NONE_REGION);
-                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                        if (total_spent >= non_asia_base) {
-                            state.ctx().remaining_steps = 0;
-                        } else {
-                            state.ctx().remaining_steps = non_asia_base - total_spent;
+
+                    const bool china_card = (op_card == card_ids::THE_CHINA_CARD);
+                    const bool vietnam_bonus =
+                        (realign_player == Player::USSR
+                         && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE));
+
+                    if ((china_card || vietnam_bonus) && state.ctx().pending_ops_value > 0) {
+                        uint8_t budget = state.ctx().pending_ops_value;
+                        uint8_t spent = static_cast<uint8_t>(
+                            (budget > state.ctx().remaining_steps)
+                                ? (budget - state.ctx().remaining_steps) : 0);
+
+                        uint8_t plain = Operations::get_effective_ops(
+                            state, op_card, realign_player, Region::NONE_REGION);
+                        uint8_t asia_ok = static_cast<uint8_t>(
+                            plain + (china_card ? 1 : 0));
+
+                        if (vietnam_bonus && !c_info.in_southeast_asia) {
+                            budget = std::min<uint8_t>(budget, asia_ok);
                         }
-                    } else if (realign_player == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE) && !c_info.in_southeast_asia) {
-                        uint8_t non_se_base = Operations::get_effective_ops(state, op_card, realign_player, Region::NONE_REGION);
-                        uint8_t total_spent = state.ctx().pending_ops_value - state.ctx().remaining_steps;
-                        if (total_spent >= non_se_base) {
-                            state.ctx().remaining_steps = 0;
-                        } else {
-                            state.ctx().remaining_steps = non_se_base - total_spent;
+                        if (china_card && c_info.region != Region::ASIA) {
+                            budget = std::min<uint8_t>(budget, plain);
                         }
+
+                        state.ctx().pending_ops_value = budget;
+                        state.ctx().remaining_steps = (spent >= budget)
+                            ? 0 : static_cast<uint8_t>(budget - spent);
                     }
 
                     if (state.ctx().remaining_steps == 0) {
