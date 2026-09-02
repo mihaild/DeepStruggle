@@ -629,9 +629,11 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
                 state.ctx().pending_op_card = card;
 
-                // Quagmire / Bear Trap handling
-                bool trapped = (p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
-                               (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE));
+                // Quagmire / Bear Trap handling. Action rounds only, as in the mask: a
+                // headline is not constrained by the trap and its event resolves normally.
+                bool trapped = state.current_phase == Phase::ACTION_ROUND &&
+                               ((p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
+                                (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE)));
 
                 if (trapped) {
                     const auto& c_info = CardData::get_card(card);

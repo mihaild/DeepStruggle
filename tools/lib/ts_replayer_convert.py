@@ -1031,8 +1031,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # happens to be a war or coup target rolls nothing, and searching for a seed to
             # match it can never succeed: at turn 1 AR2 of replay 109 the US places two
             # influence in South Korea, the country the USSR had just lost the Korean War in.
-            rolled = ((cur_mode in ("coup", "realign") and target in e.targets)
-                      or (target in e.war_targets and int(ctx.resolving_card) != 0))
+            # A coup or realignment target is only rolled for while spending Ops; the same
+            # country reached during the card's event is an ordinary placement. At turn 4 AR7
+            # of replay 101 South African Unrest places USSR influence in Angola and the US
+            # then realigns it, and forcing a die at the placement could never match.
+            in_event = int(ctx.resolving_card) != 0
+            rolled = ((not in_event and cur_mode in ("coup", "realign")
+                       and target in e.targets)
+                      or (in_event and target in e.war_targets))
             # Constrain only the country this operation resolves against. The entry's other
             # influence has not happened yet at this point: at turn 2 AR1 of replay 101 the
             # USSR coups Panama and only then does Independent Reds place US influence in

@@ -77,9 +77,14 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 }
             }
 
-            // 4. Quagmire / Bear Trap
-            bool trapped = (p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
-                           (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE));
+            // 4. Quagmire / Bear Trap. Action rounds only: the trap constrains what a player
+            // may *do on their turn*, and says nothing about the headline. Headlining any card
+            // stays legal and its event resolves normally -- at turn 9's headline of
+            // ts-replayer game 105 the USSR headlined Europe Scoring while trapped, which the
+            // engine would not allow because a scoring card is not a 2 Ops card.
+            bool trapped = state.current_phase == Phase::ACTION_ROUND &&
+                           ((p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
+                            (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE)));
 
             if (trapped) {
                 CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
