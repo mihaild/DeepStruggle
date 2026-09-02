@@ -200,7 +200,6 @@ def test_coup_china_card_in_non_se_asia_must_not_receive_vietnam_revolts_bonus()
 # Bug 3: advance_after_ops incomplete frame unwind on nested EVENT_FIRST Ops
 # ======================================================================================
 
-@pytest.mark.xfail(strict=True, reason="state_machine.cpp:228-234 single-pop ends action round and drops phasing player ops on nested events")
 def test_nested_event_granting_ops_under_event_first_must_unwind_to_player_ops() -> None:
     """When an event-granted Op finishes, advance_after_ops must unwind to the player's Ops.
 

@@ -226,8 +226,16 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     // here dropped it -- at turn 2 AR1 of ts-replayer game 103 the USSR's influence in Poland
     // never went in. The SELECT_OP_MODE test mirrors how the resolving_card path resumes.
     if (state.ctx_stack_depth > 0) {
-        state.pop_context();
-        if (state.ctx().decision_type != DecisionType::SELECT_OP_MODE) {
+        bool resumed = false;
+        while (state.ctx_stack_depth > 0) {
+            state.pop_context();
+            if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+                resumed = true;
+                break;
+            }
+            state.ctx().resolving_card = 0;
+        }
+        if (!resumed) {
             advance_after_action_round(state);
         }
         return;
