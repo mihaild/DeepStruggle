@@ -186,11 +186,13 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
     is why only a quarter of entries were reachable. VP is the one quantity the log disputes
     with itself (field vs ledger), so which source is used here is recorded per sample.
     """
+    # Exactly, not max(): taking the larger of the two hides a track the reconstruction
+    # advanced on its own, which is precisely the error worth catching.
     for side, level in (entry.space or []):
         if side == "US":
-            state.us_space_track = max(int(state.us_space_track), int(level))
+            state.us_space_track = int(level)
         else:
-            state.ussr_space_track = max(int(state.ussr_space_track), int(level))
+            state.ussr_space_track = int(level)
     for side, level in (entry.milops or []):
         if side == "US":
             state.us_mil_ops = int(level)
@@ -275,7 +277,8 @@ def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
 
 
 def _drain(state: ts.GameState,
-           expected: Optional[Dict[int, Tuple[int, int]]] = None) -> None:
+           expected: Optional[Dict[int, Tuple[int, int]]] = None,
+           forced_roll: int = 0) -> None:
     """Resolve chance nodes, optionally steering them to the outcome the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
@@ -288,7 +291,12 @@ def _drain(state: ts.GameState,
            and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
         if expected:
             _force_roll(state, expected)
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+        # A space race roll is given outright by the log ("Die roll: 5 -- Failed!"), and the
+        # chance node takes it directly, so there is nothing to search for. Leaving it to the
+        # engine's own stream advanced tracks the humans never advanced -- and since the log
+        # only prints a track on success, a wrong one was never corrected afterwards.
+        ts.Engine.step(state, ts.MicroAction(
+            ts.DecisionType.ROLL_DIE, forced_roll if 1 <= forced_roll <= 6 else 0, 0, 0))
 
 
 def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
@@ -698,6 +706,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     sections = list(e.sections) if len(e.sections or []) > 1 else []
     seed_settled = False
     cur_mode = e.mode
+    # The log states the space race die outright, so it is handed to the chance node rather
+    # than searched for. Any other roll in a space entry belongs to something else.
+    space_roll = int(e.die_rolls[0][0]) if (e.mode == "space" and e.die_rolls) else 0
     # Realignment only. It rolls once per target and prints the running result of each, so the
     # results have to be consumed in order. A coup rolls once but prints a line per side whose
     # influence moved, where only the last line is the country's settled value.
@@ -723,7 +734,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # picks a seed by draining the coup's own chance node, and re-seeding here threw that
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
         # success, because the war constraint it was re-seeded against was already satisfied.
-        _drain(state, None if seed_settled else war_outcome)
+        _drain(state, None if seed_settled else war_outcome, space_roll)
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
@@ -1231,6 +1242,19 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 conv.replay_id, e.turn, e.phase, e.player, e.card,
                 "board mismatch after replay",
                 f"{bad} {_board_diff(state, raw.get('countries'))}"))
+        # A space race attempt either advanced the track or it did not, and the log says which.
+        # Checked here rather than left to drift: the log prints a track only on success, so an
+        # advance the reconstruction invented would otherwise never be contradicted.
+        if e.mode == "space":
+            logged_tracks = {side: level for side, level in (e.space or [])}
+            for side, want_track in (("US", logged_tracks.get("US")),
+                                     ("USSR", logged_tracks.get("USSR"))):
+                got = int(state.us_space_track if side == "US" else state.ussr_space_track)
+                if want_track is not None and got != int(want_track):
+                    raise ConversionFailure(Mismatch(
+                        conv.replay_id, e.turn, e.phase, e.player, e.card,
+                        "space race track mismatch",
+                        f"{side} is on box {got}, the log says {int(want_track)}"))
         conv.entries_converted += 1
 
         if e.score is not None and int(state.victory_points) != int(e.score):
