@@ -141,6 +141,31 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
         state.defcon = int(entry.defcon)
 
 
+_RE_AR = re.compile(r"AR(\d+)")
+
+
+def _reconcile_turn(state: ts.GameState, entry: Entry) -> None:
+    """Force turn, action round and phasing player to the ones the log names.
+
+    The engine advances these itself, and any entry it could not drive faithfully leaves them
+    a step out. From then on every entry is attributed to the wrong player: at turn 2 AR6 of
+    replay 114 the log has the US placing influence and the engine had the USSR to move, so
+    nothing the entry described was legal. The log states whose action round it is outright.
+    """
+    if entry.turn:
+        state.turn = int(entry.turn)
+    m = _RE_AR.search(entry.phase or "")
+    if m:
+        state.action_round = int(m.group(1))
+    if entry.player == "US":
+        state.phasing_player = ts.Player.US
+    elif entry.player == "USSR":
+        state.phasing_player = ts.Player.USSR
+    ctx = state.ctx()
+    if ctx.decision_type == ts.DecisionType.SELECT_CARD and int(ctx.resolving_card) == 0:
+        ctx.decision_player = state.phasing_player
+
+
 def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
     """Force the board to the logged one. Returns the number of cells corrected."""
     fixed = 0
@@ -946,6 +971,7 @@ def convert_game(game: Dict) -> Conversion:
                 played[side].add(cid)
 
         before = len(conv.samples)
+        _reconcile_turn(state, e)
         _drive_entry(state, e, conv, raw)
 
         # --- did replaying our parsed actions reproduce the log's board? ---

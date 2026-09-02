@@ -201,8 +201,15 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
             }
 
-            // Check if coup is possible (KAL-007 & Glasnost forbid Coups)
-            if (op_card != card_ids::SOVIETS_SHOOT_DOWN_KAL_007 && op_card != card_ids::GLASNOST) {
+            // KAL-007 and Glasnost restrict the *free action their event grants*, not the card
+            // itself: played for Ops, either allows a coup like any other card. Barring it
+            // whenever the card was the Ops source conflated the two, and at turn 8 AR1 of
+            // ts-replayer game 105 the US played Glasnost for its 4 Ops and couped Mexico --
+            // which the engine could not do, so the Ops went into influence instead.
+            const bool free_action_bars_coup =
+                state.ctx().event_granted_ops
+                && (op_card == card_ids::SOVIETS_SHOOT_DOWN_KAL_007 || op_card == card_ids::GLASNOST);
+            if (!free_action_bars_coup) {
                 uint8_t coup_mask[84];
                 Operations::get_coup_target_mask(state, p, coup_mask);
                 for (uint8_t i = 0; i < 84; ++i) {
