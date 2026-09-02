@@ -65,6 +65,7 @@ RE_NO_VP = re.compile(r"No VP awarded\. Score is (?:(US|USSR) (\d+)|even)\.$")
 RE_TRAP = re.compile(r"Trap Roll: (\d+) (?:<=|>) (\d+) -- Trap (Escaped|Remains in Effect)$")
 RE_BARE_ROLL = re.compile(r"^(US|USSR) rolls (\d+)$")
 RE_EFFECT_END = re.compile(r"^(.+) is no longer in play\.$")
+RE_HEADLINE = re.compile(r"^(US|USSR) Headlines (.+)$")
 
 
 @dataclass
@@ -78,6 +79,7 @@ class Entry:
     mode: Optional[str] = None
     ops: Optional[int] = None
     influence: List[Tuple[str, int, int, int, int]] = field(default_factory=list)
+    ops_influence: List[Tuple[str, int, int, int, int]] = field(default_factory=list)
     coup_target: Optional[int] = None
     coup_roll: Optional[int] = None
     coup_success: Optional[bool] = None
@@ -92,6 +94,7 @@ class Entry:
     bare_rolls: List[Tuple[str, int]] = field(default_factory=list)
     effects_ended: List[str] = field(default_factory=list)
     score_assertions: List[int] = field(default_factory=list)
+    headlines: Dict[str, str] = field(default_factory=dict)
     unparsed: List[str] = field(default_factory=list)
 
 
@@ -114,10 +117,13 @@ def parse_entry(raw: Dict) -> Entry:
         score=raw.get("score") if isinstance(raw.get("score"), int) else None,
         defcon=raw.get("defcon") if isinstance(raw.get("defcon"), int) else None,
     )
+    in_event = False
     for line in str(raw.get("text", "")).split("\n"):
         line = line.strip()
         if not line:
             continue
+        if RE_EVENT.search(line):
+            in_event = True
 
         m = RE_INFLUENCE.match(line)
         if m:
@@ -125,14 +131,18 @@ def parse_entry(raw: Dict) -> Entry:
             if cid is None:
                 e.unparsed.append(line)
             else:
-                e.influence.append((m.group(1), int(m.group(2)), cid,
-                                    int(m.group(4)), int(m.group(5))))
+                rec = (m.group(1), int(m.group(2)), cid,
+                       int(m.group(4)), int(m.group(5)))
+                e.influence.append(rec)
+                if not in_event:
+                    e.ops_influence.append(rec)
             continue
         m = RE_MODE.match(line)
         if m:
             e.mode = {"Place Influence": "influence", "Coup": "coup",
                       "Realignment": "realign", "Realign": "realign"}[m.group(1)]
             e.ops = int(m.group(2))
+            in_event = False
             continue
         m = RE_TARGET.match(line)
         if m:
@@ -192,6 +202,10 @@ def parse_entry(raw: Dict) -> Entry:
         m = RE_BARE_ROLL.match(line)
         if m:
             e.bare_rolls.append((m.group(1), int(m.group(2))))
+            continue
+        m = RE_HEADLINE.match(line)
+        if m:
+            e.headlines[m.group(1)] = m.group(2).strip()
             continue
         m = RE_EFFECT_END.match(line)
         if m:
