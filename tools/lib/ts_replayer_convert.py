@@ -392,12 +392,33 @@ def event_queue(e: Entry) -> List[int]:
     replay 100 the event's Vietnam influence is automatic and never comes back as a decision,
     while at turn 1 AR3 the USSR plays Marshall Plan for Ops and the US still chooses all seven
     event placements -- but merging them let turn 3 AR4 spend Nasser's Op on an event target.
+
+    What a coup or realignment section removed is left out even when the section sits inside an
+    event, because that influence is the *result* of a die rather than a target anyone chose,
+    and the section drives the target itself through the Ops queue. Che's free coups print
+    their own "Coup (2 Ops):" headers inside the event, so ops_influence -- which holds only
+    what falls outside an event -- did not claim them: at turn 6 AR7 of replay 113 both coups
+    arrived here instead and were expanded by their influence delta, as if removing two US
+    Influence from Haiti were two placements. The event queue answers first while a card is
+    resolving, so it supplied the targets, nothing recognised them as coups, and the die was
+    never steered -- the engine rolled 3 and 1 against the log's 2 and 2.
+
+    Only rows naming that section's own target count. The parser hangs every influence line on
+    the section header above it, so an event's placements are attached to whatever Ops section
+    preceded them: at turn 1 AR3 of replay 100 the USSR plays Marshall Plan for Ops and the
+    seven US event placements land under its "Place Influence" header, and dropping those left
+    the US with nothing to place.
     """
     ops = list(e.ops_influence or [])
+    sectioned = [rec for s in (e.sections or []) if s.mode in ("coup", "realign")
+                 for rec in s.influence if rec[2] in s.targets]
     q: List[int] = list(e.war_targets or [])
     for rec in (e.influence or []):
         if rec in ops:
             ops.remove(rec)
+            continue
+        if rec in sectioned:
+            sectioned.remove(rec)
             continue
         q.extend([rec[2]] * abs(int(rec[1])))
     return q
