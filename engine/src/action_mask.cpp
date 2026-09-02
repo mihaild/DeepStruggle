@@ -68,8 +68,12 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // 3. Forced play (Missile Envy)
-            if (state.forced_card_player == p && state.forced_card_id != 0) {
+            // 3. Forced play (Missile Envy). Action rounds only: the card must be used "during
+            // their next action round", so it constrains no headline. At turn 6's headline of
+            // ts-replayer game 114 the USSR held Missile Envy from a turn 5 exchange and the
+            // engine would let them headline nothing else.
+            if (state.current_phase == Phase::ACTION_ROUND &&
+                state.forced_card_player == p && state.forced_card_id != 0) {
                 CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
                 if (state.card_locations[state.forced_card_id] == loc) {
                     mask_out[state.forced_card_id] = 1;
@@ -146,8 +150,11 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // Forced play (Missile Envy recipient must play for Operations)
-            if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
+            // Forced play (Missile Envy recipient must play for Operations), action rounds only
+            // for the same reason: a headlined card is played as its Event as usual.
+            if (state.current_phase == Phase::ACTION_ROUND &&
+                state.forced_card_player == p &&
+                (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
                 mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
                 return;
             }
