@@ -1144,6 +1144,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                         break
                 if chosen is not None:
                     break
+            if chosen is None and sections:
+                # Neither queue can answer, but the entry has more sections to come: this
+                # decision belongs to one of them. A headline holds two cards, and the queues
+                # do not separate them -- at turn 7's headline of replay 128 the USSR headlines
+                # Che and the US headlines Junta, and Che's coup was offered while the event
+                # queue still held Junta's two placements into Venezuela, a battleground Che
+                # may not touch. Declining there threw away both of Che's coups.
+                section = sections.pop(0)
+                pq[:] = section_queue(section)
+                step_outcomes[:] = section_outcomes(section)
+                cur_mode = section.mode
+                continue
             if chosen is None:
                 # An event can ask for more than the board can give: Suez Crisis removes four
                 # US Influence across France, the UK and Israel, and at turn 2 AR6 of replay
