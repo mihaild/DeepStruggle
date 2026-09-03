@@ -209,13 +209,20 @@ def _narrated_score(entry: Entry) -> Optional[int]:
     AR1 of replay 166 the log has just narrated the score to even, and the field still reads
     the USSR's 1 from the headline before it.
     """
+    # The last one stated, not the first: an entry can narrate the score more than once, and it
+    # is the value it leaves behind that the engine has to match. A headline states one per
+    # card -- at turn 2 of replay 100 the US takes 2 from Captured Nazi Scientist and the USSR
+    # then takes 1 from Europe Scoring, leaving 1, and asserting on the 2 called the engine
+    # wrong where it was right.
+    score = None
     for _side, _amount, total_side, total in (entry.vp_gains or []):
         if total_side == "US":
-            return int(total)
-        if total_side == "USSR":
-            return -int(total)
-        return 0                                   # "Score is even."
-    return None
+            score = int(total)
+        elif total_side == "USSR":
+            score = -int(total)
+        else:                                      # "Score is even."
+            score = 0
+    return score
 
 
 def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:

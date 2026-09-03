@@ -47,3 +47,21 @@ def test_every_listed_entry_really_is_unfinished() -> None:
             last = matching[-1]
             assert raws.index(last) == len(raws) - 1, (
                 f"replay {replay_id} T{turn} {phase} is not the last entry in the file")
+
+
+def test_an_entry_that_states_the_score_twice_is_read_at_its_end() -> None:
+    """A headline states one score per card, and it is the value it leaves that must match.
+
+    At turn 2 of replay 100 the US takes 2 VP from Captured Nazi Scientist and the USSR then
+    takes 1 from Europe Scoring, leaving the score at 1. Reading the first statement instead
+    asserted against 2 and called the engine wrong where it was right.
+    """
+    from tools.lib.ts_replayer_convert import _narrated_score
+
+    with gzip.open(os.path.join(CORPUS, "100.json.gz"), "rt") as f:
+        raws = json.load(f)["all_turns"]
+    headline = next(r for r in raws
+                    if (lambda e: e.turn == 2 and e.phase == "Headline")(parse_entry(r)))
+    entry = parse_entry(headline)
+    assert len(entry.vp_gains) == 2, "this headline states the score twice"
+    assert _narrated_score(entry) == 1
