@@ -27,15 +27,15 @@ TEST(MapTest, SuperpowerAdjacency) {
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::MEXICO, ts::Player::US));
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::CUBA, ts::Player::US));
 
-    // USSR: Finland(5), Poland(15), Romania(19), Turkey(12), Afghanistan(31), North Korea(43)
+    // USSR: Finland(5), Poland(15), Romania(19), Afghanistan(31), North Korea(43)
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::FINLAND, ts::Player::USSR));
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::POLAND, ts::Player::USSR));
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::ROMANIA, ts::Player::USSR));
-    ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::TURKEY, ts::Player::USSR));
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::AFGHANISTAN, ts::Player::USSR));
     ASSERT_TRUE(ts::MapData::is_adjacent_to_superpower(ts::countries::NORTH_KOREA, ts::Player::USSR));
 
-    // Bulgaria and Iran must NOT be adjacent to USSR
+    // Turkey, Bulgaria, and Iran must NOT be adjacent to USSR
+    ASSERT_FALSE(ts::MapData::is_adjacent_to_superpower(ts::countries::TURKEY, ts::Player::USSR));
     ASSERT_FALSE(ts::MapData::is_adjacent_to_superpower(ts::countries::BULGARIA, ts::Player::USSR));
     ASSERT_FALSE(ts::MapData::is_adjacent_to_superpower(ts::countries::IRAN, ts::Player::USSR));
 

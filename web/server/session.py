@@ -135,10 +135,13 @@ def describe_action_and_deltas(state_before: Any, state_after: Any, action: ts_e
     if state_before.get("defcon") != state_after.get("defcon"):
         logs.append(f"  • DEFCON: {state_before.get('defcon')} -> {state_after.get('defcon')}")
     if state_before.get("victory_points") != state_after.get("victory_points"):
-        vp_before = state_before.get("victory_points", 0)
-        vp_after = state_after.get("victory_points", 0)
-        vp_str = f"+{vp_after} (US)" if vp_after > 0 else (f"{vp_after} (USSR)" if vp_after < 0 else "0 (Tie)")
-        logs.append(f"  • Victory Points: {vp_before} -> {vp_str}")
+        vp_before = int(state_before.get("victory_points", 0))
+        vp_after = int(state_after.get("victory_points", 0))
+        vp_delta = vp_after - vp_before
+        delta_str = f"+{vp_delta} VP" if vp_delta > 0 else f"{vp_delta} VP"
+        vp_str_before = f"+{vp_before} (US)" if vp_before > 0 else (f"{vp_before} (USSR)" if vp_before < 0 else "0 (Tie)")
+        vp_str_after = f"+{vp_after} (US)" if vp_after > 0 else (f"{vp_after} (USSR)" if vp_after < 0 else "0 (Tie)")
+        logs.append(f"  • Victory Points: {vp_str_before} -> {vp_str_after} ({delta_str})")
     if state_before.get("us_mil_ops") != state_after.get("us_mil_ops"):
         logs.append(f"  • US MilOps: {state_before.get('us_mil_ops')} -> {state_after.get('us_mil_ops')}")
     if state_before.get("ussr_mil_ops") != state_after.get("ussr_mil_ops"):
@@ -426,6 +429,12 @@ class GameSession:
             self.history_snapshots.pop() # Remove snapshot on failed step
             return False
 
+        # If the action produced a ROLL_DIE chance node (Coup, Realignment, Space Race, War Events), resolve it!
+        while (not ts_engine.Engine.is_terminal(self.state)
+               and self.state.ctx().decision_player == ts_engine.Player.NONE
+               and self.state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE):
+            ts_engine.Engine.step(self.state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, secondary, 0, 0))
+
         self.step_index += 1
         state_after = cast(GameStateDict, self.state.to_dict())
         delta_lines = describe_action_and_deltas(state_before, state_after, action)
@@ -438,6 +447,10 @@ class GameSession:
         step_phase = str(state_before.get("current_phase_name", "ACTION"))
         step_ar = 0 if step_phase in ("HEADLINE", "SETUP") else state_before.get("action_round", self.state.action_round)
 
+        vp_before_step = int(state_before.get("victory_points", 0))
+        vp_after_step = int(state_after.get("victory_points", 0))
+        step_vp_delta = vp_after_step - vp_before_step
+
         log_entry = {
             "step_index": self.step_index,
             "turn": step_turn,
@@ -445,7 +458,8 @@ class GameSession:
             "phase": step_phase,
             "player": state_before.get("decision_context", {}).get("decision_player", "NONE"),
             "text": main_desc,
-            "details": delta_lines[1:] if len(delta_lines) > 1 else []
+            "details": delta_lines[1:] if len(delta_lines) > 1 else [],
+            "vp_delta": step_vp_delta
         }
         self.action_logs.append(log_entry)
 

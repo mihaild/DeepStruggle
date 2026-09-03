@@ -1457,3 +1457,218 @@ body {
   color: #60A5FA !important;
   font-weight: bold;
 }
+
+/* =============================================================================
+   China Card in Player Hand (1-line compact)
+   ============================================================================= */
+.china-hand-card {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.china-hand-card.face-up {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.1) 0%, #111827 100%);
+}
+
+.china-hand-card.face-down {
+  opacity: 0.6;
+  filter: grayscale(0.6);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.china-hand-card:hover {
+  border-color: #F59E0B;
+  transform: translateX(2px);
+}
+
+.china-status-pill {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.china-status-pill.playable {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.china-status-pill.face-down {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94A3B8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.card-name-single {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #F8FAFC;
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-star {
+  font-size: 11px;
+  color: #FDE047;
+  margin-left: 1px;
+}
+
+/* =============================================================================
+   HUD Candidate Target Action Buttons
+   ============================================================================= */
+.hud-targets-scroll-list::-webkit-scrollbar {
+  width: 4px;
+}
+.hud-targets-scroll-list::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 2px;
+}
+
+.btn-target-card {
+  transition: all 0.15s ease;
+  background: #1E293B;
+}
+
+.btn-target-card:hover {
+  background: #334155;
+  border-color: #60A5FA !important;
+  transform: translateX(2px);
+}
+
+/* =============================================================================
+   SVG Regional Scoring Badges
+   ============================================================================= */
+.svg-region-badge {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.svg-region-badge:hover rect {
+  stroke-width: 2.0;
+  fill: rgba(30, 41, 59, 0.98);
+}
+
+/* =============================================================================
+   Action Stream Filters & VP Context Highlighting
+   ============================================================================= */
+.log-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.log-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.log-filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim, #94A3B8);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.log-filter-checkbox:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+.log-filter-checkbox input[type="checkbox"] {
+  accent-color: #3B82F6;
+  cursor: pointer;
+}
+
+.log-context-separator {
+  text-align: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--text-dim, #64748B);
+  padding: 4px 0;
+  margin: 4px 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  letter-spacing: 1px;
+}
+
+.log-item.vp-target-event {
+  background: rgba(59, 130, 246, 0.12);
+  border-left: 3px solid #60A5FA;
+  border-radius: 4px;
+  box-shadow: inset 0 0 8px rgba(96, 165, 250, 0.1);
+}
+
+.log-vp-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #3B82F6;
+  color: #FFFFFF;
+  margin-left: 6px;
+  letter-spacing: 0.5px;
+}
+
+.log-die-line {
+  color: #FCD34D !important;
+  font-weight: 600;
+}
+
+.log-vp-line {
+  color: #60A5FA !important;
+  font-weight: bold;
+}
+
+.vp-delta-pill {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.vp-delta-pill.us {
+  background: rgba(59, 130, 246, 0.25);
+  color: #60A5FA;
+  border: 1px solid #3B82F6;
+}
+
+.vp-delta-pill.ussr {
+  background: rgba(239, 68, 68, 0.25);
+  color: #F87171;
+  border: 1px solid #EF4444;
+}
+
+.log-empty-msg {
+  color: var(--text-dim, #94A3B8);
+  text-align: center;
+  padding: 20px;
+  font-size: 11px;
+}

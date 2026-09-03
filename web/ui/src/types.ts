@@ -47,6 +47,25 @@ export interface ActionLogItem {
   player: string;
   text: string;
   details?: string[];
+  vp_delta?: number;
+}
+
+export interface DieRollState {
+  type: string;
+  type_id?: number;
+  roller?: string;
+  card_id?: number;
+  card_name?: string;
+  country_id?: number;
+  country_name?: string;
+  roll1?: number;
+  mod1?: number;
+  total1?: number;
+  roll2?: number;
+  mod2?: number;
+  total2?: number;
+  success?: boolean;
+  net_delta?: number;
 }
 
 export interface GameState {
@@ -66,6 +85,9 @@ export interface GameState {
   forced_card_id: number;
   space_turns_used: { US: number; USSR: number };
   china_card: { holder: 'US' | 'USSR'; playable: boolean };
+  die_roll?: DieRollState;
+  last_die_roll?: number;
+  last_opp_die_roll?: number;
   flags: string[];
   persistent_effects: number;
   countries: Record<string, CountryNode>;

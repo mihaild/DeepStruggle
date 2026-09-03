@@ -168,3 +168,83 @@ def test_die_roll_logged_in_action_stream():
     roll_logs = [line for line in delta_lines if "Korean War Roll" in line or "5" in line]
     assert len(roll_logs) > 0
     assert any("Korean War Roll targeting South Korea: USSR rolls 5" in line for line in delta_lines)
+
+
+def test_vp_delta_logged_with_signs():
+    from web.server.session import describe_action_and_deltas
+
+    # Case 1: USSR gains 2 VP (VP: 0 -> -2)
+    state_before = {
+        "decision_context": {"decision_player": "USSR"},
+        "victory_points": 0,
+        "countries": {},
+        "die_roll": {"type": "NONE"}
+    }
+    state_after = {
+        "decision_context": {"decision_player": "USSR"},
+        "victory_points": -2,
+        "countries": {},
+        "die_roll": {"type": "NONE"}
+    }
+    action = ts_engine.MicroAction(ts_engine.DecisionType.SELECT_PLAY_MODE, 0, 0, 0)
+    delta_lines = describe_action_and_deltas(state_before, state_after, action)
+    vp_logs = [l for l in delta_lines if "Victory Points:" in l]
+    assert len(vp_logs) == 1
+    assert "(-2 VP)" in vp_logs[0]
+
+    # Case 2: US gains 3 VP (VP: -1 -> +2)
+    state_before_us = {
+        "decision_context": {"decision_player": "US"},
+        "victory_points": -1,
+        "countries": {},
+        "die_roll": {"type": "NONE"}
+    }
+    state_after_us = {
+        "decision_context": {"decision_player": "US"},
+        "victory_points": 2,
+        "countries": {},
+        "die_roll": {"type": "NONE"}
+    }
+    delta_lines_us = describe_action_and_deltas(state_before_us, state_after_us, action)
+    vp_logs_us = [l for l in delta_lines_us if "Victory Points:" in l]
+    assert len(vp_logs_us) == 1
+    assert "(+3 VP)" in vp_logs_us[0]
+
+
+@pytest.mark.anyio
+async def test_session_handle_action_resolves_die_roll():
+    from web.server.session import GameSession
+    session = GameSession("test-die-roll-game", seed=42)
+
+    # USSR setup
+    await session.handle_action({"decision_type": 5, "primary_id": 14, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 5, "primary_id": 13, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 5, "primary_id": 0, "secondary_id": 0, "flags": 128})
+
+    # US setup
+    await session.handle_action({"decision_type": 5, "primary_id": 6, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 5, "primary_id": 7, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 5, "primary_id": 0, "secondary_id": 0, "flags": 128})
+
+    # Headline phase
+    await session.handle_action({"decision_type": 1, "primary_id": 24, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 1, "primary_id": 25, "secondary_id": 0, "flags": 0})
+
+    while session.state.to_dict()['current_phase_name'] == 'HEADLINE' or session.state.ctx().decision_type != ts_engine.DecisionType.SELECT_CARD:
+        valids = session.state.to_dict()['legal_actions']['valid_ids']
+        if not valids: break
+        await session.handle_action({"decision_type": int(session.state.ctx().decision_type), "primary_id": valids[0], "secondary_id": 0, "flags": 0})
+
+    # Play Ops -> Coup
+    c_ussr = list(session.state.to_dict()['hands']['USSR'])[0]
+    await session.handle_action({"decision_type": 1, "primary_id": c_ussr, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 2, "primary_id": 1, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 4, "primary_id": 1, "secondary_id": 0, "flags": 0})
+
+    # Execute Coup in country 40 with manual roll 5
+    await session.handle_action({"decision_type": 5, "primary_id": 40, "secondary_id": 5, "flags": 0})
+
+    # Verify that the die roll was logged in session.action_logs
+    coup_log = session.action_logs[-1]
+    details = coup_log.get("details", [])
+    assert any("🎲 Coup in" in d and "rolls 5" in d for d in details), f"Die roll not found in details: {details}"

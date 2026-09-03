@@ -396,11 +396,16 @@ export class CardsView {
     const discardCount = (state.discard_pile || []).length;
     const removedCount = (state.removed_pile || []).length;
 
+    const china = state.china_card || { holder: "USSR", playable: true };
     const ussrCountEl = document.getElementById("ussr-hand-count");
-    if (ussrCountEl) ussrCountEl.textContent = ussrCount.toString();
+    if (ussrCountEl) {
+      ussrCountEl.textContent = china.holder === "USSR" ? `${ussrCount} + 🇨🇳` : ussrCount.toString();
+    }
 
     const usCountEl = document.getElementById("us-hand-count");
-    if (usCountEl) usCountEl.textContent = usCount.toString();
+    if (usCountEl) {
+      usCountEl.textContent = china.holder === "US" ? `${usCount} + 🇨🇳` : usCount.toString();
+    }
 
     const discardCountEl = document.getElementById("discard-count");
     if (discardCountEl) discardCountEl.textContent = discardCount.toString();
@@ -433,13 +438,54 @@ export class CardsView {
     if (!container) return;
 
     container.innerHTML = "";
-    if (cardIds.length === 0) {
+
+    const china = state.china_card || { holder: "USSR", playable: true };
+    const holdsChina = china.holder === player;
+    const isCurrentDecision = state.decision_context?.decision_player === player && state.decision_context?.decision_type === 1;
+    const legalCards = new Set(state.legal_actions?.valid_ids || []);
+
+    // 1. Render China Card at top of hand if held by this player (Single-line)
+    if (holdsChina) {
+      const isChinaLegal = isCurrentDecision && (legalCards.has(6) || legalCards.size === 0) && china.playable;
+      const chinaEl = document.createElement("div");
+      chinaEl.className = `china-hand-card ${china.playable ? "face-up" : "face-down"} ${isChinaLegal ? "playable" : ""}`;
+
+      const meta = this.cardsMeta.get(6) || {
+        id: 6,
+        name: "The China Card",
+        ops: 4,
+        side: "neutral",
+        age: "early war",
+        description: "May be played as a normal 4 Ops card. If all Ops are spent in Asia, receive +1 Op (5 Ops total). Pass to opponent face down when played.",
+        one_time: false
+      };
+
+      chinaEl.innerHTML = `
+        <div class="card-item-era-bar era-early" style="background: #F59E0B;"></div>
+        <div class="card-ops-badge neutral">4</div>
+        <div class="card-name-single">
+          🇨🇳 #6 The China Card
+        </div>
+        <span class="china-status-pill ${china.playable ? "playable" : "face-down"}">
+          ${china.playable ? "✓ Face Up" : "✕ Face Down"}
+        </span>
+      `;
+
+      chinaEl.addEventListener("mouseenter", (e) => this.showTooltip(e, meta));
+      chinaEl.addEventListener("mouseleave", () => this.hideTooltip());
+      if (isChinaLegal) {
+        chinaEl.addEventListener("click", () => {
+          this.onCardClick(6);
+        });
+      }
+
+      container.appendChild(chinaEl);
+    }
+
+    if (cardIds.length === 0 && !holdsChina) {
       container.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 20px; font-size: 11px;">Hand is empty</div>`;
       return;
     }
-
-    const isCurrentDecision = state.decision_context?.decision_player === player && state.decision_context?.decision_type === 1;
-    const legalCards = new Set(state.legal_actions?.valid_ids || []);
 
     cardIds.forEach(id => {
       const meta = this.cardsMeta.get(id) || {
@@ -460,10 +506,11 @@ export class CardsView {
 
       cardEl.innerHTML = `
         <div class="card-item-era-bar ${eraClass}"></div>
-        <div class="card-ops-badge ${meta.side}">${meta.ops}</div>
-        <div class="card-info">
-          <div class="card-name">#${meta.id} ${meta.name} ${meta.one_time ? "★" : ""}</div>
-          <div class="card-meta">${meta.age.toUpperCase()} • ${meta.side.toUpperCase()}</div>
+        <div class="card-ops-badge ${meta.side}">
+          ${meta.ops}${meta.one_time ? '<span class="card-star" title="Remove after event">★</span>' : ''}
+        </div>
+        <div class="card-name-single">
+          #${meta.id} ${meta.name}
         </div>
       `;
 
