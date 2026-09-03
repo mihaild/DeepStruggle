@@ -558,6 +558,13 @@ class GameState:
 
     def to_json(self) -> str: ...
 
+class StateMachine:
+    @staticmethod
+    def advance_headline_step(state: GameState, /) -> None: ...
+
+    @staticmethod
+    def advance_after_action_round(state: GameState, /) -> None: ...
+
 class Engine:
     @staticmethod
     def init_game(arg0: GameState, arg1: int, /) -> None: ...

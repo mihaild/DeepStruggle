@@ -6,8 +6,11 @@ import os
 import tempfile
 import pytest
 
-from tools.extract_its_games import init_its_db, insert_its_match, show_its_database_stats
-from tools.parse_its_to_warmup import parse_playdek_line, parse_its_database
+try:
+    from tools.extract_its_games import init_its_db, insert_its_match, show_its_database_stats
+    from tools.parse_its_to_warmup import parse_playdek_line, parse_its_database
+except ImportError:
+    pytestmark = pytest.mark.skip(reason="ITS parsing tools not present in this build")
 from bindings.action_encoder import ActionEncoder
 
 
