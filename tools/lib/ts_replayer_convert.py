@@ -217,11 +217,18 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
             state.us_space_track = int(level)
         else:
             state.ussr_space_track = int(level)
-    for side, level in (entry.milops or []):
-        if side == "US":
-            state.us_mil_ops = int(level)
-        else:
-            state.ussr_mil_ops = int(level)
+    # Military operations belong to the turn the entry is in, and the engine zeroes them when
+    # that turn ends. Reconciling them from an entry of an earlier turn carries the old counts
+    # across the boundary and cancels the end-of-turn comparison: at turn 6 of replay 60 the US
+    # entered with the 5 they had finished turn 5 on, where the log has them at 0 all turn, so
+    # neither side showed a deficit against DEFCON 2 and the 2 VP the USSR was owed never
+    # moved. Seven entries later that missing 2 ended the game at 20.
+    if entry.turn is None or int(entry.turn) == int(state.turn):
+        for side, level in (entry.milops or []):
+            if side == "US":
+                state.us_mil_ops = int(level)
+            else:
+                state.ussr_mil_ops = int(level)
     # Clear ongoing effects the log says have ended. An effect that outlives its expiry can
     # make later play illegal outright: a stale Cuban Missile Crisis makes every USSR coup an
     # instant loss, which is how turn 6 AR3 of replay 104 ended the game at DEFCON 3 with the
@@ -1644,7 +1651,17 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         # initialisation stands in for, so anything scored there is scored on a board the log
         # has not yet corrected.
         want_score = _narrated_score(e) if prev_entry is not None else None
-        if want_score is not None and int(state.turn) == turn_before:
+        crossed_turn = int(state.turn) != turn_before
+        if want_score is None and prev_entry is not None and e.score is not None:
+            # A score field that has *moved* since the entry before has been brought up to
+            # date, and is worth asserting on even where nothing was narrated -- it is where
+            # the Military Operations comparison at a turn end finally shows up, the one score
+            # change the log never states in words. A field that merely repeats the previous
+            # entry's is stale and says nothing.
+            if prev_entry.score is not None and int(e.score) != int(prev_entry.score):
+                want_score = int(e.score)
+                crossed_turn = False
+        if want_score is not None and not crossed_turn:
             if int(state.victory_points) != want_score:
                 del conv.samples[before:]
                 raise ConversionFailure(Mismatch(
