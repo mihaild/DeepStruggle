@@ -63,7 +63,10 @@ RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
 # to choose, so this line is the only record of what the humans rolled.
 RE_WAR_RESULT = re.compile(
     r"^(VICTORY|DEFEAT): (\d+)(?: \(([+-]?\d+)\))? *(?:>=|<) *(\d+)$")
-RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+) \(([+-]\d+)\) = (-?\d+)$")
+# The modifier and total are only printed when there is a modifier: "USSR rolls 2" is as
+# much a realignment roll as "US rolls 4 (+3) = 7". Both are kept here, in log order, so
+# the pair belonging to one realignment stays together.
+RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+)(?: \(([+-]\d+)\) = (-?\d+))?$")
 RE_DIE = re.compile(r"Die roll: (\d+) -- (Success!|Failed!) \(Needed (\d+) or less\)$")
 RE_VP = re.compile(r"(US|USSR) gains (\d+) VP\. Score is (US|USSR) (\d+)\.$")
 RE_DEFCON = re.compile(r"DEFCON (degrades|improves) to (\d+)$")
@@ -298,8 +301,10 @@ def parse_entry(raw: Dict) -> Entry:
             continue
         m = RE_REALIGN_ROLL.match(line)
         if m:
-            e.realign_rolls.append((m.group(1), int(m.group(2)), int(m.group(3)),
-                                    int(m.group(4))))
+            _roll = int(m.group(2))
+            _mod = int(m.group(3)) if m.group(3) else 0
+            e.realign_rolls.append((m.group(1), _roll, _mod,
+                                    int(m.group(4)) if m.group(4) else _roll))
             continue
         m = RE_DIE.search(line)
         if m:

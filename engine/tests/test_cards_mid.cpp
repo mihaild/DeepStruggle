@@ -840,7 +840,8 @@ TEST(MidCardsTest, Card81_SouthAmericaScoring) {
     ASSERT_TRUE(state.victory_points != 0 || state.victory_points == 0);
 }
 
-// Card 107: Che
+// Card 107: Che. The coup resolves at a chance node between the target choice and the result,
+// as every other die in the engine does; the die may be supplied at either.
 TEST(MidCardsTest, Card107_Che) {
     ts::GameState state{};
     state.countries[ts::countries::COLOMBIA].us_influence = 2; // Non-BG in SA
@@ -848,14 +849,36 @@ TEST(MidCardsTest, Card107_Che) {
     ts::CardHandlers::trigger_event(state, ts::card_ids::CHE, ts::Player::USSR);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
 
-    // Roll 6 -> coup value: 6 + 3 - 2*1 = 7. Removes 2 US and adds 5 USSR
+    // Choosing the target opens the roll rather than settling it.
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::COLOMBIA, 6, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::NONE);
+    ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 2); // nothing yet
+
+    // Roll 6 -> coup value: 6 + 3 - 2*1 = 7. Removes 2 US and adds 5 USSR.
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0});
     ASSERT_FALSE(done); // Second coup is offered because US influence was removed
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 0);
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].ussr_influence, 5);
     // Pass second coup
     done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, 0, 0, ts::action_flags::CONFIRM_DONE});
     ASSERT_TRUE(done);
+}
+
+// The die may equally be given at the chance node itself, which is where a caller that does not
+// know the target in advance -- a replay driver draining chance nodes -- supplies it.
+TEST(MidCardsTest, Card107_Che_DieMayBeGivenAtTheChanceNode) {
+    ts::GameState state{};
+    state.countries[ts::countries::COLOMBIA].us_influence = 2;
+    state.countries[ts::countries::COLOMBIA].ussr_influence = 0;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::CHE, ts::Player::USSR);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::COLOMBIA, 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 0);
+    ASSERT_EQ(state.countries[ts::countries::COLOMBIA].ussr_influence, 5);
 }
 
 // Card 108: Our Man in Tehran

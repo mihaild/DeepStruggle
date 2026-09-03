@@ -311,11 +311,13 @@ def test_fix_card_107_che_ca_sa_africa_conditional_second_coup():
     set_inf(s, colombia_id, 2, 0)
     set_inf(s, peru_id, 2, 0)
     ts.CardHandlers.trigger_event(s, 107, ts.Player.USSR)
-    # First coup in Colombia with forced roll 6 -> removes 2 US, adds 5 USSR
-    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, colombia_id, 6))
+    # Each coup is two steps: the target choice, then the chance node it opens.
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, colombia_id, 6))
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0))
     assert not done # Second coup offered because US influence removed!
     # Second coup in Peru with forced roll 6 -> removes 2 US, adds 3 USSR
-    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, peru_id, 6))
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, peru_id, 6))
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0))
     assert done == True
     assert get_inf(s, colombia_id)[0] == 0
     assert get_inf(s, peru_id)[0] == 0

@@ -278,8 +278,9 @@ def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
     return fixed
 
 
-def _pending_roll_type(state: ts.GameState) -> int:
-    """What the chance node about to resolve is for, as the engine itself classifies it.
+def _pending_roll(state: ts.GameState) -> Tuple[int, str]:
+    """What the chance node about to resolve is for and whose roll it is, as the engine
+    itself classifies them.
 
     The RollType is kept in the context's temp_cards, which reach Python trimmed to
     temp_card_cnt and so do not include it. Rather than infer the kind from the card -- an
@@ -291,14 +292,17 @@ def _pending_roll_type(state: ts.GameState) -> int:
     try:
         ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
     except Exception:
-        return int(ts.RollType.NONE)
-    return int(probe.to_dict()["die_roll"]["type_id"])
+        return int(ts.RollType.NONE), "NONE"
+    record = probe.to_dict()["die_roll"]
+    return int(record["type_id"]), str(record["roller"])
 
 
 def _drain(state: ts.GameState,
            expected: Optional[Dict[int, Tuple[int, int]]] = None,
            forced_roll: int = 0,
-           war_rolls: Optional[List[int]] = None) -> None:
+           war_rolls: Optional[List[int]] = None,
+           coup_rolls: Optional[List[int]] = None,
+           realign_rolls: Optional[List[Tuple[str, int]]] = None) -> None:
     """Resolve chance nodes, steering them to what the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
@@ -320,8 +324,21 @@ def _drain(state: ts.GameState,
         # Each die goes to the kind of roll it was recorded for. A coup and a war can share an
         # entry -- at turn 6 AR4 of replay 121 the US coups Tunisia and then loses the Korean
         # War -- so the roll type decides, not the order they happen to arrive in.
-        if war_rolls and _pending_roll_type(state) == int(ts.RollType.WAR_EVENT):
+        second = 0
+        kind, roller = _pending_roll(state) if (war_rolls or coup_rolls or realign_rolls) \
+            else (int(ts.RollType.NONE), "NONE")
+        if war_rolls and kind == int(ts.RollType.WAR_EVENT):
             roll = war_rolls.pop(0)
+        elif coup_rolls and kind == int(ts.RollType.COUP):
+            roll = coup_rolls.pop(0)
+        elif realign_rolls and kind == int(ts.RollType.REALIGNMENT):
+            # A realignment rolls for both sides at once. The engine reads the acting player's
+            # die from primary_id and the opponent's from secondary_id, and says which player
+            # is acting, so the pair is matched by side rather than by the order printed.
+            pair = {side: die for side, die in realign_rolls[:2]}
+            del realign_rolls[:2]
+            other = "USSR" if roller == "US" else "US"
+            roll, second = pair.get(roller, 0), pair.get(other, 0)
         elif expected:
             _force_roll(state, expected)
         # A space race roll is given outright by the log ("Die roll: 5 -- Failed!"), and the
@@ -329,7 +346,8 @@ def _drain(state: ts.GameState,
         # engine's own stream advanced tracks the humans never advanced -- and since the log
         # only prints a track on success, a wrong one was never corrected afterwards.
         ts.Engine.step(state, ts.MicroAction(
-            ts.DecisionType.ROLL_DIE, roll if 1 <= roll <= 6 else 0, 0, 0))
+            ts.DecisionType.ROLL_DIE, roll if 1 <= roll <= 6 else 0,
+            second if 1 <= second <= 6 else 0, 0))
 
 
 def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
@@ -754,6 +772,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # The die each war in this entry was decided on, in log order.
     war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     coup_roll_queue = [int(r) for r, _ok in (e.coup_rolls or [])]
+    realign_roll_queue = [(side, int(r)) for side, r, _m, _t in (e.realign_rolls or [])]
     # A war with a fixed target resolves in a chance node, so its outcome has to be steered
     # there rather than at a decision. Only the war's own countries are constrained: the rest
     # of the entry has not happened yet at that point.
@@ -825,7 +844,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # picks a seed by draining the coup's own chance node, and re-seeding here threw that
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
         # success, because the war constraint it was re-seeded against was already satisfied.
-        _drain(state, None if seed_settled else war_outcome, space_roll, war_roll_queue)
+        _drain(state, None if seed_settled else war_outcome, space_roll,
+               war_roll_queue, coup_roll_queue, realign_roll_queue)
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
@@ -887,7 +907,6 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         chosen: Optional[int] = None
         # Reset per decision: a stale value would misread the next target's provenance.
         target_from_ops = False
-        coup_die = 0
         informative = False
 
         if (dt == ts.DecisionType.SELECT_CARD and picked_card
@@ -1211,8 +1230,10 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # touches the same country: at turn 4's headline of replay 129 the US headlines
             # Junta and coups Panama, then the USSR's Liberation Theology places an Influence
             # there, so the expectation held Panama's final [1][1] and no roll could produce it.
-            if rolled and cur_mode == "coup" and coup_roll_queue:
-                coup_die = coup_roll_queue.pop(0)
+            if rolled and cur_mode == "realign" and realign_roll_queue:
+                pass   # likewise: both dice are given at the realignment's chance node
+            elif rolled and cur_mode == "coup" and coup_roll_queue:
+                pass   # settled at the chance node the target choice opens
             elif rolled and force_outcome(state, chosen, outcome):
                 seed_settled = True
             elif rolled:
@@ -1234,12 +1255,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                  1 if mover == ts.Player.US else -1))
             conv.decisions_emitted += 1
 
-        if coup_die:
-            ma = ts.ActionMask.decode_flat_action(state, int(chosen))
-            ts.Engine.step(state, ts.MicroAction(
-                ma.decision_type, int(ma.primary_id), coup_die, 0))
-        else:
-            ts.Engine.step_flat(state, int(chosen))
+        ts.Engine.step_flat(state, int(chosen))
 
     return True
 

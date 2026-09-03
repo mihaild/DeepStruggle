@@ -777,7 +777,10 @@ class TestMidWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 107, ts_engine.Player.USSR)
         assert done == False
         uru_id = country_id("Uruguay")
+        # The target choice opens the coup's chance node; the die resolves it.
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, uru_id, 6))
+        assert state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE
+        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, 0, 0))
         us_inf, ussr_inf = get_inf(state, "Uruguay")
         assert us_inf == 0
         assert ussr_inf == 3

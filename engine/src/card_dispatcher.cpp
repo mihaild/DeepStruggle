@@ -1328,6 +1328,32 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::CHE: {
+            // The coup resolves at a chance node of its own, like every other die in the
+            // engine. Rolling it here, inside the target choice, left it the one coup a caller
+            // could not steer without knowing to put the value in secondary_id.
+            if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
+                uint8_t cid = state.ctx().temp_cards[3];
+                uint8_t forced = (action.primary_id >= 1 && action.primary_id <= 6)
+                                     ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
+                auto coup_res = Operations::execute_coup(state, Player::USSR, cid, che_ops, forced);
+                state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + che_ops));
+
+                // If US influence was removed and this was coup 1, offer coup 2
+                if (coup_res.opp_inf_removed > 0 && state.ctx().temp_cards[0] == 0) {
+                    state.ctx().mark_visited(cid);
+                    state.ctx().temp_cards[0] = cid + 1; // Mark stage 2
+                    state.ctx().temp_cards[2] = 0;
+                    state.ctx().decision_player = Player::USSR;
+                    state.ctx().decision_type = DecisionType::POINT_NODE;
+                    state.ctx().remaining_steps = 1;
+                    state.ctx().allow_early_stop = 1;
+                    state.ctx().resolving_card = card_ids::CHE;
+                    return false;
+                }
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
@@ -1337,28 +1363,27 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             if (cid < 84 && !c_info.battleground &&
                 (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA || c_info.region == Region::AFRICA) &&
                 !state.ctx().is_visited(cid)) {
-
-                uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
-                auto coup_res = Operations::execute_coup(state, Player::USSR, cid, che_ops, action.secondary_id);
-                state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + che_ops));
-
-                // If US influence was removed and this was coup 1, offer coup 2
-                if (coup_res.opp_inf_removed > 0 && state.ctx().temp_cards[0] == 0) {
-                    state.ctx().mark_visited(cid);
-                    state.ctx().temp_cards[0] = cid + 1; // Mark stage 2
-                    state.ctx().decision_player = Player::USSR;
-                    state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = 1;
-                    state.ctx().allow_early_stop = 1;
-                    state.ctx().resolving_card = card_ids::CHE;
-                    return false;
-                }
+                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
+                state.ctx().temp_cards[2] = action.secondary_id;
+                state.ctx().temp_cards[3] = cid;
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
+                return false;
             }
             state.ctx().resolving_card = 0;
             return true;
         }
 
         case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
+            if (state.ctx().decision_type == DecisionType::ROLL_DIE) {   // as Che, above
+                uint8_t target_cid = state.ctx().temp_cards[3];
+                uint8_t forced = (action.primary_id >= 1 && action.primary_id <= 6)
+                                     ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t ortega_ops = Operations::get_modified_ops(state, 2, Player::USSR);
+                Operations::execute_coup(state, Player::USSR, target_cid, ortega_ops, forced);
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
                 return true;
@@ -1370,8 +1395,12 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (nic.neighbors[n] == target_cid) { is_adj = true; break; }
             }
             if (is_adj && target_cid < 84) {
-                uint8_t ortega_ops = Operations::get_modified_ops(state, 2, Player::USSR);
-                Operations::execute_coup(state, Player::USSR, target_cid, ortega_ops, action.secondary_id);
+                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
+                state.ctx().temp_cards[2] = action.secondary_id;
+                state.ctx().temp_cards[3] = target_cid;
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
+                return false;
             }
             state.ctx().resolving_card = 0;
             return true;
