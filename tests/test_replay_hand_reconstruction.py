@@ -99,12 +99,26 @@ def test_the_keeping_order_is_ops_then_side() -> None:
             pytest.fail("US and neutral cards come before USSR ones at the same Ops")
 
 
-def test_a_hand_is_topped_up_to_the_size_actually_dealt() -> None:
-    """A player who carries a card over never reveals it, so the list runs short."""
+def test_an_ordinarily_short_hand_is_left_as_the_log_has_it() -> None:
+    """A player who carries a card over never reveals it, so most lists run one short.
+
+    Those are left alone, wrong hand size and all, rather than guessed at: inventing a card is
+    not free, because the rules read the hand where inventing changes what they read.
+    """
     state = ts.GameState()
     ts.Engine.init_game(state, 12345)
     held = [c for c in range(1, 111)
             if state.get_card_location(c) == ts.CardLocation.HAND_US][:8]
+    assert _pad_hand(state, held, 9, None, set(held)) == held
+
+
+def test_an_obviously_truncated_hand_is_still_filled() -> None:
+    """A game that stopped mid-turn leaves a hand of one or two, which is not a position
+    anyone played from."""
+    state = ts.GameState()
+    ts.Engine.init_game(state, 12345)
+    held = [c for c in range(1, 111)
+            if state.get_card_location(c) == ts.CardLocation.HAND_US][:2]
     padded = _pad_hand(state, held, 9, None, set(held))
     assert len(padded) == 9
     assert not any(ts.CardData.get_card_info(c)["is_scoring"] for c in padded), (

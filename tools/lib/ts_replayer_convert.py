@@ -150,27 +150,21 @@ def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional
     the human faced, and Missile Envy in particular reads the whole hand. Scoring cards are
     never used as padding -- holding one at the end of a turn loses the game outright.
     """
-    # Topped up to the size actually dealt, not only where the log is obviously truncated. A
-    # turn's list is the cards that became *visible* during it, and a player who carries a card
-    # over to the next turn never reveals it: 47% of the lists in the corpus are exactly one
-    # card short, and 10% two. Leaving them short would train the model on hands that cannot
-    # occur, one card smaller than the rules deal.
-    #
-    # What is added is chosen so it cannot change what the log records: never a scoring card,
-    # which would lose the game if held at the end of a turn, and never one whose Ops could
-    # displace a card the log shows being revealed -- Missile Envy takes the highest Ops card
-    # in hand, so a padded card above that cap would be handed over instead.
+    # Only where the log is obviously truncated, which means a game that stopped mid-turn. A
+    # turn's list is the cards that became *visible* during it, so a hand one or two short is
+    # the ordinary case -- a player who carries a card over to the next turn never reveals it,
+    # and 47% of the corpus's lists are exactly one card short. Those are left as the log has
+    # them, wrong hand size and all, until there is a heuristic worth trusting for what was
+    # held: inventing a card is not free, because the rules read the hand in places that
+    # inventing changes -- Blockade and Latin American Debt Crisis ask whether a 3 Ops card is
+    # held, and a trap is escaped by playing a 2 Ops card.
+    if len(held) >= size - 2:
+        return list(held)
     pool = [c for c in range(1, 111)
             if c not in held and c not in taken
             and state.get_card_location(c) == ts.CardLocation.DRAW_DECK
             and not ts.CardData.get_card_info(c)["is_scoring"]
             and (ops_cap is None or int(ts.CardData.get_card_info(c)["ops"]) < ops_cap)]
-    # A padded card is never played -- the log says what was played -- but the rules read the
-    # hand in places, and what is read there changes what the engine offers: Blockade and Latin
-    # American Debt Crisis ask whether the player holds a 3 Ops card to discard, and a trap is
-    # escaped by playing a 2 Ops card. Ordering the pool to dodge those was tried and measured
-    # worse than leaving it alone -- lowest Ops first, and preferring below 3 Ops, each cost two
-    # games rather than saving any -- so the pool is taken in card order.
     return list(held) + pool[:size - len(held)]
 
 
