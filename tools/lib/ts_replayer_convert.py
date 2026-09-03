@@ -546,6 +546,33 @@ _FIVE_YEAR_PLAN = 5
 _UN_INTERVENTION = 32
 _GRAIN_SALES = 67
 _OUR_MAN_IN_TEHRAN = 108
+_MISSILE_ENVY = 49
+
+
+def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player) -> None:
+    """Make the card the log says was handed over the highest Ops one the giver holds.
+
+    Missile Envy takes the opponent's highest Ops card, so the engine's choice is forced by the
+    hand -- and a hand holding one card too many chooses differently. The turn's hand list is
+    everything a player held during the turn, including what they picked up part way through:
+    at turn 5 of replay 64 the US list contains Red Scare/Purge, 4 Ops, which they did not have
+    at AR3 at all -- they retrieved it from the discard pile with SALT Negotiations at AR7. Our
+    reconstruction handed it over, where the human handed over Suez Crisis at 3.
+
+    Anything strictly higher than the card the log names was demonstrably not in that hand yet,
+    so it is set aside. _apply_hands rebuilds the hand from the tracked list at the next entry,
+    so this reaches no further than the event it fixes.
+    """
+    loc = ts.CardLocation.HAND_US if giver == ts.Player.US else ts.CardLocation.HAND_USSR
+    want = int(ts.CardData.get_card_info(revealed)["ops"])
+    for c in range(1, 111):
+        if c == revealed or state.get_card_location(c) != loc:
+            continue
+        info = ts.CardData.get_card_info(c)
+        if not info["is_scoring"] and int(info["ops"]) > want:
+            state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
+    if state.get_card_location(revealed) != loc:
+        state.set_card_location(revealed, loc)
 
 
 def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
@@ -769,6 +796,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     random_discards = list(discard_queue) if plays_five_year_plan else []
     seeded_peek = False
     seeded_reveal = False
+    # Missile Envy's exchange is decided by the hand, not by a decision, so the hand has to be
+    # right before the event fires rather than steered once it asks.
+    if (cid_target == _MISSILE_ENVY or _MISSILE_ENVY in headline_ids.values()) and reveal_queue:
+        giver = ts.Player.US if (e.revealed or [("US", "")])[0][0] == "US" else ts.Player.USSR
+        _seed_missile_envy_hand(state, reveal_queue[0], giver)
     # The die each war in this entry was decided on, in log order.
     war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     coup_roll_queue = [int(r) for r, _ok in (e.coup_rolls or [])]
