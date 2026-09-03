@@ -30,6 +30,7 @@ set(TS_SOURCES
     src/state_machine.cpp
     src/observation.cpp
     src/serialization.cpp
+    src/invariant.cpp
     src/engine.cpp
 )
 

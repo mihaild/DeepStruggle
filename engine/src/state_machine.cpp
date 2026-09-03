@@ -13,6 +13,24 @@
 
 namespace ts {
 
+namespace {
+
+// Does the pending POINT_NODE have any legal country to point at? Asked of generate_mask
+// rather than the flat mask so that checking cannot itself re-report the anomaly.
+bool has_legal_point_target(const GameState& state) noexcept {
+    uint8_t buf[FLAT_ACTION_SPACE_SIZE] = {0};
+    size_t n = 0;
+    ActionMask::generate_mask(state, buf, &n);
+    const size_t limit = (n < 84) ? n : 84;
+    for (size_t i = 0; i < limit; ++i) {
+        if (buf[i]) return true;
+    }
+    return false;
+}
+
+} // namespace
+
+
 void StateMachine::add_era_cards_to_deck(GameState& state, WarEra era) noexcept {
     for (uint8_t i = 1; i <= 110; ++i) {
         if (i == card_ids::THE_CHINA_CARD) continue; // The China Card is not in deck
@@ -616,8 +634,17 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 // to land on the value it already had -- a real continuation that a
                 // three-field test called a defect.
                 if (std::memcmp(&before_ctx, &state.ctx(), sizeof(DecisionContext)) == 0) {
-                    invariant_failed("event handler did not consume a confirm-done; card",
-                                     static_cast<int>(before_card));
+                    // One sanctioned exception: a POINT_NODE the board cannot offer a single
+                    // legal target for. The decline is then the escape the mask added rather
+                    // than a choice the card was written to understand, and ending the event
+                    // is right -- an event does as much as the board allows. The mask has
+                    // already reported that position in full, so it is not lost here.
+                    if (state.ctx().decision_type != DecisionType::POINT_NODE ||
+                        has_legal_point_target(state)) {
+                        invariant_failed("event handler did not consume a confirm-done; card",
+                                         static_cast<int>(before_card));
+                    }
+                    finished = true;
                 }
             }
             if (finished) {
@@ -1094,24 +1121,6 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     return true;
                 }
 
-                return false;
-            }
-
-            case DecisionType::CHOOSE_BRANCH: {
-                if (state.ctx().resolving_card != 0) {
-                    bool finished = CardHandlers::handle_event_step(state, action);
-                    if (finished || action.is_confirm_done()) {
-                        state.ctx().resolving_card = 0;
-                        if (state.ctx_stack_depth > 0) {
-                            state.pop_context();
-                        } else if (state.current_phase == Phase::HEADLINE) {
-                            advance_headline_step(state);
-                        } else {
-                            advance_after_action_round(state);
-                        }
-                    }
-                    return true;
-                }
                 return false;
             }
 

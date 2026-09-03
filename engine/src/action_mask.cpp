@@ -1,4 +1,5 @@
 #include "ts/action_mask.hpp"
+#include "ts/invariant.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
 #include "ts/card_handlers.hpp"
@@ -431,16 +432,27 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             }
             break;
 
-        case DecisionType::POINT_NODE:
+        case DecisionType::POINT_NODE: {
+            bool any_target = false;
             for (size_t i = 0; i < 84 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
                     mask_212[119 + i] = 1;
+                    any_target = true;
                 }
             }
             if (ctx.allow_early_stop) {
                 mask_212[211] = 1;
+            } else if (!any_target) {
+                // A mandatory choice the board cannot supply a single legal target for. The
+                // mask would otherwise be empty and the game would sit on this decision until
+                // something else timed out, far from the cause. Report the position in full and
+                // let the player decline, so the failure is loud and immediate rather than a
+                // deadlock discovered hours later in a training run.
+                report_anomaly("POINT_NODE with no legal target and no early stop", state);
+                mask_212[211] = 1;
             }
             break;
+        }
 
         case DecisionType::CHOOSE_BRANCH:
             for (size_t i = 0; i < 8 && i < temp_size; ++i) {

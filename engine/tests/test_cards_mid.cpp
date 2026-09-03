@@ -442,6 +442,56 @@ TEST(MidCardsTest, Card33_DeStalinization_DeclineAfterTwoRemovalsContinuesToPlac
     ASSERT_EQ(state.ctx().allow_early_stop, 0);  // all removed Influence must be placed
 }
 
+// A mandatory choice the board cannot supply a target for used to leave an empty mask, and a
+// game sitting on that decision until something unrelated timed out. Muslim Revolution removes
+// US Influence from two Middle Eastern countries; with none on the board there is nothing legal
+// to point at. The engine now reports the whole position and offers the decline, so the event
+// does as much as the board allows and the failure is loud and immediate.
+TEST(MidCardsTest, PointNodeWithNoLegalTargetOffersTheDeclineInsteadOfDeadlocking) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    for (uint8_t i = 0; i < 84; ++i) {
+        state.countries[i].us_influence = 0;
+    }
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::MUSLIM_REVOLUTION, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().allow_early_stop, 0);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    uint8_t targets = 0;
+    for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
+    ASSERT_EQ(targets, 0);
+    ASSERT_EQ(mask[211], 1);   // the escape, not an empty mask
+
+    // And taking it ends the event rather than tripping the confirm-done invariant.
+    ts::MicroAction decline = ts::ActionMask::decode_flat_action_212(state, 211);
+    ASSERT_TRUE(ts::Engine::step(state, decline));
+    ASSERT_EQ(state.ctx().resolving_card, 0);
+}
+
+// The escape is only for a board with nothing legal on it. Where targets exist the decision
+// stays mandatory and no decline is offered.
+TEST(MidCardsTest, PointNodeWithLegalTargetsStillOffersNoDecline) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.countries[ts::countries::IRAN].us_influence = 2;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::MUSLIM_REVOLUTION, ts::Player::USSR);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    uint8_t targets = 0;
+    for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
+    ASSERT_GT(targets, 0);
+    ASSERT_EQ(mask[211], 0);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};
