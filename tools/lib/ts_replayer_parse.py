@@ -128,6 +128,9 @@ class Entry:
     # the choice is invisible and the wrong branch plays the opponent's card.
     returned_card: Optional[str] = None
     coup_roll: Optional[int] = None
+    # (die, succeeded) per coup resolved in this entry, in log order. coup_roll above
+    # keeps only the last, and an entry can hold several -- Che coups twice.
+    coup_rolls: List[Tuple[int, bool]] = field(default_factory=list)
     coup_success: Optional[bool] = None
     realign_rolls: List[Tuple[str, int, int, int]] = field(default_factory=list)
     die_rolls: List[Tuple[int, bool, int]] = field(default_factory=list)
@@ -191,6 +194,7 @@ def parse_entry(raw: Dict) -> Entry:
         defcon=_as_int(raw.get("defcon")),
     )
     in_event = False
+    section_open = False
     for line in str(raw.get("text", "")).split("\n"):
         line = line.strip()
         if not line:
@@ -204,6 +208,13 @@ def parse_entry(raw: Dict) -> Entry:
                 e.event_first = False
         if RE_EVENT.search(line):
             in_event = True
+            # ...and it closes whatever section was open. Influence lines are hung on the
+            # section header above them, but a new "Event:" starts something that is not part
+            # of it: at turn 4's headline of replay 129 the US headlines Junta and coups
+            # Panama, and the USSR's Liberation Theology then places an Influence in Panama
+            # too. Left attached to the coup's section, that placement looked like part of the
+            # coup's own result and was never offered as the decision it is.
+            section_open = False
 
         m = RE_RETURNS.search(line)
         if m:
@@ -239,7 +250,7 @@ def parse_entry(raw: Dict) -> Entry:
                 e.influence.append(rec)
                 if not in_event:
                     e.ops_influence.append(rec)
-                if e.sections:
+                if e.sections and section_open:
                     e.sections[-1].influence.append(rec)
             continue
         m = RE_MODE.search(line)
@@ -248,6 +259,7 @@ def parse_entry(raw: Dict) -> Entry:
                     "Realignment": "realign", "Realign": "realign",
                     "Space Race": "space"}[m.group(1)]
             e.sections.append(Section(mode=mode, ops=int(m.group(2)), event=in_event))
+            section_open = True
             if e.mode is None:
                 # First header is how the card itself was played. A later one belongs to the
                 # event -- Che grants the USSR a free coup after the US already spent Che's
@@ -282,6 +294,7 @@ def parse_entry(raw: Dict) -> Entry:
         if m:
             e.coup_success = (m.group(1) == "SUCCESS")
             e.coup_roll = int(m.group(2))
+            e.coup_rolls.append((int(m.group(2)), m.group(1) == "SUCCESS"))
             continue
         m = RE_REALIGN_ROLL.match(line)
         if m:
