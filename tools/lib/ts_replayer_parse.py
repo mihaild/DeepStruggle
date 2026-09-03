@@ -58,6 +58,11 @@ RE_RETURNS = re.compile(r"(US|USSR) returns (.+?) to (?:US|USSR)\.?$")
 RE_IN_PLAY = re.compile(r"(.+?) is now in play\.")
 RE_OUT_OF_PLAY = re.compile(r"(.+?) is no longer in play\.")
 RE_COUP_RESULT = re.compile(r"(SUCCESS|FAILURE): (\d+) \[(.*)\] *$")
+# "DEFEAT: 2 (-1)  < 4", "VICTORY: 5 >= 3" -- the die a war was decided on, and the
+# modifier applied to it. A war with a fixed target rolls inside the event with nothing
+# to choose, so this line is the only record of what the humans rolled.
+RE_WAR_RESULT = re.compile(
+    r"^(VICTORY|DEFEAT): (\d+)(?: \(([+-]?\d+)\))? *(?:>=|<) *(\d+)$")
 RE_REALIGN_ROLL = re.compile(r"^(US|USSR) rolls (\d+) \(([+-]\d+)\) = (-?\d+)$")
 RE_DIE = re.compile(r"Die roll: (\d+) -- (Success!|Failed!) \(Needed (\d+) or less\)$")
 RE_VP = re.compile(r"(US|USSR) gains (\d+) VP\. Score is (US|USSR) (\d+)\.$")
@@ -132,6 +137,8 @@ class Entry:
     space: List[Tuple[str, int]] = field(default_factory=list)
     events: List[str] = field(default_factory=list)
     trap_rolls: List[Tuple[int, int, bool]] = field(default_factory=list)
+    # (die, modifier, won) per war resolved in this entry, in log order.
+    war_rolls: List[Tuple[int, int, bool]] = field(default_factory=list)
     bare_rolls: List[Tuple[str, int]] = field(default_factory=list)
     effects_ended: List[str] = field(default_factory=list)
     score_assertions: List[int] = field(default_factory=list)
@@ -148,7 +155,7 @@ class Entry:
 _IGNORE = re.compile(
     r"^(SETUP:|.* will play as |Handicap influence|Scenario:|Optional Cards|Time per Player|"
     r"Turn \d+, Cleanup|Turn \d+,|.* is now in play\.|.* reveals |.* Headlines |"
-    r"Headline Events Revealed|War in |VICTORY|DEFEAT|.*discards?|.*Discard|"
+    r"Headline Events Revealed|War in |.*discards?|.*Discard|"
     r"Place Influence:|Space Race|The (US|USSR) |\*RESHUFFLE\*|"
     r"(US|USSR) has no cards to reveal|(US|USSR) plays |(US|USSR) may not |"
     r"(US|USSR) cannot |No effect|Effect:|Note:)")
@@ -319,6 +326,11 @@ def parse_entry(raw: Dict) -> Entry:
         if m:
             e.trap_rolls.append((int(m.group(1)), int(m.group(2)),
                                  m.group(3) == "Escaped"))
+            continue
+        m = RE_WAR_RESULT.match(line)
+        if m:
+            e.war_rolls.append((int(m.group(2)), int(m.group(3) or 0),
+                                m.group(1) == "VICTORY"))
             continue
         m = RE_BARE_ROLL.match(line)
         if m:

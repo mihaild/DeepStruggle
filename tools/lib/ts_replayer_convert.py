@@ -278,27 +278,44 @@ def _reconcile_board(state: ts.GameState, countries: Dict) -> int:
     return fixed
 
 
+_WAR_CARDS = frozenset(c for c in range(1, 111)
+                       if ts.CardData.get_card_info(c)["is_war_card"])
+
+
 def _drain(state: ts.GameState,
            expected: Optional[Dict[int, Tuple[int, int]]] = None,
-           forced_roll: int = 0) -> None:
-    """Resolve chance nodes, optionally steering them to the outcome the log recorded.
+           forced_roll: int = 0,
+           war_rolls: Optional[List[int]] = None) -> None:
+    """Resolve chance nodes, steering them to what the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
     War -- rolls inside the event with nothing to choose, so there is no action to force the
     outcome through, and the roll came out however the engine's stream said: at turn 4 AR4 of
     replay 101 the USSR won the Korean War in the log and lost it in the reconstruction.
+
+    The log states that die outright ("DEFEAT: 2 (-1)  < 4"), so it is handed to the chance
+    node rather than searched for, which is both exact and immune to the guard below. Searching
+    the rng for a matching board could not settle a war that shares its entry with a coup: the
+    coup picks the seed first and sets seed_settled, which suppresses the search, so at turn 6
+    AR4 of replay 121 the US couped Tunisia and the Korean War that followed was left to
+    chance -- won in the reconstruction, lost in the log.
     """
     while (not ts.Engine.is_terminal(state)
            and state.ctx().decision_player == ts.Player.NONE
            and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        if expected:
+        roll = forced_roll
+        # A war's die belongs to the war, never to the coup or realignment that may share the
+        # entry, so it is taken only at a chance node the war itself opened.
+        if war_rolls and int(state.ctx().resolving_card) in _WAR_CARDS:
+            roll = war_rolls.pop(0)
+        elif expected:
             _force_roll(state, expected)
         # A space race roll is given outright by the log ("Die roll: 5 -- Failed!"), and the
         # chance node takes it directly, so there is nothing to search for. Leaving it to the
         # engine's own stream advanced tracks the humans never advanced -- and since the log
         # only prints a track on success, a wrong one was never corrected afterwards.
         ts.Engine.step(state, ts.MicroAction(
-            ts.DecisionType.ROLL_DIE, forced_roll if 1 <= forced_roll <= 6 else 0, 0, 0))
+            ts.DecisionType.ROLL_DIE, roll if 1 <= roll <= 6 else 0, 0, 0))
 
 
 def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
@@ -720,6 +737,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     random_discards = list(discard_queue) if plays_five_year_plan else []
     seeded_peek = False
     seeded_reveal = False
+    # The die each war in this entry was decided on, in log order.
+    war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     # A war with a fixed target resolves in a chance node, so its outcome has to be steered
     # there rather than at a decision. Only the war's own countries are constrained: the rest
     # of the entry has not happened yet at that point.
@@ -791,7 +810,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # picks a seed by draining the coup's own chance node, and re-seeding here threw that
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
         # success, because the war constraint it was re-seeded against was already satisfied.
-        _drain(state, None if seed_settled else war_outcome, space_roll)
+        _drain(state, None if seed_settled else war_outcome, space_roll, war_roll_queue)
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
