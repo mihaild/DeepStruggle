@@ -164,10 +164,32 @@ def test_fix_card_53_south_african_unrest_branch1_adjacent():
     assert not done
     assert get_inf(s, sa_id)[1] == 1
     assert s.ctx().decision_type == ts.DecisionType.POINT_NODE
-    # Place 2 in Angola
+    # The 2 adjacent Influence are placed one at a time -- the card says "any countries", so
+    # they may be split. Both into Angola is still reachable by choosing it twice.
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, angola_id))
+    assert not done
+    assert get_inf(s, angola_id)[1] == 1
     done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, angola_id))
     assert done == True
     assert get_inf(s, angola_id)[1] == 2
+
+
+def test_fix_card_53_south_african_unrest_branch1_splits_across_neighbours():
+    """Replay 112 turn 5 AR2: the USSR put 1 in Botswana and 1 in Angola, not 2 in one."""
+    s = make_state()
+    sa_id, angola_id, botswana_id = cid("South Africa"), cid("Angola"), cid("Botswana")
+    set_inf(s, sa_id, 0, 0)
+    set_inf(s, angola_id, 0, 0)
+    set_inf(s, botswana_id, 0, 0)
+    ts.CardHandlers.trigger_event(s, 53, ts.Player.USSR)
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 1))
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, botswana_id))
+    assert not done
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, angola_id))
+    assert done == True
+    assert get_inf(s, sa_id)[1] == 1
+    assert get_inf(s, botswana_id)[1] == 1
+    assert get_inf(s, angola_id)[1] == 1
 
 def test_fix_card_59_flower_power_war_cards_for_ops():
     s = make_state()

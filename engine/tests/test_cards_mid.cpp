@@ -340,6 +340,64 @@ TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch0) {
     ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 2);
 }
 
+// Branch 1 is "1 Influence in South Africa and 2 Influence in any countries adjacent to South
+// Africa" -- plural, so the pair may be split. The engine asked once and added both to the one
+// country chosen, which at turn 5 AR2 of ts-replayer game 112 could not express the USSR's
+// 1 in Botswana and 1 in Angola.
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_SplitsAcrossTwoNeighbours) {
+    ts::GameState state{};
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
+    state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
+    state.countries[ts::countries::ANGOLA].ussr_influence = 0;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+
+    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 1);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ASSERT_FALSE(done); // one of the two adjacent placements is still to come
+    ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 1);
+
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ANGOLA, 0, 0});
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.countries[ts::countries::ANGOLA].ussr_influence, 1);
+    ASSERT_EQ(state.ctx().resolving_card, 0);
+}
+
+// Both into one country stays available: it is a choice, not the only option.
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_MayStackBothInOneNeighbour) {
+    ts::GameState state{};
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
+    state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ASSERT_TRUE(done);
+    ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 2);
+}
+
+// An event that says "add Influence" places it directly. The Ops path charges two per point
+// in a country the opponent controls; this must not.
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_IgnoresOpponentControl) {
+    ts::GameState state{};
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
+    // US control of Botswana: stability 2, so 4 US Influence against 0 is firmly controlled.
+    state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
+    state.countries[ts::countries::BOTSWANA].us_influence = 4;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ASSERT_TRUE(done);
+    // Both points land despite US control -- an event pays no doubled cost.
+    ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 2);
+    ASSERT_EQ(state.countries[ts::countries::BOTSWANA].us_influence, 4);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

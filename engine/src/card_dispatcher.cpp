@@ -1217,10 +1217,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().resolving_card = 0;
                     return true;
                 } else {
-                    // Branch 1: 1 in South Africa, 2 in adjacent
+                    // Branch 1: 1 in South Africa, then 2 among the countries adjacent to it.
+                    // Two placements of 1, not one of 2: the card says "any countries", so the
+                    // pair may be split. Both into one country is still available by choosing
+                    // it twice. At turn 5 AR2 of replay 112 the USSR put 1 in Botswana and 1
+                    // in Angola, which a single choice could not express.
                     state.countries[countries::SOUTH_AFRICA].add_influence(Player::USSR, 1);
                     state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = 1;
+                    state.ctx().remaining_steps = 2;
                     state.ctx().resolving_card = card_ids::SOUTH_AFRICAN_UNREST;
                     return false;
                 }
@@ -1234,9 +1238,18 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                         if (sa.neighbors[n] == cid) { is_adj = true; break; }
                     }
                     if (is_adj) {
-                        state.countries[cid].add_influence(Player::USSR, 2);
-                        state.ctx().resolving_card = 0;
-                        return true;
+                        // Placed directly, never through the Ops path: an event that says
+                        // "add Influence" pays no doubled cost for a country the opponent
+                        // controls.
+                        state.countries[cid].add_influence(Player::USSR, 1);
+                        if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
+                        if (state.ctx().remaining_steps == 0) {
+                            state.ctx().resolving_card = 0;
+                            return true;
+                        }
+                        state.ctx().decision_type = DecisionType::POINT_NODE;
+                        state.ctx().decision_player = Player::USSR;
+                        return false;
                     }
                 }
                 return false;
