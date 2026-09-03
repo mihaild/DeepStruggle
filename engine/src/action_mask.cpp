@@ -198,8 +198,17 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             uint8_t ops = ctx.pending_ops_value;
             uint8_t op_card = ctx.pending_op_card;
 
-            // Check if influence placement is possible (Junta & Tear Down This Wall forbid Influence)
-            if (op_card != card_ids::JUNTA && op_card != card_ids::TEAR_DOWN_THIS_WALL) {
+            // Junta and Tear Down This Wall grant free Ops usable only for a coup or a
+            // realignment, and their bonus action is optional, so INFLUENCE stands for
+            // declining it. That restriction belongs to the Ops the event granted, not to the
+            // card: the player whose card it is still has their own Ops afterwards and may
+            // place Influence with them. Keying it on the card alone left those Ops with
+            // nothing but a decline on offer -- at turn 9 AR1 of ts-replayer game 146 the USSR
+            // could not spend Tear Down This Wall's own three Ops at all.
+            const bool free_action_bars_influence =
+                ctx.event_granted_ops
+                && (op_card == card_ids::JUNTA || op_card == card_ids::TEAR_DOWN_THIS_WALL);
+            if (!free_action_bars_influence) {
                 uint8_t inf_mask[84];
                 Operations::get_influence_placement_mask(state, p, ops, inf_mask);
                 for (uint8_t i = 0; i < 84; ++i) {
@@ -209,8 +218,6 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                     }
                 }
             } else {
-                // Junta & Tear Down This Wall: bonus coup/realign is optional.
-                // Selecting INFLUENCE mode acts as declining/skipping the bonus action.
                 mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
             }
 

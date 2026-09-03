@@ -859,8 +859,21 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
             }
 
             case DecisionType::SELECT_OP_MODE: {
+                // Junta and Tear Down This Wall grant free Ops usable only for a coup or a
+                // realignment, so choosing Influence with those is a decline. It is the Ops
+                // that are restricted, not the card: the player whose card it is still has
+                // their own Ops afterwards and may place Influence with them. Keying this on
+                // pending_op_card conflated the two, and since the mask then offered nothing
+                // but Influence, those Ops could not be spent at all -- at turn 9 AR1 of
+                // ts-replayer game 146 the USSR plays Tear Down This Wall, the US takes its
+                // three free realignments against France, and the USSR's own three Ops, which
+                // the log spends placing in France, silently ended the action round instead.
+                const bool free_action_bars_influence =
+                    state.ctx().event_granted_ops &&
+                    (state.ctx().pending_op_card == card_ids::JUNTA ||
+                     state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL);
                 if (action.is_confirm_done() || action.primary_id == 255 ||
-                    (action.primary_id == 0 && (state.ctx().pending_op_card == card_ids::JUNTA || state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL))) {
+                    (action.primary_id == 0 && free_action_bars_influence)) {
                     if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
                     else advance_after_ops(state);
                     return true;
@@ -870,7 +883,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 state.ctx().op_mode = op_mode;
 
                 if (op_mode == OpMode::INFLUENCE) {
-                    if (state.ctx().pending_op_card == card_ids::JUNTA || state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
+                    if (free_action_bars_influence) {   // as above
                         advance_after_ops(state);
                         return true;
                     }

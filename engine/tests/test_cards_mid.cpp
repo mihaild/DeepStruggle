@@ -503,6 +503,54 @@ TEST(MidCardsTest, OnlyTheNamedCardsMayFizzle) {
     ASSERT_FALSE(ts::may_fizzle::allowed(0));
 }
 
+// Junta and Tear Down This Wall grant free Ops usable only for a coup or a realignment, so
+// choosing Influence with those declines the bonus. The restriction belongs to the Ops their
+// event granted, not to the card: the player whose card it is still has their own Ops
+// afterwards and may place Influence with them. Keying it on the card left those Ops with
+// nothing but a decline on offer, so they could not be spent at all -- at turn 9 AR1 of
+// ts-replayer game 146 the USSR plays Tear Down This Wall, the US takes its three free
+// realignments against France, and the USSR's own three Ops went nowhere.
+TEST(MidCardsTest, TearDownThisWall_FreeOpsBarInfluence_OwnOpsDoNot) {
+    // The event's own Ops: coup and realignment only, Influence stands for declining.
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::TEAR_DOWN_THIS_WALL, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().event_granted_ops, 1);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);  // the decline
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
+                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_NE(state.ctx().decision_type, ts::DecisionType::POINT_NODE);  // declined, not placing
+}
+
+// The same card's own Ops place Influence like any other card's.
+TEST(MidCardsTest, TearDownThisWall_OwnOpsMayPlaceInfluence) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().pending_op_card = ts::card_ids::TEAR_DOWN_THIS_WALL;
+    state.ctx().pending_ops_value = 3;
+    state.ctx().event_granted_ops = 0;      // the player's own Ops, not the event's
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_OP_MODE;
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
+                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().remaining_steps, 3);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

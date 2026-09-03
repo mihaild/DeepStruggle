@@ -815,9 +815,11 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && (MapData::get_country(cid).region == Region::CENTRAL_AMERICA || MapData::get_country(cid).region == Region::SOUTH_AMERICA)) {
                 state.countries[cid].add_influence(p, 2);
-                // Transition to Ops in CA/SA
+                // Transition to Ops in CA/SA. The event's own Ops, so Influence is barred
+                // from these and not from the player's own -- see the SELECT_OP_MODE handler.
                 state.ctx().pending_op_card = card_ids::JUNTA;
                 state.ctx().pending_ops_value = Operations::grant_ops(state, 2, state.ctx().decision_player);
+                state.ctx().event_granted_ops = 1;
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 return false;

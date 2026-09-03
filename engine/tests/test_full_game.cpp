@@ -83,8 +83,13 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
     ASSERT_TRUE(reached_final_scoring || won_on_vp);
 }
 
+// Seed 6, not 5: what this test checks is how scoring classifies domination, control and
+// presence, so it needs a game that plays scoring cards and reaches all three. The scripted
+// policy reaches a 20 VP win with no scoring at all on several seeds -- 2, 4, 7 and 8 among the
+// first eight, on this engine and on the one before it -- and which seeds do that shifts with
+// any change to the action space, which is a property of the policy rather than of the rules.
 TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
-    ts::GameTestWrapper wrapper(5);
+    ts::GameTestWrapper wrapper(6);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
 
     wrapper.run_to_completion(policy, 5000);

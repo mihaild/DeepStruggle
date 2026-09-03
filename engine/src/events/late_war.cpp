@@ -224,6 +224,10 @@ bool trigger_tear_down_this_wall(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::US;
     state.ctx().pending_op_card = card_ids::TEAR_DOWN_THIS_WALL;
     state.ctx().pending_ops_value = Operations::grant_ops(state, 3, Player::US);
+    // These Ops are the event's, not the card's. Only they are barred from being spent on
+    // Influence -- the player whose card it is still has their own Ops to come, and may place
+    // with those. See the SELECT_OP_MODE handler.
+    state.ctx().event_granted_ops = 1;
     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
     state.ctx().resolving_card = 0;
     return false;
