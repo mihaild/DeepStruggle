@@ -593,7 +593,13 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
         if e is not None and e.defcon is not None:
             if int(probe.defcon) == int(e.defcon):
                 score += 500
-            if ts.Engine.is_terminal(probe):
+            # ...but only where the log kept playing. DEFCON 1 is thermonuclear war and the
+            # phasing player loses, so it is never the branch to take on a tie -- and yet at
+            # turn 9 AR7 of replay 104 it is exactly what happened: the USSR played Star Wars,
+            # the US took How I Learned To Stop Worrying out of the discard pile and set DEFCON
+            # to 1, and the USSR, as the phasing player, lost. The entry records defcon 1, so
+            # penalising every branch that ends the game put the real one out of reach.
+            if ts.Engine.is_terminal(probe) and int(e.defcon) != 1:
                 score -= 5000
         if wanted and not ts.Engine.is_terminal(probe):
             offered = {int(ts.ActionMask.decode_flat_action(probe, int(x)).primary_id)
@@ -1044,7 +1050,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             pq[:] = section_queue(section)
             step_outcomes[:] = section_outcomes(section)
             cur_mode = section.mode
-            continue
+            if pq:
+                continue
+            # A header with nothing under it is a decline, and it has to be answered as one
+            # rather than skipped: the next section belongs to the other player. At turn 8 AR2
+            # of replay 123 the US plays Ortega Elected in Nicaragua, the USSR has no coup
+            # worth making -- "Coup (1 Ops):" and then nothing -- and the US places 2 Influence
+            # of its own. Falling through to that section answered the USSR's coup with
+            # Nigeria, which at DEFCON 2 is thermonuclear war and lost the USSR the game.
+            chosen = _find_confirm_done(state, legal)
+            informative = chosen is not None
+            if chosen is None:
+                continue
 
         elif dt == ts.DecisionType.POINT_NODE and (pq or eq):
             # Ask the queue that matches what the engine is doing: while a card is resolving,

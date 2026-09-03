@@ -91,3 +91,37 @@ def test_star_wars_pick_from_the_discard_pile_is_read_from_the_log() -> None:
     conv = _convert(100)
     assert conv.failure is None, f"replay 100 stopped at {conv.failure}"
     assert conv.entries_converted == conv.entries_total == 144
+
+
+def test_a_game_the_log_ends_at_defcon_1_is_allowed_to_end() -> None:
+    """Replay 104 turn 9 AR7: the USSR plays Star Wars and loses the game to it.
+
+    The US takes How I Learned To Stop Worrying out of the discard pile and sets DEFCON to 1.
+    Thermonuclear war costs the phasing player the game, and the phasing player is the USSR.
+    Branch selection penalised every branch that ends the game -- a sound default, since
+    DEFCON 1 is otherwise never the tie-break to take -- which put the real branch out of
+    reach. The entry records defcon 1, so the log settles it.
+    """
+    conv = _convert(104)
+    assert conv.failure is None, f"replay 104 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 128
+
+
+def test_the_defcon_1_penalty_still_applies_where_the_log_played_on() -> None:
+    """Replay 101 turn 4's headline is the game that motivated the penalty."""
+    conv = _convert(101)
+    assert conv.failure is None, f"replay 101 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 90
+
+
+def test_an_empty_ops_header_is_a_decline_not_a_skipped_section() -> None:
+    """Replay 123 turn 8 AR2: the US plays Ortega, the USSR declines the free coup.
+
+    The log prints "Coup (1 Ops):" with nothing under it, and the US then places 2 Influence
+    of its own. Reading the empty header as a section to skip answered the USSR's coup with a
+    target from the US's placements -- couping Nigeria, which at DEFCON 2 is thermonuclear
+    war and lost the USSR the game outright.
+    """
+    conv = _convert(123)
+    assert _failed_at(conv) != "T8 AR2", (
+        f"the declined coup must be answered as a decline: {conv.failure}")
