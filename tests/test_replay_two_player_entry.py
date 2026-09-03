@@ -125,3 +125,22 @@ def test_an_empty_ops_header_is_a_decline_not_a_skipped_section() -> None:
     conv = _convert(123)
     assert _failed_at(conv) != "T8 AR2", (
         f"the declined coup must be answered as a decline: {conv.failure}")
+
+
+def test_an_entry_can_reach_two_play_modes() -> None:
+    """Replay 113 turn 7 AR1: the US plays Grain Sales To Soviets as its Event.
+
+    Grain Sales takes a card from the USSR hand -- Nuclear Subs -- and the US chooses to play
+    it rather than hand it back, for Ops, couping Angola. That is two cards and two play
+    modes in one entry. The driver allowed a single play mode per entry, so the second
+    request had no answer at all.
+    """
+    conv = _convert(113)
+    assert conv.failure is None, f"replay 113 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 101
+
+
+@pytest.mark.parametrize("replay_id", [113, 118, 125])
+def test_the_grain_sales_games_convert_end_to_end(replay_id: int) -> None:
+    conv = _convert(replay_id)
+    assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"

@@ -697,7 +697,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # "X plays Y" line as a card to select would have the driver play Y a second time.
     second_cid = (card_id(e.played_card)
                   if e.played_card and cid_target == _UN_INTERVENTION else None)
-    picked_mode = False
+    # Keyed by card, not a single flag: an entry can reach more than one play mode when
+    # its event hands the player a second card. At turn 7 AR1 of replay 113 the US plays
+    # Grain Sales To Soviets as its Event, is handed the USSR's Nuclear Subs, and plays
+    # that for Ops to coup Angola -- two cards, two modes.
+    mode_picked_for: set = set()
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
     reveal_queue = [c for c in (card_id(nm) for _side, nm in (e.revealed or [])) if c]
     # Cards this entry fires the event of besides its own. Star Wars lets the US take any
@@ -956,7 +960,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     f"card #{cid_target} not among {len(legal)} legal actions"))
                 return False
 
-        elif dt == ts.DecisionType.SELECT_PLAY_MODE and not picked_mode:
+        elif (dt == ts.DecisionType.SELECT_PLAY_MODE
+                and (int(ctx.pending_op_card) or cid_target or 0) not in mode_picked_for):
             # An opponent's card can only be played for Ops -- its event fires on its own,
             # so "Event: X" in the text does not mean the play mode was Event.
             # Ask about the card the engine is actually playing, which need not be the entry's
@@ -972,7 +977,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 # card's. Reading the "Place Influence" header as the play mode instead had
                 # the engine spend UN Intervention's own Ops and never ask for NORAD.
                 want = PLAY_MODE_ACTION["event"]
-            elif cid_target and not opponent_card and e.event_first and e.events:
+            elif (play_cid == cid_target and cid_target and not opponent_card
+                    and e.event_first and e.events):
                 # Only for the entry's own card. A headline entry has none, and the play mode
                 # it reaches belongs to a card an event put into play -- NATO, via Grain Sales
                 # -- whose Ops header is the real signal.
@@ -997,7 +1003,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                         want = PLAY_MODE_ACTION[fallback]
                         break
             if want is not None and mask[want]:
-                chosen, picked_mode, informative = want, True, True
+                chosen, informative = want, True
+                mode_picked_for.add(int(ctx.pending_op_card) or cid_target or 0)
             else:
                 raise ConversionFailure(Mismatch(
                     conv.replay_id, e.turn, e.phase, e.player, e.card,
