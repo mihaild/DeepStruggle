@@ -551,6 +551,64 @@ TEST(MidCardsTest, TearDownThisWall_OwnOpsMayPlaceInfluence) {
     ASSERT_EQ(state.ctx().remaining_steps, 3);
 }
 
+// Flower Power charges the US 2 VP for playing a war card, but only for a war that can
+// actually happen. Camp David Accords stops Arab-Israeli War being played as an event at all,
+// so playing it for Operations sets off no war and costs nothing: at turn 8 AR2 of ts-replayer
+// game 105 the US coups Guatemala with it under both effects, and the log records no VP change.
+TEST(MidCardsTest, FlowerPowerChargesForAWarThatCanHappen) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
+    state.victory_points = 0;
+    state.ctx().pending_op_card = ts::card_ids::ARAB_ISRAELI_WAR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_EQ(state.victory_points, -2);
+}
+
+TEST(MidCardsTest, FlowerPowerChargesNothingForAWarCampDavidHasStopped) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
+    state.set_flag(ts::effect_bits::CAMP_DAVID_PLAYED);
+    state.victory_points = 0;
+    state.ctx().pending_op_card = ts::card_ids::ARAB_ISRAELI_WAR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_EQ(state.victory_points, 0);
+}
+
+// The other war cards are untouched by Camp David, which names only Arab-Israeli War.
+TEST(MidCardsTest, FlowerPowerStillChargesForOtherWarsUnderCampDavid) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
+    state.set_flag(ts::effect_bits::CAMP_DAVID_PLAYED);
+    state.victory_points = 0;
+    state.ctx().pending_op_card = ts::card_ids::BRUSH_WAR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_EQ(state.victory_points, -2);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

@@ -808,7 +808,15 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         state.forced_card_player = Player::NONE;
                         state.forced_card_id = 0;
                     }
-                    if (p == Player::US && CardData::is_war_card(card) && state.has_flag(effect_bits::FLOWER_POWER_ACTIVE)) {
+                    // Flower Power charges the US 2 VP for playing a war card, but only for a
+                    // war that can actually happen. Camp David Accords stops Arab-Israeli War
+                    // being played as an event at all, so playing it for Operations sets off
+                    // no war and costs nothing: at turn 8 AR2 of ts-replayer game 105 the US
+                    // coups Guatemala with it under both effects and the log records no VP
+                    // change, where the engine handed the USSR 2.
+                    if (p == Player::US && CardData::is_war_card(card) &&
+                        state.has_flag(effect_bits::FLOWER_POWER_ACTIVE) &&
+                        CardHandlers::can_trigger_event(state, card, p)) {
                         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
                         if (state.victory_points <= -20) {
                             state.current_phase = Phase::GAME_OVER;
