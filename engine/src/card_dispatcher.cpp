@@ -466,7 +466,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     Player sponsor = get_opponent(state.ctx().decision_player);
                     if (state.defcon > 1) {
                         state.defcon--;
-                        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+                        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
                     }
                     if (state.defcon == 1) {
                         resolve_defcon_one_loss(state, state.ctx().decision_player);
@@ -782,7 +782,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 } else if (action.primary_id == 1) {
                     if (state.defcon > 1) {
                         state.defcon--;
-                        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+                        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
                     }
                     if (state.defcon == 1) {
                         // The Summit winner chooses to degrade DEFCON; as everywhere else
@@ -799,7 +799,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         case card_ids::HOW_I_LEARNED_TO_STOP_WORRYING: {
             uint8_t new_defcon = std::clamp(action.primary_id, static_cast<uint8_t>(1), static_cast<uint8_t>(5));
             state.defcon = new_defcon;
-            if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+            if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
             if (state.defcon == 1) {
                 resolve_defcon_one_loss(state, state.ctx().decision_player);
             }

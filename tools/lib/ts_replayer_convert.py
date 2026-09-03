@@ -238,12 +238,7 @@ def _reconcile_turn(state: ts.GameState, entry: Entry, replay_id: int = -1) -> N
         state.phasing_player = ts.Player.US
     elif entry.player == "USSR":
         state.phasing_player = ts.Player.USSR
-    # Per-action-round bookkeeping the engine clears when it ends a round itself, which forcing
-    # the round here goes around. NORAD asks whether DEFCON fell to 2 during *this* action
-    # round, so a flag left over from an earlier one fires it in a round where nothing happened
-    # -- at turn 5 AR1 of replay 219 the USSR only discards a card to escape Bear Trap, and the
-    # US was then handed an Influence placement the log has no trace of.
-    state.defcon_dropped_to_2_in_ar = 0
+
     # Every entry must begin with the engine waiting for a card. Anything else means the
     # previous entry did not finish, and continuing from a half-resolved decision would convert
     # a position the humans never played -- so this is a failure, not something to tidy up.

@@ -537,7 +537,7 @@ NB_MODULE(ts_engine, m) {
         .def_rw("ussr_space_track", &ts::GameState::ussr_space_track)
         .def_rw("turn", &ts::GameState::turn)
         .def_rw("action_round", &ts::GameState::action_round)
-        .def_rw("defcon_dropped_to_2_in_ar", &ts::GameState::defcon_dropped_to_2_in_ar)
+        .def_rw("defcon_dropped_to_2", &ts::GameState::defcon_dropped_to_2)
         .def_rw("phasing_player", &ts::GameState::phasing_player)
         .def_rw("headline_us_card", &ts::GameState::headline_us_card)
         .def_rw("headline_ussr_card", &ts::GameState::headline_ussr_card)

@@ -525,7 +525,7 @@ TEST(CardInteractionTest, NORAD_Active_CanadaControlled_DefconDropsTo2_AllowsInf
 
     // When DEFCON drops to 2 in AR, NORAD triggers
     state.defcon = 3;
-    state.defcon_dropped_to_2_in_ar = 1;
+    state.defcon_dropped_to_2 = 1;
     // Verify NORAD flag remains active until Quagmire
     ASSERT_TRUE(state.has_flag(ts::effect_bits::NORAD_ACTIVE));
 }

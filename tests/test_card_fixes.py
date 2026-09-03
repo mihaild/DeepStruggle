@@ -814,7 +814,7 @@ def test_fix_card_106_norad_triggers_on_olympic_games_boycott_defcon_2():
     done_boycott = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 1))
     assert not done_boycott
     assert s.defcon == 2
-    assert s.defcon_dropped_to_2_in_ar == 1
+    assert s.defcon_dropped_to_2 == 1
 
 
 def test_chain_scenario_1_fyp_grainsales_starwars_abmtreaty_full_ar():

@@ -214,7 +214,7 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         out_buf->global_features[12 + b] = ((state.persistent_effects & (1ULL << b)) != 0) ? 1.0f : 0.0f;
     }
 
-    out_buf->global_features[57] = state.defcon_dropped_to_2_in_ar ? 1.0f : 0.0f;
+    out_buf->global_features[57] = state.defcon_dropped_to_2 ? 1.0f : 0.0f;
     out_buf->global_features[58] = static_cast<float>(state.ctx_stack_depth) / 3.0f;
     out_buf->global_features[59] = static_cast<float>(state.get_space_turns_used(my_player)) / 2.0f;
     out_buf->global_features[60] = static_cast<float>(state.get_space_turns_used(opp_player)) / 2.0f;

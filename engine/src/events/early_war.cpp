@@ -16,7 +16,7 @@ namespace early_war {
 bool trigger_duck_and_cover(GameState& state, Player p) noexcept {
     if (state.defcon > 1) {
         state.defcon--;
-        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
     }
     // Check DEFCON suicide
     if (state.defcon == 1) {

@@ -235,7 +235,7 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
                 state.defcon--;
                 res.defcon_degraded = true;
                 if (state.defcon == 2) {
-                    state.defcon_dropped_to_2_in_ar = 1;
+                    state.defcon_dropped_to_2 = 1;
                 }
             }
 

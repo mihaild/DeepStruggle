@@ -92,7 +92,7 @@ bool trigger_marine_barracks_bombing(GameState& state, Player p) noexcept {
 bool trigger_soviets_shoot_down_kal(GameState& state, Player p) noexcept {
     if (state.defcon > 1) {
         state.defcon--;
-        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
     }
     if (state.defcon == 1) {
         resolve_defcon_one_loss(state, p);

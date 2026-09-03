@@ -196,7 +196,9 @@ struct alignas(64) GameState {
     Phase   current_phase;             // Active game phase
     Player  forced_card_player;        // Player forced to play specific card (Missile Envy)
     uint8_t forced_card_id;            // Card ID forced on next AR (49 for Missile Envy, 0 if NONE)
-    uint8_t defcon_dropped_to_2_in_ar; // 1 if DEFCON reached 2 during current AR (for NORAD)
+    uint8_t defcon_dropped_to_2; // 1 if DEFCON has reached 2 since the phase began (NORAD).
+                                 // Cleared when an action round ends and when the headline
+                                 // does, so a headline's drop cannot claim a later round.
     DieRollRecord last_roll;           // Structured record of die roll event occurring in current step
     uint8_t last_die_roll;             // Backwards-compat: result of most recent die roll (1..6, 0 if none)
     uint8_t last_opp_die_roll;         // Backwards-compat: opponent die roll

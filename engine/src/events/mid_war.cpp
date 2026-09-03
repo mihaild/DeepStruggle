@@ -38,7 +38,7 @@ bool trigger_arms_race(GameState& state, Player p) noexcept {
 
 bool trigger_cuban_missile_crisis(GameState& state, Player p) noexcept {
     state.defcon = 2;
-    state.defcon_dropped_to_2_in_ar = 1;
+    state.defcon_dropped_to_2 = 1;
     if (p == Player::US) {
         state.set_flag(effect_bits::CMC_ACTIVE_US);
     } else {
@@ -210,7 +210,7 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
 bool trigger_we_will_bury_you(GameState& state, Player p) noexcept {
     if (state.defcon > 1) {
         state.defcon--;
-        if (state.defcon == 2) state.defcon_dropped_to_2_in_ar = 1;
+        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
     }
     if (state.defcon == 1) {
         Player loser = state.phasing_player;

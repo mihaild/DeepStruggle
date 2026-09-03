@@ -222,6 +222,12 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 
     // Both headlines resolved -> Start Action Round 1
     state.headline_stage = 3;
+    // NORAD asks whether DEFCON reached 2 during an *action round*, and a headline that drops
+    // it to 2 sets the same flag. Clearing it as the headline ends keeps that drop from
+    // claiming the round that follows: at turn 5 of ts-replayer game 219 DEFCON falls to 2 in
+    // the headline, and the US was handed a free Influence placement at the end of AR1, where
+    // the USSR had done nothing but discard a card to escape Bear Trap.
+    state.defcon_dropped_to_2 = 0;
     if (state.current_phase != Phase::GAME_OVER) {
         state.current_phase = Phase::ACTION_ROUND;
         state.action_round = 1;
@@ -313,17 +319,17 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
 void StateMachine::advance_after_action_round(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
     // Check NORAD
-    if (state.defcon_dropped_to_2_in_ar && state.has_flag(effect_bits::NORAD_ACTIVE) &&
+    if (state.defcon_dropped_to_2 && state.has_flag(effect_bits::NORAD_ACTIVE) &&
         Scoring::is_controlled_by(state, countries::CANADA, Player::US)) {
         // US gets 1 free influence placement
-        state.defcon_dropped_to_2_in_ar = 0;
+        state.defcon_dropped_to_2 = 0;
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 1;
         state.ctx().resolving_card = card_ids::NORAD;
         return;
     }
-    state.defcon_dropped_to_2_in_ar = 0;
+    state.defcon_dropped_to_2 = 0;
 
     // Determine max ARs for this turn
     uint8_t max_ar = (state.turn <= 3) ? 6 : 7;
