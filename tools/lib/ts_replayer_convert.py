@@ -1269,6 +1269,28 @@ def convert_game(game: Dict) -> Conversion:
     return conv
 
 
+def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
+    """The repeated copy of a turn's last entry, which records cleanup rather than a play.
+
+    ts-replayer hangs the end-of-turn bookkeeping on the header of the entry above it, so the
+    last action round of every turn appears twice: once with the play, and once with the same
+    turn, phase, player and card but a body holding only the effects that expired, the same
+    board, and DEFCON improved by one. There are 357 of them across the 287 downloaded games.
+
+    Driven as a play the second copy asked the engine for a card it had already ended the turn
+    to give -- 49 of the 182 games that stopped did so exactly there, at the last action round
+    of turn 1, under a dozen different card names because the card is only the one copied down
+    from the entry above.
+    """
+    if prev is None:
+        return False
+    if (e.turn, e.phase, e.player, e.card) != (prev.turn, prev.phase, prev.player, prev.card):
+        return False
+    return not (e.influence or e.sections or e.targets or e.war_targets or e.events
+                or e.headlines or e.space or e.discards or e.revealed or e.mode
+                or e.played_card)
+
+
 def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None:
     cur_turn = None
     turn_hands = {"US": [], "USSR": []}
@@ -1279,6 +1301,16 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     for raw in raws:
         e = parse_entry(raw)
         conv.entries_total += 1
+
+        if _is_turn_end_record(e, prev_entry):
+            # Nothing to drive: the engine ends the turn itself once both players have taken
+            # their last action round. Only the record's own bookkeeping is taken -- the
+            # improved DEFCON and the effects that expired.
+            conv.entries_converted += 1
+            conv.board_resyncs += _reconcile_board(state, raw.get("countries"))
+            _reconcile_scalars(state, e)
+            prev_raw, prev_entry = raw, e
+            continue
 
         if e.turn and e.turn != cur_turn:
             cur_turn = e.turn
