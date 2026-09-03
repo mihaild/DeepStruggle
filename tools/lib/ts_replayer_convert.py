@@ -732,6 +732,14 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
         # Some branches are a numeric setting rather than a target: How I Learned To Stop
         # Worrying picks the new DEFCON, and with no targets to tell the options apart the
         # first legal one -- DEFCON 1 -- ended the game at turn 4's headline of replay 101.
+        # Where the log states the score this entry ends on, the branch that reaches it is the
+        # branch that was taken. Wargames offers 6 VP to the opponent and an immediate end, or
+        # nothing at all, and the two differ only in the score: at turn 8 AR1 of replay 113 the
+        # USSR takes the ending and the log reads "US gains 6 VP. Score is USSR 7."
+        want_vp = _narrated_score(e) if e is not None else None
+        reaches_logged_score = want_vp is not None and int(probe.victory_points) == want_vp
+        if reaches_logged_score:
+            score += 4000
         if e is not None and e.defcon is not None:
             if int(probe.defcon) == int(e.defcon):
                 score += 500
@@ -741,7 +749,8 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
             # the US took How I Learned To Stop Worrying out of the discard pile and set DEFCON
             # to 1, and the USSR, as the phasing player, lost. The entry records defcon 1, so
             # penalising every branch that ends the game put the real one out of reach.
-            if ts.Engine.is_terminal(probe) and int(e.defcon) != 1:
+            if (ts.Engine.is_terminal(probe) and int(e.defcon) != 1
+                    and not reaches_logged_score):
                 score -= 5000
         if wanted and not ts.Engine.is_terminal(probe):
             offered = {int(ts.ActionMask.decode_flat_action(probe, int(x)).primary_id)
