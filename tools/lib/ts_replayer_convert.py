@@ -19,7 +19,7 @@ systematic failure in one card's handling looks identical to noise in a summary 
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import ts_engine as ts
@@ -96,6 +96,19 @@ class Mismatch:
                 f"card={self.card!r}: {self.kind} -- {self.detail}")
 
 
+# Entries whose text the log itself never finishes. The game is converted up to the entry
+# before one of these and no further: the entry records a decision whose outcome the log does
+# not state, so neither it nor anything after it can be reconstructed, and none of it is
+# training data. This is a property of the recording, not a defect in the engine or the driver,
+# so it is listed rather than diagnosed again each time.
+#
+#   replay 60, turn 7 AR6 -- the text reads "Coup (4 Ops):" and stops there. No target, no
+#   roll, no result, and no further entries in the file.
+_KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str]]] = {
+    60: {(7, "AR6")},
+}
+
+
 @dataclass
 class Conversion:
     replay_id: int
@@ -113,6 +126,9 @@ class Conversion:
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
     # were never attempted, so a Conversion with a failure describes only a prefix of the game.
     failure: Optional[Mismatch] = None
+    # Set instead of `failure` where the log simply stops. Everything before it converted; there
+    # was nothing after it to convert.
+    truncated_at: Optional[Mismatch] = None
     mismatches: List[Mismatch] = field(default_factory=list)
 
 
@@ -1545,6 +1561,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
     for index, raw in enumerate(raws):
         e = parse_entry(raw)
+        if (e.turn, e.phase) in _KNOWN_INCOMPLETE.get(conv.replay_id, frozenset()):
+            conv.truncated_at = Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "log stops mid-entry",
+                "the recording ends here, so this entry and everything after it are not "
+                "training data")
+            return
         conv.entries_total += 1
 
         if _is_turn_end_record(e, prev_entry):
