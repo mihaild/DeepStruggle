@@ -1533,8 +1533,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # it advances the turn itself, which forcing turn numbers from the log bypasses, so
             # a stale count made a legitimate attempt illegal: at turn 4 AR4 of replay 112 the
             # USSR races with Duck and Cover and the engine offered only Ops modes.
-            state.set_space_turns_used(ts.Player.US, 0)
-            state.set_space_turns_used(ts.Player.USSR, 0)
+
 
             size = 8 if int(e.turn) <= 3 else 9
             claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
@@ -1552,8 +1551,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             _reconcile_board(state, prev_raw.get("countries"))
         if prev_entry is not None:
             _reconcile_scalars(state, prev_entry)
-        if state.current_phase == ts.Phase.GAME_OVER:
-            state.current_phase = ts.Phase.ACTION_ROUND
+
         _apply_hands(state,
                      _hand_after(turn_hands["US"], played["US"], set(pending["US"])),
                      _hand_after(turn_hands["USSR"], played["USSR"], set(pending["USSR"])))
