@@ -124,6 +124,7 @@ bool Operations::can_coup_or_realign(const GameState& state, Player p, uint8_t c
     // Tear Down This Wall (#96) allows US free Coup Attempts or Realignment rolls in Europe regardless of DEFCON
     bool defcon_exempt = (p == Player::US &&
                           state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL &&
+                          state.ctx().event_granted_ops &&
                           c_info.region == Region::EUROPE);
 
     if (!defcon_exempt) {

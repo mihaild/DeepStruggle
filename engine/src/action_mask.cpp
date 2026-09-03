@@ -234,11 +234,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 Operations::get_coup_target_mask(state, p, coup_mask);
                 for (uint8_t i = 0; i < 84; ++i) {
                     if (coup_mask[i]) {
-                        if (op_card == card_ids::JUNTA) {
+                        if (free_action::region_locked(op_card, ctx.event_granted_ops)) {
                             const auto& c = MapData::get_country(i);
-                            if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
-                        } else if (op_card == card_ids::TEAR_DOWN_THIS_WALL) {
-                            if (MapData::get_country(i).region != Region::EUROPE) continue;
+                            if (op_card == card_ids::JUNTA) {
+                                if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
+                            } else if (c.region != Region::EUROPE) {
+                                continue;
+                            }
                         }
                         mask_out[static_cast<size_t>(OpMode::COUP)] = 1;
                         break;
@@ -251,11 +253,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             Operations::get_realign_target_mask(state, p, realign_mask);
             for (uint8_t i = 0; i < 84; ++i) {
                 if (realign_mask[i]) {
-                    if (op_card == card_ids::JUNTA) {
+                    if (free_action::region_locked(op_card, ctx.event_granted_ops)) {
                         const auto& c = MapData::get_country(i);
-                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
-                    } else if (op_card == card_ids::TEAR_DOWN_THIS_WALL) {
-                        if (MapData::get_country(i).region != Region::EUROPE) continue;
+                        if (op_card == card_ids::JUNTA) {
+                            if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) continue;
+                        } else if (c.region != Region::EUROPE) {
+                            continue;
+                        }
                     }
                     mask_out[static_cast<size_t>(OpMode::REALIGN)] = 1;
                     break;
@@ -302,26 +306,26 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // Standard Op Mode Node Selection
             if (ctx.op_mode == OpMode::COUP) {
                 Operations::get_coup_target_mask(state, p, mask_out);
-                if (ctx.pending_op_card == card_ids::JUNTA) {
+                if (free_action::region_locked(ctx.pending_op_card, ctx.event_granted_ops)) {
                     for (uint8_t i = 0; i < 84; ++i) {
                         const auto& c = MapData::get_country(i);
-                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
-                    }
-                } else if (ctx.pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
-                    for (uint8_t i = 0; i < 84; ++i) {
-                        if (MapData::get_country(i).region != Region::EUROPE) mask_out[i] = 0;
+                        if (ctx.pending_op_card == card_ids::JUNTA) {
+                            if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
+                        } else if (c.region != Region::EUROPE) {
+                            mask_out[i] = 0;
+                        }
                     }
                 }
             } else if (ctx.op_mode == OpMode::REALIGN) {
                 Operations::get_realign_target_mask(state, p, mask_out);
-                if (ctx.pending_op_card == card_ids::JUNTA) {
+                if (free_action::region_locked(ctx.pending_op_card, ctx.event_granted_ops)) {
                     for (uint8_t i = 0; i < 84; ++i) {
                         const auto& c = MapData::get_country(i);
-                        if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
-                    }
-                } else if (ctx.pending_op_card == card_ids::TEAR_DOWN_THIS_WALL) {
-                    for (uint8_t i = 0; i < 84; ++i) {
-                        if (MapData::get_country(i).region != Region::EUROPE) mask_out[i] = 0;
+                        if (ctx.pending_op_card == card_ids::JUNTA) {
+                            if (c.region != Region::CENTRAL_AMERICA && c.region != Region::SOUTH_AMERICA) mask_out[i] = 0;
+                        } else if (c.region != Region::EUROPE) {
+                            mask_out[i] = 0;
+                        }
                     }
                 }
             } else {

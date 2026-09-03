@@ -242,6 +242,21 @@ namespace card_ids {
 // The list is deliberately short and explicit rather than inferred. Anything not on it that
 // runs out of targets is reported, which is how we learn about the next one instead of
 // discovering it as a hung training run.
+// Junta and Tear Down This Wall grant free Ops confined to a region -- Central/South America
+// and Europe -- and usable only for a coup or a realignment. That confinement belongs to the
+// Ops their event granted, not to the card: the same card's own Ops, and its Ops borrowed by UN
+// Intervention (which uses the value without triggering the event at all), are ordinary Ops
+// and go anywhere. Asking only "is this that card?" conflated the two, and at turn 9 AR1 of
+// ts-replayer game 141 the USSR named Tear Down This Wall through UN Intervention to coup
+// Libya -- which the engine confined to Europe, where DEFCON 3 forbids couping, leaving no
+// legal operation at all.
+namespace free_action {
+    inline constexpr bool region_locked(uint8_t card_id, uint8_t event_granted_ops) noexcept {
+        return event_granted_ops != 0 &&
+               (card_id == card_ids::JUNTA || card_id == card_ids::TEAR_DOWN_THIS_WALL);
+    }
+}
+
 namespace may_fizzle {
     inline constexpr bool allowed(uint8_t card_id) noexcept {
         return card_id == card_ids::TRUMAN_DOCTRINE ||

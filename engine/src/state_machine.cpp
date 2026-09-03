@@ -868,10 +868,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 // ts-replayer game 146 the USSR plays Tear Down This Wall, the US takes its
                 // three free realignments against France, and the USSR's own three Ops, which
                 // the log spends placing in France, silently ended the action round instead.
-                const bool free_action_bars_influence =
-                    state.ctx().event_granted_ops &&
-                    (state.ctx().pending_op_card == card_ids::JUNTA ||
-                     state.ctx().pending_op_card == card_ids::TEAR_DOWN_THIS_WALL);
+                const bool free_action_bars_influence = free_action::region_locked(
+                    state.ctx().pending_op_card, state.ctx().event_granted_ops);
                 if (action.is_confirm_done() || action.primary_id == 255 ||
                     (action.primary_id == 0 && free_action_bars_influence)) {
                     if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);

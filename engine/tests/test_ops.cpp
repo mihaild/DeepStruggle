@@ -109,10 +109,19 @@ TEST(OpsTest, TearDownThisWallDefconExemption) {
     ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::WEST_GERMANY));
     ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::WEST_GERMANY));
 
-    // When resolving Tear Down This Wall (#96) as US:
+    // When resolving Tear Down This Wall (#96) as US. The exemption belongs to the free action
+    // the event grants, so it is the flag and not the card that turns it on.
     state.ctx().pending_op_card = ts::card_ids::TEAR_DOWN_THIS_WALL;
+    state.ctx().event_granted_ops = 1;
     ASSERT_TRUE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::WEST_GERMANY));
     ASSERT_TRUE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::WEST_GERMANY));
+
+    // The same card's own Ops -- or its Ops borrowed by UN Intervention, which never triggers
+    // the event at all -- are ordinary Ops and obey DEFCON like anyone else's.
+    state.ctx().event_granted_ops = 0;
+    ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::WEST_GERMANY));
+    ASSERT_FALSE(ts::Operations::can_coup(state, ts::Player::US, ts::countries::WEST_GERMANY));
+    state.ctx().event_granted_ops = 1;
 
     // But Middle East is not Europe, so still restricted at DEFCON 2
     ASSERT_FALSE(ts::Operations::can_realign(state, ts::Player::US, ts::countries::EGYPT));
