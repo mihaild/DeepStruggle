@@ -150,17 +150,27 @@ def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional
     the human faced, and Missile Envy in particular reads the whole hand. Scoring cards are
     never used as padding -- holding one at the end of a turn loses the game outright.
     """
-    # Only where the hand is obviously truncated. A log that lists seven or eight of a nine
-    # card hand is just not naming cards that were never played, and inventing the rest would
-    # change draws and reveals the log does record; a log that lists one or two is describing a
-    # game that stopped mid-turn. Two missing is the line between the two.
-    if len(held) >= size - 2:
-        return list(held)
+    # Topped up to the size actually dealt, not only where the log is obviously truncated. A
+    # turn's list is the cards that became *visible* during it, and a player who carries a card
+    # over to the next turn never reveals it: 47% of the lists in the corpus are exactly one
+    # card short, and 10% two. Leaving them short would train the model on hands that cannot
+    # occur, one card smaller than the rules deal.
+    #
+    # What is added is chosen so it cannot change what the log records: never a scoring card,
+    # which would lose the game if held at the end of a turn, and never one whose Ops could
+    # displace a card the log shows being revealed -- Missile Envy takes the highest Ops card
+    # in hand, so a padded card above that cap would be handed over instead.
     pool = [c for c in range(1, 111)
             if c not in held and c not in taken
             and state.get_card_location(c) == ts.CardLocation.DRAW_DECK
             and not ts.CardData.get_card_info(c)["is_scoring"]
             and (ops_cap is None or int(ts.CardData.get_card_info(c)["ops"]) < ops_cap)]
+    # A padded card is never played -- the log says what was played -- but the rules read the
+    # hand in places, and what is read there changes what the engine offers: Blockade and Latin
+    # American Debt Crisis ask whether the player holds a 3 Ops card to discard, and a trap is
+    # escaped by playing a 2 Ops card. Ordering the pool to dodge those was tried and measured
+    # worse than leaving it alone -- lowest Ops first, and preferring below 3 Ops, each cost two
+    # games rather than saving any -- so the pool is taken in card order.
     return list(held) + pool[:size - len(held)]
 
 
@@ -1304,9 +1314,89 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     return True
 
 
-def _hand_after(turn_hand, played):
-    """Cards still held: the turn's logged hand minus what has been played so far."""
-    return [c for c in turn_hand if c not in played]
+def _hand_after(turn_hand, played, pending=None):
+    """Cards still held: the turn's logged hand, less what is spent and what is not yet held."""
+    pending = pending or set()
+    return [c for c in turn_hand if c not in played and c not in pending]
+
+
+_SALT_NEGOTIATIONS = 43
+_ASK_NOT = 77
+
+
+def _sort_key_for_keeping(card: int):
+    """The order a hand is assumed to have been dealt in: the better cards first.
+
+    Higher Ops first, and within an Ops value the US and neutral cards before the USSR ones.
+    Used only to split a turn's cards into those dealt at the start and those drawn during it,
+    where nothing in the log distinguishes them.
+    """
+    info = ts.CardData.get_card_info(card)
+    side = str(info["side"])
+    return (-int(info["ops"]), 0 if side in ("US", "NONE") else 1, card)
+
+
+def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[int, int]:
+    """Cards in a turn's list that were picked up during it rather than dealt at its start.
+
+    A turn's list is every card that became visible during the turn, which is not the same as
+    the hand it was dealt. Two cards reach a hand mid-turn, and both are recorded:
+
+    SALT Negotiations reclaims a card from the discard pile, so that card demonstrably was not
+    dealt -- at turn 5 of replay 64 the US list holds Red Scare/Purge, which they retrieved at
+    AR7, and having it four action rounds early gave Missile Envy the wrong card to take.
+
+    "Ask Not What Your Country Can Do For You" discards any number of cards and draws that many
+    replacements. What was discarded was in the dealt hand; the replacements were not, and there
+    are exactly as many of them as there were discards. Which of the turn's remaining cards they
+    are is not recorded, so the cards are ordered best-first and the tail of that order is taken
+    as the draws.
+
+    Returns {card: index of the entry that brings it into hand}.
+    """
+    acquired: Dict[int, int] = {}
+    held_set = set(held)
+
+    for idx, raw in enumerate(raws):
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        in_play = {card_id(e.card)} if (e.card and " & " not in e.card) else set()
+        in_play |= {card_id(nm) for nm in (e.headlines or {}).values()}
+
+        if _SALT_NEGOTIATIONS in in_play:
+            for rev_side, nm in (e.revealed or []):
+                c = card_id(nm)
+                if c and rev_side == side and c in held_set:
+                    acquired[c] = idx
+
+        if _ASK_NOT in in_play:
+            discarded = [c for c in (card_id(nm) for sd, nm in (e.discards or [])
+                                     if sd == side) if c]
+            if not discarded:
+                continue
+            # Everything this side had already spent was necessarily in the dealt hand, as was
+            # everything it discarded here, and Ask Not itself if this side played it.
+            pinned = set(discarded) | (in_play & held_set)
+            for earlier in raws[:idx]:
+                pe = parse_entry(earlier)
+                if pe.turn != turn:
+                    continue
+                if pe.player == side and pe.card and " & " not in pe.card:
+                    c = card_id(pe.card)
+                    if c:
+                        pinned.add(c)
+                nm = (pe.headlines or {}).get(side)
+                if nm:
+                    c = card_id(nm)
+                    if c:
+                        pinned.add(c)
+            candidates = [c for c in held if c not in pinned and c not in acquired]
+            candidates.sort(key=_sort_key_for_keeping)
+            for c in candidates[len(candidates) - min(len(discarded), len(candidates)):]:
+                acquired[c] = idx
+
+    return acquired
 
 
 def _apply_hands(state, us_cards, ussr_cards) -> None:
@@ -1414,10 +1504,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     cur_turn = None
     turn_hands = {"US": [], "USSR": []}
     played = {"US": set(), "USSR": set()}
+    # Cards this turn's list names that the side did not hold at the start of it, and the entry
+    # that puts each into hand. See _mid_turn_acquisitions.
+    pending: Dict[str, Dict[int, int]] = {"US": {}, "USSR": {}}
     prev_raw = None
     prev_entry = None
 
-    for raw in raws:
+    for index, raw in enumerate(raws):
         e = parse_entry(raw)
         conv.entries_total += 1
 
@@ -1456,6 +1549,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 claimed |= set(padded)
                 turn_hands[side] = padded
             played = {"US": set(), "USSR": set()}
+            pending = {side: _mid_turn_acquisitions(raws, int(e.turn), side, turn_hands[side])
+                       for side in ("US", "USSR")}
 
         # --- rebuild the position this entry was decided from ---
         if prev_raw is not None:
@@ -1465,8 +1560,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         if state.current_phase == ts.Phase.GAME_OVER:
             state.current_phase = ts.Phase.ACTION_ROUND
         _apply_hands(state,
-                     _hand_after(turn_hands["US"], played["US"]),
-                     _hand_after(turn_hands["USSR"], played["USSR"]))
+                     _hand_after(turn_hands["US"], played["US"], set(pending["US"])),
+                     _hand_after(turn_hands["USSR"], played["USSR"], set(pending["USSR"])))
 
         # --- the card(s) this entry uses must be in the tracked hand ---
         for side, nm in (e.headlines or {}).items():
@@ -1533,5 +1628,9 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
         conv.board_resyncs += _reconcile_board(state, raw.get("countries"))
         _reconcile_scalars(state, e)
+        for side in ("US", "USSR"):
+            for card, at in list(pending[side].items()):
+                if at <= index:
+                    del pending[side][card]
         prev_raw = raw
         prev_entry = e
