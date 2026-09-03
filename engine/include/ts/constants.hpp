@@ -229,6 +229,26 @@ namespace card_ids {
     constexpr uint8_t SPACE_WALK_DISCARD                  = 250;
 }
 
+// Cards whose event may legitimately find nothing to do.
+//
+// Most events are mandatory: the board always affords a legal choice, and a decision that
+// offers none is a defect worth hearing about immediately, so the mask reports the whole
+// position (ts::report_anomaly) before letting the player decline. That report is only useful
+// while it stays rare, and a handful of cards can genuinely come up empty -- Truman Doctrine
+// wants an uncontrolled European country holding USSR Influence, and some boards have none;
+// Muslim Revolution removes from two Middle Eastern countries and may find one, or none.
+// Those fizzle quietly.
+//
+// The list is deliberately short and explicit rather than inferred. Anything not on it that
+// runs out of targets is reported, which is how we learn about the next one instead of
+// discovering it as a hung training run.
+namespace may_fizzle {
+    inline constexpr bool allowed(uint8_t card_id) noexcept {
+        return card_id == card_ids::TRUMAN_DOCTRINE ||
+               card_id == card_ids::MUSLIM_REVOLUTION;
+    }
+}
+
 // Persistent Effects Bitfield Bit Allocations
 namespace effect_bits {
     constexpr uint64_t NATO_ACTIVE                 = 1ULL << 0;  // NATO in effect

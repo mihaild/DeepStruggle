@@ -492,6 +492,17 @@ TEST(MidCardsTest, PointNodeWithLegalTargetsStillOffersNoDecline) {
     ASSERT_EQ(mask[211], 0);
 }
 
+// The allowlist is the whole point of the report staying readable: anything not on it that
+// runs out of targets is a defect we want to hear about. Pinned so it cannot grow quietly.
+TEST(MidCardsTest, OnlyTheNamedCardsMayFizzle) {
+    for (uint8_t card = 1; card <= 110; ++card) {
+        const bool expected = (card == ts::card_ids::TRUMAN_DOCTRINE ||
+                               card == ts::card_ids::MUSLIM_REVOLUTION);
+        ASSERT_EQ(ts::may_fizzle::allowed(card), expected);
+    }
+    ASSERT_FALSE(ts::may_fizzle::allowed(0));
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

@@ -443,12 +443,18 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             if (ctx.allow_early_stop) {
                 mask_212[211] = 1;
             } else if (!any_target) {
-                // A mandatory choice the board cannot supply a single legal target for. The
-                // mask would otherwise be empty and the game would sit on this decision until
-                // something else timed out, far from the cause. Report the position in full and
-                // let the player decline, so the failure is loud and immediate rather than a
-                // deadlock discovered hours later in a training run.
-                report_anomaly("POINT_NODE with no legal target and no early stop", state);
+                // A choice the board cannot supply a single legal target for. The mask would
+                // otherwise be empty and the game would sit on this decision until something
+                // else timed out, far from the cause, so the player is let out either way.
+                //
+                // Whether that is worth hearing about depends on the card. A few may
+                // legitimately come up empty and fizzle quietly; for every other card this is
+                // a defect, and the whole position is reported so it can be replayed rather
+                // than guessed at. Keeping the list explicit is what keeps the report worth
+                // reading.
+                if (!may_fizzle::allowed(ctx.resolving_card)) {
+                    report_anomaly("POINT_NODE with no legal target and no early stop", state);
+                }
                 mask_212[211] = 1;
             }
             break;
