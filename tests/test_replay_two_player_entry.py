@@ -79,3 +79,15 @@ def test_no_earlier_entry_is_traded_away(replay_id: int, expect_at_least: int) -
     assert conv.entries_converted >= expect_at_least, (
         f"replay {replay_id} converted {conv.entries_converted} entries, "
         f"expected at least {expect_at_least}: {conv.failure}")
+
+
+def test_star_wars_pick_from_the_discard_pile_is_read_from_the_log() -> None:
+    """Replay 100 turn 10 headline: Star Wars takes a card out of the discard pile.
+
+    The card is played as its event, so the log prints it on an "Event:" line of its own --
+    the entry does say which of the pile was taken. The driver only ever answered a card
+    request from the discard or reveal lines, so this one had no answer at all.
+    """
+    conv = _convert(100)
+    assert conv.failure is None, f"replay 100 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 144

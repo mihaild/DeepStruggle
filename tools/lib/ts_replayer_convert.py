@@ -694,6 +694,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     picked_mode = False
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
     reveal_queue = [c for c in (card_id(nm) for _side, nm in (e.revealed or [])) if c]
+    # Cards this entry fires the event of besides its own. Star Wars lets the US take any
+    # non-scoring card out of the discard pile and play it as its event, and the log names that
+    # card on an "Event:" line of its own: at turn 9 AR7 of replay 104 the USSR plays Star Wars
+    # and the US answers with How I Learned To Stop Worrying, which sets DEFCON to 1 and ends
+    # the game. Without this the engine's card request had no answer and the entry was reported
+    # as undetermined though the log states it outright.
+    event_card_queue = [c for c in (card_id(nm) for nm in (e.events or []))
+                        if c and c != cid_target and c not in headline_ids.values()]
     # Five Year Plan draws its discard at random from the USSR hand, and the drawn card's event
     # then plays out, so which card comes out changes the whole entry. The log names it.
     plays_five_year_plan = cid_target == _FIVE_YEAR_PLAN or _FIVE_YEAR_PLAN in headline_ids.values()
@@ -865,6 +873,28 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
                     if chosen is not None:
                         reveal_queue.pop(slot)
+                        informative = True
+                        break
+            if chosen is None:
+                # Then a card the entry goes on to fire the event of, which is how Star Wars
+                # records its pick from the discard pile.
+                for slot, want_c in enumerate(event_card_queue):
+                    chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                                   lambda ma, w=want_c: int(ma.primary_id) == w)
+                    if chosen is None:
+                        # Only hands are forced from the log, so our discard pile holds just
+                        # what this reconstruction happened to play; a card the humans had
+                        # discarded turns earlier may still be sitting in the draw deck. The
+                        # log states it was in the pile, so put it there -- the same forcing a
+                        # headline already gets. At turn 9 AR7 of replay 104 How I Learned To
+                        # Stop Worrying was never offered for that reason.
+                        state.set_card_location(want_c, ts.CardLocation.DISCARD_PILE)
+                        mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
+                        legal = np.flatnonzero(mask)
+                        chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                                       lambda ma, w=want_c: int(ma.primary_id) == w)
+                    if chosen is not None:
+                        event_card_queue.pop(slot)
                         informative = True
                         break
             if chosen is None:
