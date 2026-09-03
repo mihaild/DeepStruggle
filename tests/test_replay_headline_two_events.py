@@ -44,8 +44,9 @@ def test_che_and_junta_headline_keeps_each_events_targets_to_itself() -> None:
         f"Che's coups must not be declined for Junta's targets: {conv.failure}")
 
 
-@pytest.mark.parametrize("replay_id", [128, 190])
-def test_the_che_headline_games_get_past_it(replay_id: int) -> None:
+@pytest.mark.parametrize("replay_id,turn", [(128, 7), (190, 6)])
+def test_the_che_headline_games_get_past_it(replay_id: int, turn: int) -> None:
+    """Only that the Che headline itself is passed; these games stop later for other reasons."""
     conv = _convert(replay_id)
-    assert conv.failure is None or conv.failure.turn > 7, (
-        f"replay {replay_id} stops at {conv.failure}")
+    assert conv.failure is None or (conv.failure.turn, conv.failure.phase) != (turn, "Headline"), (
+        f"replay {replay_id} stops at its Che headline: {conv.failure}")

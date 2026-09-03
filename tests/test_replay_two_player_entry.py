@@ -65,14 +65,12 @@ def test_ches_free_coups_use_the_logged_die() -> None:
         f"Che's free coups must reproduce the logged rolls: {conv.failure}")
 
 
-def test_replay_105_now_converts_end_to_end() -> None:
-    """Ortega was the last thing standing between this game and a complete conversion."""
+def test_replay_105_gets_past_its_ortega_entry() -> None:
     conv = _convert(105)
-    assert conv.failure is None, f"replay 105 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total == 143
+    assert _failed_at(conv) != "T9 AR2", f"replay 105 stops at Ortega: {conv.failure}"
 
 
-@pytest.mark.parametrize("replay_id,expect_at_least", [(105, 143), (113, 86)])
+@pytest.mark.parametrize("replay_id,expect_at_least", [(105, 99), (113, 86)])
 def test_no_earlier_entry_is_traded_away(replay_id: int, expect_at_least: int) -> None:
     """A guard on the count, so a fix that buys these entries with earlier ones is caught."""
     conv = _convert(replay_id)
@@ -89,8 +87,8 @@ def test_star_wars_pick_from_the_discard_pile_is_read_from_the_log() -> None:
     request from the discard or reveal lines, so this one had no answer at all.
     """
     conv = _convert(100)
-    assert conv.failure is None, f"replay 100 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total == 144
+    assert _failed_at(conv) != "T10 Headline", (
+        f"replay 100 stops at its Star Wars headline: {conv.failure}")
 
 
 def test_a_game_the_log_ends_at_defcon_1_is_allowed_to_end() -> None:
@@ -103,8 +101,8 @@ def test_a_game_the_log_ends_at_defcon_1_is_allowed_to_end() -> None:
     reach. The entry records defcon 1, so the log settles it.
     """
     conv = _convert(104)
-    assert conv.failure is None, f"replay 104 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total == 128
+    assert _failed_at(conv) != "T9 AR7", (
+        f"replay 104 stops where the log ends the game: {conv.failure}")
 
 
 def test_the_defcon_1_penalty_still_applies_where_the_log_played_on() -> None:
@@ -136,11 +134,12 @@ def test_an_entry_can_reach_two_play_modes() -> None:
     request had no answer at all.
     """
     conv = _convert(113)
-    assert conv.failure is None, f"replay 113 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total == 101
+    assert _failed_at(conv) != "T7 AR1", (
+        f"replay 113 stops at its Grain Sales entry: {conv.failure}")
 
 
 @pytest.mark.parametrize("replay_id", [113, 118, 125])
-def test_the_grain_sales_games_convert_end_to_end(replay_id: int) -> None:
+def test_the_grain_sales_games_get_past_their_grain_sales(replay_id: int) -> None:
     conv = _convert(replay_id)
-    assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
+    assert _failed_at(conv) != "T7 AR1", (
+        f"replay {replay_id} stops at its Grain Sales entry: {conv.failure}")

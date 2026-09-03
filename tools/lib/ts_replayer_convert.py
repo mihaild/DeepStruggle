@@ -184,6 +184,24 @@ def _set_hand(state: ts.GameState, player: ts.Player, names: List[str]) -> int:
     return placed
 
 
+def _narrated_score(entry: Entry) -> Optional[int]:
+    """The score this entry states in words, US positive, or None if it states none.
+
+    Only the narration -- "US gains 5 VP. Score is US 18." -- is worth asserting against. The
+    entry's score field is a running value that lags the narration, disagreeing with it in 531
+    of the 6602 places the log states a score, and it goes stale between VP events: at turn 1
+    AR1 of replay 166 the log has just narrated the score to even, and the field still reads
+    the USSR's 1 from the headline before it.
+    """
+    for _side, _amount, total_side, total in (entry.vp_gains or []):
+        if total_side == "US":
+            return int(total)
+        if total_side == "USSR":
+            return -int(total)
+        return 0                                   # "Score is even."
+    return None
+
+
 def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
     """Force VP and DEFCON to the logged values.
 
@@ -1600,6 +1618,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 played[e.player].add(named)
 
         before = len(conv.samples)
+        turn_before = int(state.turn)
         if prev_entry is not None:
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
@@ -1614,6 +1633,24 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 conv.replay_id, e.turn, e.phase, e.player, e.card,
                 "board mismatch after replay",
                 f"{bad} {_board_diff(state, raw.get('countries'))}"))
+        # --- and does the score it reached match the log's? ---
+        # The one score change the log never narrates is the Military Operations comparison at
+        # the end of a turn, which lands between the last action round and the next headline:
+        # at turn 1 AR6 of replay 60 the log leaves the US on 5, the comparison adds 2, and the
+        # log's next statement of the score -- the turn 2 headline, after the USSR scores 1 --
+        # is 6. So the check is skipped on an entry whose play carried the game into a new
+        # turn, and applies everywhere else.
+        # Not on the first entry: it carries the setup placements, which the engine's own
+        # initialisation stands in for, so anything scored there is scored on a board the log
+        # has not yet corrected.
+        want_score = _narrated_score(e) if prev_entry is not None else None
+        if want_score is not None and int(state.turn) == turn_before:
+            if int(state.victory_points) != want_score:
+                del conv.samples[before:]
+                raise ConversionFailure(Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "score mismatch after replay",
+                    f"engine is at {int(state.victory_points)} VP, the log says {want_score}"))
         # A space race attempt either advanced the track or it did not, and the log says which.
         # Checked here rather than left to drift: the log prints a track only on success, so an
         # advance the reconstruction invented would otherwise never be contradicted.
