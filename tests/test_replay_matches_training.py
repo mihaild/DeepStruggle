@@ -27,8 +27,19 @@ def _drain(state: ts.GameState) -> None:
         ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
 
 
-def test_flat_action_at_a_chance_node_is_not_equivalent_to_resolving_it() -> None:
-    """Documents the trap: at Summit the two paths disagree on phasing_player."""
+def test_flat_action_at_a_chance_node_now_matches_resolving_it() -> None:
+    """The trap this file was written for is gone; the two paths agree everywhere.
+
+    They used to disagree at Summit (#45) on phasing_player. That divergence came from
+    allow_early_stop leaking into Summit's branch decision from whatever decision preceded
+    it, so the two ways of resolving the chance node could reach different masks. Every
+    decision now sets that flag deliberately instead of inheriting it, and across 790 chance
+    nodes in 120 seeded games the two paths produce identical states.
+
+    The assertion is inverted rather than deleted, so that a future change reintroducing the
+    divergence is caught. The drain in the replay converter is now belt-and-braces rather
+    than load-bearing, and is left in place.
+    """
     mismatches = 0
     checked = 0
     for seed in range(2000, 2120):
@@ -52,9 +63,10 @@ def test_flat_action_at_a_chance_node_is_not_equivalent_to_resolving_it() -> Non
                 break
             ts.Engine.step_flat(st, int(legal[0]))
     assert checked > 100, "fixture reached too few chance nodes to be meaningful"
-    assert mismatches > 0, (
-        "expected step_flat at a chance node to differ from explicit resolution; if this "
-        "now passes cleanly the engine has been changed and the drain may be removable"
+    assert mismatches == 0, (
+        f"{mismatches} of {checked} chance nodes resolve differently through step_flat than "
+        "through an explicit ROLL_DIE; the two were made equivalent by giving every decision "
+        "its own allow_early_stop instead of inheriting the previous one's"
     )
 
 

@@ -76,6 +76,12 @@ inline bool trigger_war(GameState& state, uint8_t card_id, Player player, uint8_
     state.ctx().decision_player = player;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
+    // A war is fought against a legal target or not at all; declining is not one of its
+    // options. Set explicitly rather than inherited: at turn 5's headline of ts-replayer game
+    // 170 SALT Negotiations and Missile Envy resolve first and leave allow_early_stop set, so
+    // Brush War's target choice offered a decline alongside its 52 targets that
+    // handle_war_step has no case for -- and the war silently never happened.
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_id;
     return false;
 }

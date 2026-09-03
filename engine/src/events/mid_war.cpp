@@ -110,6 +110,7 @@ bool trigger_junta(GameState& state, Player p) noexcept {
     state.ctx().decision_player = p;
     state.ctx().decision_type = DecisionType::POINT_NODE; // Stage 1: Add 2 influence in CA/SA
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // placement is mandatory; see trigger_war
     state.ctx().resolving_card = card_ids::JUNTA;
     return false;
 }
@@ -264,6 +265,7 @@ bool trigger_muslim_revolution(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 2;
     state.ctx().max_per_country = 1;
+    state.ctx().allow_early_stop = 0;   // removal is mandatory; see trigger_war
     state.ctx().resolving_card = card_ids::MUSLIM_REVOLUTION;
     return false;
 }

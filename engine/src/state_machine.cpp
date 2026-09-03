@@ -1,4 +1,5 @@
 #include "ts/state_machine.hpp"
+#include "ts/invariant.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
 #include "ts/card_handlers.hpp"
@@ -592,8 +593,34 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 return true;
             }
 
+            // What the handler says is the answer. A confirm-done used to end the event
+            // frame here whatever the handler had just done, which silently discarded a
+            // decision it had opened: Latin American Debt Crisis asks the US whether to
+            // discard a 3 Ops card, and the US declining is exactly what lets the USSR double
+            // its Influence in two South American countries. At turn 8 AR4 of ts-replayer
+            // game 117 the doubling vanished and the US went straight on to spend the card's
+            // own Ops.
+            const DecisionContext before_ctx = state.ctx();
+            const uint8_t before_card = state.ctx().resolving_card;
             bool finished = CardHandlers::handle_event_step(state, action);
-            if (finished || action.is_confirm_done()) {
+            if (!finished && action.is_confirm_done()) {
+                // A handler that neither finishes nor changes anything at all has not consumed
+                // the decline: the same decision would be asked again, forever. Ending the
+                // frame for it would paper over a defect in that handler with a game that
+                // quietly skipped part of a card, so it fails here instead.
+                //
+                // The whole context is compared rather than a chosen few fields. Picking
+                // fields is guesswork of exactly the kind this replaces: De-Stalinization's
+                // stage 1 decline moves on to stage 2 without touching decision_player or
+                // decision_type, and when two Influence were removed remaining_steps happens
+                // to land on the value it already had -- a real continuation that a
+                // three-field test called a defect.
+                if (std::memcmp(&before_ctx, &state.ctx(), sizeof(DecisionContext)) == 0) {
+                    invariant_failed("event handler did not consume a confirm-done; card",
+                                     static_cast<int>(before_card));
+                }
+            }
+            if (finished) {
                 state.ctx().resolving_card = 0;
                 if (state.ctx_stack_depth > 0) {
                     // Unwind every finished frame, not just one. Events nest: Five Year Plan

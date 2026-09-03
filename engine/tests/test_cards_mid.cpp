@@ -398,6 +398,50 @@ TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_IgnoresOpponentControl) {
     ASSERT_EQ(state.countries[ts::countries::BOTSWANA].us_influence, 4);
 }
 
+// A war is fought against a legal target or not at all. trigger_war used to leave
+// allow_early_stop as whatever the previous decision in the frame had set, so a war that
+// followed one -- SALT Negotiations and Missile Envy at turn 5's headline of ts-replayer game
+// 170 -- offered a decline alongside its targets that handle_war_step has no case for. The
+// state machine then ended the event frame and the war silently never happened.
+TEST(MidCardsTest, Card36_BrushWar_TargetChoiceNeverOffersADecline) {
+    ts::GameState state{};
+    state.ctx().allow_early_stop = 1;      // left set by whatever resolved before the war
+    ts::CardHandlers::trigger_event(state, ts::card_ids::BRUSH_WAR, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
+    ASSERT_EQ(state.ctx().allow_early_stop, 0);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[211], 0);
+    uint8_t targets = 0;
+    for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
+    ASSERT_GT(targets, 0);
+}
+
+// De-Stalinization is the other side of it: declining stage 1 is legal and moves on to stage
+// 2, and when exactly two Influence were removed the remaining step count lands on the value
+// it already had. Nothing about the decision "looks" different, so the frame must be kept on
+// the handler's word rather than on any guess about which fields ought to have changed.
+TEST(MidCardsTest, Card33_DeStalinization_DeclineAfterTwoRemovalsContinuesToPlacement) {
+    ts::GameState state{};
+    state.countries[ts::countries::POLAND].ussr_influence = 3;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::DE_STALINIZATION, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().allow_early_stop, 1);
+    ASSERT_EQ(state.ctx().remaining_steps, 4);
+
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::POLAND, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::POLAND, 0, 0});
+    ASSERT_EQ(state.ctx().remaining_steps, 2);   // two removed, two still allowed
+
+    ts::MicroAction decline{ts::DecisionType::POINT_NODE, 0, 0, ts::action_flags::CONFIRM_DONE};
+    bool done = ts::CardHandlers::handle_event_step(state, decline);
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.ctx().remaining_steps, 2);   // unchanged, yet the event has moved on
+    ASSERT_EQ(state.ctx().max_per_country, 2);   // ...to stage 2, which is how you can tell
+    ASSERT_EQ(state.ctx().allow_early_stop, 0);  // all removed Influence must be placed
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

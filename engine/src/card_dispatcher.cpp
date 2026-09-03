@@ -760,6 +760,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     }
                     state.ctx().decision_player = Player::US;
                     state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+                    // The winner picks one of the three DEFCON options; declining is not one
+                    // of them. Set explicitly rather than inherited -- see trigger_war.
+                    state.ctx().allow_early_stop = 0;
                     return false;
                 } else {
                     state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
@@ -770,6 +773,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     }
                     state.ctx().decision_player = Player::USSR;
                     state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+                    state.ctx().allow_early_stop = 0;   // as above
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
@@ -1225,6 +1229,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.countries[countries::SOUTH_AFRICA].add_influence(Player::USSR, 1);
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = 2;
+                    // Both placements are mandatory, and Angola and Botswana are always
+                    // available. Set explicitly rather than inherited -- see trigger_war.
+                    state.ctx().allow_early_stop = 0;
                     state.ctx().resolving_card = card_ids::SOUTH_AFRICAN_UNREST;
                     return false;
                 }
@@ -1249,6 +1256,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                         }
                         state.ctx().decision_type = DecisionType::POINT_NODE;
                         state.ctx().decision_player = Player::USSR;
+                        state.ctx().allow_early_stop = 0;   // as above
                         return false;
                     }
                 }

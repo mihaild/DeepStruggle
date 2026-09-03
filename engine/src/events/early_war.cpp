@@ -191,6 +191,7 @@ bool trigger_truman_doctrine(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // removal is mandatory; see trigger_war
     state.ctx().resolving_card = card_ids::TRUMAN_DOCTRINE;
     return false;
 }
@@ -229,6 +230,7 @@ bool trigger_independent_reds(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // the no-target case returned above
     state.ctx().resolving_card = card_ids::INDEPENDENT_REDS;
     return false;
 }
@@ -371,6 +373,7 @@ bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // the no-scoring-card case returned above
     state.ctx().resolving_card = card_ids::THE_CAMBRIDGE_FIVE;
     uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(cnt, state.ctx().temp_cards.size()));
     for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = score_cards[k];
@@ -386,6 +389,7 @@ bool trigger_special_relationship(GameState& state, Player p) noexcept {
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 1;
+        state.ctx().allow_early_stop = 0;   // placement is mandatory; see trigger_war
         state.ctx().resolving_card = card_ids::SPECIAL_RELATIONSHIP;
         return false;
     } else {
@@ -395,6 +399,7 @@ bool trigger_special_relationship(GameState& state, Player p) noexcept {
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 1;
+        state.ctx().allow_early_stop = 0;   // placement is mandatory; see trigger_war
         state.ctx().resolving_card = card_ids::SPECIAL_RELATIONSHIP;
         return false;
     }
