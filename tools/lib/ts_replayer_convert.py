@@ -212,8 +212,21 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
         for bit in _EFFECT_BITS.get(_norm(name), ()):
             state.persistent_effects &= ~bit
 
-    if entry.score is not None:
-        state.victory_points = int(entry.score)
+    # The score the entry narrates, in preference to the score field it carries. "US gains 5 VP.
+    # Score is US 18." states the score outright; the field lags behind it, disagreeing in 531
+    # of the 6602 places the log states one. Forcing the stale field left replay 60 two VP ahead
+    # of the real game at turn 7 AR2, so Central America Scoring's 5 VP -- which the engine
+    # awards exactly as the log does -- landed on 20 and ended a game that ran to turn 10.
+    narrated = None
+    for _side, _amount, total_side, total in (entry.vp_gains or []):
+        if total_side == "US":
+            narrated = int(total)
+        elif total_side == "USSR":
+            narrated = -int(total)
+        else:                                  # "Score is even."
+            narrated = 0
+    if narrated is not None:
+        state.victory_points = narrated
     if entry.defcon is not None and 1 <= int(entry.defcon) <= 5:
         state.defcon = int(entry.defcon)
 
