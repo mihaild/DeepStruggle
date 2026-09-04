@@ -368,7 +368,8 @@ def _drain(state: ts.GameState,
            forced_roll: int = 0,
            war_rolls: Optional[List[int]] = None,
            coup_rolls: Optional[List[int]] = None,
-           realign_rolls: Optional[List[Tuple[str, int]]] = None) -> None:
+           realign_rolls: Optional[List[Tuple[str, int]]] = None,
+           want_vp: Optional[int] = None) -> None:
     """Resolve chance nodes, steering them to what the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
@@ -391,7 +392,8 @@ def _drain(state: ts.GameState,
         # entry -- at turn 6 AR4 of replay 121 the US coups Tunisia and then loses the Korean
         # War -- so the roll type decides, not the order they happen to arrive in.
         second = 0
-        kind, roller = _pending_roll(state) if (war_rolls or coup_rolls or realign_rolls) \
+        kind, roller = _pending_roll(state) if (war_rolls or coup_rolls or realign_rolls
+                                                or want_vp is not None) \
             else (int(ts.RollType.NONE), "NONE")
         if war_rolls and kind == int(ts.RollType.WAR_EVENT):
             roll = war_rolls.pop(0)
@@ -405,6 +407,16 @@ def _drain(state: ts.GameState,
             del realign_rolls[:2]
             other = "USSR" if roller == "US" else "US"
             roll, second = pair.get(roller, 0), pair.get(other, 0)
+        elif want_vp is not None and kind in (int(ts.RollType.OLYMPIC_GAMES),
+                                              int(ts.RollType.SUMMIT)):
+            # Olympic Games and Summit are decided by dice the log never prints -- it records
+            # only who won ("USSR chooses to participate in the Olympics / US gains 2 VP"). The
+            # board tells us nothing, since neither moves a single Influence, so the seed is
+            # chosen by the score it lands on instead. Left to chance the winner was a coin
+            # flip, and losing it puts the 2 VP on the wrong side: at turn 6's headline of
+            # replay 245 the US wins the Olympics in the log and the reconstruction gave the
+            # USSR the points, a four VP swing from one roll.
+            _force_roll(state, expected, want_vp)
         elif expected:
             _force_roll(state, expected)
         # A space race roll is given outright by the log ("Die roll: 5 -- Failed!"), and the
@@ -416,9 +428,14 @@ def _drain(state: ts.GameState,
             second if 1 <= second <= 6 else 0, 0))
 
 
-def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
-                tries: int = 400) -> bool:
-    """Seed the rng so the pending chance node resolves the way the log says it did."""
+def _force_roll(state: ts.GameState, expected: Optional[Dict[int, Tuple[int, int]]],
+                want_vp: Optional[int] = None, tries: int = 400) -> bool:
+    """Seed the rng so the pending chance node resolves the way the log says it did.
+
+    Matched on the board where the log gives one, and on the score where it gives that instead:
+    Olympic Games and Summit move no Influence at all, so the only trace they leave is who
+    gained the points.
+    """
     base = int(state.rng_state)
     for k in range(tries):
         cand = (base + (k + 1) * _GOLDEN) % _UINT64
@@ -428,11 +445,15 @@ def _force_roll(state: ts.GameState, expected: Dict[int, Tuple[int, int]],
             ts.Engine.step(probe, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
         except Exception:
             continue
-        if all(int(probe.get_country(c).us_influence) == us
-               and int(probe.get_country(c).ussr_influence) == ussr
-               for c, (us, ussr) in expected.items()):
-            state.rng_state = cand
-            return True
+        if expected and not all(
+                int(probe.get_country(c).us_influence) == us
+                and int(probe.get_country(c).ussr_influence) == ussr
+                for c, (us, ussr) in expected.items()):
+            continue
+        if want_vp is not None and int(probe.victory_points) != want_vp:
+            continue
+        state.rng_state = cand
+        return True
     return False
 
 
@@ -952,7 +973,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
         # success, because the war constraint it was re-seeded against was already satisfied.
         _drain(state, None if seed_settled else war_outcome, space_roll,
-               war_roll_queue, coup_roll_queue, realign_roll_queue)
+               war_roll_queue, coup_roll_queue, realign_roll_queue, _narrated_score(e))
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
