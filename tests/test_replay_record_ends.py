@@ -55,15 +55,37 @@ def test_these_games_convert_up_to_where_the_log_ends(replay_id: int) -> None:
 
 
 def test_a_disagreement_on_the_last_entry_is_still_a_failure() -> None:
-    """Replay 148: the log skips an action round the engine says cannot be skipped.
+    """Replay 154 turn 10 AR7: the log states a score and the engine reaches a different one.
 
-    The entry is complete and the log states what happened; we cannot reproduce it. That is
-    ours to fix, not the recording's to excuse.
+    The entry is complete and the log says what happened; we cannot reproduce it. That is ours
+    to fix, not the recording's to excuse.
     """
-    conv = convert_game(_game(148))
+    conv = convert_game(_game(154))
     assert conv.failure is not None
-    assert conv.failure.kind == "logged pass is not legal"
+    assert conv.failure.kind == "score mismatch after replay"
     assert conv.truncated_at is None
+
+
+def test_a_skipped_round_at_the_end_of_the_file_is_the_record_ending() -> None:
+    """A bare "Turn N, SIDE ARk" header means a skip when entries follow it, and not at EOF.
+
+    Every one of the corpus's pass failures is the second shape -- the header last in the file
+    with the player still holding cards -- and not one is the first, where a genuine skip is
+    always followed by the other player's entries.
+    """
+    for replay_id in (191, 274, 76):
+        conv = convert_game(_game(replay_id))
+        assert conv.failure is None, f"replay {replay_id} reported {conv.failure}"
+        assert conv.truncated_at is not None
+        assert conv.truncated_at.kind == "logged pass is not legal"
+
+
+def test_a_skipped_round_with_entries_after_it_is_still_driven() -> None:
+    """Replay 114 turn 5: the USSR skips AR4 through AR7 and the US plays on."""
+    conv = convert_game(_game(114))
+    assert conv.failure is None, f"replay 114 stopped at {conv.failure}"
+    assert conv.truncated_at is None
+    assert conv.entries_converted == conv.entries_total
 
 
 def test_only_the_last_entry_may_end_the_record() -> None:

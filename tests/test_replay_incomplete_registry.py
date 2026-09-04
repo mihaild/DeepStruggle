@@ -49,9 +49,15 @@ def test_every_listed_entry_really_is_unfinished() -> None:
                             parse_entry(r))]
             assert matching, (
                 f"replay {replay_id} has no entry at T{turn} {phase} for {player}")
-            last = matching[-1]
-            assert raws.index(last) == len(raws) - 1, (
-                f"replay {replay_id} T{turn} {phase} {player} is not the last entry")
+            # The entry named is where the unfinished tail begins, and everything from it to
+            # the end of the file belongs to that same turn. Usually it *is* the last entry;
+            # replay 148 stops three entries into turn 4, so the whole turn goes -- there is no
+            # telling how much of it the recording lost.
+            start = raws.index(matching[-1])
+            tail = [parse_entry(r).turn for r in raws[start:]]
+            assert set(tail) == {turn}, (
+                f"replay {replay_id} T{turn} {phase} {player}: the entries after it span "
+                f"turns {sorted(set(tail))}, so it is not where the record runs out")
 
 
 def test_an_entry_that_states_the_score_twice_is_read_at_its_end() -> None:

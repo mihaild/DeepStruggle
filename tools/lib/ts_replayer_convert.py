@@ -26,7 +26,8 @@ from typing import Dict, List, Optional, Set, Tuple
 import numpy as np
 import ts_engine as ts
 
-from tools.lib.ts_replayer_parse import Entry, country_id, parse_entry
+from tools.lib.ts_replayer_parse import (Entry, RE_PASSED_ROUND, country_id,
+                                        parse_entry)
 
 
 def _norm(s: str) -> str:
@@ -118,12 +119,21 @@ class Mismatch:
 #   and the engine taking one of its own removed 2 USSR Influence from East Germany -- which
 #   the log has standing at 5 since turn 3 AR2 and never moving again.
 #
-# The player is part of the key because an action round holds an entry for each side, and only
-# one of them need be cut short: replay 55's USSR half of turn 9 AR7 is complete and converts.
+#   replay 148, turn 4 -- the file stops three entries into the turn, and the last of them ends
+#   on a bare "Turn 4, USSR AR2" header with nothing beneath it. Elsewhere that header means a
+#   player out of cards skipping their round; here it is the start of an entry that was never
+#   written, and the USSR is holding six cards. The whole turn goes rather than the last entry,
+#   because there is no telling how much of it the recording lost.
+#
+# The entry named is where the unfinished tail begins, and everything from it to the end of the
+# file belongs to that same turn. The player is part of the key because an action round holds an
+# entry for each side and only one of them need be cut short: replay 55's USSR half of turn 9
+# AR7 is complete and converts.
 _KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str, str]]] = {
     60: {(7, "AR6", "USSR")},
     133: {(10, "Headline", "both")},
     55: {(9, "AR7", "US")},
+    148: {(4, "Headline", "both")},
 }
 
 # Scores the engine and the log disagree on because a choice the engine does not offer was
@@ -2087,10 +2097,24 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     they stay failures. The distinction is between the log saying nothing and the log saying
     something else.
     """
-    if m.kind != "decision not determined by the log" or not raws:
+    if not raws:
         return False
     last = parse_entry(raws[-1])
-    return (m.turn, m.phase, m.player) == (last.turn, last.phase, last.player)
+    if (m.turn, m.phase, m.player) != (last.turn, last.phase, last.player):
+        return False
+    if m.kind == "decision not determined by the log":
+        return True
+    if m.kind == "logged pass is not legal":
+        # A bare "Turn 4, USSR AR2" header at the foot of an entry means a player out of cards
+        # skipping their round -- when entries follow it. At the end of the file it means the
+        # opposite: the round was announced and never written. Every one of the corpus's 14
+        # remaining pass failures is that shape, the header being the last thing in the file
+        # with the player still holding cards, and not one occurs mid-file, where a genuine
+        # skip is always followed by the other player's entries.
+        text = (last.text or "").rstrip()
+        matches = list(RE_PASSED_ROUND.finditer(text))
+        return bool(matches) and text.endswith(matches[-1].group(0))
+    return False
 
 
 def convert_game(game: Dict) -> Conversion:
