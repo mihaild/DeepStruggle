@@ -83,15 +83,29 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
     ASSERT_TRUE(reached_final_scoring || won_on_vp);
 }
 
-// Seed 6, not 5: what this test checks is how scoring classifies domination, control and
-// presence, so it needs a game that plays scoring cards and reaches all three. The scripted
-// policy reaches a 20 VP win with no scoring at all on several seeds -- 2, 4, 7 and 8 among the
-// first eight, on this engine and on the one before it -- and which seeds do that shifts with
-// any change to the action space, which is a property of the policy rather than of the rules.
+// What this test checks is how scoring classifies domination, control and presence, so it needs
+// a game that plays scoring cards and reaches all three. The scripted policy reaches a 20 VP win
+// with no scoring at all on many seeds, and *which* seeds do that moves with any change to the
+// action space or to the order things resolve in -- a property of the policy, not of the rules.
+// A pinned seed therefore fails for reasons that have nothing to do with scoring: seed 6 stopped
+// producing scoring events when headline Ops began discarding the card they were spent on. So
+// the seed is searched for, the way FullGame_Turn1ToFinalScoring does above, and the search
+// itself asserts that such a game exists.
 TEST(FullGameTest, Wrapper_ScoringEvents_LogInspection) {
-    ts::GameTestWrapper wrapper(6);
     auto policy = ts::GameTestWrapper::create_balanced_policy();
+    uint64_t working_seed = 0;
+    for (uint64_t s = 1; s <= 200; ++s) {
+        ts::GameTestWrapper w(s);
+        w.run_to_completion(policy, 5000);
+        if (w.total_dominations() >= 1 && w.total_controls() >= 1 && w.total_presences() >= 1) {
+            working_seed = s;
+            break;
+        }
+    }
+    // No seed in 1..200 reached all three regional statuses.
+    ASSERT_GT(working_seed, 0);
 
+    ts::GameTestWrapper wrapper(working_seed);
     wrapper.run_to_completion(policy, 5000);
 
     ASSERT_GT(wrapper.scoring_events.size(), 0);

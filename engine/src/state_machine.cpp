@@ -241,6 +241,26 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
     if (state.current_phase == Phase::HEADLINE) {
+        // Ops spent during a headline still belong to a card, and that card is spent with
+        // them. The headline machinery relocates the two headline cards themselves, but a card
+        // played *through* one of them is nobody's to clear away and stayed in the hand it was
+        // played from: at turn 4's headline of ts-replayer game 14 the US headlines Grain
+        // Sales To Soviets, draws Marshall Plan out of the USSR hand and coups Brazil with it,
+        // and Marshall Plan was still sitting in the US hand afterwards -- in the running when
+        // the USSR's Missile Envy asked for the highest Ops card, and playable a second time.
+        uint8_t op_card = state.ctx().pending_op_card;
+        if (op_card != 0 && op_card != card_ids::THE_CHINA_CARD &&
+            op_card != state.headline_first_card && op_card != state.headline_second_card &&
+            op_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, op_card)) {
+            const auto& op_info = CardData::get_card(op_card);
+            if (op_card == card_ids::SHUTTLE_DIPLOMACY &&
+                state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                state.card_locations[op_card] = CardLocation::ONGOING_EVENT;
+            } else {
+                state.card_locations[op_card] = op_info.one_time
+                    ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            }
+        }
         advance_headline_step(state);
         return;
     }

@@ -163,4 +163,9 @@ cmake --build build_san -j
    find it there. `HEADLINE_COMMITTED` is a waypoint: the ordinary post-resolution cleanup overwrites it
    with the card's real destination. It is deliberately not the discard pile, which Star Wars and
    SALT Negotiations read.
-6. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+6. **Ops Spent In A Headline Discard Their Own Card**: `advance_after_ops` relocates
+   `pending_op_card` in the HEADLINE phase, because the headline machinery only clears the two
+   headline cards themselves. A card played *through* one of them -- Grain Sales To Soviets draws
+   from the opponent's hand and has its player play what it draws -- otherwise stays in the hand
+   it was played from, in the running for Missile Envy and playable a second time.
+7. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
