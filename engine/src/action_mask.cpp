@@ -124,14 +124,18 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 }
             }
 
+            // A player holding cards must play one; passing is only for a player who has run
+            // out. The China Card is the exception: it is not part of the hand a player is
+            // required to spend, so holding it and nothing else is still a choice between
+            // playing it and passing the action round.
+            bool holds_a_card = false;
+            for (size_t i = 1; i <= 110; ++i) if (mask_out[i]) { holds_a_card = true; break; }
+            if (!holds_a_card) mask_out[0] = 1;
+
             // The China Card
             if (state.china_card_holder == p && state.china_card_playable && state.current_phase != Phase::HEADLINE) {
                 mask_out[card_ids::THE_CHINA_CARD] = 1;
             }
-
-            bool any = false;
-            for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
-            if (!any) mask_out[0] = 1;
             break;
         }
 

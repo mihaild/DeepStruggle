@@ -151,4 +151,8 @@ cmake --build build_san -j
 1. **Never Allocate Heap Memory in State Types**: Always ensure `static_assert(std::is_trivially_copyable_v<GameState>);` passes.
 2. **Deterministic PRNG**: Use `Prng::roll_d6(state.rng_state)` or `Prng::random_index(state.rng_state, n)` whenever game state dice or shuffles are executed.
 3. **Pass / Confirm Handling**: Multi-step cards (e.g. *Suez Crisis*, *Muslim Revolution*, *Independent Reds*, *Special Relationship*) must support early pass (`action.primary_id == 0` or `CONFIRM_DONE`) when no eligible targets remain.
-4. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+4. **Passing an Action Round**: a player holding cards must play one -- `SELECT_CARD` offers the
+   pass (mask index 0, flat 211) only to a player with none. The China Card is the exception: it
+   is not part of the hand a player is required to spend, so a holder whose only playable card is
+   the China Card is offered both it and the pass.
+5. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

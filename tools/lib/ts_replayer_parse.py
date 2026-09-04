@@ -80,6 +80,11 @@ RE_BARE_ROLL = re.compile(r"^(US|USSR) rolls (\d+)$")
 RE_EFFECT_END = re.compile(r"^(.+) is no longer in play\.$")
 RE_HEADLINE = re.compile(r"(US|USSR) Headlines (.+)$")
 RE_DISCARD = re.compile(r"(US|USSR) discards? (.+?)\.?$")
+# An action round nobody played. The log gives it a header and nothing else -- "Turn 5, USSR
+# AR4" on a line of its own, at the foot of the entry above it -- and prints no entry of its
+# own, so the next entry belongs to the other player. The entry's own header never matches:
+# it carries on with ": <card>: ..." past the end of the line.
+RE_PASSED_ROUND = re.compile(r"^Turn (\d+), (US|USSR) AR(\d+)\s*$", re.M)
 RE_PLAYS = re.compile(r"(US|USSR) plays (.+?)\.?$")
 
 
@@ -128,6 +133,10 @@ class Entry:
     # The opening placement shares this entry with the turn 1 headline in every game in the
     # corpus, and is spread differently from an ordinary placement -- see point_queue.
     setup: bool = False
+    # Action rounds this entry says were passed, as (turn, side, action round). A player who
+    # has run out of cards skips their round -- at turn 5 of replay 114 the USSR skips four in
+    # a row -- and the log records it as a bare header with nothing beneath it.
+    passed_rounds: List[Tuple[int, str, int]] = field(default_factory=list)
     in_play: List[str] = field(default_factory=list)
     out_of_play: List[str] = field(default_factory=list)
     # Cards named by a "reveals" line. Usually informational -- Lone Gunman and CIA Created
@@ -206,6 +215,9 @@ def parse_entry(raw: Dict) -> Entry:
         text=str(raw.get("text", "")),
         setup="SETUP:" in str(raw.get("text", "")),
     )
+    for m in RE_PASSED_ROUND.finditer(str(raw.get("text", ""))):
+        e.passed_rounds.append((int(m.group(1)), m.group(2), int(m.group(3))))
+
     in_event = False
     section_open = False
     for line in str(raw.get("text", "")).split("\n"):

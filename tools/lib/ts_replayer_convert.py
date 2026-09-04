@@ -17,6 +17,8 @@ Failures are reported with replay id and turn/action round rather than counted, 
 systematic failure in one card's handling looks identical to noise in a summary statistic.
 """
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
@@ -109,6 +111,45 @@ _KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str]]] = {
 }
 
 
+# The engine's opening handicap is the tournament one: 2 extra US Influence, placed where the
+# US already has some. Two of the corpus's 287 games were played with a different one and are
+# not reconstructible without making the handicap a setup parameter -- which is not worth
+# doing, since a handicap other than 2 says the players were mismatched and the positions it
+# produces are not ones the engine will ever play from.
+_STANDARD_HANDICAP = "US +2"
+RE_HANDICAP = re.compile(r"Handicap influence: (\S+ [+-]?\d+)")
+
+
+def unsupported_handicap(raws: List[Dict]) -> Optional[str]:
+    """The game's handicap, if it is one the engine cannot set up. None when it can."""
+    if not raws:
+        return None
+    m = RE_HANDICAP.search(str(raws[0].get("text", "")))
+    if m is None or m.group(1) == _STANDARD_HANDICAP:
+        return None
+    return m.group(1)
+
+
+def distinct_replays(games: Dict[int, List[Dict]]) -> Dict[int, int]:
+    """Map each replay id to the id whose game it duplicates, itself when it is the original.
+
+    The download holds 287 files but only 254 games. Twenty-four of them arrived more than
+    once, one of them nine times over (replays 90, 214-218, 254, 298 and 309 are one game),
+    and a game counted nine times is nine times the weight in anything trained on it. The
+    duplicates are exact -- the same entries, the same text -- so they are found by content
+    and not by a list that would have to be maintained.
+
+    The lowest id wins, so the choice does not move when a file is added or removed.
+    """
+    first: Dict[str, int] = {}
+    out: Dict[int, int] = {}
+    for rid in sorted(games):
+        digest = hashlib.sha256(
+            json.dumps(games[rid], sort_keys=True).encode()).hexdigest()
+        out[rid] = first.setdefault(digest, rid)
+    return out
+
+
 @dataclass
 class Conversion:
     replay_id: int
@@ -118,6 +159,9 @@ class Conversion:
     entries_guessed: int = 0
     decisions_emitted: int = 0
     board_resyncs: int = 0
+    # Set when the game is not converted at all, with the reason. Distinct from `failure`,
+    # which means the conversion was attempted and stopped somewhere.
+    skipped: Optional[str] = None
     vp_drift: int = 0
     entries_board_mismatch: int = 0
     hand_misses: int = 0
@@ -524,6 +568,51 @@ def _force_roll(state: ts.GameState, expected: Optional[Dict[int, Tuple[int, int
 def _acting(state: ts.GameState) -> ts.Player:
     ctx = state.ctx()
     return ctx.decision_player if ctx.decision_player != ts.Player.NONE else state.phasing_player
+
+
+_PASS = 211
+
+
+def _drive_passed_rounds(state: ts.GameState, e: Entry, conv: "Conversion") -> None:
+    """Pass the action rounds the log says nobody played.
+
+    A player who has run out of cards skips their action round. The log gives it a header and
+    nothing else -- "Turn 5, USSR AR4" at the foot of the entry above -- and writes no entry of
+    its own, so the rounds simply go missing from the record. At turn 5 of replay 114 the USSR
+    skips four in a row and the next four entries are all the US's, which left the driver
+    handing the USSR's cards to the US.
+
+    The pass is driven rather than skipped over, because it is what happened and because what
+    follows depends on it: at turn 10 AR7 of replay 105 the US passes the last action round of
+    the game, which ends turn 10 and runs the final scoring the log records as 11 VP.
+    """
+    for _turn, side, _ar in e.passed_rounds:
+        if ts.Engine.is_terminal(state):
+            return
+        want = ts.Player.US if side == "US" else ts.Player.USSR
+        ctx = state.ctx()
+        # The exact round, not merely the same player asked for a card. The entry before a
+        # skipped round can carry the game past it -- at turn 8 AR7 of replay 116 the USSR's
+        # play ends the turn -- and the next card request is then turn 9's headline, which is
+        # not a round anyone can pass.
+        if (state.current_phase != ts.Phase.ACTION_ROUND
+                or int(state.turn) != _turn
+                or int(state.action_round) != _ar
+                or ctx.decision_type != ts.DecisionType.SELECT_CARD
+                or ctx.decision_player != want):
+            continue
+        mask = ts.ActionMask.generate_flat_mask(state)
+        if not mask[_PASS]:
+            # Passing with cards in hand is illegal, so a log that says a round was skipped
+            # and an engine that says it could not be is a disagreement worth hearing about
+            # rather than papering over.
+            raise ConversionFailure(Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "logged pass is not legal",
+                f"the log skips {side} AR{_ar} of turn {_turn}, and the engine still offers "
+                f"{sum(1 for i in range(110) if mask[i])} cards to play"))
+        ts.Engine.step_flat(state, _PASS)
+        _drain(state)
 
 
 def point_queue(e: Entry) -> List[int]:
@@ -1704,6 +1793,11 @@ def convert_game(game: Dict) -> Conversion:
     raws = game.get("all_turns", [])
     hands = game.get("hands", {}) or {}
 
+    handicap = unsupported_handicap(raws)
+    if handicap is not None:
+        conv.skipped = f"handicap {handicap}: the engine sets up {_STANDARD_HANDICAP}"
+        return conv
+
     state = ts.GameState()
     ts.Engine.init_game(state, 12345)
     _drain(state)
@@ -1847,6 +1941,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # own initialisation is the position they belong to.
             _reconcile_turn(state, e, conv.replay_id)
         _drive_entry(state, e, conv, raw)
+        _drive_passed_rounds(state, e, conv)
 
         # --- did replaying our parsed actions reproduce the log's board? ---
         bad = _board_matches(state, raw.get("countries"))
