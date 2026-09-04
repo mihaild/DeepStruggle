@@ -2062,6 +2062,28 @@ def _board_matches(state, countries) -> int:
     return bad
 
 
+def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
+    """Is this failure the log running out rather than the reconstruction going wrong?
+
+    Only on the file's very last entry, and only where the engine asked something the log
+    never answers. On any earlier entry an unanswered decision means the answer is somewhere we
+    are not reading; on the last one it means the recording stopped. Nine of the corpus's games
+    end that way -- at turn 3 AR3 of replay 153 the file's final entry is "Event: Arab-Israeli
+    War" and not one word more, and at turn 6 AR1 of replay 251 it is "Coup (3 Ops):" with no
+    target, roll or result.
+
+    A disagreement is never treated this way, wherever it lands. Fifteen games fail their last
+    entry on a pass the log records and the engine will not allow, and three more on a board or
+    a score: those are the reconstruction being wrong about something the log does state, and
+    they stay failures. The distinction is between the log saying nothing and the log saying
+    something else.
+    """
+    if m.kind != "decision not determined by the log" or not raws:
+        return False
+    last = parse_entry(raws[-1])
+    return (m.turn, m.phase, m.player) == (last.turn, last.phase, last.player)
+
+
 def convert_game(game: Dict) -> Conversion:
     """Rebuild each entry's position from the log, drive it, and verify the outcome.
 
@@ -2094,8 +2116,11 @@ def convert_game(game: Dict) -> Conversion:
         # Reported, not raised on: one unconvertible game should not stop a sweep of hundreds,
         # and the caller decides whether a partial game is usable. conv.failure being set means
         # the entries after it were never converted.
-        conv.failure = failure.mismatch
-        conv.mismatches.append(failure.mismatch)
+        if _is_the_record_ending(failure.mismatch, raws):
+            conv.truncated_at = failure.mismatch
+        else:
+            conv.failure = failure.mismatch
+            conv.mismatches.append(failure.mismatch)
     conv.decisions_emitted = len(conv.samples)
     return conv
 
