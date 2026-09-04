@@ -676,9 +676,20 @@ def point_queue(e: Entry) -> List[int]:
         # round set off, and that is a decision of its own: NORAD lets the US add 1 Influence
         # after an action round in which it lost some, which is the "US +1 in Poland" trailing
         # the USSR's Panama coup at turn 6 AR3 of replay 104.
+        acting = e.player if e.player in ("US", "USSR") else None
         extra: List[int] = []
-        for _side, delta, cid, _u, _s in (e.influence or []):
+        for side, delta, cid, _u, _s in (e.influence or []):
             if cid not in e.targets:
+                extra.extend([cid] * abs(int(delta)))
+            elif int(delta) > 0 and acting is not None and side != acting:
+                # A coup takes the opponent's Influence away and puts the couper's down; a
+                # realignment only takes away. The *couped* player gaining Influence in the
+                # country just couped is therefore not a result of the roll at all, and the
+                # only thing that does it is NORAD. Reading it as part of the coup lost the
+                # placement whenever NORAD chose the couped country itself: at turn 6 AR1 of
+                # replay 131 the USSR coups Argentina and the US puts its NORAD Influence
+                # straight back into Argentina, where at turn 6 AR3 of replay 104 the US put
+                # it into Poland and it was queued without trouble.
                 extra.extend([cid] * abs(int(delta)))
         return list(e.targets) + extra
 
