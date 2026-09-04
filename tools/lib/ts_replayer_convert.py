@@ -1476,6 +1476,25 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         if 1 <= int(ctx.resolving_card) <= 110:
             resolved_here.add(int(ctx.resolving_card))
         dt = ctx.decision_type
+        # The shared event queue holds every placement the entry hangs on an "Event:" header.
+        # While a card is resolving that the entry does hang placements on, those rows may be
+        # its; while a card is resolving that it does not, none of them are, and the queue must
+        # not answer for it or stand in the way of the section that should.
+        #
+        # At turn 5's headline of replay 173 the USSR headlines Che and the US The Voice of
+        # America. Che's two free coups are sections and Che places nothing, so the queue held
+        # only the Voice of America's four removals -- and it both answered Che's first coup
+        # with Uruguay, the head of *those*, and being non-empty stopped the section that holds
+        # the real targets from being loaded. The log coups Saharan States first, so the dice
+        # went to the wrong countries too: Uruguay took the 1 that Saharan States should have
+        # had, and 1 + 3 - 2x2 is 0, a failure where the log records a success.
+        # Only where the entry has sections left to answer from. Blanking the queue for any
+        # card the entry does not name leaves events starved whose placements the log records
+        # somewhere the parser hangs elsewhere -- under an Ops header, or before the "Event:"
+        # line -- and they have nowhere else to look.
+        eq_here: List[int] = ([] if (int(ctx.resolving_card) and evq and sections
+                                     and int(ctx.resolving_card) not in evq)
+                              else eq)
         # Before the mask is read, since the mask for a peek is built from that very set.
         if (int(ctx.resolving_card) == _OUR_MAN_IN_TEHRAN and not seeded_peek
                 and dt == ts.DecisionType.SELECT_CARD):
@@ -1779,7 +1798,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
                 informative = chosen is not None
 
-        elif dt == ts.DecisionType.POINT_NODE and not pq and not eq and sections:
+        elif dt == ts.DecisionType.POINT_NODE and not pq and not eq_here and sections:
             # A further Ops section that the engine never announces with a play mode. Che
             # grants the USSR a second coup when the first removes influence, and offers it
             # straight as another target choice, so waiting for a SELECT_OP_MODE to advance
@@ -1802,7 +1821,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if chosen is None:
                 continue
 
-        elif dt == ts.DecisionType.POINT_NODE and (pq or eq):
+        elif dt == ts.DecisionType.POINT_NODE and (pq or eq_here):
             # Ask the queue that matches what the engine is doing: while a card is resolving,
             # these are the event's own placements, otherwise they are the Ops. Within a queue
             # take the first target actually offered rather than insisting on the head, since
@@ -1814,7 +1833,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if own:
                 order = (own, eq, pq)
             else:
-                order = (eq, pq) if in_event else (pq, eq)
+                order = (eq_here, pq) if in_event else (pq, eq_here)
             for queue in order:
                 for slot, want_c in enumerate(queue):
                     chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
