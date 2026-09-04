@@ -231,26 +231,49 @@ def _reveal_ops_cap(raws, turn: int, side: str) -> Optional[int]:
 _MISSILE_ENVY_REVEAL = re.compile(r"^(US|USSR) reveals (.+?)(?: from hand)?\.?$", re.M)
 
 
+def _taken_from_hand(e: Entry) -> List[Tuple[str, int]]:
+    """Cards this entry moves out of a hand without their owner playing them.
+
+    Two events reach into the opponent's hand and take a card: Missile Envy takes the highest
+    Ops one, Grain Sales To Soviets takes one at random. Either way it is gone from that hand
+    for the rest of the turn, while the turn's list still names it -- it was theirs when the
+    turn began and it became visible while they held it.
+
+    Leaving them in put cards back that had changed sides, and the two show it differently. For
+    Missile Envy it is what the opponent is offered next: at turn 5 AR1 of replay 114 the US
+    takes Nuclear Test Ban, and the USSR, caught by Bear Trap with nothing left to discard and
+    only a scoring card in hand, was still being offered it two action rounds later. For Grain
+    Sales it is what the opponent has left at all: at turn 8 AR1 of replay 51 the US draws
+    Puppet Governments out of the USSR hand and plays it, and at the USSR's own AR7 -- where the
+    log reads "USSR has no cards to discard" -- Five Year Plan found it still sitting there and
+    fired its event.
+    """
+    out: List[Tuple[str, int]] = []
+    for marker in ("Event: Missile Envy", "Event: Grain Sales To Soviets"):
+        took = _revealed_under(e, marker)
+        if took is not None:
+            out.append(took)
+    return out
+
+
 def _missile_envy_took(e: Entry) -> Optional[Tuple[str, int]]:
-    """The card Missile Envy took, as (the side that lost it, its id), or None.
+    """The card Missile Envy took, as (the side that lost it, its id), or None."""
+    return _revealed_under(e, "Event: Missile Envy")
 
-    Missile Envy takes the opponent's highest Ops card, and the card it takes is gone from
-    that hand for the rest of the turn. The turn's list still names it, because it was theirs
-    when the turn began and it became visible while they held it, so leaving it in put a card
-    back that had changed hands: at turn 5 AR1 of replay 114 the US takes Nuclear Test Ban, and
-    the USSR -- caught by Bear Trap with nothing left to discard and only a scoring card in
-    hand -- was still being offered it two action rounds later.
 
-    Read from the line after "Event: Missile Envy" rather than from the entry's reveals as a
+def _revealed_under(e: Entry, marker: str) -> Optional[Tuple[str, int]]:
+    """The first card revealed after `marker`, as (the side that revealed it, its id).
+
+    Read from the line after the event's own header rather than from the entry's reveals as a
     whole, because other things reveal cards and one of them can share the entry. At turn 5 of
     replay 141 the USSR headlines "Lone Gunman", which reveals the entire US hand, against the
     US's Missile Envy -- and taking every reveal as exchanged emptied the US hand outright, so
     the UN Intervention they played two action rounds later was not there to play.
     """
-    marker = (e.text or "").find("Event: Missile Envy")
-    if marker < 0:
+    at = (e.text or "").find(marker)
+    if at < 0:
         return None
-    m = _MISSILE_ENVY_REVEAL.search(e.text, marker)
+    m = _MISSILE_ENVY_REVEAL.search(e.text, at)
     if m is None:
         return None
     cid = card_id(m.group(2).strip())
@@ -1320,8 +1343,19 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                         if c and c != cid_target and c not in headline_ids.values()]
     # Five Year Plan draws its discard at random from the USSR hand, and the drawn card's event
     # then plays out, so which card comes out changes the whole entry. The log names it.
-    plays_five_year_plan = cid_target == _FIVE_YEAR_PLAN or _FIVE_YEAR_PLAN in headline_ids.values()
-    plays_grain_sales = cid_target == _GRAIN_SALES or _GRAIN_SALES in headline_ids.values()
+    #
+    # A card need not be the one played to fire: an event can reach another card and set it off.
+    # At turn 8 AR3 of replay 158 the US plays Star Wars, which takes Grain Sales To Soviets out
+    # of the discard pile and fires it -- and because the entry's own card is Star Wars, Grain
+    # Sales' draw from the USSR hand was never steered to the Cuban Missile Crisis the log says
+    # it revealed. It drew Blockade instead, whose event strips every US Influence from West
+    # Germany. So the test is whether the entry fires the card at all, not whether it played it.
+    fired_here = {c for c in (card_id(nm) for nm in (e.events or [])) if c}
+    fired_here.update(cid for cid in headline_ids.values() if cid)
+    if cid_target:
+        fired_here.add(cid_target)
+    plays_five_year_plan = _FIVE_YEAR_PLAN in fired_here
+    plays_grain_sales = _GRAIN_SALES in fired_here
     returned_cid = card_id(e.returned_card) if e.returned_card else None
     random_discards = list(discard_queue) if plays_five_year_plan else []
     seeded_peek = False
@@ -2189,9 +2223,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         # discard and only a scoring card in hand -- was still being offered it two action
         # rounds later, which is why they were never allowed to play the scoring card the log
         # says they played.
-        taken = _missile_envy_took(e)
-        if taken is not None:
-            side, cid = taken
+        for side, cid in _taken_from_hand(e):
             if side in played:
                 played[side].add(cid)
 

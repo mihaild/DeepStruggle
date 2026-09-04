@@ -60,20 +60,33 @@ def test_the_entry_names_star_wars_and_what_it_took() -> None:
     assert card_id("Blockade*") not in named, "and it says nothing of Blockade"
 
 
-def test_an_event_the_entry_never_names_is_reported_as_such() -> None:
-    conv = convert_game(_game(158))
-    assert conv.failure is not None
-    assert conv.failure.kind == "event the log does not mention"
-    assert "Blockade" in conv.failure.detail
-    assert (conv.failure.turn, conv.failure.phase) == (8, "AR3")
+def test_an_event_the_entry_never_names_would_be_reported() -> None:
+    """The check is a set difference, and this is the difference it was written for.
+
+    Replay 158's Star Wars entry is fixed now -- Grain Sales draws the Cuban Missile Crisis the
+    log records -- so no game in the corpus trips the check any more. What is asserted here is
+    the predicate itself: had Blockade been resolved on this entry, it would not have been
+    covered by anything the entry names, and the check would have said so.
+    """
+    e = _entry(158, 8, "AR3", "US")
+    named = _events_the_log_names(e)
+    blockade = card_id("Blockade*")
+    assert blockade is not None
+    assert {blockade} - named - _UNNAMED_EVENTS == {blockade}, (
+        "an event the entry never mentions survives the difference and fails the check")
+    grain_sales = card_id("Grain Sales To Soviets")
+    assert grain_sales is not None
+    assert {grain_sales} - named - _UNNAMED_EVENTS == set(), (
+        "and one the entry does mention does not")
 
 
-def test_the_check_reports_the_cause_and_not_the_board_it_moved() -> None:
-    """It runs before the board comparison, which would otherwise report the symptom."""
-    conv = convert_game(_game(158))
-    assert conv.failure is not None
-    assert conv.failure.kind != "board mismatch after replay", (
-        "West Germany losing four Influence is what Blockade did, not what went wrong")
+def test_no_game_in_the_corpus_fires_an_event_its_log_never_names() -> None:
+    """The check found six games. All six are fixed; it stays here to keep them fixed."""
+    for replay_id in (158, 51, 52, 145, 300, 14, 100):
+        conv = convert_game(_game(replay_id))
+        if conv.failure is not None:
+            assert conv.failure.kind != "event the log does not mention", (
+                f"replay {replay_id}: {conv.failure}")
 
 
 def test_norad_is_allowed_to_go_unnamed() -> None:
