@@ -171,7 +171,10 @@ TEST(CardEdgeCasesTest, OrtegaElected_CanCoupCuba_AndAdjacentCountries) {
     done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[countries::CUBA].us_influence, 1); // 3 - 2 = 1
-    ASSERT_EQ(state.ussr_mil_ops, 2);
+    // The event grants the attempt, not the Operations to buy it with, so nothing is spent and
+    // no military operations are earned. The logs agree: an Ortega coup prints no "Military Ops
+    // to N" line, while a coup the same player makes with a card's own Ops does.
+    ASSERT_EQ(state.ussr_mil_ops, 0);
 }
 
 TEST(CardEdgeCasesTest, AldrichAmes_WithSingleCardInUSHand) {

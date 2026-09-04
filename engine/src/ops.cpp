@@ -220,8 +220,13 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
         }
     }
 
-    // 2. Military Operations Credit (uses effective ops_value with modifiers)
-    if (p == Player::US) {
+    // 2. Military Operations Credit (uses effective ops_value with modifiers). A coup made
+    // with an event's own free attempt earns none -- see free_action::coup_earns_no_military_ops.
+    if (free_action::coup_earns_no_military_ops(state.ctx().pending_op_card,
+                                                state.ctx().event_granted_ops,
+                                                state.ctx().resolving_card)) {
+        // nothing spent, nothing to record
+    } else if (p == Player::US) {
         state.us_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.us_mil_ops) + ops_value));
     } else {
         state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + ops_value));

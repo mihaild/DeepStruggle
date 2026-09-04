@@ -255,6 +255,26 @@ namespace free_action {
         return event_granted_ops != 0 &&
                (card_id == card_ids::JUNTA || card_id == card_ids::TEAR_DOWN_THIS_WALL);
     }
+
+    // A coup made with an event's own free attempt earns no military operations. The card
+    // grants the attempt, not the Operations to buy it with, so nothing is spent to record --
+    // and the logs bear it out: a Junta or Ortega coup prints no "Military Ops to N" line,
+    // while the coup the same player makes with a card's own Ops in the very next breath does.
+    //
+    // Junta and Tear Down This Wall grant theirs as Ops, so they are recognised by the flag
+    // that says whose Ops these are; Ortega Elected in Nicaragua coups straight from its event.
+    // Che is not among them: its coups do earn military operations, and its logs say so.
+    //
+    // Missing this cost the USSR nothing at the time and 2 VP at the end of the turn: at turn 5
+    // of ts-replayer game 219 Junta's headline coup left them credited with 2 military
+    // operations they never earned, so the deficit against DEFCON 2 that owed the US 2 VP
+    // vanished.
+    inline constexpr bool coup_earns_no_military_ops(uint8_t pending_op_card,
+                                                     uint8_t event_granted_ops,
+                                                     uint8_t resolving_card) noexcept {
+        return region_locked(pending_op_card, event_granted_ops) ||
+               resolving_card == card_ids::ORTEGA_ELECTED_IN_NICARAGUA;
+    }
 }
 
 namespace may_fizzle {

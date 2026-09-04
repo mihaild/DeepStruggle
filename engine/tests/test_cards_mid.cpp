@@ -674,6 +674,51 @@ TEST(MidCardsTest, WeWillBuryYouIsNotPaidWhenThereIsNoNextActionRound) {
     ASSERT_EQ(with_debt.victory_points, without_debt.victory_points);
 }
 
+// A coup made with an event's own free attempt earns no military operations: the card grants
+// the attempt, not the Operations to buy it with. The logs bear it out -- a Junta coup prints
+// no "Military Ops to N" line, while a coup the same player makes with a card's own Ops does.
+// Missing it cost the USSR nothing at the time and 2 VP at the end of the turn: at turn 5 of
+// ts-replayer game 219 Junta's headline coup left them credited with 2 they never earned, so
+// the deficit against DEFCON 2 that owed the US 2 VP vanished.
+TEST(MidCardsTest, JuntaFreeCoupEarnsNoMilitaryOps) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.defcon = 5;
+    state.us_mil_ops = 0;
+    state.ussr_mil_ops = 0;
+    state.countries[ts::countries::MEXICO].us_influence = 1;
+    state.ctx().pending_op_card = ts::card_ids::JUNTA;
+    state.ctx().event_granted_ops = 1;          // the Ops are the event's
+    ts::Operations::execute_coup(state, ts::Player::USSR, ts::countries::MEXICO, 2, 5);
+    ASSERT_EQ(state.ussr_mil_ops, 0);
+}
+
+// The same card's own Operations are ordinary Operations and are credited.
+TEST(MidCardsTest, JuntasOwnOpsCoupEarnsMilitaryOps) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.defcon = 5;
+    state.us_mil_ops = 0;
+    state.ussr_mil_ops = 0;
+    state.countries[ts::countries::MEXICO].us_influence = 1;
+    state.ctx().pending_op_card = ts::card_ids::JUNTA;
+    state.ctx().event_granted_ops = 0;          // the player's own Ops
+    ts::Operations::execute_coup(state, ts::Player::USSR, ts::countries::MEXICO, 2, 5);
+    ASSERT_EQ(state.ussr_mil_ops, 2);
+}
+
+// Che is not among them: its coups do earn military operations, and its logs say so.
+TEST(MidCardsTest, ChesFreeCoupStillEarnsMilitaryOps) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.defcon = 5;
+    state.ussr_mil_ops = 0;
+    state.countries[ts::countries::SUDAN].us_influence = 1;
+    state.ctx().resolving_card = ts::card_ids::CHE;
+    ts::Operations::execute_coup(state, ts::Player::USSR, ts::countries::SUDAN, 3, 5);
+    ASSERT_GT(state.ussr_mil_ops, 0);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};
