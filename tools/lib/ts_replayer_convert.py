@@ -1726,6 +1726,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # the log prints them: CIA Created reveals the USSR hand, hands the US 1 Op to coup
             # with, and only then spends its own Op for the USSR. Taking the entry's single
             # mode for every such decision lost the second operation entirely.
+            # A space race is settled at the play mode, not here, so its section is still at
+            # the head of the queue when the next Ops decision arrives and must be stepped
+            # over. At turn 6's headline of replay 156 the US headlines Grain Sales To
+            # Soviets, draws Brezhnev Doctrine and puts it on the space race; the USSR's Junta
+            # then places 2 Influence in Chile and asks how to spend its free action, and the
+            # space section answered for it -- "space" is not an Ops mode, so nothing was
+            # chosen and the coup on Panama the log records never happened.
+            while sections and sections[0].mode not in _OP_MODE:
+                sections.pop(0)
             section = sections.pop(0) if sections else None
             mode = section.mode if section is not None else e.mode
             cur_mode = mode
