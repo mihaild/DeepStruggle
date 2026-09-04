@@ -634,6 +634,7 @@ _UN_INTERVENTION = 32
 _GRAIN_SALES = 67
 _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
+_STAR_WARS = 85
 
 
 def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player) -> None:
@@ -1069,11 +1070,17 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                         break
             if chosen is None:
                 # Then a card the entry goes on to fire the event of, which is how Star Wars
-                # records its pick from the discard pile.
+                # records its pick from the discard pile. Only Star Wars reaches into that pile,
+                # so only Star Wars may put a card there: at turn 4's headline of replay 234 the
+                # entry goes on to fire Nuclear Test Ban, handed over by Missile Envy, and Our
+                # Man in Tehran's peek asked for a card first. Answering that peek from this
+                # queue moved Nuclear Test Ban out of the US hand and into the discard pile,
+                # after which Missile Envy found nothing above 3 Ops to take and the event that
+                # was owed never fired.
                 for slot, want_c in enumerate(event_card_queue):
                     chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
-                    if chosen is None:
+                    if chosen is None and int(ctx.resolving_card) == _STAR_WARS:
                         # Only hands are forced from the log, so our discard pile holds just
                         # what this reconstruction happened to play; a card the humans had
                         # discarded turns earlier may still be sitting in the draw deck. The

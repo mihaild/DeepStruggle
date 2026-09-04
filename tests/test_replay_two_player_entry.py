@@ -143,3 +143,24 @@ def test_the_grain_sales_games_get_past_their_grain_sales(replay_id: int) -> Non
     conv = _convert(replay_id)
     assert _failed_at(conv) != "T7 AR1", (
         f"replay {replay_id} stops at its Grain Sales entry: {conv.failure}")
+
+
+def test_only_star_wars_may_move_a_card_into_the_discard_pile() -> None:
+    """Replay 234 turn 4 headline: Missile Envy hands the USSR Nuclear Test Ban.
+
+    The entry goes on to fire Nuclear Test Ban's event, so it sits in the queue of cards this
+    entry still has events for -- the queue Star Wars answers its discard-pile pick from. Our
+    Man in Tehran's peek asks for a card first, and answering that peek from the same queue put
+    Nuclear Test Ban into the discard pile, out of the US hand. Missile Envy then found nothing
+    above 3 Ops to take, and the 1 VP the event owed the USSR never moved.
+    """
+    conv = _convert(234)
+    assert _failed_at(conv) != "T4 Headline", (
+        f"replay 234 stops at its Missile Envy headline: {conv.failure}")
+
+
+@pytest.mark.parametrize("replay_id", [100, 104])
+def test_star_wars_itself_still_reaches_into_the_discard_pile(replay_id: int) -> None:
+    """The scoping must not cost Star Wars the card it is entitled to take."""
+    conv = _convert(replay_id)
+    assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
