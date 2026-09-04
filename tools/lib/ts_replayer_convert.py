@@ -104,16 +104,26 @@ class Mismatch:
 # training data. This is a property of the recording, not a defect in the engine or the driver,
 # so it is listed rather than diagnosed again each time.
 #
-#   replay 60, turn 7 AR6 -- the text reads "Coup (4 Ops):" and stops there. No target, no
-#   roll, no result, and no further entries in the file.
+#   replay 60, turn 7 AR6 (USSR) -- the text reads "Coup (4 Ops):" and stops there. No target,
+#   no roll, no result, and no further entries in the file.
 #
 #   replay 133, turn 10 headline -- the last entry in the file, and it holds one line: "USSR
 #   Headlines Missile Envy". The US headline is not recorded, nor which of the two 4 Ops cards
 #   the US handed over when Missile Envy asked (ABM Treaty or Muslim Revolution), nor anything
 #   either event did.
-_KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str]]] = {
-    60: {(7, "AR6")},
-    133: {(10, "Headline")},
+#
+#   replay 55, turn 9 AR7 (US) -- the last entry, and it stops one line into Tear Down This
+#   Wall: the 3 US Influence it puts into East Germany is recorded, then "Coup (3 Ops):" and
+#   nothing. The free coup in Europe that the card grants has no target, no roll and no result,
+#   and the engine taking one of its own removed 2 USSR Influence from East Germany -- which
+#   the log has standing at 5 since turn 3 AR2 and never moving again.
+#
+# The player is part of the key because an action round holds an entry for each side, and only
+# one of them need be cut short: replay 55's USSR half of turn 9 AR7 is complete and converts.
+_KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str, str]]] = {
+    60: {(7, "AR6", "USSR")},
+    133: {(10, "Headline", "both")},
+    55: {(9, "AR7", "US")},
 }
 
 # Scores the engine and the log disagree on because a choice the engine does not offer was
@@ -2128,7 +2138,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
     for index, raw in enumerate(raws):
         e = parse_entry(raw)
-        if (e.turn, e.phase) in _KNOWN_INCOMPLETE.get(conv.replay_id, frozenset()):
+        if (e.turn, e.phase, e.player) in _KNOWN_INCOMPLETE.get(conv.replay_id,
+                                                                frozenset()):
             conv.truncated_at = Mismatch(
                 conv.replay_id, e.turn, e.phase, e.player, e.card,
                 "log stops mid-entry",

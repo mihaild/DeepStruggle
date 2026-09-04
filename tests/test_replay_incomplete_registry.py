@@ -40,13 +40,18 @@ def test_every_listed_entry_really_is_unfinished() -> None:
             continue
         with gzip.open(path, "rt") as f:
             raws = json.load(f)["all_turns"]
-        for turn, phase in entries:
+        # The key names the player too: an action round holds an entry for each side and only
+        # one of them need be cut short. Replay 55's turn 9 AR7 is listed for the US, and the
+        # USSR's half of that same round is complete and still converts.
+        for turn, phase, player in entries:
             matching = [r for r in raws
-                        if (lambda e: (e.turn, e.phase) == (turn, phase))(parse_entry(r))]
-            assert matching, f"replay {replay_id} has no entry at T{turn} {phase}"
+                        if (lambda e: (e.turn, e.phase, e.player) == (turn, phase, player))(
+                            parse_entry(r))]
+            assert matching, (
+                f"replay {replay_id} has no entry at T{turn} {phase} for {player}")
             last = matching[-1]
             assert raws.index(last) == len(raws) - 1, (
-                f"replay {replay_id} T{turn} {phase} is not the last entry in the file")
+                f"replay {replay_id} T{turn} {phase} {player} is not the last entry")
 
 
 def test_an_entry_that_states_the_score_twice_is_read_at_its_end() -> None:

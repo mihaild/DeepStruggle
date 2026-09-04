@@ -71,7 +71,7 @@ def test_a_headline_the_log_stops_inside_is_listed_not_guessed() -> None:
     assert (last.turn, last.phase) == (10, "Headline")
     assert last.revealed == []
     assert last.headlines == {"USSR": "Missile Envy"}, "the US headline is not recorded"
-    assert (10, "Headline") in _KNOWN_INCOMPLETE[133]
+    assert (10, "Headline", "both") in _KNOWN_INCOMPLETE[133]
 
     conv = convert_game(_game(133))
     assert conv.failure is None
