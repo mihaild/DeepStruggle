@@ -85,6 +85,14 @@ RE_DISCARD = re.compile(r"(US|USSR) discards? (.+?)\.?$")
 # own, so the next entry belongs to the other player. The entry's own header never matches:
 # it carries on with ": <card>: ..." past the end of the line.
 RE_PASSED_ROUND = re.compile(r"^Turn (\d+), (US|USSR) AR(\d+)\s*$", re.M)
+# A region named outright. Chernobyl designates one and bars the USSR from adding Influence
+# there for the rest of the turn, and the log records the choice as "US chooses South America".
+# The numbers are the engine's Region enum.
+REGIONS = {"Europe": 0, "Asia": 1, "Middle East": 2, "Africa": 3,
+           "Central America": 4, "South America": 5}
+RE_REGION_CHOICE = re.compile(
+    r"^(?:US|USSR) chooses (Europe|Asia|Middle East|Africa|Central America|South America)\.?$",
+    re.M)
 RE_PLAYS = re.compile(r"(US|USSR) plays (.+?)\.?$")
 
 
@@ -133,6 +141,8 @@ class Entry:
     # The opening placement shares this entry with the turn 1 headline in every game in the
     # corpus, and is spread differently from an ordinary placement -- see point_queue.
     setup: bool = False
+    # The region an event designates, as a Region index, or None. Chernobyl's, in practice.
+    region_choice: Optional[int] = None
     # Influence lines grouped by the event that printed them, keyed by card name. A headline
     # resolves two cards and the log writes each one's placements under its own "Event:"
     # header, which is the only thing that says which placement belongs to which card.
@@ -222,6 +232,9 @@ def parse_entry(raw: Dict) -> Entry:
     )
     for m in RE_PASSED_ROUND.finditer(str(raw.get("text", ""))):
         e.passed_rounds.append((int(m.group(1)), m.group(2), int(m.group(3))))
+    m_region = RE_REGION_CHOICE.search(str(raw.get("text", "")))
+    if m_region is not None:
+        e.region_choice = REGIONS[m_region.group(1)]
 
     in_event = False
     section_open = False

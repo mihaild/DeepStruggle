@@ -1082,6 +1082,7 @@ _GRAIN_SALES = 67
 _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
+_CHERNOBYL = 94
 
 
 def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player) -> None:
@@ -1763,8 +1764,20 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.CHOOSE_BRANCH:
-            chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
-            informative = chosen is not None
+            if int(ctx.resolving_card) == _CHERNOBYL and e.region_choice is not None:
+                # The log names the region outright -- "US chooses South America" -- and
+                # Chernobyl's branches are the six regions in order. Left to the branch search,
+                # which judges a branch by the board and score it reaches, the choice was
+                # arbitrary: nothing about Chernobyl moves either. At turn 8 AR2 of replay 161
+                # the US chose South America and the engine took Europe, and the USSR's North
+                # Sea Oil three action rounds later could place nothing at all -- East Germany
+                # and Spain/Portugal are both in Europe, so its 3 Ops went nowhere.
+                chosen = _find(state, legal, ts.DecisionType.CHOOSE_BRANCH,
+                               lambda ma, r=e.region_choice: int(ma.primary_id) == r)
+                informative = chosen is not None
+            if chosen is None:
+                chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
+                informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and not pq and not eq and sections:
             # A further Ops section that the engine never announces with a play mode. Che
