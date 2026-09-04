@@ -231,6 +231,29 @@ def _missile_envy_took(e: Entry) -> Optional[Tuple[str, int]]:
     return (m.group(1), cid) if cid else None
 
 
+_OP_MODE_NAMES = {0: "influence", 1: "coup", 2: "realignment"}
+
+
+def _name_options(state: ts.GameState, dt: "ts.DecisionType",
+                  legal: "np.ndarray") -> List[str]:
+    """The choices on offer, named the way the decision itself names them."""
+    out: List[str] = []
+    for raw_action in legal:
+        a = int(raw_action)
+        if dt == ts.DecisionType.SELECT_CARD:
+            out.append("pass" if a == _PASS
+                       else str(ts.CardData.get_card_info(a + 1)["name"]))
+            continue
+        primary = int(ts.ActionMask.decode_flat_action(state, a).primary_id)
+        if dt == ts.DecisionType.POINT_NODE and 0 <= primary < 84:
+            out.append(str(ts.MapData.get_country_info(primary)["name"]))
+        elif dt == ts.DecisionType.SELECT_OP_MODE:
+            out.append(_OP_MODE_NAMES.get(primary, f"mode {primary}"))
+        else:
+            out.append(f"{str(dt).split('.')[-1].lower()} {primary}")
+    return out
+
+
 def _reattribute_hands(raws: List[Dict], turn: int,
                        turn_hands: Dict[str, List[int]]) -> int:
     """Give each card to the side the log says played it. Returns how many moved.
@@ -1648,10 +1671,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             informative = chosen is not None
 
         if chosen is None:
-            offered = sorted(
-                ts.MapData.get_country_info(int(p))["name"] if 0 <= int(p) < 84 else str(int(p))
-                for p in (int(ts.ActionMask.decode_flat_action(state, int(a)).primary_id)
-                          for a in legal))
+            # Named the way the decision names them. Only a POINT_NODE is choosing between
+            # countries; an op mode is choosing how to spend the Ops, and a card selection is
+            # choosing a card, and running either of those through the country table produced
+            # a list of countries nobody was being offered -- "which of 3 options was taken:
+            # ['Canada', 'Norway', 'United Kingdom']" for a choice between influence, coup and
+            # realignment.
+            offered = sorted(_name_options(state, dt, legal))
             raise ConversionFailure(Mismatch(
                 conv.replay_id, e.turn, e.phase, e.player, e.card,
                 "decision not determined by the log",
