@@ -295,6 +295,7 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
         auto loc = state.card_locations[i];
         const char* loc_str = "UNAVAILABLE";
         switch (loc) {
+            case ts::CardLocation::HEADLINE_COMMITTED: loc_str = "HEADLINE_COMMITTED"; break;
             case ts::CardLocation::UNAVAILABLE: loc_str = "UNAVAILABLE"; break;
             case ts::CardLocation::DRAW_DECK: loc_str = "DRAW_DECK"; break;
             case ts::CardLocation::HAND_US: loc_str = "HAND_US"; break;
@@ -459,6 +460,9 @@ NB_MODULE(ts_engine, m) {
         .value("REMOVED_FROM_GAME", ts::CardLocation::REMOVED_FROM_GAME)
         .value("ONGOING_EVENT", ts::CardLocation::ONGOING_EVENT)
         .value("PEEKED_TEMP", ts::CardLocation::PEEKED_TEMP)
+        // Not "HEADLINE": export_values() puts every name at module scope, where it would
+        // shadow Phase.HEADLINE.
+        .value("HEADLINE_COMMITTED", ts::CardLocation::HEADLINE_COMMITTED)
         .export_values();
 
     nb::enum_<ts::WarEra>(m, "WarEra", nb::is_arithmetic())

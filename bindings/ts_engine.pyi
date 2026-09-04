@@ -217,6 +217,8 @@ class CardLocation(enum.IntEnum):
     ONGOING_EVENT = 6
 
     PEEKED_TEMP = 7
+    HEADLINE_COMMITTED = 8
+    HEADLINE_COMMITTED = 8
 
 UNAVAILABLE: CardLocation = CardLocation.UNAVAILABLE
 
@@ -233,6 +235,8 @@ REMOVED_FROM_GAME: CardLocation = CardLocation.REMOVED_FROM_GAME
 ONGOING_EVENT: CardLocation = CardLocation.ONGOING_EVENT
 
 PEEKED_TEMP: CardLocation = CardLocation.PEEKED_TEMP
+HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
+HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
 
 class WarEra(enum.IntEnum):
     EARLY = 0

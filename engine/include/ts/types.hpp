@@ -56,7 +56,13 @@ enum class CardLocation : uint8_t {
     DISCARD_PILE       = 4,
     REMOVED_FROM_GAME  = 5,
     ONGOING_EVENT      = 6,
-    PEEKED_TEMP        = 7
+    PEEKED_TEMP        = 7,
+    // Committed to the headline, face down, and no longer in the hand it came from. Both
+    // headlines are played at once and only then resolved in order, so neither card is
+    // holdable while the other resolves -- a card that reads a hand must not find it there.
+    // Overwritten by the ordinary post-resolution cleanup, which sets the card's real
+    // destination once its event is done.
+    HEADLINE_COMMITTED = 8
 };
 
 // Primitive Micro-Decision Types

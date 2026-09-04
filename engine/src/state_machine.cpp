@@ -574,6 +574,17 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         state.headline_second_owner = second_owner;
         state.headline_stage = 1; // Stage 1: Resolving 1st headline
 
+        // Both headlines are committed face down before either resolves, so neither is in a
+        // hand while the other plays out. Leaving the second one there let every card that
+        // reads a hand count it: at turn 2's headline of replay 144 the US headlines Middle
+        // East Scoring and the USSR's The Cambridge Five found it still in the US hand and
+        // asked where to place, where the log reads "US has no cards to reveal". Missile Envy
+        // is the sharper case -- it takes the opponent's highest Ops card, and their headline
+        // card was in the running.
+        // The real destination is set after the event resolves, overwriting this.
+        state.card_locations[first_card] = CardLocation::HEADLINE_COMMITTED;
+        state.card_locations[second_card] = CardLocation::HEADLINE_COMMITTED;
+
         if (first_owner == Player::USSR && ussr_cancelled) {
             state.card_locations[first_card] = CardLocation::DISCARD_PILE;
             advance_headline_step(state);

@@ -155,4 +155,12 @@ cmake --build build_san -j
    pass (mask index 0, flat 211) only to a player with none. The China Card is the exception: it
    is not part of the hand a player is required to spend, so a holder whose only playable card is
    the China Card is offered both it and the pass.
-5. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+5. **Headline Cards Leave Hand On Commitment**: both headlines are played at once, face down, and
+   only then resolved in Ops order, so as soon as both are selected each card's location becomes
+   `CardLocation::HEADLINE_COMMITTED` -- neither is in a hand while the other resolves, and a card that
+   reads a hand (The Cambridge Five, Missile Envy, Grain Sales To Soviets, "Lone Gunman", CIA
+   Created, Aldrich Ames Remix, Five Year Plan, Blockade, Latin American Debt Crisis) must not
+   find it there. `HEADLINE_COMMITTED` is a waypoint: the ordinary post-resolution cleanup overwrites it
+   with the card's real destination. It is deliberately not the discard pile, which Star Wars and
+   SALT Negotiations read.
+6. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

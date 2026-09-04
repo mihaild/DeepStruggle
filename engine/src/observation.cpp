@@ -172,6 +172,10 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
             canon_loc = 4;
         } else if (loc == CardLocation::ONGOING_EVENT) {
             canon_loc = 5;
+        } else if (loc == CardLocation::HEADLINE_COMMITTED) {
+            // Face down and known only to its owner, but it has left the hand; treated as
+            // out of play for the hand features, which is what the readers of those care
+            // about. It is public again the moment it resolves.
         } else if (loc == CardLocation::PEEKED_TEMP) {
             canon_loc = 6;
         }
