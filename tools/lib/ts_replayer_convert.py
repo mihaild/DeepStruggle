@@ -202,6 +202,35 @@ def _reveal_ops_cap(raws, turn: int, side: str) -> Optional[int]:
     return cap
 
 
+_MISSILE_ENVY_REVEAL = re.compile(r"^(US|USSR) reveals (.+?)(?: from hand)?\.?$", re.M)
+
+
+def _missile_envy_took(e: Entry) -> Optional[Tuple[str, int]]:
+    """The card Missile Envy took, as (the side that lost it, its id), or None.
+
+    Missile Envy takes the opponent's highest Ops card, and the card it takes is gone from
+    that hand for the rest of the turn. The turn's list still names it, because it was theirs
+    when the turn began and it became visible while they held it, so leaving it in put a card
+    back that had changed hands: at turn 5 AR1 of replay 114 the US takes Nuclear Test Ban, and
+    the USSR -- caught by Bear Trap with nothing left to discard and only a scoring card in
+    hand -- was still being offered it two action rounds later.
+
+    Read from the line after "Event: Missile Envy" rather than from the entry's reveals as a
+    whole, because other things reveal cards and one of them can share the entry. At turn 5 of
+    replay 141 the USSR headlines "Lone Gunman", which reveals the entire US hand, against the
+    US's Missile Envy -- and taking every reveal as exchanged emptied the US hand outright, so
+    the UN Intervention they played two action rounds later was not there to play.
+    """
+    marker = (e.text or "").find("Event: Missile Envy")
+    if marker < 0:
+        return None
+    m = _MISSILE_ENVY_REVEAL.search(e.text, marker)
+    if m is None:
+        return None
+    cid = card_id(m.group(2).strip())
+    return (m.group(1), cid) if cid else None
+
+
 def _reattribute_hands(raws: List[Dict], turn: int,
                        turn_hands: Dict[str, List[int]]) -> int:
     """Give each card to the side the log says played it. Returns how many moved.
@@ -210,9 +239,11 @@ def _reattribute_hands(raws: List[Dict], turn: int,
     are right: a list is a summary the interface assembled, while an entry is the play itself,
     narrated as it happened. At turn 6 of replay 111 the lists have Asia Scoring in the USSR's
     hand and ABM Treaty in the US's, and the headline reads "US Headlines Asia Scoring / USSR
-    Headlines ABM Treaty" -- the two cards are swapped. Asia Scoring then scored for the wrong
-    side, five VP the wrong way, and the game ran to a US win at 20 VP where the log has the
-    USSR ahead by 8.
+    Headlines ABM Treaty" -- the two cards are swapped. A scoring card pays out from the board and
+    not from whose hand it came, so nothing was mis-scored; what broke is that neither side
+    could play the card the log says they played, and the headline went to whatever else was
+    held. Turn 6 diverged from there and the game ran to a US win at 20 VP where the log has
+    the USSR ahead by 8.
 
     Only a card the log names a player as *playing* is moved, which is the one attribution an
     entry states outright. A card merely revealed or discarded during someone's action round
@@ -2005,14 +2036,11 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         # discard and only a scoring card in hand -- was still being offered it two action
         # rounds later, which is why they were never allowed to play the scoring card the log
         # says they played.
-        plays_missile_envy = (
-            _MISSILE_ENVY in {card_id(nm) for nm in (e.headlines or {}).values()}
-            or (e.card is not None and _MISSILE_ENVY == card_id(e.card)))
-        if plays_missile_envy:
-            for side, nm in (e.revealed or []):
-                cid = card_id(nm)
-                if cid and side in played:
-                    played[side].add(cid)
+        taken = _missile_envy_took(e)
+        if taken is not None:
+            side, cid = taken
+            if side in played:
+                played[side].add(cid)
 
         before = len(conv.samples)
         turn_before = int(state.turn)

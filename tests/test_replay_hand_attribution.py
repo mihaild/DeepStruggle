@@ -3,8 +3,10 @@
 A turn's hand list is a summary the recording assembled; an entry is the play itself, narrated
 as it happened. At turn 6 of replay 111 the lists put Asia Scoring in the USSR's hand and ABM
 Treaty in the US's, while the headline reads "US Headlines Asia Scoring / USSR Headlines ABM
-Treaty" -- the two are swapped. Asia Scoring then scored for the wrong side, five VP the wrong
-way, and the reconstruction ran on to a US win at 20 VP where the log has the USSR ahead by 8.
+Treaty" -- the two are swapped. A scoring card pays out from the board and not from whose hand
+it came, so nothing was mis-scored; what broke is that neither side could play the card the log
+says they played. Turn 6 diverged from there and the reconstruction ran on to a US win at 20 VP
+where the log has the USSR ahead by 8.
 
 236 cards across 48 of the 287 games are listed under the wrong side.
 """
