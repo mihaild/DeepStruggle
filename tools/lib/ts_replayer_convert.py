@@ -421,7 +421,8 @@ def _drain(state: ts.GameState,
            coup_rolls: Optional[List[int]] = None,
            realign_rolls: Optional[List[Tuple[str, int]]] = None,
            want_vp: Optional[int] = None,
-           summit: Optional[Tuple[bool, Optional[int]]] = None) -> None:
+           summit: Optional[Tuple[bool, Optional[int]]] = None,
+           random_discards: Optional[List[int]] = None) -> None:
     """Resolve chance nodes, steering them to what the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
@@ -480,9 +481,15 @@ def _drain(state: ts.GameState,
         # chance node takes it directly, so there is nothing to search for. Leaving it to the
         # engine's own stream advanced tracks the humans never advanced -- and since the log
         # only prints a track on success, a wrong one was never corrected afterwards.
-        ts.Engine.step(state, ts.MicroAction(
+        micro = ts.MicroAction(
             ts.DecisionType.ROLL_DIE, roll if 1 <= roll <= 6 else 0,
-            second if 1 <= second <= 6 else 0, 0))
+            second if 1 <= second <= 6 else 0, 0)
+        # An event can fire as this node resolves -- Five Year Plan's discard follows the last
+        # Op spent, and the last Op of a realignment is spent here -- so the card it draws has
+        # to be steered on this step too, not only on the ones the log answers.
+        if random_discards and _force_random_discard(state, random_discards, micro=micro):
+            del random_discards[:]
+        ts.Engine.step(state, micro)
 
 
 def _force_roll(state: ts.GameState, expected: Optional[Dict[int, Tuple[int, int]]],
@@ -873,20 +880,39 @@ def _logged_board(raw: Optional[Dict]) -> Dict[int, Tuple[int, int]]:
     return out
 
 
-def _force_random_discard(state: ts.GameState, action: int, cards: List[int],
+def _force_random_discard(state: ts.GameState, cards: List[int],
+                          action: Optional[int] = None,
+                          micro: Optional["ts.MicroAction"] = None,
                           tries: int = 400) -> bool:
-    """Seed the rng so that stepping `action` discards the card the log says was discarded.
+    """Seed the rng so that the coming step discards the card the log says was discarded.
 
     Five Year Plan discards at random from the USSR hand and, if the card is a US event, plays
     it. Which card comes out therefore decides what happens next, and the log records it -- but
     it is drawn inside the event, so there is no action to steer. At turn 3's headline of
     replay 119 the engine drew Marshall Plan where the log drew Duck and Cover, and seven US
     influence went into Western Europe that the human game never placed.
+
+    The step is not always a decision. Played for Ops first and the event second, the event
+    fires the moment the Ops run out -- and the last of three realignments runs out inside its
+    own chance node, so the step that discards is one `_drain` takes, not one the log answers.
+    At turn 3 AR5 of replay 107 the USSR realigns Angola three times with Five Year Plan and
+    the discard was never steered at all: the log drew Nasser, a USSR card that does nothing,
+    and the reconstruction drew a US one and played its event for a VP that stayed on the board
+    until the Special Relationship two action rounds later asserted against it.
+
+    Only a card the USSR is holding *now* can be the one this step discards. Accepting a card
+    that is already gone made every step a match, so the first step offered -- the one that
+    plays the card -- claimed the forcing and cleared the queue before the discard happened.
     """
-    def discarded(probe: ts.GameState) -> bool:
-        return all(probe.get_card_location(c) not in (ts.CardLocation.HAND_US,
-                                                      ts.CardLocation.HAND_USSR)
-                   for c in cards)
+    want = [c for c in cards if state.get_card_location(c) == ts.CardLocation.HAND_USSR]
+    if not want:
+        return False
+
+    def take(probe: ts.GameState) -> None:
+        if micro is not None:
+            ts.Engine.step(probe, micro)
+        else:
+            ts.Engine.step_flat(probe, int(action or 0))
 
     base = int(state.rng_state)
     for k in range(tries + 1):
@@ -894,10 +920,10 @@ def _force_random_discard(state: ts.GameState, action: int, cards: List[int],
         if k:                       # k == 0 tries the seed the engine already has
             probe.rng_state = (base + k * _GOLDEN) % _UINT64
         try:
-            ts.Engine.step_flat(probe, int(action))
+            take(probe)
         except Exception:
             continue
-        if discarded(probe):
+        if all(probe.get_card_location(c) != ts.CardLocation.HAND_USSR for c in want):
             if k:
                 state.rng_state = (base + k * _GOLDEN) % _UINT64
             return True
@@ -1041,7 +1067,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # success, because the war constraint it was re-seeded against was already satisfied.
         _drain(state, None if seed_settled else war_outcome, space_roll,
                war_roll_queue, coup_roll_queue, realign_roll_queue, _narrated_score(e),
-               _summit_target(e))
+               _summit_target(e), random_discards)
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
@@ -1474,7 +1500,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         if random_discards:
             # Do this on whichever step actually fires the event; the search accepts the seed
             # the engine already has, so steps that discard nothing cost one clone and pass.
-            if _force_random_discard(state, int(chosen), random_discards):
+            if _force_random_discard(state, random_discards, action=int(chosen)):
                 random_discards = []
 
         if informative:
@@ -1810,6 +1836,11 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 want_score = int(e.score)
                 crossed_turn = False
         if want_score is not None and not crossed_turn:
+            # The VP track runs from 20 to -20 and the game ends the moment it is reached, so
+            # a score past either end is the replayer's arithmetic and not a position. At turn
+            # 5 AR7 of replay 109 the USSR takes the Military Operations penalty for 2 and the
+            # log reads "Score is USSR 21", where the game was already won at 20.
+            want_score = max(-20, min(20, want_score))
             if int(state.victory_points) != want_score:
                 del conv.samples[before:]
                 raise ConversionFailure(Mismatch(
