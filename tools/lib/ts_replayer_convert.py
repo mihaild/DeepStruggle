@@ -212,6 +212,8 @@ class Conversion:
     events_resolved: Set[int] = field(default_factory=set)
     # (turn, entries converted, samples emitted) as the current turn began.
     turn_started_at: Tuple[int, int, int] = (0, 0, 0)
+    # Whether the engine reached a terminal state -- a 20 VP win, DEFCON 1, or final scoring.
+    game_ended: bool = False
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -2080,6 +2082,42 @@ def _board_matches(state, countries) -> int:
     return bad
 
 
+RE_ACTION_ROUND = re.compile(r"^AR(\d+)$")
+
+
+def unfinished_final_turn(raws: List[Dict]) -> Optional[int]:
+    """The turn number the recording stops inside, or None if it plays its last turn out.
+
+    Every turn plays all of its action rounds -- six in turns 1 to 3 and seven after -- unless
+    the game ends. A last turn that stops short of its own last action round, with no ending
+    recorded, is a recording that stopped rather than a game that finished.
+
+    That matters beyond the entries never written. The turn's hand list is assembled from the
+    cards that became visible during it, so a turn cut short lists only the few played before
+    the recording stopped -- replay 246's turn 9 reaches AR3 and credits the US with three
+    cards and the USSR with six, where a turn 9 hand holds nine. Every decision converted in
+    such a turn was driven from a hand the player never held.
+
+    156 of the corpus's 278 games end this way, and the great majority simply stop: the log
+    narrates no win, no final scoring and no DEFCON 1.
+    """
+    if not raws:
+        return None
+    last_turn = parse_entry(raws[-1]).turn
+    if not last_turn:
+        return None
+    reached = 0
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != last_turn:
+            continue
+        m = RE_ACTION_ROUND.match(e.phase or "")
+        if m:
+            reached = max(reached, int(m.group(1)))
+    expected = 6 if last_turn <= 3 else 7
+    return last_turn if reached < expected else None
+
+
 def _rewind_to_turn_start(conv: "Conversion", turn: int) -> None:
     """Give back everything converted in the turn the record stops in.
 
@@ -2118,6 +2156,13 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     """
     if not raws:
         return False
+    # A failure inside a turn the recording stops in is not worth diagnosing: the turn is a
+    # fragment and is dropped either way, so whether we could have reproduced it is moot. At
+    # turn 9 AR3 of replay 246 the log stops four action rounds short with three cards credited
+    # to the US and six to the USSR, and the board it disagrees about is one reached from hands
+    # neither player held.
+    if unfinished_final_turn(raws) == m.turn:
+        return True
     last = parse_entry(raws[-1])
     if (m.turn, m.phase, m.player) != (last.turn, last.phase, last.player):
         return False
@@ -2174,6 +2219,19 @@ def convert_game(game: Dict) -> Conversion:
         else:
             conv.failure = failure.mismatch
             conv.mismatches.append(failure.mismatch)
+    conv.game_ended = bool(ts.Engine.is_terminal(state))
+    if conv.failure is None and conv.truncated_at is None and not conv.game_ended:
+        # The log played no ending and stopped mid-turn: that turn is a fragment, whether or
+        # not anything in it happened to fail. See unfinished_final_turn.
+        unfinished = unfinished_final_turn(raws)
+        if unfinished is not None:
+            conv.truncated_at = Mismatch(
+                conv.replay_id, unfinished, "", "", None,
+                "log stops mid-turn",
+                "the recording stops before this turn's last action round and records no "
+                "ending, so the turn's hand list is a fragment and the turn is not "
+                "training data")
+            _rewind_to_turn_start(conv, unfinished)
     conv.decisions_emitted = len(conv.samples)
     return conv
 
@@ -2367,7 +2425,17 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         # initialisation stands in for, so anything scored there is scored on a board the log
         # has not yet corrected.
         want_score = _narrated_score(e) if prev_entry is not None else None
-        crossed_turn = int(state.turn) != turn_before
+        # ...or into the end of the game. Final scoring runs when the last action round of turn
+        # 10 finishes, and it moves the score by whatever the board is worth without the turn
+        # number changing: at turn 10 AR7 of replay 154 the US plays the China Card for
+        # Influence, the turn ends, final scoring hands the USSR enough to reach the cap, and
+        # the engine stands at -20 against the -16 the log states. That -16 is the score before
+        # final scoring, which the log never gets to record.
+        # A win the log *does* record is still checked: it narrates the winning score itself,
+        # so want_score is 20 and the comparison is against a number the log actually states.
+        crossed_turn = (int(state.turn) != turn_before
+                        or (ts.Engine.is_terminal(state)
+                            and want_score is not None and abs(want_score) < 20))
         if want_score is None and prev_entry is not None and e.score is not None:
             # A score field that has *moved* since the entry before has been brought up to
             # date, and is worth asserting on even where nothing was narrated -- it is where

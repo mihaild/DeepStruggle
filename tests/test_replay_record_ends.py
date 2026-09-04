@@ -19,7 +19,8 @@ from typing import Dict
 
 import pytest
 
-from tools.lib.ts_replayer_convert import _is_the_record_ending, convert_game
+from tools.lib.ts_replayer_convert import (Mismatch, _is_the_record_ending,
+                                           convert_game)
 from tools.lib.ts_replayer_parse import parse_entry
 
 CORPUS = "/workspace/data/datasets/ts_replayer"
@@ -58,15 +59,16 @@ def test_these_games_convert_up_to_where_the_log_ends(replay_id: int) -> None:
     assert conv.truncated_at is not None
 
 
-def test_a_disagreement_on_the_last_entry_is_still_a_failure() -> None:
-    """Replay 154 turn 10 AR7: the log states a score and the engine reaches a different one.
+def test_a_disagreement_in_a_turn_the_log_completes_is_still_a_failure() -> None:
+    """Replay 16 turn 5 AR1: the log states a score and the engine reaches a different one.
 
-    The entry is complete and the log says what happened; we cannot reproduce it. That is ours
-    to fix, not the recording's to excuse.
+    Turn 5 is not where the record stops, so the entry is one the log states in full and we
+    cannot reproduce. That is ours to fix, not the recording's to excuse.
     """
-    conv = convert_game(_game(154))
+    conv = convert_game(_game(16))
     assert conv.failure is not None
     assert conv.failure.kind == "score mismatch after replay"
+    assert (conv.failure.turn, conv.failure.phase) == (5, "AR1")
     assert conv.truncated_at is None
 
 
@@ -92,26 +94,35 @@ def test_a_skipped_round_with_entries_after_it_is_still_driven() -> None:
     assert conv.entries_converted == conv.entries_total
 
 
-def test_only_the_last_entry_may_end_the_record() -> None:
-    """An unanswered decision anywhere earlier is a defect, and stays one."""
+def test_a_decision_unanswered_in_an_earlier_turn_is_a_defect() -> None:
+    """The record can only end where it ends: in the last turn, at the last entry.
+
+    Anywhere before that, an unanswered decision means the answer is somewhere we are not
+    reading.
+    """
     raws = _game(153)["all_turns"]
     last = parse_entry(raws[-1])
     conv = convert_game(_game(153))
     assert conv.truncated_at is not None
-    same_but_earlier = type(conv.truncated_at)(
-        conv.truncated_at.replay_id, last.turn, "AR1", last.player,
+    earlier_turn = type(conv.truncated_at)(
+        conv.truncated_at.replay_id, last.turn - 1, "AR1", last.player,
         last.card, conv.truncated_at.kind, conv.truncated_at.detail)
-    assert not _is_the_record_ending(same_but_earlier, raws)
+    assert not _is_the_record_ending(earlier_turn, raws)
 
 
-def test_a_disagreement_is_never_read_as_the_record_ending() -> None:
-    raws = _game(153)["all_turns"]
+def test_a_disagreement_in_a_completed_turn_is_never_read_as_the_record_ending() -> None:
+    """Replay 154 plays its last turn out, so nothing in it is excused.
+
+    Inside a turn the recording stops in, a disagreement *is* read that way -- the turn is a
+    fragment and is dropped whatever the reason, so whether we could have reproduced it is
+    moot. That is the case the test above covers.
+    """
+    raws = _game(154)["all_turns"]
     last = parse_entry(raws[-1])
-    conv = convert_game(_game(153))
-    assert conv.truncated_at is not None
+    conv = convert_game(_game(154))
+    assert conv.truncated_at is None, "its last turn runs to AR7"
     for kind in ("board mismatch after replay", "score mismatch after replay",
                  "logged pass is not legal", "target not legal"):
-        disagreement = type(conv.truncated_at)(
-            conv.truncated_at.replay_id, last.turn, last.phase, last.player,
-            last.card, kind, "")
+        disagreement = Mismatch(154, last.turn, last.phase, last.player,
+                                last.card, kind, "")
         assert not _is_the_record_ending(disagreement, raws), kind
