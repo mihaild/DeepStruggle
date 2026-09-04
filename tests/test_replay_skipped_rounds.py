@@ -92,6 +92,29 @@ def test_a_game_played_with_a_handicap_the_engine_cannot_set_up_is_not_converted
     assert conv.failure is None, "not converting is not the same as failing to convert"
 
 
+def test_a_handicap_won_at_auction_counts_the_same() -> None:
+    """Some games bid for sides, and the winning bid is the same extra Influence.
+
+    "lkslks bids 1 Influence for USSR ... Additional Influence from bidding: US +1" is a
+    handicap of 1, and reading only the "Handicap influence:" form left those games looking
+    standard: at turn 1 of replay 230 the US has 8 Influence to place where the engine offers
+    9, and the handicap stage was left with a placement the log never made.
+    """
+    assert unsupported_handicap(_raws(230)) == "US +1"
+    assert unsupported_handicap(_raws(250)) == "US +3"
+    conv = convert_game(_game(230))
+    assert conv.skipped is not None and "US +1" in conv.skipped
+    assert conv.failure is None
+
+
+def test_a_bid_that_lands_on_two_is_the_standard_setup() -> None:
+    """18 of the corpus's games bid their way to the same 2 the tournament rules give."""
+    assert unsupported_handicap(_raws(136)) is None
+    conv = convert_game(_game(136))
+    assert conv.skipped is None
+    assert conv.failure is None, f"replay 136 stopped at {conv.failure}"
+
+
 def test_duplicate_downloads_resolve_to_one_game() -> None:
     """287 files, 254 games. One game arrived nine times over."""
     games = {}

@@ -151,19 +151,27 @@ _KNOWN_SCORE: Dict[int, Dict[Tuple[int, str, str], int]] = {
 
 
 # The engine's opening handicap is the tournament one: 2 extra US Influence, placed where the
-# US already has some. Two of the corpus's 287 games were played with a different one and are
+# US already has some. Nine of the corpus's 287 games were played with a different one and are
 # not reconstructible without making the handicap a setup parameter -- which is not worth
 # doing, since a handicap other than 2 says the players were mismatched and the positions it
 # produces are not ones the engine will ever play from.
 _STANDARD_HANDICAP = "US +2"
+# The corpus writes the opening handicap two ways. Most games state it outright; the rest bid
+# for sides, and the winning bid becomes the same extra Influence -- "lkslks bids 1 Influence
+# for USSR ... Additional Influence from bidding: US +1". Both are the same thing to the setup,
+# and reading only the first left the 8 bidding games that did not land on 2 looking standard:
+# at turn 1 of replay 230 the US has 8 Influence to place where the engine offers 9, and the
+# handicap stage was left with a placement the log never made.
 RE_HANDICAP = re.compile(r"Handicap influence: (\S+ [+-]?\d+)")
+RE_BID = re.compile(r"Additional Influence from bidding: (\S+ [+-]?\d+)")
 
 
 def unsupported_handicap(raws: List[Dict]) -> Optional[str]:
     """The game's handicap, if it is one the engine cannot set up. None when it can."""
     if not raws:
         return None
-    m = RE_HANDICAP.search(str(raws[0].get("text", "")))
+    text = str(raws[0].get("text", ""))
+    m = RE_HANDICAP.search(text) or RE_BID.search(text)
     if m is None or m.group(1) == _STANDARD_HANDICAP:
         return None
     return m.group(1)
