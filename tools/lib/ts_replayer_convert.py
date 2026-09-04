@@ -201,7 +201,7 @@ def _reveal_ops_cap(raws, turn: int, side: str) -> Optional[int]:
 
 
 def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional[int],
-              taken: set) -> List[int]:
+              taken: set, final_turn: bool = True) -> List[int]:
     """Top a short logged hand up with cards the log does not account for.
 
     The log records only the cards a player used, so a game that ends mid-turn leaves hands
@@ -218,7 +218,13 @@ def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional
     # held: inventing a card is not free, because the rules read the hand in places that
     # inventing changes -- Blockade and Latin American Debt Crisis ask whether a 3 Ops card is
     # held, and a trap is escaped by playing a 2 Ops card.
-    if len(held) >= size - 2:
+    # Only the turn the log stops in. A short list anywhere else is not a truncated record
+    # but a turn in which little became visible, and there are ordinary reasons for that: at
+    # turn 5 of replay 114 the USSR is caught by Bear Trap, discards two cards and skips four
+    # action rounds, so five of nine ever show. Padding it invented four cards with 2 Ops or
+    # more, and the trap is escaped by discarding one -- so the engine offered those inventions
+    # where the log says the USSR had nothing to discard and had to play their scoring card.
+    if not final_turn or len(held) >= size - 2:
         return list(held)
     pool = [c for c in range(1, 111)
             if c not in held and c not in taken
@@ -1845,6 +1851,10 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     pending: Dict[str, Dict[int, int]] = {"US": {}, "USSR": {}}
     prev_raw = None
     prev_entry = None
+    # The turn the record stops in, which is the only one a short hand list can be blamed on
+    # the recording for.
+    last_turn = max((int(r.get("num")) for r in raws
+                     if str(r.get("num", "")).isdigit()), default=0)
 
     for index, raw in enumerate(raws):
         e = parse_entry(raw)
@@ -1887,7 +1897,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
             for side in ("US", "USSR"):
                 padded = _pad_hand(state, turn_hands[side], size,
-                                   _reveal_ops_cap(raws, e.turn, side), claimed)
+                                   _reveal_ops_cap(raws, e.turn, side), claimed,
+                                   final_turn=int(e.turn) >= last_turn)
                 claimed |= set(padded)
                 turn_hands[side] = padded
             played = {"US": set(), "USSR": set()}
@@ -1933,6 +1944,22 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             named = card_id(e.played_card)
             if named:
                 played[e.player].add(named)
+        # Missile Envy takes the opponent's highest Ops card, and the card it takes is gone
+        # from that hand for the rest of the turn. The turn's list still names it, because it
+        # was theirs when the turn began and it became visible while they held it, so leaving
+        # it in put a card back that had changed hands: at turn 5 AR1 of replay 114 the US
+        # takes Nuclear Test Ban, and the USSR -- trapped by Bear Trap, with nothing left to
+        # discard and only a scoring card in hand -- was still being offered it two action
+        # rounds later, which is why they were never allowed to play the scoring card the log
+        # says they played.
+        plays_missile_envy = (
+            _MISSILE_ENVY in {card_id(nm) for nm in (e.headlines or {}).values()}
+            or (e.card is not None and _MISSILE_ENVY == card_id(e.card)))
+        if plays_missile_envy:
+            for side, nm in (e.revealed or []):
+                cid = card_id(nm)
+                if cid and side in played:
+                    played[side].add(cid)
 
         before = len(conv.samples)
         turn_before = int(state.turn)
