@@ -90,3 +90,73 @@ TEST(ScoringTest, FinalScoringAccumulationWithIntermediateOver20) {
     ASSERT_EQ(state.victory_points, 18);
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
 }
+
+// Shuttle Diplomacy subtracts one battleground *country* from the USSR's total in Asia or the
+// Middle East. It comes off the country count as well as the battleground count, and both
+// matter: Domination and Control are decided by who holds more countries, so taking only the
+// battleground could never flip the status the card exists to flip.
+TEST(ScoringTest, ShuttleDiplomacyRemovesACountryNotJustABattleground) {
+    // The Middle East of ts-replayer game 121 at turn 6 AR5: four countries and three
+    // battlegrounds each, so both sides are on Presence and the net is nothing.
+    ts::GameState state{};
+    for (uint8_t i = 0; i < 84; ++i) { state.countries[i].us_influence = 0;
+                                       state.countries[i].ussr_influence = 0; }
+    state.countries[ts::countries::LEBANON].us_influence = 1;       // US, non-battleground
+    state.countries[ts::countries::ISRAEL].us_influence = 4;        // US battleground
+    state.countries[ts::countries::EGYPT].us_influence = 3;         // US battleground
+    state.countries[ts::countries::LIBYA].us_influence = 2;         // US battleground
+    state.countries[ts::countries::SYRIA].ussr_influence = 2;       // USSR, non-battleground
+    state.countries[ts::countries::IRAQ].ussr_influence = 3;        // USSR battleground
+    state.countries[ts::countries::IRAN].ussr_influence = 2;        // USSR battleground
+    state.countries[ts::countries::SAUDI_ARABIA].ussr_influence = 3;// USSR battleground
+
+    auto level = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST);
+    ASSERT_EQ(level.us_status, ts::RegionalStatus::PRESENCE);
+    ASSERT_EQ(level.ussr_status, ts::RegionalStatus::PRESENCE);
+    ASSERT_EQ(level.net_delta, 0);
+
+    state.set_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    auto shuttled = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST);
+    // Four countries against three makes the US dominant: 5 + 3 battlegrounds against the
+    // USSR's 3 + 2.
+    ASSERT_EQ(shuttled.us_status, ts::RegionalStatus::DOMINATION);
+    ASSERT_EQ(shuttled.ussr_status, ts::RegionalStatus::PRESENCE);
+    ASSERT_EQ(shuttled.us_score, 8);
+    ASSERT_EQ(shuttled.ussr_score, 5);
+    ASSERT_EQ(shuttled.net_delta, 3);
+}
+
+// In Asia the battleground it removes may be Japan, which borders the United States, so the
+// USSR's bonus for a country adjacent to the enemy superpower goes with it.
+TEST(ScoringTest, ShuttleDiplomacyAlsoRemovesTheAsianAdjacencyBonus) {
+    ts::GameState state{};
+    for (uint8_t i = 0; i < 84; ++i) { state.countries[i].us_influence = 0;
+                                       state.countries[i].ussr_influence = 0; }
+    state.countries[ts::countries::JAPAN].ussr_influence = 4;       // battleground, borders the US
+    state.countries[ts::countries::NORTH_KOREA].ussr_influence = 3; // battleground
+    state.countries[ts::countries::LAOS_CAMBODIA].ussr_influence = 1;
+
+    auto plain = ts::Scoring::evaluate_region(state, ts::Region::ASIA);
+    ASSERT_EQ(plain.ussr_superpower_adjacent, 1);
+
+    state.set_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    auto shuttled = ts::Scoring::evaluate_region(state, ts::Region::ASIA);
+    // The USSR keeps Domination here -- it still holds more countries than the US -- so what
+    // changes is the battleground it loses and the adjacency bonus that went with it.
+    ASSERT_EQ(shuttled.ussr_status, ts::RegionalStatus::DOMINATION);
+    ASSERT_EQ(shuttled.ussr_score, plain.ussr_score - 2);
+}
+
+// Final scoring is untouched: the card is spent during the game, not at the end of it.
+TEST(ScoringTest, ShuttleDiplomacyDoesNotApplyToFinalScoring) {
+    ts::GameState state{};
+    for (uint8_t i = 0; i < 84; ++i) { state.countries[i].us_influence = 0;
+                                       state.countries[i].ussr_influence = 0; }
+    state.countries[ts::countries::IRAQ].ussr_influence = 3;
+    state.countries[ts::countries::IRAN].ussr_influence = 2;
+    state.set_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+
+    auto during = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST, false);
+    auto final_ = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST, true);
+    ASSERT_LT(during.ussr_score, final_.ussr_score);
+}

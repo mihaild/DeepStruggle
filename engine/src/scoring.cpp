@@ -57,18 +57,33 @@ RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bo
         }
     }
 
+    // Shuttle Diplomacy subtracts one battleground *country* from the USSR's total in Asia or
+    // the Middle East, so it comes off the country count as well as the battleground count.
+    // Both matter: Domination and Control are decided by who holds more countries, so taking
+    // only the battleground could never flip the status the card exists to flip. At turn 6 AR5
+    // of ts-replayer game 121 the two sides hold four countries and three battlegrounds each,
+    // and the card is what makes it 4 against 3 -- US Domination and a net 3 VP, where
+    // subtracting the battleground alone left both on Presence and a net of 1.
+    //
+    // In Asia the battleground it removes may be Japan, which borders the United States, so the
+    // USSR's bonus for holding a country adjacent to the enemy superpower goes with it.
     uint8_t effective_ussr_bg = summary.ussr_battlegrounds;
-    if (!is_final_scoring && (r == Region::MIDDLE_EAST || r == Region::ASIA) && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+    uint8_t effective_ussr_countries = summary.ussr_countries;
+    uint8_t effective_ussr_adjacent = summary.ussr_superpower_adjacent;
+    if (!is_final_scoring && (r == Region::MIDDLE_EAST || r == Region::ASIA) &&
+        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
         if (effective_ussr_bg > 0) effective_ussr_bg--;
+        if (effective_ussr_countries > 0) effective_ussr_countries--;
+        if (r == Region::ASIA && effective_ussr_adjacent > 0) effective_ussr_adjacent--;
     }
 
     uint8_t us_non_bg = (summary.us_countries >= summary.us_battlegrounds) ? (summary.us_countries - summary.us_battlegrounds) : 0;
-    uint8_t ussr_non_bg = (summary.ussr_countries >= effective_ussr_bg) ? (summary.ussr_countries - effective_ussr_bg) : 0;
+    uint8_t ussr_non_bg = (effective_ussr_countries >= effective_ussr_bg) ? (effective_ussr_countries - effective_ussr_bg) : 0;
 
     // Evaluate US Status
-    if (summary.us_countries > summary.ussr_countries && summary.us_battlegrounds == total_bg) {
+    if (summary.us_countries > effective_ussr_countries && summary.us_battlegrounds == total_bg) {
         summary.us_status = RegionalStatus::CONTROL;
-    } else if (summary.us_countries > summary.ussr_countries &&
+    } else if (summary.us_countries > effective_ussr_countries &&
                summary.us_battlegrounds > effective_ussr_bg &&
                summary.us_battlegrounds >= 1 &&
                us_non_bg >= 1) {
@@ -80,14 +95,14 @@ RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bo
     }
 
     // Evaluate USSR Status
-    if (summary.ussr_countries > summary.us_countries && effective_ussr_bg == total_bg) {
+    if (effective_ussr_countries > summary.us_countries && effective_ussr_bg == total_bg) {
         summary.ussr_status = RegionalStatus::CONTROL;
-    } else if (summary.ussr_countries > summary.us_countries &&
+    } else if (effective_ussr_countries > summary.us_countries &&
                effective_ussr_bg > summary.us_battlegrounds &&
                effective_ussr_bg >= 1 &&
                ussr_non_bg >= 1) {
         summary.ussr_status = RegionalStatus::DOMINATION;
-    } else if (summary.ussr_countries >= 1) {
+    } else if (effective_ussr_countries >= 1) {
         summary.ussr_status = RegionalStatus::PRESENCE;
     } else {
         summary.ussr_status = RegionalStatus::NONE;
@@ -131,7 +146,7 @@ RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bo
     };
 
     summary.us_score = get_base_vp(summary.us_status) + summary.us_battlegrounds + summary.us_superpower_adjacent;
-    summary.ussr_score = get_base_vp(summary.ussr_status) + effective_ussr_bg + summary.ussr_superpower_adjacent;
+    summary.ussr_score = get_base_vp(summary.ussr_status) + effective_ussr_bg + effective_ussr_adjacent;
     summary.net_delta = summary.us_score - summary.ussr_score;
 
     return summary;
