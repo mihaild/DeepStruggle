@@ -120,6 +120,11 @@ class Entry:
     # Ongoing effects the entry starts or ends. An effect that should have expired but did not
     # can make later play illegal outright -- a stale Cuban Missile Crisis turns every USSR
     # coup into an instant loss -- so expiry has to be reconciled from the log like the board.
+    # The entry's narration verbatim. Where a field cannot say it, the words can: Summit
+    # states its winner only when it has one, so the outcome has to be read from the text
+    # after "Event: Summit" rather than from the entry's VP lines, which a headline's other
+    # card also writes into.
+    text: str = ""
     in_play: List[str] = field(default_factory=list)
     out_of_play: List[str] = field(default_factory=list)
     # Cards named by a "reveals" line. Usually informational -- Lone Gunman and CIA Created
@@ -195,6 +200,7 @@ def parse_entry(raw: Dict) -> Entry:
         card=raw.get("card"),
         score=_as_int(raw.get("score")),
         defcon=_as_int(raw.get("defcon")),
+        text=str(raw.get("text", "")),
     )
     in_event = False
     section_open = False

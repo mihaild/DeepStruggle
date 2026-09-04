@@ -363,13 +363,65 @@ def _pending_roll(state: ts.GameState) -> Tuple[int, str]:
     return int(record["type_id"]), str(record["roller"])
 
 
+_SUMMIT_SCORE = re.compile(r"Score is (?:(US|USSR) (\d+)|even)\.")
+
+
+def _summit_target(entry: Optional[Entry]) -> Tuple[bool, Optional[int]]:
+    """What the log says Summit came to: (Summit is in this entry, the score it left).
+
+    Summit is the one event whose outcome the log states only when there is one. The card
+    reads "do not reroll ties", so a tie awards nothing, changes no DEFCON, and moves no
+    Influence -- and the log, having nothing to report, prints "Event: Summit" and stops. Five
+    of the corpus's twelve Summits end that way, and reading the silence as "unknown" left the
+    dice to the engine: at turn 4's headline of replay 109 the reconstruction handed the US the
+    2 VP that the log gave to nobody, and the game ran 2 VP adrift into the Southeast Asia
+    Scoring two action rounds later.
+
+    The score is read from after the "Event: Summit" line rather than from the entry as a
+    whole, because a headline resolves two cards and the other one may score as well.
+    """
+    text = (entry.text or "") if entry is not None else ""
+    marker = text.find("Event: Summit")
+    if marker < 0:
+        return False, None
+    m = _SUMMIT_SCORE.search(text, marker)
+    if m is None:
+        return True, None                          # narrated nothing: a tie
+    if m.group(1) is None:
+        return True, 0                             # "Score is even."
+    return True, int(m.group(2)) * (1 if m.group(1) == "US" else -1)
+
+
+def _summit_dice(state: ts.GameState, target: int) -> Tuple[int, int]:
+    """The pair of dice that leaves the score where the log leaves it.
+
+    Both dice are handed to the chance node outright rather than searched for in the rng, so
+    the outcome is reconstructed and not stumbled upon. The pair is not unique -- what decides
+    Summit is the two totals, dice plus regions dominated -- and any pair reaching the logged
+    score is as faithful as the next, since the dice themselves are never recorded.
+    """
+    for us_roll in range(1, 7):
+        for ussr_roll in range(1, 7):
+            probe = state.clone()
+            try:
+                ts.Engine.step(probe, ts.MicroAction(
+                    ts.DecisionType.ROLL_DIE, us_roll, ussr_roll, 0))
+            except Exception:
+                continue
+            if int(probe.victory_points) == target:
+                return us_roll, ussr_roll
+    raise RuntimeError(
+        f"no Summit dice reach the logged score {target} from {int(state.victory_points)}")
+
+
 def _drain(state: ts.GameState,
            expected: Optional[Dict[int, Tuple[int, int]]] = None,
            forced_roll: int = 0,
            war_rolls: Optional[List[int]] = None,
            coup_rolls: Optional[List[int]] = None,
            realign_rolls: Optional[List[Tuple[str, int]]] = None,
-           want_vp: Optional[int] = None) -> None:
+           want_vp: Optional[int] = None,
+           summit: Optional[Tuple[bool, Optional[int]]] = None) -> None:
     """Resolve chance nodes, steering them to what the log recorded.
 
     Not every die belongs to a decision. A war with a fixed target -- Korean War, Arab-Israeli
@@ -393,7 +445,8 @@ def _drain(state: ts.GameState,
         # War -- so the roll type decides, not the order they happen to arrive in.
         second = 0
         kind, roller = _pending_roll(state) if (war_rolls or coup_rolls or realign_rolls
-                                                or want_vp is not None) \
+                                                or want_vp is not None
+                                                or (summit is not None and summit[0])) \
             else (int(ts.RollType.NONE), "NONE")
         if war_rolls and kind == int(ts.RollType.WAR_EVENT):
             roll = war_rolls.pop(0)
@@ -407,6 +460,10 @@ def _drain(state: ts.GameState,
             del realign_rolls[:2]
             other = "USSR" if roller == "US" else "US"
             roll, second = pair.get(roller, 0), pair.get(other, 0)
+        elif summit is not None and summit[0] and kind == int(ts.RollType.SUMMIT):
+            # A tie leaves the score alone, which is what the log's silence records.
+            roll, second = _summit_dice(
+                state, summit[1] if summit[1] is not None else int(state.victory_points))
         elif want_vp is not None and kind in (int(ts.RollType.OLYMPIC_GAMES),
                                               int(ts.RollType.SUMMIT)):
             # Olympic Games and Summit are decided by dice the log never prints -- it records
@@ -983,7 +1040,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
         # success, because the war constraint it was re-seeded against was already satisfied.
         _drain(state, None if seed_settled else war_outcome, space_roll,
-               war_roll_queue, coup_roll_queue, realign_roll_queue, _narrated_score(e))
+               war_roll_queue, coup_roll_queue, realign_roll_queue, _narrated_score(e),
+               _summit_target(e))
         seed_settled = False
         if ts.Engine.is_terminal(state):
             break
