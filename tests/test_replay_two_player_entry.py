@@ -166,7 +166,12 @@ def test_star_wars_itself_still_reaches_into_the_discard_pile(replay_id: int) ->
     assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
 
 
-@pytest.mark.parametrize("replay_id", [159, 300])
+# Replay 300 exercised this too and no longer reaches it. Its turn 4 AR7 reads "USSR has no
+# cards to discard" where our reconstruction still holds cards, so Five Year Plan discards one
+# and fires its event -- caught now by the check that every event fired is an event the entry
+# names, and left as a failure because it is the hand model that is wrong. Its UN Intervention
+# entry is at turn 5 AR6, past where the game now stops.
+@pytest.mark.parametrize("replay_id", [159])
 def test_un_intervention_may_name_a_card_the_hand_list_omits(replay_id: int) -> None:
     """Replay 159 turn 5 AR4: the US plays Quagmire through UN Intervention.
 

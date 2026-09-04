@@ -191,6 +191,8 @@ class Conversion:
     hand_reattributions: int = 0
     # Entries where a listed disagreement (_KNOWN_SCORE) replaced the engine's score.
     scores_forced: int = 0
+    # Cards whose event the engine resolved while driving the current entry. Reset per entry.
+    events_resolved: Set[int] = field(default_factory=set)
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -305,6 +307,47 @@ def event_point_queues(e: Entry) -> Dict[int, List[int]]:
         for _side, delta, country, _u, _s in rows:
             points.extend([country] * abs(int(delta)))
     return out
+
+
+# Events the log never names, because it records their effect and not their firing.
+#
+#   NORAD prints only the Influence it places -- "US +1 in Poland" trailing the coup that
+#   dropped DEFCON -- and never a header of its own.
+_NORAD = 106
+_UNNAMED_EVENTS = frozenset({_NORAD})
+
+
+def _events_the_log_names(e: Entry) -> Set[int]:
+    """Every card this entry says was played, revealed, returned or fired.
+
+    Deliberately generous. The check it feeds asks whether the engine fired an event the log
+    knows nothing about at all, which is a different and much louder question than whether the
+    log names it in the right place: a card the entry mentions anywhere is not "from nowhere".
+    """
+    named: Set[int] = set()
+    for nm in list(e.events or []):
+        cid = card_id(nm)
+        if cid:
+            named.add(cid)
+    for nm in (e.headlines or {}).values():
+        cid = card_id(nm)
+        if cid:
+            named.add(cid)
+    for nm in (e.card, e.played_card, e.returned_card):
+        cid = card_id(nm) if nm else None
+        if cid:
+            named.add(cid)
+    for _side, nm in (e.revealed or []):
+        cid = card_id(nm)
+        if cid:
+            named.add(cid)
+    for _side, nm in (e.discards or []):
+        cid = card_id(nm)
+        if cid:
+            named.add(cid)
+    # A headline entry's card field is "A & B"; card_id gives nothing for that, and the two
+    # halves are in e.headlines already.
+    return named
 
 
 def _reattribute_hands(raws: List[Dict], turn: int,
@@ -1300,6 +1343,10 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # its value now -- at turn 1 AR2 of replay 109 the USSR loses the Korean War and the US then
     # places two influence in South Korea, and demanding the post-placement board matched no
     # roll, leaving the war to chance.
+    # Every card the engine resolves the event of, checked at the end against what the log
+    # says happened. See _events_the_log_names.
+    resolved_here: Set[int] = conv.events_resolved
+    resolved_here.clear()
     _ops_rows = list(e.ops_influence or [])
     _event_last: Dict[int, Tuple[int, int]] = {}
     for _rec in (e.influence or []):
@@ -1370,6 +1417,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         if ts.Engine.is_terminal(state):
             break
         ctx = state.ctx()
+        if 1 <= int(ctx.resolving_card) <= 110:
+            resolved_here.add(int(ctx.resolving_card))
         dt = ctx.decision_type
         # Before the mask is read, since the mask for a peek is built from that very set.
         if (int(ctx.resolving_card) == _OUR_MAN_IN_TEHRAN and not seeded_peek
@@ -2154,6 +2203,22 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             _reconcile_turn(state, e, conv.replay_id)
         _drive_entry(state, e, conv, raw)
         _drive_passed_rounds(state, e, conv)
+
+        # --- did the engine fire an event the log knows nothing about? ---
+        # An event the log never mentions is an event that did not happen, and what it does to
+        # the board is not a near miss but a different game. At turn 8 AR3 of replay 158 the US
+        # plays Star Wars, which takes Grain Sales To Soviets out of the discard pile; the
+        # engine took Blockade instead, and Blockade removes every US Influence from West
+        # Germany -- four of them, where the log has the US untouched there and placing three
+        # Influence elsewhere with the Cuban Missile Crisis that Grain Sales drew.
+        stray = sorted(conv.events_resolved - _events_the_log_names(e) - _UNNAMED_EVENTS)
+        if stray:
+            del conv.samples[before:]
+            names = ", ".join(str(ts.CardData.get_card_info(c)["name"]) for c in stray)
+            raise ConversionFailure(Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "event the log does not mention",
+                f"the engine resolved {names}, which this entry never names"))
 
         # --- did replaying our parsed actions reproduce the log's board? ---
         bad = _board_matches(state, raw.get("countries"))
