@@ -106,8 +106,14 @@ class Mismatch:
 #
 #   replay 60, turn 7 AR6 -- the text reads "Coup (4 Ops):" and stops there. No target, no
 #   roll, no result, and no further entries in the file.
+#
+#   replay 133, turn 10 headline -- the last entry in the file, and it holds one line: "USSR
+#   Headlines Missile Envy". The US headline is not recorded, nor which of the two 4 Ops cards
+#   the US handed over when Missile Envy asked (ABM Treaty or Muslim Revolution), nor anything
+#   either event did.
 _KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str]]] = {
     60: {(7, "AR6")},
+    133: {(10, "Headline")},
 }
 
 # Scores the engine and the log disagree on because a choice the engine does not offer was
@@ -1260,6 +1266,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     mode_picked_for: set = set()
     discard_queue = [c for c in (card_id(nm) for _side, nm in (e.discards or [])) if c]
     reveal_queue = [c for c in (card_id(nm) for _side, nm in (e.revealed or [])) if c]
+    envy_took = _missile_envy_took(e)
     # Cards this entry fires the event of besides its own. Star Wars lets the US take any
     # non-scoring card out of the discard pile and play it as its event, and the log names that
     # card on an "Event:" line of its own: at turn 9 AR7 of replay 104 the USSR plays Star Wars
@@ -1454,6 +1461,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     discard_queue.pop(slot)
                     informative = True
                     break
+            if chosen is None and int(ctx.resolving_card) == _MISSILE_ENVY and envy_took:
+                # Missile Envy's own reveal, not whichever reveal the entry printed first. It
+                # asks which card to hand over only when the highest Ops cards tie, and the
+                # answer is the card named under "Event: Missile Envy" -- at turn 4's headline
+                # of replay 14 the entry also carries Grain Sales To Soviets, whose reveal
+                # (Marshall Plan) stood at the head of the queue and was handed over instead.
+                chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                               lambda ma: int(ma.primary_id) == envy_took[1])
+                if chosen is not None:
+                    if envy_took[1] in reveal_queue:
+                        reveal_queue.remove(envy_took[1])
+                    informative = True
             if chosen is None:
                 # Then whatever the log says was revealed. Where the engine asks which card to
                 # hand over -- Missile Envy tying NORAD against Cuban Missile Crisis at both
