@@ -66,4 +66,14 @@ def test_replay_60_reaches_the_score_the_log_records() -> None:
                                  and conv.failure.turn == 7
                                  and conv.failure.phase == "AR2")
     assert not stopped_at_the_divergence, f"replay 60 stops at its scoring divergence: {conv.failure}"
-    assert conv.entries_converted > 95
+    # Every entry of turn 6 converts, which is the whole of the assertion: each one is checked
+    # against the score the log states, and with turn 5's counts carried over they stood two
+    # apart. Turn 7 is where the recording stops and is given back entire, so the count is the
+    # end of turn 6 rather than the end of the file.
+    with gzip.open(os.path.join(CORPUS, "60.json.gz"), "rt") as f:
+        raws = json.load(f)["all_turns"]
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    assert kept, "replay 60 converted nothing"
+    assert kept[-1].turn == 6, f"replay 60 stops in turn {kept[-1].turn}, not at the end of 6"
+    assert sum(1 for e in kept if e.turn == 6) == sum(
+        1 for r in raws if parse_entry(r).turn == 6), "turn 6 converts in full"

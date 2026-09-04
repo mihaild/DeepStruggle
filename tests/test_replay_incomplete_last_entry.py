@@ -71,23 +71,35 @@ def test_the_ussr_influence_the_missing_coup_would_have_taken() -> None:
     assert _east_germany(raws[-1]) == (3, 5), "Tear Down This Wall only adds the US's 3"
 
 
-def test_the_game_converts_up_to_that_entry() -> None:
+def test_the_game_converts_up_to_the_turn_the_record_stops_in() -> None:
+    """Turn 9 goes entire, not just the entry that was cut short.
+
+    A turn the recording stops inside lists only the cards played before it stopped, so every
+    decision already converted in it was driven from a hand the player never held.
+    """
     raws = _game(55)["all_turns"]
     conv = convert_game(_game(55))
     assert conv.failure is None, f"replay 55 stopped at {conv.failure}"
     assert conv.truncated_at is not None
-    assert conv.entries_converted == len(raws) - 1
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    assert kept[-1].turn == 8, "the last complete turn"
+    assert all(e.turn <= 8 for e in kept)
 
 
-def test_the_other_half_of_that_action_round_still_converts() -> None:
-    """Turn 9 AR7 holds a USSR entry too, and it is complete."""
+def test_the_other_half_of_that_action_round_goes_with_it() -> None:
+    """Turn 9 AR7 holds a complete USSR entry, and it is dropped too.
+
+    Not because anything is wrong with it -- it replays to the log's own board -- but because
+    it belongs to a turn whose hand list is a fragment. Which half of the round the registry
+    names no longer changes how much is given back; it records where the log stopped.
+    """
     raws = _game(55)["all_turns"]
     ussr = parse_entry(raws[-2])
     assert (ussr.turn, ussr.phase, ussr.player) == (9, "AR7", "USSR")
     assert ussr.card == "Latin American Debt Crisis"
     conv = convert_game(_game(55))
-    assert conv.entries_converted == len(raws) - 1, (
-        "only the US half is dropped, not the whole action round")
+    assert conv.entries_converted < len(raws) - 1
+    assert parse_entry(raws[conv.entries_converted - 1]).turn == 8
 
 
 def test_the_registry_names_the_player() -> None:
@@ -95,10 +107,13 @@ def test_the_registry_names_the_player() -> None:
     assert (9, "AR7", "USSR") not in _KNOWN_INCOMPLETE[55]
 
 
-@pytest.mark.parametrize("replay_id,entries", [(60, 101), (133, 129)])
-def test_the_other_listed_games_are_unchanged(replay_id: int, entries: int) -> None:
-    """Adding the player to the key must not move where these two stop."""
+@pytest.mark.parametrize("replay_id,last_complete_turn", [(60, 6), (133, 9)])
+def test_the_other_listed_games_stop_at_a_turn_boundary(replay_id: int,
+                                                        last_complete_turn: int) -> None:
     conv = convert_game(_game(replay_id))
     assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
     assert conv.truncated_at is not None
-    assert conv.entries_converted == entries
+    raws = _game(replay_id)["all_turns"]
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    assert kept[-1].turn == last_complete_turn
+    assert all(e.turn <= last_complete_turn for e in kept)

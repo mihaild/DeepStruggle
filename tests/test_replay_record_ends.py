@@ -44,7 +44,11 @@ def test_the_record_stops_mid_entry(replay_id: int, tail: str) -> None:
     conv = convert_game(_game(replay_id))
     assert conv.failure is None, f"replay {replay_id} reported {conv.failure}"
     assert conv.truncated_at is not None
-    assert conv.entries_converted == len(raws) - 1
+    # The whole of the turn it stops in is given back, so what remains ends on a turn boundary.
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    stopped_in = conv.truncated_at.turn
+    assert all(e.turn < stopped_in for e in kept)
+    assert kept[-1].turn == stopped_in - 1
 
 
 @pytest.mark.parametrize("replay_id", [153, 251, 112, 158, 37, 38, 44, 182])

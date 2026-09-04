@@ -28,8 +28,15 @@ def test_replay_60_stops_where_its_log_stops() -> None:
     assert conv.failure is None, f"a truncated log is not a failure: {conv.failure}"
     assert conv.truncated_at is not None
     assert (conv.truncated_at.turn, conv.truncated_at.phase) == (7, "AR6")
-    assert conv.entries_converted == conv.entries_total, (
-        "everything the log does contain must still convert")
+    # Turn 7 goes with it. A turn the recording stops inside lists only the cards played before
+    # it stopped, so every decision already converted in that turn was driven from a hand the
+    # player never held -- see _rewind_to_turn_start. Turns 1 to 6 are untouched.
+    with gzip.open(os.path.join(CORPUS, "60.json.gz"), "rt") as f:
+        raws = json.load(f)["all_turns"]
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    assert kept[-1].turn == 6
+    assert all(e.turn <= 6 for e in kept)
+    assert conv.entries_converted < conv.entries_total
 
 
 def test_every_listed_entry_really_is_unfinished() -> None:
@@ -40,9 +47,9 @@ def test_every_listed_entry_really_is_unfinished() -> None:
             continue
         with gzip.open(path, "rt") as f:
             raws = json.load(f)["all_turns"]
-        # The key names the player too: an action round holds an entry for each side and only
-        # one of them need be cut short. Replay 55's turn 9 AR7 is listed for the US, and the
-        # USSR's half of that same round is complete and still converts.
+        # The key names the player too, because an action round holds an entry for each side
+        # and the log can stop inside either one. Which is named no longer changes how much is
+        # given back -- the whole turn goes either way -- but it records where the log stopped.
         for turn, phase, player in entries:
             matching = [r for r in raws
                         if (lambda e: (e.turn, e.phase, e.player) == (turn, phase, player))(

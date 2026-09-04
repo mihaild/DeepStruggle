@@ -119,21 +119,18 @@ class Mismatch:
 #   and the engine taking one of its own removed 2 USSR Influence from East Germany -- which
 #   the log has standing at 5 since turn 3 AR2 and never moving again.
 #
-#   replay 148, turn 4 -- the file stops three entries into the turn, and the last of them ends
-#   on a bare "Turn 4, USSR AR2" header with nothing beneath it. Elsewhere that header means a
-#   player out of cards skipping their round; here it is the start of an entry that was never
-#   written, and the USSR is holding six cards. The whole turn goes rather than the last entry,
-#   because there is no telling how much of it the recording lost.
-#
 # The entry named is where the unfinished tail begins, and everything from it to the end of the
-# file belongs to that same turn. The player is part of the key because an action round holds an
+# file belongs to that same turn. Whichever entry is named, the whole of its turn is given back:
+# see _rewind_to_turn_start.
+#
+# Replay 148 needs no listing -- its last entry ends on a bare "Turn 4, USSR AR2" header, which
+# _is_the_record_ending recognises on its own. The player is part of the key because an action round holds an
 # entry for each side and only one of them need be cut short: replay 55's USSR half of turn 9
 # AR7 is complete and converts.
 _KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str, str]]] = {
     60: {(7, "AR6", "USSR")},
     133: {(10, "Headline", "both")},
     55: {(9, "AR7", "US")},
-    148: {(4, "Headline", "both")},
 }
 
 # Scores the engine and the log disagree on because a choice the engine does not offer was
@@ -213,6 +210,8 @@ class Conversion:
     scores_forced: int = 0
     # Cards whose event the engine resolved while driving the current entry. Reset per entry.
     events_resolved: Set[int] = field(default_factory=set)
+    # (turn, entries converted, samples emitted) as the current turn began.
+    turn_started_at: Tuple[int, int, int] = (0, 0, 0)
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -2081,6 +2080,26 @@ def _board_matches(state, countries) -> int:
     return bad
 
 
+def _rewind_to_turn_start(conv: "Conversion", turn: int) -> None:
+    """Give back everything converted in the turn the record stops in.
+
+    A log that ends mid-turn does not only lose the entries it never wrote. The turn's hand
+    list is assembled from the cards that became visible during it, so a turn cut short lists
+    only the few that were played before the recording stopped -- and every decision already
+    converted in that turn was driven from a hand that is not the one the player held. The
+    board and the score still check out, because the log's own board is what they are checked
+    against, but the position the model would learn from is wrong.
+
+    So the whole turn goes, not just the entry that failed. Nothing earlier is touched: those
+    turns have complete hand lists.
+    """
+    started_turn, entries, samples = conv.turn_started_at
+    if started_turn != turn:
+        return
+    del conv.samples[samples:]
+    conv.entries_converted = entries
+
+
 def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     """Is this failure the log running out rather than the reconstruction going wrong?
 
@@ -2151,6 +2170,7 @@ def convert_game(game: Dict) -> Conversion:
         # the entries after it were never converted.
         if _is_the_record_ending(failure.mismatch, raws):
             conv.truncated_at = failure.mismatch
+            _rewind_to_turn_start(conv, int(failure.mismatch.turn))
         else:
             conv.failure = failure.mismatch
             conv.mismatches.append(failure.mismatch)
@@ -2189,6 +2209,10 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     pending: Dict[str, Dict[int, int]] = {"US": {}, "USSR": {}}
     prev_raw = None
     prev_entry = None
+    # Where the turn now being converted began: how many entries had been converted and how
+    # many samples emitted. A record that stops mid-turn takes the whole turn with it, so this
+    # is what a truncation rewinds to. See _rewind_to_turn_start.
+    conv.turn_started_at = (0, 0, 0)
     # The turn the record stops in, which is the only one a short hand list can be blamed on
     # the recording for.
     last_turn = max((int(r.get("num")) for r in raws
@@ -2201,8 +2225,9 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             conv.truncated_at = Mismatch(
                 conv.replay_id, e.turn, e.phase, e.player, e.card,
                 "log stops mid-entry",
-                "the recording ends here, so this entry and everything after it are not "
+                "the recording ends here, so this turn and everything after it are not "
                 "training data")
+            _rewind_to_turn_start(conv, int(e.turn))
             return
         conv.entries_total += 1
 
@@ -2218,6 +2243,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
         if e.turn and e.turn != cur_turn:
             cur_turn = e.turn
+            conv.turn_started_at = (int(e.turn), conv.entries_converted,
+                                    len(conv.samples))
             h = hands.get(str(e.turn)) or {}
             turn_hands = {
                 "US": [c for c in (card_id(n) for n in h.get("us", [])) if c],
