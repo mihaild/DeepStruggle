@@ -110,6 +110,22 @@ _KNOWN_INCOMPLETE: Dict[int, Set[Tuple[int, str]]] = {
     60: {(7, "AR6")},
 }
 
+# Scores the engine and the log disagree on because a choice the engine does not offer was
+# made differently, not because either is wrong. The engine's score is replaced by the log's
+# and the game carries on. Listed rather than diagnosed again each time, and kept small: a
+# disagreement that is not understood belongs in a failure, not here.
+#
+#   replay 127, turn 5 AR3 -- Asia Scoring with Shuttle Diplomacy in play. The card subtracts
+#   one USSR battleground country from the USSR's total, and *which* one is the US player's
+#   choice. Taking Japan also costs the USSR the superpower-adjacent Influence there, which is
+#   why it is the choice to make; the engine assumes it and scores the USSR 5. This US took a
+#   different battleground and left Japan alone, so the log scores the USSR 6, one more than
+#   the best play would have allowed. Legal, and not reconstructible until Shuttle Diplomacy's
+#   target is a decision the engine asks for.
+_KNOWN_SCORE: Dict[int, Dict[Tuple[int, str, str], int]] = {
+    127: {(5, "AR3", "USSR"): -5},
+}
+
 
 # The engine's opening handicap is the tournament one: 2 extra US Influence, placed where the
 # US already has some. Two of the corpus's 287 games were played with a different one and are
@@ -167,6 +183,8 @@ class Conversion:
     hand_misses: int = 0
     # Cards the turn's hand lists gave to the wrong side, corrected from the entries.
     hand_reattributions: int = 0
+    # Entries where a listed disagreement (_KNOWN_SCORE) replaced the engine's score.
+    scores_forced: int = 0
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -2106,6 +2124,12 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             if prev_entry.score is not None and int(e.score) != int(prev_entry.score):
                 want_score = int(e.score)
                 crossed_turn = False
+        forced = _KNOWN_SCORE.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
+        if forced is not None:
+            # A listed disagreement: the log's score stands and the run continues from it.
+            state.victory_points = forced
+            conv.scores_forced += 1
+            want_score = None
         if want_score is not None and not crossed_turn:
             # The VP track runs from 20 to -20 and the game ends the moment it is reached, so
             # a score past either end is the replayer's arithmetic and not a position. At turn
