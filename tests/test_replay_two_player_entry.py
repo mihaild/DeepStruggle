@@ -164,3 +164,15 @@ def test_star_wars_itself_still_reaches_into_the_discard_pile(replay_id: int) ->
     """The scoping must not cost Star Wars the card it is entitled to take."""
     conv = _convert(replay_id)
     assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
+
+
+@pytest.mark.parametrize("replay_id", [159, 300])
+def test_un_intervention_may_name_a_card_the_hand_list_omits(replay_id: int) -> None:
+    """Replay 159 turn 5 AR4: the US plays Quagmire through UN Intervention.
+
+    Quagmire appears nowhere in the eight cards the log credits the US with that turn, but the
+    log says outright that they played it. The card is seated in that hand on the log's word,
+    the same forcing a headline card already gets.
+    """
+    conv = _convert(replay_id)
+    assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"

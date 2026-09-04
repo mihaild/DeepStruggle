@@ -1338,8 +1338,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 uint8_t forced = (action.primary_id >= 1 && action.primary_id <= 6)
                                      ? action.primary_id : state.ctx().temp_cards[2];
                 uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
+                // execute_coup credits the military operations; crediting them again here
+                // spent each coup twice, so a single coup reached the cap of 5 where it should
+                // have earned 3, and the second one was free.
                 auto coup_res = Operations::execute_coup(state, Player::USSR, cid, che_ops, forced);
-                state.ussr_mil_ops = static_cast<uint8_t>(std::min(5, static_cast<int>(state.ussr_mil_ops) + che_ops));
 
                 // If US influence was removed and this was coup 1, offer coup 2
                 if (coup_res.opp_inf_removed > 0 && state.ctx().temp_cards[0] == 0) {

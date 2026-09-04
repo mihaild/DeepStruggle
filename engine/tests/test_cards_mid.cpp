@@ -719,6 +719,30 @@ TEST(MidCardsTest, ChesFreeCoupStillEarnsMilitaryOps) {
     ASSERT_GT(state.ussr_mil_ops, 0);
 }
 
+// Che allows one coup, or two if the first removed Influence, and each earns military
+// operations for the card's Ops. execute_coup credits them, and the handler credited them a
+// second time: a single coup reached the cap of 5 where it should have earned 3, and the
+// second coup was then free.
+TEST(MidCardsTest, CheCreditsMilitaryOpsOncePerCoup) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.defcon = 5;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::USSR;
+    state.ussr_mil_ops = 0;
+    state.countries[ts::countries::SUDAN].us_influence = 2;
+    state.countries[ts::countries::SAHARAN_STATES].us_influence = 2;
+
+    ts::CardHandlers::trigger_event(state, ts::card_ids::CHE, ts::Player::USSR);
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SUDAN, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+    ASSERT_EQ(state.ussr_mil_ops, 3);          // one coup, Che's 3 Ops
+
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SAHARAN_STATES, 0, 0});
+    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+    ASSERT_EQ(state.ussr_mil_ops, 5);          // 6, capped at 5
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};

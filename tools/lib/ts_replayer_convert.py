@@ -1051,6 +1051,20 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 and second_cid is not None and not headline_ids):
             chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
                            lambda ma: int(ma.primary_id) == second_cid)
+            if chosen is None:
+                # UN Intervention names an opponent-associated card out of the player's own
+                # hand, and the log says outright which one. The turn's hand list does not
+                # always contain it: at turn 5 AR4 of replay 159 the US plays Quagmire through
+                # UN Intervention and Quagmire appears nowhere in the eight cards the log
+                # credits them with. The log's own statement is the better evidence, so the
+                # card is seated in that hand -- the same forcing a headline card already gets.
+                loc = (ts.CardLocation.HAND_US if mover == ts.Player.US
+                       else ts.CardLocation.HAND_USSR)
+                state.set_card_location(second_cid, loc)
+                mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
+                legal = np.flatnonzero(mask)
+                chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                               lambda ma: int(ma.primary_id) == second_cid)
             if chosen is not None:
                 second_cid = None
                 informative = True
