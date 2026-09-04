@@ -283,7 +283,15 @@ namespace effect_bits {
     constexpr uint64_t QUAGMIRE_ACTIVE             = 1ULL << 14; // US trapped in Quagmire
     constexpr uint64_t BEAR_TRAP_ACTIVE            = 1ULL << 15; // USSR trapped in Bear Trap
     constexpr uint64_t SALT_ACTIVE                 = 1ULL << 16; // -1 to all coup rolls this turn
-    constexpr uint64_t WE_WILL_BURY_YOU_PENDING    = 1ULL << 17; // USSR +3 VP unless US plays UN Intervention next AR
+    // USSR +3 VP unless the US plays UN Intervention as its Event on their next action round.
+    // Deliberately absent from TURN_CLEANUP_MASK: "next action round" is the next one there is,
+    // and the card is usually played late in a turn, so the debt is most often collected in the
+    // turn after. Clearing it at the turn boundary cancelled it outright -- at turn 4 AR7 of
+    // ts-replayer game 131 the US triggers it and the 3 VP the USSR collects at turn 5 AR1
+    // never moved. A game that ends with the debt outstanding simply never pays it: the flag
+    // is read only when the US picks a card in an action round, and final scoring does not
+    // look at it.
+    constexpr uint64_t WE_WILL_BURY_YOU_PENDING    = 1ULL << 17;
     constexpr uint64_t BREZHNEV_DOCTRINE_ACTIVE    = 1ULL << 18; // USSR +1 Ops this turn
     constexpr uint64_t FLOWER_POWER_ACTIVE         = 1ULL << 19; // USSR +2 VP per US war card
     constexpr uint64_t U2_INCIDENT_ACTIVE          = 1ULL << 20; // USSR +1 VP if UN Intervention played this turn
@@ -328,7 +336,6 @@ namespace effect_bits {
                                                      CMC_ACTIVE_USSR |
                                                      NUCLEAR_SUBS_ACTIVE |
                                                      SALT_ACTIVE |
-                                                     WE_WILL_BURY_YOU_PENDING |
                                                      BREZHNEV_DOCTRINE_ACTIVE |
                                                      U2_INCIDENT_ACTIVE |
                                                      DEATH_SQUADS_US |

@@ -609,6 +609,71 @@ TEST(MidCardsTest, FlowerPowerStillChargesForOtherWarsUnderCampDavid) {
     ASSERT_EQ(state.victory_points, -2);
 }
 
+// "We Will Bury You" owes the USSR 3 VP on the US's next action round unless the US answers
+// with UN Intervention as its Event. "Next action round" is the next one there is: the card is
+// usually played late in a turn, so the debt is most often collected in the turn after, and
+// clearing it at the turn boundary cancelled it outright. At turn 4 AR7 of ts-replayer game
+// 131 the US triggers it and the 3 VP the USSR collects at turn 5 AR1 never moved.
+TEST(MidCardsTest, WeWillBuryYouSurvivesTheTurnBoundary) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.turn = 4;
+    state.action_round = 7;
+    state.victory_points = 0;
+    state.set_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING);
+
+    // The turn ends; the debt is still owed.
+    state.persistent_effects &= ~ts::effect_bits::TURN_CLEANUP_MASK;
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
+
+    // The US opens the next turn's action round with something other than UN Intervention.
+    state.turn = 5;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
+                                            ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_EQ(state.victory_points, -3);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
+}
+
+// A headline is not an action round, so it neither pays the debt nor discharges it.
+TEST(MidCardsTest, WeWillBuryYouIsNotCollectedInAHeadline) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 12345);
+    state.current_phase = ts::Phase::HEADLINE;
+    state.headline_stage = 0;
+    state.victory_points = 0;
+    state.phasing_player = ts::Player::US;
+    state.set_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
+                                            ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_EQ(state.victory_points, 0);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
+}
+
+// Triggered with no action round left to collect in, it is simply never paid: final scoring
+// does not look at it.
+TEST(MidCardsTest, WeWillBuryYouIsNotPaidWhenThereIsNoNextActionRound) {
+    // Scored twice from the same board, once with the debt outstanding and once without. Final
+    // scoring moves the total either way; what matters is that it moves it identically.
+    ts::GameState with_debt{};
+    ts::Engine::init_game(with_debt, 12345);
+    ts::GameState without_debt = with_debt;
+    with_debt.set_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING);
+
+    ts::Scoring::execute_final_scoring(with_debt);
+    ts::Scoring::execute_final_scoring(without_debt);
+    ASSERT_EQ(with_debt.victory_points, without_debt.victory_points);
+}
+
 // Card 54: Allende
 TEST(MidCardsTest, Card54_Allende) {
     ts::GameState state{};
