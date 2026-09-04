@@ -546,12 +546,54 @@ def point_queue(e: Entry) -> List[int]:
                 extra.extend([cid] * abs(int(delta)))
         return list(e.targets) + extra
 
+    if e.setup:
+        return _setup_point_queue(e)
+
     q: List[int] = []
     for _side, delta, cid, _u, _s in (e.ops_influence or []):
         q.extend([cid] * abs(int(delta)))
     if not q and e.targets:
         q = list(e.targets)
     return q
+
+
+def _setup_point_queue(e: Entry) -> List[int]:
+    """The opening placement, spread a country at a time rather than a country at a stretch.
+
+    The log states the setup as a total per country -- "US +4 in West Germany", "+3 in France",
+    "+2 in Italy" -- and says nothing about the order, because in the game there is none: the
+    placement is simultaneous. The order still matters to the reconstruction, because the
+    handicap is a second placement and it may only go where that side already has Influence.
+
+    Placing each country's total in one run spends the base allotment before the last country
+    is reached. At turn 1 of replay 152 the US has 7 to spread and 2 more from the handicap;
+    four into West Germany and three into France used all seven, and Italy -- still empty --
+    was not a legal target for the handicap that followed. The reconstruction put those two
+    into West Germany and France instead and opened the game two Influence out in three
+    countries, which the Socialist Governments headline then removed Influence from.
+
+    Dealing one at a time round the named countries gives every one of them Influence inside
+    the base allotment, so the handicap has somewhere to go. Both spreads reach the same board.
+    """
+    out: List[int] = []
+    runs: List[Tuple[str, List[List[int]]]] = []
+    for side, delta, cid, _u, _s in (e.ops_influence or []):
+        if not runs or runs[-1][0] != side:
+            runs.append((side, []))
+        counts = runs[-1][1]
+        for pair in counts:
+            if pair[0] == cid:
+                pair[1] += abs(int(delta))
+                break
+        else:
+            counts.append([cid, abs(int(delta))])
+    for _side, counts in runs:
+        while any(n > 0 for _cid, n in counts):
+            for pair in counts:
+                if pair[1] > 0:
+                    out.append(pair[0])
+                    pair[1] -= 1
+    return out or list(e.targets)
 
 
 def section_queue(section) -> List[int]:

@@ -125,6 +125,9 @@ class Entry:
     # after "Event: Summit" rather than from the entry's VP lines, which a headline's other
     # card also writes into.
     text: str = ""
+    # The opening placement shares this entry with the turn 1 headline in every game in the
+    # corpus, and is spread differently from an ordinary placement -- see point_queue.
+    setup: bool = False
     in_play: List[str] = field(default_factory=list)
     out_of_play: List[str] = field(default_factory=list)
     # Cards named by a "reveals" line. Usually informational -- Lone Gunman and CIA Created
@@ -201,6 +204,7 @@ def parse_entry(raw: Dict) -> Entry:
         score=_as_int(raw.get("score")),
         defcon=_as_int(raw.get("defcon")),
         text=str(raw.get("text", "")),
+        setup="SETUP:" in str(raw.get("text", "")),
     )
     in_event = False
     section_open = False
