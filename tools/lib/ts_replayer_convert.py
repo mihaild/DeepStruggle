@@ -272,6 +272,35 @@ def _name_options(state: ts.GameState, dt: "ts.DecisionType",
     return out
 
 
+def event_point_queues(e: Entry) -> Dict[int, List[int]]:
+    """The placements each event printed, by the card that printed them.
+
+    A headline resolves two cards and the driver held their placements in one queue, taking
+    whichever target the engine would accept. That is fine while the two events want different
+    countries and wrong the moment they overlap, because a point one event could not use stays
+    in the queue and the next event spends it.
+
+    At turn 8's headline of replay 150 the US's East European Unrest removes 2 USSR Influence
+    from each of East Germany, Poland and Yugoslavia -- three decisions for five queued points,
+    since the log writes the amount and not the decision -- and the two it did not consume were
+    still there when the USSR's The Reformer asked where to place. The Reformer put one of its
+    four into Poland, which the log has it never touching, and West Germany finished an
+    Influence short.
+
+    Keyed by card id, so the driver can ask for the queue belonging to whatever the engine says
+    is resolving.
+    """
+    out: Dict[int, List[int]] = {}
+    for name, rows in (e.influence_by_event or {}).items():
+        cid = card_id(name)
+        if cid is None:
+            continue
+        points = out.setdefault(cid, [])
+        for _side, delta, country, _u, _s in rows:
+            points.extend([country] * abs(int(delta)))
+    return out
+
+
 def _reattribute_hands(raws: List[Dict], turn: int,
                        turn_hands: Dict[str, List[int]]) -> int:
     """Give each card to the side the log says played it. Returns how many moved.
@@ -1214,6 +1243,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
     headline_ids = {k: v for k, v in headline_ids.items() if v}
     pq = point_queue(e)
+    evq = event_point_queues(e)
     eq = event_queue(e)
     picked_card = cid_target is None
     # A card whose event makes the player name and use a second card (UN Intervention) asks
@@ -1633,13 +1663,24 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # take the first target actually offered rather than insisting on the head, since
             # an event may resolve some of its placements itself and never ask about them.
             in_event = int(ctx.resolving_card) != 0
-            order = (eq, pq) if in_event else (pq, eq)
+            # The queue belonging to the card the engine says is resolving comes first, so one
+            # event cannot spend a point the log wrote under the other. See event_point_queues.
+            own = evq.get(int(ctx.resolving_card)) if in_event else None
+            if own:
+                order = (own, eq, pq)
+            else:
+                order = (eq, pq) if in_event else (pq, eq)
             for queue in order:
                 for slot, want_c in enumerate(queue):
                     chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
                     if chosen is not None:
                         queue.pop(slot)
+                        if queue is not pq and queue is not eq and want_c in eq:
+                            # A per-event queue holds the same points the shared event queue
+                            # does, so spending one there has to spend it here as well. Left
+                            # in, every placement under an "Event:" header could be made twice.
+                            eq.remove(want_c)
                         # Which queue answered decides whether a die follows: the Ops queue
                         # holds coup and realignment targets, the event queue holds placements.
                         target_from_ops = queue is pq

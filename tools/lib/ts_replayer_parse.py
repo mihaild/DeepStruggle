@@ -133,6 +133,11 @@ class Entry:
     # The opening placement shares this entry with the turn 1 headline in every game in the
     # corpus, and is spread differently from an ordinary placement -- see point_queue.
     setup: bool = False
+    # Influence lines grouped by the event that printed them, keyed by card name. A headline
+    # resolves two cards and the log writes each one's placements under its own "Event:"
+    # header, which is the only thing that says which placement belongs to which card.
+    influence_by_event: Dict[str, List[Tuple[str, int, int, int, int]]] = field(
+        default_factory=dict)
     # Action rounds this entry says were passed, as (turn, side, action round). A player who
     # has run out of cards skips their round -- at turn 5 of replay 114 the USSR skips four in
     # a row -- and the log records it as a bare header with nothing beneath it.
@@ -220,6 +225,7 @@ def parse_entry(raw: Dict) -> Entry:
 
     in_event = False
     section_open = False
+    current_event: Optional[str] = None
     for line in str(raw.get("text", "")).split("\n"):
         line = line.strip()
         if not line:
@@ -231,8 +237,10 @@ def parse_entry(raw: Dict) -> Entry:
                 e.event_first = True
             elif RE_MODE.search(line):
                 e.event_first = False
-        if RE_EVENT.search(line):
+        m_event = RE_EVENT.search(line)
+        if m_event:
             in_event = True
+            current_event = line.split("Event:", 1)[1].strip() or None
             # ...and it closes whatever section was open. Influence lines are hung on the
             # section header above them, but a new "Event:" starts something that is not part
             # of it: at turn 4's headline of replay 129 the US headlines Junta and coups
@@ -273,6 +281,8 @@ def parse_entry(raw: Dict) -> Entry:
                 rec = (m.group(1), int(m.group(2)), cid,
                        int(m.group(4)), int(m.group(5)))
                 e.influence.append(rec)
+                if in_event and current_event:
+                    e.influence_by_event.setdefault(current_event, []).append(rec)
                 if not in_event:
                     e.ops_influence.append(rec)
                 if e.sections and section_open:
