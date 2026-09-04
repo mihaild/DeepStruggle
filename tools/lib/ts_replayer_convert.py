@@ -1083,6 +1083,10 @@ _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
+_TEAR_DOWN_THIS_WALL = 96
+# The two cards whose event grants Ops that may only be spent on a coup or a realignment, and
+# whose free action is optional. The engine offers INFLUENCE as the decline.
+_FREE_ACTION_CARDS = frozenset({47, _TEAR_DOWN_THIS_WALL})
 
 
 def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player) -> None:
@@ -1750,6 +1754,23 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             want_branch = 0 if e.event_first is False else 1
             chosen = _find(state, legal, ts.DecisionType.CHOOSE_TIMING_BRANCH,
                            lambda ma: int(ma.primary_id) == want_branch)
+            informative = chosen is not None
+
+        elif (dt == ts.DecisionType.SELECT_OP_MODE
+                and int(ctx.pending_op_card) in _FREE_ACTION_CARDS
+                and not sections and e.mode not in _OP_MODE):
+            # Junta and Tear Down This Wall place first and then *may* make a free coup or
+            # realignment, so the engine bars Influence from the Ops their event grants and
+            # lets INFLUENCE stand for declining -- see free_action_bars_influence in
+            # action_mask.cpp. A log that records the placement and nothing after it is a
+            # player who declined: at turn 5 AR6 of replay 174 the US plays Junta for its
+            # event, puts 2 Influence into Chile, and makes no coup or realignment at all.
+            #
+            # Only where the log describes no Ops. Played for Operations rather than for its
+            # event, the card spends them and the log prints a header, which the branch below
+            # answers from.
+            chosen = _find(state, legal, ts.DecisionType.SELECT_OP_MODE,
+                           lambda ma: int(ma.primary_id) == int(ts.OpMode.INFLUENCE))
             informative = chosen is not None
 
         elif dt == ts.DecisionType.SELECT_OP_MODE and (sections or e.mode in _OP_MODE):
