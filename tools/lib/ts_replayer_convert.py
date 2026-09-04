@@ -856,6 +856,37 @@ def _drive_passed_rounds(state: ts.GameState, e: Entry, conv: "Conversion") -> N
         _drain(state)
 
 
+def _coup_extras(rows: List[Tuple[str, int, int, int, int]],
+                 targets: List[int]) -> List[int]:
+    """Influence in a coup's own lines that the coup itself cannot explain.
+
+    A coup takes the opponent's Influence away and then puts the couper's down; a realignment
+    only takes away. So within one coup the side that *loses* Influence is the victim, and the
+    side that gains it in the same country is the couper -- unless it is the victim gaining,
+    which no coup does. The only thing that does that is NORAD, which lets the US add 1
+    Influence after an action round in which it lost some.
+
+    At turn 6 AR1 of replay 131 the USSR coups Argentina and the US puts its NORAD Influence
+    straight back into Argentina; reading that as part of the coup lost the placement. At turn
+    6 AR3 of replay 104 the US put it into Poland instead, where being in another country made
+    it obvious.
+    """
+    victim = {cid: side for side, delta, cid, _u, _s in rows
+              if int(delta) < 0 and cid in targets}
+    out: List[int] = []
+    for side, delta, cid, _u, _s in rows:
+        if cid not in targets:
+            out.extend([cid] * abs(int(delta)))
+        elif int(delta) > 0 and victim.get(cid, side) == side:
+            # Either the victim gaining in the country just couped, or a gain in a coup that
+            # removed nothing at all. A successful coup always removes before it places, so a
+            # target with no removal against it is a coup that failed, and nothing it prints
+            # afterwards is its: at turn 6 AR3 of replay 150 the USSR's coup on Angola fails,
+            # DEFCON drops to 2, and the "US +1 in Angola" that follows is NORAD's.
+            out.extend([cid] * abs(int(delta)))
+    return out
+
+
 def point_queue(e: Entry) -> List[int]:
     """Countries the player actually pointed at -- decisions, not consequences.
 
@@ -870,21 +901,24 @@ def point_queue(e: Entry) -> List[int]:
         # round set off, and that is a decision of its own: NORAD lets the US add 1 Influence
         # after an action round in which it lost some, which is the "US +1 in Poland" trailing
         # the USSR's Panama coup at turn 6 AR3 of replay 104.
-        acting = e.player if e.player in ("US", "USSR") else None
+        # Each coup section is read against its own target, because an entry can hold two
+        # coups belonging to two different players: at turn 7 AR6 of replay 184 the US plays
+        # "Lone Gunman", the USSR coups Nigeria with the Ops the event grants them, and the US
+        # then coups Nigeria back with the card's own. Judging the rows by the entry's player
+        # made the USSR's own gain look like someone else's placement.
+        runs = ([(s.targets, s.influence) for s in e.sections if s.mode in ("coup", "realign")]
+                or [(e.targets, list(e.influence or []))])
         extra: List[int] = []
-        for side, delta, cid, _u, _s in (e.influence or []):
-            if cid not in e.targets:
-                extra.extend([cid] * abs(int(delta)))
-            elif int(delta) > 0 and acting is not None and side != acting:
-                # A coup takes the opponent's Influence away and puts the couper's down; a
-                # realignment only takes away. The *couped* player gaining Influence in the
-                # country just couped is therefore not a result of the roll at all, and the
-                # only thing that does it is NORAD. Reading it as part of the coup lost the
-                # placement whenever NORAD chose the couped country itself: at turn 6 AR1 of
-                # replay 131 the USSR coups Argentina and the US puts its NORAD Influence
-                # straight back into Argentina, where at turn 6 AR3 of replay 104 the US put
-                # it into Poland and it was queued without trouble.
-                extra.extend([cid] * abs(int(delta)))
+        for run_targets, rows in runs:
+            extra.extend(_coup_extras(rows, run_targets))
+        # Rows the sections never claimed -- a placement printed outside any Ops header.
+        if e.sections:
+            claimed = [rec for _t, rows in runs for rec in rows]
+            for rec in (e.influence or []):
+                if rec in claimed:
+                    claimed.remove(rec)
+                else:
+                    extra.extend([rec[2]] * abs(int(rec[1])))
         return list(e.targets) + extra
 
     if e.setup:
@@ -1342,6 +1376,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     headline_ids = {k: v for k, v in headline_ids.items() if v}
     pq = point_queue(e)
     evq = event_point_queues(e)
+    # Points the log records that belong to no Ops header and no named event: NORAD's, in
+    # practice. Asked last, after every queue that can say what a decision is for.
+    loose: List[int] = []
     eq = event_queue(e)
     picked_card = cid_target is None
     # A card whose event makes the player name and use a second card (UN Intervention) asks
@@ -1434,6 +1471,21 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # coup pointed at Costa Rica -- a country with no USSR Influence, which the US cannot
         # coup at all.
         pq[:] = []
+        # ...but a row no section claims is not any operation's, and has to go somewhere. NORAD
+        # places 1 US Influence after an action round in which the US lost some, and prints it
+        # loose at the foot of the entry. At turn 7 AR6 of replay 184 the USSR coups Nigeria
+        # with the Ops "Lone Gunman" grants them and the US coups it back with the card's own,
+        # so the entry has two sections; clearing the queue outright threw away the "US +1 in
+        # Panama" that followed, and NORAD was left asking which of 32 countries was meant. The
+        # queue is asked last of all, so it can never pre-empt a section or an event: offered
+        # earlier it answered Che's free coup at turn 5 AR3 of replay 131 with a country Che
+        # may not touch, and Ortega's at turn 8 AR2 of replay 123.
+        _claimed = [t for s_ in e.sections if s_.mode in ("coup", "realign") for t in s_.targets]
+        _loose = point_queue(e)
+        for _c in _claimed:
+            if _c in _loose:
+                _loose.remove(_c)
+        loose[:] = _loose
     seed_settled = False
     cur_mode = e.mode
     # The log states the space race die outright, so it is handed to the chance node rather
@@ -1842,7 +1894,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if chosen is None:
                 continue
 
-        elif dt == ts.DecisionType.POINT_NODE and (pq or eq_here):
+        elif dt == ts.DecisionType.POINT_NODE and (pq or eq_here or loose):
             # Ask the queue that matches what the engine is doing: while a card is resolving,
             # these are the event's own placements, otherwise they are the Ops. Within a queue
             # take the first target actually offered rather than insisting on the head, since
@@ -1852,9 +1904,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # event cannot spend a point the log wrote under the other. See event_point_queues.
             own = evq.get(int(ctx.resolving_card)) if in_event else None
             if own:
-                order = (own, eq, pq)
+                order = (own, eq, pq, loose)
             else:
-                order = (eq_here, pq) if in_event else (pq, eq_here)
+                order = ((eq_here, pq, loose) if in_event else (pq, eq_here, loose))
             for queue in order:
                 for slot, want_c in enumerate(queue):
                     chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
