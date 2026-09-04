@@ -165,6 +165,8 @@ class Conversion:
     vp_drift: int = 0
     entries_board_mismatch: int = 0
     hand_misses: int = 0
+    # Cards the turn's hand lists gave to the wrong side, corrected from the entries.
+    hand_reattributions: int = 0
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -198,6 +200,45 @@ def _reveal_ops_cap(raws, turn: int, side: str) -> Optional[int]:
             ops = int(ts.CardData.get_card_info(cid)["ops"])
             cap = ops if cap is None else min(cap, ops)
     return cap
+
+
+def _reattribute_hands(raws: List[Dict], turn: int,
+                       turn_hands: Dict[str, List[int]]) -> int:
+    """Give each card to the side the log says played it. Returns how many moved.
+
+    The turn's hand lists and the entries disagree, and where they do it is the entries that
+    are right: a list is a summary the interface assembled, while an entry is the play itself,
+    narrated as it happened. At turn 6 of replay 111 the lists have Asia Scoring in the USSR's
+    hand and ABM Treaty in the US's, and the headline reads "US Headlines Asia Scoring / USSR
+    Headlines ABM Treaty" -- the two cards are swapped. Asia Scoring then scored for the wrong
+    side, five VP the wrong way, and the game ran to a US win at 20 VP where the log has the
+    USSR ahead by 8.
+
+    Only a card the log names a player as *playing* is moved, which is the one attribution an
+    entry states outright. A card merely revealed or discarded during someone's action round
+    is not necessarily theirs -- Five Year Plan makes its opponent discard, Missile Envy takes
+    from the other hand -- so those are left alone.
+    """
+    moved = 0
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        owners: List[Tuple[str, Optional[int]]] = [
+            (side, card_id(nm)) for side, nm in (e.headlines or {}).items()]
+        if e.card and " & " not in e.card and e.player in ("US", "USSR"):
+            owners.append((e.player, card_id(e.card)))
+        for side, cid in owners:
+            if not cid or side not in turn_hands:
+                continue
+            other = "USSR" if side == "US" else "US"
+            if cid in turn_hands[side]:
+                continue
+            if cid in turn_hands[other]:
+                turn_hands[other].remove(cid)
+                turn_hands[side].append(cid)
+                moved += 1
+    return moved
 
 
 def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional[int],
@@ -1884,6 +1925,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 "US": [c for c in (card_id(n) for n in h.get("us", [])) if c],
                 "USSR": [c for c in (card_id(n) for n in h.get("ussr", [])) if c],
             }
+            conv.hand_reattributions += _reattribute_hands(raws, int(e.turn), turn_hands)
             # The log lists only the cards a player used, so a game that stops mid-turn leaves
             # hands far too small to have been the ones played from. Top them up to the size
             # the rules deal, capping Ops below anything the log records that side revealing.
