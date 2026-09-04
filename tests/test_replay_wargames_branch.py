@@ -51,3 +51,18 @@ def test_the_ending_entry_is_the_last_one_converted() -> None:
     assert conv.entries_converted == conv.entries_total
     assert conv.entries_total == wargames[0] + 1, (
         "the game ends on the Wargames entry, so that is the last one converted")
+
+
+@pytest.mark.parametrize("replay_id", [302, 164])
+def test_named_targets_outrank_the_score_when_choosing_a_branch(replay_id: int) -> None:
+    """Warsaw Pact Formed offers removal or placement, and the log spells out the placements.
+
+    The score compared when choosing a branch is the one the *entry* ends on, which a branch
+    reaches only if it finishes the event. At turn 1 AR6 of replay 302 the US holds no Eastern
+    European Influence, so the removal branch is a no-op whose probe sails on to the turn end
+    and matches that score, while the placement branch -- five Influence across East Germany,
+    Poland and Bulgaria -- stops short of it. The targets the log names are the better
+    evidence, so they decide and the score only breaks ties where there are none.
+    """
+    conv = _convert(replay_id)
+    assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"

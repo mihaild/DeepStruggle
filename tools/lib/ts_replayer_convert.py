@@ -758,8 +758,17 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
         # branch that was taken. Wargames offers 6 VP to the opponent and an immediate end, or
         # nothing at all, and the two differ only in the score: at turn 8 AR1 of replay 113 the
         # USSR takes the ending and the log reads "US gains 6 VP. Score is USSR 7."
+        # ...but only where the log names no targets to judge by. The score compared here is
+        # the one the *entry* ends on, which a branch reaches only if it finishes the event: a
+        # branch that opens further decisions leaves the probe short of it, and a branch that
+        # does nothing at all sails past to the turn end and matches. At turn 1 AR6 of replay
+        # 302 the US holds no Eastern European Influence, so Warsaw Pact Formed's removal
+        # branch is a no-op that reached the score while the placement branch -- the one the
+        # log spells out, five Influence across East Germany, Poland and Bulgaria -- did not.
+        # Where the log names targets they are the better evidence, and they decide.
         want_vp = _narrated_score(e) if e is not None else None
-        reaches_logged_score = want_vp is not None and int(probe.victory_points) == want_vp
+        reaches_logged_score = (not wanted and want_vp is not None
+                                and int(probe.victory_points) == want_vp)
         if reaches_logged_score:
             score += 4000
         if e is not None and e.defcon is not None:
