@@ -459,6 +459,39 @@ def _reattribute_hands(raws: List[Dict], turn: int,
     return moved
 
 
+def _cards_named_through_un_intervention(raws: List[Dict], turn: int,
+                                        turn_hands: Dict[str, List[int]]) -> int:
+    """Put the card UN Intervention names into the hand it was named from. Returns how many.
+
+    A turn's hand list holds the cards that became visible during the turn, so a card that is
+    only ever spent through another one can be missing from it entirely. UN Intervention names
+    a card of the opponent's own set out of the player's hand, cancels its event and takes its
+    Operations, and the entry records that as "USSR plays OAS Founded" -- the only mention of
+    that card in the whole log.
+
+    At turn 5 AR7 of replay 269 the USSR plays UN Intervention naming OAS Founded, and spends
+    its single Op on Panama. OAS Founded was not in the turn's list, so it sat in the draw
+    deck; the USSR held no US card for UN Intervention to name, the event fizzled, and Panama
+    was left at [0][0] where the log has [0][1].
+    """
+    added = 0
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn or e.player not in turn_hands:
+            continue
+        if not e.played_card or card_id(e.card) != _UN_INTERVENTION:
+            continue
+        cid = card_id(e.played_card)
+        if not cid or cid in turn_hands[e.player]:
+            continue
+        other = "USSR" if e.player == "US" else "US"
+        if cid in turn_hands[other]:
+            turn_hands[other].remove(cid)
+        turn_hands[e.player].append(cid)
+        added += 1
+    return added
+
+
 def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional[int],
               taken: set, final_turn: bool = True) -> List[int]:
     """Top a short logged hand up with cards the log does not account for.
@@ -2598,6 +2631,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 "USSR": [c for c in (card_id(n) for n in h.get("ussr", [])) if c],
             }
             conv.hand_reattributions += _reattribute_hands(raws, int(e.turn), turn_hands)
+            conv.hand_reattributions += _cards_named_through_un_intervention(
+                raws, int(e.turn), turn_hands)
             # The log lists only the cards a player used, so a game that stops mid-turn leaves
             # hands far too small to have been the ones played from. Top them up to the size
             # the rules deal, capping Ops below anything the log records that side revealing.
