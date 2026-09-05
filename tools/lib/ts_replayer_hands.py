@@ -100,6 +100,8 @@ class GameFacts:
         self.drew_mid_turn: Dict[Tuple[int, str], int] = {}
         # ...and the action round they were drawn in: nothing played before it can be one.
         self.drew_at: Dict[Tuple[int, str], int] = {}
+        # Cards the log shows leaving a hand before Missile Envy read it, in the same entry.
+        self.gone_before_envy: Set[Tuple[int, str, int]] = set()
         # Where the log shows the opponent's scoring cards being looked for and none found,
         # against the action round it happened in.
         self.no_scoring_at: Dict[Tuple[int, str], int] = {}
@@ -221,6 +223,17 @@ class GameFacts:
             if side and drawn:
                 self.drew_mid_turn[(turn, side)] = (
                     self.drew_mid_turn.get((turn, side), 0) + drawn)
+                # What it discards is out of the hand from that line on. Where Missile Envy
+                # reads the same hand later in the same entry, it never saw these cards -- at
+                # turn 7's headline of ts-replayer game 96 "Ask Not" discards "We Will Bury
+                # You" at 4 Ops and Missile Envy then takes U-2 Incident at 3.
+                envy_line = text.find("Event: Missile Envy")
+                for s2, nm in (e.discards or []):
+                    cid = self.card_id(nm)
+                    line = text.find(f"{s2} discards {nm}")
+                    if (cid and s2 in self.sides and envy_line >= 0
+                            and 0 <= line < envy_line):
+                        self.gone_before_envy.add((turn, s2, cid))
                 at = _round_number(e)
                 self.drew_at[(turn, side)] = min(
                     self.drew_at.get((turn, side), 99), at if at is not None else 0)
@@ -276,10 +289,12 @@ class GameFacts:
         # Station to the one player who earned it and is theirs to decline, so skipping it says
         # nothing about the hand: at turn 9 of ts-replayer game 16 the USSR plays their eight
         # cards and lets the ninth round go, still holding one.
-        if e.player in self.sides and _is_skipped_round(e) and _round_number(e) not in (None, 8):
+        # A round with nothing in it is a player who could not play -- unless it is the last
+        # thing in the file, where it is the recording stopping, or the eighth, which is theirs
+        # to decline.
+        if (e.player in self.sides and _is_skipped_round(e) and not self._is_last
+                and _round_number(e) not in (None, 8)):
             self.skipped.add((turn, e.player))
-        # A bare header inside another entry, at the end of the file, is the recording
-        # stopping rather than a player passing.
         if self._is_last:
             return
         for m in RE_PASSED_ROUND.finditer(text):
@@ -482,15 +497,10 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
 
     for t in turns:
         for s in facts.sides:
-            # A turn deals up to the hand size. On the last turn of a game it can deal fewer:
-            # the deck holds 110 cards and the last of them can simply run out, which is how a
-            # player comes to skip an action round they were entitled to -- at turn 10 AR7 of
-            # ts-replayer game 72 the US has nothing left to play.
-            keep(z3.PbLe([(held[(c, t, s)], 1) for c in cards], hand_size(t)),
-                 f"t{t} {s} holds no more than {hand_size(t)} cards")
-            if t < facts.last_turn:
-                keep(z3.PbGe([(held[(c, t, s)], 1) for c in cards], hand_size(t)),
-                     f"t{t} {s} holds {hand_size(t)} cards")
+            # Every turn deals a full hand. The deck cannot run out: the moment it empties the
+            # discards are shuffled back into it, so no turn deals a player short.
+            keep(z3.PbEq([(held[(c, t, s)], 1) for c in cards], hand_size(t)),
+                 f"t{t} {s} holds {hand_size(t)} cards")
         for c in cards:
             keep(z3.Or(z3.Not(held[(c, t, "US")]), z3.Not(held[(c, t, "USSR")])),
                  f"t{t} {_name(c)} is in one hand at a time")
@@ -518,10 +528,15 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
             for c in cards:
                 info = ts.CardData.get_card_info(c)
                 scoring = bool(info["is_scoring"])
+                # Strictly after: "Ask Not What Your Country Can Do For You" discards first and
+                # draws second, so what it discards was in the hand the turn dealt however many
+                # cards it goes on to draw. At turn 7's headline of ts-replayer game 96 the US
+                # discards six cards to it, and treating one of those as a draw let the model
+                # drop "We Will Bury You" out of the hand Missile Envy then read.
                 drawn_after = (drew and facts.played_at.get((t, s, c), -1)
-                               >= facts.drew_at.get((t, s), 99))
+                               > facts.drew_at.get((t, s), 99))
                 if (envy_cap is not None and drew and int(info["ops"]) > envy_cap
-                        and not scoring):
+                        and not scoring and (t, s, c) not in facts.gone_before_envy):
                     # Missile Envy took the highest Ops card there was, so anything bigger
                     # reached this hand after it had read it -- which is possible only because
                     # something drew cards mid-turn. At turn 7's headline of replay 96 "Ask
@@ -577,13 +592,18 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
                 continue
             late = [c for c in facts.spent[(t, s)]
                     if c not in facts.arrived[(t, s)] and c != THE_CHINA_CARD
-                    and facts.played_at.get((t, s, c), -1) >= facts.drew_at.get((t, s), 99)]
+                    and facts.played_at.get((t, s, c), -1) > facts.drew_at.get((t, s), 99)]
             if len(late) > drew:
                 keep(z3.PbGe([(held[(c, t, s)], 1) for c in late], len(late) - drew),
                      f"t{t} {s} drew {drew} cards after the deal and held the rest")
 
-    # A card that has been spent is in the discard pile, and only a reshuffle puts it back --
-    # the log prints those. A card reclaimed out of the pile starts over.
+    # A card that has been spent is in the discard pile, and only a reshuffle puts it back.
+    # The discards go back in when the draw deck empties and not on any schedule, so the log's
+    # *RESHUFFLE* markers are the whole of the evidence: one is guaranteed while the cards for
+    # turn 3 are drawn, one usually falls at turn 7, and turn 10 happens but is rare. What the
+    # era brings in is separate and does not disturb the pile -- the mid war joins the deck
+    # before turn 4 and the late war before turn 8, which _ERA_ENTERS holds. A card reclaimed
+    # out of the pile starts over.
     for c in cards:
         last_spent = 0
         for t in turns:
@@ -619,11 +639,6 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
         opt.add(hard)
         for c, t, s in free:
             opt.add_soft(z3.Not(held[(c, t, s)]), weight=_hold_cost(s, c, t, facts))
-        # ...and the last turn deals a full hand wherever the deck can still fill one.
-        for s in facts.sides:
-            opt.add_soft(
-                z3.PbGe([(held[(c, facts.last_turn, s)], 1) for c in cards],
-                        hand_size(facts.last_turn)), weight=500)
         if opt.check() == z3.sat:
             model = opt.model()
 

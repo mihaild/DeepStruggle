@@ -118,9 +118,37 @@ def test_what_they_do_not_spend_they_carry() -> None:
                     f"{ts.CardData.get_card_info(cid)['name']} vanished after turn {turn}")
 
 
+def test_every_turn_deals_a_full_hand() -> None:
+    """The deck does not run out. It is reshuffled when it empties -- turn 10 included -- so
+    there is no turn on which a player is dealt short, and a round with nothing in it at the
+    foot of the file is the recording stopping rather than a player with nothing to play."""
+    for replay_id in (72, 27, 48, 53, 70, 180):
+        game = _game(replay_id)
+        hands = solve_hands(cast(List[Dict[str, object]], game["all_turns"]),
+                            cast(Dict[str, object], game["hands"]), card_id)
+        assert hands is not None, f"replay {replay_id} has no model"
+        for turn, sides in hands.items():
+            for side, cards in sides.items():
+                assert len(cards) == hand_size(turn), f"replay {replay_id} turn {turn} {side}"
+
+
+def test_a_card_discarded_before_missile_envy_reads_the_hand_is_not_capped() -> None:
+    """At turn 7's headline of replay 96 "Ask Not" discards six cards and draws six, and only
+    then does Missile Envy read the hand and take U-2 Incident at 3 Ops. "We Will Bury You" at
+    4 Ops was one of the six, so it was in the hand the turn dealt and gone before Envy looked.
+    """
+    game, hands = _solve(96)
+    assert hands is not None
+    facts = GameFacts(cast(List[Dict[str, object]], game["all_turns"]),
+                      cast(Dict[str, object], game["hands"]), card_id)
+    assert (7, "US", 50) in facts.gone_before_envy
+    assert 50 in hands[7]["US"]
+    assert facts.envy_took[(7, "US")] == 60
+
+
 def test_the_games_that_taught_the_model_its_rules_convert() -> None:
     """Replay 16's declined eighth round, 96's Ask Not draws feeding Missile Envy, 100's Our
-    Man in Tehran peek, 103's SALT reclaim, 72's deck running out on the last turn."""
+    Man in Tehran peek, 103's SALT reclaim, 72's announced-and-unwritten last round."""
     for replay_id in (16, 96, 100, 103, 72):
         conv = convert_game(_game(replay_id))
         assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"

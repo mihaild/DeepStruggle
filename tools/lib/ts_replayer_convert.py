@@ -3252,6 +3252,11 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
         # with the player still holding cards, and not one occurs mid-file, where a genuine
         # skip is always followed by the other player's entries.
         text = (last.text or "").rstrip()
+        # The same thing happens one entry out: "Turn 10, US AR7: :" with nothing after the
+        # colon is the round announced and never written, which is how ts-replayer game 72's
+        # file ends. A player who really passed has the reason printed under the header.
+        if _is_skipped_round(last):
+            return True
         matches = list(RE_PASSED_ROUND.finditer(text))
         return bool(matches) and text.endswith(matches[-1].group(0))
     return False
