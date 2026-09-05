@@ -2358,6 +2358,24 @@ def convert_game(game: Dict) -> Conversion:
     return conv
 
 
+def _is_skipped_round(e: Entry) -> bool:
+    """An action round the log gives an entry to and nothing else: the player skipped it.
+
+    Distinct from the bare "Turn 5, USSR AR4" header at the foot of another entry, which says
+    the same thing about a round that gets no entry of its own. This one has its own header and
+    an empty body -- "Turn 9, USSR AR8: :" -- and comes up where a player is granted the eighth
+    action round and declines it.
+
+    The engine may already have taken the round away: it passes a player with an empty hand
+    without asking. Where it has not -- an eighth round the player could have used -- the pass
+    is driven, which is a real decision and worth keeping.
+    """
+    return (e.phase or "").startswith("AR") and not (
+        e.card or e.influence or e.sections or e.targets or e.war_targets or e.events
+        or e.headlines or e.space or e.discards or e.revealed or e.mode or e.played_card
+        or e.vp_gains)
+
+
 def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
     """The repeated copy of a turn's last entry, which records cleanup rather than a play.
 
@@ -2413,6 +2431,32 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             _rewind_to_turn_start(conv, int(e.turn))
             return
         conv.entries_total += 1
+
+        if _is_skipped_round(e):
+            # Nothing to play. If the engine still has the round to give, take the pass; if it
+            # has already passed the player itself, the round is simply over.
+            conv.entries_converted += 1
+            m = _RE_AR.search(e.phase or "")
+            want = ts.Player.US if e.player == "US" else ts.Player.USSR
+            ctx = state.ctx()
+            if (not ts.Engine.is_terminal(state)
+                    and state.current_phase == ts.Phase.ACTION_ROUND
+                    and m and int(state.action_round) == int(m.group(1))
+                    and int(state.turn) == int(e.turn)
+                    and ctx.decision_type == ts.DecisionType.SELECT_CARD
+                    and ctx.decision_player == want):
+                mask = ts.ActionMask.generate_flat_mask(state)
+                if not mask[_PASS]:
+                    raise ConversionFailure(Mismatch(
+                        conv.replay_id, e.turn, e.phase, e.player, e.card,
+                        "logged pass is not legal",
+                        f"the log skips {e.player} {e.phase} of turn {e.turn}, and the engine "
+                        f"still offers {sum(1 for i in range(110) if mask[i])} cards to play"))
+                ts.Engine.step_flat(state, _PASS)
+                _drain(state)
+            prev_crossed_turn = False
+            prev_raw, prev_entry = raw, e
+            continue
 
         if _is_turn_end_record(e, prev_entry):
             # Nothing to drive: the engine ends the turn itself once both players have taken

@@ -132,6 +132,14 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             for (size_t i = 1; i <= 110; ++i) if (mask_out[i]) { holds_a_card = true; break; }
             if (!holds_a_card) mask_out[0] = 1;
 
+            // The eighth action round is the other exception. It is not part of the turn: it
+            // is granted by North Sea Oil or a Space Station to the one player who earned it,
+            // and it is theirs to take or to leave. At turn 9 AR8 of ts-replayer game 16 the
+            // USSR has it and declines -- the log records "Turn 9, USSR AR8:" and no card.
+            if (state.current_phase == Phase::ACTION_ROUND && state.action_round == 8) {
+                mask_out[0] = 1;
+            }
+
             // The China Card
             if (state.china_card_holder == p && state.china_card_playable && state.current_phase != Phase::HEADLINE) {
                 mask_out[card_ids::THE_CHINA_CARD] = 1;

@@ -152,9 +152,12 @@ cmake --build build_san -j
 2. **Deterministic PRNG**: Use `Prng::roll_d6(state.rng_state)` or `Prng::random_index(state.rng_state, n)` whenever game state dice or shuffles are executed.
 3. **Pass / Confirm Handling**: Multi-step cards (e.g. *Suez Crisis*, *Muslim Revolution*, *Independent Reds*, *Special Relationship*) must support early pass (`action.primary_id == 0` or `CONFIRM_DONE`) when no eligible targets remain.
 4. **Passing an Action Round**: a player holding cards must play one -- `SELECT_CARD` offers the
-   pass (mask index 0, flat 211) only to a player with none. The China Card is the exception: it
-   is not part of the hand a player is required to spend, so a holder whose only playable card is
-   the China Card is offered both it and the pass.
+   pass (mask index 0, flat 211) only to a player with none. Two exceptions: the China Card is not
+   part of the hand a player is required to spend, so a holder whose only playable card is the
+   China Card is offered both it and the pass; and the eighth action round is granted by North Sea
+   Oil or a Space Station to the one player who earned it and is theirs to decline, so the pass is
+   always on offer there. A player with an empty hand never reaches the mask at all --
+   `advance_after_action_round` passes them itself.
 5. **Headline Cards Leave Hand On Commitment**: both headlines are played at once, face down, and
    only then resolved in Ops order, so as soon as both are selected each card's location becomes
    `CardLocation::HEADLINE_COMMITTED` -- neither is in a hand while the other resolves, and a card that
