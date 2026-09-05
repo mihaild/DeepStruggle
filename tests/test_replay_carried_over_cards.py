@@ -19,6 +19,8 @@ from tools.lib.ts_replayer_convert import (
     _cards_carried_over,
     _played_by_anyone_up_to,
     _ran_out_of_cards,
+    _skipped_a_round,
+    _under_red_scare,
     _was_trapped,
     card_id,
     convert_game,
@@ -43,7 +45,11 @@ def _carry(replay_id: int, turn: int, side: str) -> List[int]:
     other = "ussr" if side == "US" else "us"
     claimed = {c for c in (card_id(nm) for nm in hands[str(turn)][other]) if c}
     size = 8 if turn <= 3 else 9
-    return _cards_carried_over(raws, hands, turn, side, held, size, claimed)
+    # A fresh state: it is read only where there is no next turn to borrow from, to ask what a
+    # card is worth holding -- whether the US controls Iran, who has the China Card.
+    state = ts.GameState()
+    ts.Engine.init_game(state, 1)
+    return _cards_carried_over(state, raws, hands, turn, side, held, size, claimed)
 
 
 def test_a_card_already_played_cannot_have_been_held() -> None:
@@ -71,14 +77,31 @@ def test_nothing_is_borrowed_where_the_log_says_the_hand_was_empty() -> None:
     assert _carry(101, 5, "USSR") == []
 
 
-def test_nothing_above_one_op_is_borrowed_into_a_trap() -> None:
-    """A trap is escaped by discarding a card of 2 Ops or more, so a player who kept playing
-    while held by one had nothing bigger. At turn 5 of replay 114 the USSR is in Bear Trap."""
+def test_a_skip_under_a_trap_leaves_only_the_small_cards() -> None:
+    """A trap takes a card of 2 Ops or more, so a player who *skipped* a round while held by
+    one had nothing that big. At turn 5 of replay 114 the USSR is in Bear Trap and skips four
+    action rounds -- and is under Red Scare/Purge, which takes an Ops off everything they play,
+    so a 2 Ops card is no longer eligible either and 3 is the first that is.
+    """
     game = _game(114)
     raws = cast(List[Dict[str, object]], game["all_turns"])
     assert _was_trapped(raws, 5, "USSR")
+    assert _skipped_a_round(raws, 5, "USSR")
+    assert _under_red_scare(raws, 5, "USSR")
     for cid in _carry(114, 5, "USSR"):
-        assert int(ts.CardData.get_card_info(cid)["ops"]) <= 1
+        assert int(ts.CardData.get_card_info(cid)["ops"]) <= 2
+
+
+def test_playing_through_a_trap_says_nothing_about_the_hand() -> None:
+    """A scoring card may always be played out of a trap on the last round, so a turn spent
+    playing under one, without a skip, puts no ceiling on what was held. At turn 7 of replay
+    237 the USSR lays Quagmire and the US plays Africa Scoring on the very next round."""
+    raws = cast(List[Dict[str, object]], _game(237)["all_turns"])
+    assert _was_trapped(raws, 7, "US")
+    assert not _skipped_a_round(raws, 7, "US")
+    conv = convert_game(_game(237))
+    assert conv.failure is None, f"replay 237 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 116
 
 
 def test_a_trap_the_opponent_lays_this_turn_counts_too() -> None:

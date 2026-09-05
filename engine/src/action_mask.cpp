@@ -110,8 +110,31 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         mask_out[i] = 1;
                     }
                 }
-                if (!has_2ops) {
-                    // Must play scoring cards if holding any
+                // A scoring card may be played out of a trap on either of two counts: there
+                // is nothing the trap will take, or the player holds as many scoring cards as
+                // they have action rounds left to play them in. The second is what stops a
+                // trap from costing a player the game by holding their scoring cards past the
+                // turn's end, which is a loss outright. At turn 4 AR7 of ts-replayer game 63
+                // the USSR has spent two rounds discarding to Bear Trap and plays Central
+                // America Scoring on the last one; at turn 7 AR7 of game 237 the USSR lays
+                // Quagmire and the US plays Africa Scoring on the very next round.
+                uint8_t scoring_held = 0;
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (state.card_locations[i] == loc && CardData::is_scoring_card(i)) {
+                        scoring_held++;
+                    }
+                }
+                uint8_t max_ar = (state.turn <= 3) ? 6 : 7;
+                const bool us_ar8 = state.has_flag(effect_bits::NORTH_SEA_OIL_ACTIVE) ||
+                                    SpaceRace::has_space_station_ar8(state, Player::US);
+                const bool ussr_ar8 = SpaceRace::has_space_station_ar8(state, Player::USSR);
+                if (state.turn >= 4 && ((p == Player::US && us_ar8) ||
+                                        (p == Player::USSR && ussr_ar8))) {
+                    max_ar = 8;
+                }
+                const uint8_t rounds_left = (state.action_round <= max_ar)
+                    ? static_cast<uint8_t>(max_ar - state.action_round + 1) : 0;
+                if (!has_2ops || scoring_held >= rounds_left) {
                     for (uint8_t i = 1; i <= 110; ++i) {
                         if (state.card_locations[i] == loc && CardData::is_scoring_card(i)) {
                             mask_out[i] = 1;

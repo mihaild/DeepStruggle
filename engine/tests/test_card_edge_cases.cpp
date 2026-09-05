@@ -1540,6 +1540,78 @@ TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
     ASSERT_EQ(state.countries[ts::countries::NIGERIA].ussr_influence, 1);
 }
 
+// A trap takes a card of 2 Ops or more every action round, and a scoring card is not one. It
+// may still be played on either of two counts: nothing else in hand is eligible, or the player
+// holds as many scoring cards as they have rounds left to play them in -- otherwise the trap
+// would carry them past the turn's end, which loses the game outright.
+namespace {
+
+ts::GameState trapped_ussr(uint8_t turn, uint8_t action_round,
+                           std::initializer_list<uint8_t> hand) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
+            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.turn = turn;
+    state.action_round = action_round;
+    state.phasing_player = ts::Player::USSR;
+    state.set_flag(ts::effect_bits::BEAR_TRAP_ACTIVE);
+    for (uint8_t c : hand) state.card_locations[c] = ts::CardLocation::HAND_USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    return state;
+}
+
+}  // namespace
+
+TEST(CardEdgeCasesTest, Trap_ScoringCardIsPlayableOnTheLastRoundDespiteAnEligibleDiscard) {
+    // Turn 4 AR7 of ts-replayer game 63: the USSR has spent two rounds discarding to Bear Trap
+    // and plays Central America Scoring on the last one. One scoring card, one round left.
+    ts::GameState state = trapped_ussr(4, 7, {ts::card_ids::CENTRAL_AMERICA_SCORING,
+                                              ts::card_ids::SOCIALIST_GOVERNMENTS});
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[ts::card_ids::CENTRAL_AMERICA_SCORING], 1);
+    ASSERT_EQ(mask[ts::card_ids::SOCIALIST_GOVERNMENTS], 1);   // the discard is still on offer
+}
+
+TEST(CardEdgeCasesTest, Trap_ScoringCardWaitsWhileThereAreRoundsToSpare) {
+    // The same hand three rounds earlier: one scoring card against three rounds left, so the
+    // trap takes its discard first.
+    ts::GameState state = trapped_ussr(4, 5, {ts::card_ids::CENTRAL_AMERICA_SCORING,
+                                              ts::card_ids::SOCIALIST_GOVERNMENTS});
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[ts::card_ids::CENTRAL_AMERICA_SCORING], 0);
+    ASSERT_EQ(mask[ts::card_ids::SOCIALIST_GOVERNMENTS], 1);
+}
+
+TEST(CardEdgeCasesTest, Trap_TwoScoringCardsAndTwoRoundsLeftPlayThroughIt) {
+    ts::GameState state = trapped_ussr(4, 6, {ts::card_ids::CENTRAL_AMERICA_SCORING,
+                                              ts::card_ids::AFRICA_SCORING,
+                                              ts::card_ids::SOCIALIST_GOVERNMENTS});
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[ts::card_ids::CENTRAL_AMERICA_SCORING], 1);
+    ASSERT_EQ(mask[ts::card_ids::AFRICA_SCORING], 1);
+}
+
+TEST(CardEdgeCasesTest, Trap_ScoringCardIsPlayableWithNothingTheTrapWillTake) {
+    ts::GameState state = trapped_ussr(4, 5, {ts::card_ids::CENTRAL_AMERICA_SCORING});
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    ASSERT_EQ(mask[ts::card_ids::CENTRAL_AMERICA_SCORING], 1);
+}
+
 TEST(CardEdgeCasesTest, SpaceRace_Box1_EarthSatellite_VPAwards_FirstAndSecond) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);

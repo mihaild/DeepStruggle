@@ -229,10 +229,17 @@ cmake --build build_san -j
    headline of ts-replayer game 92 the US's Colonial Rear Guards places in Zaire, Angola,
    Zimbabwe and Nigeria, and the USSR's Decolonization was then offered none of them: three of
    its four Influence had nowhere to go.
-15. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+15. **A Trap Never Holds A Scoring Card Past The Turn**: Quagmire and Bear Trap take a card of
+   2 effective Ops or more each action round, and a scoring card is not one -- but it is
+   playable out of a trap on either of two counts: nothing in hand is eligible, or the player
+   holds as many scoring cards as they have action rounds left to play them in. The second is
+   what stops a trap costing a player the game, since a scoring card held at a turn's end is a
+   loss outright. At turn 4 AR7 of ts-replayer game 63 the USSR has spent two rounds discarding
+   to Bear Trap and plays Central America Scoring on the last one.
+16. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
    `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
-16. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+17. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

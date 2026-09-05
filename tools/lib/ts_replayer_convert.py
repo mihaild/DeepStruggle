@@ -540,6 +540,22 @@ def _cards_named_through_un_intervention(raws: List[Dict], turn: int,
     return added
 
 
+_FIVE_YEAR_PLAN = 5
+_UN_INTERVENTION = 32
+_GRAIN_SALES = 67
+_OUR_MAN_IN_TEHRAN = 108
+_MISSILE_ENVY = 49
+_STAR_WARS = 85
+_CHERNOBYL = 94
+_THE_CHINA_CARD = 6
+_VOICE_OF_AMERICA = 74
+_CIA_CREATED = 26
+_SPACE_WALK_DISCARD = 250
+_OLYMPIC_GAMES = 20
+_HOW_I_LEARNED_TO_STOP_WORRYING = 46
+_TEAR_DOWN_THIS_WALL = 96
+
+
 def _played_by_anyone_up_to(raws: List[Dict], turn: int) -> Set[int]:
     """Every card the log shows played or discarded in this turn or an earlier one.
 
@@ -589,8 +605,9 @@ def _ran_out_of_cards(raws: List[Dict], turn: int, side: str) -> bool:
     return False
 
 
-def _cards_carried_over(raws: List[Dict], hands: Dict, turn: int, side: str,
-                        held: List[int], size: int, claimed: Set[int]) -> List[int]:
+def _cards_carried_over(state: ts.GameState, raws: List[Dict], hands: Dict, turn: int,
+                        side: str, held: List[int], size: int,
+                        claimed: Set[int]) -> List[int]:
     """The card or cards this side held from the turn before, borrowed from the turn after.
 
     A turn's list is what became *visible* during it, and a player carries what they do not
@@ -625,24 +642,32 @@ def _cards_carried_over(raws: List[Dict], hands: Dict, turn: int, side: str,
     missing = size - len(china_aside)
     if missing <= 0 or _ran_out_of_cards(raws, turn, side):
         return []
-    # A player who skipped an action round had nothing to play, and one card is enough to make
-    # that skip illegal: at turn 9 AR7 of replay 78 the log skips the USSR's round and a card
-    # carried in left the engine still offering one.
-    if _skipped_a_round(raws, turn, side):
+    trapped = _was_trapped(raws, turn, side)
+    skipped = _skipped_a_round(raws, turn, side)
+    # A player who skipped an action round could not play, and one card is enough to make that
+    # skip illegal: at turn 9 AR7 of replay 78 the log skips the USSR's round and a card
+    # carried in left the engine still offering one. Held by a trap it means something weaker
+    # -- that nothing they had was *eligible*, since a trap is escaped by discarding 2 Ops or
+    # more -- so they may still have been sitting on something smaller.
+    if skipped and not trapped:
         return []
     later = hands.get(str(turn + 1)) or {}
     pool = [c for c in (card_id(nm) for nm in (later.get(side.lower()) or [])) if c]
     if not pool:
-        return []
+        return _worst_card_held(state, raws, hands, turn, side, missing, claimed,
+                                trapped and skipped)
     spent = _played_by_anyone_up_to(raws, turn)
     acquired = _mid_turn_acquisitions(raws, turn + 1, side, pool)
     cap = _missile_envy_ops_cap(raws, turn, side)
-    # A trap is escaped by discarding a card of 2 Ops or more, so a player caught in one and
-    # still playing cards had nothing but small ones: at turn 5 of replay 114 the USSR is held
-    # by Bear Trap and plays their scoring card, which the engine will not let them do while a
-    # card the trap can take is in hand.
-    if _was_trapped(raws, turn, side):
-        cap = 1 if cap is None else min(cap, 1)
+    # What a trap says about a hand, and what it does not. Playing scoring cards under one and
+    # never skipping says nothing at all: a scoring card may always be played, and the trap
+    # cannot force anyone to sit on it. Skipping a round says they had nothing the trap would
+    # take -- nothing of 2 Ops or more -- so what they kept was smaller than that. Red
+    # Scare/Purge takes an Ops off everything they play, so under it a 2 Ops card is no longer
+    # eligible either and a 3 is the first that is.
+    if trapped and skipped:
+        eligible_from = 3 if _under_red_scare(raws, turn, side) else 2
+        cap = eligible_from - 1 if cap is None else min(cap, eligible_from - 1)
     candidates = []
     for cid in pool:
         info = ts.CardData.get_card_info(cid)
@@ -686,6 +711,82 @@ def _was_trapped(raws: List[Dict], turn: int, side: str) -> bool:
         if e.player == side and e.trap_rolls:
             return True
         if any(_norm(nm) == _norm(trap) for nm in (e.in_play or [])):
+            return True
+    return False
+
+
+_LONE_GUNMAN = 62
+_IRANIAN_HOSTAGE_CRISIS = 82
+_LIBERATION_THEOLOGY = 75
+_DECOLONIZATION = 30
+_COLONIAL_REAR_GUARDS = 63
+_USSURI_RIVER_SKIRMISH = 76
+_RED_SCARE_PURGE = 31
+_IRAN = 25
+
+# The cards a player would rather hold than play, worst first: the opponent's events that cost
+# most to set off. Sitting on one is the ordinary reason a hand is not empty at a game's end.
+# Iranian Hostage Crisis is only that bad while the US holds Iran, and Ussuri River Skirmish
+# only while the US holds the China Card, which it takes away.
+_WORST_TO_HOLD: Dict[str, List[Tuple[int, str]]] = {
+    "US": [(_LONE_GUNMAN, ""), (_IRANIAN_HOSTAGE_CRISIS, "us_holds_iran"),
+           (_LIBERATION_THEOLOGY, ""), (_DECOLONIZATION, "")],
+    "USSR": [(_CIA_CREATED, ""), (_GRAIN_SALES, ""), (_VOICE_OF_AMERICA, ""),
+             (_COLONIAL_REAR_GUARDS, ""), (_USSURI_RIVER_SKIRMISH, "us_holds_china")],
+}
+
+
+def _worst_card_held(state: ts.GameState, raws: List[Dict], hands: Dict, turn: int, side: str,
+                     missing: int, claimed: Set[int], small_only: bool) -> List[int]:
+    """What the last turn was holding, where there is no next turn to read it off.
+
+    Everything else is borrowed from the turn the card was played in, and turn 10 has no such
+    turn -- nor does the last turn of a record that stops early, though that turn is dropped
+    anyway. What is left is the deck: a card that never appears in any hand list and is never
+    played is a card somebody sat on to the end, and the ones worth sitting on are the
+    opponent's events that cost the most to set off.
+    """
+    if missing <= 0:
+        return []
+    seen: Set[int] = set()
+    for turn_s, lists in (hands or {}).items():
+        for which in ("us", "ussr"):
+            for nm in (lists.get(which) or []):
+                cid = card_id(nm)
+                if cid:
+                    seen.add(cid)
+    seen |= _played_by_anyone_up_to(raws, turn)
+    out: List[int] = []
+    for cid, condition in _WORST_TO_HOLD.get(side, []):
+        if len(out) >= missing:
+            break
+        if cid in seen or cid in claimed or cid in out:
+            continue
+        if state.get_card_location(cid) in (ts.CardLocation.REMOVED_FROM_GAME,
+                                            ts.CardLocation.DISCARD_PILE):
+            continue
+        if small_only and int(ts.CardData.get_card_info(cid)["ops"]) >= 2:
+            continue
+        if condition == "us_holds_iran" and not ts.Scoring.is_controlled_by(
+                state, _IRAN, ts.Player.US):
+            continue
+        if condition == "us_holds_china" and state.china_card_holder != ts.Player.US:
+            continue
+        out.append(cid)
+    return out
+
+
+def _under_red_scare(raws: List[Dict], turn: int, side: str) -> bool:
+    """Whether Red Scare/Purge is working against this side this turn, which takes an Ops off
+    everything they play -- so a 2 Ops card is no longer enough to feed a trap."""
+    other = "USSR" if side == "US" else "US"
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        if card_id((e.headlines or {}).get(other) or "") == _RED_SCARE_PURGE:
+            return True
+        if e.player == other and e.card and card_id(e.card) == _RED_SCARE_PURGE:
             return True
     return False
 
@@ -1526,20 +1627,6 @@ def force_outcome(state: ts.GameState, action: int,
     return False
 
 
-_FIVE_YEAR_PLAN = 5
-_UN_INTERVENTION = 32
-_GRAIN_SALES = 67
-_OUR_MAN_IN_TEHRAN = 108
-_MISSILE_ENVY = 49
-_STAR_WARS = 85
-_CHERNOBYL = 94
-_THE_CHINA_CARD = 6
-_VOICE_OF_AMERICA = 74
-_CIA_CREATED = 26
-_SPACE_WALK_DISCARD = 250
-_OLYMPIC_GAMES = 20
-_HOW_I_LEARNED_TO_STOP_WORRYING = 46
-_TEAR_DOWN_THIS_WALL = 96
 # The two cards whose event grants Ops that may only be spent on a coup or a realignment, and
 # whose free action is optional. The engine offers INFLUENCE as the decline.
 _FREE_ACTION_CARDS = frozenset({47, _TEAR_DOWN_THIS_WALL})
@@ -3377,7 +3464,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
             # What each side carried in from the turn before -- see _cards_carried_over.
             for side in ("US", "USSR"):
-                carried = _cards_carried_over(raws, hands, int(e.turn), side,
+                carried = _cards_carried_over(state, raws, hands, int(e.turn), side,
                                               turn_hands[side], size, claimed)
                 turn_hands[side].extend(carried)
                 claimed |= set(carried)
