@@ -259,6 +259,50 @@ void StateMachine::offer_cuban_missile_payoff(GameState& state) noexcept {
 void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
     if (state.current_phase == Phase::HEADLINE) {
+        // An opponent's card played for Operations still owes its Event, in a headline exactly
+        // as in an action round. The two orderings are a choice, and OPS_FIRST leaves the
+        // Event to be fired here -- which this path used to return without doing, because it
+        // unwinds and advances the headline before ever reaching the check below. At turn 4's
+        // headline of ts-replayer game 137 the US headlines Grain Sales To Soviets, takes
+        // Willy Brandt out of the USSR hand, chooses its Operations first and realigns Cuba
+        // twice; Willy Brandt's Event -- 1 VP to the USSR, 1 Influence into West Germany, and
+        // the card into play -- simply never happened.
+        //
+        // Same guards as the action round's: a pushed frame means these Ops were granted by an
+        // event rather than bought with the card, and a pushed frame starts zeroed, which is
+        // OPS_FIRST. And one the action round does not need -- a headlined card is played as
+        // its Event and never for Operations, so Ops that belong to one are Ops its Event gave
+        // away and its Event has already happened. Without that, the USSR headlining CIA
+        // Created (a US card) fired it a second time when the US finished spending the Op it
+        // grants them, at turn 3's headline of ts-replayer game 101 and 8 games besides.
+        uint8_t owed_card = state.ctx().pending_op_card;
+        Player card_player = state.phasing_player;
+        if (state.ctx_stack_depth == 0 && !state.ctx().suppress_op_card_event &&
+            owed_card != state.headline_first_card && owed_card != state.headline_second_card &&
+            state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
+            CardData::is_opponent_card(owed_card, card_player)) {
+            Player opp = get_opponent(card_player);
+            const auto& owed_info = CardData::get_card(owed_card);
+            state.ctx().decision_player = opp;
+            state.ctx().resolving_card = owed_card;
+            state.ctx().timing_branch = 255; // cleared
+
+            bool done = CardHandlers::trigger_event(state, owed_card, opp);
+            if (owed_card != card_ids::KITCHEN_DEBATES &&
+                !keeps_own_card_location(state, owed_card)) {
+                if (owed_card == card_ids::SHUTTLE_DIPLOMACY &&
+                    state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+                    state.card_locations[owed_card] = CardLocation::ONGOING_EVENT;
+                } else {
+                    state.card_locations[owed_card] = owed_info.one_time
+                        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                }
+            }
+            // An event that asks something of its player is not finished, and the headline
+            // resumes here once it is.
+            if (!done || state.current_phase == Phase::GAME_OVER) return;
+            state.ctx().resolving_card = 0;
+        }
         // Unwind whatever the headline's own events pushed. A card that grants Ops does not
         // finish when it is triggered, so the frame it was fired in stays open until those Ops
         // are spent -- and this path used to return without popping it. At turn 6's headline

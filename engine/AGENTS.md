@@ -198,10 +198,17 @@ cmake --build build_san -j
    the coup is already staged in `temp_cards` and the chance node opens on the far side of the
    answer; `temp_cards[1]` being `RollType::COUP` is what tells the two apart. With one payer, or
    none, `execute_coup` settles it inline as before.
-11. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+11. **An Opponent's Card Owes Its Event In A Headline Too**: playing an opponent's card for
+   Operations asks which resolves first, and `OPS_FIRST` leaves the Event owed until the Ops
+   are spent. `advance_after_ops` fires it on both paths -- the headline's as well as the
+   action round's, which it used to unwind past. At turn 4's headline of ts-replayer game 137
+   the US headlines Grain Sales To Soviets, takes Willy Brandt and realigns Cuba twice with it,
+   and Willy Brandt's Event must still follow. A headlined card is excluded: it is played as
+   its Event, so Ops belonging to one are Ops its Event gave away and it has already fired.
+12. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
    `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
-12. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+13. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

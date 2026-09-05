@@ -183,6 +183,9 @@ class Entry:
     headlines: Dict[str, str] = field(default_factory=dict)
     discards: List[Tuple[str, str]] = field(default_factory=list)
     event_first: Optional[bool] = None
+    # The same question for a card played *through* another one, read from the lines after the
+    # handover: the "Event:" header above that belongs to the card that did the handing.
+    played_event_first: Optional[bool] = None
     # Card named by another card's event, played inside the same entry: UN Intervention makes
     # you name an opponent card and use it for Ops, and the log prints "USSR plays NORAD*".
     played_card: Optional[str] = None
@@ -424,6 +427,30 @@ def parse_entry(raw: Dict) -> Entry:
             continue
         if not _IGNORE.match(line):
             e.unparsed.append(line)
+    # Whose timing is being chosen. Playing an opponent's card for Operations asks which of
+    # the Event and the Operations resolves first, and the log answers by line order -- but
+    # when the card was handed over by another one, the "Event:" header above that exchange
+    # belongs to the card that did the handing, not to the card now being played. At turn 5
+    # AR1 of replay 270 the US plays Grain Sales To Soviets, whose own "Event:" header opens
+    # the entry, takes OPEC from the USSR and coups Venezuela with it; OPEC's own event is
+    # printed after the coup, and OPEC pays the USSR 1 VP for each oil country it controls.
+    # Read from the top, the entry looked event-first, so OPEC scored Venezuela before the
+    # coup took it away -- 3 VP where the log records 2.
+    if e.played_card is not None:
+        after_handover = False
+        for line in str(raw.get("text", "")).split("\n"):
+            line = line.strip()
+            if not after_handover:
+                m_plays = RE_PLAYS.search(line)
+                after_handover = (m_plays is not None
+                                  and m_plays.group(2).strip() == e.played_card)
+                continue
+            if RE_EVENT.search(line):
+                e.played_event_first = True
+                break
+            if RE_MODE.search(line):
+                e.played_event_first = False
+                break
     return e
 
 

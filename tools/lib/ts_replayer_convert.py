@@ -2024,7 +2024,17 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # Playing an opponent's card for Ops asks which resolves first. The log answers by
             # line order: at turn 1 AR5 of replay 100 "Place Influence" precedes "Event:", so
             # that one is Ops first. Always choosing event-first mis-sequenced those entries.
-            want_branch = 0 if e.event_first is False else 1
+            # ...and about the card the engine is actually playing, which need not be the
+            # entry's own. At turn 5 AR1 of replay 270 Grain Sales To Soviets takes OPEC from
+            # the USSR and the US coups Venezuela with it; OPEC's own "Event:" header comes
+            # after the coup, while Grain Sales' opens the entry. Read from the top, the entry
+            # looked event-first, and OPEC -- which pays the USSR 1 VP for each oil country
+            # they control -- scored Venezuela before the coup took it away.
+            played_cid = card_id(e.played_card) if e.played_card else None
+            first = (e.played_event_first
+                     if played_cid is not None and int(ctx.pending_op_card) == played_cid
+                     else e.event_first)
+            want_branch = 0 if first is False else 1
             chosen = _find(state, legal, ts.DecisionType.CHOOSE_TIMING_BRANCH,
                            lambda ma: int(ma.primary_id) == want_branch)
             informative = chosen is not None

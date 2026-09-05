@@ -1303,6 +1303,74 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 }
 
+TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEvent) {
+    // Grain Sales works the same in a headline as in an action round: the US takes a card out
+    // of the USSR hand, and if it is the USSR's own the US chooses whether its Event or its
+    // Operations resolve first. OPS_FIRST leaves the Event owed until the Ops are spent, and
+    // the headline path used to unwind and advance without ever firing it.
+    //
+    // At turn 4's headline of ts-replayer game 137 the US headlines Grain Sales, takes Willy
+    // Brandt, chooses its Operations first and realigns Cuba twice; Willy Brandt's Event --
+    // 1 VP to the USSR, 1 Influence into West Germany, and the card into play -- never
+    // happened, and the engine went straight to AR1.
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_USSR ||
+            state.card_locations[i] == ts::CardLocation::HAND_US) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::WILLY_BRANDT] = ts::CardLocation::HAND_USSR;
+    state.defcon = 4;
+    state.victory_points = 0;
+    const int8_t west_germany_before = state.countries[ts::countries::WEST_GERMANY].ussr_influence;
+
+    // US headlines Grain Sales (2 Ops); the USSR headlines a 4 Ops card, which resolves first
+    // and asks nothing.
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0});
+    const int8_t vp_before = state.victory_points;
+
+    // Grain Sales resolves and offers the US the card it took.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::WILLY_BRANDT);
+
+    // It is the USSR's own card, so Operations is the only play mode, and the ordering is a
+    // choice of its own.
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_TIMING_BRANCH);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0});
+
+    // The US spends the Operations first -- Influence, so nothing rolls.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    while (state.ctx().decision_type == ts::DecisionType::POINT_NODE &&
+           state.ctx().resolving_card == 0) {
+        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0});
+    }
+
+    // ...and only then does Willy Brandt's Event happen.
+    ASSERT_EQ(state.victory_points, vp_before - 1);          // 1 VP to the USSR
+    ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].ussr_influence,
+              west_germany_before + 1);
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::WILLY_BRANDT_PLAYED));
+    ASSERT_NE(state.card_locations[ts::card_ids::WILLY_BRANDT], ts::CardLocation::HAND_US);
+
+    // And the headline is over, with nothing left on the stack.
+    ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
+    ASSERT_EQ(state.ctx_stack_depth, 0);
+}
+
 TEST(CardEdgeCasesTest, SpaceRace_Box1_EarthSatellite_VPAwards_FirstAndSecond) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
