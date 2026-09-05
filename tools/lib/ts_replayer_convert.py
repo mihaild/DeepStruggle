@@ -261,6 +261,9 @@ class Conversion:
     # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
     # moving and emitted as nothing.
     invalid_decisions: int = 0
+    # Cards borrowed from the next turn's list as the ones this side carried over. See
+    # _cards_carried_over.
+    cards_carried_over: int = 0
     # Cards whose event the engine resolved while driving the current entry. Reset per entry.
     events_resolved: Set[int] = field(default_factory=set)
     # (turn, entries converted, samples emitted) as the current turn began.
@@ -535,6 +538,225 @@ def _cards_named_through_un_intervention(raws: List[Dict], turn: int,
         turn_hands[e.player].append(cid)
         added += 1
     return added
+
+
+def _played_by_anyone_up_to(raws: List[Dict], turn: int) -> Set[int]:
+    """Every card the log shows played or discarded in this turn or an earlier one.
+
+    A card that has been played is in the discard pile, so it cannot be sitting in a hand --
+    and if it is played again later it was drawn again after a reshuffle, which puts it in that
+    hand no earlier than the turn it reappears in. Arab-Israeli War played at turn 1 and again
+    by the US at turn 3 is a card the US drew at turn 3; they did not hold it through turn 2.
+    """
+    out: Set[int] = set()
+    for raw in raws:
+        e = parse_entry(raw)
+        if not e.turn or int(e.turn) > turn:
+            continue
+        for nm in (e.headlines or {}).values():
+            cid = card_id(nm)
+            if cid:
+                out.add(cid)
+        if e.card and " & " not in e.card:
+            cid = card_id(e.card)
+            if cid:
+                out.add(cid)
+        for _side, nm in (e.discards or []):
+            cid = card_id(nm)
+            if cid:
+                out.add(cid)
+        cid = card_id(e.played_card) if e.played_card else None
+        if cid:
+            out.add(cid)
+    return out
+
+
+def _ran_out_of_cards(raws: List[Dict], turn: int, side: str) -> bool:
+    """Whether the log has this side holding nothing at some point in the turn.
+
+    Five Year Plan reaches into the USSR hand and the log writes "USSR has no cards to discard"
+    when it finds it empty. A card carried over is in hand at that moment, so a turn that says
+    this carried nothing over -- the player spent the lot.
+    """
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        if f"{side} has no cards to discard" in (e.text or ""):
+            return True
+        if f"{side} has no cards in hand to reveal" in (e.text or ""):
+            return True
+    return False
+
+
+def _cards_carried_over(raws: List[Dict], hands: Dict, turn: int, side: str,
+                        held: List[int], size: int, claimed: Set[int]) -> List[int]:
+    """The card or cards this side held from the turn before, borrowed from the turn after.
+
+    A turn's list is what became *visible* during it, and a player carries what they do not
+    play into the next turn -- one card normally, two when the China Card was among their plays,
+    since it sits outside the hand limit. So the list is short by exactly that, and it is: of
+    the 3,717 turn-sides in the corpus that play every action round out in a turn the log
+    completes, 52% are one card short and 11% two, and among the ones that played the China
+    Card, 61% are two short.
+
+    The card itself is in the *next* turn's list, because that is when they played it. Which of
+    that turn's cards it was, the log does not say, so it is chosen -- but chosen from cards the
+    player demonstrably held a moment later, rather than invented out of the draw deck, and
+    never against something the log states:
+
+      * nothing already played, by either side, in this turn or before: it is in the discard
+        pile, and a card played again later was drawn again after a reshuffle;
+      * no scoring card, which may not be held at a turn's end;
+      * nothing the next turn's log shows arriving mid-turn -- a SALT Negotiations retrieval,
+        an "Ask Not" redraw;
+      * nothing at all where the log says this side ran out of cards during the turn;
+      * nothing above the Ops of the card Missile Envy took from them, which is the highest
+        they held.
+
+    Among what is left, the assumption is the card that was least worth playing: the opponent's
+    events first, lowest Ops first. A few cards are pushed to the back of that queue because
+    holding them is not what a player does -- the US sitting on The Voice of America, Grain
+    Sales To Soviets or CIA Created, or on the small cards "Ask Not" would have thrown away,
+    and the USSR sitting on Five Year Plan through a turn where they played a scoring card that
+    cost them three or more VP.
+    """
+    china_aside = [c for c in held if c != _THE_CHINA_CARD]
+    missing = size - len(china_aside)
+    if missing <= 0 or _ran_out_of_cards(raws, turn, side):
+        return []
+    # A player who skipped an action round had nothing to play, and one card is enough to make
+    # that skip illegal: at turn 9 AR7 of replay 78 the log skips the USSR's round and a card
+    # carried in left the engine still offering one.
+    if _skipped_a_round(raws, turn, side):
+        return []
+    later = hands.get(str(turn + 1)) or {}
+    pool = [c for c in (card_id(nm) for nm in (later.get(side.lower()) or [])) if c]
+    if not pool:
+        return []
+    spent = _played_by_anyone_up_to(raws, turn)
+    acquired = _mid_turn_acquisitions(raws, turn + 1, side, pool)
+    cap = _missile_envy_ops_cap(raws, turn, side)
+    # A trap is escaped by discarding a card of 2 Ops or more, so a player caught in one and
+    # still playing cards had nothing but small ones: at turn 5 of replay 114 the USSR is held
+    # by Bear Trap and plays their scoring card, which the engine will not let them do while a
+    # card the trap can take is in hand.
+    if _was_trapped(raws, turn, side):
+        cap = 1 if cap is None else min(cap, 1)
+    candidates = []
+    for cid in pool:
+        info = ts.CardData.get_card_info(cid)
+        if (cid in held or cid in claimed or cid in spent or cid in acquired
+                or cid == _THE_CHINA_CARD or bool(info["is_scoring"])):
+            continue
+        if cap is not None and int(info["ops"]) > cap:
+            continue
+        candidates.append(cid)
+    candidates.sort(key=lambda c: _carry_over_order(raws, turn, side, c))
+    return candidates[:missing]
+
+
+def _skipped_a_round(raws: List[Dict], turn: int, side: str) -> bool:
+    """Whether the log has this side taking no action round it was entitled to, this turn."""
+    for index, raw in enumerate(raws):
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        if e.player == side and _is_skipped_round(e):
+            return True
+        for m in RE_PASSED_ROUND.finditer(e.text or ""):
+            if m.group(2) == side and int(m.group(1)) == turn:
+                return True
+    return False
+
+
+def _was_trapped(raws: List[Dict], turn: int, side: str) -> bool:
+    """Whether Bear Trap or Quagmire held this side at any point in the turn.
+
+    Either by a roll they made to escape one, or by the opponent putting one into play: at turn
+    7 AR7 of replay 237 the USSR plays Quagmire and the US, on the very next action round, plays
+    their scoring card -- which the engine will not allow while the trap has a card of 2 Ops or
+    more to take instead.
+    """
+    trap = "Quagmire*" if side == "US" else "Bear Trap*"
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        if e.player == side and e.trap_rolls:
+            return True
+        if any(_norm(nm) == _norm(trap) for nm in (e.in_play or [])):
+            return True
+    return False
+
+
+def _missile_envy_ops_cap(raws: List[Dict], turn: int, side: str) -> Optional[int]:
+    """The Ops of the card Missile Envy took from this side this turn, if it took one.
+
+    It takes the highest Ops card in the hand, so nothing above that was in it.
+    """
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        took = _revealed_under(e, "Event: Missile Envy")
+        if took is not None and took[0] == side:
+            return int(ts.CardData.get_card_info(took[1])["ops"])
+    return None
+
+
+def _carry_over_order(raws: List[Dict], turn: int, side: str, cid: int):
+    """How likely a card is to be the one carried over, best first."""
+    info = ts.CardData.get_card_info(cid)
+    ops = int(info["ops"])
+    card_side = str(info["side"])
+    opponents = card_side not in (side, "NONE")
+
+    unlikely = 0
+    # A player does not sit on their own good cards. These three are the ones the US holds in
+    # the reconstruction most often and would in fact have played.
+    if side == "US" and cid in (_VOICE_OF_AMERICA, _GRAIN_SALES, _CIA_CREATED):
+        unlikely += 2
+    # "Ask Not What Your Country Can Do For You" throws away exactly this sort of card, so a
+    # turn that played it did not end holding one.
+    if _played_this_turn(raws, turn, side, _ASK_NOT):
+        if (card_side == "NONE" and ops <= 1) or (opponents and ops <= 2):
+            unlikely += 2
+    # Five Year Plan discards at random from the USSR hand, and a USSR player who has just lost
+    # three or more VP to a scoring card is not carrying the card that does it to them.
+    if side == "USSR" and cid == _FIVE_YEAR_PLAN and _lost_to_scoring(raws, turn, "USSR") >= 3:
+        unlikely += 2
+    # Otherwise: the opponent's events first, and the small ones before the big ones. A card
+    # not worth playing is the one still in hand at the end of a turn.
+    return (unlikely, 0 if opponents else 1, ops, cid)
+
+
+def _played_this_turn(raws: List[Dict], turn: int, side: str, card: int) -> bool:
+    for raw in raws:
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        if e.player == side and e.card and card_id(e.card) == card:
+            return True
+        if card_id((e.headlines or {}).get(side) or "") == card:
+            return True
+    return False
+
+
+def _lost_to_scoring(raws: List[Dict], turn: int, side: str) -> int:
+    """The most VP this side lost to a single scoring card this turn."""
+    worst = 0
+    for raw in raws:
+        e = parse_entry(raw)
+        cid = card_id(e.card) if e.card else None
+        if e.turn != turn or cid is None:
+            continue
+        if not bool(ts.CardData.get_card_info(cid)["is_scoring"]):
+            continue
+        for gain_side, amount, _total_side, _total in (e.vp_gains or []):
+            if gain_side != side:
+                worst = max(worst, int(amount))
+    return worst
 
 
 def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional[int],
@@ -1312,6 +1534,8 @@ _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
 _THE_CHINA_CARD = 6
+_VOICE_OF_AMERICA = 74
+_CIA_CREATED = 26
 _SPACE_WALK_DISCARD = 250
 _OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
@@ -3151,6 +3375,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
             size = 8 if int(e.turn) <= 3 else 9
             claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
+            # What each side carried in from the turn before -- see _cards_carried_over.
+            for side in ("US", "USSR"):
+                carried = _cards_carried_over(raws, hands, int(e.turn), side,
+                                              turn_hands[side], size, claimed)
+                turn_hands[side].extend(carried)
+                claimed |= set(carried)
+                conv.cards_carried_over += len(carried)
             for side in ("US", "USSR"):
                 padded = _pad_hand(state, turn_hands[side], size,
                                    _reveal_ops_cap(raws, e.turn, side), claimed,
