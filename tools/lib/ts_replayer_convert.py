@@ -1299,7 +1299,8 @@ _TEAR_DOWN_THIS_WALL = 96
 _FREE_ACTION_CARDS = frozenset({47, _TEAR_DOWN_THIS_WALL})
 
 
-def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player) -> None:
+def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player,
+                            spent_first: Optional[Set[int]] = None) -> None:
     """Make the card the log says was handed over the highest Ops one the giver holds.
 
     Missile Envy takes the opponent's highest Ops card, so the engine's choice is forced by the
@@ -1312,11 +1313,19 @@ def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player
     Anything strictly higher than the card the log names was demonstrably not in that hand yet,
     so it is set aside. _apply_hands rebuilds the hand from the tracked list at the next entry,
     so this reaches no further than the event it fixes.
+
+    ...except what the same entry spends before Missile Envy reads the hand. At turn 7's
+    headline of replay 96 the US headlines "Ask Not What Your Country Can Do For You" -- 3 Ops
+    against Missile Envy's 2, so it resolves first -- and discards six cards, "We Will Bury
+    You" among them. Setting that aside here instead left Ask Not one card short of the six the
+    log names, and it discarded U2 Incident in its place: the very card Missile Envy was about
+    to take, and 1 VP for the USSR that never happened.
     """
     loc = ts.CardLocation.HAND_US if giver == ts.Player.US else ts.CardLocation.HAND_USSR
     want = int(ts.CardData.get_card_info(revealed)["ops"])
+    spent_first = spent_first or set()
     for c in range(1, 111):
-        if c == revealed or state.get_card_location(c) != loc:
+        if c == revealed or c in spent_first or state.get_card_location(c) != loc:
             continue
         info = ts.CardData.get_card_info(c)
         if not info["is_scoring"] and int(info["ops"]) > want:
@@ -1693,7 +1702,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     if envy_reveal is not None:
         _seed_missile_envy_hand(
             state, envy_reveal[1],
-            ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR)
+            ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR,
+            {c for c in (card_id(nm) for sd, nm in (e.discards or [])
+                         if sd == envy_reveal[0]) if c})
     # The die each war in this entry was decided on, in log order.
     war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     coup_roll_queue = [int(r) for r, _ok in (e.coup_rolls or [])]
@@ -2009,6 +2020,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     discard_queue.pop(slot)
                     informative = True
                     break
+            if chosen is None and int(ctx.resolving_card) == _ASK_NOT:
+                # "Ask Not What Your Country Can Do For You" discards as many cards as its
+                # player likes and draws that many back, so the log's list is the whole of it
+                # and "no more" is the answer once they are spent. Falling through to the
+                # queues below answered a seventh prompt with a card revealed later in the
+                # entry: at turn 7's headline of replay 96 that was U2 Incident, which the
+                # USSR's Missile Envy was about to take for 1 VP.
+                chosen = _find_confirm_done(state, legal)
+                informative = chosen is not None
             if chosen is None and int(ctx.resolving_card) == _MISSILE_ENVY and envy_took:
                 # Missile Envy's own reveal, not whichever reveal the entry printed first. It
                 # asks which card to hand over only when the highest Ops cards tie, and the
@@ -2505,16 +2525,23 @@ _SALT_NEGOTIATIONS = 43
 _ASK_NOT = 77
 
 
-def _sort_key_for_keeping(card: int):
-    """The order a hand is assumed to have been dealt in: the better cards first.
+def _sort_key_for_keeping(card: int, side: str = "US"):
+    """The order a hand is assumed to have been dealt in, best first.
 
-    Higher Ops first, and within an Ops value the US and neutral cards before the USSR ones.
     Used only to split a turn's cards into those dealt at the start and those drawn during it,
-    where nothing in the log distinguishes them.
+    where nothing in the log distinguishes them. Everything the log accounts for is settled
+    before this is consulted -- what was discarded here, what was played earlier in the turn --
+    so this decides only the remainder, and it decides it the way the hand most likely ran:
+
+    the player's own cards and the neutrals first, then the opponent's by descending Ops. A
+    hand is dealt from a deck both sides draw from, so holding the opponent's events is normal;
+    holding the ones you did not spend or discard is what a reconstruction should assume least
+    of. Among them the high-Ops ones are the likelier to have been held rather than drawn, since
+    they are what a player keeps to spend.
     """
     info = ts.CardData.get_card_info(card)
-    side = str(info["side"])
-    return (-int(info["ops"]), 0 if side in ("US", "NONE") else 1, card)
+    card_side = str(info["side"])
+    return (0 if card_side in (side, "NONE") else 1, -int(info["ops"]), card)
 
 
 def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[int, int]:
@@ -2592,7 +2619,7 @@ def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[
                     if c:
                         pinned.add(c)
             candidates = [c for c in held if c not in pinned and c not in acquired]
-            candidates.sort(key=_sort_key_for_keeping)
+            candidates.sort(key=lambda c, sd=side: _sort_key_for_keeping(c, sd))
             for c in candidates[len(candidates) - min(len(discarded), len(candidates)):]:
                 acquired[c] = idx
 
