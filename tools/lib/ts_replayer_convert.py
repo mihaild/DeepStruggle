@@ -2245,6 +2245,16 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 # card's. Reading the "Place Influence" header as the play mode instead had
                 # the engine spend UN Intervention's own Ops and never ask for NORAD.
                 want = PLAY_MODE_ACTION["event"]
+            elif (e.played_card and play_cid == card_id(e.played_card) and not opponent_card
+                  and any(_norm(nm) == _norm(e.played_card) for nm in (e.events or []))):
+                # A card handed over by another one, played for its own Event. The entry's mode
+                # is the header under that Event, not the play mode -- and on a headline entry
+                # there is no card of the entry's own to judge by. At turn 5's headline of
+                # replay 73 Grain Sales To Soviets hands the US Junta, a neutral card, and the
+                # log prints "Event: Junta" and its 2 Influence into Brazil before the free
+                # coup the event grants; read as Operations, the event never fired and Brazil
+                # stayed empty.
+                want = PLAY_MODE_ACTION["event"]
             elif (play_cid == cid_target and cid_target and not opponent_card
                     and e.event_first and e.events):
                 # Only for the entry's own card. A headline entry has none, and the play mode
