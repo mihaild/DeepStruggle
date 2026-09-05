@@ -60,15 +60,15 @@ def test_these_games_convert_up_to_where_the_log_ends(replay_id: int) -> None:
 
 
 def test_a_disagreement_in_a_turn_the_log_completes_is_still_a_failure() -> None:
-    """Replay 16 turn 5 AR1: the log states a score and the engine reaches a different one.
+    """Replay 259 turn 7 AR3: the log states a score and the engine reaches a different one.
 
-    Turn 5 is not where the record stops, so the entry is one the log states in full and we
-    cannot reproduce. That is ours to fix, not the recording's to excuse.
+    The record stops in turn 10, so turn 7 is one the log states in full and we cannot
+    reproduce. That is ours to fix, not the recording's to excuse.
     """
-    conv = convert_game(_game(16))
+    conv = convert_game(_game(259))
     assert conv.failure is not None
     assert conv.failure.kind == "score mismatch after replay"
-    assert (conv.failure.turn, conv.failure.phase) == (5, "AR1")
+    assert (conv.failure.turn, conv.failure.phase) == (7, "AR3")
     assert conv.truncated_at is None
 
 

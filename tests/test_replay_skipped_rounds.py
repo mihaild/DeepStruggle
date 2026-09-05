@@ -116,7 +116,7 @@ def test_a_bid_that_lands_on_two_is_the_standard_setup() -> None:
 
 
 def test_duplicate_downloads_resolve_to_one_game() -> None:
-    """287 files, 254 games. One game arrived nine times over."""
+    """300 files, 266 games. One game arrived nine times over."""
     games = {}
     for path in sorted(glob.glob(os.path.join(CORPUS, "*.json.gz"))):
         rid = int(os.path.basename(path).split(".")[0])
@@ -128,4 +128,5 @@ def test_duplicate_downloads_resolve_to_one_game() -> None:
     assert mapping[110] == 109
     nine = [rid for rid, orig in mapping.items() if orig == 90]
     assert sorted(nine) == [90, 214, 215, 216, 217, 218, 254, 298, 309]
-    assert len(set(mapping.values())) == 254
+    assert len(set(mapping.values())) == len(mapping) - 34, (
+        "34 of the downloaded files repeat a game already in the set")

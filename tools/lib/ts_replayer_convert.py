@@ -518,13 +518,22 @@ def _narrated_score(entry: Entry) -> Optional[int]:
     return score
 
 
-def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
+def _reconcile_scalars(state: ts.GameState, entry: Entry,
+                       take_score: bool = True) -> None:
     """Force VP and DEFCON to the logged values.
 
     Without this the engine scores from its own board and the two diverge fast: on replay 100
     the engine reached 20 VP -- game over -- at T2 AR1 while the log had the score at 1, which
     is why only a quarter of entries were reachable. VP is the one quantity the log disputes
     with itself (field vs ledger), so which source is used here is recorded per sample.
+
+    take_score is False where the entry's own play carried the game past the score it states.
+    An entry that ends a turn is followed by the Military Operations comparison, which the log
+    never narrates: at turn 4 AR7 of replay 16 the US takes 3 VP from Alliance For Progress and
+    the entry states "Score is USSR 5", then turn 4 ends with the USSR on 5 military ops and
+    the US on none against DEFCON 2, so the US owes 2 and the real score is USSR 7. The engine
+    reaches that exactly -- and reconciling the next entry from this one's narration put it
+    back to 5, so Camp David's VP at turn 5 AR1 landed one short of the log.
     """
     # Exactly, not max(): taking the larger of the two hides a track the reconstruction
     # advanced on its own, which is precisely the error worth catching.
@@ -566,7 +575,7 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry) -> None:
             narrated = -int(total)
         else:                                  # "Score is even."
             narrated = 0
-    if narrated is not None:
+    if narrated is not None and take_score:
         state.victory_points = narrated
     if entry.defcon is not None and 1 <= int(entry.defcon) <= 5:
         state.defcon = int(entry.defcon)
@@ -2380,6 +2389,9 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     pending: Dict[str, Dict[int, int]] = {"US": {}, "USSR": {}}
     prev_raw = None
     prev_entry = None
+    # Whether driving the previous entry carried the game into a new turn. Its narrated score
+    # is then out of date -- see _reconcile_scalars.
+    prev_crossed_turn = False
     # Where the turn now being converted began: how many entries had been converted and how
     # many samples emitted. A record that stops mid-turn takes the whole turn with it, so this
     # is what a truncation rewinds to. See _rewind_to_turn_start.
@@ -2409,6 +2421,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             conv.entries_converted += 1
             conv.board_resyncs += _reconcile_board(state, raw.get("countries"))
             _reconcile_scalars(state, e)
+            # Nothing was driven, so nothing carried the game past a score.
+            prev_crossed_turn = False
             prev_raw, prev_entry = raw, e
             continue
 
@@ -2447,7 +2461,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         if prev_raw is not None:
             _reconcile_board(state, prev_raw.get("countries"))
         if prev_entry is not None:
-            _reconcile_scalars(state, prev_entry)
+            _reconcile_scalars(state, prev_entry, take_score=not prev_crossed_turn)
 
         _apply_hands(state,
                      _hand_after(turn_hands["US"], played["US"], set(pending["US"])),
@@ -2595,10 +2609,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             conv.vp_drift += 1
 
         conv.board_resyncs += _reconcile_board(state, raw.get("countries"))
-        _reconcile_scalars(state, e)
+        # Not the score, where this entry's own play carried the game past it. The Military
+        # Operations comparison at a turn end is the one score change the log never narrates.
+        _reconcile_scalars(state, e, take_score=not crossed_turn)
         for side in ("US", "USSR"):
             for card, at in list(pending[side].items()):
                 if at <= index:
                     del pending[side][card]
+        prev_crossed_turn = crossed_turn
         prev_raw = raw
         prev_entry = e
