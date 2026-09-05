@@ -1286,7 +1286,13 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
         if reaches_logged_score:
             score += 4000
         if e is not None and e.defcon is not None:
-            if int(probe.defcon) == int(e.defcon):
+            # ...and only where the log names no targets, for the same reason the score is:
+            # DEFCON improves at a turn end, so a branch that finishes the event sails on to
+            # it and matches, while the branch that opens further decisions stops short. At
+            # turn 8 AR7 of replay 234 -- the last action round of the turn -- South African
+            # Unrest's "2 Influence in South Africa" branch collected that bonus and beat the
+            # "1 there and 2 in a neighbour" branch the log records.
+            if not wanted and int(probe.defcon) == int(e.defcon):
                 score += 500
             # ...but only where the log kept playing. DEFCON 1 is thermonuclear war and the
             # phasing player loses, so it is never the branch to take on a tie -- and yet at
@@ -1297,7 +1303,13 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
             if (ts.Engine.is_terminal(probe) and int(e.defcon) != 1
                     and not reaches_logged_score):
                 score -= 5000
-        if wanted and not ts.Engine.is_terminal(probe):
+        if (wanted and not ts.Engine.is_terminal(probe)
+                and probe.ctx().decision_type == ts.DecisionType.POINT_NODE):
+            # Only at a country choice. primary_id means whatever the decision it belongs to
+            # means, and a card selection's is a card id -- which shares its range with the
+            # country ids in `wanted`. A branch that finished the event and left the engine
+            # asking for the next card scored for every country id that happened to match a
+            # card in hand: at turn 8 AR7 of replay 234 that was worth a whole target.
             offered = {int(ts.ActionMask.decode_flat_action(probe, int(x)).primary_id)
                        for x in np.flatnonzero(np.asarray(
                            ts.ActionMask.generate_flat_mask(probe)))}
