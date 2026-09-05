@@ -63,9 +63,11 @@ def test_the_free_action_is_the_coup_the_log_records() -> None:
 
 
 def test_replay_156_converts_end_to_end() -> None:
+    """Everything but the last turn, which the recording stops inside -- see
+    tests/test_replay_unfinished_final_turn.py."""
     conv = convert_game(_game(156))
     assert conv.failure is None, f"replay 156 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total
+    assert conv.entries_converted == 69
 
 
 def test_an_entry_whose_sections_are_all_ops_is_unaffected() -> None:

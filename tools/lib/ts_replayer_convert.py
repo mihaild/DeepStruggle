@@ -2551,6 +2551,30 @@ def _board_matches(state, countries) -> int:
 RE_ACTION_ROUND = re.compile(r"^AR(\d+)$")
 
 
+def _log_agrees_the_game_ended(raws: List[Dict], victory_points: int) -> bool:
+    """Whether the score the engine ended at is the score the log last states.
+
+    A game that ends early leaves its last turn short of its action rounds, exactly as a
+    recording that simply stops does, and the log states no ending in either case. What tells
+    them apart is the score. An ending the log played through -- 20 VP, DEFCON 1, Wargames --
+    is an ending it also counted, so its last stated score is the one the engine finishes on.
+
+    Where they disagree, the ending is the reconstruction's own. At turn 9 AR3 of replay 246
+    the log's last entry is cut off mid-line with the US on 13, and the fragment turn, driven
+    from hands three cards short of a real one, runs on to a US win at 20. That is not an
+    ending, and the turn it happens in is not training data.
+    """
+    for raw in reversed(raws):
+        e = parse_entry(raw)
+        stated = _narrated_score(e)
+        if stated is None and e.score is not None:
+            stated = int(e.score)
+        if stated is None:
+            continue
+        return max(-20, min(20, stated)) == int(victory_points)
+    return False
+
+
 def unfinished_final_turn(raws: List[Dict]) -> Optional[int]:
     """The turn number the recording stops inside, or None if it plays its last turn out.
 
@@ -2686,6 +2710,11 @@ def convert_game(game: Dict) -> Conversion:
             conv.failure = failure.mismatch
             conv.mismatches.append(failure.mismatch)
     conv.game_ended = bool(ts.Engine.is_terminal(state))
+    if (conv.game_ended and unfinished_final_turn(raws) is not None
+            and not _log_agrees_the_game_ended(raws, int(state.victory_points))):
+        # An ending the log's own score does not bear out, reached inside the very turn the
+        # recording stops in -- so it is the fragment's doing. See _log_agrees_the_game_ended.
+        conv.game_ended = False
     if conv.failure is None and conv.truncated_at is None and not conv.game_ended:
         # The log played no ending and stopped mid-turn: that turn is a fragment, whether or
         # not anything in it happened to fail. See unfinished_final_turn.

@@ -80,4 +80,6 @@ def test_a_scoring_card_is_never_set_aside() -> None:
 def test_replay_64_converts_end_to_end() -> None:
     conv = _convert(64)
     assert conv.failure is None, f"replay 64 stopped at {conv.failure}"
-    assert conv.entries_converted == conv.entries_total == 111
+    # Everything but the last turn, which the recording stops inside -- see
+    # tests/test_replay_unfinished_final_turn.py.
+    assert conv.entries_converted == 106

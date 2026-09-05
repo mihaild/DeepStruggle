@@ -28,7 +28,8 @@ from typing import Dict
 
 import pytest
 
-from tools.lib.ts_replayer_convert import convert_game, unfinished_final_turn
+from tools.lib.ts_replayer_convert import (_log_agrees_the_game_ended, convert_game,
+                                          unfinished_final_turn)
 from tools.lib.ts_replayer_parse import parse_entry
 
 CORPUS = "/workspace/data/datasets/ts_replayer"
@@ -97,9 +98,42 @@ def test_the_ussr_skipped_the_last_action_round() -> None:
     assert [e.player for e in ar7] == ["US"]
 
 
-@pytest.mark.parametrize("replay_id", [100, 109, 113, 111, 114])
+@pytest.mark.parametrize("replay_id", [100, 109, 114])
 def test_the_complete_games_are_untouched(replay_id: int) -> None:
     conv = convert_game(_game(replay_id))
     assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
+    assert conv.truncated_at is None
+    assert conv.entries_converted == conv.entries_total
+
+
+def test_an_ending_only_the_engine_believes_in_does_not_save_the_turn() -> None:
+    """A fragment turn is driven from hands the players never held, so what happens in it is
+    not evidence of anything -- least of all that the game ended there.
+
+    Replay 246 stops mid-line at turn 9 AR3 with the US on 13. Played out from a hand three
+    cards short of a real one, it runs on to a US win at 20, and being "ended" used to exempt
+    it from the fragment rule and keep the turn.
+    """
+    raws = _game(246)["all_turns"]
+    assert unfinished_final_turn(raws) is not None
+    assert not _log_agrees_the_game_ended(raws, 20), "the log's last score is 13"
+    conv = convert_game(_game(246))
+    assert conv.failure is None, f"replay 246 stopped at {conv.failure}"
+    assert conv.truncated_at is not None
+    assert conv.game_ended is False
+    kept = [parse_entry(r) for r in raws[:conv.entries_converted]]
+    assert all(e.turn < conv.truncated_at.turn for e in kept)
+
+
+@pytest.mark.parametrize("replay_id,score", [(111, -5), (113, -7)])
+def test_an_ending_the_logs_own_score_bears_out_keeps_its_turn(replay_id: int, score: int) -> None:
+    """Replays 111 and 113 end on Wargames, which ends the game where it stands -- at DEFCON 2,
+    with a score neither side won on and two action rounds of turn 8 never played. That is an
+    ending the log counted, so its last stated score is the one the engine finishes at."""
+    raws = _game(replay_id)["all_turns"]
+    assert unfinished_final_turn(raws) is not None, "and both stop short of AR7"
+    assert _log_agrees_the_game_ended(raws, score)
+    conv = convert_game(_game(replay_id))
+    assert conv.game_ended is True
     assert conv.truncated_at is None
     assert conv.entries_converted == conv.entries_total
