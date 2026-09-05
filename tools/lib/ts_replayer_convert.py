@@ -1900,7 +1900,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # missed the headline case, where it is never set: at turn 4's headline of replay
             # 119 the engine drew Indo-Pakistani War instead of Brezhnev Doctrine, the US then
             # played *that* for Ops, and the headline never ended.
-            _seed_revealed_card(state, reveal_queue[0])
+            #
+            # The reveal under Grain Sales' own header, not the entry's first: other cards
+            # reveal too. At turn 5's headline of replay 304 the USSR headlines SALT
+            # Negotiations and takes Red Scare/Purge back out of the discard pile, and the US's
+            # Grain Sales then draws Summit -- and drawing Red Scare/Purge instead handed the
+            # US a 4 Ops card for the 1 Op coup on Angola the log records failing.
+            under_grain = _revealed_under(e, "Event: Grain Sales To Soviets")
+            _seed_revealed_card(state, under_grain[1] if under_grain else reveal_queue[0])
             seeded_reveal = True
             ctx = state.ctx()
         mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
@@ -2500,9 +2507,17 @@ def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[
         in_play |= {card_id(nm) for nm in (e.headlines or {}).values()}
 
         if _SALT_NEGOTIATIONS in in_play:
-            for rev_side, nm in (e.revealed or []):
-                c = card_id(nm)
-                if c and rev_side == side and c in held_set:
+            # The card SALT reclaims is the one revealed under its own header, not every card
+            # the entry reveals: other things reveal cards and one of them can share the entry.
+            # At turn 5's headline of replay 288 the USSR headlines SALT Negotiations and takes
+            # OPEC back out of the discard pile, and the US's Missile Envy then reveals Shuttle
+            # Diplomacy out of the USSR hand. Counting both as reclaimed left Shuttle Diplomacy
+            # out of the dealt hand, so Missile Envy found only OPEC where the log has the two
+            # of them tied on 3 Ops and the USSR choosing which to hand over.
+            reclaimed = _revealed_under(e, "Event: SALT Negotiations*")
+            if reclaimed is not None:
+                rev_side, c = reclaimed
+                if rev_side == side and c in held_set:
                     acquired[c] = idx
 
         if _ASK_NOT in in_play:
