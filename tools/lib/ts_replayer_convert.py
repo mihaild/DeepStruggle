@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import numpy as np
 import ts_engine as ts
 
-from tools.lib.ts_replayer_parse import (Entry, RE_PASSED_ROUND, country_id,
+from tools.lib.ts_replayer_parse import (Entry, RE_PASSED_ROUND, Section, country_id,
                                         parse_entry)
 
 
@@ -1030,6 +1030,37 @@ def _coup_extras(rows: List[Tuple[str, int, int, int, int]],
     return out
 
 
+def rows_queued_twice(e: Entry) -> Dict[int, int]:
+    """Points that both queues hold because one log row put them in each. {country: count}.
+
+    On a coup or realignment entry the Ops queue takes in every row no Ops section claimed --
+    an event's own placements among them, so that they can still be driven where the event
+    does not ask for them. Those same rows are in the event queue, under the "Event:" header
+    they were printed beneath. Two views of one point: spending it has to spend it in both.
+
+    At turn 9 AR7 of replay 277 Tear Down This Wall puts 3 Influence into East Germany on its
+    own and grants 3 Ops of free realignment. Struck from the event queue alone, East Germany
+    was still in the Ops queue, and the two realignments the US declined went there instead --
+    against the very Influence the card had just placed, taking all 3 back off the board.
+    """
+    if e.mode not in ("coup", "realign") or not e.sections:
+        return {}
+    runs = ([(s.targets, s.influence) for s in e.sections if s.mode in ("coup", "realign")]
+            or [(e.targets, list(e.influence or []))])
+    claimed = [rec for _t, rows in runs for rec in rows]
+    in_event = event_queue(e)
+    shared: Dict[int, int] = {}
+    for rec in (e.influence or []):
+        if rec in claimed:
+            claimed.remove(rec)
+            continue
+        cid, count = int(rec[2]), abs(int(rec[1]))
+        held = min(count, in_event.count(cid) - shared.get(cid, 0))
+        if held > 0:
+            shared[cid] = shared.get(cid, 0) + held
+    return shared
+
+
 def point_queue(e: Entry) -> List[int]:
     """Countries the player actually pointed at -- decisions, not consequences.
 
@@ -1555,6 +1586,38 @@ def _defcon_after(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
     return None
 
 
+def _free_action_declined(e: Entry, sections: List[Section], card: int) -> bool:
+    """Whether the log shows this card's free coup or realignment simply not being taken.
+
+    Junta and Tear Down This Wall place Influence and then *may* coup or realign; a log that
+    records the placement and nothing after it is a player who declined.
+
+    Which headers are "after it" is the question a headline complicates. It resolves two cards
+    and prints each one's Ops under its own "Event:" header, so a header still queued is not
+    necessarily this card's to spend. At turn 7's headline of replay 279 the US headlines Grain
+    Sales To Soviets, hands back the card it drew and coups Angola with Grain Sales' own Ops;
+    the USSR's Junta then places 2 Influence in Mexico and takes no free action at all. Reading
+    the US's coup header as Junta's turned that decline into a coup, and it fell on Mexico.
+    """
+    if card:
+        names = {_norm(str(ts.CardData.get_card_info(card)["name"]))}
+        if e.played_card and card == card_id(e.played_card):
+            # A card played *through* another one prints its Ops under the header of the card
+            # that named it, and its own event never fires -- so there is no free action to
+            # decline and the header is simply where its Operations are. At turn 9 AR1 of
+            # replay 141 the USSR plays UN Intervention naming Tear Down This Wall and coups
+            # Libya with its 3 Ops, all of it under "Event: UN Intervention".
+            if e.card:
+                names.add(_norm(e.card))
+            names.update(_norm(nm) for nm in (e.headlines or {}).values())
+        if any(s.under_event and _norm(s.under_event) in names for s in e.sections):
+            return False        # the log prints an Ops header under this card's own event
+        if any(s.under_event for s in e.sections):
+            return True         # the headers there are, are another card's
+    # Nothing is attributed, so the entry's own shape is all there is to go on.
+    return not sections and e.mode not in _OP_MODE
+
+
 def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                  raw: Dict, max_steps: int = 300,
                  defcon_after: Optional[int] = None) -> bool:
@@ -1565,6 +1628,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     mover_of_entry = (ts.Player.US if e.player == "US"
                       else (ts.Player.USSR if e.player == "USSR" else ts.Player.NONE))
     pq = point_queue(e)
+    # Points one log row wrote into both queues -- see rows_queued_twice.
+    shared = rows_queued_twice(e)
     evq = event_point_queues(e)
     # Points the log records that belong to no Ops header and no named event: NORAD's, in
     # practice. Asked last, after every queue that can say what a decision is for.
@@ -2041,7 +2106,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
 
         elif (dt == ts.DecisionType.SELECT_OP_MODE
                 and int(ctx.pending_op_card) in _FREE_ACTION_CARDS
-                and not sections and e.mode not in _OP_MODE):
+                and _free_action_declined(e, sections, int(ctx.pending_op_card))):
             # Junta and Tear Down This Wall place first and then *may* make a free coup or
             # realignment, so the engine bars Influence from the Ops their event grants and
             # lets INFLUENCE stand for declining -- see free_action_bars_influence in
@@ -2284,31 +2349,59 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                  1 if mover == ts.Player.US else -1))
             conv.decisions_emitted += 1
 
-        moved_from = None
-        if answered is not None and not rolled:
-            country = state.get_country(answered[1])
-            moved_from = (int(country.us_influence), int(country.ussr_influence))
+        # A queue holds one entry per point of Influence the log records, and the engine does
+        # not always ask once per point. Junta places 2 in one country and asks once; Tear Down
+        # This Wall places its 3 in East Germany without asking at all. Whatever it moves is
+        # spent, so the board before and after each step is what says how many points a queue
+        # still owes -- see the accounting below.
+        watching = {int(c) for queue in ([pq, eq, loose] + list(evq.values())) for c in queue}
+        if answered is not None:
+            watching.add(int(answered[1]))
+        before_board = ({cid: (int(state.get_country(cid).us_influence),
+                               int(state.get_country(cid).ussr_influence))
+                         for cid in watching} if not rolled else {})
 
         ts.Engine.step_flat(state, int(chosen))
 
-        # A queue holds one entry per point of Influence, and most decisions move exactly one.
-        # Some move the lot in a single answer: Junta places 2 in one country, and the engine
-        # asks once. The points the queue still holds for that country were spent by that same
-        # answer, and leaving them queued lets a later decision spend them again -- at turn 9
-        # AR3 of replay 260 the US plays Junta into Argentina, coups Argentina, and NORAD's
-        # placement then took Junta's leftover point instead of the United Kingdom the log
-        # records, leaving the engine a point out in both.
-        if moved_from is not None and answered is not None:
-            queue, want_c = answered
-            country = state.get_country(want_c)
-            spent = (abs(int(country.us_influence) - moved_from[0])
-                     + abs(int(country.ussr_influence) - moved_from[1]))
-            for _ in range(spent - 1):
-                if want_c not in queue:
-                    break
-                queue.remove(want_c)
-                if queue is not pq and queue is not eq and want_c in eq:
-                    eq.remove(want_c)
+        # Points the engine has already spent, struck off so nothing spends them twice.
+        #
+        # At turn 9 AR3 of replay 260 the US plays Junta into Argentina -- 2 Influence, one
+        # answer -- coups Argentina, and NORAD's placement then took Junta's leftover Argentina
+        # point instead of the United Kingdom the log records, leaving the engine a point out
+        # in both. At turn 9 AR7 of replay 277 Tear Down This Wall puts 3 into East Germany on
+        # its own and offers 3 Ops of free realignment; the US realigns France once and stops,
+        # and the two Ops they declined went on realigning East Germany -- against the very
+        # Influence the card had just placed there, taking all 3 back off the board.
+        #
+        # Not on a step that rolls: a coup or realignment moves Influence as its result, and
+        # the log records that as a result rather than as a point anyone spent.
+        for cid, (us_before, ussr_before) in before_board.items():
+            country = state.get_country(cid)
+            spent = (abs(int(country.us_influence) - us_before)
+                     + abs(int(country.ussr_influence) - ussr_before))
+            if answered is not None and cid == int(answered[1]):
+                spent -= 1          # that one point was struck off when the queue answered
+            if spent <= 0:
+                continue
+            # The queue that answered first, then the ones an event's own placements come from.
+            own = evq.get(int(ctx.resolving_card))
+            for queue in ([answered[0]] if answered is not None else []) + \
+                    ([own] if own is not None else []) + [eq, pq, loose]:
+                while spent > 0 and cid in queue:
+                    queue.remove(cid)
+                    if queue is not pq and queue is not eq and cid in eq:
+                        eq.remove(cid)
+                    # One row, two queues: see rows_queued_twice. In the Ops queue those rows
+                    # sit after the targets, which are points of their own -- an entry can
+                    # place Influence in the very country it then realigns, as Junta's event
+                    # does at turn 6 AR4 of replay 177 -- so it is the last copy that is the
+                    # duplicate, not the first.
+                    if shared.get(cid, 0) > 0:
+                        twin = pq if queue is not pq else eq
+                        if cid in twin:
+                            del twin[len(twin) - 1 - twin[::-1].index(cid)]
+                            shared[cid] -= 1
+                    spent -= 1
 
     return True
 

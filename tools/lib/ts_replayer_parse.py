@@ -102,6 +102,10 @@ class Section:
     mode: str
     ops: int
     event: bool                      # header appeared inside the event's own text
+    # The event whose text the header appeared in, by name, or None outside one. A headline
+    # holds two cards and each one's Ops are printed under its own "Event:" header, which is
+    # the only thing that says whose they are.
+    under_event: Optional[str] = None
     influence: List[Tuple[str, int, int, int, int]] = field(default_factory=list)
     targets: List[int] = field(default_factory=list)
 
@@ -316,7 +320,8 @@ def parse_entry(raw: Dict) -> Entry:
             mode = {"Place Influence": "influence", "Coup": "coup",
                     "Realignment": "realign", "Realign": "realign",
                     "Space Race": "space"}[m.group(1)]
-            e.sections.append(Section(mode=mode, ops=int(m.group(2)), event=in_event))
+            e.sections.append(Section(mode=mode, ops=int(m.group(2)), event=in_event,
+                                      under_event=current_event))
             section_open = True
             if e.mode is None:
                 # First header is how the card itself was played. A later one belongs to the
