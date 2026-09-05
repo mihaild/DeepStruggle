@@ -1311,6 +1311,7 @@ _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
+_THE_CHINA_CARD = 6
 _SPACE_WALK_DISCARD = 250
 _OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
@@ -1418,7 +1419,8 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
                    raw: Optional[Dict], e: Optional[Entry] = None,
                    returned_cid: Optional[int] = None,
                    defcon_after: Optional[int] = None,
-                   defcon_set: Optional[int] = None) -> Optional[int]:
+                   defcon_set: Optional[int] = None,
+                   played_cid: Optional[int] = None) -> Optional[int]:
     """Pick the branch of a two-sided event that leads where the log went.
 
     Events like Warsaw Pact Formed offer a genuine choice -- remove US influence from Eastern
@@ -1445,6 +1447,17 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
             plays_it = (int(probe.ctx().pending_op_card) == returned_cid
                         or int(probe.ctx().resolving_card) == returned_cid)
             score += 0 if plays_it else 2000
+        elif played_cid is not None:
+            # ...and the other way round, which the log states just as plainly: "US plays
+            # Panama Canal Returned*". Without it the choice between playing the card and
+            # handing it back was left to how close the board came out, which is nothing at all
+            # where the card's play barely moves it -- 126 of the corpus's 655 branch searches
+            # were decided that way, every one of them this card's.
+            plays_it = (int(probe.ctx().pending_op_card) == played_cid
+                        or int(probe.ctx().resolving_card) == played_cid
+                        or probe.get_card_location(played_cid) in (
+                            ts.CardLocation.DISCARD_PILE, ts.CardLocation.REMOVED_FROM_GAME))
+            score += 2000 if plays_it else 0
         # Some branches are a numeric setting rather than a target: How I Learned To Stop
         # Worrying picks the new DEFCON, and with no targets to tell the options apart the
         # first legal one -- DEFCON 1 -- ended the game at turn 4's headline of replay 101.
@@ -2382,7 +2395,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 informative = chosen is not None
             if chosen is None:
                 chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid,
-                                        defcon_after, hils_defcon)
+                                        defcon_after, hils_defcon,
+                                        card_id(e.played_card) if e.played_card else None)
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and not pq and not eq_here and sections:
@@ -3160,22 +3174,31 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                      _hand_after(turn_hands["USSR"], played["USSR"], set(pending["USSR"])))
 
         # --- the card(s) this entry uses must be in the tracked hand ---
+        # Diagnostic: the conversion does not depend on it, and the tracked hand is only one
+        # of the things that decides what the engine holds. Two cards are not misses and were
+        # drowning out the ones that are. The China Card is in no hand list at all -- the
+        # engine keeps it in china_card_holder -- and an entry's own card is named again by its
+        # own discard line, which is how Quagmire and Bear Trap escapes are recorded, so
+        # marking discards spent before checking the card counted it twice. Of 1,247 misses
+        # before this, 787 were the first and 406 the second; 54 were real.
         for side, nm in (e.headlines or {}).items():
             cid = card_id(nm)
-            if cid and cid not in _hand_after(turn_hands[side], played[side]):
+            if cid and cid != _THE_CHINA_CARD and cid not in _hand_after(turn_hands[side],
+                                                                        played[side]):
                 conv.hand_misses += 1
             if cid:
-                played[side].add(cid)
-        for side, nm in (e.discards or []):
-            cid = card_id(nm)
-            if cid and side in played:
                 played[side].add(cid)
         if e.card and " & " not in e.card:
             cid = card_id(e.card)
             side = "US" if e.player == "US" else "USSR"
             if cid and e.player in ("US", "USSR"):
-                if cid not in _hand_after(turn_hands[side], played[side]):
+                if (cid != _THE_CHINA_CARD
+                        and cid not in _hand_after(turn_hands[side], played[side])):
                     conv.hand_misses += 1
+                played[side].add(cid)
+        for side, nm in (e.discards or []):
+            cid = card_id(nm)
+            if cid and side in played:
                 played[side].add(cid)
         # A card spent by being *named* rather than selected leaves the hand just the same. UN
         # Intervention names one of the player's own cards and uses its Ops, and leaving it in
