@@ -2223,6 +2223,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     if chosen is not None:
                         queue.pop(slot)
                         answered = (queue, want_c)
+                        # One row, two queues: see rows_queued_twice. Spending it in either
+                        # view spends it in both, whether the decision answered from the queue
+                        # or the engine moved the Influence itself.
+                        if shared.get(want_c, 0) > 0:
+                            twin = pq if queue is not pq else eq
+                            if want_c in twin:
+                                del twin[len(twin) - 1 - twin[::-1].index(want_c)]
+                                shared[want_c] -= 1
                         if queue is not pq and queue is not eq and want_c in eq:
                             # A per-event queue holds the same points the shared event queue
                             # does, so spending one there has to spend it here as well. Left

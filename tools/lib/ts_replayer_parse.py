@@ -268,6 +268,15 @@ def parse_entry(raw: Dict) -> Entry:
             # Independent Reds, whose event places 1 US Influence in Czechoslovakia, and the
             # "US +1 in Venezuela" that follows a blank line is NORAD's.
             current_event = None
+            # ...and it closes the Ops section too, for the same reason: what follows the
+            # blank line is not part of the operation above it. A coup prints its removal and
+            # its placement directly under its own header, so a placement below a blank line
+            # is something else -- at turn 6 AR4 of replay 281 the US coups Argentina for a
+            # margin of 3, which removes the 3 USSR Influence there and leaves nothing over to
+            # place, and the "US +1 in Argentina" after the gap is NORAD's. Read as part of
+            # the coup it was the victim rule's exception, which only catches a placement by
+            # the side that just lost Influence.
+            section_open = False
             continue
         # Playing an opponent's card for Ops asks which resolves first. The log answers it by
         # line order: whichever of "Event:" or the mode header appears first.
