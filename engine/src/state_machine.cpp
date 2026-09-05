@@ -735,8 +735,15 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                                 (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE)));
 
                 if (trapped) {
-                    const auto& c_info = CardData::get_card(card);
-                    if (c_info.ops >= 2) {
+                    // Effective Ops, and the same reading the mask takes: a card is eligible
+                    // for the trap on what it is worth now, not on what is printed.
+                    // Containment and Brezhnev Doctrine each add one to their side's cards and
+                    // Red Scare/Purge takes one away. Judged here on the printed value, a card
+                    // the mask had offered as a discard fell through to an ordinary play: at
+                    // turn 6 AR1 of ts-replayer game 229 the USSR discards Panama Canal
+                    // Returned, 1 Op printed and 2 under Brezhnev Doctrine, and the engine
+                    // asked how it wanted to spend them.
+                    if (Operations::get_effective_ops(state, card, p) >= 2) {
                         if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == 0)) {
                             state.forced_card_player = Player::NONE;
                             state.forced_card_id = 0;

@@ -93,9 +93,19 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             if (trapped) {
                 CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+                // Effective Ops, as the discard itself is judged -- the same reading Latin
+                // American Debt Crisis takes of its own 3. Containment and Brezhnev Doctrine
+                // each add one to their side's cards and Red Scare/Purge takes one away, and
+                // a card is eligible for the trap on what it is worth now, not on what is
+                // printed. At turn 6 AR1 of ts-replayer game 229 the USSR discards Panama
+                // Canal Returned, 1 Op printed, which Brezhnev Doctrine makes 2.
+                //
+                // No target region, because a discard has none: the Asia bonuses that Vietnam
+                // Revolts and the China Card carry are for operations conducted there.
                 bool has_2ops = false;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc && CardData::get_card(i).ops >= 2) {
+                    if (state.card_locations[i] == loc &&
+                        Operations::get_effective_ops(state, i, p) >= 2) {
                         has_2ops = true;
                         mask_out[i] = 1;
                     }
