@@ -222,10 +222,17 @@ cmake --build build_san -j
    after it is too late. At turn 2's headline of ts-replayer game 313 the USSR headlines
    Vietnam Revolts against Five Year Plan, the higher Ops, and the Defectors it discards leaves
    Vietnam at [0][0].
-14. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+14. **Each Headline Card Resolves In Its Own Frame**: `advance_headline_step` gives the second
+   card a fresh `DecisionContext` rather than writing over the first's. What lasts belongs to
+   the state -- the effect bits, the card Missile Envy forced on its recipient -- and what does
+   not includes the visited bitmap that enforces "no more than one per country". At turn 7's
+   headline of ts-replayer game 92 the US's Colonial Rear Guards places in Zaire, Angola,
+   Zimbabwe and Nigeria, and the USSR's Decolonization was then offered none of them: three of
+   its four Influence had nowhere to go.
+15. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
    `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
-15. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+16. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

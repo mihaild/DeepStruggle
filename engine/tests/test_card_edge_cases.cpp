@@ -1490,6 +1490,56 @@ TEST(CardEdgeCasesTest, Defectors_AfterTheUSSRHeadlineHasResolved_CancelsNothing
     ASSERT_EQ(state.defcon, 4);   // Duck and Cover resolved: DEFCON degrades by one
 }
 
+// Each headline card resolves in a decision frame of its own. What lasts belongs to the state,
+// not to the frame -- and the countries a card has already placed in are kept in the frame, as
+// the visited bitmap that enforces "no more than one per country".
+TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
+    // Turn 7's headline of ts-replayer game 92: the US headlines Colonial Rear Guards and the
+    // USSR headlines Decolonization. Both place one Influence per country in Africa or
+    // Southeast Asia, and the log has them overlapping in Zaire, Angola and Nigeria.
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
+            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::COLONIAL_REAR_GUARDS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DECOLONIZATION] = ts::CardLocation::HAND_USSR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::COLONIAL_REAR_GUARDS, 0, 0});
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DECOLONIZATION, 0, 0});
+
+    // Colonial Rear Guards is 2 Ops against Decolonization's 2 and the US wins ties, so it
+    // resolves first: four US Influence, one per country.
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::COLONIAL_REAR_GUARDS);
+    const uint8_t shared[] = {ts::countries::ZAIRE, ts::countries::ANGOLA,
+                              ts::countries::NIGERIA};
+    for (uint8_t cid : shared) {
+        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0});
+    }
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ZIMBABWE, 0, 0});
+
+    // ...and Decolonization may place in the same countries, because its frame is its own.
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::DECOLONIZATION);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    uint8_t mask[128] = {0};
+    size_t mask_size = 0;
+    ts::ActionMask::generate_mask(state, mask, &mask_size);
+    for (uint8_t cid : shared) {
+        ASSERT_EQ(mask[cid], 1);
+    }
+    for (uint8_t cid : shared) {
+        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0});
+    }
+    ASSERT_EQ(state.countries[ts::countries::ZAIRE].ussr_influence, 1);
+    ASSERT_EQ(state.countries[ts::countries::ANGOLA].ussr_influence, 1);
+    ASSERT_EQ(state.countries[ts::countries::NIGERIA].ussr_influence, 1);
+}
+
 TEST(CardEdgeCasesTest, SpaceRace_Box1_EarthSatellite_VPAwards_FirstAndSecond) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);

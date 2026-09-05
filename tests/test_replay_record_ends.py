@@ -71,17 +71,18 @@ def test_replay_182_is_whole_and_no_longer_stops_short() -> None:
     assert conv.entries_converted == conv.entries_total == 143
 
 
-def test_a_disagreement_in_a_turn_the_log_completes_is_still_a_failure() -> None:
-    """Replay 92 turn 7's headline: the log states a board and the engine reaches another.
+def test_every_game_in_the_corpus_converts() -> None:
+    """There is no disagreement left to point at, which is what this file is here to guard.
 
-    A disagreement inside a turn is ours to fix rather than the recording's to excuse -- it
-    stops the conversion where it stands, and nothing after it is converted.
+    A disagreement inside a turn the log completes is ours to fix rather than the recording's
+    to excuse: it stops the conversion where it stands, and nothing after it is converted. The
+    rule is tested on its own below, against a Mismatch built by hand -- there is no longer a
+    game that exercises it.
     """
-    conv = convert_game(_game(92))
-    assert conv.failure is not None
-    assert conv.failure.kind == "board mismatch after replay"
-    assert (conv.failure.turn, conv.failure.phase) == (7, "Headline")
-    assert conv.truncated_at is None
+    for path in sorted(glob.glob(os.path.join(CORPUS, "*.json.gz"))):
+        with gzip.open(path, "rt") as f:
+            conv = convert_game(json.load(f))
+        assert conv.failure is None, f"{os.path.basename(path)} stopped at {conv.failure}"
 
 
 def test_a_skipped_round_at_the_end_of_the_file_is_the_record_ending() -> None:

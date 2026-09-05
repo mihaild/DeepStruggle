@@ -201,6 +201,15 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
             }
             const auto& c_info = CardData::get_card(h2_card);
             Player exec_player = (c_info.side == get_opponent(h2_owner)) ? get_opponent(h2_owner) : h2_owner;
+            // A fresh context: the first headline is finished, and nothing it left behind is
+            // the second one's. What lasts belongs to the state -- the effect bits, the card
+            // Missile Envy forced on its recipient -- not to the decision frame. The countries
+            // a card has already placed in are kept in the frame's visited bitmap, which is how
+            // "no more than one per country" is enforced, and both headline cards can want it:
+            // at turn 7's headline of ts-replayer game 92 the US's Colonial Rear Guards places
+            // in Zaire, Angola, Zimbabwe and Nigeria, and the USSR's Decolonization is offered
+            // none of them, so three of its four Influence had nowhere to go.
+            state.ctx() = DecisionContext{};
             state.phasing_player = h2_owner;
             state.ctx().decision_player = exec_player;
             state.ctx().resolving_card = h2_card;
