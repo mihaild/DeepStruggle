@@ -2188,6 +2188,17 @@ def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[
                     c = card_id(pe.card)
                     if c:
                         pinned.add(c)
+                # A card played through another one counts as spent just the same. UN
+                # Intervention names a card in the player's own hand and uses its Ops, and the
+                # log records that as "US plays Arab-Israeli War" rather than as the entry's
+                # card -- so at turn 8 AR3 of replay 262 Arab-Israeli War was left out of the
+                # dealt hand and handed to the Ask Not draw four action rounds later. The US
+                # then held no card of the USSR's for UN Intervention to name, the event
+                # fizzled, and its 2 Ops were never spent.
+                if pe.player == side and pe.played_card:
+                    c = card_id(pe.played_card)
+                    if c:
+                        pinned.add(c)
                 nm = (pe.headlines or {}).get(side)
                 if nm:
                     c = card_id(nm)
