@@ -13,6 +13,11 @@ is the one the human actually made, and a plausible substitute is indistinguisha
 one once it is in the file. The single approved exception is Our Man in Tehran, whose log lines
 record the discards but never the five revealed cards, so the rest of that peek is invented.
 
+Where the log is the one that is wrong -- it states a score the rules do not produce -- the
+engine's number stands and the entry is listed in _LOG_MISCOUNTED with the offset it leaves
+behind. That list is for arithmetic the rules settle outright, never for a disagreement that
+is merely unexplained.
+
 Failures are reported with replay id and turn/action round rather than counted, since a
 systematic failure in one card's handling looks identical to noise in a summary statistic.
 """
@@ -149,6 +154,23 @@ _KNOWN_SCORE: Dict[int, Dict[Tuple[int, str, str], int]] = {
     127: {(5, "AR3", "USSR"): -5},
 }
 
+# Entries where the log's own arithmetic is wrong and the engine is right. The engine's score
+# stands, and every score the log states from there on is out by the listed amount (engine
+# minus log), so later entries are compared against the log's number plus that offset.
+#
+# Distinct from _KNOWN_SCORE above, which is a legal choice the engine does not offer and
+# where the log is the record of what happened. Here the log records something the rules do
+# not produce, and adopting its number would put a score into the training data that the board
+# it comes with does not pay.
+#
+#   replay 259, turn 7 AR3 -- Asia Scoring with Shuttle Diplomacy in play, and the USSR holds
+#   Japan at [4][8]. The card takes a USSR battleground country out of the region, and taking
+#   Japan takes the USSR's superpower-adjacent Influence with it, since Japan borders the
+#   United States. The log scores the USSR 2 and keeps the adjacency; it is 1.
+_LOG_MISCOUNTED: Dict[int, Dict[Tuple[int, str, str], int]] = {
+    259: {(7, "AR3", "USSR"): 1},
+}
+
 
 # The engine's opening handicap is the tournament one: 2 extra US Influence, placed where the
 # US already has some. Nine of the corpus's 287 games were played with a different one and are
@@ -216,6 +238,9 @@ class Conversion:
     hand_reattributions: int = 0
     # Entries where a listed disagreement (_KNOWN_SCORE) replaced the engine's score.
     scores_forced: int = 0
+    # Entries where the log's own arithmetic is wrong (_LOG_MISCOUNTED) and the engine's score
+    # stands. Every score the log states afterwards is compared against an offset number.
+    log_miscounts: int = 0
     # Cards whose event the engine resolved while driving the current entry. Reset per entry.
     events_resolved: Set[int] = field(default_factory=set)
     # (turn, entries converted, samples emitted) as the current turn began.
@@ -568,7 +593,7 @@ def _narrated_score(entry: Entry) -> Optional[int]:
 
 
 def _reconcile_scalars(state: ts.GameState, entry: Entry,
-                       take_score: bool = True) -> None:
+                       take_score: bool = True, vp_offset: int = 0) -> None:
     """Force VP and DEFCON to the logged values.
 
     Without this the engine scores from its own board and the two diverge fast: on replay 100
@@ -625,7 +650,10 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry,
         else:                                  # "Score is even."
             narrated = 0
     if narrated is not None and take_score:
-        state.victory_points = narrated
+        # vp_offset is how far the log's own arithmetic has fallen behind the truth, from a
+        # listed entry where it miscounted (_LOG_MISCOUNTED). Forcing the raw number here
+        # would undo the correction on the very next entry.
+        state.victory_points = max(-20, min(20, narrated + vp_offset))
     if entry.defcon is not None and 1 <= int(entry.defcon) <= 5:
         state.defcon = int(entry.defcon)
 
@@ -2561,6 +2589,9 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
     # Whether driving the previous entry carried the game into a new turn. Its narrated score
     # is then out of date -- see _reconcile_scalars.
     prev_crossed_turn = False
+    # How far the log's stated score has fallen behind the truth, from a listed entry where the
+    # log miscounted (_LOG_MISCOUNTED). Zero for every game but the few that are listed.
+    log_vp_offset = 0
     # Where the turn now being converted began: how many entries had been converted and how
     # many samples emitted. A record that stops mid-turn takes the whole turn with it, so this
     # is what a truncation rewinds to. See _rewind_to_turn_start.
@@ -2658,7 +2689,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         if prev_raw is not None:
             _reconcile_board(state, prev_raw.get("countries"))
         if prev_entry is not None:
-            _reconcile_scalars(state, prev_entry, take_score=not prev_crossed_turn)
+            _reconcile_scalars(state, prev_entry, take_score=not prev_crossed_turn,
+                               vp_offset=log_vp_offset)
         _settle_cuban_missile_offer(state, e)
 
         _apply_hands(state,
@@ -2770,6 +2802,12 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             if prev_entry.score is not None and int(e.score) != int(prev_entry.score):
                 want_score = int(e.score)
                 crossed_turn = False
+        miscount = _LOG_MISCOUNTED.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
+        if miscount is not None:
+            log_vp_offset += miscount
+            conv.log_miscounts += 1
+        if want_score is not None:
+            want_score += log_vp_offset
         forced = _KNOWN_SCORE.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
         if forced is not None:
             # A listed disagreement: the log's score stands and the run continues from it.
