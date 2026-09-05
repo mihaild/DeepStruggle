@@ -384,10 +384,20 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
         }
     }
     if (cnt == 0) {
-        // USSR has no cards; US conducts Ops using 2 Ops
+        // USSR has no cards; US conducts Ops using 2 Ops.
+        //
+        // resolving_card has to be cleared, as both of the branches below clear it. Any
+        // decision taken while it is set is handed to that card's own handler whatever its
+        // type, so the op mode chosen here would reach Grain Sales' CHOOSE_BRANCH reader and
+        // be taken for a branch: INFLUENCE is 0, which is "play the drawn card", and there is
+        // no drawn card. Played directly the field is already 0 and nothing showed; fired
+        // through another card's event it is not. At turn 8 AR7 of ts-replayer game 219 the US
+        // plays Five Year Plan, whose event has the USSR discard Grain Sales, and the two
+        // Influence it then owes were lost to a play mode for card 0.
         state.ctx().decision_player = Player::US;
         state.ctx().pending_op_card = card_ids::GRAIN_SALES;
         state.ctx().pending_ops_value = Operations::grant_ops(state, 2, Player::US);
+        state.ctx().resolving_card = 0;
         state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
         return false;
     }
