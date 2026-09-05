@@ -1396,7 +1396,8 @@ def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) ->
 def _choose_branch(state: ts.GameState, legal, wanted: List[int],
                    raw: Optional[Dict], e: Optional[Entry] = None,
                    returned_cid: Optional[int] = None,
-                   defcon_after: Optional[int] = None) -> Optional[int]:
+                   defcon_after: Optional[int] = None,
+                   defcon_set: Optional[int] = None) -> Optional[int]:
     """Pick the branch of a two-sided event that leads where the log went.
 
     Events like Warsaw Pact Formed offer a genuine choice -- remove US influence from Eastern
@@ -1443,16 +1444,27 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
                                 and int(probe.victory_points) == want_vp)
         if reaches_logged_score:
             score += 4000
-        # How I Learned To Stop Worrying sets DEFCON to whatever its player names, and the
-        # entry never says which -- it narrates the 5 Military Operations and nothing else. The
-        # entry's own DEFCON field is the level before the card, so the level chosen is the one
-        # the *next* entry carries. At turn 5 AR7 of replay 260 the USSR sets it to 3; left to
-        # the board and score, which the card does not move either, the search settled on
-        # DEFCON 2, and NORAD -- which fires on a DEFCON of 2 at the end of an action round --
-        # asked the US for a placement the log has no record of, because it never happened.
-        if (defcon_after is not None
-                and int(state.ctx().resolving_card) == _HOW_I_LEARNED_TO_STOP_WORRYING):
-            score += 8000 if int(probe.defcon) == defcon_after else 0
+        # How I Learned To Stop Worrying sets DEFCON to whatever its player names. Where the
+        # log prints that level under the card's own header it is the answer outright; where it
+        # does not, the level the *next* entry carries is, since the entry's own field is the
+        # level before the card. At turn 5 AR7 of replay 260 the USSR sets it to 3; left to the
+        # board and score, which the card does not move either, the search settled on DEFCON 2,
+        # and NORAD -- which fires on a DEFCON of 2 at the end of an action round -- asked the
+        # US for a placement the log has no record of, because it never happened.
+        if int(state.ctx().resolving_card) == _HOW_I_LEARNED_TO_STOP_WORRYING:
+            if defcon_set is not None:
+                # By the branch itself, not by the board it reaches: this card's branches are
+                # the five DEFCON levels, and stepping one runs the rest of the action round
+                # with it -- including the turn end, which improves DEFCON by one, so 4 and 5
+                # both read as 5 afterwards. They are a VP apart: the Military Operations
+                # comparison at that turn end is against the level the card left behind. At
+                # turn 8 AR7 of replay 32 the US sets DEFCON to 5 with the USSR 2 short of it,
+                # and taking 4 instead paid them 1 VP where the log pays 2.
+                score += 8000 if int(
+                    ts.ActionMask.decode_flat_action(state, int(a)).primary_id
+                ) == defcon_set else 0
+            elif defcon_after is not None:
+                score += 8000 if int(probe.defcon) == defcon_after else 0
         if e is not None and e.defcon is not None:
             # ...and only where the log names no targets, for the same reason the score is:
             # DEFCON improves at a turn end, so a branch that finishes the event sails on to
@@ -1574,6 +1586,26 @@ def _find(state, legal, want_type, match) -> Optional[int]:
         if int(ma.decision_type) == int(want_type) and match(ma):
             return int(a)
     return None
+
+
+_RE_DEFCON_SET = re.compile(r"DEFCON (?:degrades|improves) to (\d+)")
+
+
+def _defcon_set_under(e: Entry, marker: str) -> Optional[int]:
+    """The DEFCON level named on the first line after `marker`, if there is one.
+
+    How I Learned To Stop Worrying sets DEFCON to a level of its player's choosing, and the log
+    prints that outright under the card's own header. It is better evidence than the level the
+    next entry carries, because the turn end improves DEFCON by one: at turn 8 AR7 of replay 32
+    the US sets it to 5 and the turn ends immediately, so setting it to 4 also reads as 5 by
+    the next entry -- and the two differ by a VP, since the Military Operations comparison at
+    that turn end is against the level the card left behind.
+    """
+    at = (e.text or "").find(marker)
+    if at < 0:
+        return None
+    m = _RE_DEFCON_SET.search(e.text, at)
+    return int(m.group(1)) if m else None
 
 
 def _defcon_after(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
@@ -1705,6 +1737,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR,
             {c for c in (card_id(nm) for sd, nm in (e.discards or [])
                          if sd == envy_reveal[0]) if c})
+    # The level How I Learned To Stop Worrying sets, where the entry prints it.
+    hils_defcon = _defcon_set_under(e, "Event: How I Learned To Stop Worrying*")
     # The die each war in this entry was decided on, in log order.
     war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     coup_roll_queue = [int(r) for r, _ok in (e.coup_rolls or [])]
@@ -2286,7 +2320,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 informative = chosen is not None
             if chosen is None:
                 chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid,
-                                        defcon_after)
+                                        defcon_after, hils_defcon)
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and not pq and not eq_here and sections:
