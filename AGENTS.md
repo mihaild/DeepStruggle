@@ -152,7 +152,11 @@ graph TD
 │   ├── play_match.py           # Unified match runner & replay generator (.tslog.json)
 │   ├── generate_dataset.py     # High-throughput vectorized demonstration generator (.jsonl.gz)
 │   ├── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & inspector
+│   ├── download_ts_replayer.py # One-time fetch of the human game corpus (cached, throttled)
 │   ├── lib/                    # Reusable simulation, evaluation & analytics backend
+│   │   ├── ts_replayer_parse.py   # The human log's grammar (entries, moves, rolls, reveals)
+│   │   ├── ts_replayer_convert.py # Verified log -> engine decisions, entry by entry
+│   │   ├── ts_replayer_hands.py   # Both hands for a whole game, solved as a z3 constraint problem
 │   │   ├── player_agent.py     # Unified Agent loader (random, heuristic, neural)
 │   │   ├── tournament_evaluator.py # Matchup runner & loss cause classifier
 │   │   ├── self_play.py        # Self-play simulation & .tslog.json recorder
@@ -336,6 +340,13 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    Charns out thousands of games in parallel using 500 C++ environments and multi-temperature schedules, dumping compressed `.jsonl.gz` datasets for supervised BC warmup.
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
    Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures (V1/V2/V3).
+6. **Human Game Corpus (`tools/download_ts_replayer.py` + `tools/lib/ts_replayer_*.py`)**:
+   Downloads community-uploaded human games from ts-replayer.fly.dev and converts them into
+   engine decisions. The conversion is verified rather than parsed: each entry is rebuilt from
+   the position the log states, driven through the engine, and its outcome compared against the
+   log's own next board. The hands, which the log never states in full, are solved for a whole
+   game at once as a constraint problem (z3, MIT-licensed and optional). 300 of 300 games
+   convert in full — 29,820 of 30,620 entries, 144,844 decisions. See `tools/README.md` §6.
 
 ---
 
@@ -369,6 +380,15 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    Before launching any model training run:
    - A git commit MUST be created recording the current codebase state (commit locally on the active branch without pushing or advancing remote master).
    - The commit hash, training mode, and a short description of what was changed and the training goal MUST be recorded in `metadata.json` within the checkpoint directory (`data/checkpoints/run_.../metadata.json`). The training CLI (`tools/train.py --description "..."`) automatically records these metadata fields at startup.
+11. **Human Replay Conversion Is Never Approximated**:
+   The ts-replayer corpus is training data for a model meant to learn how people play, so a
+   decision the log does not determine must NEVER be invented, defaulted, or filled in by a
+   heuristic — it is a failure to diagnose and fix. The same goes for the engine: report a
+   "safety net" fallback rather than relying on one, and fail loudly instead of recovering an
+   approximation. Two exceptions exist, both explicitly approved and both narrow: guessing the
+   cards Our Man in Tehran looks at, and the individually diagnosed entries in
+   `_KNOWN_SCORE` / `_LOG_MISCOUNTED` / `_INVALID_PLAYS` where the log itself is wrong. When
+   reporting a conversion mismatch, cite the exact replay, turn and action round.
 
 ---
 

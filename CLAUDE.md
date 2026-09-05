@@ -96,7 +96,9 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 # then open http://localhost:8000/?game_id=game-1&role=US
 ```
 
-Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset generation), `inspect_checkpoints.py` (scans `data/checkpoints/`, detects V1/V2/V3 architecture). Full flag reference in `tools/README.md`.
+Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset generation), `inspect_checkpoints.py` (scans `data/checkpoints/`, detects V1/V2/V3 architecture), `download_ts_replayer.py` (one-time cached fetch of the human game corpus into `data/datasets/ts_replayer/`). Full flag reference in `tools/README.md`.
+
+**Human replay conversion (`tools/lib/ts_replayer_*.py`):** the corpus of human games is converted to engine decisions by rebuilding each log entry's position, driving it through the engine, and checking the result against the log's own next board; the hands, which the log never states in full, are solved for a whole game at once as a z3 constraint problem. Nothing is guessed — a decision the log does not determine is a bug to diagnose, not a gap to fill (see `AGENTS.md` §4 invariant 11, and `tools/README.md` §6).
 
 ## Architecture
 

@@ -144,7 +144,54 @@ PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
 
 ---
 
-## 6. Shared Helpers Library (`tools/lib/`)
+## 6. `tools/download_ts_replayer.py` (Human Game Corpus) and the Converter
+
+Human Twilight Struggle games, played by people on the Playdek/Steam app and uploaded to
+ts-replayer.fly.dev, turned into engine decisions. The downloader fetches each replay's four
+JSON islands once and caches them under `data/datasets/ts_replayer/<id>.json.gz`; it throttles
+to one request a second and skips anything already on disk, so a re-run costs nothing.
+
+```bash
+PYTHONPATH=. .venv/bin/python3 tools/download_ts_replayer.py --out data/datasets/ts_replayer
+```
+
+The conversion lives in `tools/lib/` and is *verified*, not merely parsed. Every entry is
+rebuilt from the position the log states, driven through the engine as MicroActions, and the
+resulting board compared against the log's own next board -- so a mis-parsed entry surfaces as
+a mismatch on that entry rather than passing silently into the dataset. Nothing is forced and
+nothing falls back to a heuristic approximation: an entry the log does not determine is a
+failure to diagnose, not a guess to paper over. Current state of the corpus: **300 of 300
+games convert in full**, 29,820 of 30,620 entries (97.4%), 144,844 decisions.
+
+- `tools/lib/ts_replayer_parse.py`: the log's grammar -- entries, sections, influence moves,
+  die rolls, discards, reveals, headlines, and the country/card name tables.
+- `tools/lib/ts_replayer_convert.py`: the driver. Turns each entry into the queue of decisions
+  the engine asks for (`pq` for Ops, `eq`/`evq` for events), steps the engine, and reconciles
+  the outcome against the log. Also holds the small, individually diagnosed lists of entries
+  the log itself gets wrong (`_KNOWN_SCORE`, `_LOG_MISCOUNTED`, `_INVALID_PLAYS`).
+- `tools/lib/ts_replayer_hands.py`: the hands, which the log never states in full. Both hands
+  for a whole game are solved at once as a constraint problem over z3 (MIT), from the rules --
+  hand size, carry-over, spent cards being in the discard pile until a reshuffle, scoring cards
+  that cannot be held past a turn, what a trap or an empty hand proves -- with the preference
+  heuristics as soft clauses. Every hand in the corpus comes out exactly the size the rules
+  deal (4,464 of 4,464). z3 is optional; without it the converter falls back to per-turn
+  heuristics and `Conversion.hands_solved` is False.
+
+The entries that do not convert are turns whose recording stops part way: 731 of the 800 are
+genuine fragments (the log cuts off mid-turn and that turn's card lists are short to match),
+and the other 69 are five games whose file ends on an announced-but-unwritten round.
+
+Two rules of the road, both learned the hard way:
+
+- **Never force a decision the log does not state.** The corpus is training data for a model
+  meant to learn human play; an invented choice teaches it something no human did.
+- **The engine is the reference.** Where the engine and a log disagree, the log is at least as
+  likely to be wrong (`_LOG_MISCOUNTED` exists for exactly this), so diagnose before changing
+  either -- and engine changes are the user's call.
+
+---
+
+## 7. Shared Helpers Library (`tools/lib/`)
 Contains internal simulation, evaluation, and logging modules imported by the CLI tools:
 - `tools/lib/player_agent.py`: Unified agent loader (`load_agent`) and policy inference wrappers.
 - `tools/lib/batch_tournament.py`: High-throughput C++ batch tournament runner and Bradley-Terry MLE solver.
