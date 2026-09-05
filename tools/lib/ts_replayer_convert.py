@@ -1999,11 +1999,19 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     if envy_took[1] in reveal_queue:
                         reveal_queue.remove(envy_took[1])
                     informative = True
-            if chosen is None:
+            if chosen is None and not (int(ctx.resolving_card) == _STAR_WARS
+                                       and event_card_queue):
                 # Then whatever the log says was revealed. Where the engine asks which card to
                 # hand over -- Missile Envy tying NORAD against Cuban Missile Crisis at both
                 # 3 Ops -- the reveal is the answer. Guessing gave away Cuban Missile Crisis
                 # and fired its event, after which every USSR coup was an instant loss.
+                #
+                # Not Star Wars' pick, though: it reaches into the discard pile, and a card
+                # revealed by something else in the same entry can be sitting there. At turn
+                # 10's headline of replay 291 Aldrich Ames Remix reads the US hand and discards
+                # SALT Negotiations out of it, and the US's Star Wars then plays Bear Trap out
+                # of the pile -- but SALT, freshly discarded and freshly revealed, was offered
+                # first. The USSR spent turn 10 playing cards instead of discarding to the trap.
                 for slot, want_c in enumerate(reveal_queue):
                     chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
