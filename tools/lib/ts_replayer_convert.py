@@ -1826,6 +1826,9 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # Reset per decision: a stale value would misread the next target's provenance.
         target_from_ops = False
         informative = False
+        # Which queue answered this decision, and with which country: see the spending below.
+        answered: Optional[Tuple[List[int], int]] = None
+        rolled = False
 
         if (dt == ts.DecisionType.SELECT_CARD and picked_card
                 and second_cid is not None and not headline_ids):
@@ -2132,6 +2135,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                    lambda ma, w=want_c: int(ma.primary_id) == w)
                     if chosen is not None:
                         queue.pop(slot)
+                        answered = (queue, want_c)
                         if queue is not pq and queue is not eq and want_c in eq:
                             # A per-event queue holds the same points the shared event queue
                             # does, so spending one there has to spend it here as well. Left
@@ -2270,7 +2274,31 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                  1 if mover == ts.Player.US else -1))
             conv.decisions_emitted += 1
 
+        moved_from = None
+        if answered is not None and not rolled:
+            country = state.get_country(answered[1])
+            moved_from = (int(country.us_influence), int(country.ussr_influence))
+
         ts.Engine.step_flat(state, int(chosen))
+
+        # A queue holds one entry per point of Influence, and most decisions move exactly one.
+        # Some move the lot in a single answer: Junta places 2 in one country, and the engine
+        # asks once. The points the queue still holds for that country were spent by that same
+        # answer, and leaving them queued lets a later decision spend them again -- at turn 9
+        # AR3 of replay 260 the US plays Junta into Argentina, coups Argentina, and NORAD's
+        # placement then took Junta's leftover point instead of the United Kingdom the log
+        # records, leaving the engine a point out in both.
+        if moved_from is not None and answered is not None:
+            queue, want_c = answered
+            country = state.get_country(want_c)
+            spent = (abs(int(country.us_influence) - moved_from[0])
+                     + abs(int(country.ussr_influence) - moved_from[1]))
+            for _ in range(spent - 1):
+                if want_c not in queue:
+                    break
+                queue.remove(want_c)
+                if queue is not pq and queue is not eq and want_c in eq:
+                    eq.remove(want_c)
 
     return True
 
