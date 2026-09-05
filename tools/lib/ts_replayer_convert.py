@@ -1681,10 +1681,19 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     seeded_peek = False
     seeded_reveal = False
     # Missile Envy's exchange is decided by the hand, not by a decision, so the hand has to be
-    # right before the event fires rather than steered once it asks.
-    if (cid_target == _MISSILE_ENVY or _MISSILE_ENVY in headline_ids.values()) and reveal_queue:
+    # right before the event fires. The card it took is the one revealed under its own header:
+    # another card in the same entry can reveal too, as SALT Negotiations does at turn 5's
+    # headline of replay 288.
+    envy_reveal = _revealed_under(e, "Event: Missile Envy") if (
+        cid_target == _MISSILE_ENVY or _MISSILE_ENVY in headline_ids.values()) else None
+    if envy_reveal is None and (cid_target == _MISSILE_ENVY
+                                or _MISSILE_ENVY in headline_ids.values()) and reveal_queue:
         giver = ts.Player.US if (e.revealed or [("US", "")])[0][0] == "US" else ts.Player.USSR
-        _seed_missile_envy_hand(state, reveal_queue[0], giver)
+        envy_reveal = ("US" if giver == ts.Player.US else "USSR", reveal_queue[0])
+    if envy_reveal is not None:
+        _seed_missile_envy_hand(
+            state, envy_reveal[1],
+            ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR)
     # The die each war in this entry was decided on, in log order.
     war_roll_queue = [int(r) for r, _mod, _won in (e.war_rolls or [])]
     coup_roll_queue = [int(r) for r, _ok in (e.coup_rolls or [])]
@@ -1708,9 +1717,22 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             _ops_rows.remove(_rec)
         else:
             _event_last[_rec[2]] = (_rec[3], _rec[4])
+    # ...and only the rows printed under the war's *own* event header. Another card in the
+    # entry can move the same country afterwards: at turn 5's headline of replay 30 the USSR
+    # loses Brush War in Panama, and the US's Grain Sales To Soviets then hands over Panama
+    # Canal Returned, whose event puts an Influence into Panama. Demanding the post-event board
+    # of a war that changed nothing matched no roll at all.
+    _war_rows: Dict[int, Tuple[int, int]] = {}
+    for _nm, _rows in (e.influence_by_event or {}).items():
+        _wc = card_id(_nm)
+        if _wc and bool(ts.CardData.get_card_info(_wc)["is_war_card"]):
+            for _rec in _rows:
+                _war_rows[_rec[2]] = (_rec[3], _rec[4])
     war_outcome: Dict[int, Tuple[int, int]] = {}
     for _c in e.war_targets:
-        if _c in _event_last:
+        if _c in _war_rows:
+            war_outcome[_c] = _war_rows[_c]
+        elif _c in _event_last:
             war_outcome[_c] = _event_last[_c]
         else:
             _cur = state.get_country(_c)
@@ -2417,6 +2439,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 pass   # likewise: both dice are given at the realignment's chance node
             elif rolled and cur_mode == "coup" and coup_roll_queue:
                 pass   # settled at the chance node the target choice opens
+            elif rolled and target in e.war_targets and war_roll_queue:
+                # A war whose die the log states needs no search either, and searching could
+                # not settle it: the expectation is the entry's final board, and another card
+                # in the same entry can move the country afterwards. At turn 5's headline of
+                # replay 30 the USSR loses Brush War in Panama -- which leaves it untouched --
+                # and the US's Grain Sales To Soviets then hands over Panama Canal Returned,
+                # whose event puts an Influence there. No roll reaches a Panama the war never
+                # touched and the card had not yet reached.
+                pass
             elif rolled and force_outcome(state, chosen, outcome):
                 seed_settled = True
             elif rolled:
