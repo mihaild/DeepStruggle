@@ -1260,6 +1260,7 @@ _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
+_HOW_I_LEARNED_TO_STOP_WORRYING = 46
 _TEAR_DOWN_THIS_WALL = 96
 # The two cards whose event grants Ops that may only be spent on a coup or a realignment, and
 # whose free action is optional. The engine offers INFLUENCE as the decline.
@@ -1353,7 +1354,8 @@ def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) ->
 
 def _choose_branch(state: ts.GameState, legal, wanted: List[int],
                    raw: Optional[Dict], e: Optional[Entry] = None,
-                   returned_cid: Optional[int] = None) -> Optional[int]:
+                   returned_cid: Optional[int] = None,
+                   defcon_after: Optional[int] = None) -> Optional[int]:
     """Pick the branch of a two-sided event that leads where the log went.
 
     Events like Warsaw Pact Formed offer a genuine choice -- remove US influence from Eastern
@@ -1400,6 +1402,16 @@ def _choose_branch(state: ts.GameState, legal, wanted: List[int],
                                 and int(probe.victory_points) == want_vp)
         if reaches_logged_score:
             score += 4000
+        # How I Learned To Stop Worrying sets DEFCON to whatever its player names, and the
+        # entry never says which -- it narrates the 5 Military Operations and nothing else. The
+        # entry's own DEFCON field is the level before the card, so the level chosen is the one
+        # the *next* entry carries. At turn 5 AR7 of replay 260 the USSR sets it to 3; left to
+        # the board and score, which the card does not move either, the search settled on
+        # DEFCON 2, and NORAD -- which fires on a DEFCON of 2 at the end of an action round --
+        # asked the US for a placement the log has no record of, because it never happened.
+        if (defcon_after is not None
+                and int(state.ctx().resolving_card) == _HOW_I_LEARNED_TO_STOP_WORRYING):
+            score += 8000 if int(probe.defcon) == defcon_after else 0
         if e is not None and e.defcon is not None:
             # ...and only where the log names no targets, for the same reason the score is:
             # DEFCON improves at a turn end, so a branch that finishes the event sails on to
@@ -1523,8 +1535,29 @@ def _find(state, legal, want_type, match) -> Optional[int]:
     return None
 
 
+def _defcon_after(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
+    """The DEFCON the log records once this entry is over, where it records one.
+
+    An entry's own DEFCON field is the level it began at, so a card that changes DEFCON without
+    narrating the new level -- How I Learned To Stop Worrying names it, and the log does not --
+    is only visible in the entry that follows. Only within the same turn: DEFCON improves by
+    one at every turn end, so the next turn's first entry carries that improvement too and
+    would name a level this entry never set.
+    """
+    if e.turn is None:
+        return None
+    for later in raws[index + 1:]:
+        nxt = parse_entry(later)
+        if nxt.turn != e.turn:
+            return None
+        if nxt.defcon is not None:
+            return int(nxt.defcon)
+    return None
+
+
 def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
-                 raw: Dict, max_steps: int = 300) -> bool:
+                 raw: Dict, max_steps: int = 300,
+                 defcon_after: Optional[int] = None) -> bool:
     """Play one logged entry through the engine, emitting the decisions the log determines."""
     cid_target = card_id(e.card) if e.card and " & " not in e.card else None
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
@@ -2053,7 +2086,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                lambda ma, r=e.region_choice: int(ma.primary_id) == r)
                 informative = chosen is not None
             if chosen is None:
-                chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid)
+                chosen = _choose_branch(state, legal, eq + pq, raw, e, returned_cid,
+                                        defcon_after)
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.POINT_NODE and not pq and not eq_here and sections:
@@ -2744,7 +2778,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
             _reconcile_turn(state, e, conv.replay_id)
-        _drive_entry(state, e, conv, raw)
+        _drive_entry(state, e, conv, raw, defcon_after=_defcon_after(raws, index, e))
         _drive_passed_rounds(state, e, conv)
 
         # --- did the engine fire an event the log knows nothing about? ---
