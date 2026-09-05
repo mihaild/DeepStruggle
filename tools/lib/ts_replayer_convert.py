@@ -1291,6 +1291,7 @@ _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
+_OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
 _TEAR_DOWN_THIS_WALL = 96
 # The two cards whose event grants Ops that may only be spent on a coup or a realignment, and
@@ -2152,7 +2153,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 informative = chosen is not None
 
         elif dt == ts.DecisionType.CHOOSE_BRANCH:
-            if int(ctx.resolving_card) == _CHERNOBYL and e.region_choice is not None:
+            if (int(ctx.resolving_card) == _OLYMPIC_GAMES
+                    and e.olympics_boycotted is not None):
+                # The log says which outright -- "USSR chooses to boycott the Olympics" -- and
+                # nothing else in the entry does. Participating rolls for 2 VP; boycotting
+                # degrades DEFCON and hands the player the card's 4 Operations, and at turn 3's
+                # headline of replay 28 those four went into South Korea, Angola and Indonesia.
+                # Left to the branch search, which judges by the board and the score, the roll
+                # was taken instead and all four were lost.
+                chosen = _find(state, legal, ts.DecisionType.CHOOSE_BRANCH,
+                               lambda ma, b=e.olympics_boycotted: int(ma.primary_id) == int(b))
+                informative = chosen is not None
+            if chosen is None and int(ctx.resolving_card) == _CHERNOBYL and e.region_choice is not None:
                 # The log names the region outright -- "US chooses South America" -- and
                 # Chernobyl's branches are the six regions in order. Left to the branch search,
                 # which judges a branch by the board and score it reaches, the choice was

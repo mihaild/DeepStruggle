@@ -94,6 +94,11 @@ RE_REGION_CHOICE = re.compile(
     r"^(?:US|USSR) chooses (Europe|Asia|Middle East|Africa|Central America|South America)\.?$",
     re.M)
 RE_PLAYS = re.compile(r"(US|USSR) plays (.+?)\.?$")
+# Olympic Games is the opponent's choice, and the log states it in words rather than in
+# anything the board shows: participating rolls dice for 2 VP, boycotting degrades DEFCON and
+# hands the player the card's Operations. The engine's branches are 0 = participate,
+# 1 = boycott.
+RE_OLYMPICS = re.compile(r"^(?:US|USSR) chooses to (participate|boycott)\b", re.M)
 
 
 @dataclass
@@ -145,6 +150,9 @@ class Entry:
     # The opening placement shares this entry with the turn 1 headline in every game in the
     # corpus, and is spread differently from an ordinary placement -- see point_queue.
     setup: bool = False
+    # Whether the opponent boycotted the Olympics, where the entry says. None where no Olympic
+    # Games choice was made in it.
+    olympics_boycotted: Optional[bool] = None
     # The region an event designates, as a Region index, or None. Chernobyl's, in practice.
     region_choice: Optional[int] = None
     # Influence lines grouped by the event that printed them, keyed by card name. A headline
@@ -239,6 +247,10 @@ def parse_entry(raw: Dict) -> Entry:
     )
     for m in RE_PASSED_ROUND.finditer(str(raw.get("text", ""))):
         e.passed_rounds.append((int(m.group(1)), m.group(2), int(m.group(3))))
+    m_olympics = RE_OLYMPICS.search(str(raw.get("text", "")))
+    if m_olympics is not None:
+        e.olympics_boycotted = m_olympics.group(1) == "boycott"
+
     m_region = RE_REGION_CHOICE.search(str(raw.get("text", "")))
     if m_region is not None:
         e.region_choice = REGIONS[m_region.group(1)]
