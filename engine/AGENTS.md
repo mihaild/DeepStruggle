@@ -189,4 +189,10 @@ cmake --build build_san -j
    before the coup's die, so the coup is already staged in `temp_cards` and the chance node opens
    on the far side of the answer. With one payer, or none, `execute_coup` settles it inline as
    before. The USSR side is Cuba alone and has no choice.
-10. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+10. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+   is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
+   fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
+   `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
+   stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
+   inside the headline, which is what the stack is for.
+11. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

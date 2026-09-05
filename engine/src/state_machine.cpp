@@ -241,6 +241,25 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
     if (state.current_phase == Phase::HEADLINE) {
+        // Unwind whatever the headline's own events pushed. A card that grants Ops does not
+        // finish when it is triggered, so the frame it was fired in stays open until those Ops
+        // are spent -- and this path used to return without popping it. At turn 6's headline
+        // of ts-replayer game 240 the USSR headlines Missile Envy, the US hands over ABM
+        // Treaty, its event improves DEFCON and grants the USSR 3 Ops, and the USSR coups
+        // Argentina; the headline then ended with a frame still pushed, and turn 6 AR1 was
+        // refused because the engine was one frame deep in a headline that was over.
+        //
+        // A frame holding an unanswered SELECT_OP_MODE is Ops still owed inside the headline,
+        // and resuming there is the whole point of the stack -- the same reading the action
+        // round takes below.
+        while (state.ctx_stack_depth > 0) {
+            state.pop_context();
+            if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+                return;
+            }
+            state.ctx().resolving_card = 0;
+        }
+
         // Ops spent during a headline still belong to a card, and that card is spent with
         // them. The headline machinery relocates the two headline cards themselves, but a card
         // played *through* one of them is nobody's to clear away and stayed in the hand it was
