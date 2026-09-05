@@ -2421,6 +2421,15 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 order = (own, eq, pq, loose)
             else:
                 order = ((eq_here, pq, loose) if in_event else (pq, eq_here, loose))
+            # An event that may stop asks only for what its own lines record. Left to fall
+            # through to the Ops queue, De-Stalinization -- which relocates up to 4 USSR
+            # Influence -- took the coup's own target: at turn 1 AR1 of replay 80 the US plays
+            # it for Operations, the log relocates one Influence from Finland to Chile, and the
+            # engine went on to take a second out of Egypt, the country the coup that followed
+            # was about to hit. Two removed means two to place, and the entry ended with the
+            # engine still asking.
+            if in_event and int(ctx.allow_early_stop) and (own or eq_here):
+                order = tuple(q for q in order if q is not pq and q is not loose)
             for queue in order:
                 for slot, want_c in enumerate(queue):
                     chosen = _find(state, legal, ts.DecisionType.POINT_NODE,
