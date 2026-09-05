@@ -400,6 +400,14 @@ def _events_the_log_names(e: Entry) -> Set[int]:
         cid = card_id(nm)
         if cid:
             named.add(cid)
+    # An effect starting or ending is the entry mentioning that card as plainly as a header
+    # would. Cancelling Cuban Missile Crisis prints "Cuban Missile Crisis* is no longer in
+    # play" and nothing else, and the US choosing which country pays for it is that card
+    # resolving.
+    for nm in list(e.in_play or []) + list(e.out_of_play or []):
+        cid = card_id(nm)
+        if cid:
+            named.add(cid)
     # A headline entry's card field is "A & B"; card_id gives nothing for that, and the two
     # halves are in e.headlines already.
     return named

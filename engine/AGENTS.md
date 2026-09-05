@@ -183,4 +183,10 @@ cmake --build build_san -j
    Five Year Plan, Terrorism and Missile Envy all skip whatever `resolving_card` names, which is
    that card. Only the first two are reachable this way (the other two are neutral, and a
    neutral card played for Operations fires no event).
-9. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+9. **Cancelling Cuban Missile Crisis Is A Choice**: couping while the crisis stands against you
+   cancels it, and the US pays 2 Influence from West Germany *or* Turkey. The engine asks -- a
+   `POINT_NODE` with `resolving_card == CUBAN_MISSILE_CRISIS`, offered only when both can pay --
+   before the coup's die, so the coup is already staged in `temp_cards` and the chance node opens
+   on the far side of the answer. With one payer, or none, `execute_coup` settles it inline as
+   before. The USSR side is Cuba alone and has no choice.
+10. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

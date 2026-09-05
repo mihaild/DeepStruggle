@@ -807,6 +807,21 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             return true;
         }
 
+        case card_ids::CUBAN_MISSILE_CRISIS: {
+            // The country the US pays from. The coup that provoked this is already staged in
+            // temp_cards, so all that is left is to take the Influence and open its die.
+            uint8_t cid = action.primary_id;
+            if (cid != countries::WEST_GERMANY && cid != countries::TURKEY) return false;
+            if (state.countries[cid].us_influence < 2) return false;
+            state.countries[cid].remove_influence(Player::US, 2);
+            state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
+            state.ctx().resolving_card = 0;
+            state.ctx().remaining_steps = 0;
+            state.ctx().decision_player = Player::NONE;
+            state.ctx().decision_type = DecisionType::ROLL_DIE;
+            return false;
+        }
+
         case card_ids::JUNTA: {
             if (action.is_confirm_done()) {
                 state.ctx().resolving_card = 0;
@@ -1479,6 +1494,14 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
             const auto& c_info = MapData::get_country(i);
 
             switch (card) {
+                // Cancelling Cuban Missile Crisis: the US pays 2 Influence from West Germany
+                // or from Turkey, and is asked only when both can pay.
+                case card_ids::CUBAN_MISSILE_CRISIS:
+                    if ((i == countries::WEST_GERMANY || i == countries::TURKEY) &&
+                        state.countries[i].us_influence >= 2) {
+                        mask_out[i] = 1;
+                    }
+                    break;
                 case card_ids::WARSAW_PACT:
                     if (state.ctx().max_per_country == 1) {
                         // Remove all US influence from 4 countries in Eastern Europe

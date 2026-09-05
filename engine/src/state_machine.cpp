@@ -996,6 +996,29 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.ctx().temp_cards[2] = forced_roll;
                     state.ctx().temp_cards[3] = (p == Player::US) ? 1 : (p == Player::USSR ? 2 : 0);
                     state.ctx().pending_ops_value = coup_ops;
+
+                    // Couping under Cuban Missile Crisis cancels it, and the US may pay from
+                    // West Germany or from Turkey -- its choice, and only its own when both
+                    // can pay. Taken silently, always from West Germany, that was right in
+                    // eight of the corpus's ten US cancellations and wrong in two: at turn 5
+                    // AR7 of ts-replayer game 234 the US holds 5 in West Germany and 2 in
+                    // Turkey and pays from Turkey.
+                    //
+                    // Asked here, before the die, so the coup's own setup above is already in
+                    // temp_cards and the chance node opens on the far side of the answer with
+                    // nothing to rebuild. Where only one country can pay, or neither, there is
+                    // no choice to make and execute_coup settles it as before.
+                    if (p == Player::US && state.has_flag(effect_bits::CMC_ACTIVE_USSR) &&
+                        state.countries[countries::WEST_GERMANY].us_influence >= 2 &&
+                        state.countries[countries::TURKEY].us_influence >= 2) {
+                        state.ctx().decision_player = Player::US;
+                        state.ctx().decision_type = DecisionType::POINT_NODE;
+                        state.ctx().remaining_steps = 1;
+                        state.ctx().allow_early_stop = 0;   // cancelling is not optional
+                        state.ctx().resolving_card = card_ids::CUBAN_MISSILE_CRISIS;
+                        return true;
+                    }
+
                     state.ctx().decision_player = Player::NONE;
                     state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
