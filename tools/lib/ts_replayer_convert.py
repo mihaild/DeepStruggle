@@ -1291,6 +1291,7 @@ _OUR_MAN_IN_TEHRAN = 108
 _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
+_SPACE_WALK_DISCARD = 250
 _OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
 _TEAR_DOWN_THIS_WALL = 96
@@ -1608,6 +1609,29 @@ def _defcon_set_under(e: Entry, marker: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def _space_walk_discard(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
+    """The card a Space Walk discard takes, which the log hangs on the entry's cleanup copy.
+
+    A player who has reached box 6 of the space race may discard a held card as the turn ends,
+    and ts-replayer records that where it records the rest of the turn's bookkeeping: on a
+    second copy of the last entry's header, with a body holding nothing but the discard. The
+    engine asks for it inside the entry above, as that entry's last action round ends.
+
+    At turn 9 AR7 of replay 56 the USSR is at box 6 with the US at 5, and discards Colonial
+    Rear Guards. Declined for want of a card to name, the turn ended with it still in hand, and
+    the cleanup copy was then driven as a play into an engine already dealing turn 10.
+    """
+    for later in raws[index + 1:index + 2]:
+        nxt = parse_entry(later)
+        if (nxt.turn, nxt.phase, nxt.player, nxt.card) != (e.turn, e.phase, e.player, e.card):
+            return None
+        if not nxt.discards or not _is_cleanup_body(nxt):
+            return None
+        cid = card_id(nxt.discards[0][1])
+        return cid or None
+    return None
+
+
 def _defcon_after(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
     """The DEFCON the log records once this entry is over, where it records one.
 
@@ -1662,7 +1686,8 @@ def _free_action_declined(e: Entry, sections: List[Section], card: int) -> bool:
 
 def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                  raw: Dict, max_steps: int = 300,
-                 defcon_after: Optional[int] = None) -> bool:
+                 defcon_after: Optional[int] = None,
+                 space_walk_discard: Optional[int] = None) -> bool:
     """Play one logged entry through the engine, emitting the decisions the log determines."""
     cid_target = card_id(e.card) if e.card and " & " not in e.card else None
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
@@ -2054,6 +2079,12 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     discard_queue.pop(slot)
                     informative = True
                     break
+            if (chosen is None and space_walk_discard is not None
+                    and int(ctx.resolving_card) == _SPACE_WALK_DISCARD):
+                # The card the turn's cleanup record names -- see _space_walk_discard.
+                chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
+                               lambda ma: int(ma.primary_id) == space_walk_discard)
+                informative = chosen is not None
             if chosen is None and int(ctx.resolving_card) == _ASK_NOT:
                 # "Ask Not What Your Country Can Do For You" discards as many cards as its
                 # player likes and draws that many back, so the log's list is the whole of it
@@ -2907,6 +2938,12 @@ def _is_skipped_round(e: Entry) -> bool:
         or e.vp_gains)
 
 
+def _is_cleanup_body(e: Entry) -> bool:
+    """Whether an entry holds only end-of-turn bookkeeping: no play of any kind."""
+    return not (e.influence or e.sections or e.targets or e.war_targets or e.events
+                or e.headlines or e.space or e.revealed or e.mode or e.played_card)
+
+
 def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
     """The repeated copy of a turn's last entry, which records cleanup rather than a play.
 
@@ -2924,9 +2961,10 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
         return False
     if (e.turn, e.phase, e.player, e.card) != (prev.turn, prev.phase, prev.player, prev.card):
         return False
-    return not (e.influence or e.sections or e.targets or e.war_targets or e.events
-                or e.headlines or e.space or e.discards or e.revealed or e.mode
-                or e.played_card)
+    # A discard is bookkeeping here too: the Space Walk discard a player at box 6 takes as the
+    # turn ends is recorded on this copy, and answered inside the entry above -- see
+    # _space_walk_discard. A play always brings more than a discard with it.
+    return _is_cleanup_body(e)
 
 
 def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None:
@@ -3096,7 +3134,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
             _reconcile_turn(state, e, conv.replay_id)
-        _drive_entry(state, e, conv, raw, defcon_after=_defcon_after(raws, index, e))
+        _drive_entry(state, e, conv, raw, defcon_after=_defcon_after(raws, index, e),
+                     space_walk_discard=_space_walk_discard(raws, index, e))
         _drive_passed_rounds(state, e, conv)
 
         # --- did the engine fire an event the log knows nothing about? ---
