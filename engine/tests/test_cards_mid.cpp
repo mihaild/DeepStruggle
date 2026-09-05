@@ -497,7 +497,9 @@ TEST(MidCardsTest, PointNodeWithLegalTargetsStillOffersNoDecline) {
 TEST(MidCardsTest, OnlyTheNamedCardsMayFizzle) {
     for (uint8_t card = 1; card <= 110; ++card) {
         const bool expected = (card == ts::card_ids::TRUMAN_DOCTRINE ||
-                               card == ts::card_ids::MUSLIM_REVOLUTION);
+                               card == ts::card_ids::MUSLIM_REVOLUTION ||
+                               card == ts::card_ids::SUEZ_CRISIS ||
+                               card == ts::card_ids::EAST_EUROPEAN_UNREST);
         ASSERT_EQ(ts::may_fizzle::allowed(card), expected);
     }
     ASSERT_FALSE(ts::may_fizzle::allowed(0));

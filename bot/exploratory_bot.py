@@ -30,8 +30,11 @@ class ExploratoryBot(BaseBot):
         allow_early_stop = legal_actions.get("allow_early_stop", False)
         ctx = state.get("decision_context", {})
 
-        if not valid_ids and not allow_early_stop:
-            return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}
+        if not valid_ids:
+            # The engine guarantees CONFIRM_DONE is legal whenever no other action is
+            # (its own anti-deadlock fallback), regardless of allow_early_stop -- flags=0
+            # here would be a real (illegal) target/card/mode, not a pass.
+            return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
 
         # 1. SELECT_CARD (1)
         if d_type == 1:
@@ -96,14 +99,10 @@ class ExploratoryBot(BaseBot):
 
         # 5. POINT_NODE (5)
         elif d_type == 5:
-            # Check if stopping early (e.g. 5% chance if allowed)
-            if allow_early_stop and valid_ids and self.rng.random() < 0.05:
+            # Check if stopping early (e.g. 5% chance if allowed); valid_ids is non-empty here,
+            # the empty case having already returned CONFIRM_DONE above.
+            if allow_early_stop and self.rng.random() < 0.05:
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
-
-            if not valid_ids:
-                if allow_early_stop:
-                    return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}
 
             chosen_id = self.rng.choice(valid_ids)
             roll1 = self.rng.randint(1, 6)

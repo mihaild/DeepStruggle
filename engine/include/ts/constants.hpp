@@ -260,7 +260,9 @@ namespace free_action {
 namespace may_fizzle {
     inline constexpr bool allowed(uint8_t card_id) noexcept {
         return card_id == card_ids::TRUMAN_DOCTRINE ||
-               card_id == card_ids::MUSLIM_REVOLUTION;
+               card_id == card_ids::MUSLIM_REVOLUTION ||
+               card_id == card_ids::SUEZ_CRISIS ||
+               card_id == card_ids::EAST_EUROPEAN_UNREST;
     }
 }
 

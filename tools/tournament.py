@@ -75,6 +75,35 @@ def run_head_to_head_report(
     lines.append(f"     - Average Steps: {matchup.get('avg_steps', 0.0):.1f}\n")
     lines.append(f"     - Losses by {name_a} (USSR): {format_loss_causes(matchup['causes_loss_ussr'], a_ussr_l)}\n\n")
 
+    if "choice_stats" in matchup:
+        cs = matchup["choice_stats"]
+        lines.append("=" * 85 + "\n")
+        lines.append("MICRO-ACTIONS & DETERMINISTIC SINGLE-CHOICE ANALYSIS (Grouped by Side)\n")
+        lines.append("=" * 85 + "\n\n")
+        lines.append(f"• USSR Decisions: {cs['ussr_single_choice_micro_actions']:,} single-choice / {cs['ussr_total_micro_actions']:,} total micro-actions ({cs['ussr_single_choice_pct']:.2f}% deterministic)\n")
+        lines.append(f"• US Decisions:   {cs['us_single_choice_micro_actions']:,} single-choice / {cs['us_total_micro_actions']:,} total micro-actions ({cs['us_single_choice_pct']:.2f}% deterministic)\n")
+        lines.append(f"• Combined Total: {cs['overall_single_choice_micro_actions']:,} single-choice / {cs['overall_total_micro_actions']:,} total micro-actions ({cs['overall_single_choice_pct']:.2f}% deterministic)\n\n")
+
+        avg = cs["avg_per_game"]
+        lines.append("• Per-Game Averages:\n")
+        lines.append(f"  - USSR: {avg['ussr_total']:.1f} total micro-actions, {avg['ussr_single']:.1f} single-choice ({avg['ussr_single']/max(0.1, avg['ussr_total'])*100:.2f}%)\n")
+        lines.append(f"  - US:   {avg['us_total']:.1f} total micro-actions, {avg['us_single']:.1f} single-choice ({avg['us_single']/max(0.1, avg['us_total'])*100:.2f}%)\n")
+        lines.append(f"  - Both: {avg['combined_total']:.1f} total micro-actions, {avg['combined_single']:.1f} single-choice ({avg['combined_single']/max(0.1, avg['combined_total'])*100:.2f}%)\n\n")
+
+        lines.append("### Breakdown of Deterministic (1 Valid Choice) Actions by Category:\n\n")
+        lines.append("| Action Category | USSR Count (% of USSR 1-choice) | US Count (% of US 1-choice) | Total (% of All 1-choice) |\n")
+        lines.append("|:---|:---:|:---:|:---:|\n")
+        all_cats = sorted(set(list(cs["category_counts_ussr"].keys()) + list(cs["category_counts_us"].keys())))
+        for cat in all_cats:
+            cnt_ussr = cs["category_counts_ussr"].get(cat, 0)
+            cnt_us = cs["category_counts_us"].get(cat, 0)
+            cnt_tot = cnt_ussr + cnt_us
+            pct_ussr = (cnt_ussr / max(1, cs["ussr_single_choice_micro_actions"])) * 100.0
+            pct_us = (cnt_us / max(1, cs["us_single_choice_micro_actions"])) * 100.0
+            pct_tot = (cnt_tot / max(1, cs["overall_single_choice_micro_actions"])) * 100.0
+            lines.append(f"| **{cat}** | {cnt_ussr:,} ({pct_ussr:.1f}%) | {cnt_us:,} ({pct_us:.1f}%) | {cnt_tot:,} ({pct_tot:.1f}%) |\n")
+        lines.append("\n")
+
     lines.append("=" * 85 + "\n")
     return "".join(lines)
 
@@ -88,6 +117,9 @@ def run_massive_tournament(
     output_report: Optional[str] = None,
     output_json: Optional[str] = None,
     device: str = "cuda",
+    track_choices: bool = False,
+    log_games: Optional[str] = None,
+    auto_advance: bool = False,
 ) -> Dict[str, Any]:
     """Runs high-throughput round-robin tournament across all specified models."""
     dev = resolve_device(device)
@@ -102,6 +134,18 @@ def run_massive_tournament(
         agent = load_agent(spec, device=dev)
         agents.append(agent)
         print(f" Loaded Agent: {agent.name:<35s} (from {spec})")
+
+    name_counts: Dict[str, int] = {}
+    for a in agents:
+        base = a.name
+        name_counts[base] = name_counts.get(base, 0) + 1
+
+    if any(c > 1 for c in name_counts.values()):
+        cur_counts: Dict[str, int] = {}
+        for a in agents:
+            cur_counts[a.name] = cur_counts.get(a.name, 0) + 1
+            if name_counts[a.name] > 1:
+                a.name = f"{a.name}#{cur_counts[a.name]}"
 
     M = len(agents)
     model_names = [a.name for a in agents]
@@ -131,6 +175,9 @@ def run_massive_tournament(
                 games_per_side=games_per_side,
                 device=dev,
                 batch_chunk_size=batch_chunk_size,
+                track_choices=track_choices,
+                log_games_file=log_games,
+                auto_advance=auto_advance,
             )
             pair_time = time.time() - pair_start
             matchup_key = f"{agent_a.name}_vs_{agent_b.name}"
@@ -270,6 +317,10 @@ def main():
     parser.add_argument("--output-report", type=str, default=None, help="Path to save Markdown report")
     parser.add_argument("--output-json", type=str, default=None, help="Path to save JSON results")
     parser.add_argument("--device", type=str, default="cpu", help="Compute device (cuda or cpu)")
+    parser.add_argument("--track-choices", action="store_true", default=False, help="Track and report micro-actions with exactly 1 valid choice")
+    parser.add_argument("--log-games", type=str, default=None, help="Path to save per-game JSONL execution logs")
+    parser.add_argument("--self-play", action="store_true", default=False, help="Evaluate model against itself")
+    parser.add_argument("--auto-advance", action="store_true", default=False, help="Automatically advance deterministic decisions in engine")
 
     args = parser.parse_args()
 
@@ -287,8 +338,11 @@ def main():
         if "heuristic" not in models and "HeuristicBot" not in models:
             models.insert(1, "heuristic")
 
+    if (args.self_play or len(models) == 1) and len(models) == 1:
+        models = [models[0], models[0]]
+
     if len(models) < 2:
-        print("Error: Need at least 2 models for an evaluation or tournament.")
+        print("Error: Need at least 2 models for an evaluation or tournament (or pass --self-play).")
         sys.exit(1)
 
     out_rep = args.output_report
@@ -303,6 +357,9 @@ def main():
         output_report=out_rep,
         output_json=out_json,
         device=args.device,
+        track_choices=args.track_choices,
+        log_games=args.log_games,
+        auto_advance=args.auto_advance,
     )
 
 

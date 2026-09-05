@@ -13,8 +13,15 @@ class RandomBot(BaseBot):
         d_type = legal_actions.get("decision_type", 0)
         allow_early_stop = legal_actions.get("allow_early_stop", False)
 
-        if not valid_ids and not allow_early_stop:
-            return None
+        if not valid_ids:
+            # The engine guarantees CONFIRM_DONE is legal whenever no other action is
+            # (its own anti-deadlock fallback), regardless of allow_early_stop.
+            return {
+                "decision_type": d_type,
+                "primary_id": 0,
+                "secondary_id": 0,
+                "flags": 0x80,
+            }
 
         # 15% chance to stop early if allowed
         if allow_early_stop and random.random() < 0.15:
@@ -24,16 +31,6 @@ class RandomBot(BaseBot):
                 "secondary_id": 0,
                 "flags": 0x80,  # CONFIRM_DONE
             }
-
-        if not valid_ids:
-            if allow_early_stop:
-                return {
-                    "decision_type": d_type,
-                    "primary_id": 0,
-                    "secondary_id": 0,
-                    "flags": 0x80,
-                }
-            return None
 
         choice = random.choice(valid_ids)
         return {

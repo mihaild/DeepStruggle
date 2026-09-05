@@ -277,7 +277,7 @@ bool trigger_suez_crisis(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 4;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    state.ctx().allow_early_stop = 0;   // degrade is mandatory up to the maximum available; see trigger_war
     state.ctx().resolving_card = card_ids::SUEZ_CRISIS;
     return false;
 }
@@ -287,7 +287,7 @@ bool trigger_east_european_unrest(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 3;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    state.ctx().allow_early_stop = 0;   // removal is mandatory up to the maximum available; see trigger_war
     state.ctx().resolving_card = card_ids::EAST_EUROPEAN_UNREST;
     return false;
 }
