@@ -155,11 +155,18 @@ bool trigger_terrorism(GameState& state, Player p) noexcept {
 
     CardLocation opp_hand = (opp == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
 
+    // Not the card being played. The engine leaves an Ops card in its owner's hand until the
+    // play finishes, and an opponent's card played for Operations fires its own event -- so
+    // the event can find the very card in front of it. resolving_card is that card; where the
+    // event is fired some other way it is not in anyone's hand and skipping it changes
+    // nothing. See trigger_grain_sales.
+    const uint8_t in_play = state.ctx().resolving_card;
+
     for (uint8_t d = 0; d < discard_count; ++d) {
         uint8_t cards[111];
         uint8_t cnt = 0;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (state.card_locations[i] == opp_hand) {
+            if (i != in_play && state.card_locations[i] == opp_hand) {
                 cards[cnt++] = i;
             }
         }

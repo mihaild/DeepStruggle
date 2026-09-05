@@ -144,8 +144,15 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
     uint8_t tied_cards[111];
     uint8_t tied_cnt = 0;
 
+    // Not the card being played. The engine leaves an Ops card in its owner's hand until the
+    // play finishes, and an opponent's card played for Operations fires its own event -- so
+    // the event can find the very card in front of it. resolving_card is that card; where the
+    // event is fired some other way it is not in anyone's hand and skipping it changes
+    // nothing. See trigger_grain_sales.
+    const uint8_t envy_in_play = state.ctx().resolving_card;
+
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == opp_hand) {
+        if (i != envy_in_play && state.card_locations[i] == opp_hand) {
             if (CardData::is_scoring_card(i)) continue;
             uint8_t ops = CardData::get_card(i).ops;
             if (ops > max_ops) {
@@ -375,11 +382,22 @@ bool trigger_puppet_governments(GameState& state, Player p) noexcept {
 }
 
 bool trigger_grain_sales(GameState& state, Player p) noexcept {
-    // Check if USSR has cards in hand
+    // Check if USSR has cards in hand. Not the card being played: it is in play, and the
+    // engine leaves an Ops card in its owner's hand until the play finishes. The USSR playing
+    // Grain Sales for Operations fires the US's event, which then found the very card in front
+    // of it and offered it back -- at turn 9 AR6 of ts-replayer game 229 the USSR's hand is
+    // empty but for Grain Sales itself, the log reads "USSR has no cards in hand to reveal",
+    // and the engine asked the US how it wished to play Grain Sales.
+    //
+    // resolving_card is that card: an opponent's card played for Operations fires its own
+    // event, and both timing branches set the field to it before triggering. Where Grain Sales
+    // is fired some other way -- out of a discard pile, or by Five Year Plan -- the field is
+    // Grain Sales too and it is not in anyone's hand, so skipping it changes nothing.
+    const uint8_t in_play = state.ctx().resolving_card;
     uint8_t ussr_cards[111];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_USSR) {
+        if (i != in_play && state.card_locations[i] == CardLocation::HAND_USSR) {
             ussr_cards[cnt++] = i;
         }
     }

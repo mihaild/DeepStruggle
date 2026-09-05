@@ -177,4 +177,10 @@ cmake --build build_san -j
    with no target region, since a discard has none. The mask and the SELECT_CARD handler must
    agree: a card only one of them accepts either cannot be discarded or falls through to an
    ordinary play.
-8. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+8. **A Card In Play Is Not In Hand**: the engine leaves an Ops card in its owner's hand until
+   the play finishes, and an opponent's card played for Operations fires its own event -- so an
+   event that reads that hand can find the very card in front of it. Grain Sales To Soviets,
+   Five Year Plan, Terrorism and Missile Envy all skip whatever `resolving_card` names, which is
+   that card. Only the first two are reachable this way (the other two are neutral, and a
+   neutral card played for Operations fires no event).
+9. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

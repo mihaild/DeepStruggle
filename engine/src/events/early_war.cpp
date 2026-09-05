@@ -33,10 +33,16 @@ bool trigger_duck_and_cover(GameState& state, Player p) noexcept {
 
 bool trigger_five_year_plan(GameState& state, Player p) noexcept {
     // USSR randomly discards a card
+    // Not the card being played. The engine leaves an Ops card in its owner's hand until the
+    // play finishes, and an opponent's card played for Operations fires its own event -- so
+    // the event can find the very card in front of it. resolving_card is that card; where the
+    // event is fired some other way it is not in anyone's hand and skipping it changes
+    // nothing. See trigger_grain_sales.
+    const uint8_t in_play = state.ctx().resolving_card;
     uint8_t ussr_cards[111];
     uint8_t count = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_USSR) {
+        if (i != in_play && state.card_locations[i] == CardLocation::HAND_USSR) {
             ussr_cards[count++] = i;
         }
     }
