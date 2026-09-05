@@ -66,3 +66,4 @@ def test_the_hand_miss_counter_counts_only_real_misses() -> None:
     # so the USSR still holds it -- the one miss here is that card, marked spent when taken.
     conv = convert_game(_game(105))
     assert conv.hand_misses == 1
+    assert conv.hands_solved, "and the hands themselves come from the constraint model"

@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import numpy as np
 import ts_engine as ts
 
+from tools.lib.ts_replayer_hands import solve_hands
 from tools.lib.ts_replayer_parse import (Entry, RE_PASSED_ROUND, Section, country_id,
                                         parse_entry)
 
@@ -264,6 +265,8 @@ class Conversion:
     # Cards borrowed from the next turn's list as the ones this side carried over. See
     # _cards_carried_over.
     cards_carried_over: int = 0
+    # Whether the hands came from the constraint model rather than the turn-by-turn borrowing.
+    hands_solved: bool = False
     # Cards whose event the engine resolved while driving the current entry. Reset per entry.
     events_resolved: Set[int] = field(default_factory=set)
     # (turn, entries converted, samples emitted) as the current turn began.
@@ -2982,6 +2985,27 @@ def _sort_key_for_keeping(card: int, side: str = "US"):
     return (0 if card_side in (side, "NONE") else 1, -int(info["ops"]), card)
 
 
+def _acquisition_entry(raws: List[Dict], turn: int, side: str, default: int) -> int:
+    """The entry that hands this side new cards during the turn, by index.
+
+    "Ask Not What Your Country Can Do For You" and SALT Negotiations are the two that do it, and
+    what they bring in is in the hand from that entry on -- not before, which is what Missile
+    Envy and the traps would otherwise read.
+    """
+    for index, raw in enumerate(raws):
+        e = parse_entry(raw)
+        if e.turn != turn:
+            continue
+        fired = {card_id(nm) for nm in (e.events or [])}
+        if e.card and " & " not in e.card:
+            fired.add(card_id(e.card))
+        if (_ASK_NOT in fired or _SALT_NEGOTIATIONS in fired) and (
+                e.player == side or any(s == side for s, _nm in (e.discards or []))
+                or any(s == side for s, _nm in (e.revealed or []))):
+            return index
+    return default
+
+
 def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[int, int]:
     """Cards in a turn's list that were picked up during it rather than dealt at its start.
 
@@ -3358,6 +3382,11 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
 
 
 def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None:
+    # Both hands, for every turn, solved from the log and the rules in one pass. Where z3 is
+    # not installed, or the log will not admit a hand, this is None and the turn-by-turn
+    # borrowing below stands in.
+    solved_hands = solve_hands(raws, hands, card_id)
+    conv.hands_solved = solved_hands is not None
     cur_turn = None
     turn_hands = {"US": [], "USSR": []}
     played = {"US": set(), "USSR": set()}
@@ -3461,23 +3490,47 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
 
             size = 8 if int(e.turn) <= 3 else 9
-            claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
-            # What each side carried in from the turn before -- see _cards_carried_over.
-            for side in ("US", "USSR"):
-                carried = _cards_carried_over(state, raws, hands, int(e.turn), side,
-                                              turn_hands[side], size, claimed)
-                turn_hands[side].extend(carried)
-                claimed |= set(carried)
-                conv.cards_carried_over += len(carried)
-            for side in ("US", "USSR"):
-                padded = _pad_hand(state, turn_hands[side], size,
-                                   _reveal_ops_cap(raws, e.turn, side), claimed,
-                                   final_turn=int(e.turn) >= last_turn)
-                claimed |= set(padded)
-                turn_hands[side] = padded
+            if solved_hands is not None and int(e.turn) in solved_hands:
+                # The hands the whole game was solved for at once -- see ts_replayer_hands.
+                # They already hold what the log states, what the rules force and what a
+                # player would have carried, so nothing here is left to top up. What the turn's
+                # list holds and the solved hand does not is a card that reached the hand part
+                # way through the turn, which the model says *that* about and the acquisition
+                # tracking below says *when*.
+                for side in ("US", "USSR"):
+                    was = set(turn_hands[side])
+                    solved = list(solved_hands[int(e.turn)][side])
+                    late = [c for c in was if c not in solved]
+                    turn_hands[side] = solved + late
+                    conv.cards_carried_over += len(set(solved) - was)
+            else:
+                claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
+                # What each side carried in from the turn before -- see _cards_carried_over.
+                for side in ("US", "USSR"):
+                    carried = _cards_carried_over(state, raws, hands, int(e.turn), side,
+                                                  turn_hands[side], size, claimed)
+                    turn_hands[side].extend(carried)
+                    claimed |= set(carried)
+                    conv.cards_carried_over += len(carried)
+                for side in ("US", "USSR"):
+                    padded = _pad_hand(state, turn_hands[side], size,
+                                       _reveal_ops_cap(raws, e.turn, side), claimed,
+                                       final_turn=int(e.turn) >= last_turn)
+                    claimed |= set(padded)
+                    turn_hands[side] = padded
             played = {"US": set(), "USSR": set()}
+            # Cards the turn's list names that reached the hand part way through it, against
+            # the entry that brings each one in. The solved hands settle *which* those are --
+            # everything the model left out of the hand the turn opens with -- and this settles
+            # *when*, which Missile Envy and the traps read out of the hand as it stands.
             pending = {side: _mid_turn_acquisitions(raws, int(e.turn), side, turn_hands[side])
                        for side in ("US", "USSR")}
+            if solved_hands is not None and int(e.turn) in solved_hands:
+                for side in ("US", "USSR"):
+                    solved = set(solved_hands[int(e.turn)][side])
+                    arrives = _acquisition_entry(raws, int(e.turn), side, index)
+                    pending[side] = {c: pending[side].get(c, arrives)
+                                     for c in turn_hands[side] if c not in solved}
 
         # --- rebuild the position this entry was decided from ---
         if prev_raw is not None:

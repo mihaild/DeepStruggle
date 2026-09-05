@@ -18,6 +18,9 @@ The complete AI, simulation engine, web workbench, and training infrastructure f
 # Python venv
 python3 -m venv .venv && source .venv/bin/activate
 pip install nanobind fastapi "uvicorn[standard]" websockets pytest numpy pydantic httpx torch torchvision
+# z3-solver (MIT) reconstructs the hands behind a ts-replayer log; the converter falls
+# back to per-turn heuristics without it, so it is optional but wanted for that work.
+pip install z3-solver
 
 # Web UI
 cd web/ui && npm install && npm run build && cd ../..
