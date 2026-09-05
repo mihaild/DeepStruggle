@@ -753,7 +753,7 @@ def _reconcile_turn(state: ts.GameState, entry: Entry, replay_id: int = -1) -> N
     # a position the humans never played -- so this is a failure, not something to tidy up.
     want_phase = ts.Phase.ACTION_ROUND if m else ts.Phase.HEADLINE
     ctx = state.ctx()
-    if ts.Engine.is_terminal(state):
+    if ts.Engine.is_terminal(state) and not _is_final_scoring_record(state, entry):
         raise ConversionFailure(Mismatch(
             replay_id, entry.turn, entry.phase, entry.player, entry.card,
             "engine ended the game early",
@@ -2967,6 +2967,23 @@ def _is_skipped_round(e: Entry) -> bool:
         or e.vp_gains)
 
 
+def _is_final_scoring_record(state: ts.GameState, e: Entry) -> bool:
+    """Whether this entry is the log writing down the final scoring the engine has just done.
+
+    ts-replayer hangs it on a header of its own with no card and no play -- "Turn 10, US AR8: :"
+    -- and states the whole swing in one line, uncapped: at the end of replay 69 the US "gains
+    28 VP. Score is US 34.", where the game is won at 20 and the engine stops there. Clamped,
+    the two agree, and an entry the engine has already played out is not one it ended early.
+    """
+    if not ts.Engine.is_terminal(state) or e.card:
+        return False
+    if not _is_cleanup_body(e) or e.discards:
+        return False
+    narrated = _narrated_score(e)
+    return (narrated is not None
+            and max(-20, min(20, narrated)) == int(state.victory_points))
+
+
 def _is_cleanup_body(e: Entry) -> bool:
     """Whether an entry holds only end-of-turn bookkeeping: no play of any kind."""
     return not (e.influence or e.sections or e.targets or e.war_targets or e.events
@@ -3056,6 +3073,13 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 ts.Engine.step_flat(state, _PASS)
                 _drain(state)
             prev_crossed_turn = False
+            prev_raw, prev_entry = raw, e
+            continue
+
+        if _is_final_scoring_record(state, e):
+            # The log writing down the final scoring the engine has already done -- see
+            # _is_final_scoring_record. There is nothing to drive and nothing after it.
+            conv.entries_converted += 1
             prev_raw, prev_entry = raw, e
             continue
 
