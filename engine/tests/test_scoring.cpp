@@ -126,6 +126,54 @@ TEST(ScoringTest, ShuttleDiplomacyRemovesACountryNotJustABattleground) {
     ASSERT_EQ(shuttled.net_delta, 3);
 }
 
+// ...and all of it hangs on there being a battleground to remove. The country goes because
+// that battleground *is* a country, not on its own, so the USSR can be put out of Presence by
+// losing their one battleground and never by losing their one non-battleground country.
+TEST(ScoringTest, ShuttleDiplomacyTakesNoCountryWhereThereIsNoBattlegroundToTake) {
+    // The Middle East of ts-replayer game 323 at turn 10 AR1: the US holds five battlegrounds
+    // and nothing else, the USSR holds Lebanon and nothing else.
+    ts::GameState state{};
+    for (uint8_t i = 0; i < 84; ++i) { state.countries[i].us_influence = 0;
+                                       state.countries[i].ussr_influence = 0; }
+    state.countries[ts::countries::ISRAEL].us_influence = 4;
+    state.countries[ts::countries::IRAQ].us_influence = 3;
+    state.countries[ts::countries::IRAN].us_influence = 2;
+    state.countries[ts::countries::SAUDI_ARABIA].us_influence = 3;
+    state.countries[ts::countries::LIBYA].us_influence = 3;
+    state.countries[ts::countries::LEBANON].ussr_influence = 4;     // USSR, non-battleground
+
+    state.set_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    auto level = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST);
+    // The US holds no non-battleground country, so Presence rather than Domination: 3 + 5.
+    ASSERT_EQ(level.us_status, ts::RegionalStatus::PRESENCE);
+    ASSERT_EQ(level.us_score, 8);
+    // And the USSR keeps Lebanon, so they keep their Presence.
+    ASSERT_EQ(level.ussr_status, ts::RegionalStatus::PRESENCE);
+    ASSERT_EQ(level.ussr_score, 3);
+    ASSERT_EQ(level.net_delta, 5);
+}
+
+TEST(ScoringTest, ShuttleDiplomacyCanCostTheUSSRTheirOnlyBattleground) {
+    // The same region with the USSR's one country a battleground instead: it goes, and their
+    // Presence with it.
+    ts::GameState state{};
+    for (uint8_t i = 0; i < 84; ++i) { state.countries[i].us_influence = 0;
+                                       state.countries[i].ussr_influence = 0; }
+    state.countries[ts::countries::ISRAEL].us_influence = 4;
+    state.countries[ts::countries::IRAQ].us_influence = 3;
+    state.countries[ts::countries::IRAN].us_influence = 2;
+    state.countries[ts::countries::SAUDI_ARABIA].us_influence = 3;
+    state.countries[ts::countries::EGYPT].ussr_influence = 4;       // USSR battleground
+
+    auto before = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST);
+    ASSERT_EQ(before.ussr_status, ts::RegionalStatus::PRESENCE);
+
+    state.set_flag(ts::effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+    auto level = ts::Scoring::evaluate_region(state, ts::Region::MIDDLE_EAST);
+    ASSERT_EQ(level.ussr_status, ts::RegionalStatus::NONE);
+    ASSERT_EQ(level.ussr_score, 0);
+}
+
 // In Asia the battleground it removes may be Japan, which borders the United States, so the
 // USSR's bonus for a country adjacent to the enemy superpower goes with it.
 TEST(ScoringTest, ShuttleDiplomacyAlsoRemovesTheAsianAdjacencyBonus) {

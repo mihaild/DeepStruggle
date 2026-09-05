@@ -71,8 +71,15 @@ RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bo
     uint8_t effective_ussr_countries = summary.ussr_countries;
     uint8_t effective_ussr_adjacent = summary.ussr_superpower_adjacent;
     if (!is_final_scoring && (r == Region::MIDDLE_EAST || r == Region::ASIA) &&
-        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-        if (effective_ussr_bg > 0) effective_ussr_bg--;
+        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE) && effective_ussr_bg > 0) {
+        // All of it hangs on there being a battleground to remove. The country goes because
+        // that battleground *is* a country, not on its own -- so the USSR can be put out of
+        // Presence by losing their one battleground, and never by losing their one
+        // non-battleground country. At turn 10 AR1 of ts-replayer game 323 the USSR holds
+        // Lebanon in the Middle East and no battleground at all; taking Lebanon off their
+        // count dropped them out of Presence and handed the US the 3 VP that goes with it,
+        // where the log scores the region 5 to the US rather than 8.
+        effective_ussr_bg--;
         if (effective_ussr_countries > 0) effective_ussr_countries--;
         if (r == Region::ASIA && effective_ussr_adjacent > 0) effective_ussr_adjacent--;
     }
