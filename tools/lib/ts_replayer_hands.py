@@ -100,6 +100,9 @@ class GameFacts:
         self.drew_mid_turn: Dict[Tuple[int, str], int] = {}
         # ...and the action round they were drawn in: nothing played before it can be one.
         self.drew_at: Dict[Tuple[int, str], int] = {}
+        # Cards the draw effect discards, which it does before it draws: they cannot be what
+        # it drew, whatever round the log records them going.
+        self.discarded_to_draw: Set[Tuple[int, str, int]] = set()
         # Cards the log shows leaving a hand before Missile Envy read it, in the same entry.
         self.gone_before_envy: Set[Tuple[int, str, int]] = set()
         # Where the log shows the opponent's scoring cards being looked for and none found,
@@ -230,6 +233,8 @@ class GameFacts:
                 envy_line = text.find("Event: Missile Envy")
                 for s2, nm in (e.discards or []):
                     cid = self.card_id(nm)
+                    if cid and s2 in self.sides:
+                        self.discarded_to_draw.add((turn, s2, cid))
                     line = text.find(f"{s2} discards {nm}")
                     if (cid and s2 in self.sides and envy_line >= 0
                             and 0 <= line < envy_line):
@@ -528,13 +533,14 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
             for c in cards:
                 info = ts.CardData.get_card_info(c)
                 scoring = bool(info["is_scoring"])
-                # Strictly after: "Ask Not What Your Country Can Do For You" discards first and
-                # draws second, so what it discards was in the hand the turn dealt however many
-                # cards it goes on to draw. At turn 7's headline of ts-replayer game 96 the US
-                # discards six cards to it, and treating one of those as a draw let the model
-                # drop "We Will Bury You" out of the hand Missile Envy then read.
-                drawn_after = (drew and facts.played_at.get((t, s, c), -1)
-                               > facts.drew_at.get((t, s), 99))
+                # "Ask Not What Your Country Can Do For You" discards first and draws second,
+                # so the cards it discards were in the hand the turn dealt and cannot be what it
+                # drew -- at turn 7's headline of ts-replayer game 96 treating one of the six as
+                # a draw let the model drop "We Will Bury You" out of the hand Missile Envy then
+                # read. Everything else it spends from that entry on is free to be a draw.
+                drawn_after = (drew and (t, s, c) not in facts.discarded_to_draw
+                               and facts.played_at.get((t, s, c), -1)
+                               >= facts.drew_at.get((t, s), 99))
                 if (envy_cap is not None and drew and int(info["ops"]) > envy_cap
                         and not scoring and (t, s, c) not in facts.gone_before_envy):
                     # Missile Envy took the highest Ops card there was, so anything bigger
@@ -592,7 +598,8 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
                 continue
             late = [c for c in facts.spent[(t, s)]
                     if c not in facts.arrived[(t, s)] and c != THE_CHINA_CARD
-                    and facts.played_at.get((t, s, c), -1) > facts.drew_at.get((t, s), 99)]
+                    and (t, s, c) not in facts.discarded_to_draw
+                    and facts.played_at.get((t, s, c), -1) >= facts.drew_at.get((t, s), 99)]
             if len(late) > drew:
                 keep(z3.PbGe([(held[(c, t, s)], 1) for c in late], len(late) - drew),
                      f"t{t} {s} drew {drew} cards after the deal and held the rest")
