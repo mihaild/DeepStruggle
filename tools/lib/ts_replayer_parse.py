@@ -242,6 +242,13 @@ def parse_entry(raw: Dict) -> Entry:
     for line in str(raw.get("text", "")).split("\n"):
         line = line.strip()
         if not line:
+            # A blank line closes the event's own placements. What follows it is printed under
+            # the same "Event:" header but is not the event's: NORAD places 1 US Influence
+            # after an action round in which the US lost some, and prints it there with no
+            # header of its own. At turn 9 AR1 of replay 133 the USSR coups Angola with
+            # Independent Reds, whose event places 1 US Influence in Czechoslovakia, and the
+            # "US +1 in Venezuela" that follows a blank line is NORAD's.
+            current_event = None
             continue
         # Playing an opponent's card for Ops asks which resolves first. The log answers it by
         # line order: whichever of "Event:" or the mode header appears first.

@@ -1396,6 +1396,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     # Points the log records that belong to no Ops header and no named event: NORAD's, in
     # practice. Asked last, after every queue that can say what a decision is for.
     loose: List[int] = []
+    _war_targets = set(e.war_targets or [])
     eq = event_queue(e)
     picked_card = cid_target is None
     # A card whose event makes the player name and use a second card (UN Intervention) asks
@@ -1561,13 +1562,32 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # the real targets from being loaded. The log coups Saharan States first, so the dice
         # went to the wrong countries too: Uruguay took the 1 that Saharan States should have
         # had, and 1 + 3 - 2x2 is 0, a failure where the log records a success.
-        # Only where the entry has sections left to answer from. Blanking the queue for any
-        # card the entry does not name leaves events starved whose placements the log records
-        # somewhere the parser hangs elsewhere -- under an Ops header, or before the "Event:"
-        # line -- and they have nowhere else to look.
-        eq_here: List[int] = ([] if (int(ctx.resolving_card) and evq and sections
-                                     and int(ctx.resolving_card) not in evq)
-                              else eq)
+        # Only where the card has somewhere else to look. Blanking the queue for any card the
+        # entry does not name leaves events starved whose placements the log records somewhere
+        # the parser hangs elsewhere -- under an Ops header, or before the "Event:" line.
+        #
+        # Sections already consumed still count as somewhere else: at turn 7's headline of
+        # replay 239 the USSR headlines Che and coups Nicaragua and then Guatemala, and by the
+        # second coup both sections have been taken and the target is sitting in the Ops queue.
+        # Testing for sections *remaining* let the US's Puppet Governments answer it with El
+        # Salvador, the head of its own three placements -- so the USSR's 4 Influence went
+        # there instead of Guatemala, and Puppet Governments was left one placement short.
+        # A war's target is in that queue too -- event_queue starts with them -- and it is the
+        # war's own, whatever else the entry hangs on an event. At turn 8's headline of replay
+        # 112 the US headlines Indo-Pakistani War against the USSR's Junta, and blanking the
+        # queue outright left the war with no country to be fought in.
+        # An event the log never names by header is never a key of evq, so its absence there
+        # says nothing about it: NORAD prints the Influence it places and no header at all, and
+        # its placement is in the shared queue like any other. At turn 9 AR1 of replay 133
+        # Independent Reds places in Czechoslovakia and NORAD in Venezuela, and blanking the
+        # queue for NORAD sent it to the Czechoslovakia the Ops queue still had a copy of.
+        if (int(ctx.resolving_card) and evq
+                and int(ctx.resolving_card) not in evq
+                and int(ctx.resolving_card) not in _UNNAMED_EVENTS
+                and (pq or loose or sections)):
+            eq_here: List[int] = [c for c in eq if c in _war_targets]
+        else:
+            eq_here = eq
         # Before the mask is read, since the mask for a peek is built from that very set.
         if (int(ctx.resolving_card) == _OUR_MAN_IN_TEHRAN and not seeded_peek
                 and dt == ts.DecisionType.SELECT_CARD):
