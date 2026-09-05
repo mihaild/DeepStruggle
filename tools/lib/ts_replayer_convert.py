@@ -171,6 +171,23 @@ _LOG_MISCOUNTED: Dict[int, Dict[Tuple[int, str, str], int]] = {
     259: {(7, "AR3", "USSR"): 1},
 }
 
+# Entries where the log records a play the rules do not allow. The engine is right to refuse
+# it, and what the humans did instead is not a decision worth learning, so the entry is driven
+# with whatever the engine will accept and emits nothing. The board it reaches is put back from
+# the log at the next entry, as every entry's is.
+#
+# Kept for plays the rules settle outright, never for a decision the log merely fails to
+# determine -- that is a failure, and stays one.
+#
+#   replay 59, turn 8's headline -- the USSR headlines Missile Envy and takes Five Year Plan,
+#   a US card, so they get its Operations rather than its event. They put it on the space race,
+#   which a card taken by Missile Envy may not go to: it is spent on Operations, and a space
+#   race attempt is not Operations. The attempt failed in the log, so nothing came of it there
+#   either.
+_INVALID_PLAYS: Dict[int, Set[Tuple[int, str, str]]] = {
+    59: {(8, "Headline", "both")},
+}
+
 
 # The engine's opening handicap is the tournament one: 2 extra US Influence, placed where the
 # US already has some. Nine of the corpus's 287 games were played with a different one and are
@@ -241,6 +258,9 @@ class Conversion:
     # Entries where the log's own arithmetic is wrong (_LOG_MISCOUNTED) and the engine's score
     # stands. Every score the log states afterwards is compared against an offset number.
     log_miscounts: int = 0
+    # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
+    # moving and emitted as nothing.
+    invalid_decisions: int = 0
     # Cards whose event the engine resolved while driving the current entry. Reset per entry.
     events_resolved: Set[int] = field(default_factory=set)
     # (turn, entries converted, samples emitted) as the current turn began.
@@ -1694,6 +1714,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     headline_ids = {k: v for k, v in headline_ids.items() if v}
     mover_of_entry = (ts.Player.US if e.player == "US"
                       else (ts.Player.USSR if e.player == "USSR" else ts.Player.NONE))
+    invalid_play = (e.turn, e.phase, e.player) in _INVALID_PLAYS.get(conv.replay_id, frozenset())
     pq = point_queue(e)
     # Points one log row wrote into both queues -- see rows_queued_twice.
     shared = rows_queued_twice(e)
@@ -2465,15 +2486,23 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # a list of countries nobody was being offered -- "which of 3 options was taken:
             # ['Canada', 'Norway', 'United Kingdom']" for a choice between influence, coup and
             # realignment.
-            offered = sorted(_name_options(state, dt, legal))
-            raise ConversionFailure(Mismatch(
-                conv.replay_id, e.turn, e.phase, e.player, e.card,
-                "decision not determined by the log",
-                f"{str(dt).split('.')[-1]} for "
-                f"{'US' if mover == ts.Player.US else 'USSR'} "
-                f"(resolving={int(ctx.resolving_card)}, op_card={int(ctx.pending_op_card)}); "
-                f"nothing in the entry says which of {len(offered)} options was taken: "
-                f"{offered[:12]}"))
+            if invalid_play:
+                # A listed play the rules do not allow: see _INVALID_PLAYS. Answer it with
+                # anything the engine accepts and emit nothing, so the entry runs to its end
+                # without teaching the reconstruction a move no one may make.
+                chosen = int(legal[0])
+                informative = False
+                conv.invalid_decisions += 1
+            if chosen is None:
+                offered = sorted(_name_options(state, dt, legal))
+                raise ConversionFailure(Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "decision not determined by the log",
+                    f"{str(dt).split('.')[-1]} for "
+                    f"{'US' if mover == ts.Player.US else 'USSR'} "
+                    f"(resolving={int(ctx.resolving_card)}, op_card={int(ctx.pending_op_card)}); "
+                    f"nothing in the entry says which of {len(offered)} options was taken: "
+                    f"{offered[:12]}"))
 
         # Anything the engine settles with a die it rolls itself: coups, realignments, and war
         # events, whose target is chosen the same way but never carried an Ops mode.
