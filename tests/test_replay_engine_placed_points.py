@@ -79,6 +79,21 @@ def test_a_target_is_not_a_duplicate_of_a_placement_in_the_same_country() -> Non
     assert conv.entries_converted == conv.entries_total == 144
 
 
+def test_an_event_on_the_far_side_of_a_die_spends_what_it_moves() -> None:
+    """Replay 283 turn 3 AR5: the US coups South Africa with Nasser and the card's own event
+    follows the roll -- 2 USSR Influence into Egypt, half the US Influence out of it.
+
+    Those are the engine's to move, and both are queued. NORAD's placement, which the log puts
+    in Pakistan, took Egypt from the queue instead and put an Influence back where the event
+    had just removed one. The country the die itself settles is the only one exempt.
+    """
+    e = _entry(283, 3, "AR5", "US")
+    assert e.targets == [63], "the coup is on South Africa"
+    conv = convert_game(_game(283))
+    assert conv.failure is None, f"replay 283 stopped at {conv.failure}"
+    assert conv.entries_converted == 98
+
+
 def test_an_entry_with_no_unclaimed_rows_shares_nothing() -> None:
     e = _entry(277, 9, "AR6", "US")
     assert rows_queued_twice(e) == {}
