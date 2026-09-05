@@ -1371,6 +1371,125 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
     ASSERT_EQ(state.ctx_stack_depth, 0);
 }
 
+// Defectors cancels the USSR headline however it reaches the table, not only when the US
+// headlines it. Three cards can put it there mid-headline: Five Year Plan discards it out of
+// the USSR hand, Grain Sales To Soviets hands it to the US to play, and Star Wars takes it out
+// of the discard pile. At turn 2's headline of ts-replayer game 313 the USSR headlines Vietnam
+// Revolts against Five Year Plan -- the higher Ops, so it resolves first -- and the Defectors
+// it discards leaves Vietnam untouched in the log.
+namespace {
+
+// The USSR headlines Vietnam Revolts (2 Ops) against a US headline of `us_headline`, with the
+// cards named in `ussr_hand` and `us_hand` held. Both headlines are selected, so the higher
+// Ops card resolves first.
+ts::GameState defectors_headline(uint8_t us_headline,
+                                 std::initializer_list<uint8_t> us_hand,
+                                 std::initializer_list<uint8_t> ussr_hand) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
+            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[us_headline] = ts::CardLocation::HAND_US;
+    for (uint8_t c : us_hand) state.card_locations[c] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::CardLocation::HAND_USSR;
+    for (uint8_t c : ussr_hand) state.card_locations[c] = ts::CardLocation::HAND_USSR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, us_headline, 0, 0});
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0});
+    return state;
+}
+
+}  // namespace
+
+TEST(CardEdgeCasesTest, Defectors_DiscardedByFiveYearPlanInHeadline_CancelsUSSRHeadline) {
+    ts::GameState state = defectors_headline(ts::card_ids::FIVE_YEAR_PLAN,
+                                             {}, {ts::card_ids::DEFECTORS});
+    // Five Year Plan is 3 Ops against Vietnam Revolts' 2, so it resolves first and discards
+    // the only card the USSR holds.
+    ASSERT_EQ(state.card_locations[ts::card_ids::DEFECTORS], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
+    ASSERT_EQ(state.card_locations[ts::card_ids::VIETNAM_REVOLTS], ts::CardLocation::DISCARD_PILE);
+}
+
+TEST(CardEdgeCasesTest, Defectors_HandedOverByGrainSalesInHeadline_CancelsUSSRHeadline) {
+    ts::GameState state = defectors_headline(ts::card_ids::GRAIN_SALES,
+                                             {}, {ts::card_ids::DEFECTORS});
+    // Grain Sales is 2 Ops and Vietnam Revolts 2, and the US wins ties, so Grain Sales
+    // resolves first and offers the US the card it drew.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DEFECTORS);
+    // Defectors is a US card, so the US may play it as its Event -- and in a headline it is
+    // legal to do so, unlike in an action round.
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
+}
+
+TEST(CardEdgeCasesTest, Defectors_TakenByStarWarsInHeadline_CancelsUSSRHeadline) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
+            state.card_locations[i] == ts::CardLocation::HAND_USSR ||
+            state.card_locations[i] == ts::CardLocation::DISCARD_PILE) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.us_space_track = 4;      // Star Wars needs the US ahead on the space track
+    state.ussr_space_track = 0;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::DISCARD_PILE;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::STAR_WARS, 0, 0});
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0});
+
+    // Star Wars is 2 Ops against Vietnam Revolts' 2 and the US wins ties, so it resolves first
+    // and asks which card to take out of the discard pile.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::STAR_WARS);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0});
+
+    ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
+    ASSERT_EQ(state.card_locations[ts::card_ids::VIETNAM_REVOLTS], ts::CardLocation::DISCARD_PILE);
+}
+
+TEST(CardEdgeCasesTest, Defectors_AfterTheUSSRHeadlineHasResolved_CancelsNothing) {
+    // The USSR headlines Five Year Plan, whose event is the US's to execute, and the discard
+    // it takes is Defectors. The USSR's headline is that very card and it has already
+    // resolved, so there is nothing left to cancel -- and the US's own headline stands.
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.current_phase = ts::Phase::HEADLINE;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
+            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_EQ(state.card_locations[ts::card_ids::DEFECTORS], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.defcon, 4);   // Duck and Cover resolved: DEFCON degrades by one
+}
+
 TEST(CardEdgeCasesTest, SpaceRace_Box1_EarthSatellite_VPAwards_FirstAndSecond) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);

@@ -353,6 +353,23 @@ bool trigger_defectors(GameState& state, Player p) noexcept {
         if (state.headline_ussr_card > 0) {
             state.headline_ussr_card = 0;
         }
+        // Cancel the USSR headline wherever it still stands, whatever fired this. The
+        // headlined case is settled before either card resolves, by the check on
+        // headline_us_card in step(); this is the card reaching the table some other way --
+        // Five Year Plan discarding it out of the USSR hand, Grain Sales handing it to the US,
+        // Star Wars taking it out of the discard pile -- and by then the pair is committed and
+        // the second card is what is left to cancel. At turn 2's headline of ts-replayer game
+        // 313 the USSR headlines Vietnam Revolts against the US's Five Year Plan, which is the
+        // higher Ops and so resolves first; the Defectors it discards leaves Vietnam untouched
+        // in the log and took the USSR's 2 Influence in the reconstruction.
+        //
+        // A USSR card that has already resolved is not cancelled: Defectors fired after it is
+        // too late, which is exactly what stage 2 means here.
+        if (state.headline_stage < 2 && state.headline_second_owner == Player::USSR &&
+            state.headline_second_card != 0) {
+            state.card_locations[state.headline_second_card] = CardLocation::DISCARD_PILE;
+            state.headline_second_card = 0;
+        }
     } else if (state.current_phase == Phase::ACTION_ROUND) {
         // If played by USSR during an Action Round, US gains 1 VP
         if (state.phasing_player == Player::USSR || (state.phasing_player == Player::NONE && p == Player::USSR)) {

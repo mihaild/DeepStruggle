@@ -205,10 +205,19 @@ cmake --build build_san -j
    the US headlines Grain Sales To Soviets, takes Willy Brandt and realigns Cuba twice with it,
    and Willy Brandt's Event must still follow. A headlined card is excluded: it is played as
    its Event, so Ops belonging to one are Ops its Event gave away and it has already fired.
-12. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+12. **Defectors Cancels The USSR Headline However It Reaches The Table**: the headlined case is
+   settled before either card resolves, by the check on `headline_us_card` in `step`. Any other
+   route -- Five Year Plan discarding it out of the USSR hand, Grain Sales To Soviets handing
+   it to the US, Star Wars taking it out of the discard pile -- fires it once the pair is
+   committed, so `trigger_defectors` cancels the *second* headline card where the USSR owns it
+   and `headline_stage < 2`. A USSR card that has already resolved is untouched: Defectors
+   after it is too late. At turn 2's headline of ts-replayer game 313 the USSR headlines
+   Vietnam Revolts against Five Year Plan, the higher Ops, and the Defectors it discards leaves
+   Vietnam at [0][0].
+13. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
    `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
-13. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+14. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
