@@ -310,6 +310,7 @@ def _revealed_under(e: Entry, marker: str) -> Optional[Tuple[str, int]]:
 
 
 _OP_MODE_NAMES = {0: "influence", 1: "coup", 2: "realignment"}
+_PLAY_MODE_NAMES = {0: "event", 1: "ops", 2: "space race", 3: "pass"}
 
 
 def _name_options(state: ts.GameState, dt: "ts.DecisionType",
@@ -327,6 +328,8 @@ def _name_options(state: ts.GameState, dt: "ts.DecisionType",
             out.append(str(ts.MapData.get_country_info(primary)["name"]))
         elif dt == ts.DecisionType.SELECT_OP_MODE:
             out.append(_OP_MODE_NAMES.get(primary, f"mode {primary}"))
+        elif dt == ts.DecisionType.SELECT_PLAY_MODE:
+            out.append(_PLAY_MODE_NAMES.get(a - 110, f"play mode {a}"))
         else:
             out.append(f"{str(dt).split('.')[-1].lower()} {primary}")
     return out
