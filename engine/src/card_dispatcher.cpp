@@ -808,17 +808,38 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::CUBAN_MISSILE_CRISIS: {
-            // The country the US pays from. The coup that provoked this is already staged in
-            // temp_cards, so all that is left is to take the Influence and open its die.
-            uint8_t cid = action.primary_id;
-            if (cid != countries::WEST_GERMANY && cid != countries::TURKEY) return false;
-            if (state.countries[cid].us_influence < 2) return false;
-            state.countries[cid].remove_influence(Player::US, 2);
-            state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
+            // Where the payer pays from, or a decline. Declining is only on offer at the head
+            // of an action round: inside a coup it is not a choice, since couping without
+            // paying loses the game, and the mask offers no early stop there.
+            const Player payer = state.ctx().decision_player;
+            if (!action.is_confirm_done()) {
+                uint8_t cid = action.primary_id;
+                if (payer == Player::US) {
+                    if (cid != countries::WEST_GERMANY && cid != countries::TURKEY) return false;
+                    if (state.countries[cid].us_influence < 2) return false;
+                    state.countries[cid].remove_influence(Player::US, 2);
+                    state.clear_flag(effect_bits::CMC_ACTIVE_USSR);
+                } else if (payer == Player::USSR) {
+                    if (cid != countries::CUBA) return false;
+                    if (state.countries[cid].ussr_influence < 2) return false;
+                    state.countries[cid].remove_influence(Player::USSR, 2);
+                    state.clear_flag(effect_bits::CMC_ACTIVE_US);
+                } else {
+                    return false;
+                }
+            }
             state.ctx().resolving_card = 0;
             state.ctx().remaining_steps = 0;
-            state.ctx().decision_player = Player::NONE;
-            state.ctx().decision_type = DecisionType::ROLL_DIE;
+            state.ctx().allow_early_stop = 0;
+            if (state.ctx().temp_cards[1] == static_cast<uint8_t>(RollType::COUP)) {
+                // A coup provoked this and is already staged in temp_cards; open its die.
+                state.ctx().decision_player = Player::NONE;
+                state.ctx().decision_type = DecisionType::ROLL_DIE;
+            } else {
+                // Asked at the head of the action round, so the player still has it to play.
+                state.ctx().decision_player = payer;
+                state.ctx().decision_type = DecisionType::SELECT_CARD;
+            }
             return false;
         }
 
@@ -1497,9 +1518,16 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 // Cancelling Cuban Missile Crisis: the US pays 2 Influence from West Germany
                 // or from Turkey, and is asked only when both can pay.
                 case card_ids::CUBAN_MISSILE_CRISIS:
-                    if ((i == countries::WEST_GERMANY || i == countries::TURKEY) &&
-                        state.countries[i].us_influence >= 2) {
-                        mask_out[i] = 1;
+                    if (p == Player::US) {
+                        if ((i == countries::WEST_GERMANY || i == countries::TURKEY) &&
+                            state.countries[i].us_influence >= 2) {
+                            mask_out[i] = 1;
+                        }
+                    } else if (p == Player::USSR) {
+                        if (i == countries::CUBA &&
+                            state.countries[i].ussr_influence >= 2) {
+                            mask_out[i] = 1;
+                        }
                     }
                     break;
                 case card_ids::WARSAW_PACT:

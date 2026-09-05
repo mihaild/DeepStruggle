@@ -369,7 +369,12 @@ def event_point_queues(e: Entry) -> Dict[int, List[int]]:
 #   NORAD prints only the Influence it places -- "US +1 in Poland" trailing the coup that
 #   dropped DEFCON -- and never a header of its own.
 _NORAD = 106
-_UNNAMED_EVENTS = frozenset({_NORAD})
+#   Cuban Missile Crisis is offered at the head of every action round while it stands, and
+#   declining it -- which is what usually happens -- does nothing at all and is written
+#   nowhere. Where it is paid off the log says "Cuban Missile Crisis* is no longer in play",
+#   which the naming set already counts, and the board check verifies the Influence.
+_CUBAN_MISSILE_CRISIS = 40
+_UNNAMED_EVENTS = frozenset({_NORAD, _CUBAN_MISSILE_CRISIS})
 
 
 def _events_the_log_names(e: Entry) -> Set[int]:
@@ -593,6 +598,55 @@ def _reconcile_scalars(state: ts.GameState, entry: Entry,
 
 
 _RE_AR = re.compile(r"AR(\d+)")
+
+
+def _settle_cuban_missile_offer(state: ts.GameState, e: Entry) -> None:
+    """Pay off Cuban Missile Crisis where the log says so, and decline where it does not.
+
+    The engine offers the payoff at the head of the payer's own action round. Most rounds
+    decline it -- the price is 2 Influence in Cuba, West Germany or Turkey -- and the log
+    records only the times it is paid, as an Influence removal and a "no longer in play" line.
+
+    At turn 4 AR2 of replay 264 the USSR pays out of Cuba and then plays "We Will Bury You"
+    for its 4 Operations, putting two straight back into Cuba and two into Saudi Arabia. Left
+    declined, the four Operations all landed in a Cuba that had never been paid from.
+    """
+    if not (not ts.Engine.is_terminal(state)
+            and state.ctx().decision_type == ts.DecisionType.POINT_NODE
+            and int(state.ctx().resolving_card) == _CUBAN_MISSILE_CRISIS):
+        return
+    cancels = any(_norm(nm) == _norm("Cuban Missile Crisis*")
+                  for nm in (e.out_of_play or []))
+    mask = ts.ActionMask.generate_flat_mask(state)
+    chosen: Optional[int] = None
+    if cancels:
+        # The country paid from is the one the entry removes Influence in, and the mask offers
+        # only the ones that could pay.
+        for _side, delta, cid, _u, _s in (e.influence or []):
+            if int(delta) < 0 and 0 <= cid < 84 and mask[119 + cid]:
+                chosen = 119 + cid
+                break
+    if chosen is None and mask[_PASS]:
+        chosen = _PASS
+    if chosen is None:
+        return
+    ts.Engine.step_flat(state, int(chosen))
+    _drain(state)
+    if chosen == _PASS:
+        return
+    # The Influence this paid is spent, and the entry's own queues must not spend it again.
+    # The log prints the removal under a bare "Event:" header with no card named, so it is
+    # read as part of the Operations the entry goes on to describe: at turn 4 AR2 of replay
+    # 264 the two Influence paid out of Cuba came back as two more Cuba placements, and "We
+    # Will Bury You" put all four of its Operations there instead of two in Cuba and two in
+    # Saudi Arabia.
+    paid = int(chosen) - 119
+    for rec in list(e.influence or []):
+        if rec[2] == paid and int(rec[1]) < 0:
+            e.influence.remove(rec)
+            if rec in (e.ops_influence or []):
+                e.ops_influence.remove(rec)
+            break
 
 
 def _reconcile_turn(state: ts.GameState, entry: Entry, replay_id: int = -1) -> None:
@@ -1414,6 +1468,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     cid_target = card_id(e.card) if e.card and " & " not in e.card else None
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
     headline_ids = {k: v for k, v in headline_ids.items() if v}
+    mover_of_entry = (ts.Player.US if e.player == "US"
+                      else (ts.Player.USSR if e.player == "USSR" else ts.Player.NONE))
     pq = point_queue(e)
     evq = event_point_queues(e)
     # Points the log records that belong to no Ops header and no named event: NORAD's, in
@@ -1570,6 +1626,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         if ts.Engine.is_terminal(state):
             break
         ctx = state.ctx()
+        # The Cuban Missile Crisis payoff is offered at the head of an action round, which the
+        # engine reaches while this entry is still being driven. It belongs to the player whose
+        # round it is, and to their entry: answered here it would be declined on their behalf
+        # before the log had its say. At turn 4 AR2 of replay 264 the USSR pays 2 Influence out
+        # of Cuba, and the US's AR1 entry was declining it for them.
+        if (int(ctx.resolving_card) == _CUBAN_MISSILE_CRISIS
+                and ctx.decision_player != mover_of_entry):
+            break
         if 1 <= int(ctx.resolving_card) <= 110:
             resolved_here.add(int(ctx.resolving_card))
         dt = ctx.decision_type
@@ -2560,6 +2624,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             _reconcile_board(state, prev_raw.get("countries"))
         if prev_entry is not None:
             _reconcile_scalars(state, prev_entry, take_score=not prev_crossed_turn)
+        _settle_cuban_missile_offer(state, e)
 
         _apply_hands(state,
                      _hand_after(turn_hands["US"], played["US"], set(pending["US"])),

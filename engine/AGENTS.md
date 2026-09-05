@@ -183,12 +183,14 @@ cmake --build build_san -j
    Five Year Plan, Terrorism and Missile Envy all skip whatever `resolving_card` names, which is
    that card. Only the first two are reachable this way (the other two are neutral, and a
    neutral card played for Operations fires no event).
-9. **Cancelling Cuban Missile Crisis Is A Choice**: couping while the crisis stands against you
-   cancels it, and the US pays 2 Influence from West Germany *or* Turkey. The engine asks -- a
-   `POINT_NODE` with `resolving_card == CUBAN_MISSILE_CRISIS`, offered only when both can pay --
-   before the coup's die, so the coup is already staged in `temp_cards` and the chance node opens
-   on the far side of the answer. With one payer, or none, `execute_coup` settles it inline as
-   before. The USSR side is Cuba alone and has no choice.
+9. **Cancelling Cuban Missile Crisis Is A Choice, At Two Moments**: the crisis can be paid off at
+   any time; the engine offers it at the head of the payer's own action round, where declining is
+   allowed and usual, and inside a coup they make, where it is not -- couping without paying
+   loses the game. Both are a `POINT_NODE` with `resolving_card == CUBAN_MISSILE_CRISIS`: the US
+   pays from West Germany or Turkey, the USSR from Cuba. The coup's is asked before its die, so
+   the coup is already staged in `temp_cards` and the chance node opens on the far side of the
+   answer; `temp_cards[1]` being `RollType::COUP` is what tells the two apart. With one payer, or
+   none, `execute_coup` settles it inline as before.
 10. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.

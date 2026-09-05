@@ -16,6 +16,7 @@ public:
     static void advance_headline_step(GameState& state) noexcept;
     static void advance_after_ops(GameState& state) noexcept;
     static void advance_after_action_round(GameState& state) noexcept;
+    static void offer_cuban_missile_payoff(GameState& state) noexcept;
     static void end_turn(GameState& state) noexcept;
     static void finish_end_turn(GameState& state) noexcept;
 

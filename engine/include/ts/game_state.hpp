@@ -338,4 +338,20 @@ inline bool keeps_own_card_location(const GameState& state, uint8_t card) noexce
     return loc == CardLocation::HAND_US || loc == CardLocation::HAND_USSR;
 }
 
+// Cuban Missile Crisis can be paid off at any time. Modelled as the head of the payer's own
+// action round, and as part of a coup they make -- the two moments a player is doing something
+// anyway -- rather than as a standing option on every decision in the game.
+inline bool can_pay_off_cuban_missile_crisis(const GameState& state, Player p) noexcept {
+    if (p == Player::US) {
+        return state.has_flag(effect_bits::CMC_ACTIVE_USSR) &&
+               (state.countries[countries::WEST_GERMANY].us_influence >= 2 ||
+                state.countries[countries::TURKEY].us_influence >= 2);
+    }
+    if (p == Player::USSR) {
+        return state.has_flag(effect_bits::CMC_ACTIVE_US) &&
+               state.countries[countries::CUBA].ussr_influence >= 2;
+    }
+    return false;
+}
+
 } // namespace ts

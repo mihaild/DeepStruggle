@@ -235,7 +235,25 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
         state.ctx() = DecisionContext{};
         state.ctx().decision_player = Player::USSR;
         state.ctx().decision_type = DecisionType::SELECT_CARD;
+        offer_cuban_missile_payoff(state);
     }
+}
+
+// The crisis can be paid off at any time; it is offered here, at the head of the payer's own
+// action round, and inside a coup they make. At turn 4 AR2 of ts-replayer game 264 the USSR
+// pays 2 Influence out of Cuba, then plays "We Will Bury You" for its 4 Operations and puts
+// two of them straight back into Cuba and two into Saudi Arabia -- no coup anywhere near it.
+//
+// Declining is always allowed, which is what most players do, so this costs a pass and not a
+// decision wherever the crisis is not in play at all.
+void StateMachine::offer_cuban_missile_payoff(GameState& state) noexcept {
+    if (state.current_phase != Phase::ACTION_ROUND) return;
+    Player p = state.ctx().decision_player;
+    if (!can_pay_off_cuban_missile_crisis(state, p)) return;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 1;    // paying is a choice, and usually declined
+    state.ctx().resolving_card = card_ids::CUBAN_MISSILE_CRISIS;
 }
 
 void StateMachine::advance_after_ops(GameState& state) noexcept {
@@ -429,6 +447,7 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     }
 
     state.ctx().decision_type = DecisionType::SELECT_CARD;
+    offer_cuban_missile_payoff(state);
 }
 
 void StateMachine::end_turn(GameState& state) noexcept {
