@@ -167,9 +167,15 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // China Card can ONLY be played for Operations (no Event, no Space Race)
+            // The China Card has no Event of its own, so Operations or the Space Race. Racing
+            // with it is a poor play -- it is the best Ops card in the game and passes to the
+            // opponent either way -- but it is a legal one, and at turn 10 AR4 of ts-replayer
+            // game 247 the US does exactly that, to box 5.
             if (card == card_ids::THE_CHINA_CARD) {
                 mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                if (SpaceRace::can_attempt_space(state, p, card)) {
+                    mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
+                }
                 return;
             }
 
@@ -200,7 +206,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // Ops play: always legal for non-scoring cards
             mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
 
-            // Space play: legal if prerequisites are met and card is NOT China Card
+            // Space play: legal if prerequisites are met
             if (SpaceRace::can_attempt_space(state, p, card)) {
                 mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
             }

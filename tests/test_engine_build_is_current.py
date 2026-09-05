@@ -25,12 +25,19 @@ SOURCE_SUFFIXES = {".cpp", ".hpp", ".h", ".cc"}
 
 
 def _newest_source() -> tuple[Optional[pathlib.Path], float]:
+    """The newest source the extension is built *from*.
+
+    engine/tests/ is not among them -- those compile into ts_tests, not the extension, so
+    editing a C++ test never makes the .so stale and must not read as a missed rebuild.
+    """
     newest, newest_mtime = None, 0.0
     for directory in SOURCE_DIRS:
         root = REPO / directory
         if not root.is_dir():
             continue
         for path in root.rglob("*"):
+            if "tests" in path.relative_to(root).parts:
+                continue
             if path.suffix in SOURCE_SUFFIXES and path.is_file():
                 mtime = path.stat().st_mtime
                 if mtime > newest_mtime:

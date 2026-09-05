@@ -158,7 +158,14 @@ cmake --build build_san -j
    Oil or a Space Station to the one player who earned it and is theirs to decline, so the pass is
    always on offer there. A player with an empty hand never reaches the mask at all --
    `advance_after_action_round` passes them itself.
-5. **Headline Cards Leave Hand On Commitment**: both headlines are played at once, face down, and
+5. **The China Card Can Be Raced**: it carries no Event of its own, so `SELECT_PLAY_MODE` offers
+   Operations and, where the next box's Ops requirement is met, the Space Race. Racing with the
+   best Ops card in the game is a poor play and not an illegal one -- at turn 10 AR4 of
+   ts-replayer game 247 the US races to box 5 with it. Whatever it is played for it passes to the
+   opponent face down and is never discarded, so `SpaceRace::attempt_space` sets
+   `china_card_holder` and `china_card_playable` rather than touching `card_locations`. Its Asia
+   bonus pays nothing here: the space track is not in a region.
+6. **Headline Cards Leave Hand On Commitment**: both headlines are played at once, face down, and
    only then resolved in Ops order, so as soon as both are selected each card's location becomes
    `CardLocation::HEADLINE_COMMITTED` -- neither is in a hand while the other resolves, and a card that
    reads a hand (The Cambridge Five, Missile Envy, Grain Sales To Soviets, "Lone Gunman", CIA
@@ -166,24 +173,24 @@ cmake --build build_san -j
    find it there. `HEADLINE_COMMITTED` is a waypoint: the ordinary post-resolution cleanup overwrites it
    with the card's real destination. It is deliberately not the discard pile, which Star Wars and
    SALT Negotiations read.
-6. **Ops Spent In A Headline Discard Their Own Card**: `advance_after_ops` relocates
+7. **Ops Spent In A Headline Discard Their Own Card**: `advance_after_ops` relocates
    `pending_op_card` in the HEADLINE phase, because the headline machinery only clears the two
    headline cards themselves. A card played *through* one of them -- Grain Sales To Soviets draws
    from the opponent's hand and has its player play what it draws -- otherwise stays in the hand
    it was played from, in the running for Missile Envy and playable a second time.
-7. **Traps Judge A Card On Its Effective Ops**: Quagmire and Bear Trap take a discard of 2 Ops
+8. **Traps Judge A Card On Its Effective Ops**: Quagmire and Bear Trap take a discard of 2 Ops
    or more, and Containment, Brezhnev Doctrine and Red Scare/Purge all move that value, so
    eligibility is `Operations::get_effective_ops(state, card, p)` and not the printed value --
    with no target region, since a discard has none. The mask and the SELECT_CARD handler must
    agree: a card only one of them accepts either cannot be discarded or falls through to an
    ordinary play.
-8. **A Card In Play Is Not In Hand**: the engine leaves an Ops card in its owner's hand until
+9. **A Card In Play Is Not In Hand**: the engine leaves an Ops card in its owner's hand until
    the play finishes, and an opponent's card played for Operations fires its own event -- so an
    event that reads that hand can find the very card in front of it. Grain Sales To Soviets,
    Five Year Plan, Terrorism and Missile Envy all skip whatever `resolving_card` names, which is
    that card. Only the first two are reachable this way (the other two are neutral, and a
    neutral card played for Operations fires no event).
-9. **Cancelling Cuban Missile Crisis Is A Choice, At Two Moments**: the crisis can be paid off at
+10. **Cancelling Cuban Missile Crisis Is A Choice, At Two Moments**: the crisis can be paid off at
    any time; the engine offers it at the head of the payer's own action round, where declining is
    allowed and usual, and inside a coup they make, where it is not -- couping without paying
    loses the game. Both are a `POINT_NODE` with `resolving_card == CUBAN_MISSILE_CRISIS`: the US
@@ -191,10 +198,10 @@ cmake --build build_san -j
    the coup is already staged in `temp_cards` and the chance node opens on the far side of the
    answer; `temp_cards[1]` being `RollType::COUP` is what tells the two apart. With one payer, or
    none, `execute_coup` settles it inline as before.
-10. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
+11. **A Headline Ends With The Stack Empty**: an event that grants Ops does not finish when it
    is triggered, so the frame it was fired in stays open until those Ops are spent. Missile Envy
    fires the card it takes inside a pushed frame; a card like ABM Treaty leaves it behind.
    `advance_after_ops` unwinds the stack on the HEADLINE path before advancing the headline,
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
-11. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+12. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.

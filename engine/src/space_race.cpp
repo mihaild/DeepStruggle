@@ -70,7 +70,6 @@ bool SpaceRace::has_space_station_ar8(const GameState& state, Player p) noexcept
 
 bool SpaceRace::can_attempt_space(const GameState& state, Player p, uint8_t card_id) noexcept {
     if (p == Player::NONE || card_id < 1 || card_id > 110) return false;
-    if (card_id == card_ids::THE_CHINA_CARD) return false; // The China Card cannot be played for Space Race
     uint8_t cur_track = (p == Player::US) ? state.us_space_track : state.ussr_space_track;
     if (cur_track >= 8) return false; // Already reached max box
 
@@ -81,8 +80,9 @@ bool SpaceRace::can_attempt_space(const GameState& state, Player p, uint8_t card
     // Effective Ops, not printed: the Ops modifiers that decide what a card can buy on the
     // board decide what it can buy on the space track too. At turn 4 AR3 of ts-replayer game
     // 113 the USSR raced with OAS Founded -- 1 printed Op, but Brezhnev Doctrine was active,
-    // making it the 2 that box 3 requires. No region applies: the China Card cannot be raced
-    // at all, and Vietnam Revolts pays only for Operations in Southeast Asia.
+    // making it the 2 that box 3 requires. No region applies: the space track is not on the
+    // map, so the China Card's Asia bonus and Vietnam Revolts' Southeast Asia bonus, which pay
+    // only for Operations in a region, pay nothing here.
     const auto& next_box = SPACE_BOXES[cur_track + 1];
     return Operations::get_effective_ops(state, card_id, p) >= next_box.min_ops;
 }
@@ -95,8 +95,17 @@ bool SpaceRace::attempt_space(GameState& state, Player p, uint8_t card_id, uint8
 
     state.record_space_attempt(p);
 
-    // Space race card is moved to discard pile (event never occurs)
-    state.card_locations[card_id] = CardLocation::DISCARD_PILE;
+    // Space race card is moved to discard pile (event never occurs). The China Card is never
+    // discarded: whatever it was played for, it passes to the opponent face down, unplayable
+    // until the turn after. At turn 10 AR4 of ts-replayer game 247 the US races with it to
+    // box 5 -- a poor play, and a legal one.
+    if (card_id == card_ids::THE_CHINA_CARD) {
+        state.china_card_holder = get_opponent(p);
+        state.china_card_playable = 0;
+        if (p == Player::US) state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+    } else {
+        state.card_locations[card_id] = CardLocation::DISCARD_PILE;
+    }
 
     uint8_t next_box_num = cur_track + 1;
     const auto& next_box = SPACE_BOXES[next_box_num];

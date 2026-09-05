@@ -52,11 +52,23 @@ def test_the_record_stops_mid_entry(replay_id: int, tail: str) -> None:
     assert kept[-1].turn == stopped_in - 1
 
 
-@pytest.mark.parametrize("replay_id", [153, 251, 112, 158, 37, 38, 44, 182])
+@pytest.mark.parametrize("replay_id", [153, 251, 112, 158, 37, 38, 44])
 def test_these_games_convert_up_to_where_the_log_ends(replay_id: int) -> None:
     conv = convert_game(_game(replay_id))
     assert conv.failure is None, f"replay {replay_id} reported {conv.failure}"
     assert conv.truncated_at is not None
+
+
+def test_replay_182_is_whole_and_no_longer_stops_short() -> None:
+    """Its last entry is turn 10 AR8, the US racing with the China Card.
+
+    It sat in the list above while the engine refused to play the China Card for the Space
+    Race, which made the last turn unconvertible and read as a record that stops early.
+    """
+    conv = convert_game(_game(182))
+    assert conv.failure is None, f"replay 182 reported {conv.failure}"
+    assert conv.truncated_at is None
+    assert conv.entries_converted == conv.entries_total == 143
 
 
 def test_a_disagreement_in_a_turn_the_log_completes_is_still_a_failure() -> None:

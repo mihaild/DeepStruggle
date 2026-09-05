@@ -104,10 +104,12 @@ def test_vietnam_revolts_does_not_pay_for_a_space_attempt() -> None:
     assert not _may_race(state, OAS_FOUNDED)
 
 
-def test_the_china_card_still_cannot_race() -> None:
-    state = _at_box(ts.Player.USSR, 2, [THE_CHINA_CARD])
-    state.set_flag(ts.EffectBits.BREZHNEV_DOCTRINE_ACTIVE)
-    assert not _may_race(state, THE_CHINA_CARD)
+def test_the_china_card_may_race() -> None:
+    """A poor play -- it is the best Ops card in the game and passes to the opponent either
+    way -- and a legal one. At turn 10 AR4 of ts-replayer game 247 the US races to box 5 with
+    it, on 3 of its 4 Ops."""
+    assert _may_race(_at_box(ts.Player.US, 4, [THE_CHINA_CARD]), THE_CHINA_CARD)
+
 
 
 def test_box_8_still_demands_four_effective_ops() -> None:

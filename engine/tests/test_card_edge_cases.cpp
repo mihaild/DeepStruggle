@@ -1597,7 +1597,7 @@ TEST(CardEdgeCasesTest, IndependentReds_RestrictedTo5AllowedCountries_RejectsCan
     ASSERT_EQ(state.ctx().resolving_card, 0);
 }
 
-TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OnlyOpsLegal) {
+TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OpsAndSpaceLegal) {
     ts::GameState state{};
     state.rng_state = 42;
     state.turn = 1;
@@ -1614,17 +1614,56 @@ TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OnlyOpsLegal) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::THE_CHINA_CARD);
 
-    // Verify ActionMask: EVENT (0) and SPACE (2) must be 0; only OPS (1) must be 1
+    // The China Card carries no Event of its own, so Event is illegal. Operations and the
+    // Space Race are both legal: racing with the best Ops card in the game is a poor play and
+    // not an illegal one, and at turn 10 AR4 of ts-replayer game 247 the US races to box 5
+    // with it.
     uint8_t mask[128] = {0};
     size_t mask_size = 0;
     ts::ActionMask::generate_mask(state, mask, &mask_size);
     ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0); // Event ILLEGAL
     ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);   // Ops LEGAL
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 0); // Space ILLEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 1); // Space LEGAL
 
     // Attempting to step with EVENT mode must be rejected
     bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
     ASSERT_FALSE(ok_event);
+}
+
+TEST(CardEdgeCasesTest, ChinaCard_RacedForSpace_PassesToOpponentAndIsNeverDiscarded) {
+    ts::GameState state{};
+    state.rng_state = 42;
+    state.turn = 10;
+    state.action_round = 4;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.china_card_holder = ts::Player::US;
+    state.china_card_playable = 1;
+    state.us_space_track = 4;   // box 5 wants 3 Ops; the China Card has 4
+    // A card in each hand, so the turn does not end under the attempt and flip the China Card
+    // face up again before the assertions below.
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    bool ok_space = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 0, 0));
+    ASSERT_TRUE(ok_space);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+
+    // A roll of 3 makes box 5 (needs 3 or less).
+    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 3, 0, 0));
+    ASSERT_EQ(state.us_space_track, 5);
+
+    // It passes to the opponent face down, and is not in the discard pile.
+    ASSERT_EQ(state.china_card_holder, ts::Player::USSR);
+    ASSERT_EQ(state.china_card_playable, 0);
+    ASSERT_NE(state.card_locations[ts::card_ids::THE_CHINA_CARD], ts::CardLocation::DISCARD_PILE);
+
+    // And it cost an attempt, as any other card would. (The US is past Animal In Space here,
+    // so they have a second one this turn.)
+    ASSERT_EQ(state.get_space_turns_used(ts::Player::US), 1);
 }
 
 TEST(CardEdgeCasesTest, OpponentCard_CannotBePlayedAsEvent_OnlyOpsAndSpaceLegal) {
