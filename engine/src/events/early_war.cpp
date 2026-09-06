@@ -221,16 +221,24 @@ bool trigger_nato(GameState& state, Player p) noexcept {
 bool trigger_independent_reds(GameState& state, Player p) noexcept {
     // Independent Reds: Add US Influence to Yugoslavia, Romania, Bulgaria, Hungary, or Czechoslovakia
     // equal to that country's USSR Influence.
+    // The same test the target mask uses (card_dispatcher.cpp, INDEPENDENT_REDS): the card adds
+    // US Influence *to match* the USSR's, so a country where the US already equals or exceeds it
+    // has nothing to add and is not a target. Guarding on ussr_influence > 0 instead left a gap
+    // where the event opened a POINT_NODE the mask could not fill: the safety net in
+    // generate_flat_mask_212 then supplied CONFIRM_DONE and reported "POINT_NODE with no legal
+    // target and no early stop", and the policy was asked to choose among one no-op action, which
+    // entered the training stream as though a choice had been made. Four such nodes appeared in
+    // 5,000 generated games.
     bool any_valid = false;
     uint8_t targets[] = { countries::YUGOSLAVIA, countries::ROMANIA, countries::BULGARIA, countries::HUNGARY, countries::CZECHOSLOVAKIA };
     for (uint8_t cid : targets) {
-        if (state.countries[cid].ussr_influence > 0) {
+        if (state.countries[cid].ussr_influence > state.countries[cid].us_influence) {
             any_valid = true;
             break;
         }
     }
     if (!any_valid) {
-        return true; // No valid target country has USSR influence -> event finishes immediately without effect
+        return true; // Nothing to match anywhere -> the event finishes immediately without effect
     }
 
     state.ctx().decision_player = Player::US;
