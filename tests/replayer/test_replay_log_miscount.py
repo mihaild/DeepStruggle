@@ -15,10 +15,11 @@ from typing import Dict, List, Tuple, cast
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import _KNOWN_SCORE, _LOG_MISCOUNTED, convert_game
 from tools.lib.ts_replayer_parse import parse_entry
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 
 
 def _game(replay_id: int) -> Dict[str, object]:

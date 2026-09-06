@@ -14,13 +14,14 @@ from typing import Dict, List
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (
     _cards_named_through_un_intervention,
     card_id,
     convert_game,
 )
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 _OAS_FOUNDED = 70
 _UN_INTERVENTION = 32
 

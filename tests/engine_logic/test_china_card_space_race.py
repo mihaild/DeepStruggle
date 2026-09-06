@@ -14,9 +14,10 @@ from typing import List
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 THE_CHINA_CARD = 6
 DUCK_AND_COVER = 4
 FIVE_YEAR_PLAN = 5

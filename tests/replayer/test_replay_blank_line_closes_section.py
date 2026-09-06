@@ -14,10 +14,11 @@ from typing import Dict, List, cast
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game, point_queue
 from tools.lib.ts_replayer_parse import parse_entry
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 _ARGENTINA = 82
 _UNITED_KINGDOM = 1
 

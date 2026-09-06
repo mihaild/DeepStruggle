@@ -24,16 +24,14 @@ from typing import Dict, List
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
 from tools.lib.ts_replayer_parse import parse_entry
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 CENTRAL_AMERICA_SCORING = 37
 NUCLEAR_TEST_BAN = 34
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _game(replay_id: int) -> Dict:

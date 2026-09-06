@@ -15,7 +15,7 @@ Fetched once and cached locally so experiments never touch the host again. The s
 robots.txt; this still throttles to one request a second, identifies itself, retries politely,
 and skips anything already on disk so a re-run costs nothing.
 
-    PYTHONPATH=. .venv/bin/python3 tools/download_ts_replayer.py --out data/datasets/ts_replayer
+    PYTHONPATH=. .venv/bin/python3 tools/download_ts_replayer.py
 """
 
 import argparse
@@ -70,7 +70,11 @@ def extract(html: str) -> "dict | None":
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="data/datasets/ts_replayer")
+    ap.add_argument(
+        "--out", default=None,
+        help="Where to cache the replays. Defaults to the shared per-user cache "
+             "(~/.cache/ts_ai/ts_replayer), so the corpus is downloaded once per machine "
+             "rather than once per checkout or git worktree.")
     ap.add_argument("--start", type=int, default=1)
     ap.add_argument("--end", type=int, default=340,
                     help="inclusive; ids beyond the live range simply 404")
@@ -78,7 +82,11 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=60.0)
     args = ap.parse_args()
 
+    if args.out is None:
+        from tools.lib.corpus_paths import corpus_dir
+        args.out = str(corpus_dir())
     os.makedirs(args.out, exist_ok=True)
+    print(f"Caching replays in {args.out}")
     got = missing = cached = failed = 0
 
     for gid in range(args.start, args.end + 1):

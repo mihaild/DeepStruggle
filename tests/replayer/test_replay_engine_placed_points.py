@@ -14,6 +14,7 @@ from typing import Dict, List, cast
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (
     convert_game,
     event_queue,
@@ -22,7 +23,7 @@ from tools.lib.ts_replayer_convert import (
 )
 from tools.lib.ts_replayer_parse import parse_entry
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 _EAST_GERMANY = 14
 _PANAMA = 70
 

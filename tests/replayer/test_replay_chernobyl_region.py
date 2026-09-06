@@ -18,15 +18,13 @@ from typing import Dict
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
 from tools.lib.ts_replayer_parse import REGIONS, parse_entry
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 EAST_GERMANY, SPAIN_PORTUGAL = 14, 9
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _game(replay_id: int) -> Dict:

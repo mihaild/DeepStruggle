@@ -17,9 +17,10 @@ from typing import Dict, Optional
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 
 
 def _convert(replay_id: int):
@@ -35,9 +36,6 @@ def _failed_at(conv) -> Optional[str]:
     return f"T{conv.failure.turn} {conv.failure.phase}"
 
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def test_ortega_free_coup_and_the_players_own_coup_are_kept_apart() -> None:

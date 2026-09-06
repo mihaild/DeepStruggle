@@ -16,9 +16,10 @@ import numpy as np
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 DUCK_AND_COVER = 4          # degrades DEFCON
 SOCIALIST_GOVERNMENTS = 15
 NORAD = 106

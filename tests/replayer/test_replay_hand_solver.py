@@ -15,10 +15,11 @@ from typing import Dict, List, cast
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import card_id, convert_game
 from tools.lib.ts_replayer_hands import HAVE_Z3, GameFacts, hand_size, solve_hands
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 
 pytestmark = pytest.mark.skipif(not HAVE_Z3, reason="z3 is not installed")
 

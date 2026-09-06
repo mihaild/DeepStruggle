@@ -16,10 +16,11 @@ from typing import List, Tuple
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import card_id
 from tools.lib.ts_replayer_parse import parse_entry
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 DEFECTORS = "Defectors"
 
 pytestmark = pytest.mark.skipif(

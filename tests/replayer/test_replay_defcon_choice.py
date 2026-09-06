@@ -13,10 +13,11 @@ from typing import Dict, List, cast
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import _defcon_after, _defcon_set_under, convert_game
 from tools.lib.ts_replayer_parse import parse_entry
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 _MARKER = "Event: How I Learned To Stop Worrying*"
 
 

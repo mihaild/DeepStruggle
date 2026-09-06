@@ -15,6 +15,7 @@ from typing import Dict, List, cast
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (
     _cards_carried_over,
     _played_by_anyone_up_to,
@@ -26,7 +27,7 @@ from tools.lib.ts_replayer_convert import (
     convert_game,
 )
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 
 
 def _game(replay_id: int) -> Dict[str, object]:

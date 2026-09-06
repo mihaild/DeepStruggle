@@ -12,10 +12,11 @@ import json
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_files
 from tools.lib.ts_replayer_parse import (country_id, initial_board, parse_entry,
                                          verify_game)
 
-CORPUS = sorted(glob.glob("/workspace/data/datasets/ts_replayer/*.json.gz"))
+CORPUS = [str(p) for p in corpus_files()]
 
 
 def _entry(text: str, **kw):
@@ -106,7 +107,6 @@ def test_initial_board_has_the_fixed_setup_influence() -> None:
     assert sum(ussr for _, ussr in board.values()) > 0
 
 
-@pytest.mark.skipif(not CORPUS, reason="ts-replayer corpus not downloaded")
 def test_real_games_reconcile_on_influence_board_and_defcon() -> None:
     """The checks that matter for reconstructing placements must be exact, not approximate."""
     infl = board = defcon = 0

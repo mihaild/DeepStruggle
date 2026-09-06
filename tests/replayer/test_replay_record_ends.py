@@ -19,15 +19,13 @@ from typing import Dict
 
 import pytest
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (Mismatch, _is_the_record_ending,
                                            convert_game)
 from tools.lib.ts_replayer_parse import parse_entry
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _game(replay_id: int) -> Dict:
@@ -71,6 +69,7 @@ def test_replay_182_is_whole_and_no_longer_stops_short() -> None:
     assert conv.entries_converted == conv.entries_total == 143
 
 
+@pytest.mark.corpus_full
 def test_every_game_in_the_corpus_converts() -> None:
     """There is no disagreement left to point at, which is what this file is here to guard.
 

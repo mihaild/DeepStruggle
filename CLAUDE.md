@@ -17,7 +17,7 @@ The complete AI, simulation engine, web workbench, and training infrastructure f
 ```bash
 # Python venv
 python3 -m venv .venv && source .venv/bin/activate
-pip install nanobind fastapi "uvicorn[standard]" websockets pytest numpy pydantic httpx torch torchvision
+pip install nanobind fastapi "uvicorn[standard]" websockets pytest pytest-xdist numpy pydantic httpx torch torchvision
 # z3-solver (MIT) reconstructs the hands behind a ts-replayer log; the converter falls
 # back to per-turn heuristics without it, so it is optional but wanted for that work.
 pip install z3-solver
@@ -70,6 +70,47 @@ is pure noise.
 | `ai/`, `bot/`, `tools/` | the above + `tests/training` (~7 min) |
 | `web/**` | **also** `tests/web`, after building the UI (below) |
 
+### The ts-replayer corpus
+
+`tests/replayer` (and four tests in `tests/engine_logic`) run against the **real** human corpus,
+not synthetic data — that is the point of them, so it cannot be generated. It is ~5 MB, git-ignored,
+and downloaded once per **machine**:
+
+```bash
+PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py
+```
+
+It is cached in `~/.cache/ts_ai/ts_replayer` (`$XDG_CACHE_HOME` honoured), **not** under `data/`,
+so every checkout and every git worktree shares one copy — a worktree has its own empty `data/`,
+and a corpus stored there would be re-fetched, 300 requests at one per second, for bytes already
+on the machine. `tools/lib/corpus_paths.py` resolves the location: `$TS_REPLAYER_CORPUS` first,
+then an existing `data/datasets/ts_replayer` for checkouts that predate this, then the shared cache.
+
+**A missing corpus fails these tests; it does not skip them.** They previously carried
+`skipif(corpus not downloaded)` against a hardcoded absolute path, so on any machine but the one
+that path was written for, 289 test functions skipped and the suite reported green.
+
+### Run the suite in parallel
+
+`pytest-xdist` is installed; `-n auto` uses every core and is worth it everywhere:
+
+| | serial | `-n auto` (24 cores) |
+|:---|---:|---:|
+| `tests/replayer` | 3m 19s | **21s** |
+| whole backend suite | ~7m | **61s** |
+
+The single whole-corpus test, `test_every_game_in_the_corpus_converts`, is marked `corpus_full`
+and **deselected by default** — on its own it was 167s of the 364s that `tests/replayer` used to
+take. Run it before merging any change to `tools/lib/ts_replayer_*`:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest -q -m corpus_full tests/replayer   # ~2m 48s
+```
+
+A `converted_game` session fixture in `tests/conftest.py` memoizes `convert_game` by replay id
+for tests that want it. It is available rather than mandatory: with `-n auto` the suite already
+runs in 21s, so rewriting ~120 existing call sites to use it would buy little for the risk.
+
 ```bash
 # 0. Always first — never measure against a stale engine (key invariant #10)
 tools/scripts/check_engine_fresh.sh
@@ -82,7 +123,7 @@ tools/scripts/check_engine_fresh.sh
 
 # 2. Backend Python — everything except the web UI. The default suite for backend work.
 #    ~7 min, dominated by tests/replayer.
-PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic tests/replayer tests/training
+PYTHONPATH=. .venv/bin/python -m pytest -q -n auto tests/bindings tests/engine_logic tests/replayer tests/training
 
 #    Narrower loops while iterating:
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic   # 331 tests, ~10s

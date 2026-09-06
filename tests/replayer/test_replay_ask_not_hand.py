@@ -16,6 +16,7 @@ from typing import Dict, List, cast
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (
     _mid_turn_acquisitions,
     _sort_key_for_keeping,
@@ -24,7 +25,7 @@ from tools.lib.ts_replayer_convert import (
 )
 from tools.lib.ts_replayer_parse import parse_entry
 
-_CORPUS = "/workspace/data/datasets/ts_replayer"
+_CORPUS = str(corpus_dir())
 _U2_INCIDENT = 60
 _WE_WILL_BURY_YOU = 50
 _ALLIANCE_FOR_PROGRESS = 65

@@ -14,6 +14,8 @@ Cuba alone and has no choice at all.
 from typing import List
 
 import pytest
+
+from tools.lib.corpus_paths import corpus_dir
 import ts_engine as ts
 
 WEST_GERMANY, TURKEY, CUBA = 7, 12, 71
@@ -195,7 +197,7 @@ def test_replay_264_converts_end_to_end() -> None:
     import gzip
     import json
     import os
-    path = os.path.join("/workspace/data/datasets/ts_replayer", "264.json.gz")
+    path = os.path.join(str(corpus_dir()), "264.json.gz")
     if not os.path.exists(path):
         pytest.skip("corpus not downloaded")
     from tools.lib.ts_replayer_convert import convert_game

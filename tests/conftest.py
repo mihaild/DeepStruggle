@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Iterator
+from typing import Any, Callable, Dict, Iterator
 
 import pytest
 
@@ -31,6 +31,19 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "differential_fuzz" in item.keywords:
             item.add_marker(skip_marker)
+
+    # Everything under tests/replayer needs the corpus. Requiring it centrally keeps 59 test
+    # files from each carrying (and drifting on) their own guard.
+    #
+    # Appending to `fixturenames` rather than adding a `usefixtures` marker: by the time this
+    # hook runs the fixture closure for each item has already been computed, so a marker added
+    # here is silently ignored and the tests fail later with a bare FileNotFoundError instead
+    # of the message telling you to run the downloader.
+    for item in items:
+        if not isinstance(item, pytest.Function):
+            continue
+        if "replayer" in item.path.parts and "require_corpus" not in item.fixturenames:
+            item.fixturenames.insert(0, "require_corpus")
 
 
 def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool | None:
@@ -99,3 +112,77 @@ def generated_replay_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[s
             os.environ.pop(REPLAYS_DIR_ENV, None)
         else:
             os.environ[REPLAYS_DIR_ENV] = previous
+
+
+# ---------------------------------------------------------------------------------------------
+# ts-replayer corpus
+# ---------------------------------------------------------------------------------------------
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "corpus_full: converts the entire ts-replayer corpus; minutes, not seconds. "
+        "Deselected by default -- run with -m corpus_full before merging.",
+    )
+
+
+@pytest.fixture(scope="session")
+def corpus_dir() -> str:
+    """The shared corpus directory, failing with instructions when it is absent.
+
+    Deliberately a failure and not a skip. Two thirds of tests/replayer used to sit behind
+    `skipif(corpus not downloaded)` pointed at a hardcoded absolute path, so on any machine but
+    the one that path was written for, they skipped and the suite reported green.
+    """
+    from tools.lib.corpus_paths import corpus_dir as resolve, missing_corpus_reason
+
+    reason = missing_corpus_reason()
+    if reason is not None:
+        pytest.fail(reason, pytrace=False)
+    return str(resolve())
+
+
+@pytest.fixture(scope="session")
+def converted_game(corpus_dir: str) -> Callable[[int], Any]:
+    """`convert_game` for a replay id, memoized for the session.
+
+    One conversion runs a z3 solve for both hands across the whole game plus an entry-by-entry
+    engine drive, so it costs a few tenths of a second and the suite calls it from ~120 places
+    over 16 distinct replays. Nothing about a conversion depends on the caller, so doing it
+    once per id per worker is pure saving.
+
+    The returned Conversion is SHARED. Treat it as read-only; a test that mutates one would
+    corrupt every later test that asks for the same id.
+    """
+    import gzip
+    import json
+
+    from tools.lib.ts_replayer_convert import convert_game as _convert
+
+    cache: Dict[int, Any] = {}
+
+    def get(replay_id: int) -> Any:
+        if replay_id not in cache:
+            path = os.path.join(corpus_dir, f"{replay_id}.json.gz")
+            if not os.path.exists(path):
+                pytest.fail(f"replay {replay_id} is not in the corpus at {corpus_dir}",
+                            pytrace=False)
+            with gzip.open(path, "rt") as fh:
+                cache[replay_id] = _convert(json.load(fh))
+        return cache[replay_id]
+
+    return get
+
+
+@pytest.fixture(scope="session")
+def require_corpus() -> None:
+    """Fail -- not skip -- when the ts-replayer corpus is missing.
+
+    Applied automatically to everything under tests/replayer (see
+    pytest_collection_modifyitems), so no test file has to remember it.
+    """
+    from tools.lib.corpus_paths import missing_corpus_reason
+
+    reason = missing_corpus_reason()
+    if reason is not None:
+        pytest.fail(reason, pytrace=False)

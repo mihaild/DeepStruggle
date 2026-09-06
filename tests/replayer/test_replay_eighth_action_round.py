@@ -22,16 +22,14 @@ from typing import Dict, List
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import _is_skipped_round, convert_game
 from tools.lib.ts_replayer_parse import parse_entry
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 DUCK_AND_COVER, FIVE_YEAR_PLAN = 4, 5
 PASS = 211
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _game(replay_id: int) -> Dict:

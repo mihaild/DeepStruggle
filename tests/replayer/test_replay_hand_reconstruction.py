@@ -16,19 +16,17 @@ import os
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import (_mid_turn_acquisitions, _pad_hand,
                                            _sort_key_for_keeping, convert_game)
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 SALT_NEGOTIATIONS = 43
 ASK_NOT = 77
 RED_SCARE_PURGE = 31
 DE_STALINIZATION = 33
 DUCK_AND_COVER = 4
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _raw(num, player, phase, card, text):

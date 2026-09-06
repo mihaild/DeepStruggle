@@ -16,16 +16,14 @@ from typing import Optional
 import pytest
 import ts_engine as ts
 
+from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import _seed_missile_envy_hand, convert_game
 
-CORPUS = "/workspace/data/datasets/ts_replayer"
+CORPUS = str(corpus_dir())
 SUEZ_CRISIS = 28
 RED_SCARE_PURGE = 31
 CAMP_DAVID = 65
 
-pytestmark = pytest.mark.skipif(
-    not glob.glob(os.path.join(CORPUS, "*.json.gz")),
-    reason="ts-replayer corpus not downloaded")
 
 
 def _convert(replay_id: int):
