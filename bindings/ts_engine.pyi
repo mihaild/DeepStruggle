@@ -386,6 +386,11 @@ class DecisionContext:
     @property
     def temp_card_cnt(self) -> int: ...
 
+    @property
+    def pending_roll_type(self) -> RollType:
+        """Which kind of chance node is pending; RollType.TURN_CLEANUP for the turn's cleanup."""
+        ...
+
     @temp_card_cnt.setter
     def temp_card_cnt(self, arg: int, /) -> None: ...
 

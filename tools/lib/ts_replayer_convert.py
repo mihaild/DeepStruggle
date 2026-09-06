@@ -268,6 +268,9 @@ class Conversion:
     # number is adopted -- it is what the players saw and decided against -- and only the score
     # assertion is dropped. Counted so a known log fault is never read as an engine disagreement.
     shuttle_japan_corrections: int = 0
+    # Turn-ending entries whose narrated score was checked against the score at the cleanup
+    # node, rather than skipped because cleanup had already moved it.
+    turn_end_scores_checked: int = 0
     # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
     # moving and emitted as nothing.
     invalid_decisions: int = 0
@@ -1218,6 +1221,14 @@ def _summit_dice(state: ts.GameState, target: int) -> Tuple[int, int]:
         f"no Summit dice reach the logged score {target} from {int(state.victory_points)}")
 
 
+# The victory points as they stood at the turn's cleanup node, or None if this entry did not end
+# a turn. The engine now pauses there (RollType.TURN_CLEANUP) with the score still holding the
+# value the log narrates for the turn's last action round -- before the Military Operations
+# deficit is paid. Recorded here because _drain resolves the node deep inside driving an entry
+# and the comparison happens in the caller. One conversion runs at a time in a process, so a
+# module-level slot is enough; the entry loop clears it before each entry.
+_CLEANUP_VP: List[Optional[int]] = [None]
+
 def _drain(state: ts.GameState,
            expected: Optional[Dict[int, Tuple[int, int]]] = None,
            forced_roll: int = 0,
@@ -1244,6 +1255,13 @@ def _drain(state: ts.GameState,
     while (not ts.Engine.is_terminal(state)
            and state.ctx().decision_player == ts.Player.NONE
            and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        if state.ctx().pending_roll_type == ts.RollType.TURN_CLEANUP:
+            # Not a die. The turn's cleanup, and the last moment the score is the one the log
+            # states for this entry, so take it before stepping through.
+            if _CLEANUP_VP[0] is None:
+                _CLEANUP_VP[0] = int(state.victory_points)
+            ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+            continue
         roll = forced_roll
         # Each die goes to the kind of roll it was recorded for. A coup and a war can share an
         # entry -- at turn 6 AR4 of replay 121 the US coups Tunisia and then loses the Korean
@@ -3635,6 +3653,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
         # the time the score is compared there is nothing left to detect. See
         # _shuttle_japan_asia_miscount.
         shuttle_japan_asia = _shuttle_japan_asia_miscount(state, e)
+        _CLEANUP_VP[0] = None
         if prev_entry is not None:
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
@@ -3720,6 +3739,39 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # A listed disagreement: the log's score stands and the run continues from it.
             state.victory_points = forced
             conv.scores_forced += 1
+            want_score = None
+        if (want_score is not None and crossed_turn
+                and not ts.Engine.is_terminal(state)):
+            # A turn's last action round used to go unchecked -- one entry in eight -- because
+            # cleanup ran inside it and moved the score away from the number the log states.
+            # Cleanup is a step of its own now, so both moments are readable and the entry can
+            # be checked.
+            #
+            # Which moment the log narrates is not something it says. At turn 4 AR7 of replay 16
+            # the entry's "Score is USSR 5" is the event's own award, before the Military
+            # Operations deficit. At turn 1 AR6 of replay 182 the entry ends "Turn 9, Cleanup:
+            # US gains 3 VP. Score is even", which is after it. At turn 2 AR6 of replay 221 it
+            # ends "USSR gains 2 VP. Score is US 2" -- also after it, with nothing marking it as
+            # cleanup, so the word cannot be used to tell them apart.
+            #
+            # So the assertion is that the engine's score is one of the two moments the
+            # narration could be describing, and the failure is when it is neither. That is
+            # weaker than pinning the exact moment, and still far stronger than the skip it
+            # replaces: anything off by more than the turn's deficit is caught.
+            checked = max(-20, min(20, want_score))
+            before_cleanup = _CLEANUP_VP[0]
+            after_cleanup = int(state.victory_points)
+            moments = {after_cleanup}
+            if before_cleanup is not None:
+                moments.add(int(before_cleanup))
+            if checked not in moments:
+                del conv.samples[before:]
+                raise ConversionFailure(Mismatch(
+                    conv.replay_id, e.turn, e.phase, e.player, e.card,
+                    "score mismatch at the turn's last action round",
+                    f"engine was at {sorted(moments)} VP across the turn end, "
+                    f"the log says {checked}"))
+            conv.turn_end_scores_checked += 1
             want_score = None
         if want_score is not None and not crossed_turn:
             # The VP track runs from 20 to -20 and the game ends the moment it is reached, so

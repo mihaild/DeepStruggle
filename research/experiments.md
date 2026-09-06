@@ -1010,3 +1010,31 @@ Two ways to get the check, neither done:
 
 Until one of them exists, a turn's last action round remains unverified for score, and 8.7.3's
 six "unexplained" midgame entries should be read as explained.
+
+
+### 8.7.5 The turn-ending score is checked now, but only to within the cleanup
+
+`DecisionContext.pending_roll_type` exposes which chance node is pending, so the converter can
+find the `TURN_CLEANUP` pause and read the score on both sides of it. A turn's last action round
+is no longer skipped: **212 such entries in the first 60 games** are now checked where they were
+not.
+
+**The check is weaker than intended, and the reason is in the logs.** Which moment the narration
+describes is not something the log states:
+
+| replay | entry ends with | moment |
+|---:|:---|:---|
+| 16 T4 AR7 | `Score is USSR 5` | **before** cleanup |
+| 182 T1 AR6 | `Turn 9, Cleanup: US gains 3 VP. Score is even` | **after** cleanup |
+| 221 T2 AR6 | `USSR gains 2 VP. Score is US 2` | **after** cleanup, unlabelled |
+
+The word "Cleanup" cannot separate them — replay 221 is a cleanup award with nothing marking it as
+one, and keying on the word failed that game (and its duplicates 265, 299) while passing 182. So
+the assertion is that the engine's score equals **one of the two moments** the narration could be
+describing, and it fails when it is neither. Anything off by more than that turn's Military
+Operations deficit is caught; an error the size of the deficit is not.
+
+Pinning the exact moment would need the log to say which it means, and it does not. Worth
+revisiting only if a real disagreement is ever found hiding in that gap.
+
+All 282 games still convert with 0 failures.

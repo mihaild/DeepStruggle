@@ -515,6 +515,17 @@ NB_MODULE(ts_engine, m) {
         .def_rw("allow_early_stop", &ts::DecisionContext::allow_early_stop)
         .def_rw("resolving_card", &ts::DecisionContext::resolving_card)
         .def_rw("temp_card_cnt", &ts::DecisionContext::temp_card_cnt)
+        // Which kind of chance node is pending. The state machine keeps the roll type in
+        // temp_cards[1], but the temp_cards property below is truncated to temp_card_cnt and
+        // the roll type is not counted in it, so it cannot be read that way -- indexing it
+        // raises IndexError at exactly the node this exists for. A caller has to be able to
+        // tell a die roll from the turn's cleanup (RollType::TURN_CLEANUP), which is a chance
+        // node that rolls nothing and is where the pre-cleanup score is still readable.
+        .def_prop_ro(
+            "pending_roll_type",
+            [](const ts::DecisionContext& c) {
+                return static_cast<ts::RollType>(c.temp_cards[1]);
+            })
         // Exposed so a replay can be reconstructed against a log that records only part of a
         // peeked set: Our Man in Tehran prints which cards the US discarded but not which it
         // saw, and this is the buffer the legal-action mask is built from.
