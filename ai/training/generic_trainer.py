@@ -26,6 +26,7 @@ from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
+from ai.training.human_corpus_dataset import HumanCorpusDataset
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
@@ -234,9 +235,28 @@ def run_behavioral_cloning_warmup(
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
-    print(f"=== Loading Warm-up Dataset (OOM-Safe Streaming Mode) from: {dataset_path} ===", flush=True)
+    # A directory is the human corpus; a file is the self-play set. They differ in more than
+    # storage: roughly half the human games stop mid-recording and have no outcome, so their
+    # positions carry a policy target and no value target, and the batches say which.
+    human = os.path.isdir(dataset_path)
+    kind = "Human Corpus" if human else "Self-Play"
+    print(f"=== Loading Warm-up Dataset ({kind}, streaming) from: {dataset_path} ===", flush=True)
     t0 = time.time()
-    ds = WarmupDataset(dataset_path)
+
+    def _batches():
+        if human:
+            ds_h = HumanCorpusDataset(dataset_path)
+            print(f"    {len(ds_h):,} samples, "
+                  f"{ds_h.meta['samples_with_outcome']:,} with a value target "
+                  f"({ds_h.meta['games']} games)", flush=True)
+            for batch in ds_h.stream_batches(batch_size=batch_size, device=dev):
+                yield batch
+        else:
+            for b in WarmupDataset(dataset_path).stream_batches(
+                batch_size=batch_size, max_games=max_games, device=dev, shuffle_buffer_size=4096
+            ):
+                # Every self-play position has an outcome, so the value target always counts.
+                yield (b[0], b[1], b[2], b[3], b[4], torch.ones_like(b[3]))
 
     for epoch in range(1, epochs + 1):
         t_epoch = time.time()
@@ -244,13 +264,16 @@ def run_behavioral_cloning_warmup(
         correct_actions = 0
         samples_seen = 0
 
-        for b_obs, b_mask, b_act, b_val, b_vp in ds.stream_batches(
-            batch_size=batch_size, max_games=max_games, device=dev, shuffle_buffer_size=4096
-        ):
+        for b_obs, b_mask, b_act, b_val, b_vp, b_has in _batches():
             logits, v_win, v_vp = model(b_obs, b_mask)
             policy_loss = F.cross_entropy(logits, b_act)
-            val_win_loss = F.mse_loss(v_win.squeeze(-1), b_val)
-            val_vp_loss = F.mse_loss(v_vp.squeeze(-1), b_vp)
+            # Masked, not dropped: a position from a game whose recording stopped still shows
+            # what the human played, so it belongs in the policy loss and not the value loss.
+            # Averaging over the whole batch instead would quietly scale the value term by
+            # whatever fraction of it happened to be settled.
+            denom = b_has.sum().clamp(min=1.0)
+            val_win_loss = ((v_win.squeeze(-1) - b_val) ** 2 * b_has).sum() / denom
+            val_vp_loss = ((v_vp.squeeze(-1) - b_vp) ** 2 * b_has).sum() / denom
 
             loss = policy_loss + 0.5 * val_win_loss + 0.05 * val_vp_loss
 

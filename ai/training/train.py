@@ -44,8 +44,15 @@ def main():
                              "incentive. K is a slope: at 40, turn 3 is worth 0.925 and turn 10 is "
                              "0.75. Too steep biases against build-to-final-scoring play, so watch "
                              "the ending mix.")
-    parser.add_argument("--train-steps", type=int, default=0,
+    # 80M is the standard budget for a run. It is a round number and close enough to the 78M
+    # the earlier experiments used that the two are broadly comparable -- though only broadly:
+    # those runs trained against a different engine (free-coup legality, the turn's cleanup as
+    # its own step), so a matched step count does not make them a controlled comparison. The
+    # comparison that holds is a head-to-head tournament on the current engine, which does not
+    # need matched steps at all.
+    parser.add_argument("--train-steps", type=int, default=80_000_000,
                         help="Budget the run by env steps instead of by time (0 = use --duration-seconds). "
+                             "Defaults to the standard 80,000,000. "
                              "Use this for A/B arms: steps/sec depends on the policy, so a wall-clock "
                              "budget gives the two arms different amounts of training. One 3-hour A/B "
                              "ended 1024 iterations against 473 for exactly that reason. The progress "
