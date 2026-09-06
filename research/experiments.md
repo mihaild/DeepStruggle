@@ -1636,3 +1636,27 @@ the BC ceiling of ~47%. Either the weight is too low against the RL updates, or 
 away from human play. Those are different problems and the human-init arm distinguishes them: if
 injection holds ~47% there, the weight is fine and the synthetic start was the issue; if it decays
 anyway, the pull is real and the weight has to rise.
+
+
+### 9.12.1 The warmup nets are unharmed by the corpus rebuilds — reference figures
+
+The human BC net was trained against an earlier build of the corpus, before the solver changes of
+§9.6/§9.8/§9.10 and before the `play` column, and the measure itself changed in §9.11. Checked
+against the corpus and the measure as they now stand, over **all 144,839 decisions** rather than a
+probe:
+
+| net | ordered | agreement |
+|:---|---:|---:|
+| `e3_warmup_human` (BC on the corpus) | 45.94% | **46.23%** |
+| `e3_warmup_synth` (BC on self-play) | 33.64% | 34.23% |
+| `inj_none` snapshot_0s | 33.64% | 34.23% |
+| `inj_every1` snapshot_0s | 33.64% | 34.23% |
+
+**Nothing broke it.** The human warmup still sits where it did — the training-time figure was 45.4%
+strict in-batch, and the earlier probes read 46.0-46.8% on subsets; 46.23% over the whole corpus is
+the authoritative number and should be quoted in preference to those.
+
+**And the arms started where they were meant to.** Both `snapshot_0s` files agree with
+`e3_warmup_synth` to the decimal, which confirms independently that §9.12's four arms all began
+from the same synthetic initialisation and that `--warmup-checkpoint` loads what it says. That was
+assumed rather than checked when those arms were described.
