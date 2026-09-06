@@ -465,6 +465,11 @@ PYTHONPATH=. .venv/bin/pytest -v tests/
 PYTHONPATH=. .venv/bin/pytest -v tests/bindings/
 PYTHONPATH=. .venv/bin/pytest -v tests/replayer/
 
-# Static Type Checking with Pyrefly (must return 0 errors)
-.venv/bin/pyrefly check
+# Static Type Checking with Pyrefly (must return 0 errors).
+# Pass the source directories explicitly. A bare `pyrefly check` silently checks ZERO files when
+# the repo is a git worktree under .claude/worktrees/: pyrefly honours .git/info/exclude, which the
+# harness fills with **/.claude/worktrees/, so everything is excluded and pyrefly exits 0 having
+# examined nothing. Watch for "No Python files matched patterns" on the last line -- that means the
+# check measured nothing, not that the code is clean.
+.venv/bin/pyrefly check ai tools tests web bindings
 ```

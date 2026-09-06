@@ -522,6 +522,88 @@ demonstrations, since one human game shows the reversal that RL needs thousands 
   prior paired runs matched within 6%. Sequential doubles turnaround and fixes nothing.
 - **Give every model a distinct filename in a tournament.** Two checkpoints both named
   `snapshot_final` collided in the Bradley-Terry fit and were reported with identical Elo.
+- **Replicate before believing a small gap.** A tournament is not reproducible from its
+  configuration: deals are seeded, but the agents sample, so two identical 6,000-game runs differ
+  by ~1.5 points on a matchup (§7.2). Treat that as the noise floor at 1,000 games a pair, not the
+  binomial SE, which assumes away exactly this source of variation.
+- **Enable `--auto-advance` freely.** It is outcome-neutral, verified bit-exact under a
+  position-derived policy on the vectorized path (§7.1). It is also a smaller speed win than it
+  looks (3.3% fewer batched steps).
 - **Beware `harvest()` in analysis scripts.** It calls `retire_stale()`, which drops older
   generations by design, so positions must be taken out of the pool after each round or they
   are lost. This silently reduced a 1,000-position sample to 91.
+
+
+---
+
+## 7. Re-anchor after the engine changes (E1) — SETTLED
+
+**Question.** Six `fix(engine)` commits (per-card headline decision frames, Defectors, Shuttle
+Diplomacy, the scoring-card trap rule, deck refill) landed after every number in §3 and §4 was
+taken. Do the checkpoint rankings survive, and are the old Elo anchors still usable?
+
+**Setup.** `tools/tournament.py`, 4 models, 500 games per side per pair (6,000 games), RTX 4090,
+`--auto-advance`. Engine verified current via `tools/scripts/check_engine_fresh.sh` (368 C++ tests
+pass, fuzzer clean over 2,000 games). Both checkpoints were staged under distinct filenames first:
+they are both named `snapshot_final`, which is the exact collision §6 warns about. Report:
+`research/e1_reanchor_report.md`.
+
+**Result** (Bradley-Terry, HeuristicBot anchored at 1500):
+
+| Rank | Model | Elo | vs HeuristicBot | overall |
+|:---|:---|---:|---:|---:|
+| 1 | `dec_turns40` (K=40) | **1880.4** | 90.2% | 82.0% |
+| 2 | `sp2_pool_off` (control) | 1836.5 | 87.2% | 76.9% |
+| 3 | HeuristicBot | 1500.0 | — | 39.9% |
+| 4 | RandomBot | 898.9 | 2.9% | 1.2% |
+
+K=40 beats the control head-to-head 56.0% (1,000 games).
+
+**Verdict.** The §4.3 ordering survives the engine changes: K=40 > control > heuristic > random,
+and K=40's win rate over HeuristicBot is 90.2% against the 88.9% recorded pre-change. Old
+checkpoints load and run forward passes on the current 4,293-dim observation unchanged, so they
+remain valid opponents and Elo anchors. **What does not carry over is anything measured through
+self-play distribution** — the §4 deficiency tables, ending mixes and battleground counts were
+taken on the old engine and must be re-measured before being quoted again.
+
+### 7.1 Auto-advance does not change outcomes
+
+`Engine::step(..., auto_advance)` resolves unattended die rolls, single-choice masks and a few
+deterministic multi-step events (Suez <= 4, Muslim Revolution <= 2, East European Unrest <= 3,
+Truman, Independent Reds) inside the engine. Enabling it must be a pure speed change or every
+tournament number taken with it is incomparable to one taken without.
+
+**Bit-exact where bit-exactness is possible.** `tests/training/test_auto_advance_outcome_equivalence.py`
+plays 128 vectorized games under a policy that is a pure function of the mask, and asserts that
+terminal utility, victory points and final turn are identical with the flag off and on. The policy
+has to be position-derived rather than RNG-driven: with the flag on the engine asks for fewer
+actions, so a policy consuming a shared random stream would diverge for reasons unrelated to the
+flag. This joins the existing single-state suite (`tests/training/test_auto_advance_integration.py`,
+plus `engine/tests/test_auto_advance.cpp`).
+
+**It removes little.** Under that policy the flag cut batched step calls only from 672 to 650
+(3.3%), and wall-clock at that scale was inconclusive. It is not the speed lever it looks like.
+
+### 7.2 Tournament results are NOT reproducible run to run — noise floor ~1.5 points
+
+Found while trying to verify 7.1 at tournament scale. Three runs of the *identical* 6,000-game
+command, differing only in the flag:
+
+| matchup | auto-advance ON | OFF run 1 | OFF run 2 |
+|:---|---:|---:|---:|
+| K=40 vs control | 56.0% | 53.6% | 55.2% |
+| K=40 vs Heuristic | 90.2% | 89.6% | 89.5% |
+| control vs Heuristic | 87.2% | 87.0% | 85.5% |
+| Heuristic vs Random | 97.1% | 97.2% | 97.3% |
+
+**Two identical OFF runs differ by 1.6 points on the headline matchup and 1.5 on another** — as
+much as the ON/OFF difference. So the ON/OFF gap is not evidence about the flag, and the flag is
+not the source of the variation. `BatchMatchRunner` seeds deals deterministically from `base_seed`,
+but the agents sample, so a tournament is not reproducible from its configuration alone.
+
+**Consequence for reading every A/B in this file.** At 1,000 games a matchup, differences below
+roughly **1.5-2 points are inside the run-to-run envelope** and mean nothing on a single pair of
+runs. The binomial SE (1.6% at n=1,000) understates it, because it assumes the only variation is
+sampling from a fixed distribution. Either fix the agent sampling seed, or replicate a run before
+believing a small gap. The §4.4 comparisons flagged as "underpowered (z ~ 1.2-1.75)" sit exactly
+in this band.

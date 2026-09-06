@@ -71,9 +71,24 @@ PYTHONPATH=. .venv/bin/pytest -v tests/
 # Single test file / test:
 PYTHONPATH=. .venv/bin/pytest -v tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
-# Static typing — MUST return 0 errors after any Python change
-.venv/bin/pyrefly check
+# Static typing — MUST return 0 errors after any Python change.
+# Pass paths explicitly; a bare `pyrefly check` checks nothing in a worktree (see below).
+.venv/bin/pyrefly check ai tools tests web bindings
 ```
+
+**Run pyrefly with explicit paths**, not bare:
+
+```bash
+.venv/bin/pyrefly check ai tools tests web bindings
+```
+
+A bare `pyrefly check` silently checks **nothing** when the repository is a git worktree under
+`.claude/worktrees/`. pyrefly honours `.git/info/exclude`, which the Claude Code harness populates
+with `**/.claude/worktrees/`, so every file in the worktree is excluded — and pyrefly then exits 0
+having examined zero files, which satisfies "must return 0 errors" while testing nothing. It reads
+`No Python files matched patterns ...` on the last line; if you see that, you have measured nothing.
+Passing paths explicitly overrides the ignore file. The bare form is fine in the main checkout,
+which is exactly why this is easy to miss.
 
 `tests/` is split by what's under test: `bindings/` (nanobind surface only), `engine_logic/` (game rules driven through the bindings — prefer adding new rule coverage to `engine/tests/*.cpp` instead, see below), `replayer/` (the `ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server + bot-client + Playwright E2E), and `differential/` (cross-engine fuzzing, WIP/unstable — see below).
 
