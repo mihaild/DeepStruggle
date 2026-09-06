@@ -23,12 +23,13 @@ class HeuristicBot(BaseBot):
     def select_action(self, state: Dict[str, Any], legal_actions: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         valid_ids = legal_actions.get("valid_ids", [])
         d_type = legal_actions.get("decision_type", 0)
-        allow_early_stop = legal_actions.get("allow_early_stop", False)
 
         if not valid_ids:
-            if allow_early_stop:
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
-            return None
+            # The engine guarantees CONFIRM_DONE is legal whenever no other action is (its own
+            # anti-deadlock fallback), regardless of allow_early_stop -- e.g. a mandatory-removal
+            # event (Suez Crisis, East European Unrest, Muslim Revolution, Truman Doctrine) that
+            # has run out of legal targets still needs to be closed out.
+            return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
 
         # 1. SETUP: Prefer key battlegrounds
         if state.get("current_phase") == 0:  # SETUP

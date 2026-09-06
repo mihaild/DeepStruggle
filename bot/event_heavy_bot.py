@@ -36,7 +36,6 @@ class EventHeavyBot(BaseBot):
     def choose_action(self, state_dict: Dict[str, Any], legal_actions: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str, str]:
         d_type = legal_actions.get("decision_type", 0)
         valid_ids = legal_actions.get("valid_ids", [])
-        allow_early_stop = legal_actions.get("allow_early_stop", False)
         ctx = state_dict.get("decision_context", {})
 
         turn = state_dict.get("turn", 1)
@@ -97,9 +96,10 @@ class EventHeavyBot(BaseBot):
         # 5. POINT_NODE
         elif d_type == 5:
             if not valid_ids:
-                if allow_early_stop:
-                    return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 128}, "Confirm Done", "Passing."
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, "Pass", "Passing."
+                # The engine guarantees CONFIRM_DONE is legal whenever no other action is
+                # (its own anti-deadlock fallback), regardless of allow_early_stop -- flags=0
+                # here would be a real (illegal) target country, not a pass.
+                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 128}, "Confirm Done", "Passing."
             chosen = self.rng.choice(valid_ids)
             c_name = ts_engine.MapData.get_country_name(chosen) if chosen < 84 else f"#{chosen}"
             return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, f"Targeting {c_name}", f"Placing on {c_name}."

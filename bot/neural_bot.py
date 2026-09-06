@@ -65,13 +65,10 @@ class NeuralBot(BaseBot):
         d_type = legal_actions.get("decision_type", 0)
         allow_early_stop = legal_actions.get("allow_early_stop", False)
 
-        if not valid_ids and not allow_early_stop:
-            return None
-
         if not valid_ids:
-            if allow_early_stop:
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
-            return None
+            # The engine guarantees CONFIRM_DONE is legal whenever no other action is
+            # (its own anti-deadlock fallback), regardless of allow_early_stop.
+            return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}
 
         if len(valid_ids) == 1 and not allow_early_stop:
             return {"decision_type": d_type, "primary_id": valid_ids[0], "secondary_id": 0, "flags": 0}

@@ -247,9 +247,10 @@ class StrategicBot(BaseBot):
         elif d_type == 5:
             res_card = ctx.get("resolving_card", 0)
             if not valid_ids:
-                if allow_early_stop:
-                    return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 128}, "Confirm Done", "Passing."
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, "Pass", "Passing."
+                # The engine guarantees CONFIRM_DONE is legal whenever no other action is
+                # (its own anti-deadlock fallback), regardless of allow_early_stop -- flags=0
+                # here would be a real (illegal) target country, not a pass.
+                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 128}, "Confirm Done", "Passing."
 
             # Setup priorities
             if phase == 0:

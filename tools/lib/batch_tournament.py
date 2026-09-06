@@ -13,6 +13,32 @@ from tools.lib.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, Ran
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 
+def categorize_flat_action_detailed(action_idx: int) -> str:
+    """Categorizes a flat 212-dim action into human-readable semantic categories."""
+    if action_idx == 211:
+        return "CONFIRM_DONE / PASS"
+    elif action_idx < 110:
+        card_id = action_idx + 1
+        scoring_ids = {1, 2, 3, 37, 38, 39, 81}
+        card_type = "Scoring Card" if card_id in scoring_ids else "Normal Card"
+        return f"SELECT_CARD ({card_type})"
+    elif action_idx < 114:
+        modes = ["EVENT", "OPS", "SPACE", "PASS"]
+        return f"SELECT_PLAY_MODE ({modes[action_idx - 110]})"
+    elif action_idx < 116:
+        timings = ["OPS_FIRST", "EVENT_FIRST"]
+        return f"CHOOSE_TIMING_BRANCH ({timings[action_idx - 114]})"
+    elif action_idx < 119:
+        op_modes = ["INFLUENCE", "COUP", "REALIGN"]
+        return f"SELECT_OP_MODE ({op_modes[action_idx - 116]})"
+    elif action_idx < 203:
+        return "POINT_NODE (Country)"
+    elif action_idx < 211:
+        return f"CHOOSE_BRANCH ({action_idx - 203})"
+    else:
+        return "UNKNOWN"
+
+
 class BatchMatchRunner:
     """Runs 2 * games_per_side games between two PlayerAgents in parallel via C++ VectorizedBatchRunner."""
 
@@ -28,6 +54,9 @@ class BatchMatchRunner:
         temperature: float = 0.1,
         deterministic: Optional[bool] = None,
         start_states: Optional[Sequence["ts.GameState"]] = None,
+        track_choices: bool = False,
+        log_games_file: Optional[str] = None,
+        auto_advance: bool = False,
     ) -> Dict[str, Any]:
         """Play a matchup batched. Action selection matches NeuralAgent.select_action.
 
@@ -71,6 +100,19 @@ class BatchMatchRunner:
         causes_loss_ussr: Dict[str, int] = {}
         causes_all: Dict[str, int] = {}
 
+        total_micro_us = 0
+        total_micro_ussr = 0
+        single_choice_us = 0
+        single_choice_ussr = 0
+
+        category_counts_us: Dict[str, int] = {}
+        category_counts_ussr: Dict[str, int] = {}
+
+        if log_games_file:
+            os.makedirs(os.path.dirname(os.path.abspath(log_games_file)), exist_ok=True)
+            with open(log_games_file, "w", encoding="utf-8") as f_init:
+                pass
+
         t0 = time.time()
         num_chunks = (total_games + chunk_size - 1) // chunk_size
 
@@ -107,6 +149,11 @@ class BatchMatchRunner:
             chunk_steps = np.zeros(cur_games, dtype=np.int32)
             chunk_causes = [""] * cur_games
 
+            chunk_ussr_total = np.zeros(cur_games, dtype=np.int32)
+            chunk_ussr_single = np.zeros(cur_games, dtype=np.int32)
+            chunk_us_total = np.zeros(cur_games, dtype=np.int32)
+            chunk_us_single = np.zeros(cur_games, dtype=np.int32)
+
             while np.any(active) and steps < max_steps:
                 obs = runner.get_observations()
                 masks = runner.get_action_masks()
@@ -126,6 +173,40 @@ class BatchMatchRunner:
 
                 if not np.any(active):
                     break
+
+                if track_choices:
+                    active_indices = np.where(active)[0]
+                    if len(active_indices) > 0:
+                        active_d_players = d_players[active_indices]
+                        valid_counts = np.count_nonzero(masks[active_indices], axis=1)
+
+                        is_ussr = (active_d_players == -1)
+                        is_us = (active_d_players == 1)
+
+                        ussr_idxs = active_indices[is_ussr]
+                        us_idxs = active_indices[is_us]
+
+                        ussr_vcounts = valid_counts[is_ussr]
+                        us_vcounts = valid_counts[is_us]
+
+                        chunk_ussr_total[ussr_idxs] += 1
+                        chunk_us_total[us_idxs] += 1
+
+                        ussr_single_mask = (ussr_vcounts == 1)
+                        us_single_mask = (us_vcounts == 1)
+
+                        chunk_ussr_single[ussr_idxs[ussr_single_mask]] += 1
+                        chunk_us_single[us_idxs[us_single_mask]] += 1
+
+                        for s_idx in ussr_idxs[ussr_single_mask]:
+                            act_idx = int(np.argmax(masks[s_idx]))
+                            cat = categorize_flat_action_detailed(act_idx)
+                            category_counts_ussr[cat] = category_counts_ussr.get(cat, 0) + 1
+
+                        for s_idx in us_idxs[us_single_mask]:
+                            act_idx = int(np.argmax(masks[s_idx]))
+                            cat = categorize_flat_action_detailed(act_idx)
+                            category_counts_us[cat] = category_counts_us.get(cat, 0) + 1
 
                 actions = np.zeros(cur_games, dtype=np.int32)
 
@@ -175,7 +256,7 @@ class BatchMatchRunner:
                             leg = np.where(masks[idx] > 0)[0]
                             actions[idx] = np.random.choice(leg) if len(leg) > 0 else 0
 
-                runner.step_flat_all(actions.tolist())
+                runner.step_flat_all(actions.tolist(), auto_advance=auto_advance)
                 steps += 1
 
             # Accumulate Chunk Results
@@ -218,9 +299,54 @@ class BatchMatchRunner:
                     else:
                         a_us_draws += 1
 
+            if track_choices:
+                total_micro_ussr += int(np.sum(chunk_ussr_total))
+                total_micro_us += int(np.sum(chunk_us_total))
+                single_choice_ussr += int(np.sum(chunk_ussr_single))
+                single_choice_us += int(np.sum(chunk_us_single))
+
+            if log_games_file:
+                with open(log_games_file, "a", encoding="utf-8") as f_log:
+                    for idx in range(cur_games):
+                        a_is_ussr = (idx < cur_half)
+                        ussr_agent = agent_a.name if a_is_ussr else agent_b.name
+                        us_agent = agent_b.name if a_is_ussr else agent_a.name
+                        term_util = chunk_utils[idx]
+                        winner = "USSR" if term_util < 0 else ("US" if term_util > 0 else "DRAW")
+
+                        g_idx = chunk_idx * chunk_size + idx + 1
+                        m_ussr_tot = int(chunk_ussr_total[idx])
+                        m_ussr_sgl = int(chunk_ussr_single[idx])
+                        m_us_tot = int(chunk_us_total[idx])
+                        m_us_sgl = int(chunk_us_single[idx])
+                        m_all_tot = m_ussr_tot + m_us_tot
+                        m_all_sgl = m_ussr_sgl + m_us_sgl
+
+                        entry = {
+                            "game_index": g_idx,
+                            "seed": seed_start + (idx % cur_half),
+                            "ussr_agent": ussr_agent,
+                            "us_agent": us_agent,
+                            "winner": winner,
+                            "victory_points": int(chunk_vps[idx]),
+                            "turn": int(chunk_turns[idx]),
+                            "steps": int(chunk_steps[idx]),
+                            "cause": chunk_causes[idx] or "Early Termination",
+                            "ussr_total_micro_actions": m_ussr_tot,
+                            "ussr_single_choice_micro_actions": m_ussr_sgl,
+                            "ussr_single_choice_pct": round(m_ussr_sgl / max(1, m_ussr_tot) * 100.0, 2),
+                            "us_total_micro_actions": m_us_tot,
+                            "us_single_choice_micro_actions": m_us_sgl,
+                            "us_single_choice_pct": round(m_us_sgl / max(1, m_us_tot) * 100.0, 2),
+                            "total_micro_actions": m_all_tot,
+                            "total_single_choice_micro_actions": m_all_sgl,
+                            "total_single_choice_pct": round(m_all_sgl / max(1, m_all_tot) * 100.0, 2),
+                        }
+                        f_log.write(json.dumps(entry) + "\n")
+
         elapsed = time.time() - t0
 
-        return {
+        res: Dict[str, Any] = {
             "agent_a": agent_a.name,
             "agent_b": agent_b.name,
             "total_games": total_games,
@@ -246,6 +372,36 @@ class BatchMatchRunner:
             "causes_all": causes_all,
             "elapsed_seconds": elapsed,
         }
+
+        if track_choices:
+            tot_us = total_micro_us
+            tot_ussr = total_micro_ussr
+            tot_combined = tot_us + tot_ussr
+            single_comb = single_choice_us + single_choice_ussr
+
+            res["choice_stats"] = {
+                "us_total_micro_actions": tot_us,
+                "us_single_choice_micro_actions": single_choice_us,
+                "us_single_choice_pct": float((single_choice_us / max(1, tot_us)) * 100.0),
+                "ussr_total_micro_actions": tot_ussr,
+                "ussr_single_choice_micro_actions": single_choice_ussr,
+                "ussr_single_choice_pct": float((single_choice_ussr / max(1, tot_ussr)) * 100.0),
+                "overall_total_micro_actions": tot_combined,
+                "overall_single_choice_micro_actions": single_comb,
+                "overall_single_choice_pct": float((single_comb / max(1, tot_combined)) * 100.0),
+                "avg_per_game": {
+                    "us_total": float(tot_us / max(1, total_games)),
+                    "us_single": float(single_choice_us / max(1, total_games)),
+                    "ussr_total": float(tot_ussr / max(1, total_games)),
+                    "ussr_single": float(single_choice_ussr / max(1, total_games)),
+                    "combined_total": float(tot_combined / max(1, total_games)),
+                    "combined_single": float(single_comb / max(1, total_games)),
+                },
+                "category_counts_us": category_counts_us,
+                "category_counts_ussr": category_counts_ussr,
+            }
+
+        return res
 
 
 def compute_mle_elo(

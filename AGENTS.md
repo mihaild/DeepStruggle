@@ -380,7 +380,9 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    Before launching any model training run:
    - A git commit MUST be created recording the current codebase state (commit locally on the active branch without pushing or advancing remote master).
    - The commit hash, training mode, and a short description of what was changed and the training goal MUST be recorded in `metadata.json` within the checkpoint directory (`data/checkpoints/run_.../metadata.json`). The training CLI (`tools/train.py --description "..."`) automatically records these metadata fields at startup.
-11. **Human Replay Conversion Is Never Approximated**:
+11. **Engine Change Restriction Invariant**:
+   Agents must **NEVER make any changes to the C++ engine (`engine/`) without explicitly asking the user and obtaining prior confirmation**. Every engine modification requires prior user approval without exception.
+12. **Human Replay Conversion Is Never Approximated**:
    The ts-replayer corpus is training data for a model meant to learn how people play, so a
    decision the log does not determine must NEVER be invented, defaulted, or filled in by a
    heuristic — it is a failure to diagnose and fix. The same goes for the engine: report a
@@ -388,7 +390,8 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    approximation. Two exceptions exist, both explicitly approved and both narrow: guessing the
    cards Our Man in Tehran looks at, and the individually diagnosed entries in
    `_KNOWN_SCORE` / `_LOG_MISCOUNTED` / `_INVALID_PLAYS` where the log itself is wrong. When
-   reporting a conversion mismatch, cite the exact replay, turn and action round.
+   reporting a conversion mismatch, cite the exact replay, turn and action round — and per
+   invariant 11, propose engine fixes rather than making them.
 
 ---
 

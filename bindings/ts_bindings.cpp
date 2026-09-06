@@ -588,9 +588,13 @@ NB_MODULE(ts_engine, m) {
     m.def("is_held_scoring_game_over", &ts::Engine::is_held_scoring_game_over);
     m.def("is_held_scoring_loss", &ts::Engine::is_held_scoring_loss);
 
+    nb::class_<ts::StateMachine>(m, "StateMachine")
+        .def_static("advance_headline_step", &ts::StateMachine::advance_headline_step)
+        .def_static("advance_after_action_round", &ts::StateMachine::advance_after_action_round);
+
     nb::class_<ts::Engine>(m, "Engine")
         .def_static("init_game", &ts::Engine::init_game)
-        .def_static("step", &ts::Engine::step)
+        .def_static("step", &ts::Engine::step, nb::arg("state"), nb::arg("action"), nb::arg("auto_advance") = false)
         .def_static("is_terminal", &ts::Engine::is_terminal)
         .def_static("get_terminal_utility", &ts::Engine::get_terminal_utility)
         .def_static("has_held_scoring_card", &ts::Engine::has_held_scoring_card)
@@ -623,7 +627,8 @@ NB_MODULE(ts_engine, m) {
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
         })
-        .def_static("step_flat", &ts::Engine::step_flat);
+        .def_static("step_flat", &ts::Engine::step_flat, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false)
+        .def_static("auto_advance_step", &ts::Engine::auto_advance_step, nb::arg("state"), nb::arg("max_steps") = 128);
 
     // Map Metadata helpers
     nb::class_<ts::MapData>(m, "MapData")
@@ -795,7 +800,7 @@ NB_MODULE(ts_engine, m) {
             }
         }
 
-        std::vector<int> step_flat_all(const std::vector<uint16_t>& actions) {
+        std::vector<int> step_flat_all(const std::vector<uint16_t>& actions, bool auto_advance = false) {
             std::vector<int> results(num_envs, 0);
             const size_t act_count = actions.size();
 #pragma omp parallel for schedule(static)
@@ -809,12 +814,18 @@ NB_MODULE(ts_engine, m) {
                 }
                 ts::MicroAction ma = ts::ActionMask::decode_flat_action_212(states[i], actions[i]);
                 bool ok = ts::StateMachine::step(states[i], ma);
-                while (ok && states[i].current_phase != ts::Phase::GAME_OVER &&
-                       states[i].victory_points < 20 && states[i].victory_points > -20 &&
-                       states[i].ctx().decision_player == ts::Player::NONE &&
-                       states[i].ctx().decision_type == ts::DecisionType::ROLL_DIE) {
-                    ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
-                    ok = ts::StateMachine::step(states[i], chance_ma);
+                if (ok) {
+                    if (auto_advance) {
+                        ts::Engine::auto_advance_step(states[i]);
+                    } else {
+                        while (states[i].current_phase != ts::Phase::GAME_OVER &&
+                               states[i].victory_points < 20 && states[i].victory_points > -20 &&
+                               states[i].ctx().decision_player == ts::Player::NONE &&
+                               states[i].ctx().decision_type == ts::DecisionType::ROLL_DIE) {
+                            ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
+                            if (!ts::StateMachine::step(states[i], chance_ma)) break;
+                        }
+                    }
                 }
                 results[i] = ok ? 1 : 0;
                 refresh_single(static_cast<size_t>(i));
@@ -898,7 +909,7 @@ NB_MODULE(ts_engine, m) {
         .def(nb::init<size_t, uint64_t>(), nb::arg("num_envs"), nb::arg("base_seed") = 12345)
         .def("reset_game", &VectorizedBatchRunner::reset_game)
         .def("refresh_all", &VectorizedBatchRunner::refresh_all)
-        .def("step_flat_all", &VectorizedBatchRunner::step_flat_all)
+        .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)
         .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
         .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
         .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
