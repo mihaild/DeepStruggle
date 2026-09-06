@@ -515,6 +515,11 @@ NB_MODULE(ts_engine, m) {
         .def_rw("allow_early_stop", &ts::DecisionContext::allow_early_stop)
         .def_rw("resolving_card", &ts::DecisionContext::resolving_card)
         .def_rw("temp_card_cnt", &ts::DecisionContext::temp_card_cnt)
+        // Which kind of Operation the pending point decisions belong to. Needed to tell
+        // apart a run of point decisions whose order carries no meaning (spreading
+        // Influence) from one where it does: a coup or a realignment changes the board
+        // between points, so the sequence is itself the decision.
+        .def_rw("op_mode", &ts::DecisionContext::op_mode)
         // Which kind of chance node is pending. The state machine keeps the roll type in
         // temp_cards[1], but the temp_cards property below is truncated to temp_card_cnt and
         // the roll type is not counted in it, so it cannot be read that way -- indexing it

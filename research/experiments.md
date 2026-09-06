@@ -1537,3 +1537,31 @@ changes no conclusion in it -- §9.1's washout still lands at ~32-33% either way
 
 The correct measure is now the one to use, and `play` is stored as a dataset column so it can be
 applied without re-running conversion, which is the expensive part.
+
+
+### 9.11.1 Coups and realignments are excluded from reordering
+
+Not every run of point decisions is order-free, and §9.11 treated them all as if they were. The
+board changes between points wherever a die is involved: a **realignment** roll is made against the
+influence the last one left, so a different order is a different sequence of odds, and the same
+holds for **coups** — in particular **Che**, whose second coup is offered only if the first removed
+influence, so the pair is a sequence and not a set.
+
+Those are now scored strictly. Implemented as a **blacklist** rather than a whitelist of the
+order-free cases, per the owner: spreading Influence is the ordinary case, and a card that spreads
+it in some new way should be handled without anyone having to remember to add it. Detection needed
+`DecisionContext.op_mode`, which was not exposed to Python.
+
+**It changes the numbers barely at all.** Grouped decisions fall from 34.0% to **31.8%** of the
+total, and the correction each model gets is unchanged to within 0.01 points:
+
+| | ordered | unordered | gain |
+|:---|---:|---:|---:|
+| BC on the human corpus | 46.04% | 46.32% | +0.28 |
+| BC on self-play | 33.74% | 34.33% | +0.59 |
+| E3 arm B (human) final | 32.41% | 32.96% | +0.55 |
+| E3 arm A (self-play) final | 32.18% | 32.93% | +0.75 |
+
+Which is worth knowing in itself: the reordering credit was never resting on coups and
+realignments being wrongly forgiven, so §9.11's figures stand as measured. The measure is now right
+for the right reason rather than by luck.

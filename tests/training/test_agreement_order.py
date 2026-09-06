@@ -64,3 +64,38 @@ def test_unordered_is_never_worse_than_ordered() -> None:
     for model in ([1, 2, 3, 4], [4, 3, 2, 1], [1, 1, 1, 1], [9, 9, 9, 9]):
         r = score_groups(groups, [1, 2, 3, 4], model)
         assert r.unordered_hits >= r.ordered_hits
+
+
+def test_a_coup_or_realignment_run_is_never_reordered() -> None:
+    """The board changes between those points, so the sequence is itself the decision.
+
+    Blacklisted rather than whitelisting the order-free cases: spreading Influence is the ordinary
+    case, and a card that spreads it in some new way should not have to be remembered.
+    """
+    import ts_engine as ts
+
+    from ai.eval.agreement import group_point_runs, order_matters
+
+    state = ts.GameState()
+    ts.Engine.init_game(state, 3)
+    ctx = state.ctx()
+
+    ctx.op_mode = ts.OpMode.INFLUENCE
+    ctx.resolving_card = 0
+    ctx.pending_op_card = 0
+    assert not order_matters(state)
+
+    for mode in (ts.OpMode.COUP, ts.OpMode.REALIGN):
+        ctx.op_mode = mode
+        assert order_matters(state), f"{mode} changes the board between points"
+
+    # Che's second coup is offered only if the first removed Influence, so the pair is a sequence.
+    ctx.op_mode = ts.OpMode.INFLUENCE
+    ctx.resolving_card = 107
+    assert order_matters(state)
+
+    # Blacklisted decisions are never merged into a run, so each is scored strictly.
+    ctx.op_mode = ts.OpMode.REALIGN
+    ctx.decision_type = ts.DecisionType.POINT_NODE
+    groups = group_point_runs([state, state, state], [ts.Player.US] * 3)
+    assert [len(g) for g in groups] == [1, 1, 1]

@@ -4,8 +4,10 @@ A card played for Operations spends its points one at a time, and the engine ask
 `POINT_NODE` question for each. The human's log records the order they happened to be written in,
 which carries no decision: placing two Influence in Angola and one in Zaire is the same play in any
 order. Scoring each point against the exact index the human's sequence happened to hold marks the
-model wrong for reordering a play it agrees with, and the effect is not small -- most Operations
-plays are multi-point.
+model wrong for reordering a play it agrees with. Roughly a third of human decisions sit in
+multi-point plays, though the correction turns out to be worth about half a point rather than
+several (research/experiments.md §9.11): teacher forcing means a disagreement is usually about
+which countries, not about their order.
 
 The same holds for every event that distributes or removes several points across countries:
 Decolonization, De-Stalinization, Colonial Rear Guards, Ussuri River Skirmish, Puppet Governments,
@@ -13,12 +15,23 @@ COMECON, Marshall Plan, The Reformer; and for removals, Socialist Governments an
 Unrest. Nothing here is card-specific -- a run of `POINT_NODE` decisions inside one play is one
 decision with several parts, whatever produced it.
 
-**How a group is scored.** The model is teacher-forced along the human's trajectory, so its own
-earlier choices cannot take it somewhere the human never went. At each step its argmax counts as
-agreement if that country is still in the multiset of countries the human put points into and has
-not already been matched; the match is then consumed. A group of *n* points therefore contributes
-*n* comparisons exactly as before, and the total is directly comparable to the ordered figure --
-what changes is only that a permutation no longer costs anything.
+**Not every run of point decisions is order-free, and the exceptions are blacklisted rather than
+the rest whitelisted** -- spreading Influence is the ordinary case and a new card that spreads it
+should not have to be remembered here. Order matters wherever the board changes between points:
+
+* **realignment rolls**, where each roll is made against the influence the last one left, so a
+  different order is a different sequence of odds;
+* **coups**, for the same reason -- and in particular **Che**, whose second coup is only offered
+  if the first removed influence, so the pair is a sequence and not a set.
+
+Those are scored strictly, exactly as before.
+
+**How an order-free group is scored.** The model is teacher-forced along the human's trajectory, so
+its own earlier choices cannot take it somewhere the human never went. At each step its argmax
+counts as agreement if that country is still in the multiset of countries the human put points into
+and has not already been matched; the match is then consumed. A group of *n* points therefore
+contributes *n* comparisons exactly as before, and the total is directly comparable to the ordered
+figure -- what changes is only that a permutation no longer costs anything.
 
 Placing two points in one country is two entries in the multiset, so a model that agrees on the
 country but not on how many points went there still loses the difference.
@@ -52,6 +65,23 @@ class AgreementResult:
         return 100.0 * self.unordered_hits / max(1, self.decisions)
 
 
+CHE = 107
+
+
+def order_matters(state: ts.GameState) -> bool:
+    """Is the sequence of these point decisions itself a decision?
+
+    A blacklist, not a whitelist: spreading Influence is the ordinary case, and a card that
+    spreads it in some new way should be order-free without anyone having to add it here.
+    """
+    ctx = state.ctx()
+    if ctx.op_mode in (ts.OpMode.COUP, ts.OpMode.REALIGN):
+        return True
+    # Che's second coup is offered only if the first removed Influence, so the two are a
+    # sequence rather than a set even though both arrive as point decisions.
+    return int(ctx.resolving_card) == CHE or int(ctx.pending_op_card) == CHE
+
+
 def _play_key(state: ts.GameState, mover: ts.Player) -> Tuple[Any, ...]:
     """What makes two consecutive point decisions part of the same play."""
     ctx = state.ctx()
@@ -71,7 +101,8 @@ def group_point_runs(states: Sequence[ts.GameState],
     key: Optional[Tuple[Any, ...]] = None
 
     for i, state in enumerate(states):
-        is_point = state.ctx().decision_type == ts.DecisionType.POINT_NODE
+        is_point = (state.ctx().decision_type == ts.DecisionType.POINT_NODE
+                    and not order_matters(state))
         this_key = _play_key(state, movers[i]) if is_point else None
         if is_point and this_key == key and current:
             current.append(i)

@@ -387,6 +387,14 @@ class DecisionContext:
     def temp_card_cnt(self) -> int: ...
 
     @property
+    def op_mode(self) -> OpMode:
+        """Which Operation the pending point decisions belong to (INFLUENCE / COUP / REALIGN)."""
+        ...
+
+    @op_mode.setter
+    def op_mode(self, arg: OpMode, /) -> None: ...
+
+    @property
     def pending_roll_type(self) -> RollType:
         """Which kind of chance node is pending; RollType.TURN_CLEANUP for the turn's cleanup."""
         ...
