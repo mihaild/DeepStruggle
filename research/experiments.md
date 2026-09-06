@@ -518,8 +518,16 @@ demonstrations, since one human game shows the reversal that RL needs thousands 
 
 - **Budget A/B arms by `--train-steps`, never by wall clock.** Steps/sec is policy-dependent,
   so a time budget hands the arms different amounts of training (§3.1).
-- **Run arms in parallel.** Contention is symmetric and roughly halves throughput for both;
-  prior paired runs matched within 6%. Sequential doubles turnaround and fixes nothing.
+- **Run arms in parallel — for comparability, not for speed.** Measured on the 4090 (arch v2,
+  512 envs): one arm alone runs at **14,761 steps/s**; two arms together run at **7,044 and
+  7,833**, so combined throughput is **14,877** — total throughput is conserved and the wall clock
+  to finish both is the same either way. The earlier claim here that "sequential doubles
+  turnaround" was wrong. What parallel actually buys is that both arms meet identical machine
+  conditions, which removes a time-varying confound; what sequential buys is the first arm's
+  result at T instead of 2T, which matters if a run may be abandoned early.
+  Note the two arms differed by 11% (7,044 vs 7,833), so contention is *not* symmetric — which is
+  another reason a wall-clock budget cannot be used for parallel arms. `--train-steps` gives both
+  the same training regardless.
 - **Give every model a distinct filename in a tournament.** Two checkpoints both named
   `snapshot_final` collided in the Bradley-Terry fit and were reported with identical Elo.
 - **Replicate before believing a small gap.** A tournament is not reproducible from its
