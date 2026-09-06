@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 import ts_engine
-from tests.engine_interface import (
+from tests.differential.engine_interface import (
     Player,
     Region,
     get_country_info,
@@ -366,7 +366,7 @@ def assert_board_equal(ts_state: ts_engine.GameState, external: Any) -> None:
     # If external is BlockchainClient or raw state dict
     state_dict = external.get_state() if hasattr(external, "get_state") else external
     if isinstance(state_dict, dict) and "countries" in state_dict:
-        from tests.blockchain_adapter import country_id_to_bc
+        from tests.differential.blockchain_adapter import country_id_to_bc
         for cid in range(84):
             c_ts = ts_state.get_country(cid)
             bc_key = country_id_to_bc(cid)
@@ -378,7 +378,7 @@ def assert_board_equal(ts_state: ts_engine.GameState, external: Any) -> None:
 
     # If external is Struggler SEngine
     if hasattr(external, "board") and hasattr(external.board, "influence"):
-        from tests.struggler_adapter import country_id_to_struggler
+        from tests.differential.struggler_adapter import country_id_to_struggler
         for cid in range(84):
             c_ts = ts_state.get_country(cid)
             s_name = country_id_to_struggler(cid)
@@ -444,7 +444,7 @@ def create_paired_state(
         bc_engine.init_game(defcon=defcon, turn=turn, vp=vp)
         return ts_state, bc_engine
 
-    from tests.struggler_adapter import StrugglerGameState
+    from tests.differential.struggler_adapter import StrugglerGameState
     st = StrugglerGameState(seed=seed)
     st.defcon = defcon
     st.turn = turn

@@ -59,7 +59,7 @@ def test_influence_is_the_decline_for_these_two_cards() -> None:
 
 def test_replay_174_converts_end_to_end() -> None:
     """Everything but the last turn, which the recording stops inside -- see
-    tests/test_replay_unfinished_final_turn.py."""
+    tests/replayer/test_replay_unfinished_final_turn.py."""
     conv = convert_game(_game(174))
     assert conv.failure is None, f"replay 174 stopped at {conv.failure}"
     assert conv.entries_converted == 130

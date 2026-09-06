@@ -21,7 +21,7 @@ import pytest
 pytestmark = [pytest.mark.differential_fuzz]
 
 
-from tests.engine_interface import (
+from tests.differential.engine_interface import (
     Region,
     Player,
     DecisionType,
@@ -33,16 +33,16 @@ from tests.engine_interface import (
     assert_boards_equal,
     assert_states_equal,
 )
-from tests.native_adapter import NativeEngine, NativeGameState
-from tests.struggler_adapter import StrugglerEngine, StrugglerGameState
-from tests.blockchain_adapter import (
+from tests.differential.native_adapter import NativeEngine, NativeGameState
+from tests.differential.struggler_adapter import StrugglerEngine, StrugglerGameState
+from tests.differential.blockchain_adapter import (
     BlockchainEngineAdapter,
     BlockchainGameState,
     BlockchainClient,
 )
 
 # Load full 110-card database
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CARDS_JSON_PATH = os.path.join(_BASE_DIR, "rules", "cards.json")
 
 with open(_CARDS_JSON_PATH, "r", encoding="utf-8") as _f:

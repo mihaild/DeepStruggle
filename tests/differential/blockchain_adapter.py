@@ -15,7 +15,7 @@ import os
 import subprocess
 from typing import Any
 
-from tests.engine_interface import (
+from tests.differential.engine_interface import (
     Region,
     Player,
     DecisionType,
@@ -321,7 +321,7 @@ class BlockchainClient:
 # BLOCKCHAIN STATE WRAPPER
 # =============================================================================
 
-from tests.engine_interface import EFFECT_BIT_TO_NAME
+from tests.differential.engine_interface import EFFECT_BIT_TO_NAME
 
 _TS_TO_BC_FLAGS: dict[str, str] = {
     "nato": "nato",

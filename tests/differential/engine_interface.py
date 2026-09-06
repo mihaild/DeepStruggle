@@ -209,7 +209,7 @@ class EngineProtocol(Protocol):
 
 
 # Load country and card databases directly from repo json without importing ts_engine
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _MAP_JSON_PATH = os.path.join(_BASE_DIR, "rules", "map.json")
 _CARDS_JSON_PATH = os.path.join(_BASE_DIR, "rules", "cards.json")
 

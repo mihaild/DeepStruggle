@@ -12,7 +12,7 @@ over each external engine implementation.
 import pytest
 from typing import Generator
 
-from tests.engine_interface import (
+from tests.differential.engine_interface import (
     Region,
     Player,
     DecisionType,
@@ -27,9 +27,9 @@ from tests.engine_interface import (
     assert_boards_equal,
     assert_tracks_equal,
 )
-from tests.native_adapter import NativeEngine, NativeGameState
-from tests.struggler_adapter import StrugglerEngine, StrugglerGameState
-from tests.blockchain_adapter import (
+from tests.differential.native_adapter import NativeEngine, NativeGameState
+from tests.differential.struggler_adapter import StrugglerEngine, StrugglerGameState
+from tests.differential.blockchain_adapter import (
     BlockchainEngineAdapter,
     BlockchainGameState,
     BlockchainClient,

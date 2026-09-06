@@ -1,0 +1,2277 @@
+[
+  {
+    "id": 1,
+    "name": "Asia Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 3; Domination: 7; Control: 9; +1 VP per controlled Battleground; +1 VP per country adjacent to enemy superpower. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 2,
+    "name": "Europe Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 3; Domination: 7; Control: Automatic Victory; +1 VP per controlled Battleground; +1 VP per country adjacent to enemy superpower. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 3,
+    "name": "Middle East Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 3; Domination: 5; Control: 7; +1 VP per controlled Battleground. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 4,
+    "name": "Duck and Cover",
+    "side": "us",
+    "ops": 3,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DEFCON_DEGRADE",
+    "description": "Degrade DEFCON level by 1. US receives VP equal to 5 minus current DEFCON level.",
+    "decision_steps": []
+  },
+  {
+    "id": 5,
+    "name": "Five Year Plan",
+    "side": "us",
+    "ops": 3,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": true,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "USSR randomly discards a card. If card has US associated Event, Event occurs immediately. Otherwise discarded without Event.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "NONE",
+        "decision_player": "AUTO",
+        "description": "Engine PRNG randomly selects 1 card from USSR hand. If card contains US event, pushes sub-context and executes event.",
+        "target_filter": null,
+        "max_steps": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "The China Card",
+    "side": "neutral",
+    "ops": 4,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CHINA_CARD_RULES",
+    "description": "Begins with USSR. +1 Ops if all Ops used in Asia. Passed to opponent face down once played. 1 VP for holding at end of Turn 10.",
+    "decision_steps": []
+  },
+  {
+    "id": 7,
+    "name": "Socialist Governments",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKED_BY_IRON_LADY",
+    "description": "Remove total of 3 US Influence from Western Europe (max 2 per country). Blocked after #83 The Iron Lady.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country in Western Europe to remove 1 US influence (up to 3 total, max 2 per country)",
+        "target_filter": "WESTERN_EUROPE_WITH_US_INFLUENCE",
+        "max_steps": 3,
+        "max_per_country": 2,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "Fidel",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove all US Influence from Cuba. USSR adds sufficient Influence in Cuba for Control.",
+    "decision_steps": []
+  },
+  {
+    "id": 9,
+    "name": "Vietnam Revolts",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "VIETNAM_REVOLTS_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "Add 2 USSR Influence to Vietnam. USSR receives +1 Ops for remainder of turn for cards spent entirely in SE Asia.",
+    "decision_steps": []
+  },
+  {
+    "id": 10,
+    "name": "Blockade",
+    "side": "ussr",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": true,
+    "special_timing": "OPPONENT_INTERRUPT",
+    "description": "Unless US immediately discards a card with Ops >= 3, remove all US Influence from West Germany.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "US",
+        "description": "US selects card with Ops >= 3 to discard, or passes (CONFIRM_DONE / 0x80) to forfeit all US influence in West Germany",
+        "target_filter": "US_HAND_OPS_GE_3",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "name": "Korean War",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "WAR_DIE_ROLL",
+    "description": "Roll 1d6 -1 per US controlled adjacent country. On 4-6 USSR receives 2 VP, replaces US inf with USSR inf in S.Korea, +2 Mil Ops.",
+    "decision_steps": []
+  },
+  {
+    "id": 12,
+    "name": "Romanian Abdication",
+    "side": "ussr",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove all US Influence from Romania. USSR adds sufficient Influence to Romania for Control.",
+    "decision_steps": []
+  },
+  {
+    "id": 13,
+    "name": "Arab-Israeli War",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "WAR_DIE_ROLL_BLOCKED_BY_CAMP_DAVID",
+    "description": "Roll 1d6 (-1 for US Israel, -1 per US adj). On 4-6 USSR receives 2 VP, replaces US inf with USSR inf in Israel, +2 Mil Ops. Blocked after Camp David.",
+    "decision_steps": []
+  },
+  {
+    "id": 14,
+    "name": "Comecon",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 1 USSR Influence to each of 4 non-US controlled countries of Eastern Europe.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select non-US controlled Eastern Europe country (4 distinct countries, 1 inf each)",
+        "target_filter": "EASTERN_EUROPE_NOT_US_CONTROLLED",
+        "max_steps": 4,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "Nasser",
+    "side": "ussr",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 2 USSR Influence to Egypt. US removes half (rounded up) of its Influence from Egypt.",
+    "decision_steps": []
+  },
+  {
+    "id": 16,
+    "name": "Warsaw Pact Formed",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "WARSAW_PACT_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "ENABLES_NATO",
+    "description": "Remove all US inf from 4 countries in Eastern Europe OR add 5 USSR inf to Eastern Europe (max 2 per country). Enables NATO.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Choose Branch 0 (Remove US influence from 4 EE countries) or Branch 1 (Add 5 USSR influence to EE)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["REMOVE_US_FROM_4_EE", "ADD_5_USSR_INF_EE"]
+      },
+      {
+        "step_index": 1,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Execute chosen branch: 4 distinct countries to clear US inf OR up to 5 inf placements (max 2/country)",
+        "target_filter": "EASTERN_EUROPE",
+        "max_steps": 5,
+        "max_per_country": 2,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "De Gaulle Leads France",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "NATO_CANCELED_FRANCE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove 2 US Influence from France and add 1 USSR Influence to France. Cancels NATO for France only.",
+    "decision_steps": []
+  },
+  {
+    "id": 18,
+    "name": "Captured Nazi Scientist",
+    "side": "neutral",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Move Space Race marker ahead by 1 space.",
+    "decision_steps": []
+  },
+  {
+    "id": 19,
+    "name": "Truman Doctrine",
+    "side": "us",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove all USSR Influence from a single uncontrolled country in Europe.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select uncontrolled European country with USSR influence to clear all USSR influence",
+        "target_filter": "EUROPE_UNCONTROLLED_WITH_USSR_INF",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "name": "Olympic Games",
+    "side": "neutral",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": true,
+    "special_timing": "DEFCON_SUICIDE_RISK_ON_BOYCOTT",
+    "description": "Opponent must Participate or Boycott. If Participate, roll 1d6 (sponsor +2), highest gets 2 VP. If Boycott, DEFCON -1, sponsor gets 4 free Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "OPPONENT",
+        "description": "Opponent chooses between Participating (0) or Boycotting (1)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["PARTICIPATE", "BOYCOTT"]
+      },
+      {
+        "step_index": 1,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "If Boycott: DEFCON degrades by 1 (checks suicide). Sponsor conducts 4 free Operations",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["INFLUENCE", "COUP", "REALIGN"]
+      }
+    ]
+  },
+  {
+    "id": 21,
+    "name": "NATO",
+    "side": "us",
+    "ops": 4,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "NATO_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "REQUIRES_WARSAW_OR_MARSHALL",
+    "description": "USSR cannot coup or realign US-controlled Europe. Immune to Brush War. Requires Warsaw Pact or Marshall Plan.",
+    "decision_steps": []
+  },
+  {
+    "id": 22,
+    "name": "Independent Reds",
+    "side": "us",
+    "ops": 2,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add US Influence to Yugoslavia, Romania, Bulgaria, Hungary, or Czechoslovakia so it equals USSR Influence.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select one country from the 5 eligible Eastern Europe countries where USSR inf > US inf",
+        "target_filter": "INDEPENDENT_REDS_ELIGIBLE",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "name": "Marshall Plan",
+    "side": "us",
+    "ops": 4,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "MARSHALL_PLAN_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "ENABLES_NATO",
+    "description": "Add 1 US Influence to each of any 7 non-USSR controlled countries in Western Europe. Enables NATO.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Add 1 US inf to 7 distinct non-USSR controlled countries in Western Europe",
+        "target_filter": "WESTERN_EUROPE_NOT_USSR_CONTROLLED",
+        "max_steps": 7,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 24,
+    "name": "Indo-Pakistani War",
+    "side": "neutral",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "WAR_DIE_ROLL",
+    "description": "India invades Pakistan or vice versa. Roll 1d6 -1 per enemy controlled adjacent. On 4-6 +2 VP, replace enemy inf with player inf, +2 Mil Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select target country to invade: Pakistan (0) or India (1)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["TARGET_PAKISTAN", "TARGET_INDIA"]
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "name": "Containment",
+    "side": "us",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "CONTAINMENT_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "All Operations cards played by US receive +1 Ops for remainder of turn (max 4).",
+    "decision_steps": []
+  },
+  {
+    "id": 26,
+    "name": "CIA Created",
+    "side": "us",
+    "ops": 1,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "HAND_REVEAL",
+    "description": "USSR reveals hand for turn. US conducts Operations with 1 Op.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Conduct Operations using 1 Op value",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["INFLUENCE", "COUP", "REALIGN"]
+      }
+    ]
+  },
+  {
+    "id": 27,
+    "name": "US/Japan Mutual Defense Pact",
+    "side": "us",
+    "ops": 4,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "US_JAPAN_PACT_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "US adds sufficient Influence to Japan for Control. USSR cannot coup or realign Japan.",
+    "decision_steps": []
+  },
+  {
+    "id": 28,
+    "name": "Suez Crisis",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove total of 4 US Influence from France, UK, and Israel (max 2 per country).",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select France, UK, or Israel to remove US influence (up to 4 total, max 2 per country)",
+        "target_filter": "FRANCE_UK_ISRAEL_WITH_US_INF",
+        "max_steps": 4,
+        "max_per_country": 2,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "name": "East European Unrest",
+    "side": "us",
+    "ops": 3,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Early/Mid War: Remove 1 USSR inf from 3 countries in Eastern Europe. Late War: Remove 2 USSR inf from 3 countries in Eastern Europe.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 3 distinct Eastern Europe countries to remove 1 inf (Early/Mid) or 2 inf (Late)",
+        "target_filter": "EASTERN_EUROPE_WITH_USSR_INF",
+        "max_steps": 3,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "name": "Decolonization",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 1 USSR Influence to each of any 4 countries in Africa and/or Southeast Asia.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 4 distinct countries in Africa or Southeast Asia to add 1 USSR influence each",
+        "target_filter": "AFRICA_OR_SOUTHEAST_ASIA",
+        "max_steps": 4,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "name": "Red Scare/Purge",
+    "side": "neutral",
+    "ops": 4,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": "PURGE_US_ACTIVE / PURGE_USSR_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "All Operations cards played by opponent receive -1 Ops for remainder of turn (min 1).",
+    "decision_steps": []
+  },
+  {
+    "id": 32,
+    "name": "UN Intervention",
+    "side": "neutral",
+    "ops": 1,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "NOT_IN_HEADLINE",
+    "description": "Play simultaneously with opponent card. Cancel opponent event and use Ops. Cannot be played in Headline.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select opponent-associated card from hand to discard and use for Ops without triggering event",
+        "target_filter": "HAND_OPPONENT_CARDS",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      },
+      {
+        "step_index": 1,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Conduct Operations using chosen opponent card Ops value",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["INFLUENCE", "COUP", "REALIGN"]
+      }
+    ]
+  },
+  {
+    "id": 33,
+    "name": "De-Stalinization",
+    "side": "ussr",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DYNAMIC_2_PHASE",
+    "description": "USSR reallocates up to 4 Influence from one or more countries to non-US controlled countries (max 2 per country).",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Phase 1: Remove up to 4 USSR influence from existing countries (CONFIRM_DONE to stop early)",
+        "target_filter": "COUNTRIES_WITH_USSR_INFLUENCE",
+        "max_steps": 4,
+        "max_per_country": 4,
+        "allow_early_stop": true,
+        "branches": []
+      },
+      {
+        "step_index": 1,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Phase 2: Place the exact count of removed influence into non-US controlled countries (max 2 per country)",
+        "target_filter": "NON_US_CONTROLLED_COUNTRIES",
+        "max_steps": 4,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "name": "Nuclear Test Ban",
+    "side": "neutral",
+    "ops": 4,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Player receives VP equal to current DEFCON minus 2, then improves DEFCON by 2.",
+    "decision_steps": []
+  },
+  {
+    "id": 35,
+    "name": "Formosan Resolution",
+    "side": "us",
+    "ops": 2,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "FORMOSAN_RESOLUTION_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CANCELED_BY_CHINA_CARD",
+    "description": "Taiwan is treated as Battleground for Asia Scoring if US controlled. Canceled after US plays China Card.",
+    "decision_steps": []
+  },
+  {
+    "id": 36,
+    "name": "Brush War",
+    "side": "neutral",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "WAR_DIE_ROLL",
+    "description": "Attack country with stability 1-2 (not NATO protected). Roll 1d6 -1 per enemy adj. On 3-6 +1 VP, replace enemy inf with player inf, +3 Mil Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select target country with stability <= 2 (not protected by NATO)",
+        "target_filter": "STABILITY_LE_2_NOT_NATO_PROTECTED",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "name": "Central America Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 1; Domination: 3; Control: 5; +1 VP per controlled Battleground; +1 VP per country adjacent to enemy superpower. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 38,
+    "name": "Southeast Asia Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD_ONE_TIME",
+    "description": "1 VP each for Burma, Cambodia/Laos, Vietnam, Malaysia, Indonesia, Philippines. 2 VP for Thailand. MAY NOT BE HELD! Removed once played.",
+    "decision_steps": []
+  },
+  {
+    "id": 39,
+    "name": "Arms Race",
+    "side": "neutral",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Compare Mil Ops: +1 VP if higher than opponent; +3 VP if higher and met required mil ops amount.",
+    "decision_steps": []
+  },
+  {
+    "id": 40,
+    "name": "Cuban Missile Crisis",
+    "side": "neutral",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "CMC_ACTIVE_US / CMC_ACTIVE_USSR",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "COUP_RESTRICTION",
+    "description": "Set DEFCON to 2. Opponent coups cause game loss unless opponent removes 2 inf from Cuba/W.Germany/Turkey to cancel.",
+    "decision_steps": []
+  },
+  {
+    "id": 41,
+    "name": "Nuclear Subs",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "NUCLEAR_SUBS_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "US coups in Battleground countries do not degrade DEFCON for remainder of turn.",
+    "decision_steps": []
+  },
+  {
+    "id": 42,
+    "name": "Quagmire",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "QUAGMIRE_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "AR_START_TRAP",
+    "description": "On US AR, US must discard Ops >= 2 card and roll 1-4 to escape. If unable, must play scoring cards and skip ARs. Cancels NORAD.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "US",
+        "description": "US selects Ops >= 2 card to discard for escape roll (1-4 clears flag), or plays scoring card",
+        "target_filter": "US_HAND_OPS_GE_2_OR_SCORING",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 43,
+    "name": "SALT Negotiations",
+    "side": "neutral",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "SALT_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Improve DEFCON by 2. -1 to all coup rolls this turn. Player searches discard pile and puts 1 non-scoring card into hand.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 1 non-scoring card from discard pile to add to hand",
+        "target_filter": "DISCARD_PILE_NON_SCORING",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "name": "Bear Trap",
+    "side": "us",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "BEAR_TRAP_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "AR_START_TRAP",
+    "description": "On USSR AR, USSR must discard Ops >= 2 card and roll 1-4 to escape. If unable, must play scoring cards and skip ARs.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "USSR",
+        "description": "USSR selects Ops >= 2 card to discard for escape roll (1-4 clears flag), or plays scoring card",
+        "target_filter": "USSR_HAND_OPS_GE_2_OR_SCORING",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "name": "Summit",
+    "side": "neutral",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DIE_ROLL_CONTEST",
+    "description": "Both roll 1d6 (+1 per Dominated/Controlled region). Highest gets 2 VP and may degrade/improve DEFCON by 1.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Winner of die roll modifies DEFCON: Degrade 1 (0), Improve 1 (1), or Leave unchanged (2)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["DEGRADE_DEFCON_1", "IMPROVE_DEFCON_1", "LEAVE_UNCHANGED"]
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "name": "How I Learned to Stop Worrying",
+    "side": "neutral",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Set DEFCON to any level desired (1-5). Player adds 5 to Military Operations Track.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Choose target DEFCON level (1 to 5)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["DEFCON_1", "DEFCON_2", "DEFCON_3", "DEFCON_4", "DEFCON_5"]
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "name": "Junta",
+    "side": "neutral",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "FREE_OP_RESTRICTED",
+    "description": "Add 2 Influence to single country in CA/SA. Free Coup or Realignment in CA/SA using 2 Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select single country in Central or South America to add 2 influence",
+        "target_filter": "CENTRAL_OR_SOUTH_AMERICA",
+        "max_steps": 1,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      },
+      {
+        "step_index": 1,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Free Coup or Realignment in Central or South America using 2 Ops (Influence mode forbidden)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": ["COUP", "REALIGN", "PASS"]
+      }
+    ]
+  },
+  {
+    "id": 48,
+    "name": "Kitchen Debates",
+    "side": "us",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If US controls more Battlegrounds than USSR, US receives 2 VP.",
+    "decision_steps": []
+  },
+  {
+    "id": 49,
+    "name": "Missile Envy",
+    "side": "neutral",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": true,
+    "switches_priority": true,
+    "special_timing": "FORCES_OPPONENT_NEXT_AR",
+    "description": "Exchange for opponent highest Ops card (opponent chooses ties). If friendly/neutral event, triggers immediately. Opponent forced to play #49 next AR.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "OPPONENT",
+        "description": "Opponent selects which card to give if there is a tie for highest Ops in hand",
+        "target_filter": "OPPONENT_HAND_TIED_HIGHEST_OPS",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "name": "“We Will Bury You”",
+    "side": "ussr",
+    "ops": 4,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "WE_WILL_BURY_YOU_PENDING",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DEFCON_DEGRADE",
+    "description": "Degrade DEFCON by 1. USSR receives 3 VP unless US plays #32 UN Intervention as Event on next AR.",
+    "decision_steps": []
+  },
+  {
+    "id": 51,
+    "name": "Brezhnev Doctrine",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "BREZHNEV_DOCTRINE_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "All Operations cards played by USSR receive +1 Ops for remainder of turn (max 4).",
+    "decision_steps": []
+  },
+  {
+    "id": 52,
+    "name": "Portuguese Empire Crumbles",
+    "side": "ussr",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 2 USSR Influence to Angola and SE African States.",
+    "decision_steps": []
+  },
+  {
+    "id": 53,
+    "name": "South African Unrest",
+    "side": "ussr",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "USSR either adds 2 inf to South Africa OR adds 1 inf to South Africa and 2 inf to country adjacent to South Africa.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Choose Option 0 (2 in South Africa) or Option 1 (1 in SA + 2 in adjacent country)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["TWO_IN_SOUTH_AFRICA", "ONE_IN_SA_TWO_IN_ADJACENT"]
+      },
+      {
+        "step_index": 1,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "If branch 1: select single country adjacent to South Africa to add 2 USSR influence",
+        "target_filter": "ADJACENT_TO_SOUTH_AFRICA",
+        "max_steps": 1,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 54,
+    "name": "Allende",
+    "side": "ussr",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 2 USSR Influence to Chile.",
+    "decision_steps": []
+  },
+  {
+    "id": 55,
+    "name": "Willy Brandt",
+    "side": "ussr",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "WILLY_BRANDT_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CANCELED_BY_WALL",
+    "description": "USSR +1 VP, add 1 USSR inf to West Germany. Cancels NATO for W.Germany. Prevented/canceled by #96 Tear Down this Wall.",
+    "decision_steps": []
+  },
+  {
+    "id": 56,
+    "name": "Muslim Revolution",
+    "side": "ussr",
+    "ops": 4,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKED_BY_AWACS",
+    "description": "Remove all US Influence from 2 of: Sudan, Iran, Iraq, Egypt, Libya, Saudi Arabia, Syria, Jordan. Blocked after AWACS.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 2 distinct countries from the 8 designated ME countries to remove all US influence",
+        "target_filter": "MUSLIM_REVOLUTION_ELIGIBLE",
+        "max_steps": 2,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 57,
+    "name": "ABM Treaty",
+    "side": "neutral",
+    "ops": 4,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Improve DEFCON by 1, then conduct Operations using 4 Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "DEFCON improves by 1. Conduct Operations using 4 Ops",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["INFLUENCE", "COUP", "REALIGN"]
+      }
+    ]
+  },
+  {
+    "id": 58,
+    "name": "Cultural Revolution",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If US has China Card, gives to USSR face up. If USSR already has it, USSR receives 1 VP.",
+    "decision_steps": []
+  },
+  {
+    "id": 59,
+    "name": "Flower Power",
+    "side": "ussr",
+    "ops": 4,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "FLOWER_POWER_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CANCELED_BY_EVIL_EMPIRE",
+    "description": "USSR receives 2 VP for every US-played War card. Prevented/canceled by #97 'An Evil Empire'.",
+    "decision_steps": []
+  },
+  {
+    "id": 60,
+    "name": "U-2 Incident",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "U2_INCIDENT_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "USSR receives 1 VP. If #32 UN Intervention played later this turn, USSR receives additional 1 VP.",
+    "decision_steps": []
+  },
+  {
+    "id": 61,
+    "name": "OPEC",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKED_BY_NORTH_SEA_OIL",
+    "description": "USSR receives 1 VP for Control of each: Egypt, Iran, Libya, Saudi Arabia, Iraq, Gulf States, Venezuela. Blocked after North Sea Oil.",
+    "decision_steps": []
+  },
+  {
+    "id": 62,
+    "name": "“Lone Gunman”",
+    "side": "ussr",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "HAND_REVEAL",
+    "description": "US reveals hand for turn. USSR conducts Operations with 1 Op.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Conduct Operations using 1 Op value",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["INFLUENCE", "COUP", "REALIGN"]
+      }
+    ]
+  },
+  {
+    "id": 63,
+    "name": "Colonial Rear Guards",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 1 US Influence to each of any 4 countries in Africa and/or Southeast Asia.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 4 distinct countries in Africa or Southeast Asia to add 1 US influence each",
+        "target_filter": "AFRICA_OR_SOUTHEAST_ASIA",
+        "max_steps": 4,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 64,
+    "name": "Panama Canal Returned",
+    "side": "us",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 1 US Influence each to Panama, Costa Rica, and Venezuela.",
+    "decision_steps": []
+  },
+  {
+    "id": 65,
+    "name": "Camp David Accords",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "CAMP_DAVID_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKS_ARAB_ISRAELI_WAR",
+    "description": "US receives 1 VP, adds 1 US inf to Israel, Jordan, Egypt. Prevents Arab-Israeli War.",
+    "decision_steps": []
+  },
+  {
+    "id": 66,
+    "name": "Puppet Governments",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add 1 US Influence to each of 3 countries containing zero influence from either player.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 3 distinct countries with 0 influence from both US and USSR",
+        "target_filter": "ZERO_INFLUENCE_COUNTRIES",
+        "max_steps": 3,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 67,
+    "name": "Grain Sales to Soviets",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": true,
+    "switches_priority": false,
+    "special_timing": "DRAWN_CARD_BRANCH",
+    "description": "Randomly draw 1 card from USSR hand. US must play it or return it. If returned, US conducts 2 Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Choose Branch 0 (Play randomly sampled USSR card) or Branch 1 (Return card and conduct 2 Ops)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["PLAY_DRAWN_CARD", "RETURN_AND_USE_2_OPS"]
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "name": "John Paul II Elected Pope",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": "JOHN_PAUL_II_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "ENABLES_SOLIDARITY",
+    "description": "Remove 2 USSR Influence from Poland, add 1 US Influence to Poland. Enables #101 Solidarity.",
+    "decision_steps": []
+  },
+  {
+    "id": 69,
+    "name": "Latin American Death Squads",
+    "side": "neutral",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": "DEATH_SQUADS_US / DEATH_SQUADS_USSR",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "Phasing player +1 coup rolls in CA/SA this turn. Opponent -1 coup rolls in CA/SA this turn.",
+    "decision_steps": []
+  },
+  {
+    "id": 70,
+    "name": "OAS Founded",
+    "side": "us",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add a total of 2 US Influence to any countries in Central or South America.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country in Central or South America to add US influence (up to 2 total)",
+        "target_filter": "CENTRAL_OR_SOUTH_AMERICA",
+        "max_steps": 2,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 71,
+    "name": "Nixon Plays the China Card",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If USSR has China Card, gives to US face down. If US already has it, US receives 2 VP.",
+    "decision_steps": []
+  },
+  {
+    "id": 72,
+    "name": "Sadat Expels Soviets",
+    "side": "us",
+    "ops": 1,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove all USSR Influence from Egypt and add 1 US Influence to Egypt.",
+    "decision_steps": []
+  },
+  {
+    "id": 73,
+    "name": "Shuttle Diplomacy",
+    "side": "us",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": "SHUTTLE_DIPLOMACY_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_MODIFIER",
+    "description": "Subtract 1 Battleground from USSR total during next Middle East or Asia scoring, then discard.",
+    "decision_steps": []
+  },
+  {
+    "id": 74,
+    "name": "The Voice of America",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove 4 USSR Influence from countries NOT in Europe (max 2 per country).",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select non-European country with USSR inf to remove influence (up to 4 total, max 2 per country)",
+        "target_filter": "NON_EUROPE_WITH_USSR_INFLUENCE",
+        "max_steps": 4,
+        "max_per_country": 2,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 75,
+    "name": "Liberation Theology",
+    "side": "ussr",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Add a total of 3 USSR Influence to any countries in Central America (max 2 per country).",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country in Central America to add USSR influence (up to 3 total, max 2 per country)",
+        "target_filter": "CENTRAL_AMERICA",
+        "max_steps": 3,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 76,
+    "name": "Ussuri River Skirmish",
+    "side": "us",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If USSR has China Card, gives to US face up. If US already has it, add 4 US Influence to Asia (max 2 per country).",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "If US already held China Card: select country in Asia to add US influence (up to 4 total, max 2 per country)",
+        "target_filter": "ASIA",
+        "max_steps": 4,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "name": "“Ask Not What Your Country Can Do For You…”",
+    "side": "us",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "HAND_SUBSET_DISCARD",
+    "description": "US may discard up to entire hand (including scoring cards) and draw replacements.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select card from US hand to discard (repeatable; CONFIRM_DONE / 0x80 to finish discarding and draw replacements)",
+        "target_filter": "US_HAND",
+        "max_steps": 8,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "name": "Alliance for Progress",
+    "side": "us",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "US receives 1 VP for each US controlled Battleground country in Central and South America.",
+    "decision_steps": []
+  },
+  {
+    "id": 79,
+    "name": "Africa Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 1; Domination: 4; Control: 6; +1 VP per controlled Battleground. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 80,
+    "name": "“One Small Step…”",
+    "side": "neutral",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If behind on Space Race, move marker 2 spaces forward and receive VP from final space.",
+    "decision_steps": []
+  },
+  {
+    "id": 81,
+    "name": "South America Scoring",
+    "side": "neutral",
+    "ops": 0,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "SCORING_CARD",
+    "description": "Presence: 2; Domination: 5; Control: 6; +1 VP per controlled Battleground. MAY NOT BE HELD!",
+    "decision_steps": []
+  },
+  {
+    "id": 82,
+    "name": "Iranian Hostage Crisis",
+    "side": "ussr",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "IRANIAN_HOSTAGE_CRISIS_PLAY",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TERRORISM_MODIFIER",
+    "description": "Remove all US Influence and add 2 USSR Influence to Iran. US discards 2 cards on Terrorism.",
+    "decision_steps": []
+  },
+  {
+    "id": 83,
+    "name": "The Iron Lady",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "IRON_LADY_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKS_SOCIALIST_GOVERNMENTS",
+    "description": "Add 1 USSR inf to Argentina, remove all USSR inf from UK. US +1 VP. Prevents #7 Socialist Governments.",
+    "decision_steps": []
+  },
+  {
+    "id": 84,
+    "name": "Reagan Bombs Libya",
+    "side": "us",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "US receives 1 VP for every 2 USSR Influence in Libya.",
+    "decision_steps": []
+  },
+  {
+    "id": 85,
+    "name": "Star Wars",
+    "side": "us",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": true,
+    "switches_priority": false,
+    "special_timing": "REENTRANT_EVENT",
+    "description": "If US ahead on Space Race: pick 1 non-scoring card from discard pile and play it immediately as an Event.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select non-scoring card from discard pile to execute immediately as an Event (pushes nested context)",
+        "target_filter": "DISCARD_PILE_NON_SCORING",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 86,
+    "name": "North Sea Oil",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "NORTH_SEA_OIL_PLAYED / NORTH_SEA_OIL_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKS_OPEC_AND_ADDS_8TH_AR",
+    "description": "US plays 8 cards in 8 Action Rounds for this turn. Prevents #61 OPEC.",
+    "decision_steps": []
+  },
+  {
+    "id": 87,
+    "name": "The Reformer",
+    "side": "ussr",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "THE_REFORMER_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "ENABLES_GLASNOST_AND_NO_EUROPE_COUPS",
+    "description": "Add 4 USSR inf to Europe (max 2 per country; 6 if USSR ahead in VP). USSR no longer coups in Europe. Enables Glasnost Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country in Europe to add USSR influence (up to 4 total, or 6 if ahead in VP, max 2 per country)",
+        "target_filter": "EUROPE",
+        "max_steps": 6,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 88,
+    "name": "Marine Barracks Bombing",
+    "side": "ussr",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Remove all US Influence in Lebanon and remove total of 2 US Influence from any countries in Middle East.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Remove US influence from Middle East countries (up to 2 total)",
+        "target_filter": "MIDDLE_EAST_WITH_US_INFLUENCE",
+        "max_steps": 2,
+        "max_per_country": 2,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 89,
+    "name": "Soviets Shoot Down KAL-007",
+    "side": "us",
+    "ops": 4,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DEFCON_DEGRADE_AND_RESTRICTED_OPS",
+    "description": "Degrade DEFCON by 1, US receives 2 VP. If South Korea US controlled, US conducts 4 Ops for Influence or Realignment.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "If S.Korea US controlled: conduct 4 Ops for Influence or Realignment (Coup forbidden)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": ["INFLUENCE", "REALIGN", "PASS"]
+      }
+    ]
+  },
+  {
+    "id": 90,
+    "name": "Glasnost",
+    "side": "ussr",
+    "ops": 4,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "RESTRICTED_OPS",
+    "description": "Improve DEFCON by 1, USSR receives 2 VP. If #87 The Reformer played, USSR conducts 4 Ops for Influence or Realignment.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "If The Reformer played: conduct 4 Ops for Influence or Realignment (Coup forbidden)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": ["INFLUENCE", "REALIGN", "PASS"]
+      }
+    ]
+  },
+  {
+    "id": 91,
+    "name": "Ortega Elected in Nicaragua",
+    "side": "ussr",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "FREE_COUP_ADJACENT",
+    "description": "Remove all US Influence from Nicaragua. USSR may make free Coup using 2 Ops in country adjacent to Nicaragua.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country adjacent to Nicaragua (Honduras/Costa Rica) to execute free 2 Ops Coup, or pass (CONFIRM_DONE)",
+        "target_filter": "ADJACENT_TO_NICARAGUA",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 92,
+    "name": "Terrorism",
+    "side": "neutral",
+    "ops": 2,
+    "age": "late war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "Opponent randomly discards 1 card (2 cards if US and Iranian Hostage Crisis played).",
+    "decision_steps": []
+  },
+  {
+    "id": 93,
+    "name": "Iran-Contra Scandal",
+    "side": "ussr",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "IRAN_CONTRA_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "All US Realignment rolls receive -1 for remainder of turn.",
+    "decision_steps": []
+  },
+  {
+    "id": 94,
+    "name": "Chernobyl",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "CHERNOBYL_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "REGION_RESTRICTION",
+    "description": "US designates a single Region where USSR cannot add Influence using Ops for remainder of turn.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Designate the forbidden Region index (0: Europe, 1: Asia, 2: ME, 3: Africa, 4: CA, 5: SA)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["EUROPE", "ASIA", "MIDDLE_EAST", "AFRICA", "CENTRAL_AMERICA", "SOUTH_AMERICA"]
+      }
+    ]
+  },
+  {
+    "id": 95,
+    "name": "Latin American Debt Crisis",
+    "side": "ussr",
+    "ops": 2,
+    "age": "late war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": true,
+    "special_timing": "OPPONENT_INTERRUPT",
+    "description": "US must discard Ops >= 3 card or USSR may double USSR Influence in 2 countries in South America.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "US",
+        "description": "US selects card with Ops >= 3 to discard, or passes (CONFIRM_DONE / 0x80) to let USSR double influence",
+        "target_filter": "US_HAND_OPS_GE_3",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": []
+      },
+      {
+        "step_index": 1,
+        "decision_type": "POINT_NODE",
+        "decision_player": "USSR",
+        "description": "If US passed: USSR selects 2 distinct countries in South America with USSR influence to double USSR inf",
+        "target_filter": "SOUTH_AMERICA_WITH_USSR_INFLUENCE",
+        "max_steps": 2,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 96,
+    "name": "Tear Down this Wall",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "TEAR_DOWN_THIS_WALL_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CANCELS_WILLY_BRANDT_AND_FREE_OPS",
+    "description": "Add 3 US Influence to East Germany. Free Coup or Realignment in Europe using 3 Ops. Cancels Willy Brandt.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_OP_MODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Free Coup or Realignment in Europe using 3 Ops (Influence mode forbidden)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": ["COUP", "REALIGN", "PASS"]
+      }
+    ]
+  },
+  {
+    "id": 97,
+    "name": "“An Evil Empire”",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "EVIL_EMPIRE_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CANCELS_FLOWER_POWER",
+    "description": "US receives 1 VP. Cancels Flower Power.",
+    "decision_steps": []
+  },
+  {
+    "id": 98,
+    "name": "Aldrich Ames Remix",
+    "side": "ussr",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "ALDRICH_AMES_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": true,
+    "special_timing": "HAND_REVEAL_AND_DISCARD",
+    "description": "US reveals hand for remainder of turn. USSR discards a card from US hand.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "USSR",
+        "description": "USSR selects 1 card from US hand to discard to discard pile",
+        "target_filter": "US_HAND",
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 99,
+    "name": "Pershing II Deployed",
+    "side": "ussr",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "USSR receives 1 VP. Remove 1 US Influence from each of any 3 countries in Western Europe.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select 3 distinct countries in Western Europe to remove 1 US influence each",
+        "target_filter": "WESTERN_EUROPE_WITH_US_INFLUENCE",
+        "max_steps": 3,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 100,
+    "name": "Wargames",
+    "side": "neutral",
+    "ops": 4,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "INSTANT_GAME_END",
+    "description": "If DEFCON is 2, player may immediately end the game after giving opponent 6 VP.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Choose Option 0 (End Game and give opponent 6 VP) or Option 1 (Cancel / Do nothing)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["END_GAME_GIVE_6_VP", "CANCEL"]
+      }
+    ]
+  },
+  {
+    "id": 101,
+    "name": "Solidarity",
+    "side": "us",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "REQUIRES_JOHN_PAUL_II",
+    "description": "Add 3 US Influence to Poland. Requires prior play of #68 John Paul II Elected Pope.",
+    "decision_steps": []
+  },
+  {
+    "id": 102,
+    "name": "Iran-Iraq War",
+    "side": "neutral",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "WAR_DIE_ROLL",
+    "description": "Iran invades Iraq or vice versa. Roll 1d6 -1 per enemy adj. On 4-6 +2 VP, replace enemy inf with player inf, +2 Mil Ops.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "CHOOSE_BRANCH",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select target country to invade: Iraq (0) or Iran (1)",
+        "target_filter": null,
+        "max_steps": 1,
+        "max_per_country": 0,
+        "allow_early_stop": false,
+        "branches": ["TARGET_IRAQ", "TARGET_IRAN"]
+      }
+    ]
+  },
+  {
+    "id": 103,
+    "name": "Defectors",
+    "side": "us",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "HEADLINE_CANCEL_OR_USSR_AR_VP",
+    "description": "In Headline Phase, cancels USSR headline card. If played by USSR in Action Round, US gains 1 VP.",
+    "decision_steps": []
+  },
+  {
+    "id": 104,
+    "name": "The Cambridge Five",
+    "side": "ussr",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "EARLY_OR_MID_WAR_ONLY",
+    "description": "US reveals all scoring cards in hand. USSR adds 1 inf to a region named on revealed scoring cards. Cannot be played as Event in Late War.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "USSR",
+        "description": "If scoring cards revealed: select single country in one of the revealed scoring regions to add 1 USSR influence",
+        "target_filter": "COUNTRIES_IN_REVEALED_SCORING_REGIONS",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 105,
+    "name": "Special Relationship",
+    "side": "us",
+    "ops": 2,
+    "age": "early war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": null,
+    "description": "If UK US-controlled & NATO inactive: add 1 US inf adjacent to UK. If UK US-controlled & NATO active: add 2 US inf in Western Europe and US +2 VP.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select country: adjacent to UK (if NATO inactive) OR in Western Europe (if NATO active)",
+        "target_filter": "SPECIAL_RELATIONSHIP_ELIGIBLE",
+        "max_steps": 1,
+        "max_per_country": 2,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 106,
+    "name": "NORAD",
+    "side": "us",
+    "ops": 3,
+    "age": "early war",
+    "one_time": true,
+    "persistent_effect_flag": "NORAD_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "AR_END_TRIGGER",
+    "description": "Add 1 US Influence to country with US Influence at end of each AR where Canada is US-controlled and DEFCON reached 2. Canceled by Quagmire.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "US",
+        "description": "Triggered at end of AR: select single country containing US influence to add 1 US influence",
+        "target_filter": "COUNTRIES_WITH_US_INFLUENCE",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 107,
+    "name": "Che",
+    "side": "ussr",
+    "ops": 3,
+    "age": "middle war",
+    "one_time": false,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "CONDITIONAL_SECOND_COUP",
+    "description": "Coup attempt using 3 Ops in non-BG in CA, SA, or Africa. If US inf removed, second Coup in different non-BG in CA, SA, or Africa.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "POINT_NODE",
+        "decision_player": "USSR",
+        "description": "Select non-Battleground country in CA, SA, or Africa for Coup 1",
+        "target_filter": "NON_BG_IN_CA_SA_AFRICA",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": false,
+        "branches": []
+      },
+      {
+        "step_index": 1,
+        "decision_type": "POINT_NODE",
+        "decision_player": "USSR",
+        "description": "Optional Coup 2 if Coup 1 removed US inf: select different non-BG in CA, SA, Africa, or pass (CONFIRM_DONE)",
+        "target_filter": "DIFFERENT_NON_BG_IN_CA_SA_AFRICA",
+        "max_steps": 1,
+        "max_per_country": 1,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 108,
+    "name": "Our Man in Tehran",
+    "side": "us",
+    "ops": 2,
+    "age": "middle war",
+    "one_time": true,
+    "persistent_effect_flag": null,
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "DECK_PEEK_AND_DISCARD",
+    "description": "If US controls >= 1 ME country: draw top 5 cards from draw pile. Discard any number without events. Rest reshuffled into draw pile.",
+    "decision_steps": [
+      {
+        "step_index": 0,
+        "decision_type": "SELECT_CARD",
+        "decision_player": "PHASING_PLAYER",
+        "description": "Select card from top 5 peeked cards to discard (CONFIRM_DONE / 0x80 to finish discarding and reshuffle rest into deck)",
+        "target_filter": "TEMP_PEEKED_CARDS",
+        "max_steps": 5,
+        "max_per_country": 0,
+        "allow_early_stop": true,
+        "branches": []
+      }
+    ]
+  },
+  {
+    "id": 109,
+    "name": "Yuri and Samantha",
+    "side": "ussr",
+    "ops": 2,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "YURI_AND_SAMANTHA_ACTIVE",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "TURN_PERSISTENT",
+    "description": "USSR receives 1 VP for each US Coup Attempt performed during remainder of turn.",
+    "decision_steps": []
+  },
+  {
+    "id": 110,
+    "name": "AWACS Sale to Saudis",
+    "side": "us",
+    "ops": 3,
+    "age": "late war",
+    "one_time": true,
+    "persistent_effect_flag": "AWACS_PLAYED",
+    "requires_context_push": false,
+    "switches_priority": false,
+    "special_timing": "BLOCKS_MUSLIM_REVOLUTION",
+    "description": "Add 2 US Influence to Saudi Arabia. Prevents #56 Muslim Revolution.",
+    "decision_steps": []
+  }
+]

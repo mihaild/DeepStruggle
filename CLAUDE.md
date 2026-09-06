@@ -69,19 +69,19 @@ cmake --build build_san -j
 # Python integration tests
 PYTHONPATH=. .venv/bin/pytest -v tests/
 # Single test file / test:
-PYTHONPATH=. .venv/bin/pytest -v tests/test_all_110_cards.py::TestName::test_case
+PYTHONPATH=. .venv/bin/pytest -v tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
 # Static typing — MUST return 0 errors after any Python change
 .venv/bin/pyrefly check
 ```
 
-**Do not run the differential suites.** `pytest.ini` skips `tests/test_differential_fuzzing.py` and
-`tests/test_unified_differential.py` by default, and they are not part of the check a change is
-expected to pass. They need the git-ignored `rules/` directory and the `external/struggler`
-submodule, and without `rules/` they fail at import — so passing an explicit path like
-`pytest tests/` used to collapse on collection instead of testing anything. They are not
-informative in their current state; do not spend time reviving them. `external/**` is likewise
-outside pyrefly's project scope.
+`tests/` is split by what's under test: `bindings/` (nanobind surface only), `engine_logic/` (game rules driven through the bindings — prefer adding new rule coverage to `engine/tests/*.cpp` instead, see below), `replayer/` (the `ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server + bot-client + Playwright E2E), and `differential/` (cross-engine fuzzing, WIP/unstable — see below).
+
+**Do not run the differential suites.** `tests/differential/` is gated behind the `differential_fuzz`
+marker / `--run-fuzz` flag (`tests/conftest.py`) and is not collected by default. It is WIP and not
+informative in its current state, so it is not part of the check a change is expected to pass — do
+not spend time reviving it. `pyrefly.toml` likewise excludes `tests/differential/**` and `external/**`
+from pyrefly's project scope.
 
 ## Running training / tournaments / matches / web play
 
@@ -134,7 +134,7 @@ Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset gen
 
 **Web (`web/`):** `web/server/main.py` is the FastAPI app — REST endpoints for game/replay/metadata, plus `/ws/game/{game_id}?role=US|USSR|OBSERVER`. `session.py`'s `GameSession` owns the `ts_engine.GameState`, validates actions against the active `DecisionContext`, steps the engine, and broadcasts `STATE_UPDATE`. `replay.py` reads/writes `.tslog.json` under `data/replays/` (symlinked to `replays/`). `web/ui/` is the Vite + TypeScript SVG map frontend. `web/bot_client.py` connects a `BaseBot` to a running game over WebSocket.
 
-**Data layout:** `data/checkpoints/` (model weights, symlinked as `checkpoints/`), `data/replays/` (`.tslog.json` game logs, symlinked as `replays/`), `data/datasets/` (compressed demonstration `.jsonl.gz` for BC warmup). `rules/` (git-ignored) holds the rulebook PDF plus `rules.json`/`cards.json`/`map.json`, the formal spec the engine implements. `external/struggler` is a git submodule used as an independent reference engine for differential testing.
+**Data layout:** `data/checkpoints/` (model weights, symlinked as `checkpoints/`), `data/replays/` (`.tslog.json` game logs, symlinked as `replays/`), `data/datasets/` (compressed demonstration `.jsonl.gz` for BC warmup). `rules/` holds `rules.json`/`cards.json`/`map.json` and related spec files, the formal spec the engine implements — tracked in git, except `rules/Rules_Final.pdf` (the official rulebook, GMT Games copyright), which stays git-ignored. `external/struggler` is a git submodule used as an independent reference engine for differential testing.
 
 ## Key invariants (see `AGENTS.md` §4 for full detail)
 
