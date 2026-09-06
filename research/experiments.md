@@ -793,7 +793,7 @@ headlines, test the chosen action for a win rather than set membership, exclude 
 round of turn 10, and re-run once the free-coup handlers filter.
 
 
-### 8.6 Replay 259 is VP drift, not a card bug — and drift is corpus-wide
+### 8.6 Replay 259 is VP drift, not a card bug — and drift is corpus-wide — SUPERSEDED BY 8.7
 
 **The user's arithmetic was right and the engine's starting number was wrong.** At replay 259 the
 engine holds `victory_points = 18` when it labels the KAL-007 headline a win, and KAL takes it to
@@ -826,3 +826,76 @@ engine is not USSR-biased.
 
 Separately, this is a second reason the forced-win metric cannot be trusted on human data (§8.5):
 a labelled win can rest on a VP the game never had.
+
+
+### 8.7 Most of the "VP drift" was the log's score field, not the engine — 8.6 corrected
+
+**`Conversion.vp_drift` is not a measure of engine error.** It compares the engine against
+`entry.score`, a running field that lags the log's own narration -- `_narrated_score`'s docstring
+already records the two disagreeing in 531 of 6,602 places. The converter resyncs from the
+*narration*, which is the authoritative statement, so a lagging field produces a counted "drift"
+with nothing wrong.
+
+**Replay 219 is the clean demonstration.** At turn 8 AR1 the log reads:
+
+```
+Turn 8, USSR AR1: South America Scoring: Event: South America Scoring
+USSR gains 10 VP. Score is even.
+```
+
+The score was US +10, the USSR gains 10, so it is even -- and the engine says 0, matching the
+narration exactly. The `score` field still reads 10, and goes on reading 10 for five more entries
+before catching up at AR5. Every one of those was counted as drift. The engine was right
+throughout.
+
+**Re-measured against the narration**, over midgame entries (excluding the terminal ±20 marker,
+and turn 10 AR7/AR8 where the engine's final scoring and the log's bookkeeping legitimately
+differ):
+
+| | entries |
+|:---|---:|
+| engine disagrees with the score **field** | 4,500 |
+| — engine matches the **narration** (field lags; engine correct) | 666 |
+| — entry narrates no score, so nothing to check against | 3,822 |
+| — **engine disagrees with the narration** | **12**, in 7 games |
+
+Real disagreements are **12 entries across 7 games, magnitude 1-2**. Not 194 games, and not mean
+2.2 VP. §8.6's "81% of converted games carry drift" was measuring the log's field lag.
+
+**This largely clears §8.** The human VP arc is read from the engine's VP, and the engine agrees
+with the log's narration nearly everywhere it can be checked. Re-deriving the arc from narrated
+scores is still worth doing, but as confirmation rather than as repair. The one caveat that stands
+is the terminal marker: `victory_points` becomes ±20 when a game ends, so any turn-boundary sample
+taken after a terminal reads the result rather than the score.
+
+### 8.7.1 The one real lead: Asia Scoring under Shuttle Diplomacy
+
+Six of the twelve real disagreements are one game, **replay 259**, where the engine sits **+1**
+above the narration from turn 7 AR3 onward -- through turns 7, 8 and 9. It starts here:
+
+```
+Turn 7, USSR AR3: Asia Scoring: Event: Asia Scoring
+Shuttle Diplomacy is no longer in play.
+USSR gains 2 VP. Score is US 17.
+```
+
+The engine awards the USSR **1**, the log **2**. Working the region from the log's own board
+(USSR holds North Korea, South Korea, Japan and Pakistan; the US holds India; the USSR also holds
+Afghanistan, the US eight more non-battlegrounds):
+
+* Neither side dominates -- the US has more countries, the USSR more battlegrounds -- so both
+  score Presence, 3 each.
+* Shuttle Diplomacy removes one USSR battleground. Taking Japan removes the battleground, the
+  country, *and* the USSR's superpower-adjacency bonus, since Japan is the Asian country adjacent
+  to the US.
+* USSR 3 + 3 battlegrounds + 0 adjacency = 6; US 3 + 1 = 4. Net **USSR 2**, which is what the log
+  says.
+
+The engine's 1 is what you get from **two** battlegrounds coming off rather than one. The
+adjustment lives at `engine/src/scoring.cpp:70-85` and decrements the battleground count, the
+country count and (in Asia) the adjacency in one block, guarded by
+`SHUTTLE_DIPLOMACY_ACTIVE`; the flag is cleared in two places, `scoring.cpp:182-184` and
+`scoring.cpp:287-289`. Double application is the obvious candidate and is **not yet verified** --
+the arithmetic above establishes the symptom and which side is right, not the mechanism.
+
+Per invariant 11 this is reported, not fixed.
