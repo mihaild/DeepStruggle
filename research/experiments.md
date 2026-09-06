@@ -1161,7 +1161,7 @@ rather than the starting point, it persists for the whole run, and its quality i
 Build that net at ~8 epochs.
 
 
-### 9.3 Do the humans respect the dominance relations? — partly, and unevenly
+### 9.3 Do the humans respect the dominance relations? — partly, and unevenly — TRAP NUMBERS CORRECTED IN 9.4
 
 **Question.** §4.8 called the dominance result "the strongest argument yet for demonstrations,
 since one human game shows the reversal that RL needs thousands to notice". That is a claim about
@@ -1200,3 +1200,60 @@ plays. Most of those were not decisions: no equal-Ops own card was in hand, so n
 been chosen differently. Requiring both kinds of card at the same Ops cut the denominator to 712
 across the corpus and is what makes the 0.4% meaningful. §4.8 records the same trap from the other
 direction — measuring against all space plays reads 2.4% and badly understates the agents' rate.
+
+
+### 9.4 Half the humans' apparent trap mistakes are ours, not theirs
+
+**Question.** §9.3 put humans at 22.1% dominated on trap discards, better than the control but not
+clearly better than K=40. Are those human mistakes, or does our hand reconstruction hand them a
+card they never held? A dominance pair says "you discarded X when Y was available"; if Y is the
+solver's padding, we invented the alternative and the error is ours.
+
+**Setup.** Each of the 25 dominated discards checked against the log's *own* per-turn hand list --
+the only independent record of what a player held.
+
+| | count |
+|:---|---:|
+| dominant alternative **is** in the log's hand list | **13** |
+| dominant alternative is **not** — reconstruction supplied it | **12** |
+
+**Recomputed over pairs where the log evidences both cards:**
+
+| | as §9.3 measured | log-evidenced pairs only |
+|:---|---:|---:|
+| trap discards, dominated | 22.1% (25/113) | **12.1%** (12/99) |
+| — Quagmire | 24.3% | **6.7%** (2/30) |
+| — Bear Trap | 21.1% | **14.5%** (10/69) |
+
+Against §4.8's agents that reverses the reading: Quagmire **6.7%** against the control's 37.5% and
+K=40's 30.7%; Bear Trap **14.5%** against 32.8% and 18.2%. Humans are better than both agents on
+both traps, where §9.3 had them level with K=40.
+
+**But the log's hand lists are not complete either, so this is a bound, not a value.** Measured
+over all 33,511 human card decisions: **3.5%** of the time the card the human is *recorded playing*
+is itself absent from that turn's hand list. A list that omits cards the player demonstrably held
+cannot be treated as ground truth. So 12.1% is a **lower** bound on the human error rate and 22.1%
+an **upper** one. The useful conclusion survives either way: at the upper bound humans beat the
+control, at the lower bound they beat K=40 as well.
+
+### 9.4.1 The wider consequence: a quarter of the corpus's offered actions are unevidenced
+
+The same measurement, applied to every card decision rather than to dominance pairs:
+
+| | |
+|:---|---:|
+| human card decisions measured | 33,511 |
+| cards offered across them | 187,458 |
+| **not in the log's hand list** | **44,247 (23.6%)** |
+| decisions offering at least one such card | 27,267 (**81.4%**) |
+
+Part of that is the solver padding hands the log underdetermines, and part is the log's own
+incompleteness — the 3.5% above proves the second exists and the two cannot be separated with what
+the log records. Either way, **the human corpus offers the policy a choice among cards there is no
+evidence the player held, at 81% of its card decisions**, and those cards are in the action masks
+the BC warmup trains against.
+
+That is a data-quality finding rather than a bug: nothing is *forced*, and the converter's own
+rules are intact. But it bounds what the corpus can teach about card selection, it is a plausible
+contributor to §9's negative result, and it means any future measurement conditioned on hand
+contents needs the same log-evidenced restriction applied here.
