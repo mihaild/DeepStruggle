@@ -1402,7 +1402,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             const auto& c_info = MapData::get_country(cid);
             if (cid < 84 && !c_info.battleground &&
                 (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA || c_info.region == Region::AFRICA) &&
-                !state.ctx().is_visited(cid)) {
+                !state.ctx().is_visited(cid) &&
+                Operations::can_coup(state, Player::USSR, cid)) {
                 state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
                 state.ctx().temp_cards[2] = action.secondary_id;
                 state.ctx().temp_cards[3] = cid;
@@ -1434,7 +1435,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             for (uint8_t n = 0; n < nic.num_neighbors; ++n) {
                 if (nic.neighbors[n] == target_cid) { is_adj = true; break; }
             }
-            if (is_adj && target_cid < 84) {
+            if (is_adj && target_cid < 84 && Operations::can_coup(state, Player::USSR, target_cid)) {
                 state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
                 state.ctx().temp_cards[2] = action.secondary_id;
                 state.ctx().temp_cards[3] = target_cid;
@@ -1625,9 +1626,14 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     if (state.countries[i].us_influence > 0) mask_out[i] = 1;
                     break;
                 case card_ids::CHE:
+                    // can_coup, not just the card's own restrictions: a free coup is still a
+                    // coup, so it needs opponent influence to remove, and it is still bound by
+                    // the DEFCON regional limits, NATO and The Reformer. Filtering on region and
+                    // battleground alone offered coups the rules forbid -- see ORTEGA below.
                     if (!c_info.battleground &&
                         (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA || c_info.region == Region::AFRICA) &&
-                        !state.ctx().is_visited(i)) {
+                        !state.ctx().is_visited(i) &&
+                        Operations::can_coup(state, Player::USSR, i)) {
                         mask_out[i] = 1;
                     }
                     break;
@@ -1699,9 +1705,17 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     }
                     break;
                 case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
+                    // Adjacency alone is not enough. At turn 9 AR 2 of ts-replayer game 139 the
+                    // US played Ortega for Ops, the event handed the USSR its free coup, and this
+                    // offered Cuba -- which held US 0 / USSR 3, so there was nothing there to
+                    // coup. Cuba being a battleground, taking it dropped DEFCON from 2 to 1 and
+                    // ended the game against the phasing player, turning an illegal move into a
+                    // winning one.
                     const auto& nic = MapData::get_country(countries::NICARAGUA);
                     for (uint8_t n = 0; n < nic.num_neighbors; ++n) {
-                        if (nic.neighbors[n] == i) mask_out[i] = 1;
+                        if (nic.neighbors[n] == i && Operations::can_coup(state, Player::USSR, i)) {
+                            mask_out[i] = 1;
+                        }
                     }
                     break;
                 }

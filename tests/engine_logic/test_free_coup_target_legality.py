@@ -19,8 +19,8 @@ player. The engine's DEFCON-1 handling is correct (the phasing player loses, per
 what is wrong is that the move was offered at all. The same shape appears at replays 16, 165 and
 245.
 
-These tests assert the rule. They are expected to fail until the target lists filter on
-`can_coup`; per AGENTS.md invariant 11 the engine fix is the user's call.
+Both handlers now filter on `can_coup`, at the target mask in `get_event_action_mask` and again
+where the chosen target is applied. These tests are the regression.
 """
 
 from __future__ import annotations
@@ -85,7 +85,6 @@ def _past_setup(seed: int) -> ts.GameState:
     raise AssertionError("never left SETUP")
 
 
-@pytest.mark.xfail(strict=True, reason="Ortega's target list does not filter on can_coup")
 def test_ortega_free_coup_cannot_target_a_country_the_opponent_is_absent_from() -> None:
     state = _past_setup(4242)
 
@@ -110,7 +109,6 @@ def test_ortega_free_coup_cannot_target_a_country_the_opponent_is_absent_from() 
     )
 
 
-@pytest.mark.xfail(strict=True, reason="Che's target list does not filter on can_coup")
 def test_che_free_coup_cannot_target_a_country_the_opponent_is_absent_from() -> None:
     state = _past_setup(4243)
 

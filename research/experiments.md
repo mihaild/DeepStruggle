@@ -716,7 +716,7 @@ lengths without this exclusion.
 **The DEFCON-1 category is under query — see 8.4.** Humans take 1 of 29. That is not caution; it
 is what you would expect if the move is a blunder that the classifier has labelled a win.
 
-### 8.4 The DEFCON-1 "wins" are illegal moves the engine offers — CONFIRMED BUG
+### 8.4 The DEFCON-1 "wins" are illegal moves the engine offers — FIXED
 
 My first reading of these, that DEFCON-1 losses were attributed to the wrong player, was **wrong**.
 `resolve_defcon_one_loss` (`engine/include/ts/defcon.hpp:28`) makes the *phasing* player lose
@@ -749,9 +749,13 @@ Cuba, all `US 0 / USSR 3`.
 `tests/engine_logic/test_free_coup_target_legality.py` reproduces both synthetically: Ortega offers
 `[67, 68, 71]` including Cuba with zero US influence, and Che offers 26 countries without checking
 influence at all. A third test confirms the ordinary Ops path filters correctly, so the defect is
-in the two event handlers, not in the coup rule. They are marked `xfail(strict=True)`, so they
-flip to a failure the moment the handlers start filtering and the markers can be removed. Per
-invariant 11 the fix is the user's call.
+in the two event handlers, not in the coup rule. **Fixed** (approved): both handlers now call `Operations::can_coup(state, Player::USSR, i)`, at
+the target mask in `get_event_action_mask` and again where the chosen target is applied. The
+forced win at replay 139 T9 AR2 is gone, all 368 C++ tests pass, the fuzzer is clean over 3,000
+games, and all 282 corpus games still convert with 0 failures. One existing C++ test,
+`OrtegaElected_CanCoupCuba_AndAdjacentCountries`, asserted the old behaviour -- it gave Cuba US
+influence but left Costa Rica and Honduras empty and expected them offered anyway -- and now sets
+up influence in those two and additionally asserts that an adjacent country with none is refused.
 
 **Why this matters beyond the metric.** `classify_legal_actions` reads the engine's terminal
 utility, and so does every reward. A policy trained against this learns that an opponent's Ortega
@@ -787,3 +791,38 @@ The remaining sample is too small and too contaminated to support any statement 
 treat forced wins. **8.1 is withdrawn and not replaced.** The instrument needs fixing first: skip
 headlines, test the chosen action for a win rather than set membership, exclude the last action
 round of turn 10, and re-run once the free-coup handlers filter.
+
+
+### 8.6 Replay 259 is VP drift, not a card bug — and drift is corpus-wide
+
+**The user's arithmetic was right and the engine's starting number was wrong.** At replay 259 the
+engine holds `victory_points = 18` when it labels the KAL-007 headline a win, and KAL takes it to
+20. The log records 17 at the end of turn 7 and **16** at the turn 8 headline, and it also shows
+KAL actually played at **AR1, not the headline**, moving the score 16 → 17. So the "win" rests on
+a starting VP two points above what the game had.
+
+**This is not specific to 259.** `Conversion.vp_drift` counts entries where the engine's score
+disagreed with the log's, and across the 282 converted games:
+
+| | |
+|:---|---:|
+| games with **zero** drift | 53 (18.8%) |
+| games with some drift | **229 (81.2%)** |
+| drift per game | mean 8.1, median 5, p90 20, max 56 |
+| `log_miscounts` / `scores_forced` across the corpus | 1 / 1 |
+
+`_reconcile_scalars` resyncs `state.victory_points` to the score the log narrates whenever an
+entry states one, so drift is corrected at entry boundaries and does not accumulate — which is why
+these games still convert cleanly. But **within** an entry the engine's VP is its own, and that is
+what a decision sample sees.
+
+**Consequence for §8, which is not yet resolved.** The human VP-by-turn arc — the whole basis for
+saying humans reproduce the US late-war recovery — is read from the engine's VP at decision time
+(`obs.vps`), not from the log's narrated score. Turn boundaries are taken at the first decision of
+turn T+1, which is close to a resync, so the arc may well survive; but "may well" is not
+"measured". **Re-derive the §8 arc from the log's own narrated scores before relying on it.** That
+is a cheap check and it is the one that matters, because §8 is currently the evidence that the
+engine is not USSR-biased.
+
+Separately, this is a second reason the forced-win metric cannot be trusted on human data (§8.5):
+a labelled win can rest on a VP the game never had.

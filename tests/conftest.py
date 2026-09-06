@@ -28,3 +28,23 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "differential_fuzz" in item.keywords:
             item.add_marker(skip_marker)
+
+
+def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool | None:
+    """Keep tests/differential out of collection unless it is asked for.
+
+    Marking those tests skipped is not enough: the skip is applied after collection, and the
+    modules fail at *import*, so a plain `pytest tests/` aborts with a collection error instead
+    of running the suite. Ignoring the directory here rather than through an `--ignore` in
+    pytest.ini keeps the escape hatches working -- `--run-fuzz`, `-m differential_fuzz`, or
+    naming a path under tests/differential -- since those are all visible on `config`.
+    """
+    if "differential" not in collection_path.parts:
+        return None
+    if config.getoption("--run-fuzz"):
+        return None
+    if "differential_fuzz" in (getattr(config.option, "markexpr", "") or ""):
+        return None
+    if any("differential" in str(arg) for arg in config.args):
+        return None
+    return True

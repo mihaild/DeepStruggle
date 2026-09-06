@@ -19,7 +19,12 @@ from typing import Optional
 import pytest
 import ts_engine as ts
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+# tests/bindings/<this file> -> the checkout root is three levels up. This read
+# `.parent.parent` while the file lived directly in tests/; the reorg moved it a level deeper
+# and the constant did not follow, which pointed REPO at tests/ and quietly disabled both
+# checks here -- the staleness one skipped for "no engine sources found" and the provenance
+# one failed on every run. Derive it from the file's own depth so a future move is loud.
+REPO = pathlib.Path(__file__).resolve().parents[2]
 SOURCE_DIRS = ("engine", "bindings")
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h", ".cc"}
 

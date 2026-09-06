@@ -147,6 +147,12 @@ TEST(CardEdgeCasesTest, OrtegaElected_CanCoupCuba_AndAdjacentCountries) {
     state.countries[countries::NICARAGUA].us_influence = 3;
     state.countries[countries::CUBA].us_influence = 3; // Cuba is adjacent to Nicaragua
     state.countries[countries::CUBA].ussr_influence = 0;
+    // A free coup is still a coup and needs US influence to remove. This test used to leave
+    // Costa Rica and Honduras empty and assert they were offered anyway, which is the defect
+    // ts-replayer game 139 turn 9 AR 2 ran into: Ortega offered Cuba at US 0 / USSR 3, and
+    // taking that battleground dropped DEFCON to 1 and ended the game.
+    state.countries[countries::COSTA_RICA].us_influence = 1;
+    state.countries[countries::HONDURAS].us_influence = 1;
 
     bool done = CardHandlers::trigger_event(state, card_ids::ORTEGA_ELECTED_IN_NICARAGUA, Player::USSR);
     ASSERT_FALSE(done);
@@ -161,7 +167,14 @@ TEST(CardEdgeCasesTest, OrtegaElected_CanCoupCuba_AndAdjacentCountries) {
     ASSERT_EQ(mask[countries::CUBA], 1);
     ASSERT_EQ(mask[countries::COSTA_RICA], 1);
     ASSERT_EQ(mask[countries::HONDURAS], 1);
-    ASSERT_EQ(mask[countries::FRANCE], 0);
+    ASSERT_EQ(mask[countries::FRANCE], 0);   // not adjacent to Nicaragua
+
+    // Adjacent, but with no US influence there is nothing to coup.
+    state.countries[countries::HONDURAS].us_influence = 0;
+    CardHandlers::get_event_action_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[countries::HONDURAS], 0);
+    state.countries[countries::HONDURAS].us_influence = 1;
+    CardHandlers::get_event_action_mask(state, mask, &out_size);
 
     // Choosing the target opens a chance node; the coup resolves when that is rolled.
     // Roll 6: 6 + 2 ops - 2 * 3 (stability) = 2 coup value
