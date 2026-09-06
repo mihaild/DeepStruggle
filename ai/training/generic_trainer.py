@@ -26,6 +26,7 @@ from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
+from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
@@ -220,6 +221,12 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
     return stats
 
 
+#: How many decisions the per-epoch agreement pass reads. The self-play format
+#: rebuilds its observations by replaying, so a full pass is minutes; this is enough
+#: for a figure that is stable to a tenth of a point.
+_AGREEMENT_SAMPLE = 20_000
+
+
 def run_behavioral_cloning_warmup(
     model: nn.Module,
     dataset_path: str,
@@ -297,7 +304,17 @@ def run_behavioral_cloning_warmup(
         avg_loss = total_loss / max(1, samples_seen)
         acc = (correct_actions / max(1, samples_seen)) * 100.0
         dt = max(1e-2, time.time() - t_epoch)
-        print(f"  Epoch {epoch:2d}/{epochs:2d} COMPLETED in {dt:.1f}s | Loss: {avg_loss:.4f} | Action Acc: {acc:.2f}% | Total Samples: {samples_seen:,}", flush=True)
+        # The in-batch figure scores every point of a play against the exact index the
+        # demonstration happened to record, which marks a reordered-but-identical placement wrong.
+        # Agreement is the measure that does not: it scores a play on the multiset of countries,
+        # excluding coups and realignments where a die between points makes the order real. It
+        # needs an unshuffled pass, since a play's points have to stay together.
+        agree = evaluate_dataset(model, dataset_path, dev, max_samples=_AGREEMENT_SAMPLE)
+        model.train()
+        print(f"  Epoch {epoch:2d}/{epochs:2d} COMPLETED in {dt:.1f}s | Loss: {avg_loss:.4f} | "
+              f"Strict Acc: {acc:.2f}% | Agreement: {agree.unordered:.2f}% "
+              f"(ordered {agree.ordered:.2f}%, {agree.decisions:,} decisions) | "
+              f"Total Samples: {samples_seen:,}", flush=True)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)), exist_ok=True)
     torch.save(model.state_dict(), output_checkpoint_path)

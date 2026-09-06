@@ -1565,3 +1565,32 @@ total, and the correction each model gets is unchanged to within 0.01 points:
 Which is worth knowing in itself: the reordering credit was never resting on coups and
 realignments being wrongly forgiven, so §9.11's figures stand as measured. The measure is now right
 for the right reason rather than by luck.
+
+
+### 9.11.2 Agreement is now the reported figure everywhere
+
+`ai/eval/agreement.evaluate_dataset` takes either dataset and returns both figures, so nothing has
+to re-implement the measure. A directory is the human corpus, which stores the play grouping as a
+column; a file is the self-play set, whose loader gained `stream_with_plays` and recovers the
+grouping while replaying, since that format keeps only a seed and the actions.
+
+BC warmup now reports it every epoch, for both datasets:
+
+```
+Epoch  2/ 2 COMPLETED | Loss: 1.8802 | Strict Acc: 44.81% |
+    Agreement: 47.48% (ordered 47.31%, 20,000 decisions)
+```
+
+Three numbers because they answer different questions. **Strict Acc** is the running in-batch
+figure, computed on shuffled batches while the weights are still moving, and is what the trainer
+always printed. **Agreement** is the measure: an unshuffled pass after the epoch, scoring a play on
+the multiset of countries. **ordered** is that same pass scored strictly, so the gap between the
+last two is exactly what reordering costs and nothing else.
+
+The pass is capped at 20,000 decisions. The self-play format rebuilds its observations by replaying
+from a seed, so a full pass over 2.1M samples would take minutes per epoch; 20,000 gives a figure
+stable to about a tenth of a point.
+
+Note the in-batch and post-epoch numbers differ by a few points (44.81% against 47.31% here) and
+should: one averages over an epoch of changing weights, the other measures the weights the epoch
+ended with.

@@ -73,6 +73,66 @@ class WarmupDataset:
                 game_count += 1
 
 
+
+    def stream_with_plays(self, max_games: Optional[int] = None):
+        """As `stream_transitions`, plus the id of the play each decision belongs to.
+
+        A card spends its Operations one point at a time and the order the points were recorded
+        in carries no decision, so agreement is scored over the play rather than the sequence
+        (`ai/eval/agreement`). The grouping is recovered here rather than stored, because this
+        format keeps only a seed and the actions and rebuilds everything else by replaying.
+        Coups and realignments are excluded from grouping -- a die resolves between their points
+        and the board the next one faces depends on the last.
+        """
+        from ai.eval.agreement import order_matters
+
+        play_id = 0
+        key = None
+        for game in self._games(max_games):
+            st = ts.GameState()
+            ts.Engine.init_game(st, game["seed"])
+            winner = game.get("winner", "DRAW")
+            final_vp = game.get("final_vp", 0)
+
+            for a in game["actions"]:
+                p = st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE else st.phasing_player
+                obs = np.array(ts.extract_observation(st, p), copy=True)
+                mask = np.array(ts.get_flat_action_mask(st), copy=True)
+                sign = 1.0 if (p == ts.Player.US or p == 1) else -1.0
+                win_ret = (1.0 if winner == "US" else (-1.0 if winner == "USSR" else 0.0)) * sign
+                vp_ret = (final_vp / 20.0) * sign
+                flat_act = a["flat_action"]
+                if (mask.sum() == 0 or flat_act < 0 or flat_act >= mask.shape[0]
+                        or mask[flat_act] == 0):
+                    break
+
+                ctx = st.ctx()
+                groupable = (ctx.decision_type == ts.DecisionType.POINT_NODE
+                             and not order_matters(st))
+                this_key = ((int(st.turn), int(st.action_round), int(p),
+                             int(ctx.resolving_card), int(ctx.pending_op_card))
+                            if groupable else None)
+                if this_key is None or this_key != key:
+                    play_id += 1
+                key = this_key
+                yield obs, mask, flat_act, win_ret, vp_ret, play_id
+
+                ma = ts.decode_flat_action(st, flat_act)
+                ts.Engine.step(st, ma)
+                while (not ts.Engine.is_terminal(st)
+                       and st.ctx().decision_player == ts.Player.NONE
+                       and st.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+                    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
+    def _games(self, max_games: Optional[int] = None):
+        count = 0
+        with gzip.open(self.filepath, "rt", encoding="utf-8") as f:
+            for line in f:
+                if max_games is not None and count >= max_games:
+                    break
+                yield json.loads(line)
+                count += 1
+
     def stream_batches(
         self,
         batch_size: int = 512,

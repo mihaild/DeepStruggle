@@ -41,11 +41,13 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
 import ts_engine as ts
+
+MASK_BITS_ = 212
 
 
 @dataclass
@@ -117,8 +119,8 @@ def group_point_runs(states: Sequence[ts.GameState],
 
 
 def score_groups(groups: Sequence[Sequence[int]],
-                 human_actions: Sequence[int],
-                 model_actions: Sequence[int]) -> AgreementResult:
+                 human_actions: Union[Sequence[int], np.ndarray],
+                 model_actions: Union[Sequence[int], np.ndarray]) -> AgreementResult:
     """Ordered and order-insensitive agreement over pre-grouped decisions.
 
     `model_actions[i]` is the model's argmax at the position the human actually reached, so both
@@ -131,12 +133,12 @@ def score_groups(groups: Sequence[Sequence[int]],
             out.groups += 1
             out.grouped_decisions += len(group)
         for i in group:
-            if model_actions[i] == human_actions[i]:
+            if int(model_actions[i]) == int(human_actions[i]):
                 out.ordered_hits += 1
         # Order-insensitive: spend each model choice against the human's remaining multiset.
-        remaining: Counter = Counter(human_actions[i] for i in group)
+        remaining: Counter = Counter(int(human_actions[i]) for i in group)
         for i in group:
-            guess = model_actions[i]
+            guess = int(model_actions[i])
             if remaining[guess] > 0:
                 remaining[guess] -= 1
                 out.unordered_hits += 1
@@ -156,3 +158,60 @@ def model_argmax(model: Any, obs: np.ndarray, mask: np.ndarray,
             m = torch.from_numpy(mask[start:start + batch]).to(device)
             out[start:start + batch] = model(o, m)[0].argmax(dim=-1).cpu().numpy()
     return out
+
+
+def groups_from_play_ids(play: Sequence[int]) -> List[List[int]]:
+    """Turn a per-sample play id into index runs. Ids are contiguous within a play."""
+    groups: List[List[int]] = []
+    current: List[int] = []
+    last: Optional[int] = None
+    for i, pid in enumerate(play):
+        if last is not None and pid == last:
+            current.append(i)
+        else:
+            if current:
+                groups.append(current)
+            current = [i]
+        last = pid
+    if current:
+        groups.append(current)
+    return groups
+
+
+def evaluate_dataset(model: Any, dataset_path: str, device: Any,
+                     max_samples: Optional[int] = None) -> AgreementResult:
+    """Agreement of `model` with the demonstrations in `dataset_path`.
+
+    Takes either dataset: a directory is the human corpus, which stores the play grouping as a
+    column, and a file is the self-play set, whose loader recovers it while replaying. The pass
+    is deliberately *not* shuffled -- a play's points have to stay together to be scored as one.
+    """
+    import os
+
+    if os.path.isdir(dataset_path):
+        from ai.training.human_corpus_dataset import HumanCorpusDataset
+
+        ds = HumanCorpusDataset(dataset_path)
+        n = len(ds) if max_samples is None else min(len(ds), max_samples)
+        obs = np.asarray(ds._column("obs")[:n], dtype=np.float32)
+        mask = np.unpackbits(np.asarray(ds._column("mask")[:n]), axis=1)[:, :MASK_BITS_]
+        action = np.asarray(ds._column("action")[:n], dtype=np.int64)
+        groups = groups_from_play_ids([int(v) for v in ds._column("play")[:n]])
+    else:
+        from ai.training.warmup_dataset_loader import WarmupDataset
+
+        rows = []
+        plays: List[int] = []
+        for obs_i, mask_i, act_i, _w, _v, play_i in WarmupDataset(dataset_path).stream_with_plays():
+            rows.append((obs_i, mask_i, act_i))
+            plays.append(play_i)
+            if max_samples is not None and len(rows) >= max_samples:
+                break
+        if not rows:
+            return AgreementResult()
+        obs = np.stack([r[0] for r in rows]).astype(np.float32)
+        mask = np.stack([r[1] for r in rows]).astype(np.uint8)
+        action = np.asarray([r[2] for r in rows], dtype=np.int64)
+        groups = groups_from_play_ids(plays)
+
+    return score_groups(groups, action, model_argmax(model, obs, mask, device))
