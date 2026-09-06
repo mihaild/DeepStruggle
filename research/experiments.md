@@ -1046,3 +1046,64 @@ Pinning the exact moment would need the log to say which it means, and it does n
 revisiting only if a real disagreement is ever found hiding in that gap.
 
 All 282 games still convert with 0 failures.
+
+
+---
+
+## 9. Human-corpus BC warmup (E3, first pair) — NEGATIVE
+
+**Question.** §4.8 argued that "one human game shows the reversal that RL needs thousands to
+notice". Does warming up on the 280-game human corpus instead of on self-play demonstrations
+produce a better agent?
+
+**Setup.** arch v2, `--train-steps 80000000` (both arms exactly 80M), 512 envs, `blunder_aware`
++ K=40, run in parallel on one 4090, snapshots every 2M steps. One flag apart: the BC warmup
+checkpoint. Arm A warmed on 5,000 self-play games from `dec_turns40` (79.2% top-1 after 2 epochs);
+arm B on the human corpus, 144,844 samples with value targets masked on the 149 games whose
+recording stops (45.4% top-1). Engine as of `68f155b` minus the Independent Reds fix, which landed
+mid-run and applies to neither arm.
+
+**Result** (tournament, 1,000 games per pair):
+
+| | Elo | vs the other arm | vs `dec_turns40` | vs HeuristicBot |
+|:---|---:|---:|---:|---:|
+| arm A, self-play warmup | **1852.9** | **57.4%** | 56.8% | 84.1% |
+| `dec_turns40` (previous best) | 1824.7 | — | — | **90.5%** |
+| arm B, human warmup | 1810.3 | 42.6% | 49.2% | 85.8% |
+
+**Game shape and map coverage** (256 self-play games each, temperature 0.1):
+
+| | mean final turn | reaches turn 9 | empty BG turn 5 | empty BG turn 8 |
+|:---|---:|---:|---:|---:|
+| arm A, self-play | 6.58 | 0.270 | **10.83** | **6.70** |
+| arm B, human | 6.93 | 0.336 | 11.93 | 7.99 |
+| `dec_turns40` | **7.42** | **0.398** | 11.51 | 7.06 |
+
+**Verdict: the hypothesis is not supported.** Arm A beats arm B head-to-head 57.4% over 1,000
+games, which is far outside the ~1.5 point run-to-run envelope of §7.2. Arm B is also *worse* on
+the measure the corpus was supposed to fix: it leaves **7.99** battlegrounds empty at turn 8
+against arm A's 6.70, where §4 identifies unclaimed battlegrounds as the deficiency. The one thing
+arm B does better than its control is game length — 6.93 turns and 33.6% reaching turn 9 against
+6.58 and 27.0% — which is the §4.6 axis, but it does not convert into strength.
+
+**A confound that matters, and that this pair cannot separate.** The two warmups do not start the
+arms from equally good policies: 79.2% top-1 against 45.4%, and arm B's first snapshot beat
+HeuristicBot 37.5% against arm A's 80.0%. So this compares "human data" and "a much weaker
+initialisation" at once, and 80M steps may simply not be enough for arm B to close a gap it began
+with. What it establishes is narrower than the question: *at 80M steps, warming on the human corpus
+alone is worse than warming on self-play demonstrations*. It does not establish that human data is
+unhelpful.
+
+**The remaining arms are now the interesting ones.** The synthetic→human fine-tune gets the strong
+initialisation *and* the human data, which is exactly the combination this pair could not test; and
+the no-warmup arm would say how much either warmup is worth at all. Only two arms fit in 24 GB, so
+they were always a second round.
+
+**Also worth noting: `dec_turns40` did not lose its crown cleanly.** It beats both new arms against
+HeuristicBot by 4-6 points and leads both on game length and turn-9 reach, while losing to arm A
+head-to-head 43.2%. Beating the model that beats the heuristic more, while beating the heuristic
+less, is a real intransitivity and a reminder that a single opponent is not a ranking.
+
+**Caveat.** One seed per arm. §7.2's noise floor covers tournament measurement, not run-to-run
+training variance, which this repository has never measured. A 57.4% head-to-head is comfortably
+outside measurement noise; it is not known to be outside seed noise.
