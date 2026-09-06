@@ -30,6 +30,22 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 ```
 
+The extension lands at `build/release/ts_engine.cpython-*.so` — the binary root, not
+`build/release/bindings/` — and is imported via `PYTHONPATH=.:build/release`.
+
+**Never run an experiment against a stale engine** (key invariant #10). Guard every command
+that generates or consumes a checkpoint, dataset, Elo anchor or diagnostic:
+
+```bash
+tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release .venv/bin/python tools/train.py ...
+```
+
+It exits 0 when the built module matches the `engine/`/`bindings/` sources, and rebuilds and
+exits 1 when it does not, so the chained command does not run. A rebuilt engine can change the
+decision stream with no Python change: datasets in the `(seed, actions)` format then truncate
+silently (the archived warmup set kept 27% of its decisions — `data/datasets/archive/README.md`)
+and old checkpoints keep loading and running forward passes, so nothing announces the problem.
+
 Sanitizer build (AddressSanitizer + UBSan), for engine work:
 ```bash
 cmake -B build_san -S . -DCMAKE_BUILD_TYPE=Debug \
@@ -50,16 +66,22 @@ cmake --build build_san -j
 ./build/release/engine/ts_fuzz --games 10000
 ./build/release/engine/ts_fuzz --steps 5000000 --seed 42
 
-# Python integration tests (run with struggler differential engine on path)
-PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
+# Python integration tests
+PYTHONPATH=. .venv/bin/pytest -v tests/
 # Single test file / test:
-PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/test_all_110_cards.py::TestName::test_case
+PYTHONPATH=. .venv/bin/pytest -v tests/test_all_110_cards.py::TestName::test_case
 
 # Static typing — MUST return 0 errors after any Python change
 .venv/bin/pyrefly check
 ```
 
-`pytest.ini` excludes `tests/test_*differential*.py` and `external/**` from pyrefly's project scope by default; the differential tests cross-check against the `external/struggler` reference engine submodule.
+**Do not run the differential suites.** `pytest.ini` skips `tests/test_differential_fuzzing.py` and
+`tests/test_unified_differential.py` by default, and they are not part of the check a change is
+expected to pass. They need the git-ignored `rules/` directory and the `external/struggler`
+submodule, and without `rules/` they fail at import — so passing an explicit path like
+`pytest tests/` used to collapse on collection instead of testing anything. They are not
+informative in their current state; do not spend time reviving them. `external/**` is likewise
+outside pyrefly's project scope.
 
 ## Running training / tournaments / matches / web play
 
@@ -68,7 +90,7 @@ PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/test_all_110_cards
 ```bash
 # Phase 0: BC warmup from a demonstration dataset
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --mode warmup --arch v3 --warmup-dataset data/datasets/warmup_5k_games.jsonl.gz \
+  --mode warmup --arch v3 --warmup-dataset <regenerated-dataset.jsonl.gz> \
   --bc-epochs 2 --batch-size 1024 --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
 
 # Phase 1-3: RL self-play + live snapshot evals + post-training tournament
@@ -125,5 +147,6 @@ Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset gen
 7. Checkpoint directories must follow `data/checkpoints/run_[version]_[YYYYMMDD]_[HHMMSS]` — no ad-hoc names.
 8. Demonstration dataset loading must use bounded streaming (`WarmupDataset.stream_batches` / `stream_transitions`), never a monolithic in-memory load.
 9. Never write ad-hoc scripts for training/tournaments/matches — use `tools/train.py`, `tools/tournament.py`, `tools/play_match.py` respectively.
+10. Never measure against a stale engine — run `tools/scripts/check_engine_fresh.sh` before generating or consuming any checkpoint, dataset, or benchmark number, and re-take anything measured before a rebuild.
 
 Each of `engine/AGENTS.md`, `bindings/AGENTS.md`, `bot/AGENTS.md`, `web/server/AGENTS.md`, and root `AGENTS.md` carries a "keep documentation synchronized" rule — when you change behavior in one of those directories, update its `AGENTS.md` (and root `AGENTS.md` if the change is architecturally significant) in the same change.

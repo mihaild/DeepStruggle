@@ -23,7 +23,7 @@ def generate_warmup_dataset(
     checkpoints: Dict[str, str],
     total_games: int = 5000,
     batch_size: int = 500,
-    output_path: str = "data/warmup_5k_games.jsonl.gz",
+    output_path: str = "data/datasets/warmup_regenerated.jsonl.gz",
     device_str: str = "cuda"
 ):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -189,7 +189,10 @@ if __name__ == "__main__":
     parser.add_argument("--models", nargs="+", default=None, help="List of model checkpoint paths")
     parser.add_argument("--total-games", type=int, default=5000, help="Total games to generate")
     parser.add_argument("--batch-size", type=int, default=500, help="Parallel batch size")
-    parser.add_argument("--output-path", type=str, default="data/datasets/warmup_5k_games.jsonl.gz", help="Output .jsonl.gz path")
+    parser.add_argument("--output-path", type=str, default="data/datasets/warmup_regenerated.jsonl.gz",
+                        help="Output .jsonl.gz path. Name it after the generating checkpoint and the "
+                             "engine it was built against -- a demonstration set is only valid for the "
+                             "engine that produced it (see data/datasets/archive/README.md).")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
     
     args = parser.parse_args()

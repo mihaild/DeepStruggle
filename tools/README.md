@@ -130,7 +130,7 @@ Charns out thousands of games in parallel using 500 C++ environments and multi-t
 PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
   --total-games 5000 \
   --batch-size 500 \
-  --output data/datasets/warmup_5k_games.jsonl.gz
+  --output data/datasets/warmup_<generator>_<n>.jsonl.gz
 ```
 
 ---

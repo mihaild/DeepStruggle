@@ -171,7 +171,7 @@ graph TD
 ├── data/                       # Datasets, Checkpoints & Recorded Replays
 │   ├── checkpoints/            # Model weights (run_v3_*, coldwar_net_v3_warmup.pt)
 │   ├── replays/                # Saved game logs (*.tslog.json)
-│   └── datasets/               # Demonstration datasets (warmup_5k_games.jsonl.gz)
+│   └── datasets/               # Demonstration datasets; archive/ holds superseded ones
 │
 ├── external/                   # External integrations & differential engines
 │   ├── README.md               # Integration guide
@@ -224,12 +224,28 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 ```
 
+`cmake --build` produces `build/release/ts_engine.cpython-*.so`, which is what
+`PYTHONPATH=.:build/release` imports as `ts_engine`. Note the output path: the module lands in
+the **binary root**, not in `build/release/bindings/`, which holds only intermediate objects.
+
+**Before any experiment, check the build is not stale** (invariant 13):
+
+```bash
+tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release .venv/bin/python tools/train.py ...
+```
+
+The script hashes the `engine/` and `bindings/` sources and compares that against the stamp it
+wrote next to the built module. It exits 0 when they match, and rebuilds and exits **1** when
+they do not — so a chained command stops rather than running against yesterday's rules. It
+hashes content instead of comparing timestamps because checking out a branch rewrites mtimes
+without changing anything, which would report staleness on every switch.
+
 ### 3.3 Generic Scheme for Training & Tournament Pipelines
 
 ```mermaid
 graph TD
     subgraph Phase0 ["Phase 0: Supervised BC Warmup"]
-        Demonstrations["Demonstration Dataset (5,000 Games, data/datasets/warmup_5k_games.jsonl.gz)"]
+        Demonstrations["Demonstration Dataset (regenerate per engine; see data/datasets/archive/README.md)"]
         Streamer["WarmupDataset.stream_batches (B=1024, Reservoir Buffer, RAM < 70MB)"]
         WarmupModel["Warmup Checkpoint: data/checkpoints/coldwar_net_v3_warmup.pt (90% vs Heuristic)"]
         Demonstrations --> Streamer --> WarmupModel
@@ -274,7 +290,7 @@ graph TD
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --mode warmup \
   --arch v3 \
-  --warmup-dataset data/datasets/warmup_5k_games.jsonl.gz \
+  --warmup-dataset <regenerated-dataset.jsonl.gz> \
   --bc-epochs 2 \
   --batch-size 1024 \
   --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
@@ -393,6 +409,24 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    reporting a conversion mismatch, cite the exact replay, turn and action round — and per
    invariant 11, propose engine fixes rather than making them.
 
+13. **Never Measure Against A Stale Engine**:
+   Every artifact in this repository — a checkpoint, a demonstration dataset, an Elo anchor, a
+   diagnostic table, a converted replay — is only meaningful relative to the engine that
+   produced it, and rebuilding the engine can change the decision stream without a line of
+   Python changing. Run `tools/scripts/check_engine_fresh.sh` before generating or consuming
+   any of them, and when it reports the build was stale, treat every number taken beforehand as
+   measured on a different game until it is re-taken.
+   Two failure modes make this worse than it sounds, and both have already happened here:
+   - Datasets in the `(seed, [flat_action, ...])` format do not fail when the engine moves under
+     them. `WarmupDataset.stream_transitions` stops a game at the first newly-illegal action and
+     continues to the next, so the set silently shrinks — and always by losing the *tail* of
+     each game, which biases what remains toward openings. The archived 5,000-game set retained
+     **27% of its decisions and 5% of its games intact**; see
+     `data/datasets/archive/README.md`.
+   - Checkpoints keep loading. Old weights still accept the current observation and run a
+     forward pass, so nothing announces that they were trained against different rules. Loading
+     cleanly is not evidence of comparability.
+
 ---
 
 ## 5. Run Test Suites
@@ -401,8 +435,13 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 ./build/release/engine/ts_tests
 ./build/release/engine/ts_benchmark
 
-# Python Integration Tests (368 tests including Neural & NashPG suite)
-PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
+# Python Integration Tests (Neural & NashPG suite included)
+PYTHONPATH=. .venv/bin/pytest -v tests/
+
+# Do NOT run the differential suites. pytest.ini skips test_differential_fuzzing.py and
+# test_unified_differential.py by default; they need the git-ignored rules/ directory and the
+# external/struggler submodule, fail at import without rules/, and are not informative in their
+# current state. They are not part of the check a change is expected to pass.
 
 # Static Type Checking with Pyrefly (must return 0 errors)
 .venv/bin/pyrefly check

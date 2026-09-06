@@ -11,7 +11,10 @@ class WarmupDataset:
     Reads stored action traces from warmup games and dynamically re-extracts
     observation tensors using the current C++ engine state machine and observation code.
     """
-    def __init__(self, filepath: str = 'data/warmup_5k_games.jsonl.gz'):
+    def __init__(self, filepath: str):
+        # No default. The one that used to sit here pointed at a file that had moved, and a
+        # stale default is worse than a missing argument: it resolves to something plausible
+        # and trains on it. Every caller passes the path explicitly.
         self.filepath = filepath
 
     def stream_transitions(self, max_games: Optional[int] = None) -> Iterator[Tuple[np.ndarray, np.ndarray, int, float, float]]:
