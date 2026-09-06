@@ -57,46 +57,71 @@ cmake --build build_san -j
 
 ## Tests & type checking
 
+**`tests/` is split into groups, and not every group is relevant to every change.** Match the
+suite to what you touched — most importantly, **do not run `tests/web` for engine, bindings, AI or
+tools changes.** It tells you nothing about them and fails on missing build artifacts (`web/ui/dist`,
+a Playwright browser) that are deliberately not in the repo, so a red web suite on a backend change
+is pure noise.
+
+| you changed | run |
+|:---|:---|
+| `engine/`, `bindings/` | C++ suite, then `tests/bindings tests/engine_logic` (~30s) |
+| `tools/lib/ts_replayer_*` | the above + `tests/replayer` (~6.5 min) |
+| `ai/`, `bot/`, `tools/` | the above + `tests/training` (~7 min) |
+| `web/**` | **also** `tests/web`, after building the UI (below) |
+
 ```bash
-# C++ unit tests + benchmark
+# 0. Always first — never measure against a stale engine (key invariant #10)
+tools/scripts/check_engine_fresh.sh
+
+# 1. C++ engine: fast inner loop for engine/ work
 ./build/release/engine/ts_tests
 ./build/release/engine/ts_benchmark
-
-# Invariant fuzzer (engine correctness)
 ./build/release/engine/ts_fuzz --games 10000
 ./build/release/engine/ts_fuzz --steps 5000000 --seed 42
 
-# Python integration tests
-PYTHONPATH=. .venv/bin/pytest -v tests/
-# Single test file / test:
-PYTHONPATH=. .venv/bin/pytest -v tests/engine_logic/test_all_110_cards.py::TestName::test_case
+# 2. Backend Python — everything except the web UI. The default suite for backend work.
+#    ~7 min, dominated by tests/replayer.
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic tests/replayer tests/training
 
-# Static typing — MUST return 0 errors after any Python change.
-# Pass paths explicitly; a bare `pyrefly check` checks nothing in a worktree (see below).
+#    Narrower loops while iterating:
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic   # 331 tests, ~10s
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/replayer                      # 422 tests, ~6min
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/training                      # 187 tests, ~34s
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/engine_logic/test_all_110_cards.py::TestName::test_case
+
+# 3. Web/UI — ONLY for changes under web/. Two prerequisites, neither committed:
+cd web/ui && npm install && npm run build && cd ../..   # produces web/ui/dist
+.venv/bin/python -m playwright install chromium         # for the E2E tests
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/web
+
+# 4. Static typing — MUST return 0 errors after any Python change. Pass paths explicitly.
 .venv/bin/pyrefly check ai tools tests web bindings
 ```
 
-**Run pyrefly with explicit paths**, not bare:
+> **Worktrees and the venv.** `.venv/` lives in the main checkout, not in a git worktree under
+> `.claude/worktrees/`, so use the main checkout's path from there (e.g. `/workspace/.venv/bin/python`).
+> Invoke pytest as `python -m pytest`, not via the `.venv/bin/pytest` console script: that script
+> carries an absolute shebang from wherever the venv was first created, which breaks if the venv or
+> the repository is ever moved or copied.
 
-```bash
-.venv/bin/pyrefly check ai tools tests web bindings
-```
+What each group covers: `bindings/` (nanobind surface), `engine_logic/` (game rules driven through
+the bindings — prefer adding new rule coverage to `engine/tests/*.cpp` instead), `replayer/` (the
+`ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server,
+bot-client, Playwright E2E), `differential/` (cross-engine fuzzing, WIP).
 
-A bare `pyrefly check` silently checks **nothing** when the repository is a git worktree under
-`.claude/worktrees/`. pyrefly honours `.git/info/exclude`, which the Claude Code harness populates
-with `**/.claude/worktrees/`, so every file in the worktree is excluded — and pyrefly then exits 0
-having examined zero files, which satisfies "must return 0 errors" while testing nothing. It reads
-`No Python files matched patterns ...` on the last line; if you see that, you have measured nothing.
-Passing paths explicitly overrides the ignore file. The bare form is fine in the main checkout,
-which is exactly why this is easy to miss.
-
-`tests/` is split by what's under test: `bindings/` (nanobind surface only), `engine_logic/` (game rules driven through the bindings — prefer adding new rule coverage to `engine/tests/*.cpp` instead, see below), `replayer/` (the `ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server + bot-client + Playwright E2E), and `differential/` (cross-engine fuzzing, WIP/unstable — see below).
+**Run pyrefly with explicit paths, never bare.** A bare `pyrefly check` silently checks **nothing**
+when the repository is a git worktree under `.claude/worktrees/`: pyrefly honours
+`.git/info/exclude`, which the Claude Code harness populates with `**/.claude/worktrees/`, so every
+file is excluded — and it exits 0 having examined zero files, which satisfies "must return 0 errors"
+while testing nothing. `No Python files matched patterns ...` on the last line means you have
+measured nothing. The bare form works in the main checkout, which is why this is easy to miss.
 
 **Do not run the differential suites.** `tests/differential/` is gated behind the `differential_fuzz`
-marker / `--run-fuzz` flag (`tests/conftest.py`) and is not collected by default. It is WIP and not
-informative in its current state, so it is not part of the check a change is expected to pass — do
-not spend time reviving it. `pyrefly.toml` likewise excludes `tests/differential/**` and `external/**`
-from pyrefly's project scope.
+marker / `--run-fuzz` flag and is ignored at collection (`tests/conftest.py`) because those modules
+fail at *import* and would otherwise abort the whole run. It is WIP and not informative in its
+current state, so it is not part of the check a change is expected to pass — do not spend time
+reviving it. `pyrefly.toml` likewise excludes `tests/differential/**` and `external/**`.
 
 ## Running training / tournaments / matches / web play
 

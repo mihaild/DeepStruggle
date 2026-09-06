@@ -479,27 +479,74 @@ PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategi
 ---
 
 ## 5. Run Test Suites
+
+`tests/` is split by what is under test, and **the groups are not all relevant to every change.**
+Pick by what you touched; the table is the whole rule.
+
+| you changed | run | cost |
+|:---|:---|---:|
+| `engine/`, `bindings/` | C++ suite + `tests/bindings tests/engine_logic` | ~30s |
+| `tools/lib/ts_replayer_*` | the above + `tests/replayer` | ~6.5 min |
+| `ai/`, `bot/`, `tools/` | the above + `tests/training` | ~7 min |
+| `web/server/`, `web/ui/`, `web/bot_client.py` | **also** `tests/web` (see prerequisites) | +5s |
+
+**Do not run `tests/web` for engine, bindings, AI or tools changes.** It cannot tell you anything
+about them, and it fails for reasons that have nothing to do with your change: the frontend tests
+need `web/ui/dist` built and the E2E tests need a Playwright browser installed, neither of which is
+in the repository. A red web suite on an engine change is noise that trains you to ignore failures.
+
 ```bash
-# C++ Unit Tests (368 tests) & Performance Benchmark
+# ---------------------------------------------------------------------------------------------
+# 0. ALWAYS FIRST -- never measure against a stale engine (invariant 13)
+# ---------------------------------------------------------------------------------------------
+tools/scripts/check_engine_fresh.sh
+
+# ---------------------------------------------------------------------------------------------
+# 1. C++ ENGINE -- the fast inner loop for engine/ work (368 tests, seconds)
+# ---------------------------------------------------------------------------------------------
 ./build/release/engine/ts_tests
 ./build/release/engine/ts_benchmark
+./build/release/engine/ts_fuzz --games 10000            # invariant fuzzer
+./build/release/engine/ts_fuzz --steps 5000000 --seed 42
 
-# Python Integration Tests (1360 tests, including Neural & NashPG suite)
-PYTHONPATH=. .venv/bin/pytest -v tests/
+# ---------------------------------------------------------------------------------------------
+# 2. BACKEND PYTHON -- everything except the web UI. The default suite for engine, bindings,
+#    replayer, AI and tools work. ~7 minutes, dominated by tests/replayer.
+# ---------------------------------------------------------------------------------------------
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic tests/replayer tests/training
 
-# Do NOT run tests/differential/. It is gated behind the differential_fuzz marker / --run-fuzz
-# (tests/conftest.py) and is not collected by default. It is WIP, not informative in its current
-# state, and not part of the check a change is expected to pass. Do not spend time reviving it.
+#    Narrower loops while iterating (run the full backend suite before calling the work done):
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic   # 331 tests, ~10s
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/replayer                      # 422 tests, ~6min
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/training                      # 187 tests, ~34s
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
-# Just one category, e.g. binding smoke tests or the replayer pipeline:
-PYTHONPATH=. .venv/bin/pytest -v tests/bindings/
-PYTHONPATH=. .venv/bin/pytest -v tests/replayer/
+# ---------------------------------------------------------------------------------------------
+# 3. WEB / UI -- ONLY for changes under web/. Needs two build artifacts that are not committed:
+# ---------------------------------------------------------------------------------------------
+cd web/ui && npm install && npm run build && cd ../..   # produces web/ui/dist
+.venv/bin/python -m playwright install chromium         # for the E2E tests
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/web
 
-# Static Type Checking with Pyrefly (must return 0 errors).
-# Pass the source directories explicitly. A bare `pyrefly check` silently checks ZERO files when
-# the repo is a git worktree under .claude/worktrees/: pyrefly honours .git/info/exclude, which the
-# harness fills with **/.claude/worktrees/, so everything is excluded and pyrefly exits 0 having
-# examined nothing. Watch for "No Python files matched patterns" on the last line -- that means the
-# check measured nothing, not that the code is clean.
+# ---------------------------------------------------------------------------------------------
+# 4. STATIC TYPING -- after ANY Python change, must be 0 errors (invariant 5)
+# ---------------------------------------------------------------------------------------------
 .venv/bin/pyrefly check ai tools tests web bindings
 ```
+
+> **Worktrees and the venv.** `.venv/` lives in the main checkout, not in a git worktree under
+> `.claude/worktrees/`, so use the main checkout's path from there (e.g. `/workspace/.venv/bin/python`).
+> Invoke pytest as `python -m pytest`, not via the `.venv/bin/pytest` console script: that script
+> carries an absolute shebang from wherever the venv was first created, which breaks if the venv or
+> the repository is ever moved or copied.
+
+**Pass pyrefly the source directories explicitly.** A bare `pyrefly check` silently checks ZERO
+files when the repo is a git worktree under `.claude/worktrees/`: pyrefly honours
+`.git/info/exclude`, which the harness fills with `**/.claude/worktrees/`, so everything is
+excluded and it exits 0 having examined nothing. `No Python files matched patterns` on the last
+line means the check measured nothing, not that the code is clean.
+
+**Do NOT run `tests/differential/`.** It is gated behind the `differential_fuzz` marker /
+`--run-fuzz` and is ignored at collection (`tests/conftest.py`), because those modules fail at
+*import* and would otherwise abort the whole run. It is WIP, not informative in its current state,
+and not part of the check a change is expected to pass. Do not spend time reviving it.
