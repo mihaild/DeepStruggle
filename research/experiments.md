@@ -1594,3 +1594,41 @@ stable to about a tenth of a point.
 Note the in-batch and post-epoch numbers differ by a few points (44.81% against 47.31% here) and
 should: one averages over an epoch of changing weights, the other measures the weights the epoch
 ended with.
+
+
+### 9.12 Injection frequency vs alignment — quick arms, INCONCLUSIVE
+
+**Question.** §9.1 showed a BC warmup washes out in ~2M steps. Does interleaving supervised steps on
+human data during RL hold alignment up, and how does the frequency matter?
+
+**Setup.** 30-minute budget. Four arms, all from the *same* synthetic BC init (35.0% agreement),
+4M steps each, two at a time; one flag apart -- `--inject-every` 0/16/4/1 at weight 1.0, a separate
+AdamW at lr 1e-4 on human batches of 512 with value targets masked by `has_outcome`. Agreement
+measured per snapshot on a fixed 20,000-decision probe (§9.11's measure).
+
+| `--inject-every` | trajectory | end |
+|:---|:---|---:|
+| 0 (control) | 35.0 → 33.9, range 33.7-35.0 | 33.9 |
+| 16 | 35.0 → 32.0 | 32.0* |
+| 4 | 35.0 → 33.9, range 33.2-35.2 | 33.9 |
+| 1 | 35.0 → 34.5, range 32.8-35.8 | **34.5** |
+
+\* fewer snapshots -- that arm was at 3.2M steps when measured, so its endpoint is not at the same
+step count as the others.
+
+**Verdict: inconclusive, and the design is why.** Only every-iteration injection sits above the
+control, by 0.6 points, and the control's own range across snapshots is 1.3 points wide. One seed,
+4M steps: this cannot separate a real effect from run-to-run wobble.
+
+**The design flaw is the starting point.** Every arm began from the synthetic BC init at 35.0%,
+which is already at the ~32-35% attractor RL converges to (§9.1). There was almost no alignment to
+preserve, so the experiment measured whether injection can *raise* agreement rather than whether it
+can *prevent* the washout it was built for. The informative version starts from the **human** BC
+init at ~47% and asks whether injection stops the decay to 32%. That is one flag different and the
+right thing to run next.
+
+**Also worth noting:** at weight 1.0 even every-iteration injection did not pull agreement toward
+the BC ceiling of ~47%. Either the weight is too low against the RL updates, or RL actively pulls
+away from human play. Those are different problems and the human-init arm distinguishes them: if
+injection holds ~47% there, the weight is fine and the synthetic start was the issue; if it decays
+anyway, the pull is real and the weight has to rise.

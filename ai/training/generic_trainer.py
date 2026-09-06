@@ -227,6 +227,63 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
 _AGREEMENT_SAMPLE = 20_000
 
 
+
+class _HumanInjector:
+    """Periodic supervised steps on human play, interleaved with RL.
+
+    A behaviour-cloning warmup is gone within about 2M steps (research/experiments.md §9.1): it is
+    an initialisation, and RL walks away from it. This keeps the signal applied instead of applied
+    once -- and applies it only on human positions, where the corpus actually has an opinion, which
+    a KL term against a human policy would not: that would be evaluated on the states the RL policy
+    visits, where a net trained on 280 games is extrapolating from nothing.
+
+    `every` is in iterations. Small and often beats large and rare, because anything rarer than the
+    washout it is fighting simply lets the policy drift back between doses.
+    """
+
+    def __init__(self, dataset_path: str, model: nn.Module, device: torch.device,
+                 every: int, weight: float, batch_size: int = 512) -> None:
+        from ai.training.human_corpus_dataset import HumanCorpusDataset
+
+        self.every = max(1, int(every))
+        self.weight = float(weight)
+        self.model = model
+        self.device = device
+        self.batch_size = batch_size
+        self.ds = HumanCorpusDataset(dataset_path)
+        self.opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+        self._batches = None
+        self.steps = 0
+
+    def _next(self):
+        if self._batches is None:
+            self._batches = self.ds.stream_batches(batch_size=self.batch_size,
+                                                   device=self.device, shuffle=True)
+        try:
+            return next(self._batches)
+        except StopIteration:
+            self._batches = None
+            return self._next()
+
+    def maybe_step(self, iteration: int) -> float:
+        if iteration % self.every:
+            return 0.0
+        b_obs, b_mask, b_act, b_val, b_vp, b_has = self._next()
+        self.model.train()
+        logits, v_win, v_vp = self.model(b_obs, b_mask)
+        denom = b_has.sum().clamp(min=1.0)
+        loss = self.weight * (
+            F.cross_entropy(logits, b_act)
+            + 0.5 * (((v_win.squeeze(-1) - b_val) ** 2 * b_has).sum() / denom)
+            + 0.05 * (((v_vp.squeeze(-1) - b_vp) ** 2 * b_has).sum() / denom))
+        self.opt.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+        self.opt.step()
+        self.steps += 1
+        return float(loss.item())
+
+
 def run_behavioral_cloning_warmup(
     model: nn.Module,
     dataset_path: str,
@@ -479,6 +536,9 @@ def train_pipeline(
     arch: str = "v2",
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
+    inject_dataset: Optional[str] = None,
+    inject_every: int = 0,
+    inject_weight: float = 1.0,
     bc_epochs: int = 5,
     duration_seconds: int = 3600,
     train_steps: int = 0,
@@ -682,6 +742,12 @@ def train_pipeline(
         next_eval_steps = eval_every_steps
     it = 0
 
+    injector = None
+    if inject_dataset and inject_every > 0:
+        injector = _HumanInjector(inject_dataset, model, dev, inject_every, inject_weight)
+        print(f"Injecting human data from {inject_dataset} every {inject_every} iterations "
+              f"at weight {inject_weight}", flush=True)
+
     print("=" * 80, flush=True)
     print(f"STARTING GENERIC TRAINING PIPELINE ({duration_seconds}s, Snapshots every {snapshot_interval_seconds}s)", flush=True)
     num_baselines = len(opponents)
@@ -765,6 +831,8 @@ def train_pipeline(
 
         it += 1
         iteration_metrics = trainer.train_iteration()
+        if injector is not None:
+            iteration_metrics["inject_loss"] = injector.maybe_step(it)
         total_env_steps = trainer.total_env_steps
         episode_stats = summarize_completed_episodes(iteration_metrics.get("completed_episodes", []))
 
@@ -784,6 +852,7 @@ def train_pipeline(
             "belief_loss": iteration_metrics.get("belief_loss", 0.0),
             "oracle_loss": iteration_metrics.get("oracle_loss", 0.0),
             "distill_loss": iteration_metrics.get("distill_loss", 0.0),
+            "inject_loss": float(iteration_metrics.get("inject_loss", 0.0)),
             "explained_variance": float(iteration_metrics.get("explained_variance", 0.0)),
             "adv_std": float(iteration_metrics.get("adv_std", 0.0)),
             "adv_std_raw": float(iteration_metrics.get("adv_std_raw", 0.0)),

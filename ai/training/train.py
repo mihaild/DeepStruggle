@@ -50,6 +50,16 @@ def main():
     # its own step), so a matched step count does not make them a controlled comparison. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
+    parser.add_argument("--inject-dataset", type=str, default=None,
+                        help="Human corpus directory to interleave supervised steps from during "
+                             "RL. A BC warmup washes out within about 2M steps (experiments.md "
+                             "9.1); this keeps the signal applied rather than applied once.")
+    parser.add_argument("--inject-every", type=int, default=0,
+                        help="Iterations between injected batches (0 = off). Small and often beats "
+                             "large and rare: anything rarer than the washout lets the policy drift "
+                             "back between doses.")
+    parser.add_argument("--inject-weight", type=float, default=1.0,
+                        help="Scale on the injected supervised loss.")
     parser.add_argument("--train-steps", type=int, default=80_000_000,
                         help="Budget the run by env steps instead of by time (0 = use --duration-seconds). "
                              "Defaults to the standard 80,000,000. "
@@ -128,6 +138,9 @@ def main():
             eta=args.eta,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
+            inject_dataset=args.inject_dataset,
+            inject_every=args.inject_every,
+            inject_weight=args.inject_weight,
             decisiveness_turns=args.decisiveness_turns,
             max_snapshot_opponents=args.eval_max_snapshot_opponents,
             start_pool_frac=args.start_pool_frac,
