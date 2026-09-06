@@ -1606,19 +1606,23 @@ human data during RL hold alignment up, and how does the frequency matter?
 AdamW at lr 1e-4 on human batches of 512 with value targets masked by `has_outcome`. Agreement
 measured per snapshot on a fixed 20,000-decision probe (§9.11's measure).
 
+All four completed 4M steps with ten snapshots each, so the endpoints are at equal step counts:
+
 | `--inject-every` | trajectory | end |
 |:---|:---|---:|
-| 0 (control) | 35.0 → 33.9, range 33.7-35.0 | 33.9 |
-| 16 | 35.0 → 32.0 | 32.0* |
-| 4 | 35.0 → 33.9, range 33.2-35.2 | 33.9 |
 | 1 | 35.0 → 34.5, range 32.8-35.8 | **34.5** |
+| 4 | 35.0 → 33.9, range 33.2-35.2 | 33.9 |
+| 0 (control) | 35.0 → 33.9, range 33.7-35.0 | 33.9 |
+| 16 | 35.0 → 32.7, range 32.0-35.0 | **32.7** |
 
-\* fewer snapshots -- that arm was at 3.2M steps when measured, so its endpoint is not at the same
-step count as the others.
+**The endpoints order monotonically with frequency**, and injecting *rarely* lands below not
+injecting at all. That is the direction predicted when this was proposed: a dose rarer than the
+~2M-step washout perturbs the policy without establishing anything, and RL spends the interval
+walking back, so the arm oscillates rather than holds. Weak support, but it is the predicted sign.
 
-**Verdict: inconclusive, and the design is why.** Only every-iteration injection sits above the
-control, by 0.6 points, and the control's own range across snapshots is 1.3 points wide. One seed,
-4M steps: this cannot separate a real effect from run-to-run wobble.
+**Verdict: still inconclusive.** The spread across all four arms is 1.8 points and the control alone
+ranges 1.3 across its own snapshots. One seed at 4M steps cannot separate a monotone ordering from
+four samples of the same wobble.
 
 **The design flaw is the starting point.** Every arm began from the synthetic BC init at 35.0%,
 which is already at the ~32-35% attractor RL converges to (§9.1). There was almost no alignment to
