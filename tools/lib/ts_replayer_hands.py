@@ -96,9 +96,10 @@ class GameFacts:
         self.empty_hand: Set[Tuple[int, str]] = set()
         self.skipped: Set[Tuple[int, str]] = set()
         self.trapped: Set[Tuple[int, str]] = set()
-        # The card a side gave up to Quagmire / Bear Trap, per turn. Evidence about the rest of
-        # the hand: see _dominated_discard_ops.
-        self.trap_discard: Dict[Tuple[int, str], int] = {}
+        # The cards a side gave up to Quagmire / Bear Trap, per turn. A trap holds until the
+        # escape roll succeeds, so a turn can have several, and each is evidence about the hand
+        # -- keeping only the last lost the other discards entirely. See _dominated_discard_ops.
+        self.trap_discard: Dict[Tuple[int, str], List[int]] = {}
         self.red_scare: Set[Tuple[int, str]] = set()
         self.envy_took: Dict[Tuple[int, str], int] = {}
         self.listed: Dict[Tuple[int, str], Set[int]] = {}
@@ -303,7 +304,7 @@ class GameFacts:
             self.trapped.add((turn, e.player))
             discarded = self.card_id(e.card or "")
             if discarded:
-                self.trap_discard[(turn, e.player)] = int(discarded)
+                self.trap_discard.setdefault((turn, e.player), []).append(int(discarded))
         # Only a round they had to take. The eighth is granted by North Sea Oil or a Space
         # Station to the one player who earned it and is theirs to decline, so skipping it says
         # nothing about the hand: at turn 9 of ts-replayer game 16 the USSR plays their eight
@@ -473,15 +474,16 @@ def _print_core(hard: List, tags: List[str], ctx=None) -> None:
 class _HasTrapDiscards(Protocol):
     """All `_dominated_discard_ops` needs of GameFacts, so a test can supply it directly."""
 
-    trap_discard: Dict[Tuple[int, str], int]
+    trap_discard: Dict[Tuple[int, str], List[int]]
 
 
 def _dominance_excluded(cid: int) -> bool:
-    """Cards the dominance argument never applies to.
+    """Cards that cannot be the *dominant* side of the pair.
 
     Five Year Plan is the one recurring event whose firing can help its non-owner; the China Card
-    and scoring cards are never ordinary discards; a one-time event is a different and stronger
-    argument. Mirrors ai/eval/dominance, which measures the same relation.
+    and scoring cards are never ordinary discards; and a one-time event is left out because
+    discarding it removes it from the game permanently, which is a different and stronger
+    argument than the dominance one. Mirrors `_eligible_opponent_discard` in ai/eval/dominance.
     """
     if cid in (_FIVE_YEAR_PLAN, _CHINA_CARD):
         return True
@@ -489,8 +491,24 @@ def _dominance_excluded(cid: int) -> bool:
     return bool(info["is_scoring"]) or bool(info["one_time"])
 
 
-def _dominated_discard_ops(facts: "_HasTrapDiscards", turn: int, side: str) -> Optional[int]:
-    """Ops at which this side cannot have held an opponent recurring event, or None.
+def _discard_excluded(cid: int) -> bool:
+    """Cards that cannot be the *discarded* side of the pair.
+
+    Not the same list. A one-time card of your own is a perfectly ordinary thing to give up to a
+    trap, and giving it up while holding an equal-Ops opponent recurring event is just as
+    dominated as giving up a recurring one -- so one_time is excluded above but not here, which
+    is exactly how ai/eval/dominance splits `_eligible_opponent_discard` from
+    `_eligible_own_or_neutral`. Treating the two sides alike silently threw the evidence away:
+    at turn 6 of replay 80 all three of the US's Quagmire discards were starred cards of their
+    own, so the turn contributed nothing.
+    """
+    if cid in (_FIVE_YEAR_PLAN, _CHINA_CARD):
+        return True
+    return bool(ts.CardData.get_card_info(cid)["is_scoring"])
+
+
+def _dominated_discard_ops(facts: "_HasTrapDiscards", turn: int, side: str) -> Set[int]:
+    """Every Ops level at which this side probably held no opponent recurring event.
 
     A player trapped by Quagmire or Bear Trap must discard, and discarding the opponent's
     recurring event is never worse than discarding their own or a neutral card of the same
@@ -504,18 +522,24 @@ def _dominated_discard_ops(facts: "_HasTrapDiscards", turn: int, side: str) -> O
     than a rule, because it is a statement about how people play and not about what the rules
     permit -- the log always wins where it says otherwise.
     """
-    discarded = facts.trap_discard.get((turn, side))
-    if not discarded or _dominance_excluded(discarded):
-        return None
     opponent = "USSR" if side == "US" else "US"
-    if str(ts.CardData.get_card_info(discarded)["side"]) == opponent:
-        return None            # they discarded the opponent's card: the dominant choice
-    return int(ts.CardData.get_card_info(discarded)["ops"])
+    out: Set[int] = set()
+    for discarded in facts.trap_discard.get((turn, side), []):
+        if _discard_excluded(discarded):
+            continue
+        info = ts.CardData.get_card_info(discarded)
+        if str(info["side"]) == opponent:
+            continue           # they discarded the opponent's card: the dominant choice
+        out.add(int(info["ops"]))
+    return out
 
 
 def solve_hands(raws: List[Dict], hands: Dict, card_id,
                 rlimit: int = 4_000_000,
-                explain: bool = False) -> Optional[Dict[int, Dict[str, List[int]]]]:
+                explain: bool = False,
+                pin: Optional[Dict[Tuple[int, int, str], bool]] = None,
+                report_cost: Optional[List[int]] = None
+                ) -> Optional[Dict[int, Dict[str, List[int]]]]:
     """The cards each side holds as each turn opens, or None where the log allows no hand.
 
     One boolean per card, turn and side -- "this card is in that hand as the turn opens" -- and
@@ -684,6 +708,15 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
                     if c not in facts.spent[(t, s)]:
                         forbid(c, t, s, f"spent at turn {last_spent}, no reshuffle since")
 
+    # A seam for asking "would this other hand have been better?": pin forces a (card, turn,
+    # side) in or out, and report_cost hands back the weight of the answer, so an alternative can
+    # be costed against the one the solver picked. Used by diagnostics, not by conversion.
+    if pin:
+        for (c_pin, t_pin, s_pin), want in pin.items():
+            key = (c_pin, t_pin, s_pin)
+            if key in held:
+                hard.append(held[key] if want else z3.Not(held[key]))
+
     solver = z3.Solver(ctx=ctx)
     solver.add(hard)
     if solver.check() != z3.sat:
@@ -709,20 +742,35 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
         # first and anything the log establishes about the hand is in there already.
         for t in turns:
             for s in facts.sides:
-                ops = _dominated_discard_ops(facts, t, s)
-                if ops is None:
+                ops_levels = _dominated_discard_ops(facts, t, s)
+                if not ops_levels:
                     continue
                 opponent = "USSR" if s == "US" else "US"
                 for c in cards:
                     if (c, t, s) in settled or _dominance_excluded(c):
                         continue
                     info = ts.CardData.get_card_info(c)
-                    if str(info["side"]) != opponent or int(info["ops"]) != ops:
+                    if str(info["side"]) != opponent or int(info["ops"]) not in ops_levels:
                         continue
                     opt.add_soft(z3.Not(held[(c, t, s)]), weight=_DOMINANCE_PREFERENCE)
         if opt.check() == z3.sat:
             model = opt.model()
 
-    return {t: {s: [c for c in cards if z3.is_true(model.eval(held[(c, t, s)]))]
-                for s in facts.sides}
-            for t in turns}
+    out = {t: {s: [c for c in cards if z3.is_true(model.eval(held[(c, t, s)]))]
+               for s in facts.sides}
+           for t in turns}
+    if report_cost is not None:
+        # What the optimiser was minimising: the weight of every soft clause this assignment
+        # violates, which is one per card actually held among the free triples.
+        total = 0
+        for c, t, s in free:
+            if c in out[t][s]:
+                total += _hold_cost(s, c, t, facts)
+                ops_levels = _dominated_discard_ops(facts, t, s)
+                if ops_levels and not _dominance_excluded(c):
+                    info = ts.CardData.get_card_info(c)
+                    opponent = "USSR" if s == "US" else "US"
+                    if str(info["side"]) == opponent and int(info["ops"]) in ops_levels:
+                        total += _DOMINANCE_PREFERENCE
+        report_cost.append(total)
+    return out

@@ -1379,3 +1379,49 @@ before the log first lists it, which is what all six distinct cases have in comm
 care: carry-over is real, the lists are incomplete, and a hard version would contradict the corpus
 rule against forcing what the log does not state. Worth trying as another soft clause if the
 residue matters.
+
+
+### 9.8 The Junta counterfactual, and two bugs it found in §9.6's heuristic
+
+**Question (owner's).** In replay 80, would the objective be better with **Junta** in the turn 6 US
+hand instead of Liberation Theology? And carry-over should not be penalised (§9.7's suggestion),
+because carry-over is the primary way a hand is reconstructed at all.
+
+**Junta specifically: no, the log forbids it.** Pinning Junta into that hand is **unsatisfiable**.
+It appears in this game only in the turn 7 US hand list and is never played, so at turn 6 the hard
+constraints place it elsewhere.
+
+**But the probe found the real problem.** Liberation Theology is *not* forced either — pinning it
+out is satisfiable, at total soft cost **152** against the chosen **151**. A card responsible for
+two of the apparent human mistakes was being decided by a margin of **one**. It should have been
+carrying §9.6's +120 dominance penalty, and it was not, for two reasons:
+
+1. **Only the last trap discard of a turn was kept.** A trap holds until the escape roll lands, so
+   one turn can force several discards. At turn 6 the US discarded three times — Warsaw Pact
+   Formed, Our Man in Tehran, Nuclear Subs — and `trap_discard` recorded only the third.
+2. **The two sides of the pair were given the same eligibility.** One-time (starred) events are
+   excluded as the *dominant* side, because discarding one removes it from the game permanently
+   and that is a different argument. They are perfectly ordinary as the *discarded* side, and
+   `ai/eval/dominance` splits exactly there. Treating them alike meant all three of the US's
+   starred discards were ignored and the turn contributed no evidence at all.
+
+Both fixed: every discard in the turn is kept, and `_discard_excluded` is now separate from
+`_dominance_excluded`.
+
+**Effect on the corpus:**
+
+| | dominated | rate |
+|:---|---:|---:|
+| §9.3, with the headline bug | 25/113 | 22.1% |
+| headlines excluded (§9.5) | 11/98 | 11.2% |
+| first heuristic (§9.6) | 7/94 | 7.4% |
+| **heuristic corrected** | **3/90** | **3.3%** |
+| — Bear Trap | 1/60 | 1.7% |
+| — Quagmire | 2/30 | 6.7% |
+
+282 games still convert with 0 failures. The rebuilt dataset is 144,845 samples with 84,074 value
+targets, one more than before — a hand changed somewhere and a decision came with it.
+
+**Carry-over is not penalised**, per the owner: it is how hands are reconstructed in the first
+place, and costing it would attack the mechanism rather than the error. The three remaining cases
+stand as they are.
