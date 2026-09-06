@@ -868,7 +868,7 @@ scores is still worth doing, but as confirmation rather than as repair. The one 
 is the terminal marker: `victory_points` becomes ±20 when a game ends, so any turn-boundary sample
 taken after a terminal reads the result rather than the score.
 
-### 8.7.1 The one real lead: Asia Scoring under Shuttle Diplomacy
+### 8.7.1 Asia Scoring under Shuttle Diplomacy — RESOLVED: the log is wrong, not the engine
 
 Six of the twelve real disagreements are one game, **replay 259**, where the engine sits **+1**
 above the narration from turn 7 AR3 onward -- through turns 7, 8 and 9. It starts here:
@@ -899,3 +899,31 @@ country count and (in Asia) the adjacency in one block, guarded by
 the arithmetic above establishes the symptom and which side is right, not the mechanism.
 
 Per invariant 11 this is reported, not fixed.
+
+
+### 8.7.2 The Shuttle/Japan divergence is a log fault, and is now corrected by rule
+
+Settled by the project owner: this is a known, reproducible property of the ts-replayer logs. When
+Shuttle Diplomacy is in play, Asia is scored, and the USSR holds Japan, **the log keeps the USSR's
+bonus for controlling a country adjacent to the United States** — which the card has just removed
+along with Japan — and pays the USSR 1 VP too many. **The engine is right; the log is not.** My
+arithmetic in 8.7.1 reached the wrong conclusion from the same numbers.
+
+It was already handled for the one game it had been diagnosed in: `_LOG_MISCOUNTED` carried
+`259: {(7, "AR3", "USSR"): 1}`, so the six "disagreements" 8.7 attributed to replay 259 were an
+artefact of my measurement, which compared the engine against the narration without applying the
+offset the converter applies. **The real count of engine/log disagreements is 6, not 12.**
+
+Now recognised by rule rather than by entry (`_shuttle_japan_asia_miscount`): Shuttle Diplomacy
+flag set, the entry's events name Asia Scoring, and the USSR controlling Japan — all read before
+the entry is driven, since scoring consumes the flag. Where it fires, the engine's score stands
+and every score the log states afterwards is compared against its own number plus the offset,
+which is the existing `_LOG_MISCOUNTED` machinery.
+
+**Generalising found a second game.** The rule fires on **replay 127** as well as 259. 127 was
+never listed, so until now it converted by taking the log's score — carrying a USSR VP total 1 too
+high, and the board that does not pay it, into the training data. That is the whole argument for a
+rule over a list: a list only covers the games already downloaded.
+
+`_LOG_MISCOUNTED` is now empty and kept for anything genuinely particular to one game. All 282
+games still convert with 0 failures.

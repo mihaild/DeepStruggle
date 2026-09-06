@@ -164,13 +164,17 @@ _KNOWN_SCORE: Dict[int, Dict[Tuple[int, str, str], int]] = {
 # not produce, and adopting its number would put a score into the training data that the board
 # it comes with does not pay.
 #
-#   replay 259, turn 7 AR3 -- Asia Scoring with Shuttle Diplomacy in play, and the USSR holds
-#   Japan at [4][8]. The card takes a USSR battleground country out of the region, and taking
-#   Japan takes the USSR's superpower-adjacent Influence with it, since Japan borders the
-#   United States. The log scores the USSR 2 and keeps the adjacency; it is 1.
-_LOG_MISCOUNTED: Dict[int, Dict[Tuple[int, str, str], int]] = {
-    259: {(7, "AR3", "USSR"): 1},
-}
+# Empty at present, and that is the intended direction: the one entry it used to hold -- replay
+# 259 turn 7 AR3, Asia scored under Shuttle Diplomacy with the USSR on Japan -- turned out to be
+# a reproducible property of the logs rather than a one-off, and is now recognised by rule in
+# _shuttle_japan_asia_miscount. A rule covers games nobody has downloaded yet; a list cannot.
+# Anything genuinely particular to one game still belongs here.
+# Asia Scoring (#1) and Japan, for the Shuttle Diplomacy log fault detected below.
+_ASIA_SCORING_ID: int = 1
+_JAPAN_ID: int = next(cid for cid in range(84)
+                      if str(ts.MapData.get_country_info(cid)["name"]).lower() == "japan")
+
+_LOG_MISCOUNTED: Dict[int, Dict[Tuple[int, str, str], int]] = {}
 
 # Entries where the log records a play the rules do not allow. The engine is right to refuse
 # it, and what the humans did instead is not a decision worth learning, so the entry is driven
@@ -259,6 +263,10 @@ class Conversion:
     # Entries where the log's own arithmetic is wrong (_LOG_MISCOUNTED) and the engine's score
     # stands. Every score the log states afterwards is compared against an offset number.
     log_miscounts: int = 0
+    # Of those, the ones detected by rule rather than listed: Asia scored with Shuttle Diplomacy
+    # in play while the USSR holds Japan, where the log keeps an adjacency bonus the card has
+    # taken away. Counted separately so a known log fault is not read as an engine disagreement.
+    shuttle_japan_corrections: int = 0
     # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
     # moving and emitted as nothing.
     invalid_decisions: int = 0
@@ -936,6 +944,27 @@ def _narrated_score(entry: Entry) -> Optional[int]:
         else:                                      # "Score is even."
             score = 0
     return score
+
+
+def _shuttle_japan_asia_miscount(state: ts.GameState, entry: Entry) -> bool:
+    """Is this the Asia scoring the replayer books one VP too generously for the USSR?
+
+    A known, reproducible fault in the ts-replayer logs, not a one-off. When Shuttle Diplomacy
+    is in play and Asia is scored, the card takes a USSR battleground country out of the region.
+    Where that country is Japan it takes the USSR's superpower-adjacency bonus with it, because
+    Japan is the Asian country bordering the United States. The logs keep that bonus and score
+    the USSR one higher than the rules pay, so the engine is right and the log is not.
+
+    Detected rather than listed, so any game meeting the same three conditions is corrected the
+    same way; a hand-written entry list only ever covers the games already downloaded. The
+    conditions are read *before* the entry is driven, because scoring clears the Shuttle
+    Diplomacy flag as it consumes it and afterwards there is nothing left to test.
+    """
+    if not state.has_flag(ts.EffectBits.SHUTTLE_DIPLOMACY_ACTIVE):
+        return False
+    if _ASIA_SCORING_ID not in _events_the_log_names(entry):
+        return False
+    return ts.Scoring.is_controlled_by(state, _JAPAN_ID, ts.Player.USSR)
 
 
 def _reconcile_scalars(state: ts.GameState, entry: Entry,
@@ -3601,6 +3630,10 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
 
         before = len(conv.samples)
         turn_before = int(state.turn)
+        # Read before the entry is driven: scoring consumes the Shuttle Diplomacy flag, so by
+        # the time the score is compared there is nothing left to detect. See
+        # _shuttle_japan_asia_miscount.
+        shuttle_japan_asia = _shuttle_japan_asia_miscount(state, e)
         if prev_entry is not None:
             # Not on the first entry: that one carries the setup placements, and the engine's
             # own initialisation is the position they belong to.
@@ -3665,6 +3698,11 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
                 want_score = int(e.score)
                 crossed_turn = False
         miscount = _LOG_MISCOUNTED.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
+        if miscount is None and shuttle_japan_asia:
+            # The rule-derived version of the same fault the listed entries record by hand. US
+            # positive, so the log scoring the USSR one too high leaves its number one too low.
+            miscount = 1
+            conv.shuttle_japan_corrections += 1
         if miscount is not None:
             log_vp_offset += miscount
             conv.log_miscounts += 1

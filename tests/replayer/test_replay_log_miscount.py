@@ -41,6 +41,8 @@ def test_replay_259_converts_past_the_miscounted_asia_scoring() -> None:
     assert conv.failure is None, f"replay 259 stopped at {conv.failure}"
     assert conv.log_miscounts == 1
     assert conv.entries_converted == 128
+    # Recognised by rule now, not by a hand-written entry list.
+    assert conv.shuttle_japan_corrections == 1
 
 
 def test_the_offset_is_carried_to_every_later_score() -> None:
@@ -77,3 +79,24 @@ def test_the_two_lists_are_kept_apart_and_small() -> None:
             assert key not in _KNOWN_SCORE.get(replay_id, {})
     assert sum(len(v) for v in _LOG_MISCOUNTED.values()) <= 3
     assert sum(len(v) for v in _KNOWN_SCORE.values()) <= 3
+
+
+def test_the_shuttle_japan_fault_is_recognised_by_rule_not_by_a_list() -> None:
+    """Replay 127 has the same fault and was never listed.
+
+    The correction used to be a single hand-written entry for replay 259. Deriving it from the
+    board instead -- Shuttle Diplomacy in play, Asia scored, the USSR holding Japan -- caught a
+    second game in the same 300, and will catch games nobody has downloaded yet. Until then 127
+    took the log's score, which pays the USSR an adjacency bonus the card had removed, straight
+    into the training data.
+    """
+    conv = convert_game(_game(127))
+    assert conv.failure is None, f"replay 127 stopped at {conv.failure}"
+    assert conv.shuttle_japan_corrections == 1
+
+
+def test_a_game_without_the_fault_is_left_alone() -> None:
+    """The rule must not fire on every Asia scoring, only the ones meeting all three conditions."""
+    conv = convert_game(_game(182))
+    assert conv.failure is None
+    assert conv.shuttle_japan_corrections == 0
