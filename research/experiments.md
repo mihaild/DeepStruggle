@@ -1344,3 +1344,38 @@ be exactly the guessing the corpus rules forbid.
 
 **Unchanged by the rebuild:** 282 games convert with 0 failures, 144,844 samples, 84,073 with a
 value target. The dataset was rebuilt on the new hands.
+
+
+### 9.7 There is no game where a human provably held the dominating card
+
+The seven trap discards §9.6 still scores as dominated were checked one by one for what the log
+says about the alternative. In **all seven** the dominating card is absent from that turn's hand
+list *and* is never played by that side during that turn. None of them is evidence of a human
+passing over a card they demonstrably held.
+
+Where those cards do appear is the pattern:
+
+| replay | turn | alternative the solver placed | the log has it at |
+|---:|---:|:---|:---|
+| 71 | 5 | Duck and Cover | T1 (played), T6 (hand list, played AR1) |
+| 80 | 6 | Liberation Theology | T7 (hand list, played AR7) |
+| 179 | 4 | The Voice of America | T6 (hand list, played AR1) |
+| 184 | 7 | Arab-Israeli War | T3, T9 |
+| 198 | 5 | Socialist Governments | T2, T7 |
+| 283 | 5 | Arab-Israeli War | T2, T6 |
+
+Every one is a card the log places in that player's hands **in other turns**, which the solver has
+carried into the turn in question -- one to two turns before the log first lists it. Carrying a card
+over is ordinary and the hand lists are demonstrably incomplete (§9.4), so the placements are not
+illegal; they are simply unevidenced, and each manufactures the appearance of a mistake.
+
+**So the corpus contains zero proven violations of the dominance relation.** §9.5's "0 of 87 where
+the log records both cards" is not a restriction that hides the counterexamples -- there are none
+to hide. Across all 94 decidable trap discards, every apparent human error rests on a card the log
+does not put in that hand at that time.
+
+**A refinement this suggests, not made.** The solver could pay a cost for holding a card in turns
+before the log first lists it, which is what all six distinct cases have in common. It would want
+care: carry-over is real, the lists are incomplete, and a hard version would contradict the corpus
+rule against forcing what the log does not state. Worth trying as another soft clause if the
+residue matters.
