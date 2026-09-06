@@ -97,22 +97,35 @@ def test_every_discard_in_the_turn_counts_not_just_the_last() -> None:
 
 
 def test_a_one_time_card_of_your_own_is_still_a_dominated_discard() -> None:
-    """The two sides of the pair are not eligible on the same terms.
+    """A starred card of your own is an ordinary thing to give up to a trap.
 
-    A starred card of your own is an ordinary thing to give up to a trap, so it counts as the
-    discarded side -- excluding it is what made replay 80 turn 6 contribute nothing, since all
-    three of the US's discards there were starred. It stays excluded as the *dominant* side,
-    where removing it from the game permanently is a different argument.
+    Excluding it from the discarded side is what made replay 80 turn 6 contribute nothing, since
+    all three of the US's discards there were starred.
     """
     starred_own = next(c for c in range(1, 111)
                        if ts.CardData.get_card_info(c)["one_time"]
                        and not ts.CardData.get_card_info(c)["is_scoring"]
                        and str(ts.CardData.get_card_info(c)["side"]) == "US"
                        and c not in (FIVE_YEAR_PLAN, CHINA_CARD))
-    assert _dominance_excluded(starred_own)      # never the dominant side
-    assert not _discard_excluded(starred_own)    # but a normal thing to discard
+    assert not _discard_excluded(starred_own)
     facts = _Facts({(4, "US"): [starred_own]})
     assert _dominated_discard_ops(facts, 4, "US") == {_ops(starred_own)}
+
+
+def test_a_one_time_opponent_card_is_worth_keeping_out_of_the_hand() -> None:
+    """As a preference, the one-time exclusion ai/eval/dominance uses does not apply.
+
+    That module keeps every measured pair strictly defensible, and discarding a one-time event
+    removes it from the game permanently, which is a different argument. As a claim about what a
+    hand held the direction is the same and stronger: nobody keeps the opponent's one-time event
+    while giving up their own card to a trap.
+    """
+    starred_opponent = next(c for c in range(1, 111)
+                            if ts.CardData.get_card_info(c)["one_time"]
+                            and not ts.CardData.get_card_info(c)["is_scoring"]
+                            and str(ts.CardData.get_card_info(c)["side"]) == "USSR"
+                            and c not in (FIVE_YEAR_PLAN, CHINA_CARD))
+    assert not _dominance_excluded(starred_opponent)
 
 
 @pytest.mark.parametrize("card", [FIVE_YEAR_PLAN, CHINA_CARD])
@@ -122,14 +135,12 @@ def test_the_cards_the_argument_never_applies_to(card: int) -> None:
     assert _dominated_discard_ops(_Facts({(4, "US"): [card]}), 4, "US") == set()
 
 
-def test_scoring_and_one_time_cards_are_excluded() -> None:
+def test_scoring_cards_are_excluded_from_both_sides() -> None:
+    """A scoring card is never an ordinary discard and never an ordinary thing to hold back."""
     scoring = next(c for c in range(1, 111)
                    if ts.CardData.get_card_info(c)["is_scoring"])
-    one_time = next(c for c in range(1, 111)
-                    if ts.CardData.get_card_info(c)["one_time"]
-                    and not ts.CardData.get_card_info(c)["is_scoring"])
     assert _dominance_excluded(scoring)
-    assert _dominance_excluded(one_time)
+    assert _discard_excluded(scoring)
 
 
 def test_a_plain_recurring_card_is_not_excluded() -> None:

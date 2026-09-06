@@ -48,11 +48,11 @@ _RED_SCARE_PURGE = 31
 _FIVE_YEAR_PLAN = 5
 _CHINA_CARD = 6
 # A second soft clause on the same literal, so its weight adds to that card's _hold_cost rather
-# than replacing it: holding a card the dominance argument says was not held costs this much on
-# top of whatever holding it already cost. Set comparable to the top of _hold_cost's range (~164)
-# so it decides where the two disagree, while staying soft -- the hard rules still outrank it,
-# and anything the log establishes about the hand is in the hard model already.
-_DOMINANCE_PREFERENCE = 120
+# than replacing it. Set well above the top of _hold_cost's range (~164) because the evidence is
+# strong: a player who gave up their own or a neutral card to a trap was, on this corpus, never
+# holding an opponent's event they could have given up instead. Still soft -- the hard rules
+# outrank it, and anything the log establishes about the hand is in the hard model already.
+_DOMINANCE_PREFERENCE = 240
 _ERA_ENTERS = {"0": 1, "1": 4, "2": 8}          # early war, mid war, late war
 
 
@@ -96,6 +96,10 @@ class GameFacts:
         self.empty_hand: Set[Tuple[int, str]] = set()
         self.skipped: Set[Tuple[int, str]] = set()
         self.trapped: Set[Tuple[int, str]] = set()
+        # Turns in which a side fired one of the opponent's events -- which happens when they
+        # play an opponent card for its Operations. Its absence is the informative direction:
+        # a turn with none is consistent with a hand that simply held no opponent cards.
+        self.fired_opponent_event: Set[Tuple[int, str]] = set()
         # The cards a side gave up to Quagmire / Bear Trap, per turn. A trap holds until the
         # escape roll succeeds, so a turn can have several, and each is evidence about the hand
         # -- keeping only the last lost the other discards entirely. See _dominated_discard_ops.
@@ -300,6 +304,12 @@ class GameFacts:
                 self.red_scare.add((turn, side))
             if e.player == other and e.card and self.card_id(e.card) == _RED_SCARE_PURGE:
                 self.red_scare.add((turn, side))
+        if e.player in self.sides:
+            opponent = "USSR" if e.player == "US" else "US"
+            for nm in (e.events or []):
+                fired = self.card_id(nm)
+                if fired and str(ts.CardData.get_card_info(fired)["side"]) == opponent:
+                    self.fired_opponent_event.add((turn, e.player))
         if e.player in self.sides and e.trap_rolls:
             self.trapped.add((turn, e.player))
             discarded = self.card_id(e.card or "")
@@ -417,7 +427,18 @@ def _hold_cost(side: str, cid: int, turn: int, facts: "GameFacts") -> int:
     info = ts.CardData.get_card_info(cid)
     card_side = str(info["side"])
     ops = int(info["ops"])
-    cost = (0 if card_side not in (side, "NONE") else 40) + ops
+    own = card_side in (side, "NONE")
+
+    # Holding your own card is charged for because a hand is for spending. A one-time event of
+    # your own is the exception: it is played once, for a moment that suits it, and saving it is
+    # ordinary. Charged anyway in a turn where this side fired one of the opponent's events,
+    # since that shows they were holding opponent cards and had a choice about what to keep --
+    # and always for CIA Created and "Lone Gunman", which are played to see the opponent's hand
+    # and so are not cards anyone sits on.
+    quiet = (turn, side) not in facts.fired_opponent_event
+    saveable = (own and bool(info["one_time"]) and not bool(info["is_scoring"])
+                and cid not in (_CIA_CREATED, _LONE_GUNMAN) and quiet)
+    cost = (0 if not own or saveable else 40) + ops
 
     # A reshuffle puts the discard pile back in the deck, so a card held across one comes round
     # again -- and these are the ones their holder least wants to see again.
@@ -481,14 +502,15 @@ def _dominance_excluded(cid: int) -> bool:
     """Cards that cannot be the *dominant* side of the pair.
 
     Five Year Plan is the one recurring event whose firing can help its non-owner; the China Card
-    and scoring cards are never ordinary discards; and a one-time event is left out because
-    discarding it removes it from the game permanently, which is a different and stronger
-    argument than the dominance one. Mirrors `_eligible_opponent_discard` in ai/eval/dominance.
+    and scoring cards are never ordinary discards. One-time events are *not* excluded here, unlike
+    in ai/eval/dominance: that module keeps every pair strictly defensible for measurement, where
+    discarding a one-time event removes it from the game permanently and is a different argument.
+    As a preference about what a hand held, the direction is the same and stronger -- nobody keeps
+    the opponent's one-time event while giving up their own card to a trap.
     """
     if cid in (_FIVE_YEAR_PLAN, _CHINA_CARD):
         return True
-    info = ts.CardData.get_card_info(cid)
-    return bool(info["is_scoring"]) or bool(info["one_time"])
+    return bool(ts.CardData.get_card_info(cid)["is_scoring"])
 
 
 def _discard_excluded(cid: int) -> bool:
@@ -742,15 +764,13 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
         # first and anything the log establishes about the hand is in there already.
         for t in turns:
             for s in facts.sides:
-                ops_levels = _dominated_discard_ops(facts, t, s)
-                if not ops_levels:
+                if not _dominated_discard_ops(facts, t, s):
                     continue
                 opponent = "USSR" if s == "US" else "US"
                 for c in cards:
                     if (c, t, s) in settled or _dominance_excluded(c):
                         continue
-                    info = ts.CardData.get_card_info(c)
-                    if str(info["side"]) != opponent or int(info["ops"]) not in ops_levels:
+                    if str(ts.CardData.get_card_info(c)["side"]) != opponent:
                         continue
                     opt.add_soft(z3.Not(held[(c, t, s)]), weight=_DOMINANCE_PREFERENCE)
         if opt.check() == z3.sat:
@@ -766,11 +786,9 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
         for c, t, s in free:
             if c in out[t][s]:
                 total += _hold_cost(s, c, t, facts)
-                ops_levels = _dominated_discard_ops(facts, t, s)
-                if ops_levels and not _dominance_excluded(c):
-                    info = ts.CardData.get_card_info(c)
+                if _dominated_discard_ops(facts, t, s) and not _dominance_excluded(c):
                     opponent = "USSR" if s == "US" else "US"
-                    if str(info["side"]) == opponent and int(info["ops"]) in ops_levels:
+                    if str(ts.CardData.get_card_info(c)["side"]) == opponent:
                         total += _DOMINANCE_PREFERENCE
         report_cost.append(total)
     return out

@@ -1459,3 +1459,43 @@ it by a single unit of cost, which is why it looked arbitrary.
 
 **No fault found.** The asymmetry is entailed by the log, and the evidence for it is in the headline
 line rather than in the hand lists the question naturally looks at.
+
+
+### 9.10 Two corrections to the hold cost, from the owner
+
+**1. A one-time card of your own, in a quiet turn, is not evidence against holding.** `_hold_cost`
+charged a flat 40 for holding any card of your own side, on the reasoning that a hand is for
+spending. That is right for a recurring event and wrong for a one-time one: it is played once, at
+a moment that suits it, and saving it is ordinary. §9.9 showed the charge doing real work — it was
+the whole of the +38 that rejected Sadat Expels Soviets, a starred US card the US demonstrably held
+the following turn.
+
+The charge is now dropped for a one-time card of your own **when that side fired none of the
+opponent's events that turn**. A turn with no opponent event fired is consistent with a hand that
+simply held no opponent cards, so nothing about it argues against having kept your own. Where an
+opponent event *was* fired the side was holding opponent cards and had a choice about what to keep,
+so the charge stands. **CIA Created** and **"Lone Gunman"** keep it always: they are played to see
+the opponent's hand, and nobody sits on them.
+
+**2. Holding the opponent's card while giving your own to a trap is now heavily penalised, at any
+Ops.** §9.6's clause required the two cards to print the same Ops, mirroring the dominance
+*measurement*. Under a trap that is too narrow: you cannot play anything while trapped, so the Ops
+of what you give up buys nothing, and keeping the opponent's event is worse whatever it prints.
+The clause now applies to any opponent card except Five Year Plan, the China Card and scoring
+cards, and the weight goes 120 → **240**, above the top of `_hold_cost`'s range.
+
+One-time opponent events are no longer excluded either. `ai/eval/dominance` excludes them so that
+every *measured* pair is strictly defensible; as a claim about what a hand held the direction is
+the same and stronger, since nobody keeps the opponent's one-time event while giving up their own.
+The measurement module is unchanged — only the solver's preference is widened.
+
+**Effect.** 282 games still convert with 0 failures.
+
+| | before | after |
+|:---|---:|---:|
+| dominated trap discards | 3/90 (3.3%) | 3/93 (3.2%) |
+| decidable space plays | 712 | 749 |
+| dataset samples | 144,845 | 144,839 |
+
+The trap figure barely moves because §9.8 had already taken it near the floor; what changed is the
+hands themselves, which is what the dataset rebuild reflects. 961 tests pass.
