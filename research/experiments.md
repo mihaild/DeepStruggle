@@ -607,3 +607,80 @@ runs. The binomial SE (1.6% at n=1,000) understates it, because it assumes the o
 sampling from a fixed distribution. Either fix the agent sampling seed, or replicate a run before
 believing a small gap. The §4.4 comparisons flagged as "underpowered (z ~ 1.2-1.75)" sit exactly
 in this band.
+
+---
+
+## 8. The human corpus reproduces the US late-war recovery (E2) — SETTLED
+
+**Question.** §4.7 left one hypothesis open that it could not test: a rules bug favouring the USSR
+that only surfaces in long games. Random play ends at turn 2.73, before the asymmetry can express
+itself, and the heuristic is too weak to separate "engine bias" from "cannot play the late war".
+The 300-game human corpus is the missing control — a strong player on *this* engine.
+
+**Setup.** `ai/eval/human_corpus.py`. All 300 corpus files: 9 are empty cached downloads (verified
+by reading them, not converter failures), 9 are skipped for non-standard handicaps, **282 convert
+with 0 failures**; 131 reach a terminal state and 151 are fragments whose recording stops. 144,844
+decisions classified, none excluded. The VP sign convention was verified empirically rather than
+assumed (`victory_points = +20` -> `get_terminal_utility = +1.0`).
+
+**Result — mean VP by turn (US-positive), against the §4.6 arms:**
+
+| turn | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | +0.15 | -1.02 | -1.87 | -3.03 | -3.58 | -3.91 | -3.11 | -2.49 | -4.47 |
+| K=40 | +0.01 | -0.91 | -2.26 | -1.96 | -2.20 | -2.31 | -1.95 | -1.68 | -2.18 |
+| **human** | +0.21 | -1.09 | -1.58 | -1.80 | -1.34 | -0.19 | -0.62 | -0.01 | **+2.36** |
+| human N | 267 | 253 | 235 | 210 | 193 | 167 | 145 | 107 | 94 |
+
+Human US win rate over the 131 finished games: **48.9%** (64/65/2, 95% CI ±8.6pp), and **50.0%**
+in games ending turns 7-10 (N=124), against 35-40% for both agents.
+
+**Verdict.** The corpus reproduces the standard arc in full. The USSR early lead appears at about
+the agents' magnitude (trough -1.80 at turn 5), then the human curve climbs monotonically, crosses
+zero by turn 9 and ends **+2.36**, while the control ends at -4.47 and K=40 at -2.18 without ever
+reaching parity. **The US late-war edge is fully expressible on this engine**, so the §4.7 rules-bug
+hypothesis is not supported: §4.5's side imbalance and §4.6's missing recovery are properties of our
+agents, not of the simulation. Training work on the US-side weakness is unblocked.
+
+**Caveats.** This clears the engine only of a bug big enough to erase the late-war edge, not of
+smaller ones. It is not a matched comparison — skill, game length and ending mixes all differ. The
+per-turn population shifts as in §4.6 but for a different reason: human attrition (267 -> 94) is
+mostly the *recording* stopping rather than games ending, and whether that truncation is
+outcome-neutral was not tested. The turn 1-4 bucket is empty for humans, so §4.6's short-game row
+has no counterpart. And none of this says *why* the agents fail to convert the late war.
+
+### 8.1 Humans decline forced wins twice as often as the agents
+
+| | value |
+|:---|---:|
+| instant-win opportunities | 149 (0.103% of decisions; agents 0.175-0.196% in §4.2) |
+| games with at least one | 95 of 282 (33.7%) |
+| **take rate** | **47.7%** (71 of 149, ±8.0pp) |
+| declines with a settled outcome | 73 (5 more fell in fragments, excluded) |
+| **cost of declining** | **20.5%** (the decliner still won 58 of 73, ±9.3pp) |
+
+This strengthens §4.4 rather than complicating it. A corpus that is 48.9% balanced overall takes
+forced wins at **47.7%**, roughly half the control's 81.2% and K=40's 72.4% — so a low take rate is
+plainly compatible with strong play, and the metric cannot be an optimisation target. The
+opportunity split is also 93 US / 56 USSR, the opposite tilt to the control's 92/158.
+
+### 8.2 §4.2's critic optimism does not reproduce on human positions
+
+`dec_turns40/snapshot_final.pt`'s value head over 84,073 decisions in finished human games:
+
+| v_win bin | N | mean predicted | mean actual | gap |
+|:---|---:|---:|---:|---:|
+| [-0.75,-0.50) | 11,951 | -0.61 | -0.43 | -0.18 |
+| [-0.50,-0.25) | 18,428 | -0.37 | -0.15 | -0.22 |
+| [-0.25,0.00) | 15,458 | -0.13 | -0.03 | -0.10 |
+| [0.00,+0.25) | 15,987 | +0.13 | +0.17 | -0.04 |
+| [+0.25,+0.50) | 14,945 | +0.36 | +0.23 | **+0.13** |
+| [+0.50,+0.75) | 6,431 | +0.59 | +0.54 | +0.05 |
+| **all** | 84,073 | -0.06 | +0.01 | -0.07 |
+
+Globally the critic is mildly **pessimistic** here, and its largest errors are in the negative bins
+— it overstates how lost a losing-looking human position is. Optimism appears only in
+[+0.25,+0.50), which is exactly the band §4.2's missed forced wins sit in, and it is smaller than
+the pessimism elsewhere. So §4.2's finding is narrower than stated: not a global optimism, but a
+miscalibration in one band, measured on a state distribution the agent generates itself. Off its own
+distribution the sign flips.

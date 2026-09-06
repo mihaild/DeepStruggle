@@ -80,6 +80,8 @@ class GameMeasurement:
     replay_id: int
     skipped: Optional[str] = None
     failed: Optional[str] = None
+    # The cached file holds no turns, so there is no game here to measure.
+    empty_log: bool = False
     truncated: bool = False
     game_ended: bool = False
     # +1.0 if the US won, -1.0 if the USSR won, 0.0 a draw; None where the log stops first.
@@ -95,7 +97,7 @@ class GameMeasurement:
 
     @property
     def usable(self) -> bool:
-        return self.skipped is None and self.failed is None
+        return self.skipped is None and self.failed is None and not self.empty_log
 
 
 @dataclass
@@ -201,6 +203,11 @@ def _turn_boundaries(turns: Sequence[int], vps: Sequence[int],
 def measure_game(game: Dict[str, Any], value_fn: Optional[ValueFn] = None) -> GameMeasurement:
     """Converts one corpus game and records its arc, forced-win decisions and critic values."""
     replay_id = int(game.get("replay_id", -1))
+    if not game.get("all_turns"):
+        # Nine cached files in the corpus hold a game shell with no turns at all -- empty
+        # `all_turns`, `unique_turns`, `hands` and `stats`. There is nothing to convert, and
+        # calling that a conversion failure would blame the converter for a missing download.
+        return GameMeasurement(replay_id=replay_id, empty_log=True)
     obs = _Observation()
     with _observing_conversion(obs):
         conv: Conversion = convert_game(game)
@@ -522,12 +529,14 @@ def render_report(m: CorpusMeasurement, checkpoint: Optional[str], model_name: O
     usable = m.usable_games
     skipped = [g for g in m.games if g.skipped is not None]
     failed = [g for g in m.games if g.failed is not None]
+    empty = [g for g in m.games if g.empty_log]
     add("## 0. Corpus accounting")
     add("")
     add("| | count |")
     add("|:---|---:|")
     add(f"| files read | {len(m.games) + len(m.load_errors)} |")
     add(f"| files that would not load | {len(m.load_errors)} |")
+    add(f"| cached files holding no turns at all | {len(empty)} |")
     add(f"| games skipped by the converter | {len(skipped)} |")
     add(f"| games whose conversion failed | {len(failed)} |")
     add(f"| games converted | {len(usable)} |")
@@ -539,6 +548,9 @@ def render_report(m: CorpusMeasurement, checkpoint: Optional[str], model_name: O
     add(f"| emitted samples excluded: no legal action in mask | "
         f"{sum(g.excluded_no_legal for g in usable)} |")
     add("")
+    if empty:
+        add(f"- empty cached files, replays "
+            f"{', '.join(str(g.replay_id) for g in empty)}: no turns recorded")
     for g in skipped:
         add(f"- skipped, replay {g.replay_id}: {g.skipped}")
     for g in failed:
