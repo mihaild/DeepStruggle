@@ -209,8 +209,8 @@ graph TD
 │       └── engine_interface.py, native_adapter.py, struggler_adapter.py, blockchain_adapter.py,
 │           blockchain_bridge.js # Shared EngineProtocol adapters for the three engines
 │
-├── rules/                      # [GIT IGNORED] General game rules, PDF, map & card descriptions
-│   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
+├── rules/                      # Formal spec the engine implements (tracked, except the PDF)
+│   ├── Rules_Final.pdf         # [GIT IGNORED] Official rulebook -- GMT Games copyright, not ours to commit
 │   ├── rules.md / rules.json   # Formal mathematical rules specification
 │   ├── cards.json / primitives # 110 cards metadata and state machine primitives
 │   ├── flags.json              # 47 persistent continuous effect & state bits

@@ -114,7 +114,7 @@ Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset gen
 
 **Web (`web/`):** `web/server/main.py` is the FastAPI app — REST endpoints for game/replay/metadata, plus `/ws/game/{game_id}?role=US|USSR|OBSERVER`. `session.py`'s `GameSession` owns the `ts_engine.GameState`, validates actions against the active `DecisionContext`, steps the engine, and broadcasts `STATE_UPDATE`. `replay.py` reads/writes `.tslog.json` under `data/replays/` (symlinked to `replays/`). `web/ui/` is the Vite + TypeScript SVG map frontend. `web/bot_client.py` connects a `BaseBot` to a running game over WebSocket.
 
-**Data layout:** `data/checkpoints/` (model weights, symlinked as `checkpoints/`), `data/replays/` (`.tslog.json` game logs, symlinked as `replays/`), `data/datasets/` (compressed demonstration `.jsonl.gz` for BC warmup). `rules/` (git-ignored) holds the rulebook PDF plus `rules.json`/`cards.json`/`map.json`, the formal spec the engine implements. `external/struggler` is a git submodule used as an independent reference engine for differential testing.
+**Data layout:** `data/checkpoints/` (model weights, symlinked as `checkpoints/`), `data/replays/` (`.tslog.json` game logs, symlinked as `replays/`), `data/datasets/` (compressed demonstration `.jsonl.gz` for BC warmup). `rules/` holds `rules.json`/`cards.json`/`map.json` and related spec files, the formal spec the engine implements — tracked in git, except `rules/Rules_Final.pdf` (the official rulebook, GMT Games copyright), which stays git-ignored. `external/struggler` is a git submodule used as an independent reference engine for differential testing.
 
 ## Key invariants (see `AGENTS.md` §4 for full detail)
 
