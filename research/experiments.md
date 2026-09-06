@@ -1107,3 +1107,55 @@ less, is a real intransitivity and a reminder that a single opponent is not a ra
 **Caveat.** One seed per arm. §7.2's noise floor covers tournament measurement, not run-to-run
 training variance, which this repository has never measured. A 57.4% head-to-head is comfortably
 outside measurement noise; it is not known to be outside seed noise.
+
+
+### 9.1 The human prior washes out in 2% of training — which explains §9
+
+**Question.** §9 could not separate "human data is worse" from "the human arm started from a much
+weaker policy". Measuring whether the prior survives at all separates them, and costs nothing: the
+checkpoints already exist.
+
+**Setup.** Top-1 agreement with human moves on a fixed probe of 20,000 corpus decisions, evaluated
+at all 42 snapshots of both arms. Arm A never saw a human game and is the floor.
+
+| | after BC | 1st snapshot (~2M steps) | minimum | final (80M) |
+|:---|---:|---:|---:|---:|
+| arm B, human warmup | **45.7%** | 33.1% | 29.0% | **32.5%** |
+| arm A, self-play warmup | 33.6% | 31.4% | 30.6% | 32.6% |
+
+**The prior is gone inside the first 2M steps — 2.5% of the run — and never returns.** From there
+the two arms agree with human play *identically*, both sitting at 31-34% for the remaining 78M
+steps and finishing within 0.1 points of each other. Roughly 32% is what RL converges to whatever
+it was initialised from.
+
+**So §9 was not testing what it looked like it was testing.** Past the first snapshot there was no
+human prior left to test; the arms differed only in where they started, which is precisely the
+confound §9 flagged as unresolvable from that pair. It is now demonstrated rather than suspected.
+
+**Consequence.** A warmup variant cannot answer this question -- not a longer one, not a mixed
+synthetic+human one, not a fine-tune. Anything delivered as an initialisation decays to the same
+attractor within 2M steps. Human data has to be applied as something that *persists*, which is
+what E4's pinned `π_ref` is: a KL anchor held throughout training rather than a starting point.
+
+### 9.2 How long to train the human BC — about 8 epochs, and it matters only for E4
+
+**Question.** The E3 warmup ran 2 epochs and reached 45.4% top-1. Would training it longer help?
+
+**Setup.** Split by **game**, not by sample: positions within a game are heavily correlated, so a
+sample split scores the model on positions it has effectively already seen. 224 games train,
+56 held out (117,025 / 27,819 samples), fresh v2 net, agreement after each epoch.
+
+| epoch | 0 | 1 | 2 | 4 | 6 | 8 | 10 | 12 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|
+| train | 18.7 | 40.9 | 41.5 | 45.3 | 47.0 | 49.0 | 52.9 | 57.5 |
+| **held out** | 19.0 | 41.0 | 41.6 | 44.8 | 45.9 | **46.9** | 47.5 | **47.8** |
+
+**Two epochs was undertrained** -- held-out agreement climbs from 41.6% to about 47% by epoch 8, so
+the E3 warmup left roughly five points on the table. **But it plateaus there**: epochs 8 to 12 buy
+0.8 points of held-out agreement while the training score gains 8.5, so the model is memorising
+games from that point on. About 8 epochs is the useful end.
+
+**It would not have changed §9.** By 9.1 a 48% initialisation decays to the same ~32% attractor as
+a 45% one, and just as fast. Where it does matter is E4: there the human policy is the anchor
+rather than the starting point, it persists for the whole run, and its quality is the experiment.
+Build that net at ~8 epochs.

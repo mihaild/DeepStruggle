@@ -31,7 +31,7 @@ import torch
 
 OBS_DTYPE = np.float16
 MASK_BITS = 212
-_COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side")
+_COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side", "game")
 _META = "meta.json"
 
 
@@ -51,6 +51,10 @@ class HumanCorpusWriter:
         self.vp: List[float] = []
         self.has_outcome: List[int] = []
         self.side: List[int] = []
+        # Which game each sample came from. Needed for a held-out split: samples inside one game
+        # are heavily correlated, so splitting on samples measures memorisation of positions the
+        # model has effectively already seen. A split has to be by game.
+        self.game: List[int] = []
         self.games = 0
         self.games_with_outcome = 0
 
@@ -80,6 +84,7 @@ class HumanCorpusWriter:
             self.win.append(utility * int(side) if settled else 0.0)
             self.vp.append((score / 20.0) * int(side) if settled else 0.0)
             self.has_outcome.append(1 if settled else 0)
+            self.game.append(self.games - 1)
 
     def write(self) -> Dict[str, Any]:
         os.makedirs(self.out_dir, exist_ok=True)
@@ -94,6 +99,7 @@ class HumanCorpusWriter:
             "vp": np.asarray(self.vp, dtype=np.float16),
             "has_outcome": np.asarray(self.has_outcome, dtype=np.uint8),
             "side": np.asarray(self.side, dtype=np.int8),
+            "game": np.asarray(self.game, dtype=np.int32),
         }
         for name, arr in arrays.items():
             np.save(os.path.join(self.out_dir, f"{name}.npy"), arr)
