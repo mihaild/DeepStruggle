@@ -927,3 +927,48 @@ rule over a list: a list only covers the games already downloaded.
 
 `_LOG_MISCOUNTED` is now empty and kept for anything genuinely particular to one game. All 282
 games still convert with 0 failures.
+
+
+### 8.7.3 The log's score is what training data carries, and what is left after that
+
+**Corrected intent.** 8.7.2 kept the engine's rules-correct score and offset the log. That is
+backwards for this corpus. The players were reading the app's score, not the rulebook: they played
+the slightly wrong game, and every decision after the Shuttle/Japan Asia scoring was made against
+the number the log shows. Training data has to be the position the human actually saw, so the
+converter now **adopts the logged score** and carries it forward; only the assertion for that one
+entry is dropped, and no offset is accumulated. `_LOG_MISCOUNTED` stays empty.
+
+**What is left.** Sweeping all 282 converted games, comparing the engine against the log's
+*narration* (never the lagging score field) at the point the converter compares:
+
+| | entries |
+|:---|---:|
+| engine disagrees with the narration | 21 |
+| — terminal ±20 result marker, not a score | 10 |
+| — Shuttle/Japan Asia scoring, log adopted | 1 |
+| — **unexplained** | **10**, in 8 files |
+
+Of the 10 unexplained, four are end-of-game, where the engine's final scoring and the log's
+bookkeeping legitimately differ:
+
+| replay | diff | where |
+|---:|---:|:---|
+| 117 | −14 | T10 AR7, The China Card |
+| 234 | −10 | T10 AR7, South America Scoring |
+| 16, 43 | +6 | T10 AR8, Mideast Scoring |
+
+That leaves **six midgame entries in five distinct games** (16 and 43 are duplicate downloads of
+one game), all of magnitude 1–2:
+
+| replay | diff | where |
+|---:|---:|:---|
+| 16, 43 | −2 | T4 AR7, Alliance For Progress |
+| 28 | −2 | T4 AR7, Special Relationship |
+| 57 | −2 | T3 AR6, Arab-Israeli War |
+| 71 | +2 | T3 AR6, Mideast Scoring |
+| 65 | +1 | T6 AR7, Che |
+
+Four of the six sit at turn 3 AR6 or turn 4 AR7 and are all worth exactly 2 on US entries, which
+is suggestive of one shared cause rather than five unrelated ones. None is diagnosed. This is the
+whole remaining VP disagreement between the engine and 282 human games — down from the "194 games,
+mean 2.2 VP" of 8.6, which was measuring the log's own bookkeeping lag.

@@ -171,9 +171,11 @@ games convert in full**, 29,820 of 30,620 entries (97.4%), 144,844 decisions.
   the log itself gets wrong (`_KNOWN_SCORE`, `_LOG_MISCOUNTED`, `_INVALID_PLAYS`), plus one
   fault recognised by rule rather than listed: where Asia is scored with Shuttle Diplomacy in
   play and the USSR holds Japan, the log keeps a superpower-adjacency bonus the card has
-  removed and pays the USSR 1 VP too many. The engine's score stands and the log's is offset
-  from there on (`_shuttle_japan_asia_miscount`). It holds for 2 of the 300 games downloaded
-  so far, and a rule covers games nobody has downloaded yet where a list cannot.
+  removed and pays the USSR 1 VP too many. The engine takes the log's score and it is
+  adopted from there on (`_shuttle_japan_asia_miscount`). The log's number is kept on purpose:
+  the players were reading the app's score, so that is the position they decided against and
+  the one training data must carry. It holds for 2 of the 300 games downloaded so far, and a
+  rule covers games nobody has downloaded yet where a list cannot.
 - `tools/lib/ts_replayer_hands.py`: the hands, which the log never states in full. Both hands
   for a whole game are solved at once as a constraint problem over z3 (MIT), from the rules --
   hand size, carry-over, spent cards being in the discard pile until a reshuffle, scoring cards

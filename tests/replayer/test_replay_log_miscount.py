@@ -39,18 +39,20 @@ def test_replay_259_converts_past_the_miscounted_asia_scoring() -> None:
     """
     conv = convert_game(_game(259))
     assert conv.failure is None, f"replay 259 stopped at {conv.failure}"
-    assert conv.log_miscounts == 1
     assert conv.entries_converted == 128
-    # Recognised by rule now, not by a hand-written entry list.
+    # Recognised by rule, not by a hand-written entry list, and the log's number is adopted
+    # rather than corrected -- so this is not a miscount offset.
     assert conv.shuttle_japan_corrections == 1
+    assert conv.log_miscounts == 0
 
 
-def test_the_offset_is_carried_to_every_later_score() -> None:
-    """Every score the log states after a miscount is out by the same amount.
+def test_the_logged_score_is_what_the_run_carries_forward() -> None:
+    """After the Shuttle/Japan scoring the engine holds the log's number, not the rules' one.
 
-    The log's score field reads 17 all through the rest of turn 7 where the truth is 18, and
-    the engine is reconciled to the logged score on every entry -- so without carrying the
-    offset the correction would be undone on the very next one.
+    The rules pay the USSR one less than the log does here, but the players were reading the
+    app's score, and every decision they made afterwards was made against that number. Training
+    data has to be the position the human actually saw, so the engine adopts the logged score
+    and carries it. The log stays on 17 for the rest of turn 7; the engine must agree.
     """
     raws = cast(List[Dict[str, object]], _game(259)["all_turns"])
     after: List[Tuple[int, str, int]] = []
@@ -62,7 +64,7 @@ def test_the_offset_is_carried_to_every_later_score() -> None:
             continue
         if seen and e.turn == 7 and e.score is not None:
             after.append((e.turn, e.phase, int(e.score)))
-    assert after, "turn 7 continues past the miscounted entry"
+    assert after, "turn 7 continues past the adjusted entry"
     assert {score for _t, _p, score in after} == {17}, (
         "the log stays on its own number for the rest of the turn")
 

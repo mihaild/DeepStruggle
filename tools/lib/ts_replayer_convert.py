@@ -263,9 +263,10 @@ class Conversion:
     # Entries where the log's own arithmetic is wrong (_LOG_MISCOUNTED) and the engine's score
     # stands. Every score the log states afterwards is compared against an offset number.
     log_miscounts: int = 0
-    # Of those, the ones detected by rule rather than listed: Asia scored with Shuttle Diplomacy
-    # in play while the USSR holds Japan, where the log keeps an adjacency bonus the card has
-    # taken away. Counted separately so a known log fault is not read as an engine disagreement.
+    # Asia scored with Shuttle Diplomacy in play while the USSR holds Japan, where the log keeps
+    # an adjacency bonus the card has taken away and pays the USSR 1 VP too many. The log's
+    # number is adopted -- it is what the players saw and decided against -- and only the score
+    # assertion is dropped. Counted so a known log fault is never read as an engine disagreement.
     shuttle_japan_corrections: int = 0
     # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
     # moving and emitted as nothing.
@@ -3697,12 +3698,18 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             if prev_entry.score is not None and int(e.score) != int(prev_entry.score):
                 want_score = int(e.score)
                 crossed_turn = False
-        miscount = _LOG_MISCOUNTED.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
-        if miscount is None and shuttle_japan_asia:
-            # The rule-derived version of the same fault the listed entries record by hand. US
-            # positive, so the log scoring the USSR one too high leaves its number one too low.
-            miscount = 1
+        if shuttle_japan_asia:
+            # The log's number stands here, and deliberately so. The rules pay the USSR one
+            # less (Shuttle Diplomacy took Japan, and the superpower-adjacency bonus with it),
+            # but the players were looking at the app's score, not at the rules -- they played
+            # the slightly wrong game, and every decision after this was made against the
+            # number the log shows. Training data has to be the position the human actually
+            # saw, so the engine takes the log's score and carries it forward. Only the
+            # assertion for this one entry is dropped; no offset is accumulated, so the next
+            # entry rebuilds from the logged score like any other.
+            want_score = None
             conv.shuttle_japan_corrections += 1
+        miscount = _LOG_MISCOUNTED.get(conv.replay_id, {}).get((e.turn, e.phase, e.player))
         if miscount is not None:
             log_vp_offset += miscount
             conv.log_miscounts += 1
