@@ -1306,3 +1306,41 @@ and BC warmup still failed to deliver it, which is a statement about the mechani
 **Method note.** Both of §9.4's headline examples were presented as the *genuine* cases, the ones
 left after the padding correction. They were the least reliable in the set. A filter that admits a
 decision type it was not written for will do most of its damage in the cases that look cleanest.
+
+
+### 9.6 The dominance relation as evidence about the hand
+
+**Idea (owner's).** §9.5 established that humans never take the dominated side of a trap discard
+where the log records both cards -- 0 of 87. So the discard is evidence about the rest of the hand:
+if a player gave up their own or a neutral card to Quagmire or Bear Trap, an opponent recurring
+event of that printed Ops was very probably not in their hand. The solver can use that.
+
+**Implementation.** `tools/lib/ts_replayer_hands.py` records which card went to the trap
+(`GameFacts.trap_discard`) and adds a soft clause against holding any equal-Ops opponent recurring
+event that turn. Deliberately soft, and deliberately a *second* clause on the same literal so its
+weight adds to that card's existing hold cost rather than replacing it. It is a statement about how
+people play, not about what the rules permit, so everything the log establishes stays in the hard
+model and outranks it. Five Year Plan, the China Card, scoring cards and one-time events are
+excluded, matching `ai/eval/dominance`.
+
+**Result.** Apparent dominated trap discards across the corpus:
+
+| | dominated | rate |
+|:---|---:|---:|
+| before | 11/98 | 11.2% |
+| **after** | **7/94** | **7.4%** |
+| — Bear Trap | 2/61 | 3.3% (was 7.8%) |
+| — Quagmire | 5/33 | 15.2% (was 17.6%) |
+
+Restricted to pairs the log evidences on both sides it stays **0/87**, as it already was -- those
+cases were never the problem. What moved is the residue: four hands that previously held a
+dominating card the log does not list no longer do.
+
+**The remaining seven are not the solver's to fix.** In those the hard constraints pin the
+dominating card into the hand, so the log itself implies it was held even though that turn's hand
+list omits it. That is the log's incompleteness (§9.4: 3.5% of cards humans are recorded playing
+are missing from their own hand lists), not a preference the solver got wrong, and forcing it would
+be exactly the guessing the corpus rules forbid.
+
+**Unchanged by the rebuild:** 282 games convert with 0 failures, 144,844 samples, 84,073 with a
+value target. The dataset was rebuilt on the new hands.

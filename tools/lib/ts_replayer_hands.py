@@ -24,7 +24,7 @@ turn-by-turn borrowing, which is why this module keeps its own entry point.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Protocol, Set, Tuple
 
 import ts_engine as ts
 
@@ -45,6 +45,14 @@ _VOICE_OF_AMERICA = 74
 _COLONIAL_REAR_GUARDS = 63
 _MISSILE_ENVY = 49
 _RED_SCARE_PURGE = 31
+_FIVE_YEAR_PLAN = 5
+_CHINA_CARD = 6
+# A second soft clause on the same literal, so its weight adds to that card's _hold_cost rather
+# than replacing it: holding a card the dominance argument says was not held costs this much on
+# top of whatever holding it already cost. Set comparable to the top of _hold_cost's range (~164)
+# so it decides where the two disagree, while staying soft -- the hard rules still outrank it,
+# and anything the log establishes about the hand is in the hard model already.
+_DOMINANCE_PREFERENCE = 120
 _ERA_ENTERS = {"0": 1, "1": 4, "2": 8}          # early war, mid war, late war
 
 
@@ -88,6 +96,9 @@ class GameFacts:
         self.empty_hand: Set[Tuple[int, str]] = set()
         self.skipped: Set[Tuple[int, str]] = set()
         self.trapped: Set[Tuple[int, str]] = set()
+        # The card a side gave up to Quagmire / Bear Trap, per turn. Evidence about the rest of
+        # the hand: see _dominated_discard_ops.
+        self.trap_discard: Dict[Tuple[int, str], int] = {}
         self.red_scare: Set[Tuple[int, str]] = set()
         self.envy_took: Dict[Tuple[int, str], int] = {}
         self.listed: Dict[Tuple[int, str], Set[int]] = {}
@@ -290,6 +301,9 @@ class GameFacts:
                 self.red_scare.add((turn, side))
         if e.player in self.sides and e.trap_rolls:
             self.trapped.add((turn, e.player))
+            discarded = self.card_id(e.card or "")
+            if discarded:
+                self.trap_discard[(turn, e.player)] = int(discarded)
         # Only a round they had to take. The eighth is granted by North Sea Oil or a Space
         # Station to the one player who earned it and is theirs to decline, so skipping it says
         # nothing about the hand: at turn 9 of ts-replayer game 16 the USSR plays their eight
@@ -453,6 +467,50 @@ def _print_core(hard: List, tags: List[str], ctx=None) -> None:
         print("  these cannot all hold:")
         for c in solver.unsat_core():
             print("   ", str(c).strip("|").rsplit(" #", 1)[0])
+
+
+
+class _HasTrapDiscards(Protocol):
+    """All `_dominated_discard_ops` needs of GameFacts, so a test can supply it directly."""
+
+    trap_discard: Dict[Tuple[int, str], int]
+
+
+def _dominance_excluded(cid: int) -> bool:
+    """Cards the dominance argument never applies to.
+
+    Five Year Plan is the one recurring event whose firing can help its non-owner; the China Card
+    and scoring cards are never ordinary discards; a one-time event is a different and stronger
+    argument. Mirrors ai/eval/dominance, which measures the same relation.
+    """
+    if cid in (_FIVE_YEAR_PLAN, _CHINA_CARD):
+        return True
+    info = ts.CardData.get_card_info(cid)
+    return bool(info["is_scoring"]) or bool(info["one_time"])
+
+
+def _dominated_discard_ops(facts: "_HasTrapDiscards", turn: int, side: str) -> Optional[int]:
+    """Ops at which this side cannot have held an opponent recurring event, or None.
+
+    A player trapped by Quagmire or Bear Trap must discard, and discarding the opponent's
+    recurring event is never worse than discarding their own or a neutral card of the same
+    printed Ops: holding the opponent's means eventually firing it for them, and their own card
+    could have been played for their benefit instead. Measured over the corpus, humans respect
+    this without exception -- 0 of 87 trap discards where the log records both cards took the
+    dominated side (research/experiments.md 9.5).
+
+    So a discard of an own or neutral card is evidence about the rest of the hand: an opponent
+    recurring event at that Ops was very probably not in it. Returned as a preference rather
+    than a rule, because it is a statement about how people play and not about what the rules
+    permit -- the log always wins where it says otherwise.
+    """
+    discarded = facts.trap_discard.get((turn, side))
+    if not discarded or _dominance_excluded(discarded):
+        return None
+    opponent = "USSR" if side == "US" else "US"
+    if str(ts.CardData.get_card_info(discarded)["side"]) == opponent:
+        return None            # they discarded the opponent's card: the dominant choice
+    return int(ts.CardData.get_card_info(discarded)["ops"])
 
 
 def solve_hands(raws: List[Dict], hands: Dict, card_id,
@@ -646,6 +704,22 @@ def solve_hands(raws: List[Dict], hands: Dict, card_id,
         opt.add(hard)
         for c, t, s in free:
             opt.add_soft(z3.Not(held[(c, t, s)]), weight=_hold_cost(s, c, t, facts))
+        # See _DOMINANCE_PREFERENCE: an extra soft clause on the same literal, so it adds to
+        # that card's hold cost rather than replacing it. Still soft -- the hard model is solved
+        # first and anything the log establishes about the hand is in there already.
+        for t in turns:
+            for s in facts.sides:
+                ops = _dominated_discard_ops(facts, t, s)
+                if ops is None:
+                    continue
+                opponent = "USSR" if s == "US" else "US"
+                for c in cards:
+                    if (c, t, s) in settled or _dominance_excluded(c):
+                        continue
+                    info = ts.CardData.get_card_info(c)
+                    if str(info["side"]) != opponent or int(info["ops"]) != ops:
+                        continue
+                    opt.add_soft(z3.Not(held[(c, t, s)]), weight=_DOMINANCE_PREFERENCE)
         if opt.check() == z3.sat:
             model = opt.model()
 
