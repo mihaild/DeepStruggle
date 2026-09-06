@@ -10,6 +10,10 @@ RUN npm install -g @anthropic-ai/claude-code
 # Create non-root user (optional but recommended)
 RUN groupadd -g 1001 claude
 RUN useradd -m -s /bin/zsh -u 1001 -g 1001 claude
+ENV NPM_CONFIG_PREFIX=/home/claude/.npm-global
+ENV PATH="/home/claude/.npm-global/bin:${PATH}"
+RUN mkdir -p /home/claude/.npm-global && chown -R claude:claude /home/claude/.npm-global
+
 USER claude
 WORKDIR /workspace
 
