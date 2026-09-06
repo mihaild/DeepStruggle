@@ -53,13 +53,15 @@ cmake --build build_san -j
 # Python integration tests (run with struggler differential engine on path)
 PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
 # Single test file / test:
-PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/test_all_110_cards.py::TestName::test_case
+PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
 # Static typing — MUST return 0 errors after any Python change
 .venv/bin/pyrefly check
 ```
 
-`pytest.ini` excludes `tests/test_*differential*.py` and `external/**` from pyrefly's project scope by default; the differential tests cross-check against the `external/struggler` reference engine submodule.
+`tests/` is split by what's under test: `bindings/` (nanobind surface only), `engine_logic/` (game rules driven through the bindings — prefer adding new rule coverage to `engine/tests/*.cpp` instead, see below), `replayer/` (the `ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server + bot-client + Playwright E2E), and `differential/` (cross-engine fuzzing, WIP/unstable — see below).
+
+`pyrefly.toml` excludes `tests/differential/**` and `external/**` from pyrefly's project scope by default; the differential tests cross-check against the `external/struggler` and `external/ts-blockchain` reference engine submodules and are gated behind the `differential_fuzz` pytest marker / `--run-fuzz` flag (see `tests/conftest.py`) since they are still WIP and not run by default.
 
 ## Running training / tournaments / matches / web play
 

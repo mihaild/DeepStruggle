@@ -49,5 +49,5 @@ This directory contains the backend server for Twilight Struggle, providing real
 PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # Run server and bot integration tests
-PYTHONPATH=. .venv/bin/pytest -v tests/test_server_and_bot.py tests/test_web_workbench.py
+PYTHONPATH=. .venv/bin/pytest -v tests/web/test_server_and_bot.py tests/web/test_web_workbench.py
 ```

@@ -36,5 +36,5 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 
 # Run Python binding tests
-PYTHONPATH=. .venv/bin/pytest -v tests/test_bindings.py
+PYTHONPATH=. .venv/bin/pytest -v tests/bindings/
 ```

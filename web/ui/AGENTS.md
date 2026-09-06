@@ -74,12 +74,12 @@ npm run build
 
 Frontend metadata delivery, index.html DOM structure, and full-fidelity replay snapshots are verified automatically via:
 ```bash
-PYTHONPATH=. .venv/bin/pytest -v tests/test_web_workbench.py
+PYTHONPATH=. .venv/bin/pytest -v tests/web/test_web_workbench.py
 ```
 
 ### End-to-End Headless Chrome Tests
 Automated browser testing using Playwright in headless Chromium:
 ```bash
-PYTHONPATH=build:. .venv/bin/pytest -v tests/test_e2e_space_race.py
+PYTHONPATH=build:. .venv/bin/pytest -v tests/web/test_e2e_space_race.py
 ```
 Validates top header layout, Space Race widget rendering without clipping/overflow, modal open/close (click and Escape key), 9 milestone box cards metadata, and live replay timeline state synchronization.

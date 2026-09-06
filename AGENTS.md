@@ -175,20 +175,39 @@ graph TD
 │
 ├── external/                   # External integrations & differential engines
 │   ├── README.md               # Integration guide
-│   └── struggler/              # External reference engine (Rust/Python)
+│   ├── struggler/              # External reference engine (Python)
+│   └── ts-blockchain/          # External reference engine (headless Node.js)
 │
-├── tests/                      # Python pytest integration test suite (373 tests)
-│   ├── test_credit_assignment.py # Unit tests for reward propagation & Rule 4.3 headlines
-│   ├── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
-│   ├── test_all_110_cards.py   # Comprehensive unit tests for all 110 cards
-│   ├── test_all_110_cards_differential.py # Exhaustive 110-card cross-engine validation (131 tests)
-│   ├── test_struggler_differential.py # Cross-engine differential test suite
-│   ├── test_card_fixes.py      # Dedicated verification suite for card rules fixes
-│   ├── test_bindings.py        # Validates Python nanobind module
-│   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation
-│   ├── test_types_and_json_schemas.py # Validates replay JSON schema and pyrefly typing
-│   ├── test_web_workbench.py   # FastAPI client and UI metadata endpoint tests
-│   └── test_e2e_space_race.py  # Playwright E2E browser tests
+├── tests/                      # Python pytest suite (1360 tests with external/struggler on
+│                                # PYTHONPATH per the invocation below; 969 without it, since the
+│                                # 2 differential-fuzzing files then fail to import), split by what's under test
+│   ├── conftest.py             # --run-fuzz option; skips differential_fuzz tests by default
+│   ├── bindings/                # Binding-layer smoke tests only (the nanobind surface itself)
+│   │   ├── test_bindings.py       # Validates Python nanobind module
+│   │   ├── test_types_and_json_schemas.py # Validates replay JSON schema and pyrefly typing
+│   │   └── test_engine_build_is_current.py # Guards against a stale .so shadowing the real build
+│   ├── engine_logic/            # Game-rule tests driven through the bindings (110 cards, headline
+│   │   │                         # resolution, space race, coups, etc.) -- migration debt: new engine
+│   │   │                         # rule coverage belongs in engine/tests/*.cpp, not here (see AGENTS.md
+│   │   │                         # "keep documentation synchronized" and CLAUDE.md's own stated preference)
+│   │   ├── test_all_110_cards.py  # Comprehensive unit tests for all 110 cards
+│   │   └── test_card_fixes.py     # Dedicated verification suite for card rules fixes
+│   ├── replayer/                 # tools/lib/ts_replayer_*.py conversion pipeline (61 targeted
+│   │   │                         # edge-case files, one human-replay-corpus mismatch each, plus parsing)
+│   │   └── test_ts_replayer_parse.py # Grammar/arithmetic checks on the raw log parser
+│   ├── training/                 # RL/reward/eval stack: NashPG, credit assignment, GAE, PIMCTS, etc.
+│   │   ├── test_credit_assignment.py # Unit tests for reward propagation & Rule 4.3 headlines
+│   │   └── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
+│   ├── web/                     # Server, bot-client, and browser E2E tests
+│   │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation
+│   │   ├── test_web_workbench.py   # FastAPI client and UI metadata endpoint tests
+│   │   └── test_e2e_space_race.py  # Playwright E2E browser tests
+│   └── differential/             # Cross-engine fuzzing -- WIP/unstable, gated behind the
+│       │                         # differential_fuzz marker / --run-fuzz flag, not run by default
+│       ├── test_differential_fuzzing.py # 3-way fuzz: native/struggler/ts-blockchain
+│       ├── test_unified_differential.py # Parameterized differential runs vs each external engine
+│       └── engine_interface.py, native_adapter.py, struggler_adapter.py, blockchain_adapter.py,
+│           blockchain_bridge.js # Shared EngineProtocol adapters for the three engines
 │
 ├── rules/                      # [GIT IGNORED] General game rules, PDF, map & card descriptions
 │   ├── Rules_Final.pdf         # Official Twilight Struggle Deluxe Edition rulebook
@@ -397,12 +416,16 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 
 ## 5. Run Test Suites
 ```bash
-# C++ Unit Tests (304 tests) & Performance Benchmark
+# C++ Unit Tests (368 tests) & Performance Benchmark
 ./build/release/engine/ts_tests
 ./build/release/engine/ts_benchmark
 
-# Python Integration Tests (368 tests including Neural & NashPG suite)
+# Python Integration Tests (1360 tests, including Neural & NashPG suite)
 PYTHONPATH=.:external/struggler/src .venv/bin/pytest -v tests/
+
+# Just one category, e.g. binding smoke tests or the replayer pipeline:
+PYTHONPATH=. .venv/bin/pytest -v tests/bindings/
+PYTHONPATH=. .venv/bin/pytest -v tests/replayer/
 
 # Static Type Checking with Pyrefly (must return 0 errors)
 .venv/bin/pyrefly check

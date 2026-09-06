@@ -23,7 +23,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             return
 
     skip_marker = pytest.mark.skip(
-        reason="Differential fuzzers against external engines are not run by default. Use --run-fuzz, -m differential_fuzz, or specify tests/test_differential_fuzzing.py"
+        reason="Differential fuzzers against external engines are not run by default. Use --run-fuzz, -m differential_fuzz, or specify tests/differential/test_differential_fuzzing.py"
     )
     for item in items:
         if "differential_fuzz" in item.keywords:

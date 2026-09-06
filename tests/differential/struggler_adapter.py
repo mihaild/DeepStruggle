@@ -19,7 +19,7 @@ from struggler.engine.types import (
     Action as SAction,
 )
 from struggler.engine.cards import load_cards as s_load_cards
-from tests.engine_interface import (
+from tests.differential.engine_interface import (
     Region,
     get_country_info,
     get_country_id,
@@ -126,7 +126,7 @@ _FLAG_NAME_TO_STRUGGLER: dict[str, str] = {
 # STRUGGLER STATE WRAPPER
 # =============================================================================
 
-from tests.engine_interface import EFFECT_BIT_TO_NAME
+from tests.differential.engine_interface import EFFECT_BIT_TO_NAME
 
 class StrugglerGameState(GameStateProtocol):
     """Exposes a Struggler engine instance conforming to GameStateProtocol."""

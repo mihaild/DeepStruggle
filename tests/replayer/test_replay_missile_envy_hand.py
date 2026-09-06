@@ -81,5 +81,5 @@ def test_replay_64_converts_end_to_end() -> None:
     conv = _convert(64)
     assert conv.failure is None, f"replay 64 stopped at {conv.failure}"
     # Everything but the last turn, which the recording stops inside -- see
-    # tests/test_replay_unfinished_final_turn.py.
+    # tests/replayer/test_replay_unfinished_final_turn.py.
     assert conv.entries_converted == 106

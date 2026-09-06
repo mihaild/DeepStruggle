@@ -64,7 +64,7 @@ def test_the_headline_games_this_needed_the_engine_for(replay_id: int, entries: 
     """Ops-first in a headline used to lose the Event outright -- see advance_after_ops.
 
     Replay 137's count stops short of its total: the recording stops inside turn 5, and that
-    turn is a fragment -- see tests/test_replay_unfinished_final_turn.py.
+    turn is a fragment -- see tests/replayer/test_replay_unfinished_final_turn.py.
     """
     conv = convert_game(_game(replay_id))
     assert conv.failure is None, f"replay {replay_id} stopped at {conv.failure}"
