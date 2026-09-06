@@ -716,30 +716,74 @@ lengths without this exclusion.
 **The DEFCON-1 category is under query — see 8.4.** Humans take 1 of 29. That is not caution; it
 is what you would expect if the move is a blunder that the classifier has labelled a win.
 
-### 8.4 A DEFCON-1 attribution question for the engine — NOT a diagnosis, needs a ruling
+### 8.4 The DEFCON-1 "wins" are illegal moves the engine offers — CONFIRMED BUG
 
-Every DEFCON-1 "win" examined resolves the same way, and the cleanest case is:
+My first reading of these, that DEFCON-1 losses were attributed to the wrong player, was **wrong**.
+`resolve_defcon_one_loss` (`engine/include/ts/defcon.hpp:28`) makes the *phasing* player lose
+regardless of who drove DEFCON down, which is the rule. The engine is right about that.
 
-**replay 139, turn 9, action round 2.** Phasing player US; the USSR is the mover and the decision
-player. The card is **#91 Ortega Elected in Nicaragua** — a USSR card, played here during the US's
-action round, whose event gives the USSR a free coup. `POINT_NODE` with four options; the engine
-labels targeting **Cuba** (country 71, a Central America battleground) as a *win for the USSR*.
-Following it: the coup resolves, DEFCON falls 2 → 1, the game ends, and
-`get_terminal_utility` returns **-1.0, i.e. the US loses**.
+The actual defect is narrower and worse. **Two events run their own free-coup target lists and
+never consult `Operations::can_coup`:**
 
-By the rules the player who takes DEFCON to 1 loses, and the coup here is the USSR's. So the
-expected result is a USSR loss, and the engine is recording a USSR win. The distinguishing feature
-of this position is that the *acting* player and the *phasing* player differ — an opponent's card
-played for Ops fired its owner's event — which is consistent with the loss being attributed to the
-phasing player rather than to whoever actually couped.
+| card | site | what it validates |
+|:---|:---|:---|
+| #91 Ortega Elected in Nicaragua | `card_dispatcher.cpp:1431` | adjacency to Nicaragua only |
+| #107 Che | `card_dispatcher.cpp:1402` | region, non-battleground, not visited |
 
-Same signature at: replay 16 T9 AR3, replay 165 T9 AR3, replay 245 T8 AR1, all USSR, all targeting
-Cuba at DEFCON 2, all ending DEFCON 1 with the US recorded as the loser. Humans avoid these moves
-at 28 of 29, which is what a player who knows the rule would do.
+`can_coup_or_realign` refuses a country the opponent has no influence in
+(`engine/src/ops.cpp:119`), and `get_coup_target_mask` is built on it, so an ordinary Ops coup is
+filtered correctly. These two bypass it, and so offer coups the rules forbid — along with,
+presumably, the DEFCON regional restrictions, NATO and The Reformer, which live in the same
+function.
 
-**If this is an engine bug it matters beyond the metric**, because `classify_legal_actions` is
-built on the engine's own terminal utility, and so is every reward: a policy trained against it
-would learn that couping a battleground at DEFCON 2 wins when the card came from the opponent.
-Per invariant 11 this is reported, not fixed. A related complaint the engine prints during
-conversion is also unexplained: `POINT_NODE with no legal target and no early stop`, at turn 3
-AR 0 with `resolving_card 22`.
+**Replay 139, turn 9, action round 2.** The US played Ortega — a USSR card — for Ops, so its event
+fired and handed the USSR a free coup. The engine offered **Cuba**. The log records Cuba as
+`inflUS 0 / inflUSSR 3` at *every* entry of turn 9, and the engine state agrees exactly, so the
+reconstruction is correct and the board is not in doubt. With no US influence there, the USSR
+cannot coup Cuba. But Cuba is a battleground, so the offered coup took DEFCON 2 → 1 and ended the
+game against the phasing player, the US. That is why it scored as a USSR "win".
+
+Same shape at **replay 16 T9 AR3**, **replay 165 T9 AR3**, **replay 245 T8 AR1** — all Ortega, all
+Cuba, all `US 0 / USSR 3`.
+
+`tests/engine_logic/test_free_coup_target_legality.py` reproduces both synthetically: Ortega offers
+`[67, 68, 71]` including Cuba with zero US influence, and Che offers 26 countries without checking
+influence at all. A third test confirms the ordinary Ops path filters correctly, so the defect is
+in the two event handlers, not in the coup rule. They are marked `xfail(strict=True)`, so they
+flip to a failure the moment the handlers start filtering and the markers can be removed. Per
+invariant 11 the fix is the user's call.
+
+**Why this matters beyond the metric.** `classify_legal_actions` reads the engine's terminal
+utility, and so does every reward. A policy trained against this learns that an opponent's Ortega
+is a free win whenever a battleground sits next to Nicaragua — a move the rules do not permit.
+
+### 8.5 The forced-win metric under-detects as well as over-detects
+
+Three further corrections, from a review of the individual cases, all pointing the same way: the
+metric is not measuring what §8.1 claimed.
+
+**It misses wins that need a choice, and then scores them as declines.**
+`classify_legal_actions` follows only *forced* continuations, which its docstring is explicit
+about. So when a position has several winning lines and the human takes one the walk cannot see,
+it is recorded as declining. **Replay 104 T9 AR7** is exactly this: the US had more than one path
+to a forced win, and playing How I Learned to Stop Worrying won just as Duck and Cover would
+have. It is counted as a decline; it is a win taken. The metric should ask whether the action the
+player chose also wins, not whether it is in the classifier's set.
+
+**A headline is not an action round, and cannot be judged as one.** **Replay 224 T7 AR0** and
+**replay 259 T8 AR0** are headline decisions. Both players choose simultaneously and neither
+knows the other's card, so a line that is forced *given the board* is not available information
+to the player. Declining it is ordinary play under uncertainty, not an error. Headline decisions
+should be excluded from this metric entirely.
+
+**And at least one labelled win does not reach 20 VP.** At **replay 259** the US was on 17 VP and
+KAL-007 moves them to 19 — not a win. The engine nonetheless drives that line to a terminal state
+it scores +1.0 for the US, so there is a second defect here, distinct from 8.4, in whatever
+terminal the forced walk arrives at. Not yet diagnosed.
+
+**Where this leaves 8.1.** Of the 64 non-endgame opportunities, 29 are the illegal Ortega/Che
+coups of 8.4, and an unknown further number are headline decisions or wins-taken-by-another-line.
+The remaining sample is too small and too contaminated to support any statement about how humans
+treat forced wins. **8.1 is withdrawn and not replaced.** The instrument needs fixing first: skip
+headlines, test the chosen action for a win rather than set membership, exclude the last action
+round of turn 10, and re-run once the free-coup handlers filter.
