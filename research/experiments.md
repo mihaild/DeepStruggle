@@ -972,3 +972,41 @@ Four of the six sit at turn 3 AR6 or turn 4 AR7 and are all worth exactly 2 on U
 is suggestive of one shared cause rather than five unrelated ones. None is diagnosed. This is the
 whole remaining VP disagreement between the engine and 282 human games — down from the "194 games,
 mean 2.2 VP" of 8.6, which was measuring the log's own bookkeeping lag.
+
+
+### 8.7.4 The midgame cluster is the military operations penalty — diagnosis confirmed
+
+The six midgame disagreements of 8.7.3 are not engine errors. Traced at **replay 16, turn 4 AR7**:
+
+* The log narrates `US gains 3 VP. Score is USSR 5.` — the score **after** the play and
+  **before** the turn is cleaned up.
+* The engine, at the point the converter compares, is already on **turn 5** at **−7 VP**, with
+  military operations reset.
+* Entering the round the USSR held 5 military operations to the US's 0 at DEFCON 2, which is a
+  2 VP penalty to the US. −5 − 2 = −7.
+
+Both numbers are right; they are taken at different moments. The log books the penalty on a later
+entry — at turn 5 AR1 it narrates `Score is USSR 6`, which is the engine's −7 plus the 1 VP that
+entry awards, and the two agree from there on. That accounts for the whole cluster: every one of
+the six sits on a turn's last action round, and the magnitudes (2, 2, 2, 2, 1) are military
+operations shortfalls.
+
+**The obvious repair does not work, and the reason is worth recording.** The converter currently
+skips the comparison whenever an entry crosses a turn boundary (`crossed_turn`), which leaves one
+entry in eight unchecked. Comparing against the score as it stood before the turn moved would
+restore that coverage — but there is no such observable moment. Wrapping `Engine.step` to capture
+the score the instant before the turn number changes yields **−8**, not the −5 the log states,
+because Alliance For Progress's own +3 and the turn cleanup are applied **within a single engine
+step**. Between the event's VP and the penalty there is no step boundary to read.
+
+Two ways to get the check, neither done:
+
+1. **Engine-side**: record the score at the start of cleanup (or make cleanup its own step), so
+   the pre-penalty value can be read. Per invariant 11 this needs the owner's approval.
+2. **Log-side**: derive the expected penalty from the log, which prints both military operations
+   totals and DEFCON, and check the engine's post-cleanup score against
+   `narrated + min(ussr_ops, defcon) − min(us_ops, defcon)`. Self-contained, but duplicates a
+   rule the engine already implements, so it is a differential check rather than a reconciliation.
+
+Until one of them exists, a turn's last action round remains unverified for score, and 8.7.3's
+six "unexplained" midgame entries should be read as explained.
