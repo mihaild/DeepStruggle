@@ -649,7 +649,7 @@ mostly the *recording* stopping rather than games ending, and whether that trunc
 outcome-neutral was not tested. The turn 1-4 bucket is empty for humans, so §4.6's short-game row
 has no counterpart. And none of this says *why* the agents fail to convert the late war.
 
-### 8.1 Humans decline forced wins twice as often as the agents
+### 8.1 Humans decline forced wins twice as often as the agents — WITHDRAWN, see 8.3
 
 | | value |
 |:---|---:|
@@ -684,3 +684,62 @@ Globally the critic is mildly **pessimistic** here, and its largest errors are i
 the pessimism elsewhere. So §4.2's finding is narrower than stated: not a global optimism, but a
 miscalibration in one band, measured on a state distribution the agent generates itself. Off its own
 distribution the sign flips.
+
+
+### 8.3 The human take rate was pooling two different things — 8.1 withdrawn
+
+**8.1's 47.7% is not a fact about human play.** Splitting the 149 opportunities by *how* the win
+arrives takes the surprise out of it entirely:
+
+| | opportunities | taken | take rate |
+|:---|---:|---:|---:|
+| all, as 8.1 reported | 149 | 71 | 47.7% |
+| — win by VP threshold or scoring | 117 | 68 | 58.1% |
+| — win by the game reaching DEFCON 1 | 32 | 3 | 9.4% |
+| **excluding the last action round of turn 10** | **64** | **32** | **50.0%** |
+| — win by VP threshold or scoring | 35 | 31 | **88.6%** |
+| — win by the game reaching DEFCON 1 | 29 | 1 | **3.4%** |
+
+**On ordinary wins humans are better than either agent** — 88.6% against the control's 81.2% and
+K=40's 72.4%. The headline was dragged down by a second category humans essentially never take.
+
+Two separate corrections are folded in above:
+
+**The last action round of turn 10 is an artifact.** Final scoring fires after it no matter what,
+so every action whose forced continuation ends the game in your favour is labelled a win. 46 of
+78 declines sit there and **all 46 decliners won the game anyway**: they were choosing among
+winning moves, not missing one. This inflates the human sample specifically, because humans reach
+turn 10 far more often than our agents do (§8 records 94 games at turn 10; §4 has agents reaching
+it in 11.7%). The metric is therefore not comparable across populations with different game
+lengths without this exclusion.
+
+**The DEFCON-1 category is under query — see 8.4.** Humans take 1 of 29. That is not caution; it
+is what you would expect if the move is a blunder that the classifier has labelled a win.
+
+### 8.4 A DEFCON-1 attribution question for the engine — NOT a diagnosis, needs a ruling
+
+Every DEFCON-1 "win" examined resolves the same way, and the cleanest case is:
+
+**replay 139, turn 9, action round 2.** Phasing player US; the USSR is the mover and the decision
+player. The card is **#91 Ortega Elected in Nicaragua** — a USSR card, played here during the US's
+action round, whose event gives the USSR a free coup. `POINT_NODE` with four options; the engine
+labels targeting **Cuba** (country 71, a Central America battleground) as a *win for the USSR*.
+Following it: the coup resolves, DEFCON falls 2 → 1, the game ends, and
+`get_terminal_utility` returns **-1.0, i.e. the US loses**.
+
+By the rules the player who takes DEFCON to 1 loses, and the coup here is the USSR's. So the
+expected result is a USSR loss, and the engine is recording a USSR win. The distinguishing feature
+of this position is that the *acting* player and the *phasing* player differ — an opponent's card
+played for Ops fired its owner's event — which is consistent with the loss being attributed to the
+phasing player rather than to whoever actually couped.
+
+Same signature at: replay 16 T9 AR3, replay 165 T9 AR3, replay 245 T8 AR1, all USSR, all targeting
+Cuba at DEFCON 2, all ending DEFCON 1 with the US recorded as the loser. Humans avoid these moves
+at 28 of 29, which is what a player who knows the rule would do.
+
+**If this is an engine bug it matters beyond the metric**, because `classify_legal_actions` is
+built on the engine's own terminal utility, and so is every reward: a policy trained against it
+would learn that couping a battleground at DEFCON 2 wins when the card came from the opponent.
+Per invariant 11 this is reported, not fixed. A related complaint the engine prints during
+conversion is also unexplained: `POINT_NODE with no legal target and no early stop`, at turn 3
+AR 0 with `resolving_card 22`.
