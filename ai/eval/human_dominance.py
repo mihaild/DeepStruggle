@@ -105,8 +105,17 @@ def measure_game(game: Dict[str, Any], tally: DominanceTally, replay_id: int) ->
         ctx = state.ctx()
 
         # --- discard under a trap -------------------------------------------------------
+        # The phase check is not incidental. A headline play is a SELECT_CARD decision too, and
+        # the trap flag is set in that state as well, so without it a headline is scored as a
+        # trap discard -- and it is scored as an error almost every time, because the rule says
+        # "discard the opponent's recurring event" while a headline is where you play your own
+        # best card. That accounted for 14 of the 25 errors this first reported: at turn 5 of
+        # replay 63 the USSR headlined Che and discarded Duck and Cover at AR1, and only the
+        # headline was counted; at turn 6 of replay 71 the USSR headlined Quagmire.
         trap = trapped_effect(state, mover)
-        if trap is not None and ctx.decision_type == ts.DecisionType.SELECT_CARD:
+        if (trap is not None
+                and ctx.decision_type == ts.DecisionType.SELECT_CARD
+                and state.current_phase == ts.Phase.ACTION_ROUND):
             legal = legal_card_actions(state)
             pairs = discard_dominance_pairs(state, mover, legal)
             if pairs:

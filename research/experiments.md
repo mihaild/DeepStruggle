@@ -1161,7 +1161,7 @@ rather than the starting point, it persists for the whole run, and its quality i
 Build that net at ~8 epochs.
 
 
-### 9.3 Do the humans respect the dominance relations? — partly, and unevenly — TRAP NUMBERS CORRECTED IN 9.4
+### 9.3 Do the humans respect the dominance relations? — TRAP NUMBERS WRONG, SUPERSEDED BY 9.5
 
 **Question.** §4.8 called the dominance result "the strongest argument yet for demonstrations,
 since one human game shows the reversal that RL needs thousands to notice". That is a claim about
@@ -1202,7 +1202,7 @@ across the corpus and is what makes the 0.4% meaningful. §4.8 records the same 
 direction — measuring against all space plays reads 2.4% and badly understates the agents' rate.
 
 
-### 9.4 Half the humans' apparent trap mistakes are ours, not theirs
+### 9.4 Half the humans' apparent trap mistakes are ours, not theirs — PARTLY WRONG, SUPERSEDED BY 9.5
 
 **Question.** §9.3 put humans at 22.1% dominated on trap discards, better than the control but not
 clearly better than K=40. Are those human mistakes, or does our hand reconstruction hand them a
@@ -1257,3 +1257,52 @@ That is a data-quality finding rather than a bug: nothing is *forced*, and the c
 rules are intact. But it bounds what the corpus can teach about card selection, it is a plausible
 contributor to §9's negative result, and it means any future measurement conditioned on hand
 contents needs the same log-evidenced restriction applied here.
+
+
+### 9.5 The humans never once chose a dominated trap discard — 9.3 and 9.4 corrected
+
+**Both earlier readings were wrong, and the second error was mine rather than the corpus's.** The
+project owner checked two of the cases §9.4 called genuine and found the log says otherwise:
+
+* **replay 63, turn 5.** The USSR *headlined* Che and discarded **Duck and Cover** at AR1. The log:
+  `USSR Headlines Che`, then `Turn 5, USSR AR1: Duck and Cover: USSR discards Duck and Cover`.
+  Duck and Cover is a US card, so that discard is the *dominant* choice.
+* **replay 71, turn 6.** The USSR *headlined* Quagmire; the Bear Trap discards were Duck and Cover
+  and then Camp David Accords.
+
+**The converter is right in both.** Driving replay 63 gives headline USSR → Che, US → Red
+Scare/Purge, then AR1 USSR → Duck and Cover, matching the log line for line. **The corpus does not
+need reconstructing.**
+
+**The fault was in the dominance driver.** A headline play is a `SELECT_CARD` decision and the trap
+flag is set in that state too, so a headline made while trapped was scored as a trap discard — and
+scored as an error nearly every time, because the rule says "discard the opponent's recurring
+event" while a headline is where you play your own best card. **14 of 15 decidable headline
+decisions were counted as errors**, against 11 of 98 in the action rounds where the rule belongs.
+
+**Corrected, with both fixes applied:**
+
+| | trap discards dominated |
+|:---|---:|
+| §9.3, as first measured | 22.1% (25/113) |
+| headline plays excluded | 11.2% (11/98) |
+| **and restricted to pairs the log evidences on both sides** | **0.0% (0/87)** |
+
+Bear Trap 0/59, Quagmire 0/28. **Every remaining apparent mistake involved a dominant alternative
+the log does not list** — a card the reconstruction supplied, or one the log omits. On decisions
+where the log records both cards, the humans in this corpus never chose the dominated one.
+
+**The bound still applies in the other direction.** The log's hand lists are incomplete (§9.4:
+3.5% of the cards humans are recorded *playing* are absent from them), so restricting to
+log-evidenced pairs is conservative and may discard genuine decisions. The true rate lies between
+0% and 11.2%. At either end it beats every agent we have measured: traps 18.2-37.5%, space race
+12.6-18.1%.
+
+**Verdict, replacing §9.3's.** The corpus carries the dominance signal on all three classes, not
+one. §4.8's argument for demonstrations stands as written; §9.3's doubt about it was an artefact of
+this driver. What that means for §9's negative result is unchanged — the corpus contains the signal
+and BC warmup still failed to deliver it, which is a statement about the mechanism, not the data.
+
+**Method note.** Both of §9.4's headline examples were presented as the *genuine* cases, the ones
+left after the padding correction. They were the least reliable in the set. A filter that admits a
+decision type it was not written for will do most of its damage in the cases that look cleanest.
