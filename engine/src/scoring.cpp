@@ -223,6 +223,17 @@ void Scoring::score_southeast_asia(GameState& state) noexcept {
 }
 
 void Scoring::evaluate_military_ops(GameState& state) noexcept {
+    // A decided game has no turn end. The required Military Operations comparison is part of
+    // the turn's cleanup, and cleanup never happens if the game finished during the action
+    // rounds -- reaching 20 VP ends it there and then. Awarding the deficit anyway moves the
+    // score back off 20 and un-wins a won game: at 20 VP with the USSR on 5 operations to the
+    // US's 0 at DEFCON 2, this returned +18 and is_terminal went from true to false.
+    if (state.current_phase == Phase::GAME_OVER ||
+        state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+
     uint8_t req = state.defcon;
     uint8_t us_def = (state.us_mil_ops >= req) ? 0 : (req - state.us_mil_ops);
     uint8_t ussr_def = (state.ussr_mil_ops >= req) ? 0 : (req - state.ussr_mil_ops);

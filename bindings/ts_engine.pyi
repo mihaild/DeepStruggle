@@ -77,6 +77,8 @@ class RollType(enum.IntEnum):
 
     TRAP_ESCAPE = 7
 
+    TURN_CLEANUP = 8
+
 NONE: DecisionType = DecisionType.NONE
 
 COUP: OpMode = OpMode.COUP
@@ -92,6 +94,8 @@ OLYMPIC_GAMES: RollType = RollType.OLYMPIC_GAMES
 SUMMIT: RollType = RollType.SUMMIT
 
 TRAP_ESCAPE: RollType = RollType.TRAP_ESCAPE
+
+TURN_CLEANUP: RollType = RollType.TURN_CLEANUP
 
 class Player(enum.IntEnum):
     NONE = 0

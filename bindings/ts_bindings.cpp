@@ -49,6 +49,7 @@ static const char* roll_type_to_str(ts::RollType t) noexcept {
         case ts::RollType::OLYMPIC_GAMES: return "OLYMPIC_GAMES";
         case ts::RollType::SUMMIT: return "SUMMIT";
         case ts::RollType::TRAP_ESCAPE: return "TRAP_ESCAPE";
+        case ts::RollType::TURN_CLEANUP: return "TURN_CLEANUP";
         default: return "NONE";
     }
 }
@@ -404,6 +405,7 @@ NB_MODULE(ts_engine, m) {
         .value("OLYMPIC_GAMES", ts::RollType::OLYMPIC_GAMES)
         .value("SUMMIT", ts::RollType::SUMMIT)
         .value("TRAP_ESCAPE", ts::RollType::TRAP_ESCAPE)
+        .value("TURN_CLEANUP", ts::RollType::TURN_CLEANUP)
         .export_values();
 
     nb::enum_<ts::Player>(m, "Player", nb::is_arithmetic())

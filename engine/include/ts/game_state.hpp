@@ -16,7 +16,16 @@ enum class RollType : uint8_t {
     WAR_EVENT = 4,
     OLYMPIC_GAMES = 5,
     SUMMIT = 6,
-    TRAP_ESCAPE = 7
+    TRAP_ESCAPE = 7,
+    // Not a die at all: the turn's cleanup, parked on the chance-node machinery so it becomes a
+    // step of its own rather than happening inside the action round that ended the turn. Two
+    // reasons. The score the log narrates for a turn's last action round is the score *before*
+    // cleanup pays the Military Operations deficit, and with cleanup folded into the same step
+    // there was no moment at which the engine held that number, so the comparison had to be
+    // skipped -- one entry in eight going unchecked. And a game decided during an action round
+    // must not have cleanup applied to it afterwards: awarding the deficit at 20 VP moved the
+    // score back off 20 and un-won a won game.
+    TURN_CLEANUP = 8
 };
 
 // Structured record of a die roll event occurring within a step (16 bytes)

@@ -459,7 +459,7 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
 
     if (state.action_round > max_ar) {
         // All Action Rounds completed for this turn -> proceed to turn end
-        end_turn(state);
+        begin_turn_cleanup(state);
         return;
     }
 
@@ -475,7 +475,7 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
             if (state.phasing_player == Player::USSR) {
                 state.phasing_player = Player::US;  // not owed to the USSR; offer to the US
             } else {
-                end_turn(state);                    // both sides done with round eight
+                begin_turn_cleanup(state);          // both sides done with round eight
                 return;
             }
         }
@@ -503,7 +503,28 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     offer_cuban_missile_payoff(state);
 }
 
+void StateMachine::begin_turn_cleanup(GameState& state) noexcept {
+    // A decided game has no turn end at all, so there is nothing to park.
+    if (state.current_phase == Phase::GAME_OVER ||
+        state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+    state.ctx() = DecisionContext{};
+    state.ctx().decision_player = Player::NONE;
+    state.ctx().decision_type = DecisionType::ROLL_DIE;
+    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::TURN_CLEANUP);
+}
+
 void StateMachine::end_turn(GameState& state) noexcept {
+    // Nothing in the turn's cleanup happens if the game is already decided -- the win took
+    // effect in the action round that produced it, and there is no turn end after it.
+    if (state.current_phase == Phase::GAME_OVER ||
+        state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+
     // Phase E: Military Operations Status Check
     Scoring::evaluate_military_ops(state);
     if (state.current_phase == Phase::GAME_OVER) return;
@@ -1197,6 +1218,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
                         case DecisionType::ROLL_DIE: {
                 RollType rt = static_cast<RollType>(state.ctx().temp_cards[1]);
+
+                if (rt == RollType::TURN_CLEANUP) {
+                    end_turn(state);
+                    return true;
+                }
+
                 uint8_t forced_r1 = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
                 uint8_t forced_r2 = action.secondary_id != 0 ? action.secondary_id : state.ctx().temp_cards[3];
 

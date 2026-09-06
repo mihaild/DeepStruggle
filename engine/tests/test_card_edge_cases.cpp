@@ -1778,6 +1778,13 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
     // Step to finish AR 6 of Turn 2 (last AR in early war)
     ts::StateMachine::advance_after_action_round(state);
 
+    // The turn's cleanup is a step of its own now (RollType::TURN_CLEANUP), so the last action
+    // round leaves a chance node rather than running the turn end inline. Drain it exactly as
+    // every other chance node is drained.
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::NONE);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0});
+
     // End of turn reached -> US with Space Walk is prompted to discard a card!
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);

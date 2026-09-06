@@ -65,10 +65,15 @@ TEST(FullGameTest, Wrapper_TurnByTurn_ExecutionAndStateInspection) {
         // Turn invariants
         ASSERT_GE(wrapper.get_vp(), -20);
         ASSERT_LE(wrapper.get_vp(), 20);
-        if (wrapper.get_defcon() < 2) {
-            std::cout << "DEFCON dropped to " << (int)wrapper.get_defcon() << " on turn " << (int)expected_turn << " phase: " << (int)wrapper.get_phase() << std::endl;
+        // DEFCON 1 is a legal way for a game to end, so it is only an invariant violation
+        // while the game is still running. This policy chooses by step index, and the turn's
+        // cleanup became a step of its own (RollType::TURN_CLEANUP), which shifts the scripted
+        // trajectory -- with this seed it now reaches nuclear war on turn 7 instead of playing
+        // to final scoring. Neither ending is a rules problem; asserting DEFCON on a finished
+        // game was asserting a property of the old step numbering.
+        if (!wrapper.is_terminal()) {
+            ASSERT_GE(wrapper.get_defcon(), 2);
         }
-        ASSERT_GE(wrapper.get_defcon(), 2);
     }
 
     // The game must terminate cleanly. It may end early on a 20 VP win rather than running
