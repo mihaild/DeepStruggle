@@ -1,0 +1,486 @@
+{
+  "metadata": {
+    "game_title": "Twilight Struggle: Deluxe Edition",
+    "version": "Deluxe Edition (110 Cards)",
+    "rulebook_reference": "Rules_Final.pdf",
+    "target_architecture": "Deterministic Zero-Allocation C++20 Simulation Engine",
+    "interfaces": {
+      "state_definition": "game_state.txt",
+      "action_interface": "action_interface.txt",
+      "persistent_flags": "flags.json",
+      "card_primitives": "card_primitives.json"
+    }
+  },
+  "superpowers": {
+    "US": {
+      "id": 1,
+      "enum_name": "Player::US",
+      "display_name": "United States",
+      "vp_direction": 1,
+      "color_star": "WHITE"
+    },
+    "USSR": {
+      "id": -1,
+      "enum_name": "Player::USSR",
+      "display_name": "Soviet Union",
+      "vp_direction": -1,
+      "color_star": "RED"
+    },
+    "NEUTRAL": {
+      "id": 0,
+      "enum_name": "Player::NONE",
+      "display_name": "Neutral / Uncontrolled",
+      "vp_direction": 0,
+      "color_star": "SPLIT"
+    }
+  },
+  "board_topology": {
+    "regions": [
+      {
+        "region_id": 0,
+        "region_name": "Europe",
+        "sub_regions": ["Western Europe", "Eastern Europe"],
+        "scoring_card_id": 2,
+        "special_rules": {
+          "control_triggers_instant_victory": true,
+          "overlap_countries": ["Austria", "Finland"],
+          "included_geopolitical_anomalies": ["Canada", "Turkey"]
+        }
+      },
+      {
+        "region_id": 1,
+        "region_name": "Asia",
+        "sub_regions": ["Southeast Asia"],
+        "scoring_card_id": 1,
+        "special_rules": {
+          "southeast_asia_scoring_card_id": 38,
+          "china_card_bonus_applies": true
+        }
+      },
+      {
+        "region_id": 2,
+        "region_name": "Middle East",
+        "sub_regions": [],
+        "scoring_card_id": 3,
+        "special_rules": {
+          "included_geopolitical_anomalies": ["Libya", "Egypt"]
+        }
+      },
+      {
+        "region_id": 3,
+        "region_name": "Africa",
+        "sub_regions": [],
+        "scoring_card_id": 78,
+        "special_rules": {}
+      },
+      {
+        "region_id": 4,
+        "region_name": "Central America",
+        "sub_regions": [],
+        "scoring_card_id": 37,
+        "special_rules": {}
+      },
+      {
+        "region_id": 5,
+        "region_name": "South America",
+        "sub_regions": [],
+        "scoring_card_id": 39,
+        "special_rules": {}
+      }
+    ],
+    "country_control_definition": {
+      "formula": "(influence_player >= stability) && ((influence_player - influence_opponent) >= stability)",
+      "mathematical_invariant": "Control_i(c) <=> (I_i(c) >= S(c)) and (I_i(c) - I_{-i}(c) >= S(c))",
+      "notes": "A country is uncontrolled if neither player satisfies the control formula. Both players cannot simultaneously control a country."
+    }
+  },
+  "game_setup": {
+    "initial_tracks": {
+      "victory_points": 0,
+      "defcon": 5,
+      "us_mil_ops": 0,
+      "ussr_mil_ops": 0,
+      "us_space_track": 0,
+      "ussr_space_track": 0,
+      "turn": 1,
+      "action_round": 1
+    },
+    "initial_deal": {
+      "war_era": "EARLY",
+      "deck_cards": "Cards 1 through 35 (excluding #6 The China Card)",
+      "cards_per_player": 8,
+      "china_card_assignment": {
+        "card_id": 6,
+        "initial_holder": "Player::USSR",
+        "initial_face_up": true
+      }
+    },
+    "initial_influence": {
+      "USSR": {
+        "fixed": [
+          { "country": "Syria", "influence": 1 },
+          { "country": "Iraq", "influence": 1 },
+          { "country": "North Korea", "influence": 3 },
+          { "country": "East Germany", "influence": 3 },
+          { "country": "Finland", "influence": 1 }
+        ],
+        "discretionary": {
+          "total_points": 6,
+          "target_filter": "EASTERN_EUROPE",
+          "placement_policy": "Any Eastern European countries subject to normal placement limits"
+        },
+        "setup_order": 1
+      },
+      "US": {
+        "fixed": [
+          { "country": "Iran", "influence": 1 },
+          { "country": "Israel", "influence": 1 },
+          { "country": "Japan", "influence": 1 },
+          { "country": "Australia", "influence": 1 },
+          { "country": "Philippines", "influence": 1 },
+          { "country": "South Korea", "influence": 1 },
+          { "country": "Panama", "influence": 1 },
+          { "country": "South Africa", "influence": 1 },
+          { "country": "United Kingdom", "influence": 5 }
+        ],
+        "discretionary": {
+          "total_points": 7,
+          "target_filter": "WESTERN_EUROPE",
+          "placement_policy": "Any Western European countries subject to normal placement limits"
+        },
+        "setup_order": 2
+      }
+    }
+  },
+  "turn_structure": {
+    "total_turns": 10,
+    "eras": [
+      {
+        "era_name": "EARLY_WAR",
+        "turns": [1, 2, 3],
+        "hand_size": 8,
+        "action_rounds": 6,
+        "deck_additions": "Initial Early War deck (Cards 1..35)"
+      },
+      {
+        "era_name": "MID_WAR",
+        "turns": [4, 5, 6, 7],
+        "hand_size": 9,
+        "action_rounds": 7,
+        "deck_additions": "Shuffle Mid War deck (Cards 36..79) into remaining draw deck at start of Turn 4"
+      },
+      {
+        "era_name": "LATE_WAR",
+        "turns": [8, 9, 10],
+        "hand_size": 9,
+        "action_rounds": 7,
+        "deck_additions": "Shuffle Late War deck (Cards 80..110) into remaining draw deck at start of Turn 8"
+      }
+    ],
+    "phase_sequence": [
+      {
+        "step": "A",
+        "phase_enum": "Phase::SETUP",
+        "phase_name": "IMPROVE_DEFCON",
+        "logic": "if (state.defcon < 5) { state.defcon += 1; }"
+      },
+      {
+        "step": "B",
+        "phase_enum": "Phase::SETUP",
+        "phase_name": "DEAL_CARDS",
+        "logic": "Deal cards from draw deck to each player until hand size reaches target (8 on T1-T3, 9 on T4-T10). If draw deck exhausts, reshuffle discards (excluding permanently removed asterisk cards) and continue dealing. China card is excluded from hand limit calculations."
+      },
+      {
+        "step": "C",
+        "phase_enum": "Phase::HEADLINE",
+        "phase_name": "HEADLINE_PHASE",
+        "logic": "Both players secretly select 1 card from hand (China Card prohibited). Cards revealed simultaneously. Higher Ops value card executes first. Ties resolved with US executing first. Scoring cards have Headline Ops = 0 and resolve second (US scoring resolves before USSR scoring on tie). Opponent event text is executed by the opponent as the phasing player."
+      },
+      {
+        "step": "D",
+        "phase_enum": "Phase::ACTION_ROUND",
+        "phase_name": "ACTION_ROUNDS",
+        "logic": "Iterate action rounds 1..6 (Turns 1-3) or 1..7 (Turns 4-10). Each action round consists of USSR Action Round followed by US Action Round. Player plays 1 card as Event, Ops, or Space (or passes if hand is empty). 8th AR awarded to US if North Sea Oil or Space Race box 8 is active."
+      },
+      {
+        "step": "E",
+        "phase_enum": "Phase::END_TURN",
+        "phase_name": "CHECK_MILITARY_OPERATIONS",
+        "logic": "For each player p in {US, USSR}: deficit = max(0, state.defcon - mil_ops[p]); opponent gains deficit VPs. Reset state.us_mil_ops = 0, state.ussr_mil_ops = 0."
+      },
+      {
+        "step": "F",
+        "phase_enum": "Phase::DISCARD",
+        "phase_name": "REVEAL_HELD_CARD",
+        "logic": "Check held card for each player. Tournament rule: if any player holds a Scoring Card, that player loses immediately due to accidental nuclear war. Non-scoring cards may be held into next turn (Space Race box 6 allows discarding held card)."
+      },
+      {
+        "step": "G",
+        "phase_enum": "Phase::END_TURN",
+        "phase_name": "FLIP_CHINA_CARD",
+        "logic": "if (!state.china_card_playable) { state.china_card_playable = 1; }"
+      },
+      {
+        "step": "H",
+        "phase_enum": "Phase::END_TURN",
+        "phase_name": "ADVANCE_TURN_MARKER",
+        "logic": "state.turn += 1; Clear turn-persistent flags and aggregates. If state.turn == 4, shuffle Mid War cards into draw deck. If state.turn == 8, shuffle Late War cards into draw deck."
+      },
+      {
+        "step": "I",
+        "phase_enum": "Phase::GAME_OVER",
+        "phase_name": "FINAL_SCORING",
+        "logic": "Executed after Turn 10 completes if no prior terminal state. Sequentially score Europe, Asia, Middle East, Africa, Central America, South America. Europe Control gives immediate automatic victory. Add +1 VP to player holding The China Card. Determine winner by VP sign."
+      }
+    ]
+  },
+  "operations_mechanics": {
+    "op_modes": [
+      {
+        "mode_id": 0,
+        "mode_name": "INFLUENCE_PLACEMENT",
+        "cost_rule": {
+          "friendly_or_uncontrolled": 1,
+          "enemy_controlled": 2,
+          "dynamic_cost_transition": "If enemy control is broken during multi-point placement, subsequent influence points in the same action round cost 1 Op."
+        },
+        "placement_restrictions": [
+          "Target must be adjacent to friendly influence existing at the start of the Action Round, OR",
+          "Target must already contain friendly influence, OR",
+          "Target must be adjacent to the phasing player's Superpower home space."
+        ]
+      },
+      {
+        "mode_id": 1,
+        "mode_name": "REALIGNMENT_ROLL",
+        "cost_rule": "1 Op per realignment attempt against a target country.",
+        "target_condition": "Target country must contain opponent influence. Friendly influence or adjacency is not required.",
+        "resolution_algorithm": {
+          "dice_rolls": "Both US and USSR roll 1d6.",
+          "modifiers": [
+            { "condition": "+1 for each controlled adjacent country", "applies_to": "Each player independently" },
+            { "condition": "+1 if player has strictly more influence in target country than opponent", "applies_to": "Player with higher influence" },
+            { "condition": "+1 if target country is adjacent to player's superpower home space", "applies_to": "Adjacent superpower" }
+          ],
+          "outcome": "High modified roll subtracts difference (High - Low) from opponent's influence in target country. Ties result in no influence change. No influence is ever added."
+        }
+      },
+      {
+        "mode_id": 2,
+        "mode_name": "COUP_ATTEMPT",
+        "cost_rule": "Costs the entire card (all base Ops of the played card).",
+        "target_condition": "Target country must contain opponent influence.",
+        "defcon_restrictions": "Target country cannot be in a DEFCON-prohibited region.",
+        "resolution_algorithm": {
+          "mil_ops_credit": "Phasing player adds card base Ops to their Military Operations track immediately upon coup declaration.",
+          "defcon_degradation": "If target country is a Battleground, DEFCON is degraded by 1 level immediately.",
+          "roll_formula": "total = 1d6 + card_effective_ops",
+          "threshold": "2 * target_country.stability",
+          "margin": "total - (2 * target_country.stability)",
+          "outcome": "If margin > 0: Remove min(margin, target_country.opponent_influence) from opponent influence. If margin > target_country.opponent_influence, add remaining difference as friendly influence. If margin <= 0: Coup fails, no influence changed."
+        }
+      },
+      {
+        "mode_id": 3,
+        "mode_name": "SPACE_RACE",
+        "cost_rule": "Requires 1 card with base Ops >= required Ops for target space box.",
+        "turn_limit": "1 space attempt per turn (increased to 2 attempts per turn if Space Race box 2 is reached).",
+        "resolution_algorithm": {
+          "dice_roll": "Roll 1d6.",
+          "success_condition": "Roll falls within valid range for target box.",
+          "success_effect": "Advance space race marker +1 box. Award VPs (1st or 2nd player) and special ability (1st player only).",
+          "event_cancellation": "Card event NEVER triggers when played on Space Race, regardless of superpower affiliation (serves as opponent event dump).",
+          "discard_policy": "Card is sent to discard pile (even if asterisked)."
+        }
+      }
+    ]
+  },
+  "space_race_track": [
+    {
+      "box_index": 1,
+      "box_name": "Earth Satellite",
+      "min_ops": 2,
+      "success_range": [1, 2, 3],
+      "vp_first": 2,
+      "vp_second": 1,
+      "special_ability": null
+    },
+    {
+      "box_index": 2,
+      "box_name": "Animal in Space",
+      "min_ops": 2,
+      "success_range": [1, 2, 3, 4],
+      "vp_first": 0,
+      "vp_second": 0,
+      "special_ability": "May play 2 Space Race cards per turn (instead of 1)."
+    },
+    {
+      "box_index": 3,
+      "box_name": "Man in Orbit",
+      "min_ops": 2,
+      "success_range": [1, 2, 3, 4],
+      "vp_first": 2,
+      "vp_second": 0,
+      "special_ability": null
+    },
+    {
+      "box_index": 4,
+      "box_name": "Man in Space",
+      "min_ops": 2,
+      "success_range": [1, 2, 3],
+      "vp_first": 0,
+      "vp_second": 0,
+      "special_ability": "Opponent must select and reveal Headline Event before this player selects Headline."
+    },
+    {
+      "box_index": 5,
+      "box_name": "Lunar Probe",
+      "min_ops": 3,
+      "success_range": [1, 2, 3, 4],
+      "vp_first": 3,
+      "vp_second": 1,
+      "special_ability": null
+    },
+    {
+      "box_index": 6,
+      "box_name": "Space Walk",
+      "min_ops": 3,
+      "success_range": [1, 2, 3],
+      "vp_first": 0,
+      "vp_second": 0,
+      "special_ability": "May discard held card at end of turn (Phase::DISCARD)."
+    },
+    {
+      "box_index": 7,
+      "box_name": "Space Station",
+      "min_ops": 3,
+      "success_range": [1, 2, 3, 4],
+      "vp_first": 4,
+      "vp_second": 2,
+      "special_ability": null
+    },
+    {
+      "box_index": 8,
+      "box_name": "Eagle / Bear has Landed",
+      "min_ops": 4,
+      "success_range": [1, 2],
+      "vp_first": 2,
+      "vp_second": 0,
+      "special_ability": "May play 8 Action Rounds per turn."
+    }
+  ],
+  "card_play_and_event_timing": {
+    "play_modes": ["PLAY_EVENT", "PLAY_OPS", "PLAY_SPACE"],
+    "opponent_event_resolution": {
+      "rule": "When a card associated only with the opponent is played for Operations, the opponent's Event triggers.",
+      "phasing_choice": "Phasing player chooses timing branch: OPS_FIRST (0) vs EVENT_FIRST (1).",
+      "execution_authority": "The opponent executes all event decision steps as the decision player.",
+      "prerequisite_failure": "If event cannot occur because prerequisite is unmet (e.g. NATO played before Marshall/Warsaw), event does not occur and asterisk card is sent to discard (not removed).",
+      "prohibition_failure": "If event is prohibited by a superseding event (e.g. Arab-Israeli War after Camp David), event does not occur and card is used for Ops only (asterisk card sent to discard).",
+      "no_effect_execution": "If event occurs but has no legal effect on the board (e.g. Alliance for Progress with no US BG), event is considered played and asterisk card IS permanently removed from game.",
+      "defcon_suicide_invariant": "If DEFCON drops to 1 during Ops OR during Opponent Event resolution, the phasing player loses immediately."
+    },
+    "scoring_card_invariants": {
+      "mandatory_play": "Scoring cards MUST be played during the turn they are drawn.",
+      "no_holding": "Scoring cards may never be held across turns.",
+      "space_prohibition": "Scoring cards have 0 Ops and cannot be played on the Space Race.",
+      "headline_ops": "Scoring cards have Headline value 0 and resolve after non-scoring cards."
+    },
+    "the_china_card_invariants": {
+      "card_id": 6,
+      "base_ops": 4,
+      "asia_bonus_ops": 5,
+      "prohibitions": [
+        "Cannot be played during Headline Phase",
+        "Cannot be played if doing so prevents playing a Scoring Card in hand",
+        "Cannot be discarded by events (e.g. Five Year Plan, Quagmire, Bear Trap)"
+      ],
+      "turnover_rule": "When played, handed face-down to opponent. Flipped face-up at end of turn.",
+      "endgame_bonus": "Holder receives 1 VP at end of Turn 10."
+    }
+  },
+  "defcon_track_rules": {
+    "range": [1, 5],
+    "initial": 5,
+    "restrictions": {
+      "5": { "name": "PEACE", "coups_realignments_forbidden": [] },
+      "4": { "name": "DEFCON 4", "coups_realignments_forbidden": ["Europe"] },
+      "3": { "name": "DEFCON 3", "coups_realignments_forbidden": ["Europe", "Asia"] },
+      "2": { "name": "DEFCON 2", "coups_realignments_forbidden": ["Europe", "Asia", "Middle East"] },
+      "1": { "name": "DEFCON 1 (NUCLEAR WAR)", "terminal": true, "phasing_player_loses": true }
+    },
+    "degradation_rules": [
+      "Any coup attempt in a Battleground country degrades DEFCON by 1 level.",
+      "Specific events degrade DEFCON (e.g. Duck and Cover, We Will Bury You, Soviets Shoot Down KAL-007, Olympic Games boycott).",
+      "DEFCON cannot degrade below 1 (1 = terminal loss)."
+    ],
+    "improvement_rules": [
+      "At Phase A of every turn, if DEFCON < 5, DEFCON improves by +1.",
+      "Specific events improve DEFCON (e.g. SALT Negotiations, ABM Treaty, How I Learned to Stop Worrying).",
+      "DEFCON cannot improve above 5."
+    ]
+  },
+  "scoring_and_victory": {
+    "track_range": [-20, 20],
+    "regional_status_predicates": {
+      "Presence": "controlled_countries >= 1",
+      "Domination": "(controlled_countries > opponent_controlled_countries) && (controlled_bg > opponent_controlled_bg) && (controlled_bg >= 1) && (controlled_non_bg >= 1)",
+      "Control": "(controlled_countries > opponent_controlled_countries) && (controlled_bg == total_bg_in_region)"
+    },
+    "regional_scoring_deltas": {
+      "formula": "Score_p = VP_status + controlled_bg_count + controlled_adjacent_to_enemy_superpower_count",
+      "net_change": "delta_VP = Score_US - Score_USSR",
+      "vp_track_update": "state.victory_points = clamp(state.victory_points + delta_VP, -20, 20)"
+    },
+    "automatic_victory_conditions": [
+      {
+        "type": "VP_THRESHOLD_US",
+        "predicate": "state.victory_points >= 20",
+        "winner": "Player::US",
+        "timing": "Immediate upon scoring resolution"
+      },
+      {
+        "type": "VP_THRESHOLD_USSR",
+        "predicate": "state.victory_points <= -20",
+        "winner": "Player::USSR",
+        "timing": "Immediate upon scoring resolution"
+      },
+      {
+        "type": "EUROPE_CONTROL",
+        "predicate": "Player has Control of Europe during Europe Scoring or Final Scoring",
+        "winner": "Controlling Player",
+        "timing": "Immediate upon scoring resolution"
+      },
+      {
+        "type": "DEFCON_SUICIDE",
+        "predicate": "state.defcon == 1",
+        "winner": "get_opponent(state.phasing_player)",
+        "timing": "Immediate upon DEFCON reaching 1"
+      },
+      {
+        "type": "HELD_SCORING_CARD",
+        "predicate": "Player holds a Scoring Card at end of turn",
+        "winner": "get_opponent(holding_player)",
+        "timing": "Phase::DISCARD / REVEAL_HELD_CARD"
+      },
+      {
+        "type": "WARGAMES_EVENT",
+        "predicate": "Player plays #107 Wargames at DEFCON 2 and pays 6 VP",
+        "winner": "Acting Player",
+        "timing": "Immediate upon event execution"
+      }
+    ],
+    "endgame_scoring_turn_10": {
+      "sequence": [
+        "Score Europe (if controlled, instant win)",
+        "Score Asia (including Southeast Asia)",
+        "Score Middle East",
+        "Score Africa",
+        "Score Central America",
+        "Score South America",
+        "Award +1 VP to holder of The China Card"
+      ],
+      "determination": "If VP > 0: US wins. If VP < 0: USSR wins. If VP == 0: Draw."
+    }
+  }
+}

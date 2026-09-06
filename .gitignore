@@ -1,5 +1,7 @@
-# General Game Rules & Reference Data (Local copy only, not committed)
-rules/
+# Official rulebook PDF is copyrighted material (GMT Games) -- not ours to redistribute.
+# Everything else in rules/ (cards.json, map.json, rules.json/.md, flags.json, etc.) is this
+# project's own derived data/spec and is committed.
+rules/Rules_Final.pdf
 
 # Build & CMake
 build*/
