@@ -1425,3 +1425,37 @@ targets, one more than before — a hand changed somewhere and a decision came w
 **Carry-over is not penalised**, per the owner: it is how hands are reconstructed in the first
 place, and costing it would attack the mechanism rather than the error. The three remaining cases
 stand as they are.
+
+
+### 9.9 Why the log allows Liberation Theology at turn 6 but not Junta
+
+Both cards appear in replay 80 only in the turn 7 **US** hand list, so on the face of it the solver
+should treat them alike. It does not, and the reason is a line outside the hand lists.
+
+| | Junta | Liberation Theology |
+|:---|:---|:---|
+| turn 7 US hand list | listed | listed |
+| who actually spent it | **USSR** — `USSR Headlines Junta` | **US** — space race at AR7 |
+
+The hand list and the play disagree about Junta, and the play wins: this is one of the 4
+`hand_reattributions` in this game, the mechanism `tools/README.md` describes for lists that give a
+card to the wrong side. So Junta is the USSR's at turn 7.
+
+From there the constraint follows without any preference being involved:
+
+1. The USSR spent Junta at turn 7, so Junta was in the USSR's hand at turn 7.
+2. **All seven** of the US's turn 6 action rounds are recorded — Warsaw Pact Formed, Our Man in
+   Tehran, Nuclear Subs, The Voice of America, Shuttle Diplomacy, How I Learned To Stop Worrying,
+   SALT Negotiations — and Junta is not among them.
+3. A card in a hand that is not played or discarded stays there, so Junta in the US hand at turn 6
+   would still be in the US hand at turn 7.
+
+Which contradicts (1). There is a reshuffle before turn 7, so a discard-and-redraw route exists in
+principle — but (2) closes it, because the US's turn is fully recorded and Junta was not discarded.
+
+Liberation Theology has none of that: the US spent it at turn 7, so holding it from turn 6 is
+consistent, and only the soft preferences decide whether it was. §9.8 established that they decide
+it by a single unit of cost, which is why it looked arbitrary.
+
+**No fault found.** The asymmetry is entailed by the log, and the evidence for it is in the headline
+line rather than in the hand lists the question naturally looks at.
