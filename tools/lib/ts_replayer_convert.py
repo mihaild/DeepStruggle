@@ -285,6 +285,10 @@ class Conversion:
     turn_started_at: Tuple[int, int, int] = (0, 0, 0)
     # Whether the engine reached a terminal state -- a 20 VP win, DEFCON 1, or final scoring.
     game_ended: bool = False
+    # The finished position's score and result, US positive. None where the recording stopped
+    # before the game did, which is what marks a game's samples as having no value target.
+    final_victory_points: Optional[int] = None
+    us_utility: Optional[float] = None
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -3354,6 +3358,11 @@ def convert_game(game: Dict) -> Conversion:
         # An ending the log's own score does not bear out, reached inside the very turn the
         # recording stops in -- so it is the fragment's doing. See _log_agrees_the_game_ended.
         conv.game_ended = False
+    if conv.game_ended:
+        # The outcome, recorded here because this is the only place the finished position is in
+        # scope. A dataset built from a conversion needs it and has no other way to reach it.
+        conv.final_victory_points = int(state.victory_points)
+        conv.us_utility = float(ts.Engine.get_terminal_utility(state))
     if conv.failure is None and conv.truncated_at is None and not conv.game_ended:
         # The log played no ending and stopped mid-turn: that turn is a fragment, whether or
         # not anything in it happened to fail. See unfinished_final_turn.

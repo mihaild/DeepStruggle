@@ -164,6 +164,24 @@ fail at *import* and would otherwise abort the whole run. It is WIP and not info
 current state, so it is not part of the check a change is expected to pass — do not spend time
 reviving it. `pyrefly.toml` likewise excludes `tests/differential/**` and `external/**`.
 
+**Two demonstration datasets, built not committed.** Both live under `data/datasets/`, which is
+git-ignored, and both must be rebuilt after an engine change:
+
+```bash
+# self-play, from the current best checkpoint (~2 min)
+PYTHONPATH=.:build/release .venv/bin/python tools/generate_dataset.py \
+  --models data/checkpoints/dec_turns40/snapshot_final.pt --total-games 5000 \
+  --output-path data/datasets/warmup_dec_turns40_5k.jsonl.gz
+
+# human games from the ts-replayer corpus (~3 min)
+PYTHONPATH=.:build/release .venv/bin/python tools/build_human_dataset.py
+```
+
+The self-play set is a *syntax* prior — it can only distil the policy that produced it, and it
+carries that policy's biases (the current one is 59.9% USSR). The human set is the only
+*strategy* prior available, and its value targets are masked on the half of the corpus whose
+recording stops. See `data/datasets/archive/README.md` for why the previous set was retired.
+
 ## Running training / tournaments / matches / web play
 
 **Never write ad-hoc scripts to invoke training, tournaments, or match simulation directly — always go through the unified CLIs below** (see Key invariants #9).

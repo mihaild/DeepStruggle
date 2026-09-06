@@ -338,6 +338,13 @@ def evaluate_and_log_snapshot(
     except Exception as exc:
         print(f"  (position diagnostics unavailable: {exc})", flush=True)
 
+    if games_per_side <= 0:
+        # A zero budget means "do not evaluate", which is a reasonable thing to ask for on a
+        # smoke run. It used to reach BatchMatchRunner and divide by a chunk size of zero.
+        print(f"\n--- Skipping snapshot evaluation @ {elapsed_seconds}s "
+              f"(--eval-games-per-side is {games_per_side}) ---", flush=True)
+        return {}
+
     print(f"\n--- Evaluating Newest Snapshot @ {elapsed_seconds}s against {len(opponents)} Opponents ({games_per_side*2} games each) ---", flush=True)
     report_entry = [f"### Snapshot @ {elapsed_seconds}s (Evaluated against {len(opponents)} baselines / past snapshots)\n\n"]
     report_entry.append("| Opponent | Overall Win Rate | As US Win Rate | As USSR Win Rate | Top Loss Causes (US) | Top Loss Causes (USSR) |\n")

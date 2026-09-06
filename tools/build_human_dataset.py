@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Build the behaviour-cloning dataset from the ts-replayer corpus of human games.
+
+    PYTHONPATH=.:build/release .venv/bin/python tools/build_human_dataset.py
+
+Converts every cached replay and writes the materialised columns
+`ai.training.human_corpus_dataset` reads. Unlike the self-play format there is no seed that
+replays a human game -- the dice come from the log and the hands are solved -- so the
+observations are stored rather than re-derived. See that module for the layout and why value
+targets are masked on games whose recording stops.
+
+A conversion failure is reported and counted, never skipped quietly: per AGENTS.md invariant 12
+an entry the log does not determine is a bug to diagnose, and a dataset that silently drops the
+games it could not reproduce hides exactly that.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import json
+import os
+import sys
+import time
+from typing import List, Optional
+
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+import ts_engine as ts
+
+from ai.training.human_corpus_dataset import HumanCorpusWriter
+from tools.lib.corpus_paths import corpus_files, missing_corpus_reason
+from tools.lib.ts_replayer_convert import Conversion, convert_game
+
+DEFAULT_OUT = os.path.join(_ROOT, "data", "datasets", "human_corpus")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", default=DEFAULT_OUT,
+                    help="directory to write the dataset columns into")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="convert only the first N replays (for a quick check)")
+    args = ap.parse_args()
+
+    reason = missing_corpus_reason()
+    if reason is not None:
+        print(reason, file=sys.stderr)
+        raise SystemExit(2)
+
+    paths = corpus_files()
+    if args.limit is not None:
+        paths = paths[:args.limit]
+
+    writer = HumanCorpusWriter(args.out)
+    failures: List[str] = []
+    skipped = empty = 0
+    t0 = time.time()
+
+    for index, path in enumerate(paths, 1):
+        with gzip.open(path, "rt") as fh:
+            game = json.load(fh)
+        if not game.get("all_turns"):
+            empty += 1
+            continue
+
+        conv: Conversion = convert_game(game)
+        if conv.skipped is not None:
+            skipped += 1
+            continue
+        if conv.failure is not None:
+            failures.append(str(conv.failure))
+            continue
+        if not conv.samples:
+            continue
+
+        # The engine's own verdict, and None where the recording stopped before the game did.
+        writer.add_game(conv.samples,
+                        us_utility=conv.us_utility,
+                        final_vp=conv.final_victory_points)
+
+        if index % 25 == 0:
+            print(f"  {index}/{len(paths)} replays, {len(writer.action):,} samples "
+                  f"({time.time() - t0:.0f}s)", flush=True)
+
+    meta = writer.write()
+    print("\n" + "=" * 70)
+    print(f" Human corpus dataset -> {args.out}")
+    print("=" * 70)
+    print(f"  replays read          : {len(paths)}")
+    print(f"  empty downloads       : {empty}")
+    print(f"  skipped (handicap)    : {skipped}")
+    print(f"  conversion failures   : {len(failures)}")
+    print(f"  games written         : {meta['games']}")
+    print(f"  games with an outcome : {meta['games_with_outcome']}")
+    print(f"  samples               : {meta['samples']:,}")
+    print(f"  samples with a value target : {meta['samples_with_outcome']:,}")
+    print(f"  elapsed               : {time.time() - t0:.0f}s")
+    for failure in failures:
+        print(f"  FAILED: {failure}")
+
+
+if __name__ == "__main__":
+    main()

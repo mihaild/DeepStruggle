@@ -76,6 +76,12 @@ class BatchMatchRunner:
         # deal luck cancels between the halves rather than adding variance to the result.
         if start_states is not None:
             games_per_side = len(start_states)
+        if games_per_side <= 0:
+            # Fail with the reason rather than a ZeroDivisionError from a chunk size of zero
+            # further down. Callers that mean "no evaluation" should not call at all.
+            raise ValueError(
+                f"games_per_side must be positive, got {games_per_side}; "
+                f"to skip evaluation, do not call play_parallel_matchup")
         total_games = games_per_side * 2
         half_per_chunk = min(games_per_side, batch_chunk_size // 2)
         chunk_size = half_per_chunk * 2

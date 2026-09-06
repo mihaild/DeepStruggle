@@ -198,6 +198,30 @@ Two rules of the road, both learned the hard way:
 
 ---
 
+## 8. `tools/build_human_dataset.py` (Human Corpus BC Dataset)
+
+Turns the ts-replayer corpus into behaviour-cloning data.
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python tools/build_human_dataset.py
+```
+
+Writes `data/datasets/human_corpus/` (~1.2 GB, git-ignored): one memory-mapped `.npy` per column
+plus `meta.json`, read by `ai.training.human_corpus_dataset.HumanCorpusDataset`, whose
+`stream_batches` mirrors `WarmupDataset`'s interface.
+
+Observations are stored materialised rather than re-derived from a seed, because a human game has
+no seed that replays it -- the dice come from the log and the hands are solved -- so the conversion
+is the only thing that reproduces one, at about a second a game. That gives up the self-play
+format's forward compatibility, so **rebuild it after any engine change**.
+
+**Value targets are masked on unfinished games.** Roughly half the corpus stops mid-game (the
+recording ends, not the game), and those positions have no outcome. The `has_outcome` column is 0
+there; a trainer must drop them from the value loss and keep them in the policy loss. Current
+build: 280 games, **144,844 samples, 84,073 with a value target**, 0 conversion failures.
+
+---
+
 ## 7. Shared Helpers Library (`tools/lib/`)
 Contains internal simulation, evaluation, and logging modules imported by the CLI tools:
 - `tools/lib/player_agent.py`: Unified agent loader (`load_agent`) and policy inference wrappers.
