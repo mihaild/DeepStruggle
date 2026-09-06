@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 import ts_engine as ts
 from tools.lib.self_play import generate_self_play_replay
-from web.server.replay import ReplayLogger, ReplayManager, REPLAYS_DIR
+from web.server.replay import ReplayLogger, ReplayManager, replays_dir
 from web.server.replay_types import (
     GameStateDict,
     ReplayLogDict,
@@ -69,10 +69,15 @@ def test_gamestate_dict_schema():
     assert "USSR" in state_dict["hands"]
 
 
-def test_replays_directory_schema_conformance():
-    """Validates all .tslog.json files in replays/ against ReplayLogDict schema."""
+def test_replays_directory_schema_conformance(generated_replay_dir: str):
+    """Validates the .tslog.json files the writer produces against the ReplayLogDict schema.
+
+    Reads from the `generated_replay_dir` fixture rather than `data/replays/`, which is
+    git-ignored and empty on a fresh checkout. This used to require a specific ambient file,
+    `v2_selfplay_demo.tslog.json`, that no longer had to exist anywhere.
+    """
     replays = ReplayManager.list_replays()
-    assert len(replays) > 0, "Expected saved replays in replays/"
+    assert len(replays) > 0, f"fixture directory {generated_replay_dir} produced no replays"
 
     # Check that list_replays returns proper summary types
     for r in replays:
@@ -82,12 +87,11 @@ def test_replays_directory_schema_conformance():
         assert isinstance(r["total_steps"], int)
         assert r["total_steps"] > 0
 
-    # Specifically test loading v2_selfplay_demo.tslog.json
-    v2_data = ReplayManager.load_replay("v2_selfplay_demo.tslog.json")
-    assert v2_data is not None, "Failed to load v2_selfplay_demo.tslog.json"
-    assert "steps" in v2_data, "v2_selfplay_demo should have standard steps array"
-    assert len(v2_data["steps"]) > 0
-    assert "state_snapshot" in v2_data["steps"][0]
+    loaded = ReplayManager.load_replay(replays[0]["filename"])
+    assert loaded is not None, f"failed to load {replays[0]['filename']}"
+    assert "steps" in loaded, "a replay should carry a standard steps array"
+    assert len(loaded["steps"]) > 0
+    assert "state_snapshot" in loaded["steps"][0]
 
 
 def test_generate_self_play_replay_execution(tmp_path):

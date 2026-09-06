@@ -10,7 +10,7 @@ import torch
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
-from web.server.replay import ReplayLogger, REPLAYS_DIR
+from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
@@ -175,7 +175,7 @@ def generate_self_play_replay(
 
     paths_to_save: List[str] = []
     if output_path is None:
-        paths_to_save = [os.path.join(REPLAYS_DIR, f"{gid}.tslog.json")]
+        paths_to_save = [os.path.join(replays_dir(), f"{gid}.tslog.json")]
     elif isinstance(output_path, str):
         paths_to_save = [output_path]
     elif isinstance(output_path, (list, tuple)):

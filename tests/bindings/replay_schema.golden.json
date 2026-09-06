@@ -1,0 +1,156 @@
+{
+  "ActionLogEntryDict": {
+    "ar": "int",
+    "details": "NoneType | list[str]",
+    "phase": "str",
+    "player": "str",
+    "step_index": "int",
+    "text": "str",
+    "turn": "int",
+    "vp_delta": "int"
+  },
+  "ChinaCardDict": {
+    "holder": "str",
+    "playable": "bool"
+  },
+  "CountryStateDict": {
+    "battleground": "bool",
+    "controlled_by": "str",
+    "id": "int",
+    "name": "str",
+    "region": "int",
+    "stability": "int",
+    "us_influence": "int",
+    "ussr_influence": "int"
+  },
+  "DecisionContextDict": {
+    "card_id": "int",
+    "decision_player": "str",
+    "decision_type": "int",
+    "decision_type_name": "str",
+    "flags": "int",
+    "ops": "int",
+    "target_id": "int"
+  },
+  "DieRollDict": {
+    "card_id": "int",
+    "modified_roll": "int",
+    "roller": "str",
+    "success": "bool",
+    "target_country": "int",
+    "type": "str",
+    "type_id": "int"
+  },
+  "GameStateDict": {
+    "action_logs": "list[ActionLogEntryDict]",
+    "action_round": "int",
+    "card_locations": "dict[int | str, str]",
+    "china_card": "ChinaCardDict",
+    "countries": "dict[str, CountryStateDict]",
+    "current_phase": "int",
+    "current_phase_name": "str",
+    "decision_context": "DecisionContextDict",
+    "defcon": "int",
+    "die_roll": "DieRollDict",
+    "discard_pile": "list[int]",
+    "draw_deck_count": "int",
+    "flags": "list[str]",
+    "forced_card_id": "int",
+    "forced_card_player": "str",
+    "hands": "dict[str, list[int]]",
+    "headline_first_card": "int",
+    "headline_second_card": "int",
+    "headline_stage": "int",
+    "headline_us_card": "int",
+    "headline_ussr_card": "int",
+    "is_terminal": "bool",
+    "last_die_roll": "int",
+    "last_opp_die_roll": "int",
+    "legal_actions": "LegalActionsDict",
+    "mil_ops": "dict[str, int]",
+    "observation_b64": "str",
+    "persistent_effects": "int",
+    "phase_name": "str",
+    "phasing_player": "str",
+    "removed_pile": "list[int]",
+    "space": "dict[str, int]",
+    "space_turns_used": "dict[str, int]",
+    "terminal_utility": "float",
+    "turn": "int",
+    "unavailable_cards": "list[int]",
+    "victory_points": "int"
+  },
+  "LegalActionsDict": {
+    "decision_player": "str",
+    "decision_type": "int",
+    "decision_type_name": "str",
+    "legal_cards": "list[int]",
+    "legal_countries": "list[int]",
+    "legal_space": "bool"
+  },
+  "ReplayActionDict": {
+    "action_type": "NoneType | int",
+    "card_id": "NoneType | int",
+    "decision_type": "int",
+    "flags": "int",
+    "flat_action_idx": "int",
+    "primary_id": "int",
+    "secondary_id": "int",
+    "target_id": "NoneType | int",
+    "type": "NoneType | str"
+  },
+  "ReplayInitialStateDict": {
+    "seed": "int"
+  },
+  "ReplayLogDict": {
+    "events": "list[dict[str, Any]]",
+    "final_state": "GameStateDict",
+    "final_turn": "int",
+    "final_vp": "int",
+    "game_id": "str",
+    "initial_state": "ReplayInitialStateDict",
+    "logs": "list[dict[str, Any]]",
+    "metadata": "ReplayMetadataDict",
+    "seed": "int",
+    "steps": "list[ReplayStepDict]",
+    "total_steps": "int",
+    "version": "str",
+    "winner": "str"
+  },
+  "ReplayMetadataDict": {
+    "created_at": "str",
+    "game_id": "str",
+    "players": "dict[str, str]",
+    "result": "NoneType | ReplayResultDict",
+    "seed": "int",
+    "total_steps": "int"
+  },
+  "ReplayPlayersDict": {
+    "US": "str",
+    "USSR": "str"
+  },
+  "ReplayResultDict": {
+    "end_turn": "int",
+    "margin": "int",
+    "reason": "str",
+    "winner": "str"
+  },
+  "ReplayStepDict": {
+    "action": "ReplayActionDict",
+    "ar": "int",
+    "description": "str",
+    "phase": "str",
+    "player": "str",
+    "state_snapshot": "GameStateDict",
+    "step_index": "int",
+    "turn": "int"
+  },
+  "ReplaySummaryDict": {
+    "created_at": "str",
+    "filename": "str",
+    "game_id": "str",
+    "players": "dict[str, str]",
+    "result": "NoneType | ReplayResultDict",
+    "total_steps": "int"
+  }
+}

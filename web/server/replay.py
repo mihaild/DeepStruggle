@@ -13,7 +13,26 @@ from web.server.replay_types import (
 )
 
 _ROOT_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REPLAYS_DIR: str = os.path.join(_ROOT_DIR, "data", "replays")
+DEFAULT_REPLAYS_DIR: str = os.path.join(_ROOT_DIR, "data", "replays")
+
+#: Environment variable that overrides where replays are read from and written to.
+REPLAYS_DIR_ENV: str = "TS_REPLAYS_DIR"
+
+# Kept for callers that import the name. Prefer `replays_dir()`: this is only the default, and
+# it cannot see an override set after import.
+REPLAYS_DIR: str = DEFAULT_REPLAYS_DIR
+
+
+def replays_dir() -> str:
+    """Where replays live, resolved per call rather than fixed at import.
+
+    `data/replays/` is git-ignored, so tests cannot rely on it holding anything -- and a test
+    that skips itself when it is empty is worse than no test, because it passes on every machine
+    while checking nothing. Resolving the location per call lets a fixture point the server at a
+    directory it has just generated a replay into, so the schema tests always run against real
+    output of the current writer. It also lets two servers run against separate directories.
+    """
+    return os.environ.get(REPLAYS_DIR_ENV) or DEFAULT_REPLAYS_DIR
 
 
 class ReplayLogger:
@@ -80,9 +99,10 @@ class ReplayLogger:
         }
 
     def save(self, filepath: Optional[str] = None) -> str:
-        os.makedirs(REPLAYS_DIR, exist_ok=True)
+        target = replays_dir()
+        os.makedirs(target, exist_ok=True)
         if not filepath:
-            filepath = os.path.join(REPLAYS_DIR, f"{self.game_id}.tslog.json")
+            filepath = os.path.join(target, f"{self.game_id}.tslog.json")
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2)
         return filepath
@@ -91,11 +111,12 @@ class ReplayLogger:
 class ReplayManager:
     @staticmethod
     def list_replays() -> List[ReplaySummaryDict]:
-        os.makedirs(REPLAYS_DIR, exist_ok=True)
+        target = replays_dir()
+        os.makedirs(target, exist_ok=True)
         replays: List[ReplaySummaryDict] = []
-        for fname in os.listdir(REPLAYS_DIR):
+        for fname in os.listdir(target):
             if fname.endswith(".tslog.json") or fname.endswith(".json"):
-                full_path = os.path.join(REPLAYS_DIR, fname)
+                full_path = os.path.join(target, fname)
                 try:
                     with open(full_path, "r", encoding="utf-8") as f:
                         data: Dict[str, Any] = json.load(f)
@@ -138,9 +159,10 @@ class ReplayManager:
 
     @staticmethod
     def load_replay(filename: str) -> Optional[ReplayLogDict]:
-        full_path = os.path.join(REPLAYS_DIR, filename)
+        target = replays_dir()
+        full_path = os.path.join(target, filename)
         if not os.path.exists(full_path):
-            full_path = os.path.join(REPLAYS_DIR, f"{filename}.tslog.json")
+            full_path = os.path.join(target, f"{filename}.tslog.json")
         if not os.path.exists(full_path):
             return None
         with open(full_path, "r", encoding="utf-8") as f:

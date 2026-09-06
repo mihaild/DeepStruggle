@@ -102,14 +102,19 @@ def test_frontend_workbench_html_structure():
     for elem_id in critical_ids:
         assert f"id=\"{elem_id}\"" in html or f"id='{elem_id}'" in html, f"Missing critical element #{elem_id} in index.html"
 
-def test_replay_state_snapshot_full_fidelity():
-    """Validates that replay snapshots deliver complete game state with all 84 countries for map rendering."""
+def test_replay_state_snapshot_full_fidelity(generated_replay_dir: str):
+    """Validates that replay snapshots deliver complete game state with all 84 countries.
+
+    Uses the generated fixture directory; `data/replays/` is git-ignored and may be empty.
+    """
     res = client.get("/api/replays")
     assert res.status_code == 200
     replays = res.json()
-    assert len(replays) > 0, "No replays available to test"
+    assert len(replays) > 0, f"fixture directory {generated_replay_dir} produced no replays"
 
-    target_filename = "llm_match_with_commentary.tslog.json"
+    # Take whatever the listing offers. This used to name a specific ambient file,
+    # llm_match_with_commentary.tslog.json, which no longer has to exist anywhere.
+    target_filename = replays[0]["filename"]
     rep_res = client.get(f"/api/replays/{target_filename}")
     assert rep_res.status_code == 200
     rep_data = rep_res.json()

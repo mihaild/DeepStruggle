@@ -446,6 +446,36 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
      forward pass, so nothing announces that they were trained against different rules. Loading
      cleanly is not evidence of comparability.
 
+
+### Test data that is not in the repository
+
+`data/replays/` and `data/checkpoints/` are git-ignored, so **no test may assume either holds
+anything**. Do not guard such a test with a skip: a check that skips when its input is missing
+passes on every machine while verifying nothing, which is this repository's most repeated bug
+(`research/experiments.md` §1, plus a `pyrefly` invocation found checking zero files and a
+stale-engine test disabled for two commits by a directory move).
+
+Use the `generated_replay_dir` fixture in `tests/conftest.py` instead. It generates a replay with
+`generate_self_play_replay` into a temporary directory and points the server at it through
+`TS_REPLAYS_DIR`, so the test runs against real output of the current writer. It needs no
+checkpoint — the generator falls back to an untrained network — and costs about a second. Two
+reasons this beats committing a sample replay: one replay is ~3.7 MB, and a frozen file can drift
+from what the writer emits while the test keeps passing.
+
+Generated data cannot catch a change to the schema itself, since the writer and the TypedDicts
+move together. That is what `tests/bindings/replay_schema.golden.json` is for — the schema pinned
+as source, a few KB, reviewable as a diff. Regenerate it deliberately when the schema changes:
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python tests/bindings/test_replay_schema_golden.py
+```
+
+To get real replays for the workbench during development, generate them; they are not repo content:
+
+```bash
+PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategic --game-id scratch
+```
+
 ---
 
 ## 5. Run Test Suites

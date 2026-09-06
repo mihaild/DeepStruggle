@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from typing import Iterator
+
 import pytest
 
 
@@ -48,3 +51,51 @@ def pytest_ignore_collect(collection_path, config: pytest.Config) -> bool | None
     if any("differential" in str(arg) for arg in config.args):
         return None
     return True
+
+
+@pytest.fixture(scope="session")
+def generated_replay_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """A directory holding one freshly generated replay, and the server pointed at it.
+
+    `data/replays/` is git-ignored, so nothing in the suite may assume it holds anything. The
+    tempting alternative -- skip when it is empty -- is the failure mode this repository keeps
+    rediscovering: a check that quietly measures nothing while passing everywhere. Three
+    instances are on record (research/experiments.md section 1), pyrefly was found exiting 0
+    having examined zero files, and the test written to catch a stale engine spent two commits
+    silently skipping after a directory move.
+
+    Generating instead also tests more than a committed file could. Invariant 6 requires every
+    replay to be written by `generate_self_play_replay`, so a schema assertion over generated
+    output covers the writer as it is now; a frozen fixture can drift from what the writer emits
+    and the test would still pass. No checkpoint is needed -- the generator falls back to an
+    untrained network when none is on disk -- and one game takes about a second. A single replay
+    is also ~3.7 MB, which is reason enough not to commit one.
+    """
+    from web.server.replay import REPLAYS_DIR_ENV
+
+    target = tmp_path_factory.mktemp("replays")
+    out = str(target / "fixture_selfplay.tslog.json")
+
+    previous = os.environ.get(REPLAYS_DIR_ENV)
+    os.environ[REPLAYS_DIR_ENV] = str(target)
+    try:
+        from tools.lib.self_play import generate_self_play_replay
+
+        _, saved = generate_self_play_replay(
+            seed=2026,
+            game_id="fixture_selfplay",
+            output_path=out,
+            device="cpu",
+            verbose=False,
+        )
+        # A generation failure must surface as an error, never as an empty directory that the
+        # dependent tests then skip over.
+        assert os.path.exists(saved) and os.path.getsize(saved) > 0, (
+            f"replay fixture was not written to {saved}"
+        )
+        yield str(target)
+    finally:
+        if previous is None:
+            os.environ.pop(REPLAYS_DIR_ENV, None)
+        else:
+            os.environ[REPLAYS_DIR_ENV] = previous

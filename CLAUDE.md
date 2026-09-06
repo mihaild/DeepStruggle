@@ -137,6 +137,13 @@ Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset gen
 
 **Human replay conversion (`tools/lib/ts_replayer_*.py`):** the corpus of human games is converted to engine decisions by rebuilding each log entry's position, driving it through the engine, and checking the result against the log's own next board; the hands, which the log never states in full, are solved for a whole game at once as a z3 constraint problem. Nothing is guessed — a decision the log does not determine is a bug to diagnose, not a gap to fill (see `AGENTS.md` §4 invariant 11, and `tools/README.md` §6).
 
+**Test data is never committed.** `data/replays/` and `data/checkpoints/` are git-ignored, so no
+test may assume they hold anything — and never guard such a test with a skip, which passes
+everywhere while checking nothing. Use the `generated_replay_dir` fixture (`tests/conftest.py`),
+which generates a replay into a temp dir and points the server at it via `TS_REPLAYS_DIR`. Schema
+drift is caught separately by `tests/bindings/replay_schema.golden.json`; regenerate it with
+`python tests/bindings/test_replay_schema_golden.py` when the schema changes on purpose.
+
 ## Architecture
 
 **Engine (`engine/`, C++20):** `ts::GameState` is trivially copyable and capped at 4 KB — no heap allocation in the simulation core. Turns/events are decomposed into a stream of 4-byte `MicroAction` structs (`DecisionType`, target/card/country id, sub-choice, flags) processed by a state machine (`state_machine.cpp`) uniformly across `Phase::HEADLINE` and `Phase::ACTION_ROUND`. Card event handlers live in `src/events/{early,mid,late}_war.cpp` split by era. `ActionMask::generate_flat_mask_212` / `decode_flat_action_212` define the canonical **212-dim flat action space**. All simulation randomness goes through the deterministic SplitMix64 PRNG in `state.rng_state` (`ts::Prng`) — never `std::rand` or similar, since replays must be bit-for-bit reproducible from a seed.
