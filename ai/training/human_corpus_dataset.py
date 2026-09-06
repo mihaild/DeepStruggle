@@ -31,7 +31,8 @@ import torch
 
 OBS_DTYPE = np.float16
 MASK_BITS = 212
-_COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side", "game")
+_COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side", "game",
+            "play")
 _META = "meta.json"
 
 
@@ -55,11 +56,19 @@ class HumanCorpusWriter:
         # are heavily correlated, so splitting on samples measures memorisation of positions the
         # model has effectively already seen. A split has to be by game.
         self.game: List[int] = []
+        # Which play. A card spends its Operations one point at a time and the engine asks once
+        # per point, but the order those points were written in carries no decision -- so
+        # agreement over a play should be scored on the multiset of countries, not the sequence
+        # (ai/eval/agreement). Recorded here so that can be done without re-running conversion,
+        # which is the expensive part.
+        self.play: List[int] = []
+        self._plays = 0
         self.games = 0
         self.games_with_outcome = 0
 
     def add_game(self, samples: List[Tuple[Any, Any, int, int]],
-                 us_utility: Optional[float], final_vp: Optional[int]) -> None:
+                 us_utility: Optional[float], final_vp: Optional[int],
+                 plays: Optional[List[List[int]]] = None) -> None:
         """Add one converted game.
 
         `samples` is `Conversion.samples`: (observation, mask, action, side) with side +1 for the
@@ -72,7 +81,14 @@ class HumanCorpusWriter:
             self.games_with_outcome += 1
         utility = 0.0 if us_utility is None else float(us_utility)
         score = 0.0 if final_vp is None else float(final_vp)
-        for obs, mask, action, side in samples:
+        # One id per play, or one per sample where the caller did not group them.
+        play_of: Dict[int, int] = {}
+        if plays:
+            for group in plays:
+                self._plays += 1
+                for idx in group:
+                    play_of[idx] = self._plays
+        for position, (obs, mask, action, side) in enumerate(samples):
             arr = np.asarray(obs, dtype=OBS_DTYPE)
             packed = np.packbits(np.asarray(mask, dtype=np.uint8)[:MASK_BITS])
             self.obs.append(arr)
@@ -85,6 +101,11 @@ class HumanCorpusWriter:
             self.vp.append((score / 20.0) * int(side) if settled else 0.0)
             self.has_outcome.append(1 if settled else 0)
             self.game.append(self.games - 1)
+            if position in play_of:
+                self.play.append(play_of[position])
+            else:
+                self._plays += 1
+                self.play.append(self._plays)
 
     def write(self) -> Dict[str, Any]:
         os.makedirs(self.out_dir, exist_ok=True)
@@ -100,6 +121,7 @@ class HumanCorpusWriter:
             "has_outcome": np.asarray(self.has_outcome, dtype=np.uint8),
             "side": np.asarray(self.side, dtype=np.int8),
             "game": np.asarray(self.game, dtype=np.int32),
+            "play": np.asarray(self.play, dtype=np.int32),
         }
         for name, arr in arrays.items():
             np.save(os.path.join(self.out_dir, f"{name}.npy"), arr)

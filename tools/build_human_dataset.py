@@ -30,6 +30,8 @@ if _ROOT not in sys.path:
 
 import ts_engine as ts
 
+from ai.eval.agreement import group_point_runs
+from ai.eval.human_dominance import _Capture, _capturing
 from ai.training.human_corpus_dataset import HumanCorpusWriter
 from tools.lib.corpus_paths import corpus_files, missing_corpus_reason
 from tools.lib.ts_replayer_convert import Conversion, convert_game
@@ -67,7 +69,9 @@ def main() -> None:
             empty += 1
             continue
 
-        conv: Conversion = convert_game(game)
+        cap = _Capture()
+        with _capturing(cap):
+            conv: Conversion = convert_game(game)
         if conv.skipped is not None:
             skipped += 1
             continue
@@ -78,9 +82,14 @@ def main() -> None:
             continue
 
         # The engine's own verdict, and None where the recording stopped before the game did.
+        # Points spent by one play are grouped so agreement can ignore the order they were
+        # written in; see ai/eval/agreement.
+        n = min(len(conv.samples), len(cap.states))
+        plays = group_point_runs(cap.states[:n], cap.movers[:n]) if n else None
         writer.add_game(conv.samples,
                         us_utility=conv.us_utility,
-                        final_vp=conv.final_victory_points)
+                        final_vp=conv.final_victory_points,
+                        plays=plays)
 
         if index % 25 == 0:
             print(f"  {index}/{len(paths)} replays, {len(writer.action):,} samples "

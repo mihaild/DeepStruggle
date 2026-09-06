@@ -1499,3 +1499,41 @@ The measurement module is unchanged — only the solver's preference is widened.
 
 The trap figure barely moves because §9.8 had already taken it near the floor; what changed is the
 hands themselves, which is what the dataset rebuild reflects. 961 tests pass.
+
+
+### 9.11 Agreement with human play, counted without the order of a placement
+
+**The measure was wrong, and by construction.** A card played for Operations spends its points one
+at a time and the engine asks a separate `POINT_NODE` question for each, so the log's order is
+whatever the recording happened to write. Placing two Influence in Angola and one in Zaire is the
+same play in any order, and scoring each point against the index the human's sequence happened to
+hold marked the model wrong for reordering a play it agreed with. The same holds for every event
+that spreads or removes several points -- Decolonization, De-Stalinization, Colonial Rear Guards,
+Ussuri River Skirmish, Puppet Governments, COMECON, Marshall Plan, The Reformer, and for removals
+Socialist Governments and East European Unrest.
+
+`ai/eval/agreement.py` groups consecutive point decisions belonging to one play and scores the
+group on the multiset of countries rather than the sequence. The model is teacher-forced along the
+human's trajectory, so its own earlier choices cannot take it somewhere the human never went, and
+each point still contributes exactly one comparison -- the two figures are directly comparable and
+only permutations are forgiven. Two points into one country are two entries, so agreeing on the
+country but not the weight still costs.
+
+**It matters less than expected.** Over 60,670 decisions from 120 replays, of which **34% sit in
+multi-point plays**:
+
+| | ordered | unordered | gain |
+|:---|---:|---:|---:|
+| BC on the human corpus | 46.04% | 46.34% | +0.29 |
+| BC on self-play | 33.74% | 34.34% | +0.60 |
+| E3 arm B (human) final | 32.41% | 32.96% | +0.56 |
+| E3 arm A (self-play) final | 32.18% | 32.93% | +0.76 |
+
+**So the ordering artefact was worth about half a point, not the several it might have been.** The
+reason is teacher forcing: at the second point of a play the model already sees the board after the
+human's first placement, so where it disagrees it is usually disagreeing about *which* countries,
+not about the order. Every figure quoted earlier in §9 was pessimistic by roughly this much, which
+changes no conclusion in it -- §9.1's washout still lands at ~32-33% either way.
+
+The correct measure is now the one to use, and `play` is stored as a dataset column so it can be
+applied without re-running conversion, which is the expensive part.
