@@ -1159,3 +1159,44 @@ games from that point on. About 8 epochs is the useful end.
 a 45% one, and just as fast. Where it does matter is E4: there the human policy is the anchor
 rather than the starting point, it persists for the whole run, and its quality is the experiment.
 Build that net at ~8 epochs.
+
+
+### 9.3 Do the humans respect the dominance relations? — partly, and unevenly
+
+**Question.** §4.8 called the dominance result "the strongest argument yet for demonstrations,
+since one human game shows the reversal that RL needs thousands to notice". That is a claim about
+the corpus which had never been checked against the corpus. Before engineering any way to keep
+human data in the policy, it is worth knowing whether the data carries the signal.
+
+**Setup.** `ai/eval/human_dominance.py`, over all 280 converted games. For a policy §4.8 can ask
+how the pair is *ranked*, because there is a distribution; for a human there is only the move, so
+the measure is the stricter half — did they choose the dominated card while a dominant alternative
+of equal Ops sat in the same hand.
+
+| | humans | control | K=40 |
+|:---|---:|---:|---:|
+| Quagmire, chose dominated | **24.3%** (9/37) | 37.5% | 30.7% |
+| Bear Trap, chose dominated | **21.1%** (16/76) | 32.8% | **18.2%** |
+| Space race, chose dominated | **0.4%** (3/712) | 18.1% | 12.6% |
+
+**On the space race the corpus is emphatic.** Humans spend the opponent's card on the track
+essentially always: 3 errors in 712 decidable plays, against our agents' 12.6-18.1%. That is a
+factor of 30 to 45, on the largest sample of the three, and it is exactly the kind of local,
+position-independent preference a demonstration can teach and RL evidently does not find.
+
+**On the traps it is much weaker than §4.8 implies.** Humans are better than the control on both,
+but **K=40 already beats them on Bear Trap** (18.2% against 21.1%) and is close on Quagmire. So on
+trap discards there is little left for the corpus to teach the current best agent.
+
+**Verdict.** The premise is *partly* confirmed, and narrower than the rhetoric it was based on.
+There is one clear, well-evidenced class where human play is strongly better and ours is not, and
+two where our best model has already caught up. Set against §9 -- where the human-warmed arm was
+weaker overall despite inheriting these preferences -- the case for spending GPU time on a
+mechanism to retain human data rests on that one class.
+
+**A denominator caution, in the same family as §4.8's own.** The first version of this counted
+every opponent-card space play as a correct decision and reported 0 errors in 265 "decidable"
+plays. Most of those were not decisions: no equal-Ops own card was in hand, so nothing could have
+been chosen differently. Requiring both kinds of card at the same Ops cut the denominator to 712
+across the corpus and is what makes the 0.4% meaningful. §4.8 records the same trap from the other
+direction — measuring against all space plays reads 2.4% and badly understates the agents' rate.
