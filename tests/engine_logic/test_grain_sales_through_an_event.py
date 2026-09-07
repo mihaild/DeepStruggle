@@ -41,8 +41,8 @@ def _at_action_round() -> ts.GameState:
     ctx = state.ctx()
     ctx.decision_player, ctx.decision_type = ts.Player.US, ts.DecisionType.SELECT_CARD
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     state.china_card_holder = ts.Player.USSR
     state.china_card_playable = 0
@@ -51,9 +51,9 @@ def _at_action_round() -> ts.GameState:
 
 def _grain_sales_directly(ussr_hand: List[int]) -> ts.GameState:
     state = _at_action_round()
-    state.set_card_location(GRAIN_SALES, ts.CardLocation.HAND_US)
+    state.set_card_location(GRAIN_SALES, ts.hand_of(ts.Player.US))
     for c in ussr_hand:
-        state.set_card_location(c, ts.CardLocation.HAND_USSR)
+        state.set_card_location(c, ts.hand_of(ts.Player.USSR))
     ts.Engine.step_flat(state, GRAIN_SALES - 1)
     ts.Engine.step_flat(state, PLAY_EVENT)
     return state
@@ -62,10 +62,10 @@ def _grain_sales_directly(ussr_hand: List[int]) -> ts.GameState:
 def _grain_sales_through_five_year_plan(ussr_extra: List[int]) -> ts.GameState:
     """Five Year Plan discards at random, so the seed is searched until it discards this."""
     state = _at_action_round()
-    state.set_card_location(FIVE_YEAR_PLAN, ts.CardLocation.HAND_US)
-    state.set_card_location(GRAIN_SALES, ts.CardLocation.HAND_USSR)
+    state.set_card_location(FIVE_YEAR_PLAN, ts.hand_of(ts.Player.US))
+    state.set_card_location(GRAIN_SALES, ts.hand_of(ts.Player.USSR))
     for c in ussr_extra:
-        state.set_card_location(c, ts.CardLocation.HAND_USSR)
+        state.set_card_location(c, ts.hand_of(ts.Player.USSR))
     ts.Engine.step_flat(state, FIVE_YEAR_PLAN - 1)
     base = int(state.rng_state)
     for k in range(4000):
@@ -75,7 +75,7 @@ def _grain_sales_through_five_year_plan(ussr_extra: List[int]) -> ts.GameState:
             ts.Engine.step_flat(probe, PLAY_EVENT)
         except Exception:
             continue
-        if probe.get_card_location(GRAIN_SALES) != ts.CardLocation.HAND_USSR:
+        if not ts.in_hand_of(probe.get_card_location(GRAIN_SALES), ts.Player.USSR):
             state.rng_state = probe.rng_state
             break
     else:

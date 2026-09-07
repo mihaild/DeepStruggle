@@ -52,7 +52,7 @@ def _modes(state: ts.GameState) -> List[str]:
 def _play_for_ops(card: int, player: ts.Player, event_first: bool) -> ts.GameState:
     state = _fresh()
     state.phasing_player = player
-    hand = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    hand = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     state.set_card_location(card, hand)
     state.ctx().decision_player = player
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD

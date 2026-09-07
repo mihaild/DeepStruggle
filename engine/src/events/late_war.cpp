@@ -153,7 +153,6 @@ bool trigger_terrorism(GameState& state, Player p) noexcept {
     Player opp = get_opponent(p);
     uint8_t discard_count = (opp == Player::US && state.has_flag(effect_bits::IRANIAN_HOSTAGE_CRISIS_PLAY)) ? 2 : 1;
 
-    CardLocation opp_hand = (opp == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
 
     // Not the card being played. The engine leaves an Ops card in its owner's hand until the
     // play finishes, and an opponent's card played for Operations fires its own event -- so
@@ -166,7 +165,7 @@ bool trigger_terrorism(GameState& state, Player p) noexcept {
         uint8_t cards[111];
         uint8_t cnt = 0;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (i != in_play && state.card_locations[i] == opp_hand) {
+            if (i != in_play && in_hand_of(state.card_locations[i], opp)) {
                 cards[cnt++] = i;
             }
         }
@@ -195,7 +194,7 @@ bool trigger_latin_debt_crisis(GameState& state, Player p) noexcept {
     bool has_3ops = false;
     for (uint8_t i = 1; i <= 110; ++i) {
         // Effective Ops, as the discard itself is judged.
-        if (state.card_locations[i] == CardLocation::HAND_US &&
+        if (in_hand_of(state.card_locations[i], Player::US) &&
             Operations::get_effective_ops(state, i, Player::US) >= 3) {
             has_3ops = true;
             break;

@@ -37,8 +37,8 @@ def _base(us_in_canada: int = 4) -> ts.GameState:
     state.set_country(CANADA, us_in_canada, 0)   # stability 2, so 4 US Influence is control
     state.defcon = 3
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     return state
 
@@ -48,7 +48,7 @@ def _play_one_action_round(state: ts.GameState) -> bool:
     state.current_phase = ts.Phase.ACTION_ROUND
     state.action_round = 1
     state.phasing_player = ts.Player.USSR
-    state.set_card_location(SOCIALIST_GOVERNMENTS, ts.CardLocation.HAND_USSR)
+    state.set_card_location(SOCIALIST_GOVERNMENTS, ts.hand_of(ts.Player.USSR))
     state.ctx().decision_player = ts.Player.USSR
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD
     for _ in range(40):
@@ -62,8 +62,7 @@ def _play_one_action_round(state: ts.GameState) -> bool:
             return False
         if (state.ctx().decision_type == ts.DecisionType.SELECT_CARD
                 and int(state.ctx().resolving_card) == 0
-                and state.get_card_location(SOCIALIST_GOVERNMENTS)
-                != ts.CardLocation.HAND_USSR):
+                and not ts.in_hand_of(state.get_card_location(SOCIALIST_GOVERNMENTS), ts.Player.USSR)):
             return False
         ts.Engine.step_flat(state, int(legal[0]))
     return False
@@ -91,8 +90,8 @@ def test_a_headline_drop_does_not_claim_the_first_action_round() -> None:
     """Turn 5 of replay 219: DEFCON falls to 2 in the headline, and the action round that
     follows had nothing to do with it -- the USSR only discards a card to escape Bear Trap."""
     state = _base()
-    state.set_card_location(DUCK_AND_COVER, ts.CardLocation.HAND_US)
-    state.set_card_location(SOCIALIST_GOVERNMENTS, ts.CardLocation.HAND_USSR)
+    state.set_card_location(DUCK_AND_COVER, ts.hand_of(ts.Player.US))
+    state.set_card_location(SOCIALIST_GOVERNMENTS, ts.hand_of(ts.Player.USSR))
     state.current_phase = ts.Phase.HEADLINE
     state.headline_stage = 0
     state.action_round = 0

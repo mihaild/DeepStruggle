@@ -17,7 +17,7 @@ DUCK_AND_COVER = 4          # 3 Ops, a legal trap escape
 
 
 def _hand(state: ts.GameState, player: ts.Player, cards: List[int]) -> None:
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)

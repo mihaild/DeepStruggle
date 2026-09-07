@@ -54,7 +54,7 @@ def _at_box(us_box: int, ussr_box: int, card: int) -> ts.GameState:
     state.us_space_track = us_box
     state.ussr_space_track = ussr_box
     state.victory_points = 0
-    state.set_card_location(card, ts.CardLocation.HAND_US)
+    state.set_card_location(card, ts.hand_of(ts.Player.US))
     state.phasing_player = ts.Player.US
     state.ctx().decision_player = ts.Player.US
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD

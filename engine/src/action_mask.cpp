@@ -32,9 +32,8 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             // 0. Space Walk (Box 6) end-of-turn discard
             if (ctx.resolving_card == card_ids::SPACE_WALK_DISCARD) {
-                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc) {
+                    if (in_hand_of(state.card_locations[i], p)) {
                         mask_out[i] = 1;
                     }
                 }
@@ -57,9 +56,8 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
 
             // 2. UN Intervention (#32) companion card selection
             if (ctx.pending_op_card == card_ids::UN_INTERVENTION) {
-                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc && CardData::is_opponent_card(i, p)) {
+                    if (in_hand_of(state.card_locations[i], p) && CardData::is_opponent_card(i, p)) {
                         mask_out[i] = 1;
                     }
                 }
@@ -75,8 +73,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // engine would let them headline nothing else.
             if (state.current_phase == Phase::ACTION_ROUND &&
                 state.forced_card_player == p && state.forced_card_id != 0) {
-                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
-                if (state.card_locations[state.forced_card_id] == loc) {
+                if (in_hand_of(state.card_locations[state.forced_card_id], p)) {
                     mask_out[state.forced_card_id] = 1;
                     return;
                 }
@@ -92,7 +89,6 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                             (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE)));
 
             if (trapped) {
-                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
                 // Effective Ops, as the discard itself is judged -- the same reading Latin
                 // American Debt Crisis takes of its own 3. Containment and Brezhnev Doctrine
                 // each add one to their side's cards and Red Scare/Purge takes one away, and
@@ -104,7 +100,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 // Revolts and the China Card carry are for operations conducted there.
                 bool has_2ops = false;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc &&
+                    if (in_hand_of(state.card_locations[i], p) &&
                         Operations::get_effective_ops(state, i, p) >= 2) {
                         has_2ops = true;
                         mask_out[i] = 1;
@@ -120,7 +116,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 // Quagmire and the US plays Africa Scoring on the very next round.
                 uint8_t scoring_held = 0;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc && CardData::is_scoring_card(i)) {
+                    if (in_hand_of(state.card_locations[i], p) && CardData::is_scoring_card(i)) {
                         scoring_held++;
                     }
                 }
@@ -136,7 +132,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                     ? static_cast<uint8_t>(max_ar - state.action_round + 1) : 0;
                 if (!has_2ops || scoring_held >= rounds_left) {
                     for (uint8_t i = 1; i <= 110; ++i) {
-                        if (state.card_locations[i] == loc && CardData::is_scoring_card(i)) {
+                        if (in_hand_of(state.card_locations[i], p) && CardData::is_scoring_card(i)) {
                             mask_out[i] = 1;
                         }
                     }
@@ -148,11 +144,10 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
 
             // 5. Standard Hand Selection
-            CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
             for (uint8_t i = 1; i <= 110; ++i) {
                 if (i == card_ids::THE_CHINA_CARD) continue; // China card handled below
                 if (state.current_phase == Phase::HEADLINE && i == card_ids::UN_INTERVENTION) continue;
-                if (state.card_locations[i] == loc) {
+                if (in_hand_of(state.card_locations[i], p)) {
                     mask_out[i] = 1;
                 }
             }

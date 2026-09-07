@@ -56,10 +56,10 @@ def _at_action_round(turn: int, action_round: int, mover, hand: List[int]) -> ts
     ctx = state.ctx()
     ctx.decision_player = mover
     ctx.decision_type = ts.DecisionType.SELECT_CARD
-    loc = ts.CardLocation.HAND_US if mover == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if mover == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in hand:
         state.set_card_location(c, loc)

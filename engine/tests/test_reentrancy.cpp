@@ -18,7 +18,7 @@ TEST(ReentrancyTest, 01_Individual_FiveYearPlan) {
     ASSERT_TRUE(done);
 
     // (b) USSR hand has US event (Duck and Cover #4) -> discarded to discard pile, triggers event, DEFCON drops
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.defcon = 5;
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
     ASSERT_TRUE(done);
@@ -26,13 +26,13 @@ TEST(ReentrancyTest, 01_Individual_FiveYearPlan) {
     ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
 
     // (c) USSR hand has USSR event (Arab-Israeli War #13) -> discarded without event
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
     ASSERT_TRUE(done);
     ASSERT_EQ(state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR], ts::CardLocation::DISCARD_PILE);
 
     // (d) USSR hand has Neutral event (Olympic Games #20) -> discarded without event
-    state.card_locations[ts::card_ids::OLYMPIC_GAMES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::OLYMPIC_GAMES] = ts::hand_of(ts::Player::USSR);
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
     ASSERT_TRUE(done);
     ASSERT_EQ(state.card_locations[ts::card_ids::OLYMPIC_GAMES], ts::CardLocation::DISCARD_PILE);
@@ -52,7 +52,7 @@ TEST(ReentrancyTest, 02_Individual_GrainSales) {
 
     // (b) USSR holds Duck and Cover (#4) -> US draws it and chooses Branch 0 (play drawn card)
     state.ctx() = ts::DecisionContext{};
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
@@ -67,7 +67,7 @@ TEST(ReentrancyTest, 02_Individual_GrainSales) {
     // (c) USSR holds Soviet card (Arab-Israeli War #13) -> US draws and chooses Branch 1 (return card for 2 Ops)
     state.ctx() = ts::DecisionContext{};
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
 
     ts::MicroAction act_ops{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0};
@@ -120,8 +120,8 @@ TEST(ReentrancyTest, 04_Pair_FYP_then_GrainSales) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
 
     // 1. FYP executes and discards Arab-Israeli War
     ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
@@ -138,8 +138,8 @@ TEST(ReentrancyTest, 05_Pair_GrainSales_then_FYP) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.defcon = 5;
 
     // 1. Grain Sales draws Five Year Plan
@@ -162,7 +162,7 @@ TEST(ReentrancyTest, 06_Pair_FYP_then_StarWars) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 4;
     state.ussr_space_track = 2;
     state.defcon = 5;
@@ -189,7 +189,7 @@ TEST(ReentrancyTest, 07_Pair_StarWars_then_FYP) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 3;
     state.ussr_space_track = 1;
     state.defcon = 5;
@@ -209,7 +209,7 @@ TEST(ReentrancyTest, 08_Pair_GrainSales_then_StarWars) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::DISCARD_PILE;
     state.us_space_track = 3;
     state.ussr_space_track = 1;
@@ -238,7 +238,7 @@ TEST(ReentrancyTest, 09_Pair_StarWars_then_GrainSales) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 4;
     state.ussr_space_track = 2;
 
@@ -262,8 +262,8 @@ TEST(ReentrancyTest, 10_Triple_Order_StarWars_GrainSales_FYP) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 4;
     state.ussr_space_track = 1;
     state.defcon = 5;
@@ -288,7 +288,7 @@ TEST(ReentrancyTest, 11_Triple_Order_StarWars_FYP_GrainSales) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 3;
     state.ussr_space_track = 0;
 
@@ -305,9 +305,9 @@ TEST(ReentrancyTest, 12_Triple_Order_GrainSales_StarWars_FYP) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 3;
     state.ussr_space_track = 1;
     state.defcon = 5;
@@ -331,8 +331,8 @@ TEST(ReentrancyTest, 13_Triple_Order_GrainSales_FYP_StarWars) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 3;
     state.ussr_space_track = 1;
     state.defcon = 5;
@@ -360,8 +360,8 @@ TEST(ReentrancyTest, 14_Triple_Order_FYP_GrainSales_StarWars) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::DISCARD_PILE;
     state.us_space_track = 4;
     state.ussr_space_track = 1;
@@ -389,7 +389,7 @@ TEST(ReentrancyTest, 15_Triple_Order_FYP_StarWars_GrainSales) {
     ts::Engine::init_game(state, 42);
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.us_space_track = 3;
     state.ussr_space_track = 1;
     state.defcon = 5;
@@ -407,7 +407,7 @@ TEST(ReentrancyTest, 15_Triple_Order_FYP_StarWars_GrainSales) {
     ASSERT_EQ(state.defcon, 3);
 
     // 3. Give USSR Arab-Israeli War, then Grain Sales draws it
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     state.ctx() = ts::DecisionContext{};
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);

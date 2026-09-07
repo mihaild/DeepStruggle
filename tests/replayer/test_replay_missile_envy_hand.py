@@ -35,16 +35,16 @@ def _state_with_us_hand(cards) -> ts.GameState:
     state = ts.GameState()
     ts.Engine.init_game(state, 12345)
     for c in range(1, 111):
-        if state.get_card_location(c) == ts.CardLocation.HAND_US:
+        if ts.in_hand_of(state.get_card_location(c), ts.Player.US):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in cards:
-        state.set_card_location(c, ts.CardLocation.HAND_US)
+        state.set_card_location(c, ts.hand_of(ts.Player.US))
     return state
 
 
 def _us_hand(state: ts.GameState):
     return {c for c in range(1, 111)
-            if state.get_card_location(c) == ts.CardLocation.HAND_US}
+            if ts.in_hand_of(state.get_card_location(c), ts.Player.US)}
 
 
 def test_a_card_the_giver_could_not_have_held_is_set_aside() -> None:

@@ -42,9 +42,9 @@ def _resolving(card: int, flags: List[int], probe: int) -> ts.GameState:
         state.set_flag(flag)
     # Empty the US hand so only the probe card is offered.
     for c in range(1, 111):
-        if state.get_card_location(c) == ts.CardLocation.HAND_US:
+        if ts.in_hand_of(state.get_card_location(c), ts.Player.US):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
-    state.set_card_location(probe, ts.CardLocation.HAND_US)
+    state.set_card_location(probe, ts.hand_of(ts.Player.US))
     ts.CardHandlers.trigger_event(state, card, ts.Player.USSR)
     return state
 

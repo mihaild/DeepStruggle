@@ -42,7 +42,7 @@ def test_fix_card_32_un_intervention_cannot_be_headlined():
     s.current_phase = ts.Phase.HEADLINE
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
     s.ctx().decision_player = ts.Player.US
-    s.set_card_location(32, ts.CardLocation.HAND_US) # UN Intervention
+    s.set_card_location(32, ts.hand_of(ts.Player.US)) # UN Intervention
     mask = ts.Engine.get_legal_action_mask(s)
     assert mask[32] == 0 # Cannot headline UN Intervention
 
@@ -108,7 +108,7 @@ def test_fix_card_40_cuban_missile_crisis_cancellation():
     s.phasing_player = ts.Player.USSR
     s.ctx().decision_player = ts.Player.USSR
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
-    s.set_card_location(14, ts.CardLocation.HAND_USSR)
+    s.set_card_location(14, ts.hand_of(ts.Player.USSR))
     s.defcon = 3
     
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 14))
@@ -208,7 +208,7 @@ def test_fix_card_59_flower_power_war_cards_for_ops():
 def test_fix_card_60_u2_incident_awards_vp_on_un_intervention():
     s = make_state()
     s.set_flag(EB.U2_INCIDENT_ACTIVE)
-    s.set_card_location(11, ts.CardLocation.HAND_US) # Korean War (USSR card)
+    s.set_card_location(11, ts.hand_of(ts.Player.US)) # Korean War (USSR card)
     s.victory_points = 0
     # US plays UN Intervention
     ts.CardHandlers.trigger_event(s, 32, ts.Player.US)
@@ -219,7 +219,7 @@ def test_fix_card_60_u2_incident_awards_vp_on_un_intervention():
 
 def test_fix_card_73_shuttle_diplomacy_ongoing_until_scoring():
     s = make_state()
-    s.set_card_location(73, ts.CardLocation.HAND_US)
+    s.set_card_location(73, ts.hand_of(ts.Player.US))
     s.current_phase = ts.Phase.ACTION_ROUND
     s.phasing_player = ts.Player.US
     s.ctx().decision_player = ts.Player.US
@@ -420,7 +420,7 @@ def test_fix_we_will_bury_you_vp_penalty_on_scoring_card():
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     # US plays Asia Scoring
-    s.set_card_location(1, ts.CardLocation.HAND_US)
+    s.set_card_location(1, ts.hand_of(ts.Player.US))
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 1))
 
     # USSR should have gained 3 VP (-3) + 1 VP from default Asia Scoring (-1) = -4 VP
@@ -433,7 +433,7 @@ def test_fix_ask_not_discard_six_cards_safely():
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
     # Give US 7 cards
     for c in range(10, 17):
-        s.set_card_location(c, ts.CardLocation.HAND_US)
+        s.set_card_location(c, ts.hand_of(ts.Player.US))
     
     ts.CardHandlers.trigger_event(s, 77, ts.Player.US)
     
@@ -522,7 +522,7 @@ def test_fix_cambridge_five_reveals_up_to_seven_scoring_cards():
     # Give US 6 scoring cards
     score_cards = [1, 2, 3, 37, 38, 81] # Asia, Europe, ME, CA, SEA, SA
     for sc in score_cards:
-        s.set_card_location(sc, ts.CardLocation.HAND_US)
+        s.set_card_location(sc, ts.hand_of(ts.Player.US))
     
     argentina_id = cid("Argentina") # SA
     set_inf(s, argentina_id, 0, 0)
@@ -545,7 +545,7 @@ def test_fix_card_97_an_evil_empire_not_war_card():
     s.turn = 8
     s.current_phase = ts.Phase.ACTION_ROUND
     s.phasing_player = ts.Player.US
-    s.set_card_location(97, ts.CardLocation.HAND_US)
+    s.set_card_location(97, ts.hand_of(ts.Player.US))
 
     # US selects Card 97 for play mode OPS
     s.ctx().decision_player = ts.Player.US
@@ -714,8 +714,8 @@ def test_fix_card_32_un_intervention_applies_ops_modifiers():
     # USSR plays Red Scare/Purge on US
     s.set_flag(EB.PURGE_US_ACTIVE)
     # US holds UN Intervention (32) and Arab-Israeli War (13, 2 Ops USSR card)
-    s.set_card_location(32, ts.CardLocation.HAND_US)
-    s.set_card_location(13, ts.CardLocation.HAND_US)
+    s.set_card_location(32, ts.hand_of(ts.Player.US))
+    s.set_card_location(13, ts.hand_of(ts.Player.US))
     s.ctx().decision_player = ts.Player.US
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
@@ -833,9 +833,9 @@ def test_chain_scenario_1_fyp_grainsales_starwars_abmtreaty_full_ar():
     for i in range(1, 111):
         st.set_card_location(i, ts.CardLocation.DRAW_DECK)
 
-    st.set_card_location(5, ts.CardLocation.HAND_US) # Five Year Plan
-    st.set_card_location(67, ts.CardLocation.HAND_USSR) # Grain Sales
-    st.set_card_location(85, ts.CardLocation.HAND_USSR) # Star Wars
+    st.set_card_location(5, ts.hand_of(ts.Player.US)) # Five Year Plan
+    st.set_card_location(67, ts.hand_of(ts.Player.USSR)) # Grain Sales
+    st.set_card_location(85, ts.hand_of(ts.Player.USSR)) # Star Wars
     st.set_card_location(57, ts.CardLocation.DISCARD_PILE) # ABM Treaty
 
     st.set_country(25, 0, 2) # Iran (ID 25)
@@ -895,10 +895,10 @@ def test_chain_scenario_2_starwars_fyp_grainsales_glasnost_full_ar():
     for i in range(1, 111):
         st.set_card_location(i, ts.CardLocation.DRAW_DECK)
 
-    st.set_card_location(85, ts.CardLocation.HAND_US) # Star Wars
+    st.set_card_location(85, ts.hand_of(ts.Player.US)) # Star Wars
     st.set_card_location(5, ts.CardLocation.DISCARD_PILE) # Five Year Plan
-    st.set_card_location(67, ts.CardLocation.HAND_USSR) # Grain Sales
-    st.set_card_location(90, ts.CardLocation.HAND_USSR) # Glasnost
+    st.set_card_location(67, ts.hand_of(ts.Player.USSR)) # Grain Sales
+    st.set_card_location(90, ts.hand_of(ts.Player.USSR)) # Glasnost
 
     st.set_country(67, 0, 3) # Cuba
     st.set_country(3, 1, 2)  # Poland
@@ -973,9 +973,9 @@ def test_chain_scenario_3_ussr_grainsales_starwars_fyp_kal007_full_ar():
     for i in range(1, 111):
         st.set_card_location(i, ts.CardLocation.DRAW_DECK)
 
-    st.set_card_location(67, ts.CardLocation.HAND_USSR)
+    st.set_card_location(67, ts.hand_of(ts.Player.USSR))
     st.set_card_location(5, ts.CardLocation.DISCARD_PILE)
-    st.set_card_location(85, ts.CardLocation.HAND_USSR)
+    st.set_card_location(85, ts.hand_of(ts.Player.USSR))
 
     st.set_country(44, 4, 1) # South Korea (ID 44)
     st.set_country(26, 3, 0) # Japan
@@ -996,7 +996,7 @@ def test_chain_scenario_3_ussr_grainsales_starwars_fyp_kal007_full_ar():
     if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
 
-    st.set_card_location(89, ts.CardLocation.HAND_USSR) # Give USSR KAL-007
+    st.set_card_location(89, ts.hand_of(ts.Player.USSR)) # Give USSR KAL-007
 
     # 3b. US plays Star Wars for EVENT
     if st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE:

@@ -128,7 +128,7 @@ def legal_card_actions(state: ts.GameState) -> Dict[int, int]:
 
 def hand_cards(state: ts.GameState, player: ts.Player) -> List[int]:
     """Card ids currently held by `player`."""
-    want = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    want = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     return [c for c in range(1, 111) if state.get_card_location(c) == want]
 
 

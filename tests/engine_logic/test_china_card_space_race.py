@@ -36,8 +36,8 @@ def _holding_the_china_card(box: int) -> ts.GameState:
     state.china_card_holder = ts.Player.US
     state.china_card_playable = 1
     state.us_space_track = box
-    state.set_card_location(DUCK_AND_COVER, ts.CardLocation.HAND_US)
-    state.set_card_location(FIVE_YEAR_PLAN, ts.CardLocation.HAND_USSR)
+    state.set_card_location(DUCK_AND_COVER, ts.hand_of(ts.Player.US))
+    state.set_card_location(FIVE_YEAR_PLAN, ts.hand_of(ts.Player.USSR))
     ctx = state.ctx()
     ctx.decision_player = ts.Player.US
     ctx.decision_type = ts.DecisionType.SELECT_CARD

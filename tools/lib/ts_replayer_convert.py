@@ -915,10 +915,11 @@ def _pad_hand(state: ts.GameState, held: List[int], size: int, ops_cap: Optional
 
 def _set_hand(state: ts.GameState, player: ts.Player, names: List[str]) -> int:
     """Force a player's hand to the logged cards. Returns how many were placed."""
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
-    # clear the current hand first, so leftovers cannot linger
+    loc = ts.hand_of(player)
+    # clear the current hand first, so leftovers cannot linger -- both variants, since a
+    # card the opponent has seen is still in the hand
     for c in range(1, 111):
-        if state.get_card_location(c) == loc:
+        if ts.in_hand_of(state.get_card_location(c), player):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     placed = 0
     for nm in names:
@@ -1709,17 +1710,17 @@ def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player
     log names, and it discarded U2 Incident in its place: the very card Missile Envy was about
     to take, and 1 VP for the USSR that never happened.
     """
-    loc = ts.CardLocation.HAND_US if giver == ts.Player.US else ts.CardLocation.HAND_USSR
     want = int(ts.CardData.get_card_info(revealed)["ops"])
     spent_first = spent_first or set()
     for c in range(1, 111):
-        if c == revealed or c in spent_first or state.get_card_location(c) != loc:
+        if (c == revealed or c in spent_first
+                or not ts.in_hand_of(state.get_card_location(c), giver)):
             continue
         info = ts.CardData.get_card_info(c)
         if not info["is_scoring"] and int(info["ops"]) > want:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
-    if state.get_card_location(revealed) != loc:
-        state.set_card_location(revealed, loc)
+    if not ts.in_hand_of(state.get_card_location(revealed), giver):
+        state.set_card_location(revealed, ts.hand_of(giver))
 
 
 def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
@@ -1728,8 +1729,8 @@ def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
     Grain Sales takes a random card from the USSR hand and offers it to the US; the log names
     it ("USSR reveals NATO*"), so the draw is not really a chance node for our purposes.
     """
-    if state.get_card_location(cid) != ts.CardLocation.HAND_USSR:
-        state.set_card_location(cid, ts.CardLocation.HAND_USSR)
+    if not ts.in_hand_of(state.get_card_location(cid), ts.Player.USSR):
+        state.set_card_location(cid, ts.hand_of(ts.Player.USSR))
     state.ctx().temp_cards = [cid]
 
 
@@ -1946,7 +1947,7 @@ def _force_random_discard(state: ts.GameState, cards: List[int],
     that is already gone made every step a match, so the first step offered -- the one that
     plays the card -- claimed the forcing and cleared the queue before the discard happened.
     """
-    want = [c for c in cards if state.get_card_location(c) == ts.CardLocation.HAND_USSR]
+    want = [c for c in cards if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR)]
     if not want:
         return False
 
@@ -1965,7 +1966,7 @@ def _force_random_discard(state: ts.GameState, cards: List[int],
             take(probe)
         except Exception:
             continue
-        if all(probe.get_card_location(c) != ts.CardLocation.HAND_USSR for c in want):
+        if all(not ts.in_hand_of(probe.get_card_location(c), ts.Player.USSR) for c in want):
             if k:
                 state.rng_state = (base + k * _GOLDEN) % _UINT64
             return True
@@ -2459,8 +2460,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 # UN Intervention and Quagmire appears nowhere in the eight cards the log
                 # credits them with. The log's own statement is the better evidence, so the
                 # card is seated in that hand -- the same forcing a headline card already gets.
-                loc = (ts.CardLocation.HAND_US if mover == ts.Player.US
-                       else ts.CardLocation.HAND_USSR)
+                loc = (ts.hand_of(ts.Player.US) if mover == ts.Player.US
+                       else ts.hand_of(ts.Player.USSR))
                 state.set_card_location(second_cid, loc)
                 mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
                 legal = np.flatnonzero(mask)
@@ -2565,8 +2566,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
                                lambda ma: int(ma.primary_id) == want_c)
                 if chosen is None:
-                    loc = (ts.CardLocation.HAND_US if mover == ts.Player.US
-                           else ts.CardLocation.HAND_USSR)
+                    loc = (ts.hand_of(ts.Player.US) if mover == ts.Player.US
+                           else ts.hand_of(ts.Player.USSR))
                     state.set_card_location(want_c, loc)
                     mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
                     legal = np.flatnonzero(mask)
@@ -2592,8 +2593,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     state.china_card_holder = mover
                     state.china_card_playable = True
                 else:
-                    loc = (ts.CardLocation.HAND_US if mover == ts.Player.US
-                           else ts.CardLocation.HAND_USSR)
+                    loc = (ts.hand_of(ts.Player.US) if mover == ts.Player.US
+                           else ts.hand_of(ts.Player.USSR))
                     state.set_card_location(cid_target, loc)
                 mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
                 legal = np.flatnonzero(mask)
@@ -3145,13 +3146,12 @@ def _mid_turn_acquisitions(raws, turn: int, side: str, held: List[int]) -> Dict[
 
 def _apply_hands(state, us_cards, ussr_cards) -> None:
     for c in range(1, 111):
-        loc = state.get_card_location(c)
-        if loc in (ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR):
+        if ts.hand_holder(state.get_card_location(c)) != ts.Player.NONE:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in us_cards:
-        state.set_card_location(c, ts.CardLocation.HAND_US)
+        state.set_card_location(c, ts.hand_of(ts.Player.US))
     for c in ussr_cards:
-        state.set_card_location(c, ts.CardLocation.HAND_USSR)
+        state.set_card_location(c, ts.hand_of(ts.Player.USSR))
 
 
 def _board_diff(state, countries) -> str:

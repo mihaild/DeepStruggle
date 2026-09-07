@@ -153,11 +153,11 @@ TEST(LateCardsTest, Card92_Terrorism_Standard) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     ts::CardHandlers::trigger_event(state, ts::card_ids::TERRORISM, ts::Player::USSR);
     ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
 }
@@ -166,12 +166,12 @@ TEST(LateCardsTest, Card92_Terrorism_WithIranianHostageCrisis) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US);
     state.set_flag(ts::effect_bits::IRANIAN_HOSTAGE_CRISIS_PLAY);
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::TERRORISM, ts::Player::USSR);
@@ -202,7 +202,7 @@ TEST(LateCardsTest, Card94_Chernobyl) {
 // Card 95: Latin American Debt Crisis
 TEST(LateCardsTest, Card95_LatinAmericanDebtCrisis_USDiscards) {
     ts::GameState state{};
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US; // 3 ops
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 ops
     bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::LATIN_AMERICAN_DEBT_CRISIS, ts::Player::USSR);
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
@@ -260,7 +260,7 @@ TEST(LateCardsTest, Card97_AnEvilEmpire) {
 // Card 98: Aldrich Ames Remix
 TEST(LateCardsTest, Card98_AldrichAmes) {
     ts::GameState state{};
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US);
     ts::CardHandlers::trigger_event(state, ts::card_ids::ALDRICH_AMES, ts::Player::USSR);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::ALDRICH_AMES_ACTIVE));
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);

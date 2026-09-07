@@ -43,7 +43,7 @@ def _offered(hand: List[int], china: bool) -> Tuple[List[int], bool]:
     """The cards offered and whether passing is, for a mover holding `hand`."""
     state = _at_an_action_round()
     mover = state.ctx().decision_player
-    loc = ts.CardLocation.HAND_US if mover == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if mover == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
@@ -94,7 +94,7 @@ def test_passing_gives_the_round_to_the_other_player() -> None:
     """The pass has to be a move the engine accepts, not merely a mask bit."""
     state = _at_an_action_round()
     mover = state.ctx().decision_player
-    loc = ts.CardLocation.HAND_US if mover == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if mover == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)

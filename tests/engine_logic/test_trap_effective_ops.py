@@ -58,10 +58,10 @@ def _trapped(mover, trap: int, effects: List[int], hand: List[int]) -> ts.GameSt
     state.phasing_player = mover
     ctx = state.ctx()
     ctx.decision_player, ctx.decision_type = mover, ts.DecisionType.SELECT_CARD
-    loc = ts.CardLocation.HAND_US if mover == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if mover == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in hand:
         state.set_card_location(c, loc)

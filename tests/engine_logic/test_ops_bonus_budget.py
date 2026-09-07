@@ -68,7 +68,7 @@ def _ussr_ops_state(card: int, vietnam: bool) -> ts.GameState:
         st.china_card_holder = ts.Player.USSR
         st.china_card_playable = True
     else:
-        st.set_card_location(card, ts.CardLocation.HAND_USSR)
+        st.set_card_location(card, ts.hand_of(ts.Player.USSR))
     return st
 
 
@@ -222,7 +222,7 @@ def test_vietnam_revolts_un_intervention_thailand_vs_controlled_italy() -> None:
     st.set_country(vietnam_id, 0, 1)
 
     un_intervention = 32
-    st.set_card_location(un_intervention, ts.CardLocation.HAND_USSR)
+    st.set_card_location(un_intervention, ts.hand_of(ts.Player.USSR))
     st.ctx().decision_player = ts.Player.USSR
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 

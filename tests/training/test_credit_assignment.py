@@ -65,7 +65,7 @@ class TestDefconSuicideCredit:
         st.ctx().decision_player = ts.Player.USSR
 
         # Choose a card with ops for USSR (e.g. Card 5)
-        st.set_card_location(5, ts.CardLocation.HAND_USSR)
+        st.set_card_location(5, ts.hand_of(ts.Player.USSR))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
         if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
@@ -88,7 +88,7 @@ class TestDefconSuicideCredit:
         st.phasing_player = ts.Player.US
         st.ctx().decision_player = ts.Player.US
 
-        st.set_card_location(4, ts.CardLocation.HAND_US)
+        st.set_card_location(4, ts.hand_of(ts.Player.US))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
         if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
@@ -209,7 +209,7 @@ class TestVictoryPoints20MilOpsAndEvents:
         st.set_country(15, 3, 0)  # Poland
 
         # US plays Europe Scoring (Card 2)
-        st.set_card_location(2, ts.CardLocation.HAND_US)
+        st.set_card_location(2, ts.hand_of(ts.Player.US))
         ma = ts.MicroAction(ts.DecisionType.SELECT_CARD, 2, 0, 0)
         flat_act = ts.encode_micro_action(st, ma)
         _, _, rewards, dones, info = env.step([flat_act])
@@ -229,7 +229,7 @@ class TestVictoryPoints20MilOpsAndEvents:
         st.victory_points = 18
 
         # Play Wargames (Card 100)
-        st.set_card_location(100, ts.CardLocation.HAND_US)
+        st.set_card_location(100, ts.hand_of(ts.Player.US))
         ma = ts.MicroAction(ts.DecisionType.SELECT_CARD, 100, 0, 0)
         flat_act = ts.encode_micro_action(st, ma)
         env.step([flat_act])
@@ -269,7 +269,7 @@ class TestVictoryPoints20MilOpsAndEvents:
         st.set_country(15, 0, 3)  # Poland
 
         # USSR plays Europe Scoring (Card 2)
-        st.set_card_location(2, ts.CardLocation.HAND_USSR)
+        st.set_card_location(2, ts.hand_of(ts.Player.USSR))
         ma = ts.MicroAction(ts.DecisionType.SELECT_CARD, 2, 0, 0)
         flat_act = ts.encode_micro_action(st, ma)
         _, _, rewards, dones, info = env.step([flat_act])
@@ -316,7 +316,7 @@ class TestCubanMissileCrisisCoupSuicide:
         st.phasing_player = ts.Player.USSR
         st.ctx().decision_player = ts.Player.USSR
 
-        st.set_card_location(5, ts.CardLocation.HAND_USSR)
+        st.set_card_location(5, ts.hand_of(ts.Player.USSR))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
         if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
@@ -346,7 +346,7 @@ class TestCubanMissileCrisisCoupSuicide:
         st.phasing_player = ts.Player.US
         st.ctx().decision_player = ts.Player.US
 
-        st.set_card_location(4, ts.CardLocation.HAND_US)
+        st.set_card_location(4, ts.hand_of(ts.Player.US))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
         if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
@@ -373,7 +373,7 @@ class TestBlunderAwareRewardCalculator:
         for card_idx in range(1, 111):
             if ts.CardData.get_card_info(card_idx).get("is_scoring"):
                 st.set_card_location(card_idx, ts.CardLocation.DISCARD_PILE)
-        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Only USSR holds Asia Scoring
+        st.set_card_location(1, ts.hand_of(ts.Player.USSR))  # Only USSR holds Asia Scoring
         st.turn = 3
         st.action_round = 7
         st.current_phase = ts.Phase.GAME_OVER
@@ -401,7 +401,7 @@ class TestBlunderAwareRewardCalculator:
         assert r_us[0] == 0.0, f"Winner (US) not holding scoring must be shielded with 0.0 reward, got {r_us[0]}"
 
         # If BOTH players hold scoring cards at turn end: each side holding scoring receives -1.0 penalty
-        st.set_card_location(2, ts.CardLocation.HAND_US)  # US also holds Europe Scoring
+        st.set_card_location(2, ts.hand_of(ts.Player.US))  # US also holds Europe Scoring
         r_us_both = calc.compute_step_rewards(
             acting_players=np.array([1], dtype=np.int8),
             dones=np.array([True]),
@@ -593,8 +593,8 @@ class TestHeadlineResolutionOrder:
         st.current_phase = ts.Phase.HEADLINE
 
         # Card 50 (We Will Bury You) = 4 Ops; Card 4 (Duck and Cover) = 3 Ops
-        st.set_card_location(4, ts.CardLocation.HAND_US)
-        st.set_card_location(50, ts.CardLocation.HAND_USSR)
+        st.set_card_location(4, ts.hand_of(ts.Player.US))
+        st.set_card_location(50, ts.hand_of(ts.Player.USSR))
 
         # US selects Duck and Cover (3 Ops)
         st.ctx().decision_player = ts.Player.US
@@ -621,8 +621,8 @@ class TestHeadlineResolutionOrder:
         st.current_phase = ts.Phase.HEADLINE
 
         # Card 4 (Duck and Cover) = 3 Ops; Card 8 (Fidel) = 3 Ops
-        st.set_card_location(4, ts.CardLocation.HAND_US)
-        st.set_card_location(8, ts.CardLocation.HAND_USSR)
+        st.set_card_location(4, ts.hand_of(ts.Player.US))
+        st.set_card_location(8, ts.hand_of(ts.Player.USSR))
 
         # US selects Duck and Cover (3 Ops)
         st.ctx().decision_player = ts.Player.US
@@ -772,7 +772,7 @@ class TestHeldScoringAndPotentialFixes:
                 st.set_card_location(c, ts.CardLocation.DISCARD_PILE)
 
         # Put Asia Scoring in USSR hand
-        st.set_card_location(1, ts.CardLocation.HAND_USSR)
+        st.set_card_location(1, ts.hand_of(ts.Player.USSR))
         assert ts.Engine.has_held_scoring_card(st, ts.Player.USSR)
         assert not ts.Engine.has_held_scoring_card(st, ts.Player.US)
 
@@ -793,8 +793,8 @@ class TestHeldScoringAndPotentialFixes:
     def test_both_hold_scoring_cards_detection(self):
         st = ts.GameState()
         ts.Engine.init_game(st, 42)
-        st.set_card_location(1, ts.CardLocation.HAND_USSR)  # Asia
-        st.set_card_location(2, ts.CardLocation.HAND_US)    # Europe
+        st.set_card_location(1, ts.hand_of(ts.Player.USSR))  # Asia
+        st.set_card_location(2, ts.hand_of(ts.Player.US))    # Europe
         st.current_phase = ts.Phase.GAME_OVER
         st.turn = 4
         st.action_round = 8  # Mid/late war ends after AR 7

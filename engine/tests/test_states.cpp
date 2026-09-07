@@ -51,8 +51,8 @@ TEST(StatesTest, Phase_HEADLINE_Flow) {
     state.current_phase = ts::Phase::HEADLINE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::SOCIALIST_GOVERNMENTS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::SOCIALIST_GOVERNMENTS] = ts::hand_of(ts::Player::USSR);
 
     // US selects Duck and Cover (3 Ops)
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0}));
@@ -70,7 +70,7 @@ TEST(StatesTest, Phase_ACTION_ROUND_PlayerAlternation) {
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
 
     // USSR plays Duck & Cover for Ops
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
@@ -110,7 +110,7 @@ TEST(StatesTest, DecisionType_AllTypes_ActionMaskGeneration) {
     state.phasing_player = ts::Player::US;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::hand_of(ts::Player::US);
     ts::ActionMask::generate_mask(state, mask, &out_size);
     ASSERT_EQ(out_size, 112);
     ASSERT_EQ(mask[ts::card_ids::DEFECTORS], 1);

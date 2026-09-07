@@ -137,7 +137,6 @@ bool trigger_kitchen_debates(GameState& state, Player p) noexcept {
 
 bool trigger_missile_envy(GameState& state, Player p) noexcept {
     Player opp = get_opponent(p);
-    CardLocation opp_hand = (opp == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
 
     // Find highest ops cards in opp hand
     uint8_t max_ops = 0;
@@ -152,7 +151,7 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
     const uint8_t envy_in_play = state.ctx().resolving_card;
 
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != envy_in_play && state.card_locations[i] == opp_hand) {
+        if (i != envy_in_play && in_hand_of(state.card_locations[i], opp)) {
             if (CardData::is_scoring_card(i)) continue;
             uint8_t ops = CardData::get_card(i).ops;
             if (ops > max_ops) {
@@ -170,8 +169,10 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
     if (tied_cnt == 1) {
         uint8_t chosen_card = tied_cards[0];
         // Exchange cards
-        state.card_locations[chosen_card] = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
-        state.card_locations[card_ids::MISSILE_ENVY] = opp_hand;
+        // Both halves of the exchange are public: the opponent hands over a named card and
+        // receives Missile Envy in return, so each side has seen the other's new card.
+        state.card_locations[chosen_card] = hand_of(p, /*known=*/true);
+        state.card_locations[card_ids::MISSILE_ENVY] = hand_of(opp, /*known=*/true);
         state.forced_card_player = opp;
         state.forced_card_id = card_ids::MISSILE_ENVY;
 
@@ -397,7 +398,7 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
     uint8_t ussr_cards[111];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != in_play && state.card_locations[i] == CardLocation::HAND_USSR) {
+        if (i != in_play && in_hand_of(state.card_locations[i], Player::USSR)) {
             ussr_cards[cnt++] = i;
         }
     }

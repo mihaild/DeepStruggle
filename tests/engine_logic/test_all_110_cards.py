@@ -82,7 +82,7 @@ class TestEarlyWarCards:
         state = make_clean_state(defcon=5)
         for i in range(1, 111):
             state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(4, ts_engine.CardLocation.HAND_USSR)
+        state.set_card_location(4, ts_engine.hand_of(ts_engine.Player.USSR))
         done = ts_engine.CardHandlers.trigger_event(state, 5, ts_engine.Player.US)
         assert done == True
         assert state.defcon == 4
@@ -126,7 +126,7 @@ class TestEarlyWarCards:
     def test_10_blockade(self):
         state = make_clean_state()
         set_inf(state, "West Germany", 4, 0)
-        state.set_card_location(21, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(21, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 10, ts_engine.Player.USSR)
         assert done == False
         assert state.ctx().resolving_card == 10
@@ -341,7 +341,7 @@ class TestEarlyWarCards:
     def test_32_un_intervention(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(7, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(7, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 32, ts_engine.Player.US)
         assert done == False
         assert state.ctx().resolving_card == 32
@@ -484,7 +484,7 @@ class TestMidWarCards:
         assert done == False
         assert state.defcon == 5
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 4))
-        assert state.get_card_location(4) == ts_engine.CardLocation.HAND_US
+        assert ts_engine.in_hand_of(state.get_card_location(4), ts_engine.Player.US)
 
     def test_44_bear_trap(self):
         state = make_clean_state()
@@ -528,7 +528,7 @@ class TestMidWarCards:
     def test_49_missile_envy(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(21, ts_engine.CardLocation.HAND_USSR)
+        state.set_card_location(21, ts_engine.hand_of(ts_engine.Player.USSR))
         done = ts_engine.CardHandlers.trigger_event(state, 49, ts_engine.Player.US)
         assert done == True or done == False
 
@@ -624,7 +624,7 @@ class TestMidWarCards:
     def test_62_lone_gunman(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(21, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(21, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 62, ts_engine.Player.USSR)
         assert done == False
         assert state.ctx().pending_op_card == 62
@@ -672,7 +672,7 @@ class TestMidWarCards:
     def test_67_grain_sales(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(4, ts_engine.CardLocation.HAND_USSR)
+        state.set_card_location(4, ts_engine.hand_of(ts_engine.Player.USSR))
         done = ts_engine.CardHandlers.trigger_event(state, 67, ts_engine.Player.US)
         assert done == False
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.CHOOSE_BRANCH, 0))
@@ -753,7 +753,7 @@ class TestMidWarCards:
     def test_77_ask_not_what_your_country_can_do(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(4, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(4, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 77, ts_engine.Player.US)
         assert done == False
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 4))
@@ -921,7 +921,7 @@ class TestLateWarCards:
     def test_92_terrorism(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(4, ts_engine.CardLocation.HAND_USSR)
+        state.set_card_location(4, ts_engine.hand_of(ts_engine.Player.USSR))
         done = ts_engine.CardHandlers.trigger_event(state, 92, ts_engine.Player.US)
         assert done == True
         assert state.get_card_location(4) == ts_engine.CardLocation.DISCARD_PILE
@@ -943,7 +943,7 @@ class TestLateWarCards:
         state = make_clean_state()
         set_inf(state, "Mexico", 4, 0)
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(21, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(21, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 95, ts_engine.Player.USSR)
         assert done == False
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 21))
@@ -971,7 +971,7 @@ class TestLateWarCards:
     def test_98_aldrich_ames(self):
         state = make_clean_state()
         for i in range(1, 111): state.set_card_location(i, ts_engine.CardLocation.DRAW_DECK)
-        state.set_card_location(4, ts_engine.CardLocation.HAND_US)
+        state.set_card_location(4, ts_engine.hand_of(ts_engine.Player.US))
         done = ts_engine.CardHandlers.trigger_event(state, 98, ts_engine.Player.USSR)
         assert done == False
         assert state.has_flag(EB.ALDRICH_AMES_ACTIVE)

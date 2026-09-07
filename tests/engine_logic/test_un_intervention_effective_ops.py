@@ -32,10 +32,10 @@ def _ussr_action_round() -> ts.GameState:
     # Laos/Cambodia a legal placement in the first place.
     state.set_country(VIETNAM, 0, 2)
     for c in range(1, 111):
-        if state.get_card_location(c) == ts.CardLocation.HAND_USSR:
+        if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
-    state.set_card_location(UN_INTERVENTION, ts.CardLocation.HAND_USSR)
-    state.set_card_location(CIA_CREATED, ts.CardLocation.HAND_USSR)
+    state.set_card_location(UN_INTERVENTION, ts.hand_of(ts.Player.USSR))
+    state.set_card_location(CIA_CREATED, ts.hand_of(ts.Player.USSR))
     state.ctx().decision_player = ts.Player.USSR
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD
     return state

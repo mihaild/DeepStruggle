@@ -35,8 +35,8 @@ def _at_headline() -> ts.GameState:
     assert state.current_phase == ts.Phase.HEADLINE
     state.turn = 6
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     state.china_card_holder = ts.Player.US
     state.china_card_playable = 0
@@ -46,9 +46,9 @@ def _at_headline() -> ts.GameState:
 def _headline_missile_envy_against_abm() -> ts.GameState:
     """The USSR headlines Missile Envy; the US holds only ABM Treaty to give."""
     state = _at_headline()
-    state.set_card_location(MISSILE_ENVY, ts.CardLocation.HAND_USSR)
-    state.set_card_location(ABM_TREATY, ts.CardLocation.HAND_US)
-    state.set_card_location(RED_SCARE, ts.CardLocation.HAND_US)
+    state.set_card_location(MISSILE_ENVY, ts.hand_of(ts.Player.USSR))
+    state.set_card_location(ABM_TREATY, ts.hand_of(ts.Player.US))
+    state.set_card_location(RED_SCARE, ts.hand_of(ts.Player.US))
     for _ in range(2):
         p = state.ctx().decision_player
         card = MISSILE_ENVY if p == ts.Player.USSR else RED_SCARE

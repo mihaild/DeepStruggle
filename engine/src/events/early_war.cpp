@@ -42,7 +42,7 @@ bool trigger_five_year_plan(GameState& state, Player p) noexcept {
     uint8_t ussr_cards[111];
     uint8_t count = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != in_play && state.card_locations[i] == CardLocation::HAND_USSR) {
+        if (i != in_play && in_hand_of(state.card_locations[i], Player::USSR)) {
             ussr_cards[count++] = i;
         }
     }
@@ -101,7 +101,7 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
     // Check if US has any card with Ops >= 3 to discard
     bool has_3ops = false;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_US) {
+        if (in_hand_of(state.card_locations[i], Player::US)) {
             // Effective Ops, as the discard itself is judged: Containment's +1 can make a
             // printed 2 qualify, and this test decides whether the US is asked at all.
             if (Operations::get_effective_ops(state, i, Player::US) >= 3) {
@@ -394,7 +394,7 @@ bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     uint8_t score_cards[16];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_US && CardData::is_scoring_card(i)) {
+        if (in_hand_of(state.card_locations[i], Player::US) && CardData::is_scoring_card(i)) {
             if (cnt < 16) score_cards[cnt++] = i;
         }
     }
@@ -445,7 +445,7 @@ bool trigger_un_intervention(GameState& state, Player p) noexcept {
     Player opp = get_opponent(p);
     bool has_opp_card = false;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ((p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR)) {
+        if (in_hand_of(state.card_locations[i], p)) {
             if (CardData::get_card(i).side == opp && !CardData::is_scoring_card(i)) {
                 has_opp_card = true;
                 break;

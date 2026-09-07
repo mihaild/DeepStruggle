@@ -70,7 +70,7 @@ def capture_nodes(game: Dict, turn: Union[int, Sequence[int]],
 
 
 def hand(state: ts.GameState, player: ts.Player) -> List[int]:
-    want = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    want = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     return [c for c in range(1, 111) if state.get_card_location(c) == want]
 
 
@@ -98,7 +98,7 @@ def give_card(state: ts.GameState, player: ts.Player, card: int,
     if drop is not None:
         probe.set_card_location(drop, ts.CardLocation.DISCARD_PILE)
     probe.set_card_location(
-        card, ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR)
+        card, ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR))
     return probe
 
 
@@ -258,7 +258,7 @@ def card_fate(model: Any, state: ts.GameState, who: ts.Player, card: int, device
 
         ts.Engine.step_flat(probe, action)
 
-    want = ts.CardLocation.HAND_US if who == ts.Player.US else ts.CardLocation.HAND_USSR
+    want = ts.hand_of(ts.Player.US) if who == ts.Player.US else ts.hand_of(ts.Player.USSR)
     if probe.get_card_location(card) == want:
         return "held"
     if watching:

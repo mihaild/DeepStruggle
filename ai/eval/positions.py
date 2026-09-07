@@ -66,11 +66,11 @@ class PositionBuilder:
 
         # Start from an empty deal so only the cards named below are held.
         for cid in range(1, 111):
-            if st.get_card_location(cid) in (ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR):
+            if st.get_card_location(cid) in (ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.USSR)):
                 st.set_card_location(cid, ts.CardLocation.DRAW_DECK)
 
-        mine = ts.CardLocation.HAND_US if self.side == ts.Player.US else ts.CardLocation.HAND_USSR
-        theirs = ts.CardLocation.HAND_USSR if self.side == ts.Player.US else ts.CardLocation.HAND_US
+        mine = ts.hand_of(ts.Player.US) if self.side == ts.Player.US else ts.hand_of(ts.Player.USSR)
+        theirs = ts.hand_of(ts.Player.USSR) if self.side == ts.Player.US else ts.hand_of(ts.Player.US)
         for cid in self.hand:
             st.set_card_location(cid, mine)
         for cid in self.opponent_hand:

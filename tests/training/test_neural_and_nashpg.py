@@ -93,8 +93,8 @@ class TestObservationExtraction:
         ts.Engine.init_game(state, 42)
 
         # USSR holds card 5, US holds card 10
-        state.set_card_location(5, ts.CardLocation.HAND_USSR)
-        state.set_card_location(10, ts.CardLocation.HAND_US)
+        state.set_card_location(5, ts.hand_of(ts.Player.USSR))
+        state.set_card_location(10, ts.hand_of(ts.Player.US))
 
         # US perspective
         obs_us = ts.extract_observation(state, ts.Player.US)
@@ -196,7 +196,7 @@ class TestVectorizedEnvironment:
         st.ctx().decision_player = ts.Player.USSR
         st.set_country(17, 2, 0) # Iran has US influence -> BG coup target
 
-        st.set_card_location(5, ts.CardLocation.HAND_USSR) # 5op card
+        st.set_card_location(5, ts.hand_of(ts.Player.USSR)) # 5op card
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
         if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:

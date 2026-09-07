@@ -343,8 +343,7 @@ struct alignas(64) ObservationBuffer {
 // normally; checking the location rather than the id alone keeps both cases right.
 inline bool keeps_own_card_location(const GameState& state, uint8_t card) noexcept {
     if (card != card_ids::MISSILE_ENVY) return false;
-    const CardLocation loc = state.card_locations[card];
-    return loc == CardLocation::HAND_US || loc == CardLocation::HAND_USSR;
+    return is_in_any_hand(state.card_locations[card]);
 }
 
 // Cuban Missile Crisis can be paid off at any time. Modelled as the head of the payer's own

@@ -63,10 +63,10 @@ def _us_about_to_coup(west_germany: int, turkey: int) -> ts.GameState:
     ctx = state.ctx()
     ctx.decision_player, ctx.decision_type = ts.Player.US, ts.DecisionType.SELECT_CARD
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
-    state.set_card_location(DUCK_AND_COVER, ts.CardLocation.HAND_US)
+    state.set_card_location(DUCK_AND_COVER, ts.hand_of(ts.Player.US))
     state.china_card_holder = ts.Player.USSR
     state.china_card_playable = 0
     state.set_country(WEST_GERMANY, west_germany, 0)

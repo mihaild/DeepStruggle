@@ -83,7 +83,7 @@ def test_the_card_passes_to_the_opponent_who_must_play_it() -> None:
     """Missile Envy must survive cleanup in the opponent's hand and be forced next AR."""
     st = _ussr_plays_missile_envy([MARSHALL_PLAN, 1, 2])
 
-    assert st.get_card_location(MISSILE_ENVY) == ts.CardLocation.HAND_US, \
+    assert ts.in_hand_of(st.get_card_location(MISSILE_ENVY), ts.Player.US), \
         "cleanup must not discard the card the event just handed to the US"
     assert int(st.forced_card_id) == MISSILE_ENVY
     assert st.forced_card_player == ts.Player.US

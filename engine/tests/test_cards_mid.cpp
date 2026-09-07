@@ -128,7 +128,8 @@ TEST(MidCardsTest, Card43_SALTNegotiations) {
 
     bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
     ASSERT_TRUE(done);
-    ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::HAND_US);
+    ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER],
+              ts::hand_of(ts::Player::US, /*known=*/true));
 }
 
 // Card 44: Bear Trap
@@ -194,9 +195,9 @@ TEST(MidCardsTest, Card48_KitchenDebates_Lead) {
 // Card 49: Missile Envy
 TEST(MidCardsTest, Card49_MissileEnvy_OpponentCardNoEvent) {
     ts::GameState state{};
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US; // 3 Ops US card
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US; // 2 Ops
-    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops US card
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US); // 2 Ops
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::USSR);
     state.phasing_player = ts::Player::USSR;
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.defcon = 2;
@@ -227,13 +228,13 @@ TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US || state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) || state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.forced_card_player = ts::Player::US;
     state.forced_card_id = ts::card_ids::MISSILE_ENVY;
     state.phasing_player = ts::Player::US;
@@ -287,18 +288,19 @@ TEST(MidCardsTest, Card49_MissileEnvy_SingleHighest) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR; // 3 Ops US card
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR; // 2 Ops
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR); // 3 Ops US card
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR); // 2 Ops
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::MISSILE_ENVY, ts::Player::US);
     // US took Duck and Cover (US event -> executed immediately and discarded), gave Missile Envy to USSR
     ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
     ASSERT_EQ(state.victory_points, 1);
-    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::HAND_USSR);
+    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY],
+              ts::hand_of(ts::Player::USSR, /*known=*/true));
     ASSERT_EQ(state.forced_card_player, ts::Player::USSR);
     ASSERT_EQ(state.forced_card_id, ts::card_ids::MISSILE_ENVY);
 }
@@ -633,7 +635,7 @@ TEST(MidCardsTest, WeWillBuryYouSurvivesTheTurnBoundary) {
     state.turn = 5;
     state.action_round = 1;
     state.phasing_player = ts::Player::US;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
@@ -651,7 +653,7 @@ TEST(MidCardsTest, WeWillBuryYouIsNotCollectedInAHeadline) {
     state.victory_points = 0;
     state.phasing_player = ts::Player::US;
     state.set_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING);
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
@@ -905,11 +907,11 @@ TEST(MidCardsTest, Card67_GrainSales_ReturnForOps) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
 
@@ -1029,7 +1031,7 @@ TEST(MidCardsTest, Card76_UssuriRiver_USSRHasChinaCard) {
 // Card 77: Ask Not What Your Country Can Do For You
 TEST(MidCardsTest, Card77_AskNot) {
     ts::GameState state{};
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US);
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DRAW_DECK;
     ts::CardHandlers::trigger_event(state, ts::card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU, ts::Player::US);
@@ -1038,7 +1040,7 @@ TEST(MidCardsTest, Card77_AskNot) {
     ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
     ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, 0, 0, ts::action_flags::CONFIRM_DONE});
     ASSERT_EQ(state.card_locations[ts::card_ids::FIDEL], ts::CardLocation::DISCARD_PILE);
-    bool has_drawn = (state.card_locations[ts::card_ids::DUCK_AND_COVER] == ts::CardLocation::HAND_US) || (state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] == ts::CardLocation::HAND_US);
+    bool has_drawn = (state.card_locations[ts::card_ids::DUCK_AND_COVER] == ts::hand_of(ts::Player::US)) || (state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] == ts::hand_of(ts::Player::US));
     ASSERT_TRUE(has_drawn);
 }
 

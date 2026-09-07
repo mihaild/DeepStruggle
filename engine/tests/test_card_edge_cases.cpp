@@ -16,7 +16,7 @@ TEST(CardEdgeCasesTest, Blockade_USCanDiscard_EvenIfWestGermanyEmpty) {
     GameState state{};
     // West Germany has 0 US influence
     state.countries[countries::WEST_GERMANY].us_influence = 0;
-    state.card_locations[card_ids::DUCK_AND_COVER] = CardLocation::HAND_US; // 3 Ops card
+    state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops card
     
     // USSR plays Blockade -> prompts US to discard
     bool done = CardHandlers::trigger_event(state, card_ids::BLOCKADE, Player::USSR);
@@ -121,13 +121,13 @@ TEST(CardEdgeCasesTest, KitchenDebates_RemovedIfLeadInBGs_DiscardedIfNot) {
 TEST(CardEdgeCasesTest, MissileEnvy_OpponentHoldsOnlyScoringCards_NoTransfer) {
     GameState state{};
     // USSR plays Missile Envy, US holds only scoring cards
-    state.card_locations[card_ids::ASIA_SCORING] = CardLocation::HAND_US;
-    state.card_locations[card_ids::EUROPE_SCORING] = CardLocation::HAND_US;
+    state.card_locations[card_ids::ASIA_SCORING] = ts::hand_of(ts::Player::US);
+    state.card_locations[card_ids::EUROPE_SCORING] = ts::hand_of(ts::Player::US);
 
     bool done = CardHandlers::trigger_event(state, card_ids::MISSILE_ENVY, Player::USSR);
     ASSERT_TRUE(done); // Clean no-op, no cards transferred
-    ASSERT_EQ(state.card_locations[card_ids::ASIA_SCORING], CardLocation::HAND_US);
-    ASSERT_EQ(state.card_locations[card_ids::EUROPE_SCORING], CardLocation::HAND_US);
+    ASSERT_TRUE(in_hand_of(state.card_locations[card_ids::ASIA_SCORING], Player::US));
+    ASSERT_TRUE(in_hand_of(state.card_locations[card_ids::EUROPE_SCORING], Player::US));
 }
 
 TEST(CardEdgeCasesTest, WillyBrandt_CancelledByTearDownThisWall_AndBlocksSubsequentPlay) {
@@ -192,7 +192,7 @@ TEST(CardEdgeCasesTest, OrtegaElected_CanCoupCuba_AndAdjacentCountries) {
 
 TEST(CardEdgeCasesTest, AldrichAmes_WithSingleCardInUSHand) {
     GameState state{};
-    state.card_locations[card_ids::DUCK_AND_COVER] = CardLocation::HAND_US;
+    state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
 
     bool done = CardHandlers::trigger_event(state, card_ids::ALDRICH_AMES, Player::USSR);
     ASSERT_FALSE(done);
@@ -217,7 +217,7 @@ TEST(CardEdgeCasesTest, Reshuffle_ImmediateWhenDrawDeckEmpty) {
 
     // Clear US hand to 0 cards
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == CardLocation::HAND_US) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US)) {
             state.card_locations[i] = CardLocation::DISCARD_PILE;
         }
     }
@@ -236,7 +236,7 @@ TEST(CardEdgeCasesTest, Reshuffle_ImmediateWhenDrawDeckEmpty) {
     StateMachine::deal_cards_to_hands(state);
 
     // Discard pile cards should now be in draw deck / hands, not stuck in discard pile
-    ASSERT_EQ(state.card_locations[card_ids::FIDEL], CardLocation::HAND_US);
+    ASSERT_TRUE(in_hand_of(state.card_locations[card_ids::FIDEL], Player::US));
     ASSERT_NE(state.card_locations[card_ids::DUCK_AND_COVER], CardLocation::DISCARD_PILE);
     ASSERT_EQ(state.card_locations[card_ids::DUCK_AND_COVER], CardLocation::DRAW_DECK);
 }
@@ -1273,13 +1273,13 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     state.defcon = 4;
     state.victory_points = 0;
 
@@ -1332,14 +1332,14 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR ||
-            state.card_locations[i] == ts::CardLocation::HAND_US) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::US)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::WILLY_BRANDT] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::WE_WILL_BURY_YOU] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::WILLY_BRANDT] = ts::hand_of(ts::Player::USSR);
     state.defcon = 4;
     state.victory_points = 0;
     const int8_t west_germany_before = state.countries[ts::countries::WEST_GERMANY].ussr_influence;
@@ -1377,7 +1377,8 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
     ASSERT_EQ(state.countries[ts::countries::WEST_GERMANY].ussr_influence,
               west_germany_before + 1);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::WILLY_BRANDT_PLAYED));
-    ASSERT_NE(state.card_locations[ts::card_ids::WILLY_BRANDT], ts::CardLocation::HAND_US);
+    ASSERT_FALSE(ts::in_hand_of(state.card_locations[ts::card_ids::WILLY_BRANDT],
+                                ts::Player::US));
 
     // And the headline is over, with nothing left on the stack.
     ASSERT_EQ(state.current_phase, ts::Phase::ACTION_ROUND);
@@ -1402,15 +1403,15 @@ ts::GameState defectors_headline(uint8_t us_headline,
     ts::StateMachine::init_new_game(state, 42);
     state.current_phase = ts::Phase::HEADLINE;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
-            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[us_headline] = ts::CardLocation::HAND_US;
-    for (uint8_t c : us_hand) state.card_locations[c] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::CardLocation::HAND_USSR;
-    for (uint8_t c : ussr_hand) state.card_locations[c] = ts::CardLocation::HAND_USSR;
+    state.card_locations[us_headline] = ts::hand_of(ts::Player::US);
+    for (uint8_t c : us_hand) state.card_locations[c] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::hand_of(ts::Player::USSR);
+    for (uint8_t c : ussr_hand) state.card_locations[c] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, us_headline, 0, 0});
@@ -1452,16 +1453,16 @@ TEST(CardEdgeCasesTest, Defectors_TakenByStarWarsInHeadline_CancelsUSSRHeadline)
     ts::StateMachine::init_new_game(state, 42);
     state.current_phase = ts::Phase::HEADLINE;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
-            state.card_locations[i] == ts::CardLocation::HAND_USSR ||
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::USSR) ||
             state.card_locations[i] == ts::CardLocation::DISCARD_PILE) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
     state.us_space_track = 4;      // Star Wars needs the US ahead on the space track
     state.ussr_space_track = 0;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::VIETNAM_REVOLTS] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::DISCARD_PILE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
@@ -1487,14 +1488,14 @@ TEST(CardEdgeCasesTest, Defectors_AfterTheUSSRHeadlineHasResolved_CancelsNothing
     ts::StateMachine::init_new_game(state, 42);
     state.current_phase = ts::Phase::HEADLINE;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
-            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
@@ -1514,13 +1515,13 @@ TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
     ts::StateMachine::init_new_game(state, 42);
     state.current_phase = ts::Phase::HEADLINE;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
-            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::COLONIAL_REAR_GUARDS] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::DECOLONIZATION] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::COLONIAL_REAR_GUARDS] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::DECOLONIZATION] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::COLONIAL_REAR_GUARDS, 0, 0});
@@ -1564,8 +1565,8 @@ ts::GameState trapped_ussr(uint8_t turn, uint8_t action_round,
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US ||
-            state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+            state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
@@ -1574,7 +1575,7 @@ ts::GameState trapped_ussr(uint8_t turn, uint8_t action_round,
     state.action_round = action_round;
     state.phasing_player = ts::Player::USSR;
     state.set_flag(ts::effect_bits::BEAR_TRAP_ACTIVE);
-    for (uint8_t c : hand) state.card_locations[c] = ts::CardLocation::HAND_USSR;
+    for (uint8_t c : hand) state.card_locations[c] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     return state;
@@ -1720,8 +1721,8 @@ TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInSpace_OpponentRevealsHeadlineFirst_A
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 
     // USSR selects headline #31
-    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::hand_of(ts::Player::US);
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0});
 
     // Now US is prompted for Headline second, and USSR's headline is already known in state.headline_ussr_card!
@@ -1773,7 +1774,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
         state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     }
     // Put a toxic card in US hand
-    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::hand_of(ts::Player::US);
 
     // Step to finish AR 6 of Turn 2 (last AR in early war)
     ts::StateMachine::advance_after_action_round(state);
@@ -1851,11 +1852,11 @@ TEST(CardEdgeCasesTest, SpaceRace_Box8_EagleBearLanded_Grants8thActionRound_And2
     state.phasing_player = ts::Player::US;
     state.china_card_playable = 0; // China card face down
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DISCARD_PILE;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
 
     // Advance after US AR 7 -> Because US has Space Box 8, 8th AR begins (USSR has 0 cards so auto-passes to US)
     ts::StateMachine::advance_after_action_round(state);
@@ -1971,8 +1972,8 @@ TEST(CardEdgeCasesTest, ChinaCard_RacedForSpace_PassesToOpponentAndIsNeverDiscar
     state.us_space_track = 4;   // box 5 wants 3 Ops; the China Card has 4
     // A card in each hand, so the turn does not end under the attempt and flip the China Card
     // face up again before the assertions below.
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
@@ -2002,7 +2003,7 @@ TEST(CardEdgeCasesTest, OpponentCard_CannotBePlayedAsEvent_OnlyOpsAndSpaceLegal)
     state.action_round = 1;
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.phasing_player = ts::Player::USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR; // US Event Card
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR); // US Event Card
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
@@ -2112,7 +2113,7 @@ TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::BRUSH_WAR] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::BRUSH_WAR] = ts::hand_of(ts::Player::USSR);
 
     // Step 1: USSR selects Brush War (#36)
     ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::BRUSH_WAR, 0, 0));
@@ -2166,10 +2167,10 @@ TEST(CardEdgeCasesTest, Chain_FYP_GrainSales_StarWars_ABMTreaty_Full_AR) {
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
 
     // US hand has Five Year Plan (#5)
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::US);
     // USSR hand has Grain Sales (#67) and Star Wars (#85)
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::USSR);
     // Discard pile has ABM Treaty (#57)
     state.card_locations[ts::card_ids::ABM_TREATY] = ts::CardLocation::DISCARD_PILE;
 
@@ -2255,10 +2256,10 @@ TEST(CardEdgeCasesTest, Chain_StarWars_FYP_GrainSales_Glasnost_Full_AR) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
 
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::US);
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::GLASNOST] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::GLASNOST] = ts::hand_of(ts::Player::USSR);
 
     // Influence in Cuba (ID 67) for Coup target
     state.countries[ts::countries::CUBA].ussr_influence = 3;
@@ -2368,9 +2369,9 @@ TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
 
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
 
-    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::GRAIN_SALES] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::DISCARD_PILE;
-    state.card_locations[ts::card_ids::STAR_WARS] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::STAR_WARS] = ts::hand_of(ts::Player::USSR);
 
     // Influence in South Korea and Japan
     state.countries[ts::countries::SOUTH_KOREA].us_influence = 4;
@@ -2402,7 +2403,7 @@ TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
     }
 
     // Give USSR KAL-007 (#89) before Five Year Plan executes
-    state.card_locations[ts::card_ids::SOVIETS_SHOOT_DOWN_KAL_007] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::SOVIETS_SHOOT_DOWN_KAL_007] = ts::hand_of(ts::Player::USSR);
 
     // 3b. US selects Play Mode for Star Wars (#85): EVENT (0)
     if (state.ctx().decision_type == ts::DecisionType::SELECT_PLAY_MODE) {

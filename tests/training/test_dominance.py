@@ -92,7 +92,7 @@ def test_china_card_is_never_in_a_pair() -> None:
 # -- space race --------------------------------------------------------------------------
 
 def _give(st: ts.GameState, player: ts.Player, cards) -> None:
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in cards:
         st.set_card_location(c, loc)
 

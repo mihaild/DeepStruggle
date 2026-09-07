@@ -132,11 +132,11 @@ class NativeGameState(GameStateProtocol):
         self.raw_state.clear_flag(bit)
 
     def get_hand(self, player: Player, /) -> list[int]:
-        loc = ts_engine.CardLocation.HAND_US if player == Player.US else ts_engine.CardLocation.HAND_USSR
+        loc = ts_engine.hand_of(ts_engine.Player.US) if player == Player.US else ts_engine.hand_of(ts_engine.Player.USSR)
         return [card for card in range(1, 111) if self.raw_state.get_card_location(card) == loc]
 
     def set_hand(self, player: Player, cards: list[int], /) -> None:
-        loc = ts_engine.CardLocation.HAND_US if player == Player.US else ts_engine.CardLocation.HAND_USSR
+        loc = ts_engine.hand_of(ts_engine.Player.US) if player == Player.US else ts_engine.hand_of(ts_engine.Player.USSR)
         for card in range(1, 111):
             if self.raw_state.get_card_location(card) == loc:
                 self.raw_state.set_card_location(card, ts_engine.CardLocation.DRAW_DECK)

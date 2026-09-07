@@ -53,10 +53,10 @@ void StateMachine::deal_cards_to_hands(GameState& state) noexcept {
     uint8_t target_hand = (state.turn <= 3) ? 8 : 9;
 
     auto deal_to_player = [&](Player p) {
-        CardLocation hand_loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+        const CardLocation hand_loc = hand_of(p);
         uint8_t current_count = 0;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (state.card_locations[i] == hand_loc) current_count++;
+            if (in_hand_of(state.card_locations[i], p)) current_count++;
         }
 
         while (current_count < target_hand) {
@@ -487,10 +487,9 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     state.ctx().decision_player = state.phasing_player;
 
     // Check if player has cards
-    CardLocation hand = (state.phasing_player == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
     uint8_t count = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == hand) count++;
+        if (in_hand_of(state.card_locations[i], state.phasing_player)) count++;
     }
 
     if (count == 0 && !(state.china_card_holder == state.phasing_player && state.china_card_playable)) {
@@ -535,10 +534,9 @@ void StateMachine::end_turn(GameState& state) noexcept {
     Player sw_player = us_sw ? Player::US : (ussr_sw ? Player::USSR : Player::NONE);
 
     if (sw_player != Player::NONE) {
-        CardLocation loc = (sw_player == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
         bool has_cards = false;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (state.card_locations[i] == loc) {
+            if (in_hand_of(state.card_locations[i], sw_player)) {
                 has_cards = true;
                 break;
             }
@@ -562,8 +560,8 @@ void StateMachine::finish_end_turn(GameState& state) noexcept {
     bool ussr_holds = false;
     for (uint8_t i = 1; i <= 110; ++i) {
         if (CardData::is_scoring_card(i)) {
-            if (state.card_locations[i] == CardLocation::HAND_US) us_holds = true;
-            if (state.card_locations[i] == CardLocation::HAND_USSR) ussr_holds = true;
+            if (in_hand_of(state.card_locations[i], Player::US)) us_holds = true;
+            if (in_hand_of(state.card_locations[i], Player::USSR)) ussr_holds = true;
         }
     }
     if (us_holds || ussr_holds) {

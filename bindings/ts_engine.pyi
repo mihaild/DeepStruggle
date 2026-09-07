@@ -210,27 +210,35 @@ class CardLocation(enum.IntEnum):
 
     DRAW_DECK = 1
 
-    HAND_US = 2
+    HAND_US_UNKNOWN = 2
 
-    HAND_USSR = 3
+    HAND_US_KNOWN = 3
 
-    DISCARD_PILE = 4
+    HAND_USSR_UNKNOWN = 4
 
-    REMOVED_FROM_GAME = 5
+    HAND_USSR_KNOWN = 5
 
-    ONGOING_EVENT = 6
+    DISCARD_PILE = 6
 
-    PEEKED_TEMP = 7
-    HEADLINE_COMMITTED = 8
-    HEADLINE_COMMITTED = 8
+    REMOVED_FROM_GAME = 7
+
+    ONGOING_EVENT = 8
+
+    PEEKED_TEMP = 9
+
+    HEADLINE_COMMITTED = 10
 
 UNAVAILABLE: CardLocation = CardLocation.UNAVAILABLE
 
 DRAW_DECK: CardLocation = CardLocation.DRAW_DECK
 
-HAND_US: CardLocation = CardLocation.HAND_US
+HAND_US_UNKNOWN: CardLocation = CardLocation.HAND_US_UNKNOWN
 
-HAND_USSR: CardLocation = CardLocation.HAND_USSR
+HAND_US_KNOWN: CardLocation = CardLocation.HAND_US_KNOWN
+
+HAND_USSR_UNKNOWN: CardLocation = CardLocation.HAND_USSR_UNKNOWN
+
+HAND_USSR_KNOWN: CardLocation = CardLocation.HAND_USSR_KNOWN
 
 DISCARD_PILE: CardLocation = CardLocation.DISCARD_PILE
 
@@ -241,6 +249,16 @@ ONGOING_EVENT: CardLocation = CardLocation.ONGOING_EVENT
 PEEKED_TEMP: CardLocation = CardLocation.PEEKED_TEMP
 HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
 HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
+
+def in_hand_of(location: CardLocation, player: Player) -> bool: ...
+
+def known_to_opponent(location: CardLocation) -> bool: ...
+
+def hand_of(player: Player, known: bool = False) -> CardLocation: ...
+
+def hand_holder(location: CardLocation) -> Player: ...
+
+def revealed(location: CardLocation) -> CardLocation: ...
 
 class WarEra(enum.IntEnum):
     EARLY = 0

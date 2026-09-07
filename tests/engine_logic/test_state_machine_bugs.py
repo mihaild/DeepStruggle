@@ -66,7 +66,7 @@ def test_realignment_vietnam_revolts_double_charges_outside_southeast_asia() -> 
     for nm in ("India", "Iran", "Thailand"):
         st.set_country(_cid(nm), 2, 2)
 
-    st.set_card_location(card, ts.CardLocation.HAND_USSR)
+    st.set_card_location(card, ts.hand_of(ts.Player.USSR))
     st.ctx().decision_player = ts.Player.USSR
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
@@ -235,11 +235,11 @@ def test_nested_event_granting_ops_under_event_first_must_unwind_to_player_ops()
 
     # Isolate hand to exactly Five Year Plan and CIA Created
     for i in range(1, 111):
-        if st.get_card_location(i) == ts.CardLocation.HAND_USSR:
+        if ts.in_hand_of(st.get_card_location(i), ts.Player.USSR):
             st.set_card_location(i, ts.CardLocation.DISCARD_PILE)
 
-    st.set_card_location(FIVE_YEAR_PLAN, ts.CardLocation.HAND_USSR)
-    st.set_card_location(CIA_CREATED, ts.CardLocation.HAND_USSR)
+    st.set_card_location(FIVE_YEAR_PLAN, ts.hand_of(ts.Player.USSR))
+    st.set_card_location(CIA_CREATED, ts.hand_of(ts.Player.USSR))
 
     # USSR plays Five Year Plan for Ops, EVENT_FIRST
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, FIVE_YEAR_PLAN, 0, 0))

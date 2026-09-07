@@ -76,7 +76,7 @@ TEST(CardInteractionTest, FlowerPower_NoVP_WhenWarCardSpacedByUS) {
     state.phasing_player = ts::Player::US;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::KOREAN_WAR] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::KOREAN_WAR] = ts::hand_of(ts::Player::US);
     state.us_space_track = 0;
     state.victory_points = 0;
 
@@ -93,7 +93,7 @@ TEST(CardInteractionTest, FlowerPower_NoVP_WhenWarCardSpacedByUS) {
 TEST(CardInteractionTest, FlowerPower_NoVP_WhenWarCardPlayedViaUNInterventionByUS) {
     ts::GameState state{};
     state.set_flag(ts::effect_bits::FLOWER_POWER_ACTIVE);
-    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::US);
     state.victory_points = 0;
 
     // US plays UN Intervention on Arab-Israeli War
@@ -200,7 +200,7 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
@@ -234,7 +234,7 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
@@ -271,7 +271,7 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUSSR_USPlaysLoneGunman_USSR
     state.phasing_player = ts::Player::US;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::LONE_GUNMAN] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::LONE_GUNMAN] = ts::hand_of(ts::Player::US);
 
     // 1. US plays Lone Gunman for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::LONE_GUNMAN, 0, 0});
@@ -306,7 +306,7 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
@@ -423,7 +423,7 @@ TEST(CardInteractionTest, JohnPaulII_EnablesSolidarity) {
 TEST(CardInteractionTest, U2Incident_Then_UNIntervention_AwardsExtraVP) {
     ts::GameState state{};
     state.victory_points = 0;
-    state.card_locations[ts::card_ids::DE_GAULLE] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DE_GAULLE] = ts::hand_of(ts::Player::US);
 
     // 1. Play U-2 Incident -> -1 VP, sets U2_INCIDENT_ACTIVE
     ts::CardHandlers::trigger_event(state, ts::card_ids::U2_INCIDENT, ts::Player::USSR);
@@ -450,12 +450,12 @@ TEST(CardInteractionTest, Quagmire_MaskOnlyAllows2PlusOpsCards) {
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_US) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::US)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US; // 3 Ops (legal)
-    state.card_locations[ts::card_ids::TRUMAN_DOCTRINE] = ts::CardLocation::HAND_US; // 1 Op (illegal)
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops (legal)
+    state.card_locations[ts::card_ids::TRUMAN_DOCTRINE] = ts::hand_of(ts::Player::US); // 1 Op (illegal)
 
     uint8_t mask[112]{};
     size_t out_size = 0;
@@ -689,7 +689,7 @@ TEST(CardInteractionTest, CIACreated_EventFirst_USSRStillSpendsItsOwnOpAfterUSOp
     state.phasing_player = ts::Player::USSR;
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::CIA_CREATED] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
@@ -727,12 +727,12 @@ TEST(CardInteractionTest, FiveYearPlan_EventFirst_USSRStillSpendsItsOwnOpsAfterN
     // make it a US event that resolves without asking anything: Truman Doctrine needs a target,
     // so use one that resolves on its own instead.
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DISCARD_PILE;
         }
     }
-    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
 
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});

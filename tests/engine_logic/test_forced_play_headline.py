@@ -26,10 +26,10 @@ def _state(phase: ts.Phase) -> ts.GameState:
     state.action_round = 1
     state.phasing_player = ts.Player.USSR
     for c in range(1, 111):
-        if state.get_card_location(c) == ts.CardLocation.HAND_USSR:
+        if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in (MISSILE_ENVY, PORTUGUESE_EMPIRE_CRUMBLES):
-        state.set_card_location(c, ts.CardLocation.HAND_USSR)
+        state.set_card_location(c, ts.hand_of(ts.Player.USSR))
     state.forced_card_player = ts.Player.USSR
     state.forced_card_id = MISSILE_ENVY
     state.ctx().decision_player = ts.Player.USSR

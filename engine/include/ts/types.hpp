@@ -47,23 +47,91 @@ enum class WarEra : uint8_t {
     LATE  = 2
 };
 
-// Card physical location registry
+// Card physical location registry.
+//
+// A hand is split four ways rather than two: whether the *other* player knows the card is
+// there is part of the position, and it is not recoverable from anything else. A card cannot
+// leave a hand secretly, so once its presence is public it stays public until it is played or
+// discarded -- at which point its new location is public anyway. Storing that as a location
+// rather than as a parallel "known" bitset means every one of the ~105 sites that moves a card
+// destroys the knowledge automatically, instead of each having to remember to clear a bit.
+//
+// The holder always knows their own hand, so KNOWN can only mean "known to the non-holder"
+// and one value per (holder, known) pair is enough. There is no second observer to track.
+//
+// The bare HAND_US / HAND_USSR names are deliberately gone. Every site that compared against
+// them has to decide which variants it means, and deleting the names makes the compiler
+// enumerate them instead of leaving thirty silent rules bugs -- see keeps_own_card_location
+// in game_state.hpp for what one of those looks like in practice. Use in_hand_of(),
+// known_to_opponent() and hand_of() below.
 enum class CardLocation : uint8_t {
     UNAVAILABLE        = 0, // Not yet in the deck (future era or unintroduced optional card)
     DRAW_DECK          = 1,
-    HAND_US            = 2,
-    HAND_USSR          = 3,
-    DISCARD_PILE       = 4,
-    REMOVED_FROM_GAME  = 5,
-    ONGOING_EVENT      = 6,
-    PEEKED_TEMP        = 7,
+    HAND_US_UNKNOWN    = 2, // In the US hand; the USSR has not seen it
+    HAND_US_KNOWN      = 3, // In the US hand and the USSR knows it
+    HAND_USSR_UNKNOWN  = 4, // In the USSR hand; the US has not seen it
+    HAND_USSR_KNOWN    = 5, // In the USSR hand and the US knows it
+    DISCARD_PILE       = 6,
+    REMOVED_FROM_GAME  = 7,
+    ONGOING_EVENT      = 8,
+    PEEKED_TEMP        = 9,
     // Committed to the headline, face down, and no longer in the hand it came from. Both
     // headlines are played at once and only then resolved in order, so neither card is
     // holdable while the other resolves -- a card that reads a hand must not find it there.
     // Overwritten by the ordinary post-resolution cleanup, which sets the card's real
     // destination once its event is done.
-    HEADLINE_COMMITTED = 8
+    HEADLINE_COMMITTED = 10
 };
+
+// True for any of the four hand variants.
+constexpr bool is_in_any_hand(CardLocation loc) noexcept {
+    return loc == CardLocation::HAND_US_UNKNOWN || loc == CardLocation::HAND_US_KNOWN
+        || loc == CardLocation::HAND_USSR_UNKNOWN || loc == CardLocation::HAND_USSR_KNOWN;
+}
+
+// True when the card is in `p`'s hand, whether or not the opponent knows.
+constexpr bool in_hand_of(CardLocation loc, Player p) noexcept {
+    if (p == Player::US) {
+        return loc == CardLocation::HAND_US_UNKNOWN || loc == CardLocation::HAND_US_KNOWN;
+    }
+    if (p == Player::USSR) {
+        return loc == CardLocation::HAND_USSR_UNKNOWN || loc == CardLocation::HAND_USSR_KNOWN;
+    }
+    return false;
+}
+
+// Whether the player who is *not* holding the card knows it is in that hand.
+constexpr bool known_to_opponent(CardLocation loc) noexcept {
+    return loc == CardLocation::HAND_US_KNOWN || loc == CardLocation::HAND_USSR_KNOWN;
+}
+
+// The hand location for `p`. `known` defaults false: a card entering a hand is hidden unless
+// something made it public, so the default is the conservative one.
+constexpr CardLocation hand_of(Player p, bool known = false) noexcept {
+    if (p == Player::US) {
+        return known ? CardLocation::HAND_US_KNOWN : CardLocation::HAND_US_UNKNOWN;
+    }
+    return known ? CardLocation::HAND_USSR_KNOWN : CardLocation::HAND_USSR_UNKNOWN;
+}
+
+// Whose hand it is, or NONE when it is not in one.
+constexpr Player hand_holder(CardLocation loc) noexcept {
+    if (loc == CardLocation::HAND_US_UNKNOWN || loc == CardLocation::HAND_US_KNOWN) {
+        return Player::US;
+    }
+    if (loc == CardLocation::HAND_USSR_UNKNOWN || loc == CardLocation::HAND_USSR_KNOWN) {
+        return Player::USSR;
+    }
+    return Player::NONE;
+}
+
+// The same hand, marked public. Identity for anything not in a hand, so a caller that reveals
+// "every card the opponent holds" can run over all 110 without a location test.
+constexpr CardLocation revealed(CardLocation loc) noexcept {
+    if (loc == CardLocation::HAND_US_UNKNOWN) return CardLocation::HAND_US_KNOWN;
+    if (loc == CardLocation::HAND_USSR_UNKNOWN) return CardLocation::HAND_USSR_KNOWN;
+    return loc;
+}
 
 // Primitive Micro-Decision Types
 enum class DecisionType : uint8_t {

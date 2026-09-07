@@ -38,7 +38,7 @@ def _at_headline() -> ts.GameState:
 
 
 def _set_hand(state: ts.GameState, player: ts.Player, cards: List[int]) -> None:
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
@@ -79,7 +79,7 @@ def test_grain_sales_hands_the_drawn_card_to_the_us_to_play() -> None:
     state = _grain_sales_headline()
     assert int(state.ctx().resolving_card) == GRAIN_SALES
     assert state.get_card_location(MARSHALL_PLAN) in (
-        ts.CardLocation.HAND_USSR, ts.CardLocation.HAND_US,
+        ts.hand_of(ts.Player.USSR), ts.hand_of(ts.Player.US),
         ts.CardLocation.PEEKED_TEMP), "the drawn card is Grain Sales' to move"
 
 
@@ -87,7 +87,7 @@ def test_the_played_card_does_not_stay_in_hand() -> None:
     state = _grain_sales_headline()
     _play_until(state)
     assert state.get_card_location(MARSHALL_PLAN) not in (
-        ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR), (
+        ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.USSR)), (
         "Marshall Plan was played, and a played card is not still held")
 
 
@@ -97,7 +97,7 @@ def test_the_headline_cards_themselves_are_still_cleared() -> None:
     _play_until(state)
     for card in (GRAIN_SALES, CAMBRIDGE_FIVE):
         assert state.get_card_location(card) not in (
-            ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR,
+            ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.USSR),
             ts.CardLocation.HEADLINE_COMMITTED), f"card {card} was left committed"
 
 
@@ -105,5 +105,5 @@ def test_a_card_nobody_played_is_left_alone() -> None:
     """Only the card the Ops were spent on moves; the rest of the hand is untouched."""
     state = _grain_sales_headline()
     _play_until(state)
-    assert state.get_card_location(DUCK_AND_COVER) == ts.CardLocation.HAND_US, (
+    assert ts.in_hand_of(state.get_card_location(DUCK_AND_COVER), ts.Player.US), (
         "the US still holds what it never played")

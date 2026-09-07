@@ -63,7 +63,7 @@ def test_a_card_the_ussr_does_not_hold_cannot_be_the_one_discarded() -> None:
     state = ts.GameState()
     ts.Engine.init_game(state, 1234)
     for c in range(1, 111):
-        if state.get_card_location(c) == ts.CardLocation.HAND_USSR:
+        if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR):
             state.set_card_location(c, ts.CardLocation.DRAW_DECK)
     assert _force_random_discard(state, [NASSER], action=0) is False
 

@@ -46,8 +46,8 @@ def _action_round(mover) -> ts.GameState:
     ctx = state.ctx()
     ctx.decision_player, ctx.decision_type = mover, ts.DecisionType.SELECT_CARD
     for c in range(1, 111):
-        if state.get_card_location(c) in (ts.CardLocation.HAND_US,
-                                          ts.CardLocation.HAND_USSR):
+        if state.get_card_location(c) in (ts.hand_of(ts.Player.US),
+                                          ts.hand_of(ts.Player.USSR)):
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     state.china_card_holder = ts.Player.US if mover == ts.Player.USSR else ts.Player.USSR
     state.china_card_playable = 0
@@ -57,7 +57,7 @@ def _action_round(mover) -> ts.GameState:
 def _play_for_ops(mover, card: int, hand: List[int]) -> ts.GameState:
     """Play `card` for Operations, event first, holding nothing else but `hand`."""
     state = _action_round(mover)
-    loc = ts.CardLocation.HAND_US if mover == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if mover == ts.Player.US else ts.hand_of(ts.Player.USSR)
     state.set_card_location(card, loc)
     for c in hand:
         state.set_card_location(c, loc)
@@ -93,7 +93,7 @@ def test_five_year_plan_discards_the_other_card_and_not_itself() -> None:
     play still in the pool the draw is a coin toss, and without it there is only one answer.
     """
     state = _play_for_ops(ts.Player.USSR, FIVE_YEAR_PLAN, [NUCLEAR_TEST_BAN])
-    assert state.get_card_location(NUCLEAR_TEST_BAN) != ts.CardLocation.HAND_USSR, (
+    assert not ts.in_hand_of(state.get_card_location(NUCLEAR_TEST_BAN), ts.Player.USSR), (
         "the only card the USSR actually holds is the one discarded")
 
 
@@ -108,8 +108,8 @@ def test_terrorism_still_discards_from_the_opponents_hand() -> None:
     """
     assert ts.CardData.get_card_info(TERRORISM)["side"] == "NONE"
     state = _action_round(ts.Player.US)
-    state.set_card_location(TERRORISM, ts.CardLocation.HAND_US)
-    state.set_card_location(NUCLEAR_TEST_BAN, ts.CardLocation.HAND_USSR)
+    state.set_card_location(TERRORISM, ts.hand_of(ts.Player.US))
+    state.set_card_location(NUCLEAR_TEST_BAN, ts.hand_of(ts.Player.USSR))
     ts.Engine.step_flat(state, TERRORISM - 1)
     ts.Engine.step_flat(state, 110)                       # as an Event
     assert state.get_card_location(NUCLEAR_TEST_BAN) == ts.CardLocation.DISCARD_PILE, (
@@ -120,5 +120,5 @@ def test_an_empty_hand_stays_empty() -> None:
     """Holding only the card in play, Five Year Plan finds nothing to discard."""
     state = _play_for_ops(ts.Player.USSR, FIVE_YEAR_PLAN, [])
     held = [c for c in range(1, 111)
-            if state.get_card_location(c) == ts.CardLocation.HAND_USSR]
+            if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR)]
     assert held == [], "nothing was in hand to begin with"

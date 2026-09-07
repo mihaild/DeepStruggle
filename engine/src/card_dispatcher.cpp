@@ -310,7 +310,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             // The escape needs 3 or more Ops as the US would actually get them: Containment's +1
             // makes a printed 2 enough, Red Scare's -1 makes a printed 3 insufficient. All nine
             // sub-3 escapes across the 287 downloaded human games have Containment in play.
-            if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US &&
+            if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US) &&
                 Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                 state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                 state.ctx().resolving_card = 0;
@@ -622,7 +622,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
             uint8_t chosen_card = action.primary_id;
             Player opp = get_opponent(p);
-            if (chosen_card >= 1 && chosen_card <= 110 && state.card_locations[chosen_card] == ((p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR)) {
+            if (chosen_card >= 1 && chosen_card <= 110 && in_hand_of(state.card_locations[chosen_card], p)) {
                 if (CardData::get_card(chosen_card).side == opp && !CardData::is_scoring_card(chosen_card)) {
                     state.card_locations[chosen_card] = CardLocation::DISCARD_PILE;
                     state.ctx().pending_op_card = chosen_card;
@@ -698,7 +698,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         case card_ids::SALT_NEGOTIATIONS: {
             uint8_t card_retrieved = action.primary_id;
             if (card_retrieved >= 1 && card_retrieved <= 110 && state.card_locations[card_retrieved] == CardLocation::DISCARD_PILE) {
-                state.card_locations[card_retrieved] = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+                state.card_locations[card_retrieved] = hand_of(p, /*known=*/true);
             }
             state.ctx().resolving_card = 0;
             return true;
@@ -880,13 +880,10 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
             Player opp = state.ctx().decision_player;
             Player p_player = get_opponent(opp);
-            CardLocation opp_hand = (opp == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
-            CardLocation p_hand = (p_player == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
+            if (!in_hand_of(state.card_locations[chosen_card], opp)) return false;
 
-            if (state.card_locations[chosen_card] != opp_hand) return false;
-
-            state.card_locations[chosen_card] = p_hand;
-            state.card_locations[card_ids::MISSILE_ENVY] = opp_hand;
+            state.card_locations[chosen_card] = hand_of(p_player, /*known=*/true);
+            state.card_locations[card_ids::MISSILE_ENVY] = hand_of(opp, /*known=*/true);
             state.forced_card_player = opp;
             state.forced_card_id = card_ids::MISSILE_ENVY;
 
@@ -919,7 +916,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             if (action.primary_id == 0) {
                 // Play drawn card
                 uint8_t drawn_card = state.ctx().temp_cards[0];
-                state.card_locations[drawn_card] = CardLocation::HAND_US;
+                state.card_locations[drawn_card] = hand_of(Player::US, /*known=*/true);
                 state.ctx().pending_op_card = drawn_card;
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
@@ -1178,7 +1175,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 }
                 uint8_t card_id = action.primary_id;
                 // Effective Ops, as for Blockade above.
-                if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US &&
+                if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US) &&
                     Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                     state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                     state.ctx().resolving_card = 0;
@@ -1339,14 +1336,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     if (draw_cnt > 0) {
                         uint32_t chosen_idx = Prng::random_index(state.rng_state, draw_cnt);
                         uint8_t drawn = draw_cards[chosen_idx];
-                        state.card_locations[drawn] = CardLocation::HAND_US;
+                        state.card_locations[drawn] = hand_of(Player::US);
                     }
                 }
                 state.ctx().resolving_card = 0;
                 return true;
             }
             uint8_t card_id = action.primary_id;
-            if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US) {
+            if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US)) {
                 state.card_locations[card_id] = CardLocation::PEEKED_TEMP;
                 if (state.ctx().temp_card_cnt < state.ctx().temp_cards.size()) {
                     state.ctx().temp_cards[state.ctx().temp_card_cnt++] = card_id;
@@ -1358,7 +1355,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
         case card_ids::ALDRICH_AMES: {
             uint8_t card_id = action.primary_id;
-            if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::HAND_US) {
+            if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US)) {
                 state.card_locations[card_id] = CardLocation::DISCARD_PILE;
             }
             state.ctx().resolving_card = 0;
@@ -1757,7 +1754,7 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 break;
             case card_ids::ALDRICH_AMES:
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == CardLocation::HAND_US) {
+                    if (in_hand_of(state.card_locations[i], Player::US)) {
                         mask_out[i] = 1;
                     }
                 }
@@ -1766,16 +1763,15 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
             case card_ids::LATIN_AMERICAN_DEBT_CRISIS:
                 for (uint8_t i = 1; i <= 110; ++i) {
                     // Effective Ops, matching what both dispatchers accept.
-                    if (state.card_locations[i] == CardLocation::HAND_US &&
+                    if (in_hand_of(state.card_locations[i], Player::US) &&
                         Operations::get_effective_ops(state, i, Player::US) >= 3) {
                         mask_out[i] = 1;
                     }
                 }
                 break;
             default:
-                CardLocation loc = (p == Player::US) ? CardLocation::HAND_US : CardLocation::HAND_USSR;
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (state.card_locations[i] == loc) mask_out[i] = 1;
+                    if (in_hand_of(state.card_locations[i], p)) mask_out[i] = 1;
                 }
                 break;
         }

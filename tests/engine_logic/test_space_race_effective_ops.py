@@ -38,7 +38,7 @@ def _at_box(player: ts.Player, box: int, hand: List[int]) -> ts.GameState:
     else:
         state.ussr_space_track = box
     state.set_space_turns_used(player, 0)
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)

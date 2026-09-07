@@ -89,8 +89,8 @@ TEST(StateLifecycleTest, HeadlineState_HigherOpsResolvesFirst) {
     state.current_phase = ts::Phase::HEADLINE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;   // 3 Ops
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR;           // 2 Ops
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);   // 3 Ops
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);           // 2 Ops
 
     // US selects Duck and Cover (3 Ops)
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
@@ -114,8 +114,8 @@ TEST(StateLifecycleTest, HeadlineState_TiedOps_USGoesFirst) {
     state.current_phase = ts::Phase::HEADLINE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::NUCLEAR_TEST_BAN] = ts::CardLocation::HAND_US; // 3 Ops
-    state.card_locations[ts::card_ids::SOCIALIST_GOVERNMENTS] = ts::CardLocation::HAND_USSR; // 3 Ops
+    state.card_locations[ts::card_ids::NUCLEAR_TEST_BAN] = ts::hand_of(ts::Player::US); // 3 Ops
+    state.card_locations[ts::card_ids::SOCIALIST_GOVERNMENTS] = ts::hand_of(ts::Player::USSR); // 3 Ops
 
     // US selects Nuclear Test Ban
     ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::NUCLEAR_TEST_BAN, 0, 0});
@@ -135,8 +135,8 @@ TEST(StateLifecycleTest, HeadlineState_DefectorsCancelsUSSRHeadline) {
     state.current_phase = ts::Phase::HEADLINE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::HAND_US;
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DEFECTORS] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);
     state.countries[ts::countries::CUBA].us_influence = 2;
     state.countries[ts::countries::CUBA].ussr_influence = 0;
     state.victory_points = 0;
@@ -195,7 +195,7 @@ TEST(StateLifecycleTest, ActionRoundState_OpponentCard_EventFirst_Timing) {
     state.phasing_player = ts::Player::US;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_US; // USSR card in US hand
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US); // USSR card in US hand
     state.countries[ts::countries::CUBA].us_influence = 2;
     state.countries[ts::countries::CUBA].ussr_influence = 0;
 
@@ -246,7 +246,7 @@ TEST(StateLifecycleTest, TurnEndState_MilOpsCheck_PenalizesDeficit) {
 TEST(StateLifecycleTest, TurnEndState_HoldingScoringCard_CausesImmediateLoss) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
-    state.card_locations[ts::card_ids::EUROPE_SCORING] = ts::CardLocation::HAND_US; // US illegally holding scoring card
+    state.card_locations[ts::card_ids::EUROPE_SCORING] = ts::hand_of(ts::Player::US); // US illegally holding scoring card
 
     ts::StateMachine::end_turn(state);
 
@@ -291,8 +291,8 @@ TEST(StateLifecycleTest, TurnEndState_Turn4_AddsMidWarCards) {
     for (uint8_t i = 1; i <= 110; ++i) {
         if (ts::CardData::get_card(i).era == ts::WarEra::MID) {
             if (state.card_locations[i] == ts::CardLocation::DRAW_DECK ||
-                state.card_locations[i] == ts::CardLocation::HAND_US ||
-                state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+                state.card_locations[i] == ts::hand_of(ts::Player::US) ||
+                state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
                 mid_war_in_play = true;
                 break;
             }

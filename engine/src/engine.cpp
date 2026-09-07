@@ -180,11 +180,9 @@ float Engine::get_terminal_utility(const GameState& state) noexcept {
 }
 
 bool Engine::has_held_scoring_card(const GameState& state, Player p) noexcept {
-    CardLocation target_loc = (p == Player::US) ? CardLocation::HAND_US :
-                              ((p == Player::USSR) ? CardLocation::HAND_USSR : CardLocation::UNAVAILABLE);
-    if (target_loc == CardLocation::UNAVAILABLE) return false;
+    if (p == Player::NONE) return false;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (CardData::is_scoring_card(i) && state.card_locations[i] == target_loc) {
+        if (CardData::is_scoring_card(i) && in_hand_of(state.card_locations[i], p)) {
             return true;
         }
     }

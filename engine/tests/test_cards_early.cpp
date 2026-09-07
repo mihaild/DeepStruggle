@@ -57,12 +57,12 @@ TEST(EarlyCardsTest, Card05_FiveYearPlan_USSRHand) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_USSR;
-    state.card_locations[ts::card_ids::FIDEL] = ts::CardLocation::HAND_USSR;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);
     ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
     // One card discarded from USSR hand
     bool discarded = (state.card_locations[ts::card_ids::DUCK_AND_COVER] == ts::CardLocation::DISCARD_PILE) ||
@@ -74,7 +74,7 @@ TEST(EarlyCardsTest, Card05_FiveYearPlan_EmptyHand) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (state.card_locations[i] == ts::CardLocation::HAND_USSR) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
             state.card_locations[i] = ts::CardLocation::DRAW_DECK;
         }
     }
@@ -147,7 +147,7 @@ TEST(EarlyCardsTest, Card09_VietnamRevolts) {
 TEST(EarlyCardsTest, Card10_Blockade_Discard3OpsCard) {
     ts::GameState state{};
     state.countries[ts::countries::WEST_GERMANY].us_influence = 4;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US; // 3 ops
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 ops
     bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::BLOCKADE, ts::Player::USSR);
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
@@ -171,7 +171,7 @@ TEST(EarlyCardsTest, Card10_Blockade_No3OpsCard) {
 TEST(EarlyCardsTest, Card10_Blockade_EarlyStopRefuseDiscard) {
     ts::GameState state{};
     state.countries[ts::countries::WEST_GERMANY].us_influence = 4;
-    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     ts::CardHandlers::trigger_event(state, ts::card_ids::BLOCKADE, ts::Player::USSR);
     // US chooses confirm_done / pass (refuses to discard)
     ts::MicroAction pass_act{};
@@ -474,7 +474,7 @@ TEST(EarlyCardsTest, Card31_RedScarePurge) {
 // Card 32: UN Intervention
 TEST(EarlyCardsTest, Card32_UNIntervention) {
     ts::GameState state{};
-    state.card_locations[ts::card_ids::DE_GAULLE] = ts::CardLocation::HAND_US; // USSR card in US hand
+    state.card_locations[ts::card_ids::DE_GAULLE] = ts::hand_of(ts::Player::US); // USSR card in US hand
     bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::UN_INTERVENTION, ts::Player::US);
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
@@ -553,7 +553,7 @@ TEST(EarlyCardsTest, Card103_Defectors_ActionRoundUSSR) {
 TEST(EarlyCardsTest, Card104_CambridgeFive_Basic) {
     ts::GameState state{};
     state.turn = 3; // Early War
-    state.card_locations[ts::card_ids::MIDDLE_EAST_SCORING] = ts::CardLocation::HAND_US;
+    state.card_locations[ts::card_ids::MIDDLE_EAST_SCORING] = ts::hand_of(ts::Player::US);
     state.countries[ts::countries::EGYPT].ussr_influence = 0;
 
     bool done = ts::CardHandlers::trigger_event(state, ts::card_ids::THE_CAMBRIDGE_FIVE, ts::Player::USSR);

@@ -41,7 +41,7 @@ def _at_headline() -> ts.GameState:
 
 
 def _set_hand(state: ts.GameState, player: ts.Player, cards: List[int]) -> None:
-    loc = ts.CardLocation.HAND_US if player == ts.Player.US else ts.CardLocation.HAND_USSR
+    loc = ts.hand_of(ts.Player.US) if player == ts.Player.US else ts.hand_of(ts.Player.USSR)
     for c in range(1, 111):
         if state.get_card_location(c) == loc:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
@@ -63,7 +63,7 @@ def _headline(us_card: int, ussr_card: int,
 def test_the_location_exists_and_is_neither_hand_nor_a_pile() -> None:
     """It cannot be the discard pile: Star Wars and SALT Negotiations read that."""
     assert ts.CardLocation.HEADLINE_COMMITTED not in (
-        ts.CardLocation.HAND_US, ts.CardLocation.HAND_USSR,
+        ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.USSR),
         ts.CardLocation.DISCARD_PILE, ts.CardLocation.REMOVED_FROM_GAME,
         ts.CardLocation.DRAW_DECK, ts.CardLocation.ONGOING_EVENT,
         ts.CardLocation.PEEKED_TEMP, ts.CardLocation.UNAVAILABLE)
@@ -118,5 +118,5 @@ def test_missile_envy_does_not_take_the_opponents_headline() -> None:
     """
     state = _headline(us_card=MISSILE_ENVY, ussr_card=NUCLEAR_TEST_BAN,
                       us_hand=[], ussr_hand=[DUCK_AND_COVER])
-    assert state.get_card_location(NUCLEAR_TEST_BAN) != ts.CardLocation.HAND_USSR, (
+    assert not ts.in_hand_of(state.get_card_location(NUCLEAR_TEST_BAN), ts.Player.USSR), (
         "the USSR headlined it, so it is no longer theirs to hand over")

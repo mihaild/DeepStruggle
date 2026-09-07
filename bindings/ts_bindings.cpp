@@ -254,7 +254,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
     for (uint8_t i = 1; i <= 110; ++i) {
         auto loc = state.card_locations[i];
         switch (loc) {
-            case ts::CardLocation::HAND_US: {
+            case ts::CardLocation::HAND_US_UNKNOWN:
+            case ts::CardLocation::HAND_US_KNOWN: {
                 us_hand.append(i);
                 nb::dict ci;
                 ci["id"] = i;
@@ -263,7 +264,8 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
                 us_cards.append(ci);
                 break;
             }
-            case ts::CardLocation::HAND_USSR: {
+            case ts::CardLocation::HAND_USSR_UNKNOWN:
+            case ts::CardLocation::HAND_USSR_KNOWN: {
                 ussr_hand.append(i);
                 nb::dict ci;
                 ci["id"] = i;
@@ -299,8 +301,10 @@ nb::dict game_state_to_dict(const ts::GameState& state) {
             case ts::CardLocation::HEADLINE_COMMITTED: loc_str = "HEADLINE_COMMITTED"; break;
             case ts::CardLocation::UNAVAILABLE: loc_str = "UNAVAILABLE"; break;
             case ts::CardLocation::DRAW_DECK: loc_str = "DRAW_DECK"; break;
-            case ts::CardLocation::HAND_US: loc_str = "HAND_US"; break;
-            case ts::CardLocation::HAND_USSR: loc_str = "HAND_USSR"; break;
+            case ts::CardLocation::HAND_US_UNKNOWN: loc_str = "HAND_US_UNKNOWN"; break;
+            case ts::CardLocation::HAND_US_KNOWN: loc_str = "HAND_US_KNOWN"; break;
+            case ts::CardLocation::HAND_USSR_UNKNOWN: loc_str = "HAND_USSR_UNKNOWN"; break;
+            case ts::CardLocation::HAND_USSR_KNOWN: loc_str = "HAND_USSR_KNOWN"; break;
             case ts::CardLocation::DISCARD_PILE: loc_str = "DISCARD_PILE"; break;
             case ts::CardLocation::REMOVED_FROM_GAME: loc_str = "REMOVED_FROM_GAME"; break;
             case ts::CardLocation::ONGOING_EVENT: loc_str = "ONGOING_EVENT"; break;
@@ -453,11 +457,27 @@ NB_MODULE(ts_engine, m) {
         .value("REALIGN", ts::OpMode::REALIGN)
         .export_values();
 
+    // A hand is four locations now, so "is this card in X's hand" is a question rather than an
+    // equality. Exposed so Python asks it the same way the engine does -- there is no compiler
+    // here to catch a comparison that silently misses the other variant.
+    m.def("in_hand_of", &ts::in_hand_of, nb::arg("location"), nb::arg("player"),
+          "True when the card is in that player's hand, known to the opponent or not.");
+    m.def("known_to_opponent", &ts::known_to_opponent, nb::arg("location"),
+          "True when the player who is not holding the card knows it is in that hand.");
+    m.def("hand_of", &ts::hand_of, nb::arg("player"), nb::arg("known") = false,
+          "The hand location for a player; hidden from the opponent unless known=True.");
+    m.def("hand_holder", &ts::hand_holder, nb::arg("location"),
+          "Whose hand it is, or Player.NONE when the card is not in one.");
+    m.def("revealed", &ts::revealed, nb::arg("location"),
+          "The same hand, marked public. Identity for anything not in a hand.");
+
     nb::enum_<ts::CardLocation>(m, "CardLocation", nb::is_arithmetic())
         .value("UNAVAILABLE", ts::CardLocation::UNAVAILABLE)
         .value("DRAW_DECK", ts::CardLocation::DRAW_DECK)
-        .value("HAND_US", ts::CardLocation::HAND_US)
-        .value("HAND_USSR", ts::CardLocation::HAND_USSR)
+        .value("HAND_US_UNKNOWN", ts::CardLocation::HAND_US_UNKNOWN)
+        .value("HAND_US_KNOWN", ts::CardLocation::HAND_US_KNOWN)
+        .value("HAND_USSR_UNKNOWN", ts::CardLocation::HAND_USSR_UNKNOWN)
+        .value("HAND_USSR_KNOWN", ts::CardLocation::HAND_USSR_KNOWN)
         .value("DISCARD_PILE", ts::CardLocation::DISCARD_PILE)
         .value("REMOVED_FROM_GAME", ts::CardLocation::REMOVED_FROM_GAME)
         .value("ONGOING_EVENT", ts::CardLocation::ONGOING_EVENT)
@@ -904,9 +924,9 @@ NB_MODULE(ts_engine, m) {
             std::vector<float> res(num_envs * 110, 0.0f);
             for (size_t i = 0; i < num_envs; ++i) {
                 ts::Player active_p = (i < acting_players.size()) ? static_cast<ts::Player>(acting_players[i]) : ts::Player::US;
-                ts::CardLocation opp_loc = (active_p == ts::Player::US) ? ts::CardLocation::HAND_USSR : ts::CardLocation::HAND_US;
+                const ts::Player opp_p = (active_p == ts::Player::US) ? ts::Player::USSR : ts::Player::US;
                 for (size_t c = 1; c <= 110; ++c) {
-                    if (states[i].card_locations[c] == opp_loc) {
+                    if (ts::in_hand_of(states[i].card_locations[c], opp_p)) {
                         res[i * 110 + (c - 1)] = 1.0f;
                     }
                 }

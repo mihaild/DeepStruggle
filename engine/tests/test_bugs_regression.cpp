@@ -45,7 +45,7 @@ TEST(RegressionTest, DeGaulleOpsFirstTriggersOpponentEventAfterOps) {
     Engine::init_game(state, 42);
 
     // Give US De Gaulle (#17)
-    state.card_locations[card_ids::DE_GAULLE] = CardLocation::HAND_US;
+    state.card_locations[card_ids::DE_GAULLE] = ts::hand_of(ts::Player::US);
     state.current_phase = Phase::ACTION_ROUND;
     state.action_round = 1;
     state.phasing_player = Player::US;
@@ -100,7 +100,7 @@ TEST(RegressionTest, RealignmentOnlyTargetsCountriesWithOpponentInfluenceAndRoll
     state.phasing_player = Player::US;
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
-    state.card_locations[card_ids::DUCK_AND_COVER] = CardLocation::HAND_US; // 3 Ops US card
+    state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops US card
 
     Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0));
     Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0));
@@ -135,7 +135,7 @@ TEST(RegressionTest, ArabIsraeliWarWithRoll2Fails) {
     state.countries[countries::ISRAEL].ussr_influence = 0;
     state.countries[countries::JORDAN].us_influence = 2; // US controls Jordan (-1 mod)
 
-    state.card_locations[card_ids::ARAB_ISRAELI_WAR] = CardLocation::HAND_USSR;
+    state.card_locations[card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     state.current_phase = Phase::ACTION_ROUND;
     state.action_round = 1;
     state.phasing_player = Player::USSR;
@@ -167,7 +167,7 @@ TEST(RegressionTest, NoChainInfluencePlacementDuringSameOp) {
     state.countries[countries::MOROCCO].us_influence = 0;
     state.countries[countries::WEST_AFRICA].us_influence = 0;
 
-    state.card_locations[card_ids::DUCK_AND_COVER] = CardLocation::HAND_US; // 3 Ops
+    state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops
     state.current_phase = Phase::ACTION_ROUND;
     state.action_round = 1;
     state.phasing_player = Player::US;
@@ -199,7 +199,7 @@ TEST(RegressionTest, WarsawPactEasternEuropeOnlyAndMax2) {
     GameState state{};
     Engine::init_game(state, 42);
 
-    state.card_locations[card_ids::WARSAW_PACT] = CardLocation::HAND_USSR;
+    state.card_locations[card_ids::WARSAW_PACT] = ts::hand_of(ts::Player::USSR);
     state.current_phase = Phase::ACTION_ROUND;
     state.action_round = 1;
     state.phasing_player = Player::USSR;
@@ -238,8 +238,8 @@ TEST(RegressionTest, ObservationHiddenOpponentHand) {
     GameState state{};
     Engine::init_game(state, 42);
 
-    state.card_locations[5] = CardLocation::HAND_USSR;
-    state.card_locations[10] = CardLocation::HAND_US;
+    state.card_locations[5] = ts::hand_of(ts::Player::USSR);
+    state.card_locations[10] = ts::hand_of(ts::Player::US);
     state.card_locations[12] = CardLocation::DISCARD_PILE;
 
     ObservationBuffer obs_us{};

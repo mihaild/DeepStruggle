@@ -157,13 +157,13 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         if (loc == CardLocation::DRAW_DECK || loc == CardLocation::UNAVAILABLE) {
             canon_loc = 0;
             if (loc == CardLocation::DRAW_DECK) draw_pile_cnt++;
-        } else if ((loc == CardLocation::HAND_US && my_player == Player::US) ||
-                   (loc == CardLocation::HAND_USSR && my_player == Player::USSR)) {
-            canon_loc = 1; // MY_HAND
+        } else if (in_hand_of(loc, my_player)) {
+            canon_loc = 1; // MY_HAND -- both hand variants; I always know my own hand
             my_hand_cnt++;
-        } else if ((loc == CardLocation::HAND_US && my_player == Player::USSR) ||
-                   (loc == CardLocation::HAND_USSR && my_player == Player::US)) {
-            canon_loc = 0; // OPPONENT_HAND is hidden: fold into slot 0 (UNKNOWN/UNAVAILABLE)
+        } else if (in_hand_of(loc, opp_player)) {
+            canon_loc = 0; // OPPONENT_HAND is hidden: fold into slot 0 (UNKNOWN/UNAVAILABLE).
+            // The legacy layout predates knowledge tracking and folds the known variant here
+            // too, on purpose: this function must reproduce the old observation exactly.
             opp_hand_cnt++;
         } else if (loc == CardLocation::DISCARD_PILE) {
             canon_loc = 3;
