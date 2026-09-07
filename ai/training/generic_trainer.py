@@ -555,10 +555,64 @@ def run_post_training_tournament(
     )
 
 
+
+#: Written beside the snapshots and overwritten each time one is taken. Separate from
+#: `snapshot_*.pt` on purpose: those are bare state dicts that every evaluation tool, the
+#: tournament runner and `load_agent` all read directly, and widening them into a dict of
+#: dicts would break each of those readers silently.
+RESUME_FILENAME = "resume_state.pt"
+
+
+def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
+                      total_env_steps: int, elapsed_seconds: float) -> None:
+    """Everything needed to pick a run back up, except the environment.
+
+    The environment is deliberately not saved: `VectorizedBatchRunner` holds 512 live games and
+    has no serialisation, and restoring it is not worth building because it does not matter --
+    the games are an i.i.d. stream, so continuing with fresh deals is the same experiment. What
+    does matter is the optimiser moments, the reference policy, and the step counter, because
+    those are what make a resumed run continue rather than restart.
+    """
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": trainer.optimizer.state_dict(),
+        "reference_state_dict": trainer.reference_net.state_dict(),
+        "total_env_steps": int(total_env_steps),
+        "total_iterations": int(getattr(trainer, "total_iterations", 0)),
+        "iteration": int(iteration),
+        "elapsed_seconds": float(elapsed_seconds),
+        "torch_rng_state": torch.get_rng_state(),
+        "numpy_rng_state": np.random.get_state(),
+    }, path)
+
+
+def load_resume_state(path: str, model: nn.Module, trainer: Any) -> Dict[str, Any]:
+    """Restore a run in place and return where it left off."""
+    blob = torch.load(path, map_location=trainer.device, weights_only=False)
+    model.load_state_dict(blob["model_state_dict"])
+    trainer.optimizer.load_state_dict(blob["optimizer_state_dict"])
+    trainer.reference_net.load_state_dict(blob["reference_state_dict"])
+    trainer.total_env_steps = int(blob["total_env_steps"])
+    if hasattr(trainer, "total_iterations"):
+        trainer.total_iterations = int(blob.get("total_iterations", 0))
+    try:
+        torch.set_rng_state(blob["torch_rng_state"].cpu().to(torch.uint8))
+        np.random.set_state(blob["numpy_rng_state"])
+    except Exception as exc:                      # a resumed run is still valid without these
+        print(f"Warning: could not restore RNG state ({exc}); continuing with the current one.",
+              flush=True)
+    return {
+        "iteration": int(blob.get("iteration", 0)),
+        "total_env_steps": int(blob["total_env_steps"]),
+        "elapsed_seconds": float(blob.get("elapsed_seconds", 0.0)),
+    }
+
+
 def train_pipeline(
     arch: str = "v2",
     obs_layout: str = "legacy",
     seed: Optional[int] = None,
+    resume: Optional[str] = None,
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
     inject_dataset: Optional[str] = None,
@@ -645,6 +699,7 @@ def train_pipeline(
         "arch": arch,
         "obs_layout": obs_layout,
         "seed": seed,
+        "resumed_from": resume,
         "base_commit": git_commit,
         "commit_message": git_message,
         "git_dirty": git_dirty,
@@ -868,6 +923,22 @@ def train_pipeline(
         eta = int(train_elapsed + overhead_seconds + remaining)
         return f"{steps_done:,}/{step_budget:,} steps, ETA {eta}s"
 
+    resume_path = os.path.join(out_dir, RESUME_FILENAME)
+    resumed_elapsed = 0.0
+    if resume:
+        src = resume if os.path.isfile(resume) else os.path.join(resume, RESUME_FILENAME)
+        state = load_resume_state(src, model, trainer)
+        it = state["iteration"]
+        resumed_elapsed = state["elapsed_seconds"]
+        # Rewind the clock so elapsed keeps counting from where the run stopped rather than from
+        # zero; otherwise a resumed run's ETA and any time-based schedule think it just started.
+        t_start -= resumed_elapsed
+        # Snapshots are due by step count, and those steps already happened.
+        if step_budget > 0 and eval_every_steps > 0:
+            next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
+        print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
+              f"{resumed_elapsed:.0f}s of training already done", flush=True)
+
     _refresh_start_pool("initial")
 
     while True:
@@ -953,6 +1024,9 @@ def train_pipeline(
                 f"snapshot_{total_env_steps}steps.pt"
                 if snapshot_every_steps > 0 else f"snapshot_{int(elapsed)}s.pt")
             torch.save(model.state_dict(), snap_path)
+            # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
+            # load_agent, the tournament runner and every eval module read it as one.
+            save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed)
             decisive = evaluate_and_log_snapshot(
                 model=model,
                 opponents=opponents,

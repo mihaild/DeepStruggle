@@ -50,6 +50,13 @@ def main():
     # its own step), so a matched step count does not make them a controlled comparison. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Resume a run from its resume_state.pt (pass the file or the\n"
+                             "run directory). Restores the weights, the optimiser moments,\n"
+                             "the reference policy and the step counter, so training\n"
+                             "continues rather than restarting. The environment is not\n"
+                             "restored -- the games are an i.i.d. stream, so a resumed run\n"
+                             "simply deals fresh ones.")
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed the environment stream and torch together. Left unset,\n"
                              "the environment seed is fixed at 12345 and the network is\n"
@@ -159,6 +166,7 @@ def main():
             train_steps=args.train_steps,
             obs_layout=args.obs_layout,
             seed=args.seed,
+            resume=args.resume,
             snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
