@@ -1844,3 +1844,116 @@ believe.
 position, and the two branches are paired -- so it is approximate in both directions. One
 checkpoint (`dec_turns40`); a differently-trained agent may pay a different price for the same
 mistake.
+
+## 12. Battlegrounds: the critic prices *control*, not the road to it — SETTLED
+
+§4 records that battlegrounds sit empty in late positions and that the count plateaus from turn 8.
+The tidy explanation was a self-reinforcing loop: the agent never holds battlegrounds → never sees a
+scoring card pay out on them → the critic never learns they are worth anything → the policy has no
+reason to take them. If that were right, the fix would be exploration.
+
+It is not right. Measured on `ai/eval/battleground_value.py` against the 160M run
+(`data/checkpoints/run_v2_20260907_long160M`, snapshots at 0 / 35M / 70M steps), turn-stratified
+self-play positions, 30 per turn bucket, perturbing the board one way at a time and reading Δ`v_win`
+from the mover's side.
+
+### 12.1 Control is priced; the road to it is not
+
+At 70M steps, Δ`v_win` for the mover, each row adding the same 2 Influence except *control*, which
+adds exactly enough to flip the country:
+
+| perturbation | T2 | T3 | T5 | T8 |
+|---|---|---|---|---|
+| control a battleground | +0.061 | +0.074 | +0.060 | +0.046 |
+| presence in a battleground (no control) | +0.024 | +0.024 | +0.028 | +0.011 |
+| access: adjacent to a battleground | +0.025 | +0.034 | +0.026 | +0.011 |
+| plain influence, no battleground near | +0.020 | +0.023 | +0.019 | +0.007 |
+| opponent controls a battleground | −0.073 | −0.078 | −0.096 | −0.043 |
+
+Standard errors run 0.003–0.016, so:
+
+* **Control is real.** Three times a plain Influence point, and symmetric — losing a battleground to
+  the opponent costs about what taking one gains. The critic is not blind to battlegrounds.
+* **Presence is worth nothing extra.** Two Influence into a battleground that does *not* reach
+  control reads the same as two Influence into a backwater with no battleground anywhere near it:
+  +0.024 against +0.020 at T2, inside one standard error at every turn.
+
+That is the whole finding. The critic has learned the *step function* — a country is worth
+something once it flips and nothing before — and a battleground almost always takes two plays to
+take. Every intermediate instalment of the investment is priced at zero, so the policy sees a
+two-play sequence whose first play is free money spent for nothing. This is a credit-assignment
+gap, not a knowledge gap, and exploration bonuses do not touch it.
+
+The same step function is written into the one shaping potential the repo already has:
+`Scoring::compute_useful_actions_potential` (`engine/src/scoring.cpp:326-338`) builds its
+battleground term from `get_country_control`, counting controlled battlegrounds and nothing else.
+Switching the 160M run from `blunder_aware` to `useful_actions` would therefore reward exactly the
+same last-point-only shape. (That run used `blunder_aware`, so the potential was not in play; the
+step function above is what the critic learned from terminal outcomes on its own.)
+
+### 12.2 Access *is* priced, once the comparison is honest
+
+Contrasting "I control Thailand and the opponent is shut out of every neighbour" against "…and the
+opponent has 1 next door" showed a large effect — but that contrast **deletes** the opponent's
+Influence, and the critic prices raw Influence loss regardless of where it was. The matched form
+*relocates* one Influence point instead: a Thailand neighbour versus a non-adjacent,
+non-battleground country in the same region. Both boards carry identical totals for both players,
+and adjacency is the only difference.
+
+At 70M steps, Δ`v_win`:
+
+| contrast | T2 | T3 | T5 | T8 |
+|---|---|---|---|---|
+| the opponent's access to Thailand costs me | +0.010 | +0.016 | +0.030 | +0.043 |
+| my access to a Thailand the opponent holds is worth | +0.038 | +0.028 | +0.024 | +0.018 |
+
+Positive in 8 of 8 cells here, and in 8 of 8 at 35M — and one relocated Influence point moves the
+value by as much as two points placed anywhere. **The critic does model access.** The Thailand
+intuition is in the network already; it does not need to be taught.
+
+### 12.3 What RL does to the early Americas
+
+Per-Influence-point value of a USSR foothold in each region's battlegrounds, against the
+plain-backwater baseline:
+
+| region | warm start T2 | warm start T3 | 70M T2 | 70M T3 |
+|---|---|---|---|---|
+| Europe | +0.055 | +0.055 | +0.013 | +0.024 |
+| Asia | +0.015 | +0.057 | +0.017 | +0.018 |
+| Middle East | +0.045 | +0.058 | +0.019 | +0.022 |
+| Africa | −0.010 | +0.015 | +0.008 | +0.011 |
+| Central America | +0.012 | +0.104 | **−0.005** | +0.003 |
+| South America | +0.053 | +0.105 | +0.007 | +0.015 |
+| *(plain backwater)* | +0.015 | +0.047 | +0.005 | +0.006 |
+
+Absolute magnitudes shrink everywhere as the value head sharpens, so the ratio to the backwater
+baseline is the comparison that means anything. On that basis the human-BC warm start puts South
+America among its **best** early destinations at T2 (3.6× backwater) and Central America among its
+best at T3 (2.2×). By 70M steps both have collapsed to the **bottom** of the table — South America
+1.4× at T2, Central America *negative* — while Europe, Asia and the Middle East hold at 3–4×.
+
+RL does not fail to learn that early Americas presence matters. It learns it from the human prior
+and then unlearns it. Central America Scoring is an early-war card, so a negative T2 valuation is
+not a defensible read of the game; this is the §9 washout showing up in the critic rather than the
+policy.
+
+### 12.4 What this changes
+
+The deadlock in §4 was framed as exploration. It is not:
+
+1. The critic prices control (3× a plain point) and access (a relocated point moves 1–4 points of
+   win rate). Both halves of the board understanding are present.
+2. What is missing is any value for **partial progress toward control** — and that is precisely the
+   quantity a policy needs a gradient on, because taking a battleground costs two plays.
+3. The early-Americas valuation exists at the warm start and is destroyed by RL, so injection is
+   holding the wrong thing in place: it slows policy washout (§10) while the critic drifts anyway.
+
+The lever that follows is a potential-based shaping term that is **continuous in distance to
+control** rather than a step at control — φ rising with each Influence point that shortens the gap.
+Potential-based shaping is policy-invariant (Ng, Harada & Russell), so it cannot change the optimal
+policy, only the credit path to it. That is a change to `compute_useful_actions_potential` in the
+C++ engine and therefore needs approval before anything is written.
+
+Open: whether the step function is also present in `v_vp` (only `v_win` was measured), and whether
+the collapse in 12.3 is monotone across all 32 snapshots or happens at a particular point in
+training.
