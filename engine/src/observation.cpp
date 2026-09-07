@@ -309,7 +309,12 @@ void Observation::extract_v2(const GameState& state, Player perspective,
         const size_t offset = static_cast<size_t>(i - 1) * card_slots::V2_FEATURES;
         const CardLocation loc = state.card_locations[i];
 
-        size_t slot = card_slots::V2_FEATURES;  // sentinel: nothing set, as for a headline card
+        // Defaults to DECK_OR_HIDDEN, which is what the legacy layout does with anything its
+        // chain does not claim -- in practice HEADLINE_COMMITTED, a card face down in the
+        // headline. v2's scope is splitting the known-opponent-hand and not-in-game cases out
+        // of slot 0; how a headline card is represented is a separate question and is left
+        // exactly as it was, so the two layouts cannot disagree about it.
+        size_t slot = card_slots::DECK_OR_HIDDEN;
         if (loc == CardLocation::UNAVAILABLE) {
             slot = card_slots::NOT_IN_GAME;
         } else if (loc == CardLocation::DRAW_DECK) {
@@ -332,12 +337,7 @@ void Observation::extract_v2(const GameState& state, Player perspective,
         } else if (loc == CardLocation::PEEKED_TEMP) {
             slot = card_slots::PEEKED;
         }
-        // HEADLINE_COMMITTED deliberately sets no slot, as in the legacy layout: the card has
-        // left the hand it came from and is face down, so no location feature is true of it.
-
-        if (slot < card_slots::V2_FEATURES) {
-            out_buf->card_features[offset + slot] = 1.0f;
-        }
+        out_buf->card_features[offset + slot] = 1.0f;
 
         const size_t base = card_slots::V2_PROPERTY_BASE;
         out_buf->card_features[offset + base + 0] = static_cast<float>(c_info.ops) / 4.0f;
