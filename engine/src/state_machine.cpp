@@ -70,6 +70,13 @@ void StateMachine::deal_cards_to_hands(GameState& state) noexcept {
             }
 
             if (draw_count == 0) {
+                // The deck is empty, so every card is now in a hand, the discard, removed, in
+                // play, or never in the game -- and all of those but the hands are public. Each
+                // player can therefore name the other's hand as the complement of what they can
+                // see. The shuffle that follows is the consequence, not the cause, which is why
+                // this fires here and not in the scheduled era reshuffles at turns 4 and 8,
+                // where the deck is not empty and no such deduction exists.
+                reveal_both_hands(state);
                 reshuffle_discard_into_draw(state);
                 for (uint8_t i = 1; i <= 110; ++i) {
                     if (state.card_locations[i] == CardLocation::DRAW_DECK) {
@@ -84,6 +91,9 @@ void StateMachine::deal_cards_to_hands(GameState& state) noexcept {
             state.card_locations[chosen_card] = hand_loc;
             current_count++;
             if (draw_count == 1) {
+                // That was the last card in the deck; same deduction as above, and it covers
+                // the card just drawn too, since the opponent can see the deck is now empty.
+                reveal_both_hands(state);
                 reshuffle_discard_into_draw(state);
             }
         }

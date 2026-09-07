@@ -270,6 +270,9 @@ bool trigger_containment(GameState& state, Player p) noexcept {
 }
 
 bool trigger_cia_created(GameState& state, Player p) noexcept {
+    // "The USSR reveals their hand of cards for this turn." The reveal is the first half of the
+    // card and is what the US is buying; the Ops below are the second.
+    reveal_hand(state, Player::USSR);
     // US conducts Operations using card Ops value (1 Op base)
     state.ctx().decision_player = Player::US;
     state.ctx().pending_op_card = card_ids::CIA_CREATED;

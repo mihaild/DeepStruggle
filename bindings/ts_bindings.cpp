@@ -460,6 +460,12 @@ NB_MODULE(ts_engine, m) {
     // A hand is four locations now, so "is this card in X's hand" is a question rather than an
     // equality. Exposed so Python asks it the same way the engine does -- there is no compiler
     // here to catch a comparison that silently misses the other variant.
+    m.def("reveal_hand", &ts::reveal_hand, nb::arg("state"), nb::arg("player"),
+          "Mark every card that player is holding right now as public to the opponent. Cards "
+          "drawn afterwards are hidden again -- knowledge attaches to cards, not to players.");
+    m.def("reveal_both_hands", &ts::reveal_both_hands, nb::arg("state"),
+          "Mark both hands public, as when the draw deck runs out and each side can name the "
+          "other's hand as the complement of what it can see.");
     m.def("in_hand_of", &ts::in_hand_of, nb::arg("location"), nb::arg("player"),
           "True when the card is in that player's hand, known to the opponent or not.");
     m.def("known_to_opponent", &ts::known_to_opponent, nb::arg("location"),
@@ -628,7 +634,11 @@ NB_MODULE(ts_engine, m) {
 
     nb::class_<ts::StateMachine>(m, "StateMachine")
         .def_static("advance_headline_step", &ts::StateMachine::advance_headline_step)
-        .def_static("advance_after_action_round", &ts::StateMachine::advance_after_action_round);
+        .def_static("advance_after_action_round", &ts::StateMachine::advance_after_action_round)
+        // Exposed so the deck-exhaustion reveal can be tested where it happens: the deduction
+        // belongs to dealing, not to the shuffle, and the two are only separable from here.
+        .def_static("deal_cards_to_hands", &ts::StateMachine::deal_cards_to_hands)
+        .def_static("reshuffle_discard_into_draw", &ts::StateMachine::reshuffle_discard_into_draw);
 
     nb::class_<ts::Engine>(m, "Engine")
         .def_static("init_game", &ts::Engine::init_game)

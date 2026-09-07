@@ -249,6 +249,9 @@ bool trigger_an_evil_empire(GameState& state, Player p) noexcept {
 
 bool trigger_aldrich_ames(GameState& state, Player p) noexcept {
     state.set_flag(effect_bits::ALDRICH_AMES_ACTIVE);
+    // "The US reveals their hand of cards, face-up, for the remainder of the turn." The flag
+    // above already told the network that a reveal is in force; this is what the reveal showed.
+    reveal_hand(state, Player::US);
     // USSR chooses card from US hand to discard
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::SELECT_CARD;

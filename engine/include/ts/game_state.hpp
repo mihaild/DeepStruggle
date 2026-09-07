@@ -402,6 +402,28 @@ inline bool keeps_own_card_location(const GameState& state, uint8_t card) noexce
     return is_in_any_hand(state.card_locations[card]);
 }
 
+// Everything `p` is holding becomes public to the opponent.
+//
+// Only the cards held *now*. Knowledge does not attach to the player, it attaches to the cards:
+// what the opponent has seen, they have seen, and anything drawn afterwards is hidden again --
+// which falls out of this touching locations rather than setting a flag. Cards leaving the hand
+// clear themselves, since the new location overwrites the old one.
+inline void reveal_hand(GameState& state, Player p) noexcept {
+    if (p == Player::NONE) return;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (in_hand_of(state.card_locations[i], p)) {
+            state.card_locations[i] = revealed(state.card_locations[i]);
+        }
+    }
+}
+
+// Both hands become public. Used where the deduction is symmetric -- see the draw deck running
+// out in StateMachine::deal_cards_to_hands.
+inline void reveal_both_hands(GameState& state) noexcept {
+    reveal_hand(state, Player::US);
+    reveal_hand(state, Player::USSR);
+}
+
 // Cuban Missile Crisis can be paid off at any time. Modelled as the head of the payer's own
 // action round, and as part of a coup they make -- the two moments a player is doing something
 // anyway -- rather than as a standing option on every decision in the game.

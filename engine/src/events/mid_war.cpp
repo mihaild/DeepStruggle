@@ -336,7 +336,9 @@ bool trigger_opec(GameState& state, Player p) noexcept {
 }
 
 bool trigger_lone_gunman(GameState& state, Player p) noexcept {
-    // US reveals hand; USSR conducts Operations using card Ops value (1 Op base)
+    // "The US reveals their hand of cards."
+    reveal_hand(state, Player::US);
+    // USSR conducts Operations using card Ops value (1 Op base)
     state.ctx().decision_player = Player::USSR;
     state.ctx().pending_op_card = card_ids::LONE_GUNMAN;
     state.ctx().pending_ops_value = Operations::grant_ops(state, 1, Player::USSR);
