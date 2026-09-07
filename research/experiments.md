@@ -1794,3 +1794,53 @@ against a frozen copy rather than the live policy.
 **Caveats.** One seed per cell, 4M steps, and a control that moved 1.3 points across its own
 snapshots in §9.12. The weight ladder's 1.2-point spread is inside that; the frequency and
 matched-dose effects, at 4.6 and 5.5 points, are not.
+
+
+## 11. The gate: what does the space-race dominance error actually cost? — ~3 points, and that changes the plan
+
+**Question.** §9.3 found the largest behavioural gap between humans and our agents: spacing a card
+while holding an equal-Ops opponent recurring event, where humans err 0.4% of the time and our
+agents 12.6-18.1%. §10 then spent nine arms learning how to transfer human behaviour. None of it
+asked what the behaviour is worth. §4.4 is the warning -- forced-win take rate looked like a 20-30%
+failure and was worth about two points, because declining was usually free.
+
+**Method** (`ai/eval/dominance_cost.py`). The fork has to be at card *selection*: by the time the
+engine asks how to play a card the card is chosen, and which card went to the track is the decision.
+Positions are taken at `SELECT_CARD` where the agent's own greedy continuation goes on to space its
+own or a neutral card with an equal-Ops opponent recurring event in hand. Both branches -- the
+agent's choice, and the opponent's card to the track instead -- are then continued by the same
+policy over twelve die streams each, counting wins for the player who chose.
+
+**Result** (`dec_turns40`, two collections pooled, 148 positions):
+
+| branch | wins | rate |
+|:---|---:|---:|
+| dominated (what the agent wanted) | 766/1768 | 43.33% |
+| dominant (the opponent's card instead) | 823/1772 | **46.44%** |
+| **cost of the error** | | **+3.12 points** (approx SE 1.67, z ≈ 1.9) |
+
+The two collections gave +5.15 (39 positions) and +2.39 (109 positions); the spread between them is
+itself a fair warning about how noisy this is.
+
+**Verdict: the error is not free, but the ceiling is low, and that is the finding.** Roughly three
+points of win rate, in the same range as §4.4's forced wins. It clears the gate in the sense that
+the behaviour matters -- but it puts a hard ceiling on the whole line, because three points is what
+you would get for fixing the error **completely**.
+
+**And E6 as planned cannot measure a fraction of three points.** §10's best arm transfers about half
+the alignment it starts with (49.3% → 40.2%), so the expected strength gain is one to two points.
+§7.2 put the tournament noise floor at ~1.5 points on 1,000 games a matchup, and training seed
+variance has never been measured at all. A two-arm, one-seed E6 would return a number
+indistinguishable from noise whichever way it came out, and we would not be able to tell which had
+happened.
+
+**What that argues for.** Either run E6 with several seeds per arm and accept the multiplied cost,
+or stop treating strength as the target for this line and use the corpus for what it demonstrably
+is -- the only reference we have for what good local play looks like, and an evaluation asset. The
+one thing not worth doing is the cheap version of E6, which would produce a number nobody should
+believe.
+
+**Caveats.** The SE above treats games as independent; they are not -- twelve rollouts share a
+position, and the two branches are paired -- so it is approximate in both directions. One
+checkpoint (`dec_turns40`); a differently-trained agent may pay a different price for the same
+mistake.
