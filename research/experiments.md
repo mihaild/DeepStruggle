@@ -1696,3 +1696,35 @@ what is established is the gap between them, which is stable across every epoch 
 from-scratch numbers here run about half a point above §9.2's on the same split, which is the
 corpus having been rebuilt since (§9.6, §9.8, §9.10) -- the comparison inside this table is
 like-for-like, comparisons across sections are not.
+
+
+### 9.14 Injection from a human start — it halts the washout
+
+**Question.** §9.12's arms all began from the self-play init, already at the ~32-35% attractor, so
+they could only ask whether injection *raises* agreement and answered inconclusively. This is the
+version they should have been: same four-million-step budget, same settings, but starting from the
+human BC net at **47.2%**, where there is something to lose.
+
+| snapshot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control, no injection | 47.2 | 43.0 | 39.0 | 36.7 | 34.8 | 34.0 | 34.4 | 32.1 | 30.9 | **30.9** |
+| `--inject-every 1` | 47.2 | 42.9 | 40.8 | 39.6 | 37.8 | 38.2 | 37.0 | 37.7 | 38.3 | **38.3** |
+
+**Injection does not prevent the decay, it stops it.** Both arms fall for the first two snapshots
+and then separate: the control keeps going all the way to 30.9%, reproducing §9.1's washout, while
+the injected arm flattens at 37-38% and stays there for the second half of the run. The gap at the
+end is **+7.4 points**, against a run-to-run range of about 1.3 (§9.12). This is not noise.
+
+**It also settles what §9.12 could not.** The 0.6-point difference there was not evidence that
+injection is weak; it was evidence that an arm starting at the attractor has nothing to preserve.
+Same mechanism, same weight, same budget -- only the starting point differs, and the effect goes
+from 0.6 to 7.4.
+
+**What it does not do is hold the BC level.** 47.2% → 38.3% is still nine points lost, so at weight
+1.0 injection is fighting the RL gradient to a draw somewhere below where it started rather than
+holding its ground. Weight is the obvious next knob, and the one this pair does not vary.
+
+**One oddity worth recording.** The control ends at 30.9%, *below* the 33.9% a self-play-initialised
+control reached on the identical budget (§9.12). Starting closer to human play and then training
+away from it appears to overshoot past where you would have been having never started there. One
+seed, so it may be nothing -- but it is the opposite of what you would guess.
