@@ -172,7 +172,10 @@ class BaseNashPGTrainer:
         self.buffer = RolloutBuffer(
             buffer_size=self.buffer_size,
             num_envs=self.num_envs,
-            obs_dim=4293,
+            # Taken from the env rather than fixed, so the buffer cannot disagree with the
+            # layout the environment is actually producing. A mismatch here would be a reshape
+            # error at best and a silently misaligned observation at worst.
+            obs_dim=getattr(self.env, "observation_size", 4293),
             action_dim=212,
             device=self.device,
         )

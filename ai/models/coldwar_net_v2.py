@@ -73,10 +73,15 @@ class ColdWarNetV2(nn.Module):
     - Masked Policy Head (212-dim) + Dual Value Heads (Win/Loss Tanh & Auxiliary VP)
     """
 
+    # Class-level values describe the legacy 12-feature card block, which is what every existing
+    # checkpoint was trained against. An instance built with card_features=13 overrides the four
+    # that move; the offsets are recomputed in __init__ rather than assumed, because only the
+    # card block changes width and everything after it shifts by the same amount.
     BOARD_OFFSET = 0
     BOARD_SIZE = 84 * 28  # 2352
 
     CARD_OFFSET = 2352
+    CARD_FEATURES = 12
     CARD_SIZE = 110 * 12  # 1320
 
     GLOBAL_OFFSET = 2352 + 1320  # 3672
@@ -88,9 +93,19 @@ class ColdWarNetV2(nn.Module):
     TOTAL_OBS_SIZE = 4293
     ACTION_SPACE_SIZE = 212
 
-    def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4):
+    def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
+                 card_features: int = CARD_FEATURES):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
+
+        # 12 is the legacy card block; 13 is observation layout v2, which adds a slot for a card
+        # the opponent is known to hold and one for a card not yet in the game. Nothing else in
+        # the observation changes width, so every later offset simply moves by the difference.
+        self.card_features = int(card_features)
+        self.CARD_SIZE = 110 * self.card_features
+        self.GLOBAL_OFFSET = self.CARD_OFFSET + self.CARD_SIZE
+        self.HIST_OFFSET = self.GLOBAL_OFFSET + self.GLOBAL_SIZE
+        self.TOTAL_OBS_SIZE = self.HIST_OFFSET + self.HIST_SIZE + 32 + 1
 
         # 1. Board Graph Encoder (84 nodes x 28 features -> 64)
         self.gconv1 = GraphConvLayer(28, 64)
@@ -103,7 +118,7 @@ class ColdWarNetV2(nn.Module):
 
         # 2. Card Registry Encoder (110 cards x 12 features -> 64)
         self.card_fc = nn.Sequential(
-            nn.Linear(12, 64),
+            nn.Linear(self.card_features, 64),
             nn.LayerNorm(64),
             nn.GELU(),
         )
@@ -199,9 +214,9 @@ class ColdWarNetV2(nn.Module):
         board_max, _ = torch.max(h_board, dim=1)  # (B, 64)
         e_board = self.board_proj(torch.cat([board_mean, board_max], dim=-1))  # (B, 256)
 
-        # 2. Card Features: (B, 110, 12)
+        # 2. Card Features: (B, 110, card_features)
         card_raw = obs[:, self.CARD_OFFSET : self.CARD_OFFSET + self.CARD_SIZE]
-        card_nodes = card_raw.view(batch_size, 110, 12)
+        card_nodes = card_raw.view(batch_size, 110, self.card_features)
         h_cards = self.card_fc(card_nodes)  # (B, 110, 64)
         card_mean = torch.mean(h_cards, dim=1)  # (B, 64)
         card_max, _ = torch.max(h_cards, dim=1)  # (B, 64)
@@ -321,7 +336,24 @@ class ColdWarNetV2(nn.Module):
         return log_probs, entropy, v_win.squeeze(-1), v_vp.squeeze(-1)
 
 
-def create_coldwar_net_v2(device: torch.device | str = "cpu") -> ColdWarNetV2:
+def create_coldwar_net_v2(device: torch.device | str = "cpu",
+                          card_features: int = ColdWarNetV2.CARD_FEATURES) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device."""
-    model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4)
+    model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
+                         card_features=card_features)
     return model.to(device)
+
+
+def card_features_of(state_dict: dict) -> int:
+    """How wide a checkpoint's card block is, read off its own weights.
+
+    The first card layer is Linear(card_features, 64), so its weight is (64, card_features) and
+    the width is not something a loader has to be told. That matters because the two layouts are
+    otherwise indistinguishable from a file, and loading a 12-feature checkpoint as 13 would
+    reinterpret every card feature by one position without any shape error to warn about --
+    silently, and only after the numbers came out wrong.
+    """
+    for key in ("card_fc.0.weight", "module.card_fc.0.weight"):
+        if key in state_dict:
+            return int(state_dict[key].shape[1])
+    raise KeyError("no card_fc.0.weight in the checkpoint; cannot tell the layout")

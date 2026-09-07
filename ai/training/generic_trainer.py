@@ -557,6 +557,7 @@ def run_post_training_tournament(
 
 def train_pipeline(
     arch: str = "v2",
+    obs_layout: str = "legacy",
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
     inject_dataset: Optional[str] = None,
@@ -599,6 +600,15 @@ def train_pipeline(
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+    if obs_layout not in ("legacy", "v2"):
+        raise ValueError(f"obs_layout must be 'legacy' or 'v2', got {obs_layout!r}")
+    # One decision, read by both the network's input width and the environment's output width.
+    # Deriving them separately is how they would come to disagree.
+    legacy_obs = obs_layout == "legacy"
+    card_features = 12 if legacy_obs else 13
+    if not legacy_obs and arch != "v2":
+        raise ValueError(f"obs_layout=v2 is only wired for arch=v2, got arch={arch!r}")
+
     out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -622,6 +632,7 @@ def train_pipeline(
     metadata_info = {
         "run_id": os.path.basename(out_dir),
         "arch": arch,
+        "obs_layout": obs_layout,
         "base_commit": git_commit,
         "commit_message": git_message,
         "git_dirty": git_dirty,
@@ -643,7 +654,7 @@ def train_pipeline(
     elif arch == "v3":
         model = create_coldwar_net_v3(dev)
     elif arch == "v2":
-        model = create_coldwar_net_v2(dev)
+        model = create_coldwar_net_v2(dev, card_features=card_features)
     else:
         model = create_coldwar_net(dev)
 
@@ -694,9 +705,11 @@ def train_pipeline(
 
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345,
                               reward_calculator=reward_calc,
-                              start_provider=_start_provider)
+                              start_provider=_start_provider,
+                              legacy_obs=legacy_obs)
     else:
-        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc)
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc,
+                              legacy_obs=legacy_obs)
 
     # Curriculum timing configuration
     if is_curriculum:

@@ -50,6 +50,12 @@ def main():
     # its own step), so a matched step count does not make them a controlled comparison. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
+    parser.add_argument("--obs-layout", choices=["legacy", "v2"], default="legacy",
+                        help="Observation layout. 'legacy' is the 4293-wide block every\n"
+                             "existing checkpoint was trained against. 'v2' is 4403 wide\n"
+                             "and adds two card slots: the opponent is known to hold this\n"
+                             "card, and this card is not in the game yet. A checkpoint\n"
+                             "trained under one layout cannot be loaded under the other.")
     parser.add_argument("--snapshot-every-steps", type=int, default=0,
                         help="Take a snapshot every N env steps (0 = derive the "
                              "interval from --duration-seconds and "
@@ -144,6 +150,7 @@ def main():
             eta=args.eta,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
+            obs_layout=args.obs_layout,
             snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
