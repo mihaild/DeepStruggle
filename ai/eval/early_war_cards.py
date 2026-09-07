@@ -187,9 +187,12 @@ def collect(games: Iterable[Dict], cards: Sequence[int],
             ) -> Tuple[Dict[int, List[Node]], Dict[int, List[Node]]]:
     """Early-war Action Round card selections from the corpus, split by mover.
 
-    Returns `(ussr_nodes, us_nodes)` keyed by card: the USSR list holds only positions where that
-    side genuinely held the card, so the USSR figures are about real hands rather than constructed
-    ones. The US list is every US node, since the card has to be swapped in there regardless.
+    Returns `(ussr_nodes, us_nodes)` keyed by card. Both lists hold only positions where that
+    side genuinely held the card. An earlier version swapped the card into every US node, which
+    answers a different and weaker question: a constructed hand is not one a human was ever dealt,
+    and the swap has to drop a card to make room, so the rest of the hand is wrong too. The corpus
+    has real US-held positions for both cards -- the US played Decolonization 159 times and
+    De-Stalinization 47 times in the early war -- so there is no need to invent any.
     """
     ussr: Dict[int, List[Node]] = {c: [] for c in cards}
     us: Dict[int, List[Node]] = {c: [] for c in cards}
@@ -203,10 +206,9 @@ def collect(games: Iterable[Dict], cards: Sequence[int],
             continue
         for node in nodes:
             for card in cards:
-                if node.mover == ts.Player.USSR and card in hand(node.state, ts.Player.USSR):
-                    ussr[card].append(node)
-                elif node.mover == ts.Player.US:
-                    us[card].append(node)
+                if card not in hand(node.state, node.mover):
+                    continue
+                (ussr if node.mover == ts.Player.USSR else us)[card].append(node)
     return ussr, us
 
 
@@ -241,3 +243,109 @@ def placement_summary(placements: Sequence[Placement], top: int = 8) -> List[str
                  for c, n in counter.most_common(top)]
         lines.append(f"{label}: " + ", ".join(parts))
     return lines
+
+
+def resolve_with_mode(model: Any, at_mode: ts.GameState, mover: ts.Player, card: int,
+                      device: Any, mode: int, max_steps: int = 60) -> Optional[ts.GameState]:
+    """Play the card in `mode` and let it finish resolving, the model choosing the details.
+
+    The follow-on choices -- which countries the event reaches, where Ops Influence goes -- are
+    the model's in both branches, so the comparison isolates the mode itself.
+    """
+    modes = _mode_actions(at_mode)
+    if mode not in modes:
+        return None
+    probe = at_mode.clone()
+    ts.Engine.step_flat(probe, modes[mode])
+    _drain(probe)
+
+    for _ in range(max_steps):
+        if ts.Engine.is_terminal(probe):
+            break
+        ctx = probe.ctx()
+        if int(ctx.resolving_card) != card and ctx.decision_type != ts.DecisionType.POINT_NODE:
+            break
+        who = ctx.decision_player if ctx.decision_player != ts.Player.NONE else mover
+        probs = policy(model, probe, who, device)
+        if not probs.any():
+            break
+        ts.Engine.step_flat(probe, int(np.argmax(probs)))
+        _drain(probe)
+    return probe
+
+
+@dataclass
+class ValueSplit:
+    """`v_win` after each way of playing the card, from the mover's own point of view."""
+
+    name: str
+    human_mode: int
+    model_mode: int
+    human_values: List[float] = field(default_factory=list)
+    model_values: List[float] = field(default_factory=list)
+    # Positions where the model's greedy mode was already the human's.
+    agreed: int = 0
+    # Positions where the critic prefers the human's mode even though the policy did not pick it.
+    critic_right_policy_wrong: int = 0
+    disagreed: int = 0
+
+    def mean_human(self) -> float:
+        return float(np.mean(self.human_values)) if self.human_values else float("nan")
+
+    def mean_model(self) -> float:
+        return float(np.mean(self.model_values)) if self.model_values else float("nan")
+
+    def gap(self) -> float:
+        """How much more the critic likes the human's line. Positive means the critic knows."""
+        if not self.human_values:
+            return float("nan")
+        return float(np.mean(np.asarray(self.human_values) - np.asarray(self.model_values)))
+
+    def stderr(self) -> float:
+        if len(self.human_values) < 2:
+            return float("nan")
+        diff = np.asarray(self.human_values) - np.asarray(self.model_values)
+        return float(np.std(diff, ddof=1) / np.sqrt(len(diff)))
+
+
+def value_split(model: Any, nodes: Sequence[Node], card: int, side: ts.Player, device: Any,
+                human_mode: int, swap_in: bool = False, name: str = "") -> ValueSplit:
+    """Is the wrong play a policy failure, or does the critic score it wrong too?
+
+    From the same position, resolve the card the way the humans do and the way the model's greedy
+    policy wants to, and read `v_win` off each result from the mover's own side. If the critic
+    scores the human line higher wherever the policy disagrees, the critic already knows and only
+    the policy is wrong. If it scores the model's line higher, the error is in both heads and no
+    amount of policy imitation will hold.
+    """
+    from ai.eval.battleground_value import value_of
+
+    out = ValueSplit(name=name or card_name(card), human_mode=human_mode, model_mode=-1)
+    for node in nodes:
+        state = give_card(node.state, side, card) if swap_in else node.state
+        if card not in hand(state, side):
+            continue
+        at_mode = _mode_node(state, card)
+        if at_mode is None:
+            continue
+        modes = _mode_actions(at_mode)
+        if human_mode not in modes:
+            continue
+        probs = policy(model, at_mode, side, device)
+        picked = max(modes, key=lambda m: probs[modes[m]])
+        if picked == human_mode:
+            out.agreed += 1
+            continue
+
+        human_state = resolve_with_mode(model, at_mode, side, card, device, human_mode)
+        model_state = resolve_with_mode(model, at_mode, side, card, device, picked)
+        if human_state is None or model_state is None:
+            continue
+        hv = value_of(model, human_state, side, device)
+        mv = value_of(model, model_state, side, device)
+        out.human_values.append(hv)
+        out.model_values.append(mv)
+        out.disagreed += 1
+        if hv > mv:
+            out.critic_right_policy_wrong += 1
+    return out

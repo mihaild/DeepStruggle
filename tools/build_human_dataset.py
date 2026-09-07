@@ -33,7 +33,8 @@ import ts_engine as ts
 from ai.eval.agreement import group_point_runs
 from ai.eval.human_dominance import _Capture, _capturing
 from ai.training.human_corpus_dataset import HumanCorpusWriter
-from tools.lib.corpus_paths import corpus_files, missing_corpus_reason
+from tools.lib.corpus_paths import (corpus_files, distinct_corpus_files,
+                                    missing_corpus_reason)
 from tools.lib.ts_replayer_convert import Conversion, convert_game
 
 DEFAULT_OUT = os.path.join(_ROOT, "data", "datasets", "human_corpus")
@@ -46,6 +47,12 @@ def main() -> None:
                     help="directory to write the dataset columns into")
     ap.add_argument("--limit", type=int, default=None,
                     help="convert only the first N replays (for a quick check)")
+    ap.add_argument("--keep-duplicates", action="store_true",
+                    help="keep every replay id, including games ts-replayer serves under more "
+                         "than one. Only for reproducing an older dataset -- duplicates carry "
+                         "several times their weight in behaviour cloning and in every injection "
+                         "batch, and because their ids differ they land on both sides of an "
+                         "id-based train/held-out split.")
     args = ap.parse_args()
 
     reason = missing_corpus_reason()
@@ -53,7 +60,16 @@ def main() -> None:
         print(reason, file=sys.stderr)
         raise SystemExit(2)
 
-    paths = corpus_files()
+    collapsed: dict = {}
+    if args.keep_duplicates:
+        paths = corpus_files()
+    else:
+        paths, collapsed = distinct_corpus_files()
+        dropped = sum(len(ids) - 1 for ids in collapsed.values())
+        print(f"{len(corpus_files())} replays on disk, {len(paths)} distinct games "
+              f"({dropped} duplicate copies dropped from {len(collapsed)} groups)")
+        for ids in sorted(collapsed.values()):
+            print(f"  keeping {ids[0]}, dropping {', '.join(str(i) for i in ids[1:])}")
     if args.limit is not None:
         paths = paths[:args.limit]
 
@@ -100,6 +116,9 @@ def main() -> None:
     print(f" Human corpus dataset -> {args.out}")
     print("=" * 70)
     print(f"  replays read          : {len(paths)}")
+    print(f"  duplicate copies dropped : "
+          f"{sum(len(v) - 1 for v in collapsed.values())} "
+          f"from {len(collapsed)} groups")
     print(f"  empty downloads       : {empty}")
     print(f"  skipped (handicap)    : {skipped}")
     print(f"  conversion failures   : {len(failures)}")
