@@ -16,7 +16,6 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
-from tqdm import tqdm
 
 _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
@@ -94,7 +93,9 @@ def fetch_acts_journals(
 
     print(f"Connecting to ACTS (acts.warhorsesim.com) for game IDs {start_id}..{end_id}...")
 
-    for gid in (pbar := tqdm(range(start_id, end_id + 1))):
+    for gid in range(start_id, end_id + 1):
+        if gid % 25 == 0:
+            print(f"  ...{gid}: {downloaded_count} saved", flush=True)
         url = f"https://acts.warhorsesim.com/dynamic/journal.asp?id={gid}"
         req = urllib.request.Request(
             url,

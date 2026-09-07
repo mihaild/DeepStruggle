@@ -1857,6 +1857,26 @@ It is not right. Measured on `ai/eval/battleground_value.py` against the 160M ru
 self-play positions, 30 per turn bucket, perturbing the board one way at a time and reading Δ`v_win`
 from the mover's side.
 
+### 12.0 Which snapshots these are
+
+Everything below is measured on three checkpoints from one run,
+`data/checkpoints/run_v2_20260907_long160M` — `--arch v2`, `--reward-scheme blunder_aware`,
+`--decisiveness-turns 40`, `--num-envs 512`, `--train-steps 160000000`,
+`--snapshot-every-steps 5000000`, `--inject-dataset data/datasets/human_corpus --inject-every 1
+--inject-weight 1.0`, launched from a dirty tree on `5159bfe` (the dirt being the
+`--snapshot-every-steps` support itself).
+
+| name used here | file | what it is |
+|---|---|---|
+| **warm start** | `snapshot_0s.pt` | zero RL steps — verified tensor-for-tensor identical to `data/checkpoints/warmup_synth_then_human_train.pt`, the §9.13 synthetic-then-human BC init fitted on the 224-game train split (49.33% held-out agreement). Pure behaviour cloning; no self-play has touched it. |
+| **35M steps** | `snapshot_35061760steps.pt` | 35.06M env steps of NashPG with continuous human injection |
+| **70M steps** | `snapshot_70057984steps.pt` | 70.06M env steps, same |
+
+So "warm start → 70M" is a trajectory *within one run*, not a comparison across configurations,
+and the human corpus is being injected throughout — the washout in 12.3 happens *despite*
+injection, not in its absence. The run was still training when these were taken; later snapshots
+exist and 12.3's open question is whether the collapse is monotone across all of them.
+
 ### 12.1 Control is priced; the road to it is not
 
 At 70M steps, Δ`v_win` for the mover, each row adding the same 2 Influence except *control*, which
@@ -1932,10 +1952,28 @@ America among its **best** early destinations at T2 (3.6× backwater) and Centra
 best at T3 (2.2×). By 70M steps both have collapsed to the **bottom** of the table — South America
 1.4× at T2, Central America *negative* — while Europe, Asia and the Middle East hold at 3–4×.
 
-RL does not fail to learn that early Americas presence matters. It learns it from the human prior
-and then unlearns it. Central America Scoring is an early-war card, so a negative T2 valuation is
-not a defensible read of the game; this is the §9 washout showing up in the critic rather than the
-policy.
+**Part of that ordering is correct.** Europe, Asia and Middle East Scoring are `WarEra::EARLY`
+(`engine/src/card_data.cpp:12-14`) and are in the deck from turn 1; Central America, South America
+and Africa Scoring are `WarEra::MID` (lines 37, 79, 81) and cannot be drawn before the mid-war deck
+is shuffled in. A turn-2 influence point in Europe can be cashed this turn and a turn-2 point in
+Brazil cannot, so the early-war regions *should* rank above the Americas at T2. The table's top
+half is not the defect.
+
+The defect is the floor. Central America at −0.005 is below a backwater with no battleground
+anywhere near it — the critic prefers spending the point in a country that can never be scored for
+control or presence over a Central American battleground. South America at 1.4× backwater is barely
+distinguishable from the same. Those regions are still worth something at turn 2: the mid-war deck
+arrives on turn 4, positions built early are cheap because they are uncontested, and influence
+placed there is what makes the region contestable when the scoring card does appear. A defensible
+critic ranks them below Europe and above nothing.
+
+The warm start clears that floor comfortably — South America at 3.6× backwater at T2, Central
+America at 2.2× at T3. If anything it goes further than the deck argument supports: at T2 it ranks
+South America (3.6×) alongside Europe (3.7×) and above the Middle East (3.1×), which is a stronger
+claim for the early Americas than "worth something" and may be the human prior overshooting. Either
+way the direction of travel is the point. RL does not fail to learn that early Americas presence
+matters; it learns it from the human prior and then unlearns it, past a defensible ordering and
+down through the floor. This is the §9 washout showing up in the critic rather than the policy.
 
 ### 12.4 What this changes
 
@@ -1957,3 +1995,87 @@ C++ engine and therefore needs approval before anything is written.
 Open: whether the step function is also present in `v_vp` (only `v_win` was measured), and whether
 the collapse in 12.3 is monotone across all 32 snapshots or happens at a particular point in
 training.
+
+## 13. De-Stalinization and Decolonization on turn 2 — the model will not fire its own event
+
+§12 perturbs the board. This perturbs the *hand*, at real human decisions rather than self-play
+positions, using a new `on_decision` seam on `convert_game` that hands over the `GameState` as the
+human faced it. `ai/eval/card_probe.py` then edits the hand and re-asks the node of either side.
+
+Six corpus games where the USSR played one of the two cards on turn 2 — replays 142, 101, 143
+(Decolonization) and 191, 158, 16 (De-Stalinization). In all six the human fired the **event**.
+Positions are taken at the USSR's first turn-2 Action Round with the card in hand; headline nodes
+are excluded, because neither answer under test exists at a headline. Snapshots as in §12.0.
+
+### 13.1 As the USSR, holding its own card
+
+Given that it plays the card, how does the policy want to play it? Share of the `SELECT_PLAY_MODE`
+distribution on **event**, the human's choice in every one of these games:
+
+| replay | card | warm start | 35M | 70M |
+|---|---|---|---|---|
+| 142 | Decolonization | 0.055 | 0.176 | 0.082 |
+| 101 | Decolonization | 0.058 | 0.462 | 0.268 |
+| 143 | Decolonization | 0.024 | 0.482 | 0.183 |
+| 191 | De-Stalinization | 0.223 | 0.062 | 0.197 |
+| 158 | De-Stalinization | 0.201 | 0.014 | 0.068 |
+| 16 | De-Stalinization | 0.037 | 0.126 | 0.323 |
+
+The rest is almost entirely **ops**. Not once, at any snapshot, does the event carry the
+distribution. Played greedily to the end of turn 2 the USSR spends the card for Ops in 4 of 6 games
+at the warm start and 3 of 6 at 70M.
+
+A USSR card played by the USSR for Ops does not fire its event, so this is not a trade — it is
+Decolonization bought as a 2-Ops filler and De-Stalinization, a one-time card, bought as 3 Ops and
+gone. Decolonization places four Influence across Africa and South-East Asia and De-Stalinization
+relocates four; two Ops of Influence placement is not a substitute for either. This is the §12
+finding wearing different clothes: the agent will not spend a play on board presence whose payoff is
+a scoring card several turns away, and here it declines even when the card hands that presence over
+for free.
+
+### 13.2 As the US, holding the same card
+
+Same games, same turn-2 Action Round, the card swapped into the **US** hand in place of their
+highest-Ops non-scoring card, so the swap cannot be read as having handed them a weaker hand.
+
+The right answer is to hold it past the turn; failing that, to space it. Ops is the worst available
+choice, not a neutral one — an opponent's card played for Operations still owes its Event
+(`engine/src/state_machine.cpp:271`), so the US pays a play, hands the USSR the full event, and
+keeps only the Ops. What actually became of the card by the end of turn 2:
+
+| replay | warm start | 35M | 70M |
+|---|---|---|---|
+| 142 | ops | **held** | **held** |
+| 101 | ops | *space* | *space* |
+| 143 | ops | **held** | *space* |
+| 191 | (game ended inside turn 2) | ops | *space* |
+| 158 | ops | ops | ops |
+| 16 | ops | ops | ops |
+
+Nothing acceptable at the warm start, 3 of 6 at 35M, 4 of 6 at 70M. The mode distribution moves the
+same way: space is worth 0.001–0.052 at the warm start and reaches 0.83–0.89 by 70M on the replays
+it gets right.
+
+**So RL is teaching this one, and the human prior is not.** That is the opposite of §12.3, where the
+prior held the early-Americas valuation and RL destroyed it. The two are consistent under one
+reading: self-play punishes handing the opponent a free event within the same game, quickly and
+legibly, and it does not punish a thin position in Brazil until a scoring card that may never come.
+RL learns what its reward can see.
+
+The two failures at 70M are the sharp ones. In replay 16 the US wants the card *first* — p(select)
+0.938, rank 1 of 6 — and then plays it for Ops, which is the most expensive way to hold a card it
+should simply not have touched. Replay 158 is the same shape. Both are turn-2 positions where the
+US has better Ops available and spends the opponent's card anyway.
+
+### 13.3 Caveats
+
+Six games, one greedy rollout each, one die stream: this locates a behaviour, it does not measure a
+rate. The §9.3 dominance suite is the pattern to follow if a rate is wanted — the same question
+asked across the whole corpus with a denominator of positions where the choice was actually
+available. The USSR result in 13.1 is the one worth that treatment, since it is uniform across every
+snapshot rather than trending.
+
+Also unmeasured: whether firing the event would in fact have been better here, as opposed to merely
+being what the human did. §11 is the warning — a behavioural gap is not a cost until the cost is
+measured, and the fork-and-play-out method in `ai/eval/dominance_cost.py` transfers to this question
+directly.

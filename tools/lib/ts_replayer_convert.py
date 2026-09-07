@@ -26,7 +26,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import ts_engine as ts
@@ -2086,7 +2086,8 @@ def _free_action_declined(e: Entry, sections: List[Section], card: int) -> bool:
 def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                  raw: Dict, max_steps: int = 300,
                  defcon_after: Optional[int] = None,
-                 space_walk_discard: Optional[int] = None) -> bool:
+                 space_walk_discard: Optional[int] = None,
+                 on_decision: Optional[Callable] = None) -> bool:
     """Play one logged entry through the engine, emitting the decisions the log determines."""
     cid_target = card_id(e.card) if e.card and " & " not in e.card else None
     headline_ids = {side: card_id(nm) for side, nm in (e.headlines or {}).items()}
@@ -2981,6 +2982,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             conv.samples.append((obs, mask.copy(), int(chosen),
                                  1 if mover == ts.Player.US else -1))
             conv.decisions_emitted += 1
+            if on_decision is not None:
+                on_decision(state.clone(), mover, e, int(chosen))
 
         # A queue holds one entry per point of Influence the log records, and the engine does
         # not always ask once per point. Junta places 2 in one country and asks once; Tear Down
@@ -3314,8 +3317,14 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     return False
 
 
-def convert_game(game: Dict) -> Conversion:
+def convert_game(game: Dict, on_decision: Optional[Callable] = None) -> Conversion:
     """Rebuild each entry's position from the log, drive it, and verify the outcome.
+
+    `on_decision(state, mover, entry, chosen)` is called at each emitted decision with the
+    position as the human faced it, before their action is applied. The dataset keeps only the
+    observation tensor, which is enough to train on and not enough to ask a counterfactual -- a
+    question like "what would this side do holding a different card" needs a `GameState` to edit.
+    The callback receives a clone, so nothing it does can perturb the conversion.
 
     Two things make this per-entry rather than a forward simulation of the whole game. Drift
     cannot accumulate: every entry starts from the logged position, so one mis-parsed entry
@@ -3341,7 +3350,7 @@ def convert_game(game: Dict) -> Conversion:
     _drain(state)
 
     try:
-        _convert_entries(state, raws, hands, conv)
+        _convert_entries(state, raws, hands, conv, on_decision)
     except ConversionFailure as failure:
         # Reported, not raised on: one unconvertible game should not stop a sweep of hundreds,
         # and the caller decides whether a partial game is usable. conv.failure being set means
@@ -3443,7 +3452,8 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
     return _is_cleanup_body(e)
 
 
-def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None:
+def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
+                     on_decision: Optional[Callable] = None) -> None:
     # Both hands, for every turn, solved from the log and the rules in one pass. Where z3 is
     # not installed, or the log will not admit a hand, this is None and the turn-by-turn
     # borrowing below stands in.
@@ -3668,7 +3678,8 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion) -> None
             # own initialisation is the position they belong to.
             _reconcile_turn(state, e, conv.replay_id)
         _drive_entry(state, e, conv, raw, defcon_after=_defcon_after(raws, index, e),
-                     space_walk_discard=_space_walk_discard(raws, index, e))
+                     space_walk_discard=_space_walk_discard(raws, index, e),
+                     on_decision=on_decision)
         _drive_passed_rounds(state, e, conv)
 
         # --- did the engine fire an event the log knows nothing about? ---
