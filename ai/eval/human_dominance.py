@@ -74,10 +74,15 @@ def _capturing(cap: _Capture) -> Iterator[None]:
     """
     original = ts.extract_observation
 
-    def observe(state: ts.GameState, mover: ts.Player) -> Any:
+    def observe(state: ts.GameState, perspective: ts.Player,
+                legacy: bool = True) -> Any:
+        # Named `perspective` to match the binding it replaces: a caller may pass it
+        # by keyword, and a wrapper with a different parameter name would break there
+        # and nowhere else.
+        mover = perspective
         cap.states.append(state.clone())
         cap.movers.append(mover)
-        return original(state, mover)
+        return original(state, mover, legacy)
 
     ts.extract_observation = observe
     try:

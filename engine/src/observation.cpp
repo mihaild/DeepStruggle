@@ -278,8 +278,85 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
     out_buf->active_player = side_sign;
 }
 
+void Observation::extract_v2(const GameState& state, Player perspective,
+                             ObservationBufferV2* out_buf) noexcept {
+    if (!out_buf) return;
+
+    // Everything except the card block is copied from the legacy extraction rather than
+    // recomputed, so the two layouts cannot drift apart in the sections that are supposed to
+    // be the same. Only the card features below are v2's own work.
+    ObservationBuffer legacy;
+    Observation::extract(state, perspective, &legacy);
+
+    std::memset(out_buf, 0, sizeof(ObservationBufferV2));
+    std::memcpy(out_buf->board_features, legacy.board_features, sizeof(legacy.board_features));
+    std::memcpy(out_buf->global_features, legacy.global_features, sizeof(legacy.global_features));
+    std::memcpy(out_buf->history_sequence, legacy.history_sequence,
+                sizeof(legacy.history_sequence));
+    std::memcpy(out_buf->turn_aggregates, legacy.turn_aggregates, sizeof(legacy.turn_aggregates));
+    out_buf->active_player = legacy.active_player;
+
+    Player my_player = perspective;
+    if (my_player == Player::NONE) {
+        my_player = (state.ctx().decision_player != Player::NONE)
+            ? state.ctx().decision_player : state.phasing_player;
+        if (my_player == Player::NONE) my_player = Player::US;
+    }
+    const Player opp_player = (my_player == Player::US) ? Player::USSR : Player::US;
+
+    for (uint8_t i = 1; i <= 110; ++i) {
+        const auto& c_info = CardData::get_card(i);
+        const size_t offset = static_cast<size_t>(i - 1) * card_slots::V2_FEATURES;
+        const CardLocation loc = state.card_locations[i];
+
+        size_t slot = card_slots::V2_FEATURES;  // sentinel: nothing set, as for a headline card
+        if (loc == CardLocation::UNAVAILABLE) {
+            slot = card_slots::NOT_IN_GAME;
+        } else if (loc == CardLocation::DRAW_DECK) {
+            slot = card_slots::DECK_OR_HIDDEN;
+        } else if (in_hand_of(loc, my_player)) {
+            slot = card_slots::MY_HAND;
+        } else if (in_hand_of(loc, opp_player)) {
+            // The whole point of the split, and the whole point of *not* splitting further:
+            // a card the opponent holds that I have seen is public knowledge and gets its own
+            // slot, and one I have not seen goes back in with the draw deck, because from here
+            // those two are the same thing. Anything else would leak the hand.
+            slot = known_to_opponent(loc) ? card_slots::KNOWN_OPPONENT_HAND
+                                          : card_slots::DECK_OR_HIDDEN;
+        } else if (loc == CardLocation::DISCARD_PILE) {
+            slot = card_slots::DISCARD;
+        } else if (loc == CardLocation::REMOVED_FROM_GAME) {
+            slot = card_slots::REMOVED;
+        } else if (loc == CardLocation::ONGOING_EVENT) {
+            slot = card_slots::ONGOING;
+        } else if (loc == CardLocation::PEEKED_TEMP) {
+            slot = card_slots::PEEKED;
+        }
+        // HEADLINE_COMMITTED deliberately sets no slot, as in the legacy layout: the card has
+        // left the hand it came from and is face down, so no location feature is true of it.
+
+        if (slot < card_slots::V2_FEATURES) {
+            out_buf->card_features[offset + slot] = 1.0f;
+        }
+
+        const size_t base = card_slots::V2_PROPERTY_BASE;
+        out_buf->card_features[offset + base + 0] = static_cast<float>(c_info.ops) / 4.0f;
+        const float rel_side = (c_info.side == my_player) ? 1.0f
+                             : ((c_info.side == opp_player) ? -1.0f : 0.0f);
+        out_buf->card_features[offset + base + 1] = rel_side;
+        out_buf->card_features[offset + base + 2] = static_cast<float>(c_info.era) / 2.0f;
+        out_buf->card_features[offset + base + 3] = c_info.one_time ? 1.0f : 0.0f;
+        out_buf->card_features[offset + base + 4] = c_info.is_scoring ? 1.0f : 0.0f;
+    }
+}
+
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept {
     Observation::extract(state, perspective, out_buf);
+}
+
+void extract_observation_v2(const GameState& state, Player perspective,
+                            ObservationBufferV2* out_buf) noexcept {
+    Observation::extract_v2(state, perspective, out_buf);
 }
 
 } // namespace ts

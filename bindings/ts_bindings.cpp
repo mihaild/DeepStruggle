@@ -771,15 +771,30 @@ NB_MODULE(ts_engine, m) {
     m.def("decode_flat_action", &ts::ActionMask::decode_flat_action_212);
     m.def("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
 
-    m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective) {
-        ts::ObservationBuffer buf;
-        ts::Observation::extract(state, perspective, &buf);
-        size_t shape[1] = { 4293 };
-        float* data = new float[4293];
-        std::memcpy(data, reinterpret_cast<const float*>(&buf), 4293 * sizeof(float));
+    // `legacy` defaults true so every existing caller and every existing checkpoint keeps the
+    // 4293-wide layout it was trained against. Pass legacy=False for the 4403-wide v2 layout,
+    // which splits "the opponent is known to hold this" and "not in the game yet" out of the
+    // old catch-all slot 0.
+    m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
+                                    bool legacy) {
+        const size_t n = legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V2;
+        float* data = new float[n];
+        if (legacy) {
+            ts::ObservationBuffer buf;
+            ts::Observation::extract(state, perspective, &buf);
+            std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
+        } else {
+            ts::ObservationBufferV2 buf;
+            ts::Observation::extract_v2(state, perspective, &buf);
+            std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
+        }
+        size_t shape[1] = { n };
         nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<float*>(p); });
         return nb::ndarray<nb::numpy, float, nb::ndim<1>>(data, 1, shape, owner);
-    });
+    }, nb::arg("state"), nb::arg("perspective"), nb::arg("legacy") = true);
+
+    m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
+    m.attr("OBS_SIZE_V2") = static_cast<int>(ts::OBS_SIZE_V2);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
@@ -798,10 +813,17 @@ NB_MODULE(ts_engine, m) {
         std::vector<float> obs_buffer;
         std::vector<uint8_t> mask_buffer;
         size_t num_envs;
+        // Fixed for the runner's lifetime. Every consumer reads the whole batch at one width,
+        // so a runner that could switch layouts mid-episode would only be a way to produce a
+        // buffer whose rows disagree.
+        bool legacy_obs;
+        size_t obs_width;
 
-        VectorizedBatchRunner(size_t n, uint64_t base_seed) : num_envs(n) {
+        VectorizedBatchRunner(size_t n, uint64_t base_seed, bool legacy)
+            : num_envs(n), legacy_obs(legacy),
+              obs_width(legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V2) {
             states.resize(n);
-            obs_buffer.resize(n * 4293);
+            obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * 212);
             for (size_t i = 0; i < n; ++i) {
                 ts::StateMachine::init_new_game(states[i], base_seed + i * 10007 + 1);
@@ -825,9 +847,17 @@ NB_MODULE(ts_engine, m) {
             }
             ts::Player p = (states[idx].ctx().decision_player != ts::Player::NONE)
                 ? states[idx].ctx().decision_player : states[idx].phasing_player;
-            ts::ObservationBuffer ob;
-            ts::Observation::extract(states[idx], p, &ob);
-            std::memcpy(&obs_buffer[idx * 4293], reinterpret_cast<const float*>(&ob), 4293 * sizeof(float));
+            if (legacy_obs) {
+                ts::ObservationBuffer ob;
+                ts::Observation::extract(states[idx], p, &ob);
+                std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
+                            obs_width * sizeof(float));
+            } else {
+                ts::ObservationBufferV2 ob;
+                ts::Observation::extract_v2(states[idx], p, &ob);
+                std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
+                            obs_width * sizeof(float));
+            }
             ts::ActionMask::generate_flat_mask_212(states[idx], &mask_buffer[idx * 212]);
         }
 
@@ -872,7 +902,7 @@ NB_MODULE(ts_engine, m) {
         }
 
         nb::ndarray<nb::numpy, float, nb::ndim<2>> get_observations() {
-            size_t shape[2] = { num_envs, 4293 };
+            size_t shape[2] = { num_envs, obs_width };
             return nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs_buffer.data(), 2, shape);
         }
 
@@ -944,7 +974,10 @@ NB_MODULE(ts_engine, m) {
     };
 
     nb::class_<VectorizedBatchRunner>(m, "VectorizedBatchRunner")
-        .def(nb::init<size_t, uint64_t>(), nb::arg("num_envs"), nb::arg("base_seed") = 12345)
+        .def(nb::init<size_t, uint64_t, bool>(), nb::arg("num_envs"),
+             nb::arg("base_seed") = 12345, nb::arg("legacy_obs") = true)
+        .def_ro("obs_width", &VectorizedBatchRunner::obs_width)
+        .def_ro("legacy_obs", &VectorizedBatchRunner::legacy_obs)
         .def("reset_game", &VectorizedBatchRunner::reset_game)
         .def("refresh_all", &VectorizedBatchRunner::refresh_all)
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)
