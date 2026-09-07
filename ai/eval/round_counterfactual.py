@@ -169,3 +169,171 @@ def compare(model: Any, pairs: Sequence[RoundPair], device: Any,
         out.human.append(value_of(model, pair.after_human, pair.mover, device))
         out.model.append(value_of(model, after_model, pair.mover, device))
     return out
+
+
+@dataclass
+class RolloutResult:
+    """Realized outcomes from playing both boards out, against what the critic predicted."""
+
+    label: str
+    human_wins: int = 0
+    human_games: int = 0
+    model_wins: int = 0
+    model_games: int = 0
+    predicted_human: float = 0.0
+    predicted_model: float = 0.0
+
+    @property
+    def human_rate(self) -> float:
+        return 100.0 * self.human_wins / max(1, self.human_games)
+
+    @property
+    def model_rate(self) -> float:
+        return 100.0 * self.model_wins / max(1, self.model_games)
+
+    @property
+    def realized_gap(self) -> float:
+        """Win-rate points the human's board is actually worth, played out by this policy."""
+        return self.human_rate - self.model_rate
+
+    @property
+    def predicted_gap(self) -> float:
+        """The same quantity as the critic predicted it, in win-rate points."""
+        return 50.0 * (self.predicted_human - self.predicted_model)
+
+
+def play_out(model: Any, states: Sequence[ts.GameState], mover: ts.Player, device: Any,
+             seeds: int = 8, max_iters: int = 4000, temperature: float = 0.1) -> Tuple[int, int]:
+    """Finish each position `seeds` times under the model's own policy; count wins for `mover`.
+
+    This is the test the value head cannot self-report. `v_win` is an *on-policy* estimate: it
+    predicts the outcome under the policy that will actually play the rest of the game. So a
+    critic that scores a human's De-Stalinization spread below the model's own line may be wrong
+    about the card -- or may be right that the spread is worth nothing to a policy that will not
+    defend or build on it. Only playing both out separates the two.
+    """
+    import torch
+
+    wins = games = 0
+    for seed in range(seeds):
+        runner = ts.VectorizedBatchRunner(len(states), 310000 + seed * 7919)
+        for i, st in enumerate(states):
+            runner.set_state(i, st)
+
+        for _ in range(max_iters):
+            terminals = runner.get_terminals()
+            if all(terminals):
+                break
+            obs = np.asarray(runner.get_observations(), dtype=np.float32)
+            masks = np.asarray(runner.get_action_masks())
+            with torch.no_grad():
+                logits = model(torch.from_numpy(obs).to(device),
+                               torch.from_numpy(masks).to(device))[0]
+                if temperature > 0.0:
+                    picks = torch.multinomial(
+                        torch.softmax(logits / temperature, dim=-1), 1).squeeze(-1).cpu().numpy()
+                else:
+                    picks = logits.argmax(dim=-1).cpu().numpy()
+            runner.step_flat_all([int(a) for a in picks], auto_advance=True)
+
+        for u in runner.get_terminal_utilities():
+            u = float(u)
+            if u == 0.0:
+                continue                      # a draw counts for neither side
+            games += 1
+            if (u > 0) == (mover == ts.Player.US):
+                wins += 1
+    return wins, games
+
+
+def rollout_check(model: Any, pairs: Sequence[RoundPair], device: Any, seeds: int = 8,
+                  label: str = "") -> RolloutResult:
+    """Was the critic right? Compare its ranking with what actually happens."""
+    from ai.eval.battleground_value import value_of
+
+    out = RolloutResult(label=label)
+    human_states, model_states = [], []
+    for pair in pairs:
+        after_model = play_one_round(model, pair.before, pair.mover, device)
+        if after_model is None:
+            continue
+        human_states.append(pair.after_human)
+        model_states.append(after_model)
+        out.predicted_human += value_of(model, pair.after_human, pair.mover, device)
+        out.predicted_model += value_of(model, after_model, pair.mover, device)
+
+    if not human_states:
+        return out
+    out.predicted_human /= len(human_states)
+    out.predicted_model /= len(model_states)
+    mover = pairs[0].mover
+    out.human_wins, out.human_games = play_out(model, human_states, mover, device, seeds=seeds)
+    out.model_wins, out.model_games = play_out(model, model_states, mover, device, seeds=seeds)
+    return out
+
+
+def play_out_per_position(model: Any, states: Sequence[ts.GameState], mover: ts.Player,
+                          device: Any, seeds: int = 12, max_iters: int = 4000,
+                          temperature: float = 0.1) -> np.ndarray:
+    """Win rate for each position separately, so the pair can be differenced position by position.
+
+    Pooling every rollout into one rate and quoting a binomial error over it is wrong: the twelve
+    rollouts of one position are not twelve independent games, and the unit of replication is the
+    position. Differencing the two arms per position also removes the position's own difficulty,
+    which is the dominant source of variance here.
+    """
+    import torch
+
+    wins = np.zeros(len(states), dtype=np.float64)
+    games = np.zeros(len(states), dtype=np.float64)
+    for seed in range(seeds):
+        runner = ts.VectorizedBatchRunner(len(states), 310000 + seed * 7919)
+        for i, st in enumerate(states):
+            runner.set_state(i, st)
+
+        for _ in range(max_iters):
+            terminals = runner.get_terminals()
+            if all(terminals):
+                break
+            obs = np.asarray(runner.get_observations(), dtype=np.float32)
+            masks = np.asarray(runner.get_action_masks())
+            with torch.no_grad():
+                logits = model(torch.from_numpy(obs).to(device),
+                               torch.from_numpy(masks).to(device))[0]
+                if temperature > 0.0:
+                    picks = torch.multinomial(
+                        torch.softmax(logits / temperature, dim=-1), 1).squeeze(-1).cpu().numpy()
+                else:
+                    picks = logits.argmax(dim=-1).cpu().numpy()
+            runner.step_flat_all([int(a) for a in picks], auto_advance=True)
+
+        for i, u in enumerate(runner.get_terminal_utilities()):
+            u = float(u)
+            if u == 0.0:
+                continue
+            games[i] += 1
+            if (u > 0) == (mover == ts.Player.US):
+                wins[i] += 1
+    return np.divide(wins, np.maximum(games, 1.0)) * 100.0
+
+
+def paired_rollout(model: Any, pairs: Sequence[RoundPair], device: Any,
+                   seeds: int = 12) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-position win rates for the human board, the model board, and the critic's prediction."""
+    from ai.eval.battleground_value import value_of
+
+    human_states, model_states, predicted = [], [], []
+    for pair in pairs:
+        after_model = play_one_round(model, pair.before, pair.mover, device)
+        if after_model is None:
+            continue
+        human_states.append(pair.after_human)
+        model_states.append(after_model)
+        predicted.append(50.0 * (value_of(model, pair.after_human, pair.mover, device)
+                                 - value_of(model, after_model, pair.mover, device)))
+    if not human_states:
+        return np.zeros(0), np.zeros(0), np.zeros(0)
+    mover = pairs[0].mover
+    return (play_out_per_position(model, human_states, mover, device, seeds=seeds),
+            play_out_per_position(model, model_states, mover, device, seeds=seeds),
+            np.asarray(predicted))

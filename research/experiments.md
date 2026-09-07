@@ -2404,3 +2404,108 @@ which card to play. That is a narrower and more useful statement than either sec
 * Open, and now the cheapest thing to measure: the cost of playing an opponent's card for Ops,
   using the fork-and-play-out method in `ai/eval/dominance_cost.py`. If it is worth several points,
   it outranks everything in §9–§11.
+
+## 17. Playing both boards out — the on-policy defence is half right, and §16 was over-stated
+
+§16 concluded "the critic is wrong about the card" from value gaps alone. That inference has a hole:
+`v_win` is an **on-policy** estimate. If this policy will not defend or build on De-Stalinization's
+spread, the spread really is worth less to it than to a human, and a critic reporting that is
+accurate rather than miscalibrated. §12 gives every reason to expect exactly that.
+
+The only way to separate the two is to finish both boards under the model's own policy and see which
+actually wins. 12 rollouts per board, temperature 0.1, `ai/eval/round_counterfactual.py`.
+
+**Paired per position.** Pooling 12 rollouts of 105 positions and quoting a binomial error over
+~1260 games overstates precision badly: twelve rollouts of one position are not twelve independent
+games, and the unit that repeats is the position. Differencing the two arms position by position
+also removes the position's own difficulty, which dominates the variance. All figures below are
+per-position means with a standard error over positions.
+
+### 17.1 De-Stalinization, 105 positions
+
+| snapshot | realized gap | critic predicted | critic error |
+|---|---|---|---|
+| 100M | **−0.91** ± 2.56 | −7.89 ± 1.08 | **−6.98** ± 2.47 |
+| 140M | **+5.46** ± 2.75 | −4.88 ± 0.80 | **−10.34** ± 2.88 |
+| 160M final | **+5.11** ± 2.83 | −3.42 ± 0.73 | **−8.53** ± 2.87 |
+
+Two findings, and they point in different directions.
+
+**The on-policy defence holds at 100M.** The human's De-Stalinization board is worth −0.91 ± 2.56 to
+that policy — indistinguishable from nothing. A human's competent spread genuinely bought the 100M
+model no wins at all. The critic's *sign* was right, and the intuition behind it is right: this
+policy could not use the position.
+
+**It stops holding after that, and the critic never notices.** By 140M and 160M the same human
+boards are worth **+5.46** and **+5.11** win-rate points — the policy learned to capitalize — while
+the critic still predicts −4.88 and −3.42. Its error is −6.98, −10.34 and −8.53 points, every one of
+them 2.8σ or more. So the critic is not merely reporting a weak policy; it is **systematically
+over-pessimistic about human boards by 7–10 win-rate points**, and it did not update when the policy
+improved underneath it.
+
+For scale: §11 measured the space-race dominance error at ~3.12 points and treated that as the
+ceiling on a whole line of work. A human's De-Stalinization round is worth **+5.11 points** to the
+finished model, and the model plays that card as the human would in a minority of positions.
+
+### 17.2 Decolonization, 79 positions — the critic is roughly right
+
+| snapshot | realized gap | critic predicted | critic error |
+|---|---|---|---|
+| 100M | +2.33 ± 2.25 | −1.76 ± 0.84 | −4.09 ± 2.39 |
+| 140M | +1.34 ± 2.61 | +2.04 ± 0.96 | **+0.70** ± 2.74 |
+| 160M final | +3.01 ± 2.56 | +0.44 ± 0.86 | −2.57 ± 2.65 |
+
+By 140M the critic's error is +0.70 ± 2.74 — calibrated. **The miscalibration is card-specific**,
+concentrated on De-Stalinization, which is the card with eight choices and the one §14.3 shows the
+model executing worst.
+
+### 17.3 Correcting §16.2 — the "opponent card for Ops" bucket was too crude
+
+§16.2 reported that 38.1% of rounds at 100M were "a US card played for Operations by the USSR,
+firing the US event against itself", and presented the whole bucket as error. That is wrong, and the
+largest component of it is not an error at all. Measuring what each play actually costs the USSR
+(before minus after, so positive means Influence lost):
+
+| card | mode | n (100M) | Europe Influence lost | total | cards lost |
+|---|---|---:|---:|---:|---:|
+| Truman Doctrine [US] | ops | 16 | **+1.06** | +0.50 | 1.00 |
+| Five Year Plan [US] | space | 11 | 0.00 | 0.00 | 1.00 |
+| Five Year Plan [US] | ops | 8 | 0.00 | −2.75 | **2.00** |
+| Special Relationship [US] | ops | 6 | −0.67 | −0.67 | 1.00 |
+| Defectors [US] | ops | 5 | −0.20 | −1.80 | 1.00 |
+| De-Stalinization [USSR] | ops | 4 | 0.00 | −3.00 | 1.00 |
+
+**Truman Doctrine for Ops costs the USSR 1.06 Influence in Europe** (1.08 at 140M) and buys a
+placement back — the card removes all USSR Influence from one non-US-controlled European country,
+and the model is picking a country where it holds one. That is a reasonable price for the Ops, not a
+blunder, and it is 16 of the 40 plays §16.2 counted at 100M and 13 of 36 at 140M. Those should never
+have been in the error column.
+
+Two entries do belong there, for reasons an Influence count does not show:
+
+* **Five Year Plan for Ops** gains 2.75 Influence but loses **two** cards — the card played plus the
+  random discard its event forces. The cost is the discard, not the board.
+* **Five Year Plan spaced** costs no Influence at all, which is exactly why the Influence metric
+  missed it: what it spends is the turn's space attempt, on a card whose Ops the USSR could have
+  had. §16.2 scored these 11 plays as *correct* ("US card spaced"), and that was wrong in the other
+  direction.
+
+So the honest statement is narrower than §16.2's: the model does decline its own strongest early
+event, and some of what it does instead is a real error, but the bucket cannot be scored by side and
+mode alone. Each card needs its own adjudication, and two of the three largest components were
+mis-scored — one as error when it is sound, one as sound when it is error.
+
+### 17.4 Where this leaves it
+
+* §16's headline stands for De-Stalinization but for a narrower reason than it gave: the critic is
+  over-pessimistic about human boards by 7–10 points, significantly, and it is stale — the policy
+  improved from 140M and the value function did not follow.
+* The on-policy objection is real and was worth raising: at 100M it is the correct account, and any
+  conclusion drawn from value gaps alone, in §15 or §16, is unsafe without a rollout behind it.
+* Decolonization is calibrated, so this is not a general property of the critic. It is the card the
+  model cannot execute that it also cannot price.
+* The 160M run reached its budget (`snapshot_final.pt`, 160,038,912 steps) and its own final
+  diagnostics say the §12 problem is untouched: `mean_final_turn` 6.4, `frac_reaching_turn9` 0.22,
+  `empty_battlegrounds_turn8` 8.1. Longer RL did not rediscover the strategy. It did, however, move
+  the realized value of a human De-Stalinization board from ~0 to +5 points, which is the policy
+  learning to use a position it still will not create.
