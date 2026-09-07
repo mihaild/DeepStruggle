@@ -2619,3 +2619,122 @@ mispricing is in the critic rather than the policy.
 
 *(Minor correction to §14.4: of the four held-out games named as leaking into training, two — 216
 and 217 — are empty downloads carrying no decisions. The real leak is two games.)*
+
+## 19. The history input is not weak — it was never wired up
+
+### 19.1 Value targets in the human warmup: yes, on 58% of it
+
+`HumanCorpusWriter` stores `win` (the engine's ±1 verdict), `vp` (final margin / 20) and
+`has_outcome`, and masks the loss where the recording stops rather than the game
+(`ai/training/human_corpus_dataset.py:100-102`). On the deduplicated rebuild:
+
+* 254 games written, **119 with an outcome** (47%);
+* 132,126 samples, **76,709 with a value target** (58%).
+
+So the value head does get human supervision, on rather less than the policy head does. That is
+worth holding next to §18.1: the BC warm start's critic scores **Brier 0.378** against the actual
+win, *worse than always predicting even* (0.25). It is fitted on 58% of a corpus of human games and
+then asked about self-play positions, and it does not transfer.
+
+### 19.2 The history slice is a constant zero
+
+`ObservationBuffer` is 4293 floats: board 2352, cards 1320, global 76, **history 512**,
+turn aggregates 32, active player 1. Zeroing each slice at inference and measuring how far the
+policy moves, over 6,000 self-play positions:
+
+| slice | width | constant columns | argmax changed | mean KL | mean abs Δv_win |
+|---|---:|---:|---:|---:|---:|
+| board | 2352 | 1833 | 44.5% | 0.307 | 0.129 |
+| cards | 1320 | 1113 | 63.6% | 0.350 | 0.709 |
+| global | 76 | 43 | 54.0% | 0.354 | 0.304 |
+| **history** | **512** | **512** | **0.00%** | **0.0000** | **0.0000** |
+| turn aggregates | 32 | 27 | 0.00% | 0.0000 | 0.0000 |
+
+(160M final; the warm start and `dec_turns40` give the same two zero rows.)
+
+Every one of the 512 history floats is constant across every position sampled, at every checkpoint.
+The reason is not that the network ignores it. **`ActionHistoryBuffer::record()` is never called
+anywhere in the repository** — `grep -rn "\.record(" engine/ bindings/` returns nothing. The ring
+buffer is declared, carried inside the 4 KB `GameState`, read by `observation.cpp:258-276`, and
+never written. The observation is `memset` to zero first, so the slice is a permanent zero vector.
+
+Two further pieces of the same waste:
+
+* Even if it were populated, the encoder writes only slots 0–8 of each 32-wide step
+  (`observation.cpp:264-275`), so **368 of the 512 floats are structurally dead** regardless.
+* `turn_aggregates` is written only for `coups_by_region` and `realignments_by_region`
+  (`ops.cpp:322,412`), and the observation reads coups but not realignments while also reading
+  `ops_spent_by_region`, `headlines_played` and `space_attempts`, none of which anything writes.
+  **20 of its 32 floats are structurally dead**, and zeroing the whole slice changes no decision.
+
+Cost, on the 160M model: the `hist_conv` branch is 69,024 parameters and it feeds 128 of the 768
+fusion inputs, which is another 65,536 weights in `fusion_in`. **134,560 parameters, 4.17% of the
+network, are devoted to encoding a constant zero** — and 128 of the trunk's 768 inputs are a
+learned bias rather than a signal.
+
+**So dropping the history input is not a simplification with a trade-off to weigh. It removes dead
+code.** Nothing measured in §12–§18 involved it, no result is invalidated, and no ablation study is
+needed to justify it because the ablation is already the identity. The one caution is that removing
+it changes the observation width, so every existing checkpoint stops loading and every dataset in
+the `(seed, actions)` format has to be regenerated — the §CLAUDE.md invariant-10 problem. That is a
+one-off cost, not an argument against.
+
+### 19.3 Opponent card knowledge is genuinely absent, and the proposal is sound
+
+The observation currently folds opponent-hand cards into slot 0 — the same slot as the draw deck:
+
+> `canon_loc = 0; // OPPONENT_HAND is hidden: fold into slot 0 (UNKNOWN/UNAVAILABLE)`
+> — `observation.cpp:164-167`
+
+So a card the opponent demonstrably holds is indistinguishable from a card in the deck. The engine
+*knows* the truth in `card_locations`; the observation deliberately discards it, and there is no
+"known to me" channel to put it back. The proposal therefore adds information the network has never
+had, rather than re-weighting information it already has.
+
+Every mechanism named exists in the engine already:
+
+* `reshuffle_discard_into_draw` (`state_machine.cpp:43`), called at five sites;
+* `SALT_NEGOTIATIONS` (43), `CIA_CREATED` (26), `LONE_GUNMAN` (62), `ALDRICH_AMES` (98) in
+  `constants.hpp`;
+* `ALDRICH_AMES_ACTIVE` is *already* a persistent-effect bit, and persistent effects are already in
+  the observation (`global_features[12+b]`). So the network can currently see *that* the US hand is
+  revealed and not *what* the reveal showed — which is close to the worst of both.
+
+The deduction rule is right, and worth stating precisely because the reason matters. Knowledge is
+**monotone within a card's stay in a hand**: a card cannot leave a hand secretly, so once its
+location is public it stays public until it is played or discarded, at which point its location
+becomes public anyway. That is what makes a single "known" bit per card sufficient and cheap — 110
+floats against the 512 being removed — and it is why the state must be *tracked* rather than
+recomputed: the reveal happened in the past, and nothing in the present position records it.
+
+Three points to settle before implementing, none of them objections:
+
+1. **The reshuffle rule needs to be stated as deck exhaustion, not as the shuffle.** The reason all
+   opponent cards become known is that the draw deck has emptied, so every card is accounted for in
+   a hand, the discard, removed, or in play; the opponent's hand is then the complement of what you
+   can see. The shuffle is the consequence, not the cause. Implemented as "on the transition that
+   empties the draw deck, mark every card in the opponent's hand known", which is the same moment
+   but a rule that is true for a reason.
+2. **It is a `GameState` change, and `GameState` is capped at 4 KB and must stay trivially
+   copyable** (invariant 1). 110 bits is 14 bytes as a bitset — but removing the history buffer
+   frees 16 `ActionToken`s from the same struct, so the net change is comfortably negative.
+3. **Knowledge is per-observer.** "The USSR knows the US holds card X" and the reverse are different
+   facts and need two bitsets, not one, since the observation is extracted per perspective.
+
+### 19.4 Whether it will help is a separate question from whether it is sound
+
+Both changes are sound. Neither is likely to be what is holding the agent back, and §18 is the
+reason to say so plainly: the binding constraint found so far is that 40% of games end by DEFCON-1
+at turn 6, so positional value is never collected and the critic prices it at nothing. Knowing the
+opponent's hand does not lengthen games.
+
+Where opponent-hand knowledge should help is precisely the §14–§17 cluster: holding an opponent's
+card, choosing what to space, and judging whether firing an event now is safe are all decisions
+whose right answer depends on what the opponent can answer with. Those are worth 3–5 points each by
+§11 and §17's measurements. That makes this a reasonable thing to try *and* a poor candidate for the
+next single experiment, unless run as one arm alongside something that addresses game length.
+
+The recommendation is to take both, in this order and for these reasons: remove the history because
+it is dead weight and costs nothing to remove; add the knowledge bits in the same breaking change,
+since both alter the observation width and a second regeneration of every checkpoint and dataset is
+the expensive part. Then measure game length, not agreement, as the primary read.
