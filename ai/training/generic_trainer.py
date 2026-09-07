@@ -558,6 +558,7 @@ def run_post_training_tournament(
 def train_pipeline(
     arch: str = "v2",
     obs_layout: str = "legacy",
+    seed: Optional[int] = None,
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
     inject_dataset: Optional[str] = None,
@@ -600,6 +601,16 @@ def train_pipeline(
 ) -> None:
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+    # Seeding both the environment stream and torch, or neither. Left None the run behaves as
+    # it always has: a fixed environment seed and an unseeded network, which means two runs of
+    # the same configuration differ only in initialisation and sampling. That understates
+    # run-to-run variance, because every run sees the same deals and dice -- so a variance
+    # estimate has to vary this, and an arm that wants to be paired with another has to share it.
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed & 0xFFFFFFFF)
+    env_base_seed = 12345 if seed is None else int(seed)
+
     if obs_layout not in ("legacy", "v2"):
         raise ValueError(f"obs_layout must be 'legacy' or 'v2', got {obs_layout!r}")
     # One decision, read by both the network's input width and the environment's output width.
@@ -633,6 +644,7 @@ def train_pipeline(
         "run_id": os.path.basename(out_dir),
         "arch": arch,
         "obs_layout": obs_layout,
+        "seed": seed,
         "base_commit": git_commit,
         "commit_message": git_message,
         "git_dirty": git_dirty,
@@ -703,13 +715,13 @@ def train_pipeline(
                 return None
             return start_pool.sample(turn)
 
-        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345,
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
                               reward_calculator=reward_calc,
                               start_provider=_start_provider,
                               legacy_obs=legacy_obs)
     else:
-        env = TsVectorizedEnv(num_envs=num_envs, base_seed=12345, reward_calculator=reward_calc,
-                              legacy_obs=legacy_obs)
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
+                              reward_calculator=reward_calc, legacy_obs=legacy_obs)
 
     # Curriculum timing configuration
     if is_curriculum:

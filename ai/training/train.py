@@ -50,6 +50,13 @@ def main():
     # its own step), so a matched step count does not make them a controlled comparison. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Seed the environment stream and torch together. Left unset,\n"
+                             "the environment seed is fixed at 12345 and the network is\n"
+                             "unseeded, so two runs of one configuration differ only in\n"
+                             "initialisation -- which understates run-to-run variance.\n"
+                             "Give distinct seeds to measure that variance; give the same\n"
+                             "seed to two arms that differ in one thing, to pair them.")
     parser.add_argument("--obs-layout", choices=["legacy", "v2"], default="legacy",
                         help="Observation layout. 'legacy' is the 4293-wide block every\n"
                              "existing checkpoint was trained against. 'v2' is 4403 wide\n"
@@ -151,6 +158,7 @@ def main():
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             obs_layout=args.obs_layout,
+            seed=args.seed,
             snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
