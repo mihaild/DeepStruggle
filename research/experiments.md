@@ -2314,3 +2314,93 @@ immediately, which is exactly the credit-assignment argument §12.4 makes.
   the model, so a negative gap cannot distinguish "the critic misprices the mode" from "the critic
   correctly dislikes the model's execution". Separating them needs the human's own targets replayed
   from the log, which the converter has and this measurement does not yet use.
+
+## 16. The human's own board against the model's round — the critic is wrong about the card
+
+§15.2 found the critic scoring De-Stalinization below Ops and offered an excuse for it: both
+branches there were resolved by the model, and the model executes that card badly (§14.3, East
+Germany stripped 259 times), so a critic that dislikes the result might be right about the
+execution rather than wrong about the card. **That excuse does not survive the test.**
+
+**Method.** A second seam on `convert_game`, `on_entry`, hands over the board *after* a human entry
+has been replayed and checked against the log's own next position — the humans' actual removals and
+placements, not a model's replay of their mode choice. From the identical pre-round board the model
+then plays that Action Round however it likes: its own card, its own mode, its own targets, with no
+obligation to touch De-Stalinization. Both boards are scored by the same value head from the USSR's
+side. `ai/eval/round_counterfactual.py`, 274 deduplicated corpus games, early war.
+
+*Comparability check:* in all 105 rounds both boards end on the same turn, the same `action_round`,
+and in `Phase.ACTION_ROUND` — so the gap measures the play, not where the two branches stopped.
+
+### 16.1 De-Stalinization: 105 real human rounds
+
+| snapshot | v(human) | v(model) | gap | critic prefers human | model played it too |
+|---|---|---|---|---|---|
+| warm start | −0.263 | −0.241 | −0.022 ± 0.051 | 51% | 87/105 |
+| 35M | +0.055 | +0.110 | −0.055 ± 0.010 | 32% | 36/105 |
+| 70M | −0.157 | −0.100 | −0.057 ± 0.009 | 28% | 25/105 |
+| 100M | −0.316 | −0.158 | **−0.158** ± 0.022 | **21%** | 7/105 |
+| 140M | −0.010 | +0.087 | −0.098 ± 0.016 | 28% | 23/105 |
+
+**Every snapshot prefers its own round to a real human De-Stalinization**, and the margin is widest
+at 100M, where the critic sides with the human in 21% of rounds. With the humans' own competent
+execution on the board, the critic still says its own line is better. So this is not the model
+mispricing its own bad targeting. **The critic is wrong about the card.**
+
+### 16.2 What it prefers instead, and this is the alarming part
+
+The card the model chooses instead is not the whole story — spacing an opponent's card is correct
+play, and only firing its event is an error — so the mode has to be read too. In those same 105
+rounds:
+
+| | 100M | 140M |
+|---|---|---|
+| **US card played for Ops** (fires the US event) | **38.1%** | **34.3%** |
+| US card spaced (correct) | 21.9% | 8.6% |
+| USSR card played as event | 7.6% | 12.4% |
+| USSR card played for Ops | 6.7% | 22.9% |
+
+Most common single choices at 100M: Truman Doctrine [US] for Ops ×16, Five Year Plan [US] spaced
+×11, Five Year Plan [US] for Ops ×8, Special Relationship [US] for Ops ×6, Defectors [US] for Ops
+×5. At 140M the top pick is its own De-Stalinization played for **Ops** ×16, then Truman Doctrine
+[US] for Ops ×13 and Five Year Plan [US] for Ops ×10.
+
+So in the modal case the USSR declines its own strongest early event in order to play a *US* card
+for Operations — firing Truman Doctrine or Five Year Plan against itself — and the value head rates
+the resulting board above the human's. §14 found the US doing this with USSR cards; the error is
+symmetric, it runs in both directions, and the critic endorses it.
+
+### 16.3 This refines §15, it does not contradict it
+
+§15 asked a within-card question: *given* that you play this card, is event better than Ops? On
+that question the critic is right about Decolonization (93% of disagreements at 140M, gap +0.225).
+§16 asks a between-card question: is playing the card at all better than what else the model would
+do? There the same critic is near-neutral on Decolonization —
+
+| snapshot | gap | critic prefers human |
+|---|---|---|
+| warm start | −0.015 ± 0.050 | 41% |
+| 35M | +0.012 ± 0.012 | 57% |
+| 70M | −0.008 ± 0.013 | 47% |
+| 100M | −0.035 ± 0.017 | 49% |
+| 140M | +0.041 ± 0.019 | 63% |
+
+— drifting positive only by 140M, and much weaker than the within-card result. Both readings are
+true at once: the critic has learned how to play a card it has decided to play, and has not learned
+which card to play. That is a narrower and more useful statement than either section alone.
+
+### 16.4 Consequences
+
+* **§15.4's split was wrong about De-Stalinization.** I proposed execution as the prerequisite. It
+  is not sufficient: even with human execution on the board the critic prefers its own line, so
+  fixing targeting alone would leave the value function still steering away from the card.
+* **Opponent-card discipline is the bigger error and it is bidirectional.** A third of rounds at
+  both 100M and 140M are a US card played for Ops by the USSR. §11 measured what the space-race
+  dominance error costs (~3 points); this one has never been costed and looks larger, since it
+  hands over a full event rather than a dominated space.
+* **The critic, not the policy, is the thing to fix here.** Imitation, injection and longer RL all
+  push the policy toward the human line while the value function pushes back. §12.4's shaping
+  proposal is aimed at the same organ, and this is a second, independent reason to take it up.
+* Open, and now the cheapest thing to measure: the cost of playing an opponent's card for Ops,
+  using the fork-and-play-out method in `ai/eval/dominance_cost.py`. If it is worth several points,
+  it outranks everything in §9–§11.

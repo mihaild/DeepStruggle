@@ -3317,14 +3317,17 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     return False
 
 
-def convert_game(game: Dict, on_decision: Optional[Callable] = None) -> Conversion:
+def convert_game(game: Dict, on_decision: Optional[Callable] = None,
+                 on_entry: Optional[Callable] = None) -> Conversion:
     """Rebuild each entry's position from the log, drive it, and verify the outcome.
 
     `on_decision(state, mover, entry, chosen)` is called at each emitted decision with the
     position as the human faced it, before their action is applied. The dataset keeps only the
     observation tensor, which is enough to train on and not enough to ask a counterfactual -- a
     question like "what would this side do holding a different card" needs a `GameState` to edit.
-    The callback receives a clone, so nothing it does can perturb the conversion.
+    `on_entry(state, entry)` is called once per entry, after it has been replayed and checked --
+    the board the humans actually produced, rather than the board a model produces when replaying
+    their choices. Both callbacks receive a clone, so nothing they do can perturb the conversion.
 
     Two things make this per-entry rather than a forward simulation of the whole game. Drift
     cannot accumulate: every entry starts from the logged position, so one mis-parsed entry
@@ -3350,7 +3353,7 @@ def convert_game(game: Dict, on_decision: Optional[Callable] = None) -> Conversi
     _drain(state)
 
     try:
-        _convert_entries(state, raws, hands, conv, on_decision)
+        _convert_entries(state, raws, hands, conv, on_decision, on_entry)
     except ConversionFailure as failure:
         # Reported, not raised on: one unconvertible game should not stop a sweep of hundreds,
         # and the caller decides whether a partial game is usable. conv.failure being set means
@@ -3453,7 +3456,8 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
 
 
 def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
-                     on_decision: Optional[Callable] = None) -> None:
+                     on_decision: Optional[Callable] = None,
+                     on_entry: Optional[Callable] = None) -> None:
     # Both hands, for every turn, solved from the log and the rules in one pass. Where z3 is
     # not installed, or the log will not admit a hand, this is None and the turn-by-turn
     # borrowing below stands in.
@@ -3681,6 +3685,12 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
                      space_walk_discard=_space_walk_discard(raws, index, e),
                      on_decision=on_decision)
         _drive_passed_rounds(state, e, conv)
+        if on_entry is not None:
+            # The board the humans actually produced with this entry, already checked against the
+            # log's own next position. A counterfactual that wants to compare against what a human
+            # did -- not against a model's replay of what a human chose -- needs this, not the
+            # pre-decision state on_decision hands out.
+            on_entry(state.clone(), e)
 
         # --- did the engine fire an event the log knows nothing about? ---
         # An event the log never mentions is an event that did not happen, and what it does to
