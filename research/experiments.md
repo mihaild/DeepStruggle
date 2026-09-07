@@ -1660,3 +1660,39 @@ the authoritative number and should be quoted in preference to those.
 `e3_warmup_synth` to the decimal, which confirms independently that §9.12's four arms all began
 from the same synthetic initialisation and that `--warmup-checkpoint` loads what it says. That was
 assumed rather than checked when those arms were described.
+
+
+### 9.13 BC on human games from a self-play net — it works, and it works *better*
+
+**Question.** §9.2 measured behaviour cloning from a fresh network: held-out agreement climbs to
+about 47-48% by epoch 8 and then memorises. Does a net already trained on self-play demonstrations
+reach the same place, and does that start help or hinder?
+
+**Setup.** Split by game (224 train / 56 held out, 117,021 / 27,818 samples), the same seed as
+§9.2, agreement measured with §9.11's measure on the held-out games after every epoch.
+
+| epoch | 0 | 1 | 2 | 4 | 6 | 8 | 10 | 12 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **from the self-play net** | 34.18 | 45.58 | 47.15 | 47.58 | 48.61 | **49.33** | 50.04 | **49.99** |
+| from scratch | 20.56 | 42.32 | 43.49 | 44.52 | 46.26 | 47.08 | 47.91 | 48.24 |
+
+**Yes, and it dominates the from-scratch curve at every epoch.** Starting from the self-play net is
+ahead by 3.3 points after one epoch and still ahead by 1.8 at twelve, finishing at **50.0%** against
+48.2%. The self-play pretraining is not something the human data has to overcome; it is a better
+starting representation, and the human data builds on it.
+
+That is worth its own line: **the best human-aligned net available is not the one trained on human
+games alone.** `e3_warmup_human`, BC from scratch, measures 46.23% over the full corpus (§9.12.1).
+Two epochs of the same data on top of the self-play net beats it, and eight epochs reach 49.3%.
+
+**Consequence for the arm that was never run.** The synthetic-then-human fine-tune was proposed as
+round two of E3 and postponed for VRAM. This is direct evidence its *initialisation* is the best of
+the three tried -- better aligned than human-only BC and far better than self-play alone -- which
+removes the confound §9 could not escape: a human-data arm no longer has to start from a weaker
+policy than its control.
+
+**Caveat.** Both curves are still rising slowly at twelve epochs, so neither ceiling is established;
+what is established is the gap between them, which is stable across every epoch measured. And the
+from-scratch numbers here run about half a point above §9.2's on the same split, which is the
+corpus having been rebuilt since (§9.6, §9.8, §9.10) -- the comparison inside this table is
+like-for-like, comparisons across sections are not.
