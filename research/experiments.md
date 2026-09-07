@@ -2207,3 +2207,110 @@ tried, the thing to establish is why supervised learning on a 100%-consistent la
 20% of the time: a decision this uniform should be the easiest thing in the corpus to fit, and if
 BC cannot fit it, the loss, the sampling, or the action encoding is where to look — not the
 injection schedule.
+
+## 15. Policy or critic? Asked on real held positions — and the answer differs by card
+
+Two corrections to §14 first, both of which change numbers.
+
+**Real positions, not constructed ones.** §14's US arm swapped the card into an arbitrary US node.
+That answers a weaker question: the hand was never dealt to anyone, and the swap has to discard
+something to make room, so the rest of the hand is wrong too. The corpus has real US-held positions
+in quantity — **1029 for Decolonization, 636 for De-Stalinization** — and on those the model is
+markedly better than the swap suggested:
+
+| | swapped-in (§14.2) | really held |
+|---|---|---|
+| US spaces Decolonization, 70M | 49.2% | **68.5%** |
+| US spaces Decolonization, 100M | 51.6% | **65.0%** |
+| US spaces De-Stalinization, 100M | 59.9% | **67.0%** |
+
+So §14 understated US competence by roughly 15 points. The USSR figures are unaffected — that arm
+always used real hands — and 100M Decolonization cross-checks exactly: 102 of 270 is the 37.8%
+already reported.
+
+**The method.** From each real held position, resolve the card the human's way (event for the USSR,
+space for the US) and the model's greedy way, with the model making every follow-on choice in
+*both* branches so the mode is the only difference, then read `v_win` from the mover's own side.
+`gap` is v(human) − v(model): positive means the critic prefers the human's line. The rightmost
+column counts, among positions where the *policy* chose against the human, how often the *critic*
+still preferred the human's. Snapshots to 140M.
+
+### 15.1 Decolonization: the critic knows and the policy ignores it
+
+USSR really holding it, 276 positions:
+
+| snapshot | policy agrees | gap | critic sides with human |
+|---|---|---|---|
+| warm start | 21% | **−0.276** ± 0.051 | 50% |
+| 35M | 9% | +0.140 ± 0.006 | 92% |
+| 70M | 23% | +0.029 ± 0.005 | 69% |
+| 100M | 38% | +0.079 ± 0.011 | 73% |
+| 140M | 38% | **+0.225** ± 0.013 | **93%** |
+
+At 140M the critic prefers firing the event in **93% of the positions where the policy chose not
+to**, by a wide and well-determined margin — and the policy plays it for Ops anyway in 62% of
+positions. For this card the two heads have come apart: **the value function has learned the right
+answer and the policy is not following it.** That is the encouraging case, because it is what
+policy imitation, or simply more of the same RL, can close.
+
+Note also the warm start: gap −0.276, critic siding with the human only 50% of the time. The
+behaviour-cloned init has *neither* head right, which corroborates §14.2's finding that BC never
+learned this decision at all.
+
+### 15.2 De-Stalinization: the critic does not know
+
+USSR really holding it, 451 positions:
+
+| snapshot | policy agrees | gap | critic sides with human |
+|---|---|---|---|
+| warm start | 18% | −0.176 ± 0.043 | 51% |
+| 35M | 6% | +0.028 ± 0.004 | 65% |
+| 70M | 12% | −0.018 ± 0.003 | 42% |
+| 100M | 32% | −0.040 ± 0.007 | **32%** |
+| 140M | 32% | +0.039 ± 0.008 | 59% |
+
+The gap changes sign three times and at 100M the critic actively *prefers* the Ops line, siding
+with the human in under a third of disagreements. **Both heads are wrong here**, and no amount of
+policy imitation will hold a behaviour the critic scores as a mistake.
+
+**The likely reason is not that the critic misprices the mode — it is that the model cannot execute
+the card.** De-Stalinization asks for eight choices, four removals and four placements, against
+Decolonization's four placements into one restricted region. §14.3 shows the execution: at 100M the
+model fires De-Stalinization by stripping **East Germany ×259**, a battleground it controls and
+needs for Eastern Europe, and scattering into Cameroon, Lebanon and Guatemala. A critic that scores
+*that* below taking three Ops is not obviously wrong. Both branches here are resolved by the model,
+so what the comparison shows is the value of the event **as this model would play it**, and for
+De-Stalinization that is genuinely bad.
+
+This makes the two cards a clean pair rather than a contradiction: Decolonization is hard to botch,
+so the critic can price the mode and the policy is the only thing lagging; De-Stalinization is easy
+to botch, the model botches it, and the critic prices the botched version accurately.
+
+### 15.3 The US side: both heads improving, together
+
+| | policy agrees (space) | gap | critic sides with human |
+|---|---|---|---|
+| Decolonization, warm start | 8% | −0.074 ± 0.020 | 44% |
+| Decolonization, 140M | 55% | +0.063 ± 0.005 | 75% |
+| De-Stalinization, warm start | 11% | −0.001 ± 0.026 | 51% |
+| De-Stalinization, 140M | 59% | +0.055 ± 0.007 | 75% |
+
+Both start with the critic mildly preferring the Ops line and end with it preferring space three
+times out of four, while the policy moves from ~10% correct to ~55–59%. This is the one place in
+§12–§15 where RL improves both heads steadily and in the same direction, and it is also the only
+decision whose cost lands inside the same game — handing the opponent a free event is punished
+immediately, which is exactly the credit-assignment argument §12.4 makes.
+
+### 15.4 What to do with this
+
+* **Decolonization is a policy-side fix.** The critic's own ranking already carries the answer at
+  140M. Anything that makes the policy follow its own value estimate more closely — imitation,
+  a sharper advantage, more training — should move it.
+* **De-Stalinization is an execution fix first.** Teaching the policy to fire an event it plays
+  badly makes things worse, and the critic is right to say so. The prerequisite is the §12.4
+  shaping question: a value that is continuous in distance-to-control would price the removals out
+  of East Germany correctly, and only then is firing the event worth imitating.
+* The confound is stated above and is not removable by this method: both branches are resolved by
+  the model, so a negative gap cannot distinguish "the critic misprices the mode" from "the critic
+  correctly dislikes the model's execution". Separating them needs the human's own targets replayed
+  from the log, which the converter has and this measurement does not yet use.
