@@ -2509,3 +2509,113 @@ mis-scored — one as error when it is sound, one as sound when it is error.
   `empty_battlegrounds_turn8` 8.1. Longer RL did not rediscover the strategy. It did, however, move
   the realized value of a human De-Stalinization board from ~0 to +5 points, which is the policy
   learning to use a position it still will not create.
+
+## 18. The finished 160M run: stronger agreement, no more strength
+
+### 18.1 What the critic is actually predicting
+
+The question is settled in the engine, not by measurement. Every abrupt ending writes ±20 into
+`victory_points`:
+
+* DEFCON-1 and Cuban Missile Crisis suicide — `ops.cpp:200,216`, `victory_points = ±20`, `GAME_OVER`;
+* a held scoring card at turn end — `state_machine.cpp:574-576`, the same;
+* a 20 VP win — the cap by definition;
+* final scoring — the only ending that leaves VP interior.
+
+`Engine::get_terminal_utility` (`engine.cpp:174`) is then `sign(victory_points)`. So the game does
+reduce to *final VP, with DEFCON suicide and held scoring normalised to a ±20 result*, and `v_win`
+regresses onto the sign of that.
+
+An attempt to measure whether the learned head behaves more like win-probability or like VP margin
+**failed to discriminate, and is reported as such**: at roughly 92% of terminals VP sits at ±20, so
+the two comparators coincide. corr(v_win, win) = 0.421 against corr(v_win, VP/20) = 0.419 at 160M is
+not evidence for either reading. Separating them needs the final-scoring subset alone, which is
+~7% of games.
+
+What the same run did establish:
+
+| | warm start | 70M | 160M final |
+|---|---|---|---|
+| Brier against the actual win | **0.378** | 0.218 | **0.207** |
+| corr(v_win, outcome) | 0.119 | 0.357 | 0.421 |
+| share of games ending by DEFCON-1 | **70%** | 57% | **40%** |
+
+The BC warm start's value head is *worse than always predicting even* (0.25) — behaviour cloning
+fits the policy and leaves the critic actively misleading. RL repairs it. And 40–70% of self-play
+games end in mutual destruction, against `mean_final_turn` 6.4.
+
+### 18.2 Why more RL does not rediscover De-Stalinization
+
+§17 showed the policy learning to *use* a human's De-Stalinization board (+5.11 points by 160M)
+while still refusing to *create* one. The natural expectation is that the second follows the first
+eventually. 18.1 says why it does not, at least not here.
+
+In this model's own game distribution games end around turn 6 by DEFCON-1. Regional scoring that
+would pay for spread Influence arrives at turns 8–10 and mostly never arrives at all. The critic is
+not being irrational about the card; it is fitted to a world where positional investment is rarely
+collected. That closes a loop: short games → positional value seldom realised → critic prices it low
+→ policy never invests → games stay short and decided by coups and DEFCON.
+
+This predicts that more of the same RL will not fix it, and the run agrees: 160M steps left
+`empty_battlegrounds_turn8` at 8.1 and `frac_reaching_turn9` at 0.22. It also predicts where to
+intervene — anything that makes games last (DEFCON discipline, the §12.4 shaping term) should move
+the card play as a side effect, and is worth more than teaching the card directly.
+
+### 18.3 Tournament: tied with the previous best, not ahead of it
+
+500 games per pair (250 per side), `--auto-advance`, Bradley-Terry MLE Elo anchored on
+HeuristicBot = 1500. Report at
+`data/checkpoints/run_v2_20260907_long160M/vs_prior_runs.md`.
+
+| rank | model | Elo | overall win rate |
+|---:|---|---:|---:|
+| 1 | `dec_turns40` | **1956.6** | 84.4% |
+| 2 | **`run_v2_20260907_long160M`** | **1908.4** | 80.0% |
+| 3 | `run_v2_blunder_aware_9h` | 1725.1 | 60.0% |
+| 4 | `g_w1e1` | 1695.0 | 56.4% |
+| 5 | `inj_every1` | 1633.5 | 49.1% |
+| 6 | HeuristicBot | 1500.0 | 34.3% |
+| 7 | `hum_inj1` | 1497.2 | 34.0% |
+| 8 | RandomBot | 937.9 | 1.7% |
+
+**Head to head the two leaders are tied**: `dec_turns40` takes 50.8% of 500 games against the 160M
+run. The standard error on a 500-game win rate is 2.2 points, so 50.8% is indistinguishable from
+even. The 48-point Elo gap comes from the rest of the matrix — `dec_turns40` beats the weaker field
+harder (84.6% against `blunder_aware_9h` where the 160M run manages 73.2%).
+
+Two things worth noting about that comparison. `dec_turns40` is the checkpoint that generated the
+synthetic warmup set the 160M run was initialised from, so they are not independent lineages. And
+`hum_inj1`, the most human-weighted injection arm, finishes *below HeuristicBot*.
+
+### 18.4 Agreement rose and strength did not follow
+
+Measured on 47 distinct genuinely-unseen games, 23,191 decisions. **The first attempt at this was
+wrong and is worth recording**: scoring against a fresh seed-7 split of the deduplicated dataset gave
+the warm start 61.45%, because these models were fitted under the split of the *old* 280-id dataset
+and 58% of the new held-out set had been trained on. The valid evaluation set is the old split's own
+held-out games, minus duplicate-leaked and duplicate-copy ids.
+
+| checkpoint | agreement |
+|---|---|
+| warm start (BC) | **48.61%** |
+| 5M | 38.80% |
+| 35M | 38.27% |
+| 100M | **32.29%** |
+| 140M | 35.47% |
+| **160M final** | **37.43%** |
+| `dec_turns40` | 33.73% |
+| `run_v2_blunder_aware_9h` | 29.86% |
+| `inj_every1` | 34.66% |
+
+48.61% reconciles with the 49.33% recorded in §9.13, which validates the measurement. The shape is
+the familiar washout — 48.6% down to 32.3% at 100M — followed by a recovery to 37.4%.
+
+**The finished run agrees with humans more than any prior checkpoint (37.43% against
+`dec_turns40`'s 33.73%) and is not stronger than it.** That is the cleanest statement yet of the
+problem §9–§11 kept circling: human agreement is not a proxy for strength on this axis. 3.7 points
+of extra agreement bought nothing measurable in Elo, which is consistent with §11's finding that the
+behaviours being imitated are worth a few points at most and with §17's finding that the largest
+mispricing is in the critic rather than the policy.
+
+*(Minor correction to §14.4: of the four held-out games named as leaking into training, two — 216
+and 217 — are empty downloads carrying no decisions. The real leak is two games.)*
