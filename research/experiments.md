@@ -1728,3 +1728,69 @@ holding its ground. Weight is the obvious next knob, and the one this pair does 
 control reached on the identical budget (§9.12). Starting closer to human play and then training
 away from it appears to overshoot past where you would have been having never started there. One
 seed, so it may be nothing -- but it is the opposite of what you would guess.
+
+
+## 10. Injection weight and frequency (E5) — frequency is everything, weight is nothing
+
+**Setup.** All nine arms start from the same checkpoint: self-play BC, then 8 epochs of human BC on
+the **224 train games only**, reaching **49.33%** agreement on the 56 held-out games. That split
+matters — a first attempt fitted the warm start on all 280 games and read 65% "held out", which was
+memorisation, so it was thrown away and rebuilt. Every figure below is on games no arm has been
+fitted to. 4M steps each, two at a time, `blunder_aware` + K=40, one flag apart.
+
+### 10.1 Weight, at every iteration — no effect across 16x
+
+| `--inject-weight` (every=1) | end |
+|:---|---:|
+| 0.25 | **40.4%** |
+| 1 | 40.2% |
+| 4 | 39.2% |
+| control, no injection | 35.6% |
+
+A sixteenfold range of weight spans 1.2 points, while the gap to the control is 4.6. Injection is
+close to a switch: whether it happens matters, how hard barely does.
+
+### 10.2 Frequency, at fixed weight — monotone, and gone by every 4th iteration
+
+| `--inject-every` (weight=1) | end | over control |
+|:---|---:|---:|
+| 1 | **40.2%** | +4.6 |
+| 2 | 38.8% | +3.2 |
+| 4 | 36.6% | +1.0 |
+| control | 35.6% | — |
+
+The benefit decays steadily as the dose gets rarer and is nearly gone by every fourth iteration.
+
+### 10.3 Equal dose, different schedule — rarity cannot be bought off with weight
+
+Holding `weight / every` at 1.0, so every arm applies the same total supervised signal:
+
+| schedule | end |
+|:---|---:|
+| w=1, every=1 | **40.2%** |
+| w=4, every=4 | 35.9% |
+| w=16, every=16 | 34.7% |
+| control | 35.6% |
+
+**Same total dose, 5.5 points apart, and the two rare schedules are at or below the control.**
+w16e16 is *worse than not injecting at all*.
+
+### 10.4 What this means
+
+**Frequency is the parameter; weight is not.** The signal has to be applied continuously or it does
+nothing, and a bigger dose delivered less often is not a substitute — it is worse than nothing,
+because each large correction knocks the policy somewhere RL then has to walk back from, and the
+interval is long enough for it to do so. That is the oscillation predicted when injection was
+proposed, now with matched-dose evidence rather than a guess.
+
+The practical setting is **every iteration, at whatever weight is convenient** — 0.25 works as well
+as 4. Anything rarer than every second iteration is not worth running.
+
+**What it still does not do is hold the BC level.** The best arm decays 49.3% → 40.2%: injection
+halves the washout (the control loses 13.7 points, injection loses 9.1) but does not stop it. Since
+weight does not help, the remaining levers are elsewhere — a lower RL learning rate, or injecting
+against a frozen copy rather than the live policy.
+
+**Caveats.** One seed per cell, 4M steps, and a control that moved 1.3 points across its own
+snapshots in §9.12. The weight ladder's 1.2-point spread is inside that; the frequency and
+matched-dose effects, at 4.6 and 5.5 points, are not.
