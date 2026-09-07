@@ -50,6 +50,12 @@ def main():
     # its own step), so a matched step count does not make them a controlled comparison. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
+    parser.add_argument("--snapshot-every-steps", type=int, default=0,
+                        help="Take a snapshot every N env steps (0 = derive the "
+                             "interval from --duration-seconds and "
+                             "--snapshot-interval-seconds, which is indirect when "
+                             "the budget is already in steps). Snapshots are then "
+                             "named by step count rather than by elapsed seconds.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
                              "RL. A BC warmup washes out within about 2M steps (experiments.md "
@@ -138,6 +144,7 @@ def main():
             eta=args.eta,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
+            snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
             inject_weight=args.inject_weight,

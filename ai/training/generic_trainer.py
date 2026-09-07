@@ -242,7 +242,8 @@ class _HumanInjector:
     """
 
     def __init__(self, dataset_path: str, model: nn.Module, device: torch.device,
-                 every: int, weight: float, batch_size: int = 512) -> None:
+                 every: int, weight: float, batch_size: int = 512,
+                 holdout_seed: int = 7, holdout_frac: float = 0.2) -> None:
         from ai.training.human_corpus_dataset import HumanCorpusDataset
 
         self.every = max(1, int(every))
@@ -252,18 +253,40 @@ class _HumanInjector:
         self.batch_size = batch_size
         self.ds = HumanCorpusDataset(dataset_path)
         self.opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-        self._batches = None
         self.steps = 0
 
+        # Injection trains on the same games the warm start did, and no others. Without this the
+        # held-out games are fed to the policy a few thousand times over a long run, and the
+        # agreement figure quietly stops measuring generalisation -- the same way the first
+        # synth+human warm start read 65% "held out" because it had been fitted on all 280 games.
+        game = np.asarray(self.ds._column("game"))
+        games = np.unique(game)
+        rng = np.random.default_rng(holdout_seed)
+        rng.shuffle(games)
+        held = set(games[:max(1, int(holdout_frac * len(games)))].tolist())
+        self.train_idx = np.flatnonzero(
+            np.fromiter((g not in held for g in game), dtype=bool, count=len(game)))
+        self.held_out_games = len(held)
+
+        self._obs = self.ds._column("obs")
+        self._mask = self.ds._column("mask")
+        self._act = self.ds._column("action")
+        self._win = self.ds._column("win")
+        self._vp = self.ds._column("vp")
+        self._has = self.ds._column("has_outcome")
+        self._rng = np.random.default_rng(20260907)
+
     def _next(self):
-        if self._batches is None:
-            self._batches = self.ds.stream_batches(batch_size=self.batch_size,
-                                                   device=self.device, shuffle=True)
-        try:
-            return next(self._batches)
-        except StopIteration:
-            self._batches = None
-            return self._next()
+        idx = np.sort(self._rng.choice(self.train_idx, size=self.batch_size, replace=False))
+        mask = np.unpackbits(np.asarray(self._mask[idx]), axis=1)[:, :212]
+        return (
+            torch.from_numpy(np.asarray(self._obs[idx], dtype=np.float32)).to(self.device),
+            torch.from_numpy(mask.astype(np.uint8)).to(self.device),
+            torch.from_numpy(np.asarray(self._act[idx], dtype=np.int64)).to(self.device),
+            torch.from_numpy(np.asarray(self._win[idx], dtype=np.float32)).to(self.device),
+            torch.from_numpy(np.asarray(self._vp[idx], dtype=np.float32)).to(self.device),
+            torch.from_numpy(np.asarray(self._has[idx], dtype=np.float32)).to(self.device),
+        )
 
     def maybe_step(self, iteration: int) -> float:
         if iteration % self.every:
@@ -545,6 +568,7 @@ def train_pipeline(
     decisiveness_turns: float = 0.0,
     max_snapshot_opponents: int = 4,
     snapshot_interval_seconds: int = 600,
+    snapshot_every_steps: int = 0,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
     num_envs: int = 512,
@@ -737,16 +761,26 @@ def train_pipeline(
     next_eval_steps = 0
     eval_every_steps = 0
     if step_budget > 0:
-        evals_planned = max(1, duration_seconds // max(1, snapshot_interval_seconds))
-        eval_every_steps = max(1, step_budget // evals_planned)
+        if snapshot_every_steps > 0:
+            # Said outright. The derived form below works out an interval from two *time* flags
+            # even though the budget is in steps, which is indirect enough that landing a
+            # snapshot on a chosen step count means solving for it -- see the 78M snapshot in
+            # research/experiments.md.
+            eval_every_steps = int(snapshot_every_steps)
+        else:
+            evals_planned = max(1, duration_seconds // max(1, snapshot_interval_seconds))
+            eval_every_steps = max(1, step_budget // evals_planned)
         next_eval_steps = eval_every_steps
     it = 0
 
     injector = None
     if inject_dataset and inject_every > 0:
         injector = _HumanInjector(inject_dataset, model, dev, inject_every, inject_weight)
-        print(f"Injecting human data from {inject_dataset} every {inject_every} iterations "
-              f"at weight {inject_weight}", flush=True)
+        print(f"Injecting human data from {inject_dataset} every {inject_every} "
+              f"iterations at weight {inject_weight}; "
+              f"{len(injector.train_idx):,} train samples, "
+              f"{injector.held_out_games} games held out and never injected",
+              flush=True)
 
     print("=" * 80, flush=True)
     print(f"STARTING GENERIC TRAINING PIPELINE ({duration_seconds}s, Snapshots every {snapshot_interval_seconds}s)", flush=True)
@@ -886,7 +920,13 @@ def train_pipeline(
         due = (total_env_steps >= next_eval_steps) if step_budget > 0 else (elapsed >= next_eval_time)
         if due:
             t_eval0 = time.time()
-            snap_path = os.path.join(out_dir, f"snapshot_{int(elapsed)}s.pt")
+            snap_path = os.path.join(
+                out_dir,
+                # The exact step count, not millions: an interval below 1M would round every
+                # snapshot to the same name and they would overwrite each other in silence.
+                # Sort these numerically, not lexicographically.
+                f"snapshot_{total_env_steps}steps.pt"
+                if snapshot_every_steps > 0 else f"snapshot_{int(elapsed)}s.pt")
             torch.save(model.state_dict(), snap_path)
             decisive = evaluate_and_log_snapshot(
                 model=model,
