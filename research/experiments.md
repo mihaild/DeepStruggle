@@ -2079,3 +2079,131 @@ Also unmeasured: whether firing the event would in fact have been better here, a
 being what the human did. §11 is the warning — a behavioural gap is not a cost until the cost is
 measured, and the fork-and-play-out method in `ai/eval/dominance_cost.py` transfers to this question
 directly.
+
+## 14. The same question asked of the whole corpus, with a measured human baseline
+
+§13 asked six hand-picked games and reported a behaviour. This asks every early-war position in the
+corpus (turns 1–3, Action Rounds), and — the part §13 was missing — measures what the humans
+actually did, rather than asserting it. `ai/eval/early_war_cards.py`; snapshots as in §12.0, plus
+15M and 100M.
+
+Denominators: Decolonization, 276 USSR positions holding it (270 with a mode node) and 400 US
+positions with the card swapped in; De-Stalinization, 451 (445) and 400.
+
+### 14.1 What humans do — and it is nearly absolute
+
+Read from the raw logs, so it covers games that do not fully convert:
+
+| | n | event | ops | space |
+|---|---:|---:|---:|---:|
+| USSR, Decolonization | 91 | **100.0%** | 0 | **0** |
+| USSR, De-Stalinization | 121 | **97.5%** | 2.5% (3) | **0** |
+| US, Decolonization | 159 | 0.6% (1) | 0.6% (1) | **98.1%** |
+| US, De-Stalinization | 47 | 6.4% (3) | 4.3% (2) | **89.4%** |
+
+**The USSR never spaces either card in the early war: 0 of 212 plays.** It plays the event in 209
+of 212. The three exceptions are all De-Stalinization for Ops — replays 292 T1 AR5, 58 T1 AR3,
+319 T3 AR3.
+
+For the US both *event* and *ops* mean the USSR got the event, since an opponent's card played for
+Operations still owes it. That is 7 of 206 early-war plays, 3.4%. Checked one at a time:
+
+* **replays 273 (T3, both cards), 253 (T1), 80 (T1)** — the US held more USSR cards than it had
+  space-and-hold slots to absorb. In 273 the US hand carries Socialist Governments, Decolonization
+  *and* De-Stalinization; one space and one hold cannot cover three. Structurally forced.
+* **replays 315 and 316 (T1 AR6)** — the same game recorded twice (see 14.4). The US never spaced
+  at all that turn, so spacing was available and unused. One genuine deviation, double-counted.
+* **replay 176 (T1 AR4)** — the space race was already spent on Suez Crisis at AR2, but a hold slot
+  was open and went to a US card instead. A genuine deviation.
+
+So the standard the user stated holds, with two real exceptions in 206 plays and the rest explained
+by having more opponent cards than slots.
+
+### 14.2 The model, against that baseline
+
+Greedy mode share conditional on playing the card at that node. Human column from 14.1.
+
+**USSR — event is the right answer (human 100% / 97.5%)**
+
+| snapshot | Decol event / ops / space | De-Stal event / ops / space |
+|---|---|---|
+| warm start | 20.7% / 79.3% / 0.0% | 18.0% / 82.0% / 0.0% |
+| 15M | 13.7% / 73.3% / 13.0% | 12.8% / 71.5% / 15.7% |
+| 35M | **9.3%** / 87.8% / 3.0% | **5.6%** / 91.2% / 3.1% |
+| 70M | 23.3% / 43.0% / 33.7% | 12.4% / 51.9% / 35.7% |
+| 100M | 37.8% / 45.6% / 16.7% | 31.7% / 49.4% / 18.9% |
+
+**US — ops is the only wrong answer (human 1.3% / 10.6% let the event fire)**
+
+| snapshot | Decol ops / space | De-Stal ops / space |
+|---|---|---|
+| warm start | 93.0% / 7.0% | 89.1% / 10.9% |
+| 35M | 85.2% / 14.8% | 82.6% / 17.4% |
+| 100M | 48.4% / 51.6% | 40.1% / 59.9% |
+
+Three things this settles that §13 could not:
+
+1. **The BC warm start never learned it either.** It is behaviour cloning on a corpus where the
+   USSR fires the event 100% of the time, and it reproduces that choice 20.7% of the time. The gap
+   is not created by RL; RL inherits it. §13 read the trajectory as RL degrading USSR handling,
+   which was reading a dip as a trend — see the trough below.
+2. **The trajectory is a dip, not a slide.** USSR event share falls to 9.3% / 5.6% at 35M and then
+   recovers to 37.8% / 31.7% at 100M, *above* the warm start. On the US side the movement is
+   monotone and large: 93% ops down to 48%.
+3. **The model uses a mode the humans never use.** The USSR spaces these cards in up to 33.7% of
+   positions at 70M, against 0 of 212 human plays. Spacing is legal in 85–98% of positions, so
+   this is a preference, not an artefact of what was available.
+
+### 14.3 What it does with the event when it fires it
+
+Both cards allow an early stop, so firing and using are separate questions. Firing is the only
+problem: every snapshot spends the whole event — 4.00 of 4 placements for Decolonization (3.94 at
+100M), and the full 4 removals plus 4 placements for De-Stalinization.
+
+Where it sends them is the second failure, and it tracks §12.3 exactly:
+
+* **Decolonization**, warm start: Angola\*, Algeria\*, Nigeria\*, Zaire\*, Thailand\* — battlegrounds
+  first. At 100M the top destination is **Cameroon ×92**, then Indonesia ×62, Zaire\* ×53,
+  Tunisia ×47.
+* **De-Stalinization**, warm start: **into** Venezuela\* ×95, Brazil\* ×62, Chile\* ×54,
+  Argentina\* ×20, **out of** Romania ×74 and Finland ×45. That is the textbook plan — shed cheap
+  Eastern European filler, buy the South American battlegrounds. At 100M it moves **out of East
+  Germany ×259**, stripping a battleground it controls and needs for Eastern Europe, and scatters
+  into Cameroon, Lebanon, Guatemala, Colombia.
+
+So §12.3's early-Americas collapse is visible as behaviour and not only as a value number: the warm
+start uses De-Stalinization to buy South America; by 100M the same card is used to gut its own
+Eastern European battleground.
+
+### 14.4 The corpus is 11% duplicates, and 4 held-out games leak
+
+Found while checking the replay 315/316 exception: 315 and 316 have identical `all_turns` and differ
+only in id and source URL. Fingerprinting every game's entries:
+
+**300 files, 266 distinct games, 25 duplicated groups, 34 redundant copies (11.3%).** One game
+appears nine times — ids 90, 214, 215, 216, 217, 218, 254, 298, 309.
+
+Duplicates are weighted twice in the BC warm start and twice in every injection batch. Worse, the
+train/held-out split is by replay id, and duplicates carry different ids: under the seed-7 split,
+**3 duplicate groups straddle the boundary and 4 of the 56 held-out games (7.1%) were also trained
+on** — held-out 125 is trained-on 118, held-out 216/217 are trained-on 90/214/215/218/254, held-out
+235 is trained-on 232/233.
+
+That is the same failure as the first synth+human warm start reading 65% "held out", in a milder
+form: the 49.33% figure in §9.13 and every number derived from that split are inflated by whatever
+7.1% memorisation is worth. Small, but it should be a fingerprint-based split, not an id-based one.
+
+### 14.5 Bearing on injection
+
+This run carries a human BC warm start **and** a human batch every single RL iteration at weight
+1.0 (`--inject-dataset data/datasets/human_corpus --inject-every 1 --inject-weight 1.0`). The
+injector trains on the 224-game train split, so roughly four fifths of the positions surveyed above
+are in the injection stream every iteration, with the human's own action as the label.
+
+Under that pressure the USSR still plays its own event in at most 37.8% of positions. Injection at
+this strength does not hold the behaviour — but 14.2's first point says injection is not the whole
+story either, because the pure BC init did not have the behaviour to hold. Before more injection is
+tried, the thing to establish is why supervised learning on a 100%-consistent label reproduces it
+20% of the time: a decision this uniform should be the easiest thing in the corpus to fit, and if
+BC cannot fit it, the loss, the sampling, or the action encoding is where to look — not the
+injection schedule.

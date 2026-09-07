@@ -15,7 +15,7 @@ it; from there the hand can be edited and the same node re-asked of either side.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -40,10 +40,13 @@ class Node:
     chosen: int
 
 
-def capture_nodes(game: Dict, turn: int,
+def capture_nodes(game: Dict, turn: Union[int, Sequence[int]],
                   decision: ts.DecisionType = ts.DecisionType.SELECT_CARD,
                   action_round_only: bool = True) -> List[Node]:
-    """Every decision of one kind on one turn of one human game.
+    """Every decision of one kind, on one turn or several, of one human game.
+
+    `turn` takes a collection as well as a single number, because converting a game is the
+    expensive part and one pass can answer for every turn wanted.
 
     Action Rounds only by default. A headline is also a `SELECT_CARD`, but neither of the answers
     this module is asking about exists there: you cannot space a headline and you cannot decline to
@@ -51,10 +54,11 @@ def capture_nodes(game: Dict, turn: int,
     """
     from tools.lib.ts_replayer_convert import convert_game
 
+    wanted = {int(turn)} if isinstance(turn, int) else {int(t) for t in turn}
     out: List[Node] = []
 
     def hook(state: ts.GameState, mover: ts.Player, entry: Any, chosen: int) -> None:
-        if int(entry.turn) != turn or state.ctx().decision_type != decision:
+        if int(entry.turn) not in wanted or state.ctx().decision_type != decision:
             return
         if action_round_only and state.current_phase != ts.Phase.ACTION_ROUND:
             return
