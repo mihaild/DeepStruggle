@@ -2808,3 +2808,171 @@ Recommendation unchanged from §19.4, with the mechanism settled: do it as separ
 same breaking change as removing the history, behind helpers that force the compiler to walk the 52
 sites. And keep §19.4's caveat — this addresses the §14–§17 card-play cluster, not the game-length
 constraint that §18 identifies as binding.
+
+## 20. Run-to-run variance, and how much of it is just where you stopped
+
+§18 compared single final checkpoints and read differences off them. §19's encoding plan assumed a
+"slight positive effect" would be visible at one run per arm. Both rested on a variance estimate
+that had never been made, and when it was made it was much larger than assumed -- and then, on a
+closer look, largely removable.
+
+### 20.1 Seeding had to be added before variance could be measured at all
+
+The environment seed was the literal `12345` and torch was left unseeded, so two runs of one
+configuration saw the same deals and the same dice and differed only in initialisation. A "replicate"
+under that arrangement measures a fraction of the thing. `--seed` now sets both together (`4f2b23b`),
+or neither when omitted, which keeps existing behaviour.
+
+`--resume` was added alongside (`4f2b23b`), because snapshots are bare `state_dict`s and a
+`--warmup-checkpoint` restart silently drops the optimiser moments, the reference policy and the
+step counter. The tests assert the distinction rather than assume it: ten steps must equal five,
+save, resume, five more, **and** a weights-only restart must *not* match. If that negative control
+ever passes, the resume file is pointless and says so.
+
+### 20.2 The first variance number was wrong, and it was the one everything rested on
+
+Arm A against the 160M run's own 80M snapshot -- same configuration, different seed -- came out
+**5 Elo apart, 50.2%/49.8% on 1,000 games**. That was reported as the noise floor, with the
+transfer to other configurations flagged as an assumption.
+
+It does not transfer. On the synth-only configuration, C against C2 is **59.6 Elo apart, 63.9%
+head to head**. A third seed gave SD 64.2 over three final snapshots. The assumption was wrong by
+an order of magnitude, and several earlier claims went with it -- "the synthetic warm start is
+worth +199 Elo" and "the human BC layer costs 128 Elo" were both single-draw differences smaller
+than the spread they were measured against.
+
+### 20.3 Most of that spread is *when you stopped*, not *which seed you drew*
+
+Rating the last four snapshots (65M, 70M, 75M, 80M) of every arm rather than the final one:
+
+| arm | 65M | 70M | 75M | 80M | mean | within-run SD |
+|---|---:|---:|---:|---:|---:|---:|
+| C s1 | 1728.4 | 1773.4 | 1764.3 | **1847.7** | 1778.4 | 50.1 |
+| C2 s2 | 1729.6 | 1731.9 | 1736.5 | 1760.0 | 1739.5 | 14.0 |
+| C3 s3 | 1754.2 | 1778.5 | 1732.2 | 1736.8 | 1750.4 | 21.0 |
+| B s1 | 1680.7 | 1634.7 | 1640.7 | 1642.8 | 1649.7 | 20.9 |
+| B2 s4 | 1689.2 | 1632.6 | 1741.1 | 1722.9 | 1696.4 | 47.7 |
+
+Mean within-run oscillation is **30.7 Elo**, and C s1 spans 1728–1848 with its *final* snapshot at
+the peak -- reporting it as 1848 was reading the top of a wobble.
+
+| how a run's number is taken | synth-only SD | cold-start SD |
+|---|---:|---:|
+| final snapshot only | 58.5 | 56.6 |
+| **mean of the last four** | **20.1** | **33.0** |
+
+**Averaging four snapshots cuts the between-run SD by 2.9x on the synth-only configuration, for no
+extra compute.** Cold start gains less because B2 itself oscillates 47.7, and two seeds cannot
+average that away.
+
+This is the cheapest variance reduction available and it should be standard: *rate the last four
+snapshots, report the mean*. Every single-final-snapshot comparison earlier in this document is
+inflated by roughly 30 Elo of stopping-point noise.
+
+### 20.4 What survives
+
+| configuration | mean of per-run means | seeds |
+|---|---:|---:|
+| synth-only warm start | **1756.1** | 3 |
+| cold start | **1673.1** | 2 |
+| `dec_turns40` | **1959.3** | 1 |
+
+The warm-start effect is **+83.0 Elo** against a between-run SD of 20–33, roughly 2.5–3σ. Real,
+and less than half the +179 claimed from single finals.
+
+The ordering is not clean at the level of individual runs: the weakest synth-only seed (C3) finishes
+*below* the stronger cold start (B2) and splits 50.9%/48.9% with it. Configuration means separate;
+individual runs overlap.
+
+### 20.5 Consequences for how experiments get run here
+
+* **Rate four snapshots, not one.** Free, and nearly triples effective precision.
+* **Two or three seeds per arm** now suffices for effects above ~40 Elo. The encoding experiment
+  §19 planned is viable on that basis; at the 60 Elo single-final floor it was not.
+* **The oscillation has a likely cause worth removing at the source.** The learning rate is
+  constant for the entire run -- there is no decay schedule -- which is exactly what leaves a policy
+  wandering at the end rather than settling. Linear or cosine decay, or a weight EMA evaluated
+  instead of the live policy, would remove the 30.7 Elo oscillation rather than averaging over it.
+  Neither has been tried.
+* **`dec_turns40` is still ~200 Elo clear of everything trained since**, which is the subject of
+  §21.
+
+## 21. `dec_turns40` is still the strongest model, and nothing since has matched it
+
+Across every pool it has appeared in, the checkpoint from §4.3's K-sweep beats everything trained
+afterwards: 1959.3 in §20's pool, ~200 Elo above the best configuration mean, winning 65–88%
+against the recent arms. That is worth explaining before more arms are run against a bar that may
+not be what it looks like.
+
+### 21.1 What it actually was, corrected
+
+An earlier reading of this concluded `dec_turns40` was a cold start, from two pieces of evidence:
+its `snapshot_0s.pt` matched neither modern warmup checkpoint, and its weight statistics looked
+like a fresh initialisation. **Both were weak and the conclusion was wrong.**
+
+The decisive test is to compare *sibling runs*. `dec_turns40`, `dec_turns20` and `sp2_pool_off`
+were launched separately, and their `snapshot_0s` files agree on **93 of 97 tensors**. Random
+initialisation would agree on none. Searching every checkpoint on disk for an exact match finds
+`data/checkpoints/coldwar_net_v2_warmup.pt` (25 August), identical on **91 of 91** comparable
+tensors.
+
+The four that differ are `defcon_risk_head` only -- an auxiliary head added after that warmup was
+built, so each run initialised it fresh.
+
+That file is the common ancestor of most of the repository: `sp_pool_on/off`, `sp2_pool_on/off`,
+`run_v2_anchored_1h`, the four `run_v2_20260825_*` runs, `dec_turns20` and `dec_turns40` all start
+from identical weights. The modern lineage is unrelated to it --
+`warmup_synth_then_human_train.pt` matches on **1 of 91** tensors.
+
+**Method note.** Comparing a candidate against two guessed sources and then reaching for weight
+statistics was the wrong shape of test. Sibling runs sharing an ancestor is a positive control that
+either fires or does not, and it should have been the first thing tried.
+
+### 21.2 What differs from the recent arms
+
+Read from what each run logged, not from its description:
+
+| run | steps | injection | mean_turn | 20VP endings | entropy | KL |
+|---|---:|:---:|---:|---:|---:|---:|
+| **`dec_turns40`** | 78.1M | **none** | **7.21** | 0.374 | **1.148** | 0.041 |
+| C s1 | 80.0M | every iter | 5.80 | 0.466 | 1.339 | 0.024 |
+| C2 s2 | 80.0M | every iter | 5.67 | 0.507 | 1.385 | 0.017 |
+| C3 s3 | 80.0M | every iter | **4.99** | 0.511 | 1.322 | 0.019 |
+| B s1 | 80.0M | every iter | 5.56 | 0.441 | 1.472 | 0.017 |
+| B2 s4 | 80.0M | every iter | 6.08 | 0.384 | 1.441 | 0.020 |
+| 160M run | 160.0M | every iter | 5.54 | 0.443 | 1.381 | 0.034 |
+
+Everything controllable is matched -- arch v2, `blunder_aware`, K=40, 512 envs, ~78-80M steps. Three
+things are not:
+
+1. **Injection.** `dec_turns40` has none; every arm since injects human data every iteration at
+   weight 1.0. `inject_loss` never appears in its metrics.
+2. **The warm start.** A different ancestor, unrelated to the modern one.
+3. **The engine.** 44 files and +3,832/-470 lines since its base commit `44504c16`, including
+   changes that move the decision stream: Che/Ortega free-coup legality, turn cleanup as its own
+   step, Independent Reds, per-card headline frames, Defectors, Shuttle Diplomacy, the China Card
+   space race, Grain Sales, trap effective-Ops.
+
+The correlate worth noticing is that **every injected run plays shorter games** -- 4.99 to 6.08
+turns against 7.21 -- wins by 20 VP blowout more often, and ends with higher entropy, i.e. a less
+settled policy. That is consistent with §18's finding that injection buys human agreement and no
+Elo, and it raises a sharper possibility: injection may be a *cause* of the short games that
+§12-§18 identified as the thing stopping positional value from ever paying off.
+
+### 21.3 The reproduction
+
+`repro_dec40_noinject`: the same warm start (`coldwar_net_v2_warmup.pt`), K=40, 512 envs, 78M
+steps, **no injection**, on the current engine. Injection confirmed off from both the absent startup
+line and `inject_loss == 0.0` across all logged iterations.
+
+That leaves the engine as the only uncontrolled difference, so the result discriminates:
+
+* **near 1900** -- the engine changes are innocent, and injection plus the warm-start swap account
+  for the ~200 Elo;
+* **near 1650** -- the engine changes made the game harder, or `dec_turns40` is partly fitted to a
+  game that no longer exists, and its crown is an artifact rather than a target.
+
+Two cautions on reading it. §20 measured between-run SD at 20-33 Elo on averaged snapshots, so a
+single arm resolves a 200 Elo gap but not a 60 Elo one -- intermediate outcomes will not be
+diagnostic. And `dec_turns40`'s own rating has moved between 1824 and 1959 across pools, so it must
+be evaluated in a pool containing `dec_turns40` itself rather than against a remembered number.
