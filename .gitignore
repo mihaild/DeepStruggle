@@ -16,13 +16,16 @@ compile_commands.json
 *.a
 *.o
 
-# Python virtual environment & cache
+# Python virtual environment, cache & test tools
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.mypy_cache/
+.pytype/
+.hypothesis/
 
 # Node / Frontend
 web/ui/node_modules/
@@ -33,6 +36,7 @@ frontend/.vite/
 
 # Replays & Logs
 /data
+replays/
 !data/replays/.gitkeep
 *.log
 .system_generated/
