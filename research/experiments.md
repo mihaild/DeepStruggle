@@ -2976,3 +2976,101 @@ Two cautions on reading it. §20 measured between-run SD at 20-33 Elo on average
 single arm resolves a 200 Elo gap but not a 60 Elo one -- intermediate outcomes will not be
 diagnostic. And `dec_turns40`'s own rating has moved between 1824 and 1959 across pools, so it must
 be evaluated in a pool containing `dec_turns40` itself rather than against a remembered number.
+
+## 22. Human injection was the handicap, and a cold start without it beats everything
+
+§21 left `dec_turns40` ~200 Elo clear of every arm trained since, with three candidate causes:
+injection, a different warm-start ancestor, and 3,832 lines of engine change. All three are now
+resolved.
+
+### 22.1 The engine was innocent
+
+`repro_dec40_noinject` -- the same warm start (`coldwar_net_v2_warmup.pt`), K=40, 512 envs, 78M
+steps, **injection off**, on the current engine -- reached **1921.8** against `dec_turns40`'s
+1912.8 in the same pool, splitting **51.5%** head to head over 600 games. Injection confirmed off
+from both the absent startup line and `inject_loss == 0.0` in all 563 logged iterations.
+
+So the engine changes did not make the game harder and `dec_turns40` is not fitted to a game that
+no longer exists. It is a reproducible target.
+
+### 22.2 The 2x2: injection costs 157-236 Elo
+
+Arm D completes the design -- cold start, no injection -- so both factors separate for the first
+time. Means of four late snapshots:
+
+| | injection ON | injection OFF | effect of removing it |
+|---|---:|---:|---:|
+| **warm start** | 1736.2 | 1893.5 | **+157.3** |
+| **cold start** | 1612.3 | 1847.9 | **+235.7** |
+| *effect of warm start* | +123.9 | +45.5 | |
+
+Head to head with injection isolated -- same cold start, same K, same budget -- **D beats B 78.2%**.
+
+Against §20's noise floor of 20-33 Elo this is not arguable. **Human injection has handicapped
+every arm since it was introduced**, and it was never ablated at full scale on the current engine
+before now.
+
+**The warm start mostly stops mattering once injection is gone**, falling from +123.9 to +45.5.
+Most of what looked like the synthetic prior helping was the prior partially shielding the policy
+from injection damage.
+
+Injected arms are also *less settled*: entropy 1.32-1.47 against 1.12-1.15, and snapshot-to-
+snapshot SD 47.9 against D's 9.5. They play shorter games too, 4.99-6.08 turns against 6.5-7.21,
+which is the §12-§18 complaint about positional value never being collected -- so injection is
+plausibly a *cause* of the short games those sections diagnosed rather than a separate problem.
+
+**This invalidates the magnitude of several earlier findings**, all measured inside the handicap:
+§18's "agreement rose 3.7 points for zero Elo", §20's +83 Elo warm-start effect (that is the
+injection-on column), and §9-§10's conclusion that injection was neutral-to-useful.
+
+### 22.3 Equal budget, and the cold start wins outright
+
+Warm-started arms carry inherited compute, so comparing them to a cold start at equal *steps*
+understates the cold arm. Extending D to 160M by true resume:
+
+| model | Elo | vs `dec_turns40` |
+|---|---:|---:|
+| **D @160M** | **1885.9** | **63.6%** |
+| `dec_turns40` | 1805.6 | -- |
+| D' @80M (second seed) | 1786.1 | 50.8% |
+| D @80M | 1767.0 | 42.1% |
+
+**The strongest model in the repository is now a cold start with no warm start and no human data
+-- no inherited lineage at all.**
+
+D' also gives the between-seed spread on this configuration: D and D' split **50.6%/48.8%**, 19
+Elo apart, against **59.6 Elo** for two seeds of the injected synth-only arm. The best recipe is
+also the most reproducible, so future comparisons on it need fewer seeds.
+
+### 22.4 The trajectory, and a plateau that would have misled
+
+16 checkpoints at 10M intervals, 61,200 games:
+
+| Msteps | 10 | 30 | 50 | 70 | 90 | 110 | 130 | 150 | 160 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Elo | 1409.7 | 1614.4 | 1731.8 | 1784.4 | 1868.0 | 1865.8 | 1930.9 | 1926.9 | **1946.3** |
+| vs `dec40` | 8.0% | 14.8% | 33.0% | 39.0% | 52.2% | 50.8% | 61.0% | 61.8% | 64.8% |
+
+**+537 Elo across the run.** Gains decelerate from ~+100 per 10M to ~+17 over the final 40M but
+never reach zero, and it crosses `dec_turns40` at 90M.
+
+**There is a three-checkpoint plateau at 90-110M** (1868, 1867, 1866, with the `dec40` rate dipping
+to 50.8%) followed by another +80 Elo. A run stopped at 110M would have been recorded as converged.
+That is §20's stopping-point trap again, in a different guise: not oscillation around a mean, but a
+flat stretch that resumes climbing.
+
+**Caveat on the join.** 10-80M come from the original run and 90-160M from the resumed
+continuation, which used a fresh seed, so the +58 at 90M is not cleanly separable from a
+new-environment-stream effect. Similar jumps at 120M (+40) and 130M (+25) occur well after the
+join, which argues against it being a resume artefact, but it is not proven.
+
+### 22.5 What follows
+
+* **Turn injection off** for everything until there is a reason to believe a different form of it
+  helps. §"brainstorm" lists the candidate mechanisms; the cheapest discriminating test is
+  policy-only injection with the value loss disabled, since the BC warm start's critic measured
+  Brier 0.378 -- worse than always predicting even -- and a corrupted critic damages every gradient.
+* **Keep extending D.** It has not saturated at 160M and `--resume` makes continuation a single
+  command.
+* The human corpus remains valuable for **evaluation** -- §14-§17 found real defects with it --
+  which is consistent with it being poor training supervision.
