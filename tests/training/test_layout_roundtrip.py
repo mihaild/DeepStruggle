@@ -82,7 +82,7 @@ def test_every_encoder_branch_reaches_the_trunk() -> None:
 
         branches = {"board_proj": model.board_proj, "card_proj": model.card_proj,
                     "cross_card_proj": model.cross_card_proj, "global_proj": model.global_proj}
-        if use_history:
+        if use_history and model.hist_conv is not None:
             branches["hist_conv"] = model.hist_conv
 
         for name, branch in branches.items():
