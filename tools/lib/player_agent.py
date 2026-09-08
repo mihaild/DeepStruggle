@@ -192,7 +192,16 @@ class NeuralAgent:
         elif is_v3:
             model = create_coldwar_net_v3(dev)
         elif is_v2:
-            model = create_coldwar_net_v2(dev)
+            # Both the card block width and the presence of the history branch are read off the
+            # checkpoint's own weights rather than assumed. The two layouts are indistinguishable
+            # from a filename, and building at defaults raises a shape error for a v2.1 policy --
+            # or worse, would silently reinterpret every card feature by one position if the
+            # widths happened to match.
+            card_features = int(state_dict["card_fc.0.weight"].shape[1]) \
+                if "card_fc.0.weight" in state_dict else ColdWarNetV2.CARD_FEATURES
+            use_history = any(k.startswith("hist_conv.") for k in state_dict)
+            model = create_coldwar_net_v2(dev, card_features=card_features,
+                                          use_history=use_history)
         else:
             model = create_coldwar_net(dev)
 

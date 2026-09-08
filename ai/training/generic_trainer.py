@@ -498,7 +498,14 @@ def evaluate_and_log_snapshot(
         elif arch == "v3":
             frozen_net = create_coldwar_net_v3(dev)
         elif arch == "v2":
-            frozen_net = create_coldwar_net_v2(dev)
+            # Shaped from the model being evaluated, not from the factory defaults. The card
+            # block width and whether the history branch exists are both configurable now, and a
+            # frozen copy built at defaults simply fails to load a v2.1 policy -- which is how
+            # arm E died on its first snapshot rather than at startup.
+            frozen_net = create_coldwar_net_v2(
+                dev,
+                card_features=getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES),
+                use_history=getattr(model, "use_history", True))
         else:
             frozen_net = create_coldwar_net(dev)
         frozen_net.load_state_dict(model.state_dict())
