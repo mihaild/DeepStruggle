@@ -157,7 +157,7 @@ class TsVectorizedEnv:
         # Fixed for the environment's lifetime: the model's input width is built from it, so an
         # env that changed layout mid-run would simply be a way to feed a network garbage.
         self.legacy_obs = legacy_obs
-        self.observation_size = int(ts.OBS_SIZE_LEGACY if legacy_obs else ts.OBS_SIZE_V2)
+        self.observation_size = int(ts.OBS_SIZE_LEGACY if legacy_obs else ts.OBS_SIZE_V21)
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:

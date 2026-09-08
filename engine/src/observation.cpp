@@ -278,21 +278,20 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
     out_buf->active_player = side_sign;
 }
 
-void Observation::extract_v2(const GameState& state, Player perspective,
-                             ObservationBufferV2* out_buf) noexcept {
+void Observation::extract_v21(const GameState& state, Player perspective,
+                             ObservationBufferV21* out_buf) noexcept {
     if (!out_buf) return;
 
     // Everything except the card block is copied from the legacy extraction rather than
     // recomputed, so the two layouts cannot drift apart in the sections that are supposed to
-    // be the same. Only the card features below are v2's own work.
+    // be the same. Only the card features below are v2.1's own work.
     ObservationBuffer legacy;
     Observation::extract(state, perspective, &legacy);
 
-    std::memset(out_buf, 0, sizeof(ObservationBufferV2));
+    std::memset(out_buf, 0, sizeof(ObservationBufferV21));
     std::memcpy(out_buf->board_features, legacy.board_features, sizeof(legacy.board_features));
     std::memcpy(out_buf->global_features, legacy.global_features, sizeof(legacy.global_features));
-    std::memcpy(out_buf->history_sequence, legacy.history_sequence,
-                sizeof(legacy.history_sequence));
+    // history_sequence is deliberately not carried over; see ObservationBufferV21.
     std::memcpy(out_buf->turn_aggregates, legacy.turn_aggregates, sizeof(legacy.turn_aggregates));
     out_buf->active_player = legacy.active_player;
 
@@ -306,12 +305,12 @@ void Observation::extract_v2(const GameState& state, Player perspective,
 
     for (uint8_t i = 1; i <= 110; ++i) {
         const auto& c_info = CardData::get_card(i);
-        const size_t offset = static_cast<size_t>(i - 1) * card_slots::V2_FEATURES;
+        const size_t offset = static_cast<size_t>(i - 1) * card_slots::V21_FEATURES;
         const CardLocation loc = state.card_locations[i];
 
         // Defaults to DECK_OR_HIDDEN, which is what the legacy layout does with anything its
         // chain does not claim -- in practice HEADLINE_COMMITTED, a card face down in the
-        // headline. v2's scope is splitting the known-opponent-hand and not-in-game cases out
+        // headline. v2.1's scope is splitting the known-opponent-hand and not-in-game cases out
         // of slot 0; how a headline card is represented is a separate question and is left
         // exactly as it was, so the two layouts cannot disagree about it.
         size_t slot = card_slots::DECK_OR_HIDDEN;
@@ -339,7 +338,7 @@ void Observation::extract_v2(const GameState& state, Player perspective,
         }
         out_buf->card_features[offset + slot] = 1.0f;
 
-        const size_t base = card_slots::V2_PROPERTY_BASE;
+        const size_t base = card_slots::V21_PROPERTY_BASE;
         out_buf->card_features[offset + base + 0] = static_cast<float>(c_info.ops) / 4.0f;
         const float rel_side = (c_info.side == my_player) ? 1.0f
                              : ((c_info.side == opp_player) ? -1.0f : 0.0f);
@@ -354,9 +353,9 @@ void extract_observation(const GameState& state, Player perspective, Observation
     Observation::extract(state, perspective, out_buf);
 }
 
-void extract_observation_v2(const GameState& state, Player perspective,
-                            ObservationBufferV2* out_buf) noexcept {
-    Observation::extract_v2(state, perspective, out_buf);
+void extract_observation_v21(const GameState& state, Player perspective,
+                            ObservationBufferV21* out_buf) noexcept {
+    Observation::extract_v21(state, perspective, out_buf);
 }
 
 } // namespace ts

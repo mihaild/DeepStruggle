@@ -787,15 +787,15 @@ NB_MODULE(ts_engine, m) {
     // old catch-all slot 0.
     m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
                                     bool legacy) {
-        const size_t n = legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V2;
+        const size_t n = legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V21;
         float* data = new float[n];
         if (legacy) {
             ts::ObservationBuffer buf;
             ts::Observation::extract(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         } else {
-            ts::ObservationBufferV2 buf;
-            ts::Observation::extract_v2(state, perspective, &buf);
+            ts::ObservationBufferV21 buf;
+            ts::Observation::extract_v21(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         }
         size_t shape[1] = { n };
@@ -804,7 +804,7 @@ NB_MODULE(ts_engine, m) {
     }, nb::arg("state"), nb::arg("perspective"), nb::arg("legacy") = true);
 
     m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
-    m.attr("OBS_SIZE_V2") = static_cast<int>(ts::OBS_SIZE_V2);
+    m.attr("OBS_SIZE_V21") = static_cast<int>(ts::OBS_SIZE_V21);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
@@ -831,7 +831,7 @@ NB_MODULE(ts_engine, m) {
 
         VectorizedBatchRunner(size_t n, uint64_t base_seed, bool legacy)
             : num_envs(n), legacy_obs(legacy),
-              obs_width(legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V2) {
+              obs_width(legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V21) {
             states.resize(n);
             obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * 212);
@@ -863,8 +863,8 @@ NB_MODULE(ts_engine, m) {
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             } else {
-                ts::ObservationBufferV2 ob;
-                ts::Observation::extract_v2(states[idx], p, &ob);
+                ts::ObservationBufferV21 ob;
+                ts::Observation::extract_v21(states[idx], p, &ob);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             }

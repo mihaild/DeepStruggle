@@ -25,9 +25,9 @@ import pytest
 import ts_engine as ts
 
 BOARD = 84 * 28
-LEGACY_FEATURES, V2_FEATURES = 12, 13
+LEGACY_FEATURES, V21_FEATURES = 12, 13
 LEGACY_GLOBAL = BOARD + 110 * LEGACY_FEATURES
-V2_GLOBAL = BOARD + 110 * V2_FEATURES
+V2_GLOBAL = BOARD + 110 * V21_FEATURES
 
 #: observation.cpp:240-241 -- the opponent's hand size, then mine.
 OPP_HAND_COUNT, MY_HAND_COUNT = 70, 71
@@ -135,8 +135,8 @@ def test_every_location_lights_exactly_one_slot_in_both_layouts(loc: ts.CardLoca
 
     HEADLINE_COMMITTED is the case worth naming: the legacy encoder has no branch for it, so its
     `canon_loc` stays at its initial 0 and a face-down headline card reads as "deck or hidden".
-    That is defensible -- the opponent cannot see it -- and v2 reproduces it rather than
-    improving on it, because v2's scope is the two splits and nothing else.
+    That is defensible -- the opponent cannot see it -- and v2.1 reproduces it rather than
+    improving on it, because v2.1's scope is the two splits and nothing else.
     """
     state = _fresh()
     card = 42
@@ -144,7 +144,7 @@ def test_every_location_lights_exactly_one_slot_in_both_layouts(loc: ts.CardLoca
     for side in (ts.Player.US, ts.Player.USSR):
         legacy = _slots(np.asarray(ts.extract_observation(state, side)), card, LEGACY_FEATURES)
         v2 = _slots(np.asarray(ts.extract_observation(state, side, legacy=False)), card,
-                    V2_FEATURES)
+                    V21_FEATURES)
         assert len(legacy) == 1, f"legacy gave {legacy} for {loc.name} viewed by {side}"
         assert len(v2) == 1, f"v2 gave {v2} for {loc.name} viewed by {side}"
         if loc == ts.CardLocation.HEADLINE_COMMITTED:
@@ -162,8 +162,8 @@ def test_v2_separates_known_from_unknown_only_for_the_opponent() -> None:
             probe.set_card_location(card, ts.hand_of(holder, known))
             opp_view = np.asarray(ts.extract_observation(probe, other, legacy=False))
             own_view = np.asarray(ts.extract_observation(probe, holder, legacy=False))
-            assert _slots(opp_view, card, V2_FEATURES) == [expected]
-            assert _slots(own_view, card, V2_FEATURES) == [MY_HAND], (
+            assert _slots(opp_view, card, V21_FEATURES) == [expected]
+            assert _slots(own_view, card, V21_FEATURES) == [MY_HAND], (
                 "my own hand is my own hand; the split is only about what the opponent has seen")
 
 

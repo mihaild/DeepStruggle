@@ -665,14 +665,18 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    if obs_layout not in ("legacy", "v2"):
-        raise ValueError(f"obs_layout must be 'legacy' or 'v2', got {obs_layout!r}")
+    if obs_layout not in ("legacy", "v2.1"):
+        raise ValueError(f"obs_layout must be 'legacy' or 'v2.1', got {obs_layout!r}")
     # One decision, read by both the network's input width and the environment's output width.
     # Deriving them separately is how they would come to disagree.
     legacy_obs = obs_layout == "legacy"
     card_features = 12 if legacy_obs else 13
+    # v2 also drops the history block, which is a constant zero vector in every layout, so the
+    # network loses the branch that encodes it rather than learning a bias from nothing.
+    use_history = legacy_obs
     if not legacy_obs and arch != "v2":
-        raise ValueError(f"obs_layout=v2 is only wired for arch=v2, got arch={arch!r}")
+        raise ValueError(
+            f"obs_layout=v2.1 is only wired for arch=v2, got arch={arch!r}")
 
     out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
     os.makedirs(out_dir, exist_ok=True)
@@ -721,7 +725,8 @@ def train_pipeline(
     elif arch == "v3":
         model = create_coldwar_net_v3(dev)
     elif arch == "v2":
-        model = create_coldwar_net_v2(dev, card_features=card_features)
+        model = create_coldwar_net_v2(dev, card_features=card_features,
+                                      use_history=use_history)
     else:
         model = create_coldwar_net(dev)
 

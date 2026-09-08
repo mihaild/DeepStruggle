@@ -64,9 +64,9 @@ def main():
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
                              "seed to two arms that differ in one thing, to pair them.")
-    parser.add_argument("--obs-layout", choices=["legacy", "v2"], default="legacy",
+    parser.add_argument("--obs-layout", choices=["legacy", "v2.1"], default="legacy",
                         help="Observation layout. 'legacy' is the 4293-wide block every\n"
-                             "existing checkpoint was trained against. 'v2' is 4403 wide\n"
+                             "existing checkpoint was trained against. 'v2.1' is 3891 wide\n"
                              "and adds two card slots: the opponent is known to hold this\n"
                              "card, and this card is not in the game yet. A checkpoint\n"
                              "trained under one layout cannot be loaded under the other.")

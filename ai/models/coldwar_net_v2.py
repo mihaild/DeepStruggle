@@ -94,7 +94,7 @@ class ColdWarNetV2(nn.Module):
     ACTION_SPACE_SIZE = 212
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
-                 card_features: int = CARD_FEATURES):
+                 card_features: int = CARD_FEATURES, use_history: bool = True):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -102,10 +102,15 @@ class ColdWarNetV2(nn.Module):
         # the opponent is known to hold and one for a card not yet in the game. Nothing else in
         # the observation changes width, so every later offset simply moves by the difference.
         self.card_features = int(card_features)
+        # The history block is a constant zero vector -- ActionHistoryBuffer::record() is called
+        # nowhere -- so with use_history=False both the branch that encodes it and its share of
+        # the fusion trunk go away, and the observation is that much narrower.
+        self.use_history = bool(use_history)
         self.CARD_SIZE = 110 * self.card_features
         self.GLOBAL_OFFSET = self.CARD_OFFSET + self.CARD_SIZE
         self.HIST_OFFSET = self.GLOBAL_OFFSET + self.GLOBAL_SIZE
-        self.TOTAL_OBS_SIZE = self.HIST_OFFSET + self.HIST_SIZE + 32 + 1
+        hist_width = self.HIST_SIZE if self.use_history else 0
+        self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + 32 + 1
 
         # 1. Board Graph Encoder (84 nodes x 28 features -> 64)
         self.gconv1 = GraphConvLayer(28, 64)
@@ -151,7 +156,7 @@ class ColdWarNetV2(nn.Module):
         )
 
         # 5. History Sequence Encoder (16 tokens x 32 features -> 128)
-        self.hist_conv = nn.Sequential(
+        self.hist_conv = None if not self.use_history else nn.Sequential(
             nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, padding=1),
             nn.GELU(),
             nn.Flatten(),
@@ -162,7 +167,7 @@ class ColdWarNetV2(nn.Module):
 
         # 6. Fusion Trunk (256 [board] + 256 [cards] + 256 [cross] + 128 [global] + 128 [hist] = 1024 -> hidden_dim)
         self.fusion_in = nn.Sequential(
-            nn.Linear(1024, hidden_dim),
+            nn.Linear(640 if not self.use_history else 768, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
         )
@@ -235,12 +240,13 @@ class ColdWarNetV2(nn.Module):
         e_global = self.global_proj(global_raw)  # (B, 128)
 
         # 5. History Features: (B, 16, 32) -> transpose to (B, 32, 16) for Conv1D
-        hist_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
-        hist_tokens = hist_raw.view(batch_size, 16, 32).transpose(1, 2)
-        e_hist = self.hist_conv(hist_tokens)  # (B, 128)
-
-        # 6. Fusion Trunk
-        fused = torch.cat([e_board, e_card, e_cross, e_global, e_hist], dim=-1)  # (B, 1024)
+        if self.use_history and self.hist_conv is not None:
+            hist_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
+            hist_tokens = hist_raw.view(batch_size, 16, 32).transpose(1, 2)
+            e_hist = self.hist_conv(hist_tokens)
+            fused = torch.cat([e_board, e_card, e_global, e_hist], dim=-1)
+        else:
+            fused = torch.cat([e_board, e_card, e_global], dim=-1)
         h = self.fusion_in(fused)
         for block in self.res_blocks:
             h = block(h)
@@ -337,10 +343,11 @@ class ColdWarNetV2(nn.Module):
 
 
 def create_coldwar_net_v2(device: torch.device | str = "cpu",
-                          card_features: int = ColdWarNetV2.CARD_FEATURES) -> ColdWarNetV2:
+                          card_features: int = ColdWarNetV2.CARD_FEATURES,
+                          use_history: bool = True) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device."""
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
-                         card_features=card_features)
+                         card_features=card_features, use_history=use_history)
     return model.to(device)
 
 

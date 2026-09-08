@@ -329,7 +329,7 @@ static_assert(sizeof(GameState) <= 4096, "GameState exceeds 4 KB L1/L2 footprint
 //
 // Kept exactly as it was so checkpoints trained against it keep loading. Card slot 0 merges the
 // draw deck, cards not yet in the game, and the whole of the opponent's hand; nothing in it can
-// express what the opponent is known to hold. ObservationBufferV2 below is the layout that can.
+// express what the opponent is known to hold. ObservationBufferV21 below is the layout that can.
 struct alignas(64) ObservationBuffer {
     float board_features[84 * 28];     // 84 countries x 28 node features
     float card_features[110 * 12];     // 110 cards x 12 status features
@@ -339,7 +339,7 @@ struct alignas(64) ObservationBuffer {
     float active_player;               // +1.0 (US), -1.0 (USSR)
 };
 
-// Observation layout v2 -- 4403 floats. Identical to the legacy buffer except that each card
+// Observation layout v2.1 -- 4403 floats. Identical to the legacy buffer except that each card
 // carries 13 status features instead of 12, splitting two things the old slot 0 could not:
 //
 //   slot 2  the opponent holds this card *and I know it* -- previously indistinguishable from
@@ -350,31 +350,34 @@ struct alignas(64) ObservationBuffer {
 // Slot 0 still merges the draw deck with the *unknown* part of the opponent's hand, and that is
 // not an oversight: those two are exactly what the observer cannot tell apart, and separating
 // them would hand the network the hidden information the game is played to discover.
-struct alignas(64) ObservationBufferV2 {
+struct alignas(64) ObservationBufferV21 {
     float board_features[84 * 28];
     float card_features[110 * 13];
     float global_features[76];
-    float history_sequence[16 * 32];
+    // No history_sequence. ActionHistoryBuffer::record() is called nowhere, so in the legacy
+    // layout those 512 floats are a constant zero vector that the network still spends a Conv1d,
+    // a 512->128 projection and 128 of its 768 fusion inputs encoding -- 4.17% of its parameters
+    // learning a bias. The buffer stays in GameState for now; only the observation drops it.
     float turn_aggregates[32];
     float active_player;
 };
 
-// Card status slots, shared by both layouts where they overlap. The v2 names are the authority;
+// Card status slots, shared by both layouts where they overlap. The v2.1 names are the authority;
 // the legacy layout uses 0..6 with the same meanings, lacks KNOWN_OPPONENT_HAND and UNAVAILABLE,
 // and starts its property block at 7 rather than 8.
 namespace card_slots {
     constexpr size_t DECK_OR_HIDDEN       = 0; // draw deck, or an opponent card I have not seen
     constexpr size_t MY_HAND              = 1;
-    constexpr size_t KNOWN_OPPONENT_HAND  = 2; // v2 only
+    constexpr size_t KNOWN_OPPONENT_HAND  = 2; // v2.1 only
     constexpr size_t DISCARD              = 3;
     constexpr size_t REMOVED              = 4;
     constexpr size_t ONGOING              = 5;
     constexpr size_t PEEKED               = 6;
-    constexpr size_t NOT_IN_GAME          = 7; // v2 only
+    constexpr size_t NOT_IN_GAME          = 7; // v2.1 only
     constexpr size_t LEGACY_FEATURES      = 12;
-    constexpr size_t V2_FEATURES          = 13;
+    constexpr size_t V21_FEATURES          = 13;
     constexpr size_t LEGACY_PROPERTY_BASE = 7;
-    constexpr size_t V2_PROPERTY_BASE     = 8;
+    constexpr size_t V21_PROPERTY_BASE     = 8;
 }
 
 // The number of floats a consumer reads, which is NOT sizeof(buffer)/sizeof(float): both
@@ -382,13 +385,13 @@ namespace card_slots {
 // observation out copies exactly this many floats and must never use sizeof for it.
 constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
                                  + 16 * 32 + 32 + 1;
-constexpr size_t OBS_SIZE_V2 = 84 * 28 + 110 * card_slots::V2_FEATURES + 76
-                             + 16 * 32 + 32 + 1;
+constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
 static_assert(OBS_SIZE_LEGACY == 4293, "the legacy observation width is a checkpoint contract");
-static_assert(OBS_SIZE_V2 == 4403, "v2 adds one feature per card and nothing else");
+static_assert(OBS_SIZE_V21 == 3891,
+              "v2.1 adds one card feature and drops the never-written history block");
 static_assert(sizeof(ObservationBuffer) >= OBS_SIZE_LEGACY * sizeof(float),
               "the buffer must hold every float a reader will copy out of it");
-static_assert(sizeof(ObservationBufferV2) >= OBS_SIZE_V2 * sizeof(float),
+static_assert(sizeof(ObservationBufferV21) >= OBS_SIZE_V21 * sizeof(float),
               "the buffer must hold every float a reader will copy out of it");
 
 // Missile Envy moves itself into the opponent's hand, who must play it on their next
