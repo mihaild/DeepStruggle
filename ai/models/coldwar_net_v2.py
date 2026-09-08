@@ -167,7 +167,9 @@ class ColdWarNetV2(nn.Module):
 
         # 6. Fusion Trunk (256 [board] + 256 [cards] + 256 [cross] + 128 [global] + 128 [hist] = 1024 -> hidden_dim)
         self.fusion_in = nn.Sequential(
-            nn.Linear(640 if not self.use_history else 768, hidden_dim),
+            # 1024 with history: board 256 + card 256 + cross-attended card 256 + global
+            # 128 + history 128. Dropping the history branch removes its 128.
+            nn.Linear(1024 if self.use_history else 896, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
         )
@@ -243,10 +245,13 @@ class ColdWarNetV2(nn.Module):
         if self.use_history and self.hist_conv is not None:
             hist_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
             hist_tokens = hist_raw.view(batch_size, 16, 32).transpose(1, 2)
-            e_hist = self.hist_conv(hist_tokens)
-            fused = torch.cat([e_board, e_card, e_global, e_hist], dim=-1)
+            e_hist = self.hist_conv(hist_tokens)  # (B, 128)
+            fused = torch.cat([e_board, e_card, e_cross, e_global, e_hist], dim=-1)  # (B, 1024)
         else:
-            fused = torch.cat([e_board, e_card, e_global], dim=-1)
+            # Same trunk minus the history embedding. e_cross must stay: the cross-attention
+            # branch is the whole point of this architecture, and dropping it from the concat
+            # leaves it computed and discarded.
+            fused = torch.cat([e_board, e_card, e_cross, e_global], dim=-1)  # (B, 896)
         h = self.fusion_in(fused)
         for block in self.res_blocks:
             h = block(h)

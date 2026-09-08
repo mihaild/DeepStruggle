@@ -60,3 +60,53 @@ def test_a_frozen_copy_built_at_defaults_rejects_a_v21_policy() -> None:
     raise AssertionError(
         "a default-shaped network accepted v2.1 weights, so the layouts are no longer "
         "distinguishable by shape and a mismatch would now pass silently")
+
+
+def test_every_encoder_branch_reaches_the_trunk() -> None:
+    """Each branch must actually influence the output.
+
+    A branch can be computed and then left out of the fusion concatenation, which no shape check
+    catches: the network still builds, still trains, and is simply missing an input. That happened
+    to `e_cross` -- the cross-attention branch this architecture exists for -- and the run that
+    trained under it looked healthy the whole way.
+
+    Perturbing a branch's projection must move the logits. If it does not, that branch is dead.
+    """
+    for card_features, use_history in ((12, True), (13, False)):
+        model = create_coldwar_net_v2(card_features=card_features, use_history=use_history)
+        model.eval()
+        obs = torch.randn(4, model.TOTAL_OBS_SIZE)
+        mask = torch.ones(4, 212, dtype=torch.uint8)
+        with torch.no_grad():
+            base = model(obs, mask)[0].clone()
+
+        branches = {"board_proj": model.board_proj, "card_proj": model.card_proj,
+                    "cross_card_proj": model.cross_card_proj, "global_proj": model.global_proj}
+        if use_history:
+            branches["hist_conv"] = model.hist_conv
+
+        for name, branch in branches.items():
+            saved = [p.detach().clone() for p in branch.parameters()]
+            with torch.no_grad():
+                for p in branch.parameters():
+                    p.add_(torch.randn_like(p) * 5.0)
+                moved = model(obs, mask)[0]
+            changed = not torch.allclose(base, moved, atol=1e-5)
+            with torch.no_grad():
+                for p, s in zip(branch.parameters(), saved):
+                    p.copy_(s)
+            assert changed, (
+                f"{name} does not affect the output with card_features={card_features}, "
+                f"use_history={use_history} -- it is computed and discarded")
+
+
+def test_the_legacy_variant_keeps_its_original_parameter_count() -> None:
+    """3,223,223 is what ColdWarNetV2 had before the layout work; legacy must be untouched."""
+    model = create_coldwar_net_v2(card_features=12, use_history=True)
+    assert sum(p.numel() for p in model.parameters()) == 3_223_223
+    assert model.fusion_in[0].in_features == 1024
+
+
+def test_v21_trunk_is_the_legacy_trunk_minus_the_history_branch() -> None:
+    model = create_coldwar_net_v2(card_features=13, use_history=False)
+    assert model.fusion_in[0].in_features == 896, "1024 minus the 128-wide history embedding"
