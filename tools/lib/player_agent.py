@@ -165,6 +165,11 @@ class NeuralAgent:
     ):
         self.device = resolve_device(device) if device is not None else next(model.parameters()).device
         self.model = cast(ColdWarModel, model.to(self.device))
+        # Which observation layout this checkpoint expects, read from the model rather than
+        # assumed. Handing a model the wrong layout does not raise -- it reads fixed slices, so a
+        # wider observation is silently misread -- which is why this is derived, not defaulted.
+        self.obs_size = int(getattr(self.model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
+        self.legacy_obs = self.obs_size == int(ts.OBS_SIZE_LEGACY)
         self.model.eval()
         self.name = name
 
@@ -216,7 +221,7 @@ class NeuralAgent:
         player: ts.Player,
         temperature: float = 0.1,
     ) -> int:
-        obs = ts.extract_observation(state, player)
+        obs = ts.extract_observation(state, player, legacy=self.legacy_obs)
         mask = ActionEncoder.get_legal_mask(state)
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
