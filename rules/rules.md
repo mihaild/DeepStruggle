@@ -1,6 +1,6 @@
 # Formal Game Rules Specification: Twilight Struggle (Deluxe Edition)
 
-This document presents a deterministic, agent-friendly, and mathematically formal specification of the complete rulebook from `Rules_Final.pdf` for the Deluxe Edition of **Twilight Struggle** (110 Cards). It maps directly to the C++20 zero-allocation engine architecture specified in [`specification.txt`](file:///home/mihaild/prog/ts_ai/specification.txt), [`game_state.txt`](file:///home/mihaild/prog/ts_ai/game_state.txt), [`action_interface.txt`](file:///home/mihaild/prog/ts_ai/action_interface.txt), [`flags.json`](file:///home/mihaild/prog/ts_ai/flags.json), and [`card_primitives.json`](file:///home/mihaild/prog/ts_ai/card_primitives.json).
+This document presents a deterministic, agent-friendly, and mathematically formal specification of the complete rulebook from `Rules_Final.pdf` for the Deluxe Edition of **Twilight Struggle** (110 Cards). It maps directly to the C++20 zero-allocation engine architecture specified in [`specification.txt`](specification.txt), [`game_state.txt`](game_state.txt), [`action_interface.txt`](action_interface.txt), [`flags.json`](flags.json), and [`card_primitives.json`](card_primitives.json).
 
 ---
 

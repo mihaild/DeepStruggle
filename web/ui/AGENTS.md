@@ -30,7 +30,7 @@ frontend/
 
 > [!IMPORTANT]
 > **Keep Frontend Documentation Synchronized**:
-> When adding new UI components, modifying SVG styling, expanding effect catalogs, adding branch mappings, or altering API metadata consumption, you **MUST** update this file and root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md).
+> When adding new UI components, modifying SVG styling, expanding effect catalogs, adding branch mappings, or altering API metadata consumption, you **MUST** update this file and root [`AGENTS.md`](../../AGENTS.md).
 
 ---
 
