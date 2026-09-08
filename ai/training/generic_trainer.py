@@ -876,6 +876,25 @@ def train_pipeline(
         f.write(f"# Snapshot Tournament Evaluation Report ({arch.upper()})\n\n")
 
     # Initial Snapshot (0s / start)
+    resume_path = os.path.join(out_dir, RESUME_FILENAME)
+    resumed_elapsed = 0.0
+    if resume:
+        src = resume if os.path.isfile(resume) else os.path.join(resume, RESUME_FILENAME)
+        state = load_resume_state(src, model, trainer)
+        it = state["iteration"]
+        resumed_elapsed = state["elapsed_seconds"]
+        # Rewind the clock so elapsed keeps counting from where the run stopped rather than from
+        # zero; otherwise a resumed run's ETA and any time-based schedule think it just started.
+        t_start -= resumed_elapsed
+        # Snapshots are due by step count, and those steps already happened.
+        if step_budget > 0 and eval_every_steps > 0:
+            next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
+        print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
+              f"{resumed_elapsed:.0f}s of training already done", flush=True)
+
+    # Restored before anything reads or writes the weights: snapshot_0s.pt claims to be
+    # this run's starting point, and an eval of it costs real time, so both have to see
+    # the resumed policy rather than a fresh initialisation.
     snap_0_path = os.path.join(out_dir, "snapshot_0s.pt")
     torch.save(model.state_dict(), snap_0_path)
     evaluate_and_log_snapshot(
@@ -922,22 +941,6 @@ def train_pipeline(
         remaining = max(0, step_budget - steps_done) / max(rate, 1e-6)
         eta = int(train_elapsed + overhead_seconds + remaining)
         return f"{steps_done:,}/{step_budget:,} steps, ETA {eta}s"
-
-    resume_path = os.path.join(out_dir, RESUME_FILENAME)
-    resumed_elapsed = 0.0
-    if resume:
-        src = resume if os.path.isfile(resume) else os.path.join(resume, RESUME_FILENAME)
-        state = load_resume_state(src, model, trainer)
-        it = state["iteration"]
-        resumed_elapsed = state["elapsed_seconds"]
-        # Rewind the clock so elapsed keeps counting from where the run stopped rather than from
-        # zero; otherwise a resumed run's ETA and any time-based schedule think it just started.
-        t_start -= resumed_elapsed
-        # Snapshots are due by step count, and those steps already happened.
-        if step_budget > 0 and eval_every_steps > 0:
-            next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
-        print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
-              f"{resumed_elapsed:.0f}s of training already done", flush=True)
 
     _refresh_start_pool("initial")
 
@@ -1057,6 +1060,11 @@ def train_pipeline(
     # Final Snapshot
     final_snap_path = os.path.join(out_dir, "snapshot_final.pt")
     torch.save(model.state_dict(), final_snap_path)
+    # And the resume state, which is otherwise only written at snapshot boundaries -- so a run
+    # that ends between them leaves a resume point up to one interval behind its own final
+    # weights, and picking it back up would silently repeat those steps.
+    save_resume_state(resume_path, model, trainer, it, trainer.total_env_steps,
+                      time.time() - t_start - overhead_seconds)
     evaluate_and_log_snapshot(
         model=model,
         opponents=opponents,
