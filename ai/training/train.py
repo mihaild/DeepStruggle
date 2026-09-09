@@ -76,12 +76,19 @@ def main():
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
                              "seed to two arms that differ in one thing, to pair them.")
-    parser.add_argument("--obs-layout", choices=["legacy", "v2.1"], default="legacy",
-                        help="Observation layout. 'legacy' is the 4293-wide block every\n"
-                             "existing checkpoint was trained against. 'v2.1' is 3891 wide\n"
-                             "and adds two card slots: the opponent is known to hold this\n"
-                             "card, and this card is not in the game yet. A checkpoint\n"
-                             "trained under one layout cannot be loaded under the other.")
+    parser.add_argument("--obs-layout", choices=["legacy", "v2.1"], default=None,
+                        help="Observation layout. 'v2.1' is the baseline (3891 wide): it adds\n"
+                             "two card slots -- the opponent is known to hold this card, and\n"
+                             "this card is not in the game yet -- and drops the 512-float\n"
+                             "history block, which was never written to and encoded a\n"
+                             "constant zero (experiments.md 19.2). 'legacy' is the 4293-wide\n"
+                             "block older checkpoints were trained against, kept so they can\n"
+                             "be continued. A checkpoint trained under one layout cannot be\n"
+                             "loaded under the other; evaluation reads the layout from the\n"
+                             "checkpoint, so mixing them in a tournament is fine.\n"
+                             "Unset, it follows --arch: v2.1 for v2, which is the baseline,\n"
+                             "and legacy for every other architecture, since v2.1 is only\n"
+                             "wired for v2. Passing it explicitly always wins.")
     parser.add_argument("--snapshot-every-steps", type=int, default=0,
                         help="Take a snapshot every N env steps (0 = derive the "
                              "interval from --duration-seconds and "
@@ -176,7 +183,10 @@ def main():
             eta=args.eta,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
-            obs_layout=args.obs_layout,
+            # Unset follows the architecture: v2.1 is the baseline but is only wired for v2, so
+            # defaulting it outright would make a bare `tools/train.py` (which is --arch v4) raise.
+            obs_layout=(args.obs_layout if args.obs_layout is not None
+                        else ("v2.1" if args.arch == "v2" else "legacy")),
             seed=args.seed,
             resume=args.resume,
             resume_every_snapshot=args.resume_every_snapshot,

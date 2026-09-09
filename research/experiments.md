@@ -2351,3 +2351,44 @@ the last step snapshot and would have entered one player into a tournament twice
 snapshot paths on the wrong field selected the wrong four snapshots for one arm while
 selecting the right four for the other. **Every arm E evaluation logged before the first fix
 is void.**
+
+### 23.2 At 320M, still tied — and v2.1 is adopted as the baseline
+
+Both arms continued 240M -> 320M by true resume, unchanged in every other respect.
+
+| budget | E (v2.1) mean | D (legacy) mean | difference | pooled head-to-head |
+|:---|---:|---:|---:|---:|
+| 80M | 1769.1 (SD 19.6) | 1764.5 (SD 14.6) | +4.5 | 50.00% ±0.87 |
+| 240M | 1867.5 (SD 6.1) | 1879.8 (SD 16.0) | −12.2 | 49.15% ±0.87 |
+| **320M** | **1868.5** (SD 33.0) | **1883.2** (SD 15.4) | **−14.8** | **47.57% ±0.87** |
+
+Head-to-head pools all 16 snapshot pairings, 12,800 games. The drift is monotone toward legacy and
+at 320M is about 2.8σ below even, so within *this pair of runs* legacy is genuinely a little ahead.
+It is still inside the seed envelope (§20.6: two runs of one configuration differ by ~15 Elo), and
+the arms differ in seed as well as layout, so it does not attribute to the layout.
+
+**Decision: v2.1 is the baseline.** Not because it plays better — three budgets say it does not
+play differently at all — but because it is the same strength for 134,496 fewer parameters and 402
+fewer observation floats, with the dead history branch gone, and because the card-tracking channel
+is information the agent should have and costs **64 parameters** to carry (one card feature, 12 ->
+13, across the 110-card block). `--obs-layout` now defaults to `v2.1`; the baseline checkpoint is
+`data/checkpoints/arm_E_cont_240to320/snapshot_final.pt` at 320,012,288 steps.
+
+**What is still unmeasured is card tracking itself.** v2.1 changed two things, but only one carries
+information: §19.2 established the history slice was a constant zero, so removing it removed no
+signal — the ablation was already the identity. What it did remove is 134,560 parameters (4.17% of
+the net) that encoded that constant, which reached the trunk as an effective learned bias on top of
+the biases the trunk already had: redundant capacity, not information. So the arms differ by the
+card slots (+64 parameters) and by that redundancy, and the card slots have now had three budgets to
+show a benefit without showing one. Isolating them needs a third arm — history removed, 12 card
+features — at 2–3 seeds, which §20.6 puts at several GPU-days rather than one.
+
+**Budget, restated with an error bar.** The within-lineage gains for an 80M leg measured +74.1,
++52.7 and +10.9 Elo in the 240M and 320M pools, which looked like compression. §20.6 shows the same
+experiment repeated on a different seed spans +86.9 to +54.7, so the first two are indistinguishable
+and the trend is not established. E's +10.9 sits below both replicates, which makes its flatline the
+one figure here that may be real; a seed replicate of it is running.
+
+**Caveats.** One lineage per layout, and the arms differ in seed. Elo is not comparable across
+tournaments: the identical comparison (D's late four against its own 160M start) read 60.50% in one
+pool and 62.25% in another. Within a tournament it is fine; across them, ±15 Elo.

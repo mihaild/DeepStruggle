@@ -308,6 +308,49 @@ individual runs overlap.
 
 ---
 
+### 20.6 Continuation variance, measured directly — the seed is worth ~15 Elo, and a leg's *gain* twice that
+
+§20.3 measured the spread between *runs of a configuration*. It never measured the spread between
+*continuations of one run*, which is what every within-lineage number in §23 is, and those were
+being quoted without an error bar.
+
+**Setup.** Two continuations of arm D from the identical 160M resume state — same weights, same
+optimiser moments, same reference policy — differing only in seed (20260916 against 20260918), each
+to 240M. Four late snapshots per arm, 400 games a side. There is no better arm here; the output is a
+spread.
+
+| | 225/230/235/240M | mean | SD | gain over the 160M start |
+|:---|:---|---:|---:|---:|
+| seed 20260916 | 1880, 1893, 1887, 1886 | 1886.2 | 5.4 | **+86.9** (62.25%) |
+| seed 20260918 | 1897, 1894, 1828, 1858 | 1869.1 | 32.7 | **+54.7** (57.81%) |
+
+Difference in mean **17.1 Elo**; pooled head-to-head over all 16 pairings, 12,800 games, **51.80%
+±0.87**, implying **12.5 Elo**. Consistent with §20.3's ~20 Elo between-run SD, now confirmed for
+the continuation case specifically.
+
+**The consequential number is the second column, not the first.** The same 80M leg, measured the
+same way, was worth +86.9 Elo on one seed and +54.7 on the other. A leg's gain therefore carries
+roughly **±16 Elo**, which is larger than most of the differences §23 was reading as a trend.
+
+**Three practices follow.**
+
+* **Quote a leg's gain with ±16, or do not quote it as a trend.** §23's +74.1 then +52.7 for arm D
+  is not evidence of compressing returns; the two are indistinguishable.
+* **Never compare Elo across tournaments.** The identical comparison — D's late four against its own
+  160M final, the same eight files — read 60.50% in the 240M pool and 62.25% here, 1.4σ apart on
+  3,200 games each from sampling alone. Direct head-to-heads carry about ±12 Elo before any seed
+  effect. Within one tournament the numbers are comparable; across two they are not.
+* **A single cell is not a comparison, twice over.** The final snapshots of the two replicates meet
+  at 59.1%, which would put seed variance at ~64 Elo; pooling the sixteen pairings gives 51.80% and
+  ~13. The same trap produced a spurious "E beats D 54.9%" at 240M and a spurious "+52 Elo for E's
+  last leg" at 320M.
+
+**And snapshot averaging damps the stopping point without taming it.** Within-run SD across the last
+four was 5.4 on one seed and 32.7 on the other — a sixfold difference between two runs of one
+configuration, with no visible cause. Four snapshots is the practice, not a guarantee.
+
+---
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a

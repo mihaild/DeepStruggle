@@ -234,6 +234,14 @@ drift is caught separately by `tests/bindings/replay_schema.golden.json`; regene
 
 **Bindings (`bindings/`):** nanobind module (`ts_bindings.cpp`) exports `ts_engine` and a vectorized batch runner. `action_encoder.py` is the bidirectional Python codec for the 212-dim flat action space; `ts_env.py` wraps single and vectorized (batched, C++-driven) environments for RL training.
 
+**Baseline (as of 2026-09-09):** observation layout **v2.1** (3,891 floats, 13 card features), which
+adds the two card-tracking slots — the opponent is known to hold this card, this card is not in the
+game yet — and drops the 512-float history block that was never written to. `--obs-layout` defaults
+to it for `--arch v2` (`legacy` elsewhere, since v2.1 is only wired for v2). The baseline checkpoint
+is `data/checkpoints/arm_E_cont_240to320/snapshot_final.pt` at 320,012,288 steps. It is not stronger
+than legacy — three budgets say the two are tied — but is the same strength for 134,496 fewer
+parameters, and carries the card signal. See `research/experiments.md` §23.
+
 **AI (`ai/`):** `models/coldwar_net.py` (ColdWarNet: GNN GraphConv + card + global ResNet with masked action heads, V1/V2/V3 variants auto-detected from checkpoints). `training/nash_pg.py` implements NashPG — PPO-style loss with KL regularization against a frozen reference policy snapshot (`π_ref`), refreshed periodically, to converge toward Nash equilibrium without cycling. `training/rollout_buffer.py` does trajectory storage + GAE (zero-sum, alternating between players). `rewards/reward_calculator.py` holds the reward strategies (`BlunderAwareRewardCalculator`, `ZeroSumTerminalReward`, `ShapedZeroSumReward`, `UsefulActionsReward`) — perspective-aligned and zero-sum across US/USSR.
 
 **Bots (`bot/`):** all inherit `BaseBot` (`select_action` for dict/JSON-based servers, `select_flat_action` for the fast 212-dim vectorized path, `reset`). Baselines: `random_bot`, `heuristic_bot`, `exploratory_bot`, `strategic_bot` (DEFCON-2 containment focus), `event_heavy_bot`, `human_bot` (interactive CLI); `neural_bot` loads ColdWarNet checkpoints.
