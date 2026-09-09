@@ -229,7 +229,7 @@ class ColdWarNetV2(nn.Module):
 
         # 1. Board Graph Features: (B, 84, 28)
         board_raw = obs[:, self.BOARD_OFFSET : self.BOARD_OFFSET + self.BOARD_SIZE]
-        board_nodes = board_raw.view(batch_size, 84, 28)
+        board_nodes = board_raw.view(batch_size, 84, self.board_features)
         h_board = self.gconv1(board_nodes, self.norm_adj)
         h_board = self.gconv2(h_board, self.norm_adj)  # (B, 84, 64)
         board_mean = torch.mean(h_board, dim=1)  # (B, 64)
