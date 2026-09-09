@@ -10,7 +10,8 @@ import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 from ai.training.behavioral_cloning import HeuristicPolicy, OldHeuristicPolicy
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
+from ai.models.coldwar_net_v2 import (ColdWarNetV2, create_coldwar_net_v2,
+                                     create_for_layout, layout_of)
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 
@@ -169,7 +170,9 @@ class NeuralAgent:
         # assumed. Handing a model the wrong layout does not raise -- it reads fixed slices, so a
         # wider observation is silently misread -- which is why this is derived, not defaulted.
         self.obs_size = int(getattr(self.model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
-        self.legacy_obs = self.obs_size == int(ts.OBS_SIZE_LEGACY)
+        self.layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
+                       int(ts.OBS_SIZE_V21): "v2.1",
+                       int(ts.OBS_SIZE_V22): "v2.2"}.get(self.obs_size, "legacy")
         self.model.eval()
         self.name = name
 
@@ -202,11 +205,11 @@ class NeuralAgent:
             # from a filename, and building at defaults raises a shape error for a v2.1 policy --
             # or worse, would silently reinterpret every card feature by one position if the
             # widths happened to match.
+            layout = layout_of(state_dict)
             card_features = int(state_dict["card_fc.0.weight"].shape[1]) \
                 if "card_fc.0.weight" in state_dict else ColdWarNetV2.CARD_FEATURES
             use_history = any(k.startswith("hist_conv.") for k in state_dict)
-            model = create_coldwar_net_v2(dev, card_features=card_features,
-                                          use_history=use_history)
+            model = create_for_layout(layout, dev)
         else:
             model = create_coldwar_net(dev)
 
@@ -221,7 +224,7 @@ class NeuralAgent:
         player: ts.Player,
         temperature: float = 0.1,
     ) -> int:
-        obs = ts.extract_observation(state, player, legacy=self.legacy_obs)
+        obs = ts.extract_observation(state, player, layout=self.layout)
         mask = ActionEncoder.get_legal_mask(state)
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)

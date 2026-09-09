@@ -13,21 +13,12 @@ from typing import Set
 
 import pytest
 
-from ai.eval.feature_audit import audit, collect, v21_features
+from ai.eval.feature_audit import audit, collect, v22_features
 
-#: Diagnosed dead, with the reason. Shrink this list by wiring the writer, never by adding to it.
-KNOWN_DEAD: Set[str] = {
-    # observation.cpp writes global_features[0..71] of 76.
-    "global/UNWRITTEN_TAIL",
-    # Read by observation.cpp, written by nothing in engine/src. The engine does maintain
-    # realignments_by_region (ops.cpp:412), which the observation in turn never reads.
-    "turn_agg/ops_spent_by_region_mine",
-    "turn_agg/ops_spent_by_region_opp",
-    "turn_agg/headlines_played",
-    "turn_agg/space_attempts",
-    # observation.cpp writes turn_aggregates[0..27] of 32.
-    "turn_agg/UNWRITTEN_TAIL",
-}
+#: Diagnosed dead, with the reason. Empty for v2.2, and it should stay that way: every float in
+#: the observation is now written by something and varies on real positions. A name appearing here
+#: means a feature was added and never wired up.
+KNOWN_DEAD: Set[str] = set()
 
 #: Features that need a broad state sample before they vary; excluded from the live check because
 #: 40 games of uniform-random play is not guaranteed to reach them. They are covered by the
@@ -39,7 +30,7 @@ _SAMPLE_SENSITIVE: Set[str] = {"board", "cards"}
 def rows():
     obs = collect(num_games=40, seed=99)
     assert obs.shape[0] > 3000, f"only {obs.shape[0]} positions; the sample is too thin to judge"
-    return audit(obs, v21_features())
+    return audit(obs, v22_features())
 
 
 def test_the_dead_set_is_exactly_what_has_been_diagnosed(rows) -> None:
@@ -67,8 +58,7 @@ def test_the_model_is_told_the_turn_and_the_action_round(rows) -> None:
 def test_the_phase_and_stack_depth_reach_the_model(rows) -> None:
     """Which decision is being asked, not just where on the board it lands."""
     by_name = {str(r["name"]): r for r in rows}
-    for name in ("global/phase", "global/ctx_stack_depth", "global/i_am_phasing",
-                 "active_player"):
+    for name in ("global/phase", "global/ctx_stack_depth", "global/i_am_phasing"):
         assert not by_name[name]["dead"], f"{name} never varies"
 
 
@@ -79,7 +69,22 @@ def test_the_side_and_hand_sizes_reach_the_model(rows) -> None:
         assert not by_name[name]["dead"], f"{name} never varies"
 
 
-def test_coups_by_region_is_the_one_live_turn_aggregate(rows) -> None:
+def test_the_decision_context_reaches_the_model(rows) -> None:
+    """v2.2's whole point: the network is told what it is being asked, not just the board.
+
+    Before this the observation carried one field of DecisionContext (node_counts, as board
+    feature 25) plus ctx_stack_depth, so mid-play it was asked to place a point without being
+    told which card it was spending or how many points remained.
+    """
     by_name = {str(r["name"]): r for r in rows}
-    assert not by_name["turn_agg/coups_by_region_mine"]["dead"]
-    assert not by_name["turn_agg/coups_by_region_opp"]["dead"]
+    for name in ("ctx/decision_type", "ctx/op_mode", "ctx/remaining_steps",
+                 "ctx/pending_ops_value", "ctx/allow_early_stop", "ctx/timing_ops_first",
+                 "ctx/timing_event_first"):
+        assert name in by_name, f"{name} is missing from the observation"
+        assert not by_name[name]["dead"], f"{name} never varies"
+
+
+def test_no_turn_history_block_remains(rows) -> None:
+    """Dropped rather than completed: three of its four families had no writer, and the network
+    never sliced any of them. A partial turn history is worse than none."""
+    assert not [r for r in rows if str(r["name"]).startswith("turn_agg/")]

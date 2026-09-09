@@ -143,7 +143,7 @@ def test_every_location_lights_exactly_one_slot_in_both_layouts(loc: ts.CardLoca
     state.set_card_location(card, loc)
     for side in (ts.Player.US, ts.Player.USSR):
         legacy = _slots(np.asarray(ts.extract_observation(state, side)), card, LEGACY_FEATURES)
-        v2 = _slots(np.asarray(ts.extract_observation(state, side, legacy=False)), card,
+        v2 = _slots(np.asarray(ts.extract_observation(state, side, layout="v2.1")), card,
                     V21_FEATURES)
         assert len(legacy) == 1, f"legacy gave {legacy} for {loc.name} viewed by {side}"
         assert len(v2) == 1, f"v2 gave {v2} for {loc.name} viewed by {side}"
@@ -160,8 +160,8 @@ def test_v2_separates_known_from_unknown_only_for_the_opponent() -> None:
         for known, expected in ((False, DECK_OR_HIDDEN), (True, KNOWN_OPPONENT_HAND)):
             probe = state.clone()
             probe.set_card_location(card, ts.hand_of(holder, known))
-            opp_view = np.asarray(ts.extract_observation(probe, other, legacy=False))
-            own_view = np.asarray(ts.extract_observation(probe, holder, legacy=False))
+            opp_view = np.asarray(ts.extract_observation(probe, other, layout="v2.1"))
+            own_view = np.asarray(ts.extract_observation(probe, holder, layout="v2.1"))
             assert _slots(opp_view, card, V21_FEATURES) == [expected]
             assert _slots(own_view, card, V21_FEATURES) == [MY_HAND], (
                 "my own hand is my own hand; the split is only about what the opponent has seen")
@@ -171,9 +171,9 @@ def test_v2_separates_known_from_unknown_only_for_the_opponent() -> None:
 # Hand sizes
 # --------------------------------------------------------------------------------------------
 
-def _reported_counts(state: ts.GameState, side: ts.Player, legacy: bool) -> Tuple[float, float]:
-    obs = np.asarray(ts.extract_observation(state, side, legacy=legacy))
-    base = LEGACY_GLOBAL if legacy else V2_GLOBAL
+def _reported_counts(state: ts.GameState, side: ts.Player, layout: str) -> Tuple[float, float]:
+    obs = np.asarray(ts.extract_observation(state, side, layout=layout))
+    base = LEGACY_GLOBAL if layout == "legacy" else V2_GLOBAL
     return (obs[base + OPP_HAND_COUNT] * HAND_COUNT_SCALE,
             obs[base + MY_HAND_COUNT] * HAND_COUNT_SCALE)
 
@@ -185,8 +185,8 @@ def _actual_counts(state: ts.GameState, side: ts.Player) -> Tuple[int, int]:
     return theirs, mine
 
 
-@pytest.mark.parametrize("legacy", [True, False])
-def test_the_model_is_told_how_many_cards_the_opponent_holds(legacy: bool) -> None:
+@pytest.mark.parametrize("layout", ["legacy", "v2.1"])
+def test_the_model_is_told_how_many_cards_the_opponent_holds(layout: str) -> None:
     """A constructed hand of a known size, counted from both sides and in both layouts."""
     state = _fresh()
     for c in range(1, 111):
@@ -199,30 +199,30 @@ def test_the_model_is_told_how_many_cards_the_opponent_holds(legacy: bool) -> No
     for c in range(60, 63):
         state.set_card_location(c, ts.hand_of(ts.Player.US))
 
-    opp_from_us, mine_from_us = _reported_counts(state, ts.Player.US, legacy)
+    opp_from_us, mine_from_us = _reported_counts(state, ts.Player.US, layout)
     assert opp_from_us == pytest.approx(7.0), (
         "the US must be told the USSR holds seven, counting the three it has not seen")
     assert mine_from_us == pytest.approx(3.0)
 
-    opp_from_ussr, mine_from_ussr = _reported_counts(state, ts.Player.USSR, legacy)
+    opp_from_ussr, mine_from_ussr = _reported_counts(state, ts.Player.USSR, layout)
     assert opp_from_ussr == pytest.approx(3.0)
     assert mine_from_ussr == pytest.approx(7.0)
 
 
-@pytest.mark.parametrize("legacy", [True, False])
-def test_hand_counts_include_cards_the_opponent_has_seen(legacy: bool) -> None:
+@pytest.mark.parametrize("layout", ["legacy", "v2.1"])
+def test_hand_counts_include_cards_the_opponent_has_seen(layout: str) -> None:
     """Revealing a card must not change how many the opponent is reported to hold."""
     state = _fresh()
     card = next(c for c in range(1, 111)
                 if ts.in_hand_of(state.get_card_location(c), ts.Player.USSR))
-    before = _reported_counts(state, ts.Player.US, legacy)
+    before = _reported_counts(state, ts.Player.US, layout)
     state.set_card_location(card, ts.revealed(state.get_card_location(card)))
-    after = _reported_counts(state, ts.Player.US, legacy)
+    after = _reported_counts(state, ts.Player.US, layout)
     assert before == after, "a card becoming public did not change whose hand it is in"
 
 
-@pytest.mark.parametrize("legacy", [True, False])
-def test_reported_hand_sizes_match_reality_through_a_whole_game(legacy: bool) -> None:
+@pytest.mark.parametrize("layout", ["legacy", "v2.1"])
+def test_reported_hand_sizes_match_reality_through_a_whole_game(layout: str) -> None:
     """The count the network reads has to be the number of cards actually held, all game.
 
     Played out rather than constructed, because the thing this catches is an engine path that
@@ -241,7 +241,7 @@ def test_reported_hand_sizes_match_reality_through_a_whole_game(legacy: bool) ->
                 break
             for side in (ts.Player.US, ts.Player.USSR):
                 expected_opp, expected_mine = _actual_counts(state, side)
-                got_opp, got_mine = _reported_counts(state, side, legacy)
+                got_opp, got_mine = _reported_counts(state, side, layout)
                 assert got_opp == pytest.approx(float(expected_opp)), (
                     f"seed {seed}, turn {state.turn}: {side} told the opponent holds {got_opp}, "
                     f"actually {expected_opp}")

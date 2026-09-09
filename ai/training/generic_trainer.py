@@ -19,7 +19,8 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
+from ai.models.coldwar_net_v2 import (LAYOUTS, ColdWarNetV2, create_coldwar_net_v2,
+                                      create_for_layout)
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
@@ -552,7 +553,9 @@ def evaluate_and_log_snapshot(
             frozen_net = create_coldwar_net_v2(
                 dev,
                 card_features=getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES),
-                use_history=getattr(model, "use_history", True))
+                use_history=getattr(model, "use_history", True),
+                global_features=getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE),
+                has_tail=getattr(model, "has_tail", True))
         else:
             frozen_net = create_coldwar_net(dev)
         frozen_net.load_state_dict(model.state_dict())
@@ -789,18 +792,19 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    if obs_layout not in ("legacy", "v2.1"):
-        raise ValueError(f"obs_layout must be 'legacy' or 'v2.1', got {obs_layout!r}")
+    if obs_layout not in ("legacy", "v2.1", "v2.2"):
+        raise ValueError(
+            f"obs_layout must be 'legacy', 'v2.1' or 'v2.2', got {obs_layout!r}")
     # One decision, read by both the network's input width and the environment's output width.
     # Deriving them separately is how they would come to disagree.
     legacy_obs = obs_layout == "legacy"
-    card_features = 12 if legacy_obs else 13
+    card_features = int(LAYOUTS[obs_layout]["card_features"])
     # v2 also drops the history block, which is a constant zero vector in every layout, so the
     # network loses the branch that encodes it rather than learning a bias from nothing.
-    use_history = legacy_obs
+    use_history = bool(LAYOUTS[obs_layout]["use_history"])
     if not legacy_obs and arch != "v2":
         raise ValueError(
-            f"obs_layout=v2.1 is only wired for arch=v2, got arch={arch!r}")
+            f"obs_layout={obs_layout} is only wired for arch=v2, got arch={arch!r}")
 
     out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
     os.makedirs(out_dir, exist_ok=True)
@@ -850,8 +854,9 @@ def train_pipeline(
     elif arch == "v3":
         model = create_coldwar_net_v3(dev)
     elif arch == "v2":
-        model = create_coldwar_net_v2(dev, card_features=card_features,
-                                      use_history=use_history)
+        # Shaped from the layout table rather than from card_features and use_history passed
+        # separately, so the two cannot be set to a combination no real layout has.
+        model = create_for_layout(obs_layout, dev)
     else:
         model = create_coldwar_net(dev)
 
@@ -903,10 +908,10 @@ def train_pipeline(
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
                               reward_calculator=reward_calc,
                               start_provider=_start_provider,
-                              legacy_obs=legacy_obs)
+                              layout=obs_layout)
     else:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
-                              reward_calculator=reward_calc, legacy_obs=legacy_obs)
+                              reward_calculator=reward_calc, layout=obs_layout)
 
     # Curriculum timing configuration
     if is_curriculum:

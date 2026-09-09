@@ -373,6 +373,64 @@ void Observation::extract_v21(const GameState& state, Player perspective,
     }
 }
 
+void Observation::extract_v22(const GameState& state, Player perspective,
+                              ObservationBufferV22* out_buf) noexcept {
+    // Built on v2.1 for the same reason v2.1 is built on legacy: the sections that are supposed
+    // to be identical are identical by construction, not by inspection. Only the card block's
+    // extra feature and the global block's extra twenty are v2.2's own work.
+    ObservationBufferV21 v21;
+    Observation::extract_v21(state, perspective, &v21);
+
+    std::memset(out_buf, 0, sizeof(ObservationBufferV22));
+    std::memcpy(out_buf->board_features, v21.board_features, sizeof(v21.board_features));
+    std::memcpy(out_buf->global_features, v21.global_features, sizeof(v21.global_features));
+    // turn_aggregates and active_player are deliberately not carried over; see
+    // ObservationBufferV22.
+
+    // Card block: v2.1's 13 features per card, restrided to 14, plus the active-card marker.
+    const auto& ctx = state.ctx();
+    for (size_t i = 0; i < 110; ++i) {
+        std::memcpy(&out_buf->card_features[i * card_slots::V22_FEATURES],
+                    &v21.card_features[i * card_slots::V21_FEATURES],
+                    card_slots::V21_FEATURES * sizeof(float));
+
+        // The card this decision belongs to. resolving_card is the card whose event is
+        // executing; pending_op_card is the one whose Ops are being spent. They are usually the
+        // same card and are both marked, because "which card am I in the middle of" is the
+        // question this feature answers. Without it the network was asked to place a point with
+        // no indication of what it was spending.
+        const uint8_t card_id = static_cast<uint8_t>(i + 1);
+        const bool active = (ctx.resolving_card == card_id) || (ctx.pending_op_card == card_id);
+        out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
+            active ? 1.0f : 0.0f;
+    }
+
+    // Decision context. Every field here is a pure function of the state, so an observation
+    // remains reproducible from a GameState alone -- which is what lets a run branch from a
+    // snapshot, and what any decision-time search will need.
+    const size_t dt = static_cast<size_t>(ctx.decision_type);
+    if (dt < 8) out_buf->global_features[ctx_slots::DECISION_TYPE + dt] = 1.0f;
+
+    // op_mode is only meaningful while an Op is being spent; SELECT_OP_MODE is where it is
+    // chosen, and before that the field holds whatever the last Op left. Gate on there being a
+    // pending Op so it reads as "no mode" rather than as a stale one.
+    if (ctx.pending_op_card != 0 || ctx.decision_type == DecisionType::POINT_NODE) {
+        const size_t om = static_cast<size_t>(ctx.op_mode);
+        if (om < 3) out_buf->global_features[ctx_slots::OP_MODE + om] = 1.0f;
+    }
+
+    out_buf->global_features[ctx_slots::REMAINING_STEPS]    = static_cast<float>(ctx.remaining_steps) / 7.0f;
+    out_buf->global_features[ctx_slots::PENDING_OPS_VALUE]  = static_cast<float>(ctx.pending_ops_value) / 5.0f;
+    out_buf->global_features[ctx_slots::MAX_PER_COUNTRY]    = static_cast<float>(ctx.max_per_country) / 5.0f;
+    out_buf->global_features[ctx_slots::ALLOW_EARLY_STOP]   = ctx.allow_early_stop ? 1.0f : 0.0f;
+    // 255 means "no branch chosen", which is neither of these.
+    out_buf->global_features[ctx_slots::TIMING_OPS_FIRST]   = (ctx.timing_branch == 0) ? 1.0f : 0.0f;
+    out_buf->global_features[ctx_slots::TIMING_EVENT_FIRST] = (ctx.timing_branch == 1) ? 1.0f : 0.0f;
+    out_buf->global_features[ctx_slots::EVENT_GRANTED_OPS]  = ctx.event_granted_ops ? 1.0f : 0.0f;
+    out_buf->global_features[ctx_slots::SUPPRESS_OP_EVENT]  = ctx.suppress_op_card_event ? 1.0f : 0.0f;
+    out_buf->global_features[ctx_slots::TEMP_CARD_COUNT]    = static_cast<float>(ctx.temp_card_cnt) / 8.0f;
+}
+
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept {
     Observation::extract(state, perspective, out_buf);
 }
@@ -380,6 +438,11 @@ void extract_observation(const GameState& state, Player perspective, Observation
 void extract_observation_v21(const GameState& state, Player perspective,
                             ObservationBufferV21* out_buf) noexcept {
     Observation::extract_v21(state, perspective, out_buf);
+}
+
+void extract_observation_v22(const GameState& state, Player perspective,
+                            ObservationBufferV22* out_buf) noexcept {
+    Observation::extract_v22(state, perspective, out_buf);
 }
 
 } // namespace ts

@@ -362,6 +362,17 @@ struct alignas(64) ObservationBufferV21 {
     float active_player;
 };
 
+struct alignas(64) ObservationBufferV22 {
+    float board_features[84 * 28];
+    float card_features[110 * 14];   // v2.1's 13, plus "this is the card being played"
+    float global_features[92];       // v2.1's 72 written ones, plus the 20-float context
+    // No turn_aggregates and no active_player. Twenty of those 32 floats had no writer anywhere
+    // in the engine, and ColdWarNetV2 never sliced any of them -- its forward pass stops at the
+    // global block -- so the 12 that were written never reached a network either. Which side is
+    // to move is already in global_features[61] (I_AM_US) and in every perspective-relative
+    // feature around it.
+};
+
 // Card status slots, shared by both layouts where they overlap. The v2.1 names are the authority;
 // the legacy layout uses 0..6 with the same meanings, lacks KNOWN_OPPONENT_HAND and UNAVAILABLE,
 // and starts its property block at 7 rather than 8.
@@ -374,8 +385,10 @@ namespace card_slots {
     constexpr size_t ONGOING              = 5;
     constexpr size_t PEEKED               = 6;
     constexpr size_t NOT_IN_GAME          = 7; // v2.1 only
+    constexpr size_t ACTIVE_CARD          = 13; // v2.2 only: resolving_card or pending_op_card
     constexpr size_t LEGACY_FEATURES      = 12;
     constexpr size_t V21_FEATURES          = 13;
+    constexpr size_t V22_FEATURES          = 14;
     constexpr size_t LEGACY_PROPERTY_BASE = 7;
     constexpr size_t V21_PROPERTY_BASE     = 8;
 }
@@ -386,6 +399,27 @@ namespace card_slots {
 constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
                                  + 16 * 32 + 32 + 1;
 constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
+constexpr size_t OBS_SIZE_V22 = 84 * 28 + 110 * card_slots::V22_FEATURES + 92;
+
+// Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
+// invisible: every one of these is a legitimate 0.0 most of the time.
+namespace ctx_slots {
+    // 72, not 76: legacy reserved 76 globals and only ever wrote 0..71, so v2.2 reclaims
+    // the four it left blank rather than carrying them forward as padding.
+    constexpr size_t BASE                 = 72;
+    constexpr size_t DECISION_TYPE        = BASE +  0; // 8 one-hot: NONE..ROLL_DIE
+    constexpr size_t OP_MODE              = BASE +  8; // 3 one-hot: INFLUENCE, COUP, REALIGN
+    constexpr size_t REMAINING_STEPS      = BASE + 11;
+    constexpr size_t PENDING_OPS_VALUE    = BASE + 12;
+    constexpr size_t MAX_PER_COUNTRY      = BASE + 13;
+    constexpr size_t ALLOW_EARLY_STOP     = BASE + 14;
+    constexpr size_t TIMING_OPS_FIRST     = BASE + 15;
+    constexpr size_t TIMING_EVENT_FIRST   = BASE + 16;
+    constexpr size_t EVENT_GRANTED_OPS    = BASE + 17;
+    constexpr size_t SUPPRESS_OP_EVENT    = BASE + 18;
+    constexpr size_t TEMP_CARD_COUNT      = BASE + 19;
+    constexpr size_t COUNT                = 20;
+}
 static_assert(OBS_SIZE_LEGACY == 4293, "the legacy observation width is a checkpoint contract");
 static_assert(OBS_SIZE_V21 == 3891,
               "v2.1 adds one card feature and drops the never-written history block");

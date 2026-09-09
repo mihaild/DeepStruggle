@@ -138,11 +138,11 @@ def test_aldrich_ames_reveal_survives_into_the_observation() -> None:
     state.set_card_location(ALDRICH_AMES, ts.CardLocation.DRAW_DECK)
 
     board, features, known_slot = 84 * 28, 13, 2
-    before = np.asarray(ts.extract_observation(state, ts.Player.USSR, legacy=False))
+    before = np.asarray(ts.extract_observation(state, ts.Player.USSR, layout="v2.1"))
     assert all(before[board + (c - 1) * features + known_slot] == 0.0 for c in (20, 21, 22))
 
     ts.CardHandlers.trigger_event(state, ALDRICH_AMES, ts.Player.USSR)
-    after = np.asarray(ts.extract_observation(state, ts.Player.USSR, legacy=False))
+    after = np.asarray(ts.extract_observation(state, ts.Player.USSR, layout="v2.1"))
     for c in (20, 21, 22):
         assert after[board + (c - 1) * features + known_slot] == 1.0, (
             f"the USSR should be able to name US card {c} after Aldrich Ames")

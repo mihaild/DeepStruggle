@@ -781,30 +781,44 @@ NB_MODULE(ts_engine, m) {
     m.def("decode_flat_action", &ts::ActionMask::decode_flat_action_212);
     m.def("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
 
-    // `legacy` defaults true so every existing caller and every existing checkpoint keeps the
-    // 4293-wide layout it was trained against. Pass legacy=False for the 4403-wide v2 layout,
-    // which splits "the opponent is known to hold this" and "not in the game yet" out of the
-    // old catch-all slot 0.
+    // `layout` names the observation explicitly. It replaced a `legacy` boolean once there was
+    // a third layout: a bool would have had to mean "legacy, or else the newest", which changes
+    // what an unchanged caller receives the next time a layout is added.
+    //
+    //   "legacy" 4293 -- what every pre-v2.1 checkpoint was trained against; frozen
+    //   "v2.1"   3891 -- card tracking in, the dead history block out
+    //   "v2.2"   3988 -- the decision context in, turn_aggregates and active_player out
     m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
-                                    bool legacy) {
-        const size_t n = legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V21;
+                                    const std::string& layout) {
+        size_t n = 0;
+        if (layout == "legacy")     n = ts::OBS_SIZE_LEGACY;
+        else if (layout == "v2.1")  n = ts::OBS_SIZE_V21;
+        else if (layout == "v2.2")  n = ts::OBS_SIZE_V22;
+        else throw std::invalid_argument(
+            "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + layout + "'");
+
         float* data = new float[n];
-        if (legacy) {
+        if (layout == "legacy") {
             ts::ObservationBuffer buf;
             ts::Observation::extract(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
-        } else {
+        } else if (layout == "v2.1") {
             ts::ObservationBufferV21 buf;
             ts::Observation::extract_v21(state, perspective, &buf);
+            std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
+        } else {
+            ts::ObservationBufferV22 buf;
+            ts::Observation::extract_v22(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         }
         size_t shape[1] = { n };
         nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<float*>(p); });
         return nb::ndarray<nb::numpy, float, nb::ndim<1>>(data, 1, shape, owner);
-    }, nb::arg("state"), nb::arg("perspective"), nb::arg("legacy") = true);
+    }, nb::arg("state"), nb::arg("perspective"), nb::arg("layout") = "legacy");
 
     m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
     m.attr("OBS_SIZE_V21") = static_cast<int>(ts::OBS_SIZE_V21);
+    m.attr("OBS_SIZE_V22") = static_cast<int>(ts::OBS_SIZE_V22);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
@@ -826,12 +840,19 @@ NB_MODULE(ts_engine, m) {
         // Fixed for the runner's lifetime. Every consumer reads the whole batch at one width,
         // so a runner that could switch layouts mid-episode would only be a way to produce a
         // buffer whose rows disagree.
-        bool legacy_obs;
+        std::string layout;
         size_t obs_width;
 
-        VectorizedBatchRunner(size_t n, uint64_t base_seed, bool legacy)
-            : num_envs(n), legacy_obs(legacy),
-              obs_width(legacy ? ts::OBS_SIZE_LEGACY : ts::OBS_SIZE_V21) {
+        static size_t width_of(const std::string& l) {
+            if (l == "legacy") return ts::OBS_SIZE_LEGACY;
+            if (l == "v2.1")   return ts::OBS_SIZE_V21;
+            if (l == "v2.2")   return ts::OBS_SIZE_V22;
+            throw std::invalid_argument(
+                "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + l + "'");
+        }
+
+        VectorizedBatchRunner(size_t n, uint64_t base_seed, const std::string& l)
+            : num_envs(n), layout(l), obs_width(width_of(l)) {
             states.resize(n);
             obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * 212);
@@ -857,9 +878,14 @@ NB_MODULE(ts_engine, m) {
             }
             ts::Player p = (states[idx].ctx().decision_player != ts::Player::NONE)
                 ? states[idx].ctx().decision_player : states[idx].phasing_player;
-            if (legacy_obs) {
+            if (layout == "legacy") {
                 ts::ObservationBuffer ob;
                 ts::Observation::extract(states[idx], p, &ob);
+                std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
+                            obs_width * sizeof(float));
+            } else if (layout == "v2.2") {
+                ts::ObservationBufferV22 ob;
+                ts::Observation::extract_v22(states[idx], p, &ob);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             } else {
@@ -984,10 +1010,10 @@ NB_MODULE(ts_engine, m) {
     };
 
     nb::class_<VectorizedBatchRunner>(m, "VectorizedBatchRunner")
-        .def(nb::init<size_t, uint64_t, bool>(), nb::arg("num_envs"),
-             nb::arg("base_seed") = 12345, nb::arg("legacy_obs") = true)
+        .def(nb::init<size_t, uint64_t, const std::string&>(), nb::arg("num_envs"),
+             nb::arg("base_seed") = 12345, nb::arg("layout") = "legacy")
         .def_ro("obs_width", &VectorizedBatchRunner::obs_width)
-        .def_ro("legacy_obs", &VectorizedBatchRunner::legacy_obs)
+        .def_ro("layout", &VectorizedBatchRunner::layout)
         .def("reset_game", &VectorizedBatchRunner::reset_game)
         .def("refresh_all", &VectorizedBatchRunner::refresh_all)
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)

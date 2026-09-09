@@ -1,5 +1,7 @@
 """ColdWarNetV2: Graph-Card Cross-Attention Neural Network for Twilight Struggle."""
 
+from typing import TypedDict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -94,7 +96,8 @@ class ColdWarNetV2(nn.Module):
     ACTION_SPACE_SIZE = 212
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
-                 card_features: int = CARD_FEATURES, use_history: bool = True):
+                 card_features: int = CARD_FEATURES, use_history: bool = True,
+                 global_features: int = GLOBAL_SIZE, has_tail: bool = True):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -106,11 +109,17 @@ class ColdWarNetV2(nn.Module):
         # nowhere -- so with use_history=False both the branch that encodes it and its share of
         # the fusion trunk go away, and the observation is that much narrower.
         self.use_history = bool(use_history)
+        # 76 globals in legacy and v2.1; 96 in v2.2, which appends the decision context --
+        # decision type, op mode, points remaining, the per-country cap, the timing branch.
+        self.GLOBAL_SIZE = int(global_features)
+        # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.2 drops both:
+        # the forward pass never sliced them, so of the 33 floats not one reached the network.
+        self.has_tail = bool(has_tail)
         self.CARD_SIZE = 110 * self.card_features
         self.GLOBAL_OFFSET = self.CARD_OFFSET + self.CARD_SIZE
         self.HIST_OFFSET = self.GLOBAL_OFFSET + self.GLOBAL_SIZE
         hist_width = self.HIST_SIZE if self.use_history else 0
-        self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + 32 + 1
+        self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + (33 if self.has_tail else 0)
 
         # 1. Board Graph Encoder (84 nodes x 28 features -> 64)
         self.gconv1 = GraphConvLayer(28, 64)
@@ -148,9 +157,9 @@ class ColdWarNetV2(nn.Module):
             nn.GELU(),
         )
 
-        # 4. Global Scalars & Flags Encoder (76 features -> 128)
+        # 4. Global Scalars & Flags Encoder (GLOBAL_SIZE features -> 128)
         self.global_proj = nn.Sequential(
-            nn.Linear(76, 128),
+            nn.Linear(self.GLOBAL_SIZE, 128),
             nn.LayerNorm(128),
             nn.GELU(),
         )
@@ -347,13 +356,67 @@ class ColdWarNetV2(nn.Module):
         return log_probs, entropy, v_win.squeeze(-1), v_vp.squeeze(-1)
 
 
+class LayoutSpec(TypedDict):
+    """The model dimensions an observation layout implies."""
+
+    card_features: int
+    global_features: int
+    use_history: bool
+    has_tail: bool
+
+
+#: Every observation layout, as the model dimensions it implies. Keyed by the name the engine and
+#: the CLI use, so there is one spelling of "which layout" across the whole stack.
+LAYOUTS: dict[str, LayoutSpec] = {
+    "legacy": {"card_features": 12, "global_features": 76, "use_history": True,  "has_tail": True},
+    "v2.1":   {"card_features": 13, "global_features": 76, "use_history": False, "has_tail": True},
+    "v2.2":   {"card_features": 14, "global_features": 92, "use_history": False, "has_tail": False},
+}
+
+
 def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           card_features: int = ColdWarNetV2.CARD_FEATURES,
-                          use_history: bool = True) -> ColdWarNetV2:
+                          use_history: bool = True,
+                          global_features: int = ColdWarNetV2.GLOBAL_SIZE,
+                          has_tail: bool = True) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device."""
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
-                         card_features=card_features, use_history=use_history)
+                         card_features=card_features, use_history=use_history,
+                         global_features=global_features, has_tail=has_tail)
     return model.to(device)
+
+
+def create_for_layout(layout: str, device: torch.device | str = "cpu") -> ColdWarNetV2:
+    """The network shaped for a named observation layout."""
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout must be one of {sorted(LAYOUTS)}, got {layout!r}")
+    kw = LAYOUTS[layout]
+    return create_coldwar_net_v2(
+        device,
+        card_features=kw["card_features"],
+        use_history=kw["use_history"],
+        global_features=kw["global_features"],
+        has_tail=kw["has_tail"])
+
+
+def layout_of(state_dict: dict) -> str:
+    """Which observation layout a checkpoint expects, read off its own weights.
+
+    Derived rather than recorded: a checkpoint is a bare state dict, and a model handed the wrong
+    layout does not fail -- it reads fixed slices, so a wrong-width observation is silently
+    misread and the network merely plays badly.
+    """
+    cards = card_features_of(state_dict)
+    g = state_dict.get("global_proj.0.weight")
+    globals_ = int(g.shape[1]) if g is not None else ColdWarNetV2.GLOBAL_SIZE
+    has_hist = any(k.startswith("hist_conv.") for k in state_dict)
+    for name, kw in LAYOUTS.items():
+        if (kw["card_features"] == cards and kw["global_features"] == globals_
+                and kw["use_history"] == has_hist):
+            return name
+    raise ValueError(
+        f"no known layout has card_features={cards}, global_features={globals_}, "
+        f"history={has_hist}")
 
 
 def card_features_of(state_dict: dict) -> int:

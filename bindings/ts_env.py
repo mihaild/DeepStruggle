@@ -149,15 +149,17 @@ class TsVectorizedEnv:
         auto_reset: bool = True,
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
-        legacy_obs: bool = True,
+        layout: str = "legacy",
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
         self.auto_reset = auto_reset
         # Fixed for the environment's lifetime: the model's input width is built from it, so an
         # env that changed layout mid-run would simply be a way to feed a network garbage.
-        self.legacy_obs = legacy_obs
-        self.observation_size = int(ts.OBS_SIZE_LEGACY if legacy_obs else ts.OBS_SIZE_V21)
+        self.layout = str(layout)
+        self.observation_size = int({"legacy": ts.OBS_SIZE_LEGACY,
+                                     "v2.1": ts.OBS_SIZE_V21,
+                                     "v2.2": ts.OBS_SIZE_V22}[self.layout])
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:
@@ -170,7 +172,7 @@ class TsVectorizedEnv:
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
-        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed, legacy_obs)
+        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed, self.layout)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
 
@@ -181,7 +183,7 @@ class TsVectorizedEnv:
         if base_seed is not None:
             self.base_seed = base_seed
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed,
-                                                   self.legacy_obs)
+                                                   self.layout)
         else:
             self.runner.refresh_all()
         for _i in range(self.num_envs):

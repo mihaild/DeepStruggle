@@ -41,15 +41,14 @@ class Feature:
     note: str = ""
 
 
-def v21_features() -> List[Feature]:
-    """The v2.1 observation, named. Offsets follow `engine/src/observation.cpp`."""
+def v22_features() -> List[Feature]:
+    """The v2.2 observation, named. Offsets follow `engine/src/observation.cpp`."""
     board = 84 * 28
-    cards = 110 * 13
+    cards = 110 * 14
     g = board + cards
-    ta = g + 76
     feats: List[Feature] = [
         Feature("board", 0, board, "84 countries x 28"),
-        Feature("cards", board, cards, "110 cards x 13"),
+        Feature("cards", board, cards, "110 cards x 14"),
         # Global block, named individually -- this is where a silent gap would hide.
         Feature("global/my_vp", g + 0, 1),
         Feature("global/defcon", g + 1, 1),
@@ -74,21 +73,23 @@ def v21_features() -> List[Feature]:
         Feature("global/region_vp", g + 64, 6),
         Feature("global/opp_hand_count", g + 70, 1),
         Feature("global/my_hand_count", g + 71, 1),
-        Feature("global/UNWRITTEN_TAIL", g + 72, 4, "no writer in observation.cpp"),
-        # Turn aggregates: read here, but only one family is written by the engine.
-        Feature("turn_agg/ops_spent_by_region_mine", ta + 0, 6, "engine never writes this"),
-        Feature("turn_agg/ops_spent_by_region_opp", ta + 6, 6, "engine never writes this"),
-        Feature("turn_agg/coups_by_region_mine", ta + 12, 6, "written at ops.cpp:322"),
-        Feature("turn_agg/coups_by_region_opp", ta + 18, 6, "written at ops.cpp:322"),
-        Feature("turn_agg/headlines_played", ta + 24, 2, "engine never writes this"),
-        Feature("turn_agg/space_attempts", ta + 26, 2, "engine never writes this"),
-        Feature("turn_agg/UNWRITTEN_TAIL", ta + 28, 4, "no writer in observation.cpp"),
-        Feature("active_player", ta + 32, 1),
+        # The decision context: what is being asked right now, all pure functions of state.
+        Feature("ctx/decision_type", g + 72, 8, "one-hot NONE..ROLL_DIE"),
+        Feature("ctx/op_mode", g + 80, 3, "one-hot INFLUENCE/COUP/REALIGN"),
+        Feature("ctx/remaining_steps", g + 83, 1, "points left in this play"),
+        Feature("ctx/pending_ops_value", g + 84, 1, "effective Ops of the card being spent"),
+        Feature("ctx/max_per_country", g + 85, 1),
+        Feature("ctx/allow_early_stop", g + 86, 1),
+        Feature("ctx/timing_ops_first", g + 87, 1),
+        Feature("ctx/timing_event_first", g + 88, 1),
+        Feature("ctx/event_granted_ops", g + 89, 1),
+        Feature("ctx/suppress_op_event", g + 90, 1),
+        Feature("ctx/temp_card_count", g + 91, 1),
     ]
     return feats
 
 
-def collect(num_games: int, seed: int = 4242, legacy: bool = False) -> npt.NDArray[np.float32]:
+def collect(num_games: int, seed: int = 4242, layout: str = "v2.2") -> npt.NDArray[np.float32]:
     """Observations from self-play games driven by the legal-action distribution.
 
     Random play reaches turn ~2.7 and would leave every late-game feature constant by accident, so
@@ -107,7 +108,7 @@ def collect(num_games: int, seed: int = 4242, legacy: bool = False) -> npt.NDArr
             if player == ts.Player.NONE:
                 player = state.phasing_player
             rows.append(np.asarray(
-                ts.extract_observation(state, player, legacy=legacy), dtype=np.float32))
+                ts.extract_observation(state, player, layout=layout), dtype=np.float32))
             mask = ActionEncoder.get_legal_mask(state)
             legal = np.flatnonzero(np.asarray(mask))
             if legal.size == 0:
@@ -150,12 +151,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=4242)
-    ap.add_argument("--legacy", action="store_true", help="audit the 4293-wide layout instead")
+    ap.add_argument("--layout", default="v2.2", choices=["legacy", "v2.1", "v2.2"],
+                    help="which observation layout to audit")
     a = ap.parse_args()
 
-    obs = collect(a.games, a.seed, legacy=a.legacy)
+    obs = collect(a.games, a.seed, layout=a.layout)
     print(f"{obs.shape[0]:,} positions from {a.games} games, observation width {obs.shape[1]}\n")
-    rows = audit(obs, v21_features())
+    rows = audit(obs, v22_features())
 
     print(f"{'feature':38} {'width':>6} {'const':>7} {'min':>8} {'max':>8}  note")
     dead: List[str] = []

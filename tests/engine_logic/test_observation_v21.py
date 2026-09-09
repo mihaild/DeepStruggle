@@ -35,11 +35,11 @@ def _fresh() -> ts.GameState:
 
 
 def _v2(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, legacy=False), dtype=np.float32)
+    return np.asarray(ts.extract_observation(state, side, layout="v2.1"), dtype=np.float32)
 
 
 def _legacy(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, legacy=True), dtype=np.float32)
+    return np.asarray(ts.extract_observation(state, side, layout="legacy"), dtype=np.float32)
 
 
 def _card_slot(obs: np.ndarray, card: int, slot: int, features: int = V21_FEATURES) -> float:
@@ -200,10 +200,10 @@ def test_revealing_a_card_already_in_the_opponents_hand_changes_only_that_card()
 
 
 def test_the_batch_runner_reports_its_own_width() -> None:
-    legacy_runner = ts.VectorizedBatchRunner(4, 7, True)
-    v2_runner = ts.VectorizedBatchRunner(4, 7, False)
-    assert legacy_runner.obs_width == 4293 and legacy_runner.legacy_obs
-    assert v2_runner.obs_width == 3891 and not v2_runner.legacy_obs
+    legacy_runner = ts.VectorizedBatchRunner(4, 7, "legacy")
+    v2_runner = ts.VectorizedBatchRunner(4, 7, "v2.1")
+    assert legacy_runner.obs_width == 4293 and legacy_runner.layout == "legacy"
+    assert v2_runner.obs_width == 3891 and v2_runner.layout == "v2.1"
     assert np.asarray(legacy_runner.get_observations()).shape == (4, 4293)
     assert np.asarray(v2_runner.get_observations()).shape == (4, 3891)
 
@@ -211,22 +211,22 @@ def test_the_batch_runner_reports_its_own_width() -> None:
 def test_the_batch_runner_defaults_to_legacy() -> None:
     """Every existing call site constructs a runner without the flag."""
     runner = ts.VectorizedBatchRunner(2, 99)
-    assert runner.legacy_obs and runner.obs_width == 4293
+    assert runner.layout == "legacy" and runner.obs_width == 4293
 
 
 def test_runner_rows_match_the_single_state_extractor() -> None:
-    """The batched path and the one-off path must agree, in both layouts."""
-    for legacy in (True, False):
-        runner = ts.VectorizedBatchRunner(3, 555, legacy)
+    """The batched path and the one-off path must agree, in every layout."""
+    for layout in ("legacy", "v2.1", "v2.2"):
+        runner = ts.VectorizedBatchRunner(3, 555, layout)
         rows = np.asarray(runner.get_observations())
         for i in range(3):
             state = runner.get_state(i)
             ctx = state.ctx()
             side = ctx.decision_player if ctx.decision_player != ts.Player.NONE \
                 else state.phasing_player
-            direct = np.asarray(ts.extract_observation(state, side, legacy=legacy))
+            direct = np.asarray(ts.extract_observation(state, side, layout=layout))
             assert np.array_equal(rows[i], direct), (
-                f"batched and direct observations disagree at env {i}, legacy={legacy}")
+                f"batched and direct observations disagree at env {i}, layout={layout}")
 
 
 # --- The China Card ---------------------------------------------------------------------------
