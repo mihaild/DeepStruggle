@@ -369,7 +369,7 @@ struct alignas(64) ObservationBufferV22 {
     // effectively does not arise. can_my_coup / can_opp_coup carry the whole signal.
     float board_features[84 * 26];
     float card_features[110 * 14];   // v2.1's 13, plus "this is the card being played"
-    float global_features[92];       // v2.1's 72 written ones, plus the 20-float context
+    float global_features[101];      // v2.1's 72 written ones, plus the 29-float context
     // No turn_aggregates and no active_player. Twenty of those 32 floats had no writer anywhere
     // in the engine, and ColdWarNetV2 never sliced any of them -- its forward pass stops at the
     // global block -- so the 12 that were written never reached a network either. Which side is
@@ -403,7 +403,7 @@ namespace card_slots {
 constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
                                  + 16 * 32 + 32 + 1;
 constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
-constexpr size_t OBS_SIZE_V22 = 84 * 26 + 110 * card_slots::V22_FEATURES + 92;
+constexpr size_t OBS_SIZE_V22 = 84 * 26 + 110 * card_slots::V22_FEATURES + 101;
 constexpr size_t V22_BOARD_FEATURES = 26;
 
 // Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
@@ -423,7 +423,16 @@ namespace ctx_slots {
     constexpr size_t EVENT_GRANTED_OPS    = BASE + 17;
     constexpr size_t SUPPRESS_OP_EVENT    = BASE + 18;
     constexpr size_t TEMP_CARD_COUNT      = BASE + 19;
-    constexpr size_t COUNT                = 20;
+    // Headline: which stage, and whose card resolves when. Space box 4 makes the order a
+    // mechanic, and none of headline_stage / headline_first_owner was read before.
+    constexpr size_t HEADLINE_STAGE       = BASE + 20;
+    constexpr size_t HEADLINE_FIRST_MINE  = BASE + 21;
+    constexpr size_t HEADLINE_SECOND_MINE = BASE + 22;
+    // Chernobyl's forbidden region as a one-hot, all zero when it is not in play. The three raw
+    // bits at 40..42 encode the same index in binary and stay in the effect dump; this is the
+    // form the network can separate.
+    constexpr size_t CHERNOBYL_REGION     = BASE + 23; // 6 wide
+    constexpr size_t COUNT                = 29;
 }
 static_assert(OBS_SIZE_LEGACY == 4293, "the legacy observation width is a checkpoint contract");
 static_assert(OBS_SIZE_V21 == 3891,

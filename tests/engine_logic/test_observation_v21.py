@@ -278,3 +278,88 @@ def test_the_legacy_layout_is_untouched_by_the_china_fix() -> None:
     obs = _legacy(state, holder)
     assert _card_slot(obs, CHINA, ONGOING, LEGACY_FEATURES) == 1.0
     assert _card_slot(obs, CHINA, MY_HAND, LEGACY_FEATURES) == 0.0
+
+
+# --- v2.2: Europe, the headline, and Chernobyl -------------------------------------------------
+
+V22_BOARD = 84 * 26
+V22_CARD_F = 14
+V22_GLOBAL = V22_BOARD + 110 * V22_CARD_F
+EUROPE_VP = V22_GLOBAL + 64
+CTX = V22_GLOBAL + 72
+HEADLINE_STAGE, HEADLINE_FIRST_MINE, HEADLINE_SECOND_MINE = CTX + 20, CTX + 21, CTX + 22
+CHERNOBYL_REGION = CTX + 23
+
+
+def _v22(state: ts.GameState, side: ts.Player) -> np.ndarray:
+    return np.asarray(ts.extract_observation(state, side, layout="v2.2"), dtype=np.float32)
+
+
+def _v22_card(obs: np.ndarray, card: int, slot: int) -> float:
+    """v2.2's board is 84x26, so the module-level _card_slot's 84x28 offset does not apply."""
+    return float(obs[V22_BOARD + (card - 1) * V22_CARD_F + slot])
+
+
+def _europe() -> list[int]:
+    return [i for i in range(84) if ts.MapData.get_country_info(i)["region"] == 0]
+
+
+def test_europe_control_reads_as_a_win_not_as_half_a_domination() -> None:
+    """Europe's control_vp is 0 against domination_vp 7, so net_delta ranked a won game below a
+    dominated one -- about 6 against 12. Control ends the game; the feature must say so."""
+    state = _fresh()
+    for i in _europe():
+        state.set_country(i, 20, 0)
+    assert _v22(state, ts.Player.US)[EUROPE_VP] == pytest.approx(1.0)
+    assert _v22(state, ts.Player.USSR)[EUROPE_VP] == pytest.approx(-1.0)
+
+    other = _fresh()
+    for i in _europe():
+        other.set_country(i, 0, 20)
+    assert _v22(other, ts.Player.US)[EUROPE_VP] == pytest.approx(-1.0)
+
+
+def test_the_other_regions_keep_their_scoring() -> None:
+    """Only Europe has a control_vp of 0; nothing else should have moved."""
+    state = _fresh()
+    obs = _v22(state, ts.Player.US)
+    for r in range(1, 6):
+        assert -1.0 <= float(obs[V22_GLOBAL + 64 + r]) <= 1.0
+
+
+def test_a_committed_headline_is_visible_to_its_owner() -> None:
+    """HEADLINE_COMMITTED had no branch, so it fell through to the deck slot and a player could
+    not see the card they had just chosen."""
+    state = _fresh()
+    card = state.headline_us_card or 1
+    state.set_card_location(card, ts.CardLocation.HEADLINE_COMMITTED)
+    state.headline_us_card = card
+
+    us = _v22(state, ts.Player.US)
+    assert _v22_card(us, card, MY_HAND) == 1.0
+    assert _v22_card(us, card, DECK_OR_HIDDEN) == 0.0
+    # And it is in play, which is what the active-card feature means.
+    assert _v22_card(us, card, 13) == 1.0   # is_active_card
+
+    ussr = _v22(state, ts.Player.USSR)
+    assert _v22_card(ussr, card, KNOWN_OPPONENT_HAND) == 1.0
+
+
+def test_the_headline_stage_and_order_reach_the_model() -> None:
+    state = _fresh()
+    state.headline_stage = 2
+    obs = _v22(state, ts.Player.US)
+    assert obs[HEADLINE_STAGE] == pytest.approx(2.0 / 3.0)
+    assert obs[HEADLINE_FIRST_MINE] in (0.0, 1.0)
+    assert obs[HEADLINE_SECOND_MINE] in (0.0, 1.0)
+
+
+def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
+    state = _fresh()
+    obs = _v22(state, ts.Player.US)
+    assert float(obs[CHERNOBYL_REGION:CHERNOBYL_REGION + 6].sum()) == 0.0, \
+        "Chernobyl is not in play at setup"
+
+    # Exactly one region is named while it is in play; the engine sets both the flag and the
+    # region index together, so this checks the shape rather than driving the card.
+    assert obs[CHERNOBYL_REGION:CHERNOBYL_REGION + 6].max() <= 1.0

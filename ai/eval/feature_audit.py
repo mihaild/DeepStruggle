@@ -85,6 +85,10 @@ def v22_features() -> List[Feature]:
         Feature("ctx/event_granted_ops", g + 89, 1),
         Feature("ctx/suppress_op_event", g + 90, 1),
         Feature("ctx/temp_card_count", g + 91, 1),
+        Feature("ctx/headline_stage", g + 92, 1),
+        Feature("ctx/headline_first_mine", g + 93, 1),
+        Feature("ctx/headline_second_mine", g + 94, 1),
+        Feature("ctx/chernobyl_region", g + 95, 6, "one-hot, all zero when not in play"),
     ]
     return feats
 

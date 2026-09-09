@@ -23,7 +23,12 @@ KNOWN_DEAD: Set[str] = set()
 #: Features that need a broad state sample before they vary; excluded from the live check because
 #: 40 games of uniform-random play is not guaranteed to reach them. They are covered by the
 #: full-size audit, not here.
-_SAMPLE_SENSITIVE: Set[str] = {"board", "cards"}
+#:
+#: chernobyl_region is the clear case: Chernobyl is a mid-war card and random play ends around
+#: turn 3, so the sample cannot reach it. Reported dead here it would be a false alarm -- the
+#: 150-game audit run at layout v2.2 finds it live. This is the same sampling trap that made an
+#: earlier redundancy pass report nine dead effect bits that were merely unreachable.
+_SAMPLE_SENSITIVE: Set[str] = {"board", "cards", "ctx/chernobyl_region"}
 
 
 @pytest.fixture(scope="module")

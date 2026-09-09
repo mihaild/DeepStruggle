@@ -377,7 +377,7 @@ class LayoutSpec(TypedDict):
 LAYOUTS: dict[str, LayoutSpec] = {
     "legacy": {"card_features": 12, "global_features": 76, "board_features": 28, "use_history": True,  "has_tail": True},
     "v2.1":   {"card_features": 13, "global_features": 76, "board_features": 28, "use_history": False, "has_tail": True},
-    "v2.2":   {"card_features": 14, "global_features": 92, "board_features": 26, "use_history": False, "has_tail": False},
+    "v2.2":   {"card_features": 14, "global_features": 101, "board_features": 26, "use_history": False, "has_tail": False},
 }
 
 

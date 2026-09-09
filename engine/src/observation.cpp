@@ -238,7 +238,16 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
     // Real-Time Regional Scoring VP Differentials for the 6 Regions
     for (size_t r = 0; r < 6; ++r) {
         auto summary = Scoring::evaluate_region(state, static_cast<Region>(r));
-        float my_region_vp = (my_player == Player::US) ? static_cast<float>(summary.net_delta) : -static_cast<float>(summary.net_delta);
+        int16_t net = summary.net_delta;
+        // Europe Control ends the game (scoring.cpp:169-176), but its control_vp is 0 against
+        // domination_vp 7, so net_delta ranks a won position *below* a dominated one -- about 6
+        // against 12 once battlegrounds and adjacency are added. Report the win as a win; the
+        // engine's own shaping potential already special-cases this the same way.
+        if (static_cast<Region>(r) == Region::EUROPE) {
+            if (summary.us_status == RegionalStatus::CONTROL)         net = 20;
+            else if (summary.ussr_status == RegionalStatus::CONTROL)  net = -20;
+        }
+        float my_region_vp = (my_player == Player::US) ? static_cast<float>(net) : -static_cast<float>(net);
         out_buf->global_features[64 + r] = std::clamp(my_region_vp / 20.0f, -1.0f, 1.0f);
     }
 
@@ -396,6 +405,15 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     // turn_aggregates and active_player are deliberately not carried over; see
     // ObservationBufferV22.
 
+    // The same perspective resolution the other extractors do; needed here because the headline
+    // and region features below are relative to it.
+    Player my_player = perspective;
+    if (my_player == Player::NONE) {
+        my_player = (state.ctx().decision_player != Player::NONE)
+            ? state.ctx().decision_player : state.phasing_player;
+        if (my_player == Player::NONE) my_player = Player::US;
+    }
+
     // Card block: v2.1's 13 features per card, restrided to 14, plus the active-card marker.
     const auto& ctx = state.ctx();
     for (size_t i = 0; i < 110; ++i) {
@@ -409,7 +427,27 @@ void Observation::extract_v22(const GameState& state, Player perspective,
         // question this feature answers. Without it the network was asked to place a point with
         // no indication of what it was spending.
         const uint8_t card_id = static_cast<uint8_t>(i + 1);
-        const bool active = (ctx.resolving_card == card_id) || (ctx.pending_op_card == card_id);
+        bool active = (ctx.resolving_card == card_id) || (ctx.pending_op_card == card_id);
+
+        // A card committed to the headline has no branch in the v2.1 chain, so it arrives here as
+        // DECK_OR_HIDDEN -- indistinguishable from a card still in the deck. That hides a player's
+        // own headline from them, and hides the opponent's once both are revealed, which is public
+        // information. Both go to their owner's hand slot: the card has technically left the hand,
+        // but whose it is and that it is in play is what the slot is read for, and a dedicated
+        // slot would cost 110 floats to say the same thing.
+        if (state.card_locations[card_id] == CardLocation::HEADLINE_COMMITTED) {
+            const Player owner = (state.headline_us_card == card_id) ? Player::US
+                               : (state.headline_ussr_card == card_id) ? Player::USSR
+                               : Player::NONE;
+            if (owner != Player::NONE) {
+                float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
+                for (size_t sl = 0; sl < 8; ++sl) row[sl] = 0.0f;
+                row[(owner == my_player) ? card_slots::MY_HAND
+                                         : card_slots::KNOWN_OPPONENT_HAND] = 1.0f;
+                active = true;   // committed to the headline is in play, which is what this means
+            }
+        }
+
         out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
             active ? 1.0f : 0.0f;
     }
@@ -438,6 +476,24 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     out_buf->global_features[ctx_slots::EVENT_GRANTED_OPS]  = ctx.event_granted_ops ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::SUPPRESS_OP_EVENT]  = ctx.suppress_op_card_event ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::TEMP_CARD_COUNT]    = static_cast<float>(ctx.temp_card_cnt) / 8.0f;
+
+    // Headline stage and resolution order. Which card resolves first is a mechanic (Space box 4
+    // lets a player see the opponent's headline before choosing), and none of this reached the
+    // model before.
+    out_buf->global_features[ctx_slots::HEADLINE_STAGE] =
+        static_cast<float>(state.headline_stage) / 3.0f;
+    out_buf->global_features[ctx_slots::HEADLINE_FIRST_MINE] =
+        (state.headline_first_owner == my_player) ? 1.0f : 0.0f;
+    out_buf->global_features[ctx_slots::HEADLINE_SECOND_MINE] =
+        (state.headline_second_owner == my_player) ? 1.0f : 0.0f;
+
+    // Chernobyl's forbidden region, one-hot. All zero when it is not in play.
+    if (state.has_flag(effect_bits::CHERNOBYL_ACTIVE)) {
+        const size_t ch = static_cast<size_t>(
+            (state.persistent_effects & effect_bits::CHERNOBYL_REGION_MASK)
+            >> effect_bits::CHERNOBYL_REGION_SHIFT);
+        if (ch < 6) out_buf->global_features[ctx_slots::CHERNOBYL_REGION + ch] = 1.0f;
+    }
 }
 
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept {
