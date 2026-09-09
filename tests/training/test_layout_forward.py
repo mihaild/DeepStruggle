@@ -77,3 +77,22 @@ def test_the_batch_runner_agrees_with_the_single_extractor(layout: str) -> None:
         side = ctx.decision_player if ctx.decision_player != ts.Player.NONE else st.phasing_player
         direct = np.asarray(ts.extract_observation(st, side, layout=layout))
         assert np.array_equal(rows[i], direct)
+
+
+@pytest.mark.parametrize("layout", LAYOUT_NAMES)
+def test_a_frozen_copy_matches_the_model_it_was_cloned_from(layout: str) -> None:
+    """The snapshot evaluator freezes a copy of the live net and loads its weights into it.
+
+    Built by listing constructor arguments, that has broken twice -- arm E on card_features and
+    use_history, arm F on board_features after the other three were fixed -- and both times only
+    at the first snapshot, minutes into a run. create_like reads every dimension off the model.
+    """
+    from ai.models.coldwar_net_v2 import create_like
+
+    model = create_for_layout(layout)
+    frozen = create_like(model)
+    frozen.load_state_dict(model.state_dict())          # the call that failed in arm F
+    assert frozen.TOTAL_OBS_SIZE == model.TOTAL_OBS_SIZE
+    assert frozen.board_features == model.board_features
+    assert frozen.card_features == model.card_features
+    assert frozen.GLOBAL_SIZE == model.GLOBAL_SIZE

@@ -395,6 +395,24 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     return model.to(device)
 
 
+def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWarNetV2:
+    """A network shaped exactly like `model`.
+
+    Every dimension is read off the model rather than passed in. A frozen evaluation copy built by
+    listing arguments has to list *all* of them, and twice now it has not: arm E died on its first
+    snapshot when card_features and use_history were left at factory defaults, and arm F died the
+    same way on board_features after the other three had been fixed. Reading them from the source
+    removes the class of error rather than the instance.
+    """
+    return create_coldwar_net_v2(
+        device,
+        card_features=int(getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES)),
+        use_history=bool(getattr(model, "use_history", True)),
+        global_features=int(getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE)),
+        has_tail=bool(getattr(model, "has_tail", True)),
+        board_features=int(getattr(model, "board_features", 28)))
+
+
 def create_for_layout(layout: str, device: torch.device | str = "cpu") -> ColdWarNetV2:
     """The network shaped for a named observation layout."""
     if layout not in LAYOUTS:

@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import (LAYOUTS, ColdWarNetV2, create_coldwar_net_v2,
-                                      create_for_layout)
+                                      create_for_layout, create_like)
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
@@ -550,12 +550,8 @@ def evaluate_and_log_snapshot(
             # block width and whether the history branch exists are both configurable now, and a
             # frozen copy built at defaults simply fails to load a v2.1 policy -- which is how
             # arm E died on its first snapshot rather than at startup.
-            frozen_net = create_coldwar_net_v2(
-                dev,
-                card_features=getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES),
-                use_history=getattr(model, "use_history", True),
-                global_features=getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE),
-                has_tail=getattr(model, "has_tail", True))
+            # Every dimension read off the model. Listing them by hand has failed twice.
+            frozen_net = create_like(model, dev)
         else:
             frozen_net = create_coldwar_net(dev)
         frozen_net.load_state_dict(model.state_dict())
