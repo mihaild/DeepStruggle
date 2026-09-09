@@ -246,3 +246,98 @@ cmake --build build_san -j
    stopping at a frame that holds an unanswered `SELECT_OP_MODE` -- those are Ops still owed
    inside the headline, which is what the stack is for.
 17. **Always Update Tests When Changing Card Logic**: Add unit test cases in `engine/tests/` for any new card behaviors, interactions, or edge cases.
+
+---
+
+## 7. Why hand knowledge lives in `CardLocation`
+
+`card_locations` distinguishes `HAND_US_KNOWN` from `HAND_US_UNKNOWN` rather than carrying a
+parallel "known" bitset, and the bare `HAND_US` / `HAND_USSR` constants deliberately no longer
+exist. Both decisions are load-bearing, and re-adding either name would reintroduce roughly
+thirty silent rules bugs.
+
+**As built** (`engine/include/ts/types.hpp`), eleven values, of which four are hand variants:
+
+```
+UNAVAILABLE=0  DRAW_DECK=1  HAND_US_UNKNOWN=2  HAND_US_KNOWN=3  HAND_USSR_UNKNOWN=4
+HAND_USSR_KNOWN=5  DISCARD_PILE=6  REMOVED_FROM_GAME=7  ONGOING_EVENT=8  PEEKED_TEMP=9
+HEADLINE_COMMITTED=10
+```
+
+Access goes through `is_in_any_hand`, `in_hand_of`, `known_to_opponent`, `hand_of`, `hand_holder`
+and `revealed`, never through a bare comparison.
+
+The argument that settled the design follows, kept as it was written in the experiment log
+(`research/experiments.md` §19.5). It proposes `HAND_US` / `HAND_USSR` for the unknown variants;
+those were named `HAND_US_UNKNOWN` / `HAND_USSR_UNKNOWN` when built, precisely so that no old bare
+name survives. Read it for the reasoning, not for the spelling.
+
+
+§19.3 proposed a `known` bitset alongside `card_locations`, and noted that knowledge is
+per-observer so it would need *two* bitsets. **Both of those were wrong.**
+
+**One field is enough.** A card's holder always knows their own hand, so the only fact that varies
+is whether the *other* player knows. `HAND_US_KNOWN` therefore reads unambiguously as "in the US
+hand, and the USSR knows it" — the holder is in the value, and "known" can only mean known to the
+non-holder. There is no second observer to track. The full space is the one proposed:
+
+```
+UNAVAILABLE, DRAW_DECK, HAND_US, HAND_US_KNOWN, HAND_USSR, HAND_USSR_KNOWN,
+DISCARD_PILE, REMOVED_FROM_GAME, ONGOING_EVENT, PEEKED_TEMP, HEADLINE_COMMITTED
+```
+
+`card_locations` is already `uint8_t[111]` using 9 of 256 values, so **two more cost zero bytes** —
+against 14 bytes for a bitset, inside a `GameState` capped at 4 KB.
+
+**And it puts the risk where the compiler can find it.** This is the real argument, and it is a
+counting argument:
+
+| | sites | what goes wrong if one is missed |
+|---|---:|---|
+| writes to `card_locations` | **105** | with a bitset: the card moves to the discard and the bit is not cleared, so the observation reports the opponent holding a card that is visibly in the discard. Silent, and it corrupts the new feature. |
+| reads comparing to a hand | **52** | with separate locations: a known card fails `== HAND_US`, so its holder cannot play it, it vanishes from hand counts and from discard selection. A rules bug — but one that can be made a *compile* error. |
+
+With separate locations the 105 writes are correct by construction: assigning any new location
+destroys the knownness, which is exactly the monotonicity rule — knowledge ends when the card
+leaves the hand, and it ends automatically. With a bitset every one of those 105 sites has to
+remember to clear it.
+
+So the proposal has fewer risky sites (52 against 105) *and* moves the risk from silent to
+detectable. It is the better design on both counts.
+
+**The one condition.** The 52 reads are all bare equality — `card_locations[c] == HAND_US`, or the
+`loc = (p == US) ? HAND_US : HAND_USSR` idiom that then compares. Adding values silently breaks
+every one. So the change must be made compiler-visible: **remove or rename the bare `HAND_US` /
+`HAND_USSR` constants** so that every existing site fails to compile, and reintroduce access through
+helpers:
+
+```cpp
+bool in_hand_of(CardLocation loc, Player p) noexcept;   // either variant
+bool known_to_opponent(CardLocation loc) noexcept;
+CardLocation hand_of(Player p, bool known) noexcept;
+```
+
+Done that way the compiler enumerates all 52 call sites and none can be forgotten. Done by *adding*
+values while leaving the old names in place, roughly thirty of them become silent rules bugs, and
+the engine has been bitten by exactly this before — the `keeps_own_card_location` comment in
+`game_state.hpp` documents Missile Envy being discarded out of a hand it had just been moved into,
+stranding `forced_card_id` on a card nobody held, "and the action mask, which only forces a card
+that is actually in hand, then drops the forced play without a trace."
+
+**A note on precedent.** `PEEKED_TEMP` and `HEADLINE_COMMITTED` are existing non-obvious location
+values, but neither is a *hand variant* — both mean "not in a hand right now", and the code treats
+them as out of play. `HAND_US_KNOWN` would be the first location that must behave **identically to
+an existing location in every rule** and differ **only in the observation**. That is what makes the
+read audit the whole job, and it is why the helper-plus-rename discipline is not optional.
+
+**Observation side.** `canon_loc` (`observation.cpp:160-185`) currently folds opponent-hand cards
+into slot 0 with the draw deck. It gains one case: a card in the opponent's hand that is *known*
+maps to a new slot rather than to 0, while an unknown one keeps folding into 0. From the holder's
+own perspective both variants map to `MY_HAND` unchanged. That is one extra card feature — 110
+floats — against the 512 being removed with the history.
+
+Recommendation unchanged from §19.4, with the mechanism settled: do it as separate locations, in the
+same breaking change as removing the history, behind helpers that force the compiler to walk the 52
+sites. And keep §19.4's caveat — this addresses the §14–§17 card-play cluster, not the game-length
+constraint that §18 identifies as binding.
+

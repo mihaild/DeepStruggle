@@ -6,7 +6,7 @@ which carries no decision: placing two Influence in Angola and one in Zaire is t
 order. Scoring each point against the exact index the human's sequence happened to hold marks the
 model wrong for reordering a play it agrees with. Roughly a third of human decisions sit in
 multi-point plays, though the correction turns out to be worth about half a point rather than
-several (research/experiments.md §9.11): teacher forcing means a disagreement is usually about
+several (research/metrics.md §9.11): teacher forcing means a disagreement is usually about
 which countries, not about their order.
 
 The same holds for every event that distributes or removes several points across countries:

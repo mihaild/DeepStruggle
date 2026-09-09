@@ -50,6 +50,12 @@ is broken — check that before building on the finding.
 Four defects in the evaluation and diagnostic code, three of them the same defect in three
 different files. All are fixed; all invalidate numbers logged before their fix.
 
+Three more of the same character -- silently wrong numbers rather than errors -- were found later
+and are recorded with the experiment that turned them up: **§23.1**, where a model was fed the
+wrong observation layout and misread it without complaint, a tournament nearly rated one checkpoint
+twice, and a snapshot sort returned the wrong four snapshots for one arm while returning the right
+four for the other.
+
 ### 1.1 Survivorship bias in batched diagnostics — three instances
 
 The pattern: run N parallel envs, stop once `num_episodes` episodes have completed, with
@@ -1080,100 +1086,16 @@ apparent mistakes are the log's incompleteness rather than the solver's error, a
 corrections to the hold cost. Conversion mechanics; the finding about human play they rest on
 is §9.5 above.
 
-### 9.11 Agreement with human play, counted without the order of a placement
+### 9.11-9.11.2 Agreement with human play — how the measure is defined
 
-**The measure was wrong, and by construction.** A card played for Operations spends its points one
-at a time and the engine asks a separate `POINT_NODE` question for each, so the log's order is
-whatever the recording happened to write. Placing two Influence in Angola and one in Zaire is the
-same play in any order, and scoring each point against the index the human's sequence happened to
-hold marked the model wrong for reordering a play it agreed with. The same holds for every event
-that spreads or removes several points -- Decolonization, De-Stalinization, Colonial Rear Guards,
-Ussuri River Skirmish, Puppet Governments, COMECON, Marshall Plan, The Reformer, and for removals
-Socialist Governments and East European Unrest.
+**Moved to [`metrics.md`](metrics.md).** A card played for Operations spends its points one at
+a time and the log's order is whatever the recording happened to write, so agreement scores a
+play on the multiset of countries rather than the sequence -- except for coups and
+realignments, where the board changes between points and the order is real. Reordering is
+worth about 0.2 points; the measure is reported alongside a strictly-ordered figure so the
+difference is always visible.
 
-`ai/eval/agreement.py` groups consecutive point decisions belonging to one play and scores the
-group on the multiset of countries rather than the sequence. The model is teacher-forced along the
-human's trajectory, so its own earlier choices cannot take it somewhere the human never went, and
-each point still contributes exactly one comparison -- the two figures are directly comparable and
-only permutations are forgiven. Two points into one country are two entries, so agreeing on the
-country but not the weight still costs.
-
-**It matters less than expected.** Over 60,670 decisions from 120 replays, of which **34% sit in
-multi-point plays**:
-
-| | ordered | unordered | gain |
-|:---|---:|---:|---:|
-| BC on the human corpus | 46.04% | 46.34% | +0.29 |
-| BC on self-play | 33.74% | 34.34% | +0.60 |
-| E3 arm B (human) final | 32.41% | 32.96% | +0.56 |
-| E3 arm A (self-play) final | 32.18% | 32.93% | +0.76 |
-
-**So the ordering artefact was worth about half a point, not the several it might have been.** The
-reason is teacher forcing: at the second point of a play the model already sees the board after the
-human's first placement, so where it disagrees it is usually disagreeing about *which* countries,
-not about the order. Every figure quoted earlier in §9 was pessimistic by roughly this much, which
-changes no conclusion in it -- §9.1's washout still lands at ~32-33% either way.
-
-The correct measure is now the one to use, and `play` is stored as a dataset column so it can be
-applied without re-running conversion, which is the expensive part.
-
-
-### 9.11.1 Coups and realignments are excluded from reordering
-
-Not every run of point decisions is order-free, and §9.11 treated them all as if they were. The
-board changes between points wherever a die is involved: a **realignment** roll is made against the
-influence the last one left, so a different order is a different sequence of odds, and the same
-holds for **coups** — in particular **Che**, whose second coup is offered only if the first removed
-influence, so the pair is a sequence and not a set.
-
-Those are now scored strictly. Implemented as a **blacklist** rather than a whitelist of the
-order-free cases, per the owner: spreading Influence is the ordinary case, and a card that spreads
-it in some new way should be handled without anyone having to remember to add it. Detection needed
-`DecisionContext.op_mode`, which was not exposed to Python.
-
-**It changes the numbers barely at all.** Grouped decisions fall from 34.0% to **31.8%** of the
-total, and the correction each model gets is unchanged to within 0.01 points:
-
-| | ordered | unordered | gain |
-|:---|---:|---:|---:|
-| BC on the human corpus | 46.04% | 46.32% | +0.28 |
-| BC on self-play | 33.74% | 34.33% | +0.59 |
-| E3 arm B (human) final | 32.41% | 32.96% | +0.55 |
-| E3 arm A (self-play) final | 32.18% | 32.93% | +0.75 |
-
-Which is worth knowing in itself: the reordering credit was never resting on coups and
-realignments being wrongly forgiven, so §9.11's figures stand as measured. The measure is now right
-for the right reason rather than by luck.
-
-
-### 9.11.2 Agreement is now the reported figure everywhere
-
-`ai/eval/agreement.evaluate_dataset` takes either dataset and returns both figures, so nothing has
-to re-implement the measure. A directory is the human corpus, which stores the play grouping as a
-column; a file is the self-play set, whose loader gained `stream_with_plays` and recovers the
-grouping while replaying, since that format keeps only a seed and the actions.
-
-BC warmup now reports it every epoch, for both datasets:
-
-```
-Epoch  2/ 2 COMPLETED | Loss: 1.8802 | Strict Acc: 44.81% |
-    Agreement: 47.48% (ordered 47.31%, 20,000 decisions)
-```
-
-Three numbers because they answer different questions. **Strict Acc** is the running in-batch
-figure, computed on shuffled batches while the weights are still moving, and is what the trainer
-always printed. **Agreement** is the measure: an unshuffled pass after the epoch, scoring a play on
-the multiset of countries. **ordered** is that same pass scored strictly, so the gap between the
-last two is exactly what reordering costs and nothing else.
-
-The pass is capped at 20,000 decisions. The self-play format rebuilds its observations by replaying
-from a seed, so a full pass over 2.1M samples would take minutes per epoch; 20,000 gives a figure
-stable to about a tenth of a point.
-
-Note the in-batch and post-epoch numbers differ by a few points (44.81% against 47.31% here) and
-should: one averages over an epoch of changing weights, the other measures the weights the epoch
-ended with.
-
+Numbers measured *with* it stay in this file: §9.12 onward, §14 and §18.4.
 
 ### 9.12 Injection frequency vs alignment — quick arms, INCONCLUSIVE
 
@@ -2313,73 +2235,16 @@ the expensive part. Then measure game length, not agreement, as the primary read
 
 ### 19.5 Separate locations beat a parallel "known" bit — and this reverses §19.3
 
-§19.3 proposed a `known` bitset alongside `card_locations`, and noted that knowledge is
-per-observer so it would need *two* bitsets. **Both of those were wrong.**
+**Moved to [`engine/AGENTS.md`](../engine/AGENTS.md) §7**, which is where someone about to
+touch `card_locations` will read it.
 
-**One field is enough.** A card's holder always knows their own hand, so the only fact that varies
-is whether the *other* player knows. `HAND_US_KNOWN` therefore reads unambiguously as "in the US
-hand, and the USSR knows it" — the holder is in the value, and "known" can only mean known to the
-non-holder. There is no second observer to track. The full space is the one proposed:
-
-```
-UNAVAILABLE, DRAW_DECK, HAND_US, HAND_US_KNOWN, HAND_USSR, HAND_USSR_KNOWN,
-DISCARD_PILE, REMOVED_FROM_GAME, ONGOING_EVENT, PEEKED_TEMP, HEADLINE_COMMITTED
-```
-
-`card_locations` is already `uint8_t[111]` using 9 of 256 values, so **two more cost zero bytes** —
-against 14 bytes for a bitset, inside a `GameState` capped at 4 KB.
-
-**And it puts the risk where the compiler can find it.** This is the real argument, and it is a
-counting argument:
-
-| | sites | what goes wrong if one is missed |
-|---|---:|---|
-| writes to `card_locations` | **105** | with a bitset: the card moves to the discard and the bit is not cleared, so the observation reports the opponent holding a card that is visibly in the discard. Silent, and it corrupts the new feature. |
-| reads comparing to a hand | **52** | with separate locations: a known card fails `== HAND_US`, so its holder cannot play it, it vanishes from hand counts and from discard selection. A rules bug — but one that can be made a *compile* error. |
-
-With separate locations the 105 writes are correct by construction: assigning any new location
-destroys the knownness, which is exactly the monotonicity rule — knowledge ends when the card
-leaves the hand, and it ends automatically. With a bitset every one of those 105 sites has to
-remember to clear it.
-
-So the proposal has fewer risky sites (52 against 105) *and* moves the risk from silent to
-detectable. It is the better design on both counts.
-
-**The one condition.** The 52 reads are all bare equality — `card_locations[c] == HAND_US`, or the
-`loc = (p == US) ? HAND_US : HAND_USSR` idiom that then compares. Adding values silently breaks
-every one. So the change must be made compiler-visible: **remove or rename the bare `HAND_US` /
-`HAND_USSR` constants** so that every existing site fails to compile, and reintroduce access through
-helpers:
-
-```cpp
-bool in_hand_of(CardLocation loc, Player p) noexcept;   // either variant
-bool known_to_opponent(CardLocation loc) noexcept;
-CardLocation hand_of(Player p, bool known) noexcept;
-```
-
-Done that way the compiler enumerates all 52 call sites and none can be forgotten. Done by *adding*
-values while leaving the old names in place, roughly thirty of them become silent rules bugs, and
-the engine has been bitten by exactly this before — the `keeps_own_card_location` comment in
-`game_state.hpp` documents Missile Envy being discarded out of a hand it had just been moved into,
-stranding `forced_card_id` on a card nobody held, "and the action mask, which only forces a card
-that is actually in hand, then drops the forced play without a trace."
-
-**A note on precedent.** `PEEKED_TEMP` and `HEADLINE_COMMITTED` are existing non-obvious location
-values, but neither is a *hand variant* — both mean "not in a hand right now", and the code treats
-them as out of play. `HAND_US_KNOWN` would be the first location that must behave **identically to
-an existing location in every rule** and differ **only in the observation**. That is what makes the
-read audit the whole job, and it is why the helper-plus-rename discipline is not optional.
-
-**Observation side.** `canon_loc` (`observation.cpp:160-185`) currently folds opponent-hand cards
-into slot 0 with the draw deck. It gains one case: a card in the opponent's hand that is *known*
-maps to a new slot rather than to 0, while an unknown one keeps folding into 0. From the holder's
-own perspective both variants map to `MY_HAND` unchanged. That is one extra card feature — 110
-floats — against the 512 being removed with the history.
-
-Recommendation unchanged from §19.4, with the mechanism settled: do it as separate locations, in the
-same breaking change as removing the history, behind helpers that force the compiler to walk the 52
-sites. And keep §19.4's caveat — this addresses the §14–§17 card-play cluster, not the game-length
-constraint that §18 identifies as binding.
+The conclusion, since §19.3 and §19.4 above propose the feature and this settles how it was
+built: knowledge is encoded as extra `CardLocation` values, not as a parallel bitset. One
+field suffices because the holder always knows their own hand, so "known" can only mean known
+to the non-holder. It costs zero bytes in a `GameState` capped at 4 KB, and it moves the risk
+from 105 write sites that must each remember to clear a bit to 52 read sites the compiler can
+be made to enumerate — which is why the bare `HAND_US` / `HAND_USSR` constants were removed
+rather than supplemented.
 
 ## 20. Run-to-run variance, and how much of it is just where you stopped
 
@@ -2646,3 +2511,89 @@ join, which argues against it being a resume artefact, but it is not proven.
   command.
 * The human corpus remains valuable for **evaluation** -- §14-§17 found real defects with it --
   which is consistent with it being poor training supervision.
+
+---
+
+## 23. Observation layout v2.1: card tracking in, dead history out — NEUTRAL at 80M and at 240M
+
+**Question.** §19.2 showed the history slice is a constant zero and §19.5 settled how opponent-card
+knowledge should be encoded. Both changes were made together, as one breaking change to the
+observation. Does the resulting layout play better, worse, or the same?
+
+**Setup.** Two arms matched on everything except the observation layout:
+
+| | arm D | arm E |
+|:---|:---|:---|
+| layout | legacy, 4,293 floats, 12 card features | **v2.1**, 3,891 floats, 13 card features |
+| history branch | present (encoding a constant zero) | removed |
+| opponent's known cards | folded into slot 0 with the draw deck | own slot |
+| parameters | 3,230,279 | **3,095,783** |
+| seed | 20260916 | 20260917 |
+
+Both cold starts, no injection, `blunder_aware` with K=40, 512 envs, `--snapshot-every-steps
+5000000`. Continued by true resume (`--resume`: optimiser moments, reference policy and step
+counter restored), so each is one run carrying on rather than a warm start from its own snapshot.
+Checkpoints in `data/checkpoints/arm_{D,E}_*`. Rated on **four late snapshots per arm** per §20.3,
+400 games a side, `HeuristicBot` anchored at 1500.
+
+**Result.**
+
+| budget | E (v2.1) mean | D (legacy) mean | difference | pooled head-to-head |
+|:---|---:|---:|---:|---:|
+| 80M | 1769.1 (SD 19.6) | 1764.5 (SD 14.6) | **+4.5** | **50.00%** ±0.87 |
+| 240M | 1867.5 (SD 6.1) | 1879.8 (SD 16.0) | **−12.2** | **49.15%** ±0.87 |
+
+The head-to-head figure pools all 16 snapshot pairings, 12,800 games. At 80M a third arm, D′
+(legacy, a different seed), sat 19 Elo from D and is the reference for what a seed draw alone is
+worth; §20.3 puts between-run SD on snapshot-averaged means at about 20.
+
+**Verdict — the layout is neutral, measured twice at three times the budget.** Both differences are
+smaller than the seed reference and point in opposite directions, and both pooled head-to-heads are
+within a point of even. v2.1 is adopted as the baseline on the grounds it was proposed on: it does
+the same work with **134,496 fewer parameters** and 402 fewer observation floats, and it removes a
+branch that §19.2 proved was encoding nothing.
+
+**What has *not* been shown is that card tracking helps.** The layout carries information legacy
+cannot express — which cards the opponent is known to hold — and strength did not move at either
+budget. The plausible reason is that reveal events are rare, so the channel is mostly zero and the
+signal is sparse; that is a hypothesis, not a measurement. Anything claiming a benefit from hand
+knowledge needs a test that makes reveals matter, not another matched arm.
+
+**Budget, which mattered more than the layout.** Within arm D, in the 240M pool: 160M rates 1822.2
+and 240M rates 1879.8, **+57.6 Elo**, head-to-head 56.0%. The previous doubling (80M → 160M) was
+worth roughly +110. Returns are compressing but have not stopped, and §22.4's warning about false
+plateaus still applies. Both arms now beat `dec_turns40` — for a long stretch the strongest model
+here — by 62.9% (D) and 65.8% (E).
+
+**Caveats.** The arms differ in seed as well as layout, so each single comparison confounds the two;
+what licenses the verdict is that both budgets agree and both sit inside the seed reference, not
+either one alone. Four snapshots from one run are correlated, so their SD understates run-level
+variance and the honest reference is §20.3's between-run figure. And 240M is one lineage per layout:
+this says the layout costs nothing, not that no layout could help.
+
+### 23.1 Three measurement faults found while running this, all silent
+
+Each would have produced a plausible wrong number rather than an error, which is §1's pattern.
+
+**A model reads fixed slices, so a wrong-width observation is misread, not rejected.** Arm E's
+in-training evaluations fed the v2.1 network legacy 4,293-wide observations: the board came out
+right by luck, the card block read 1,430 floats spanning cards plus globals, and the global slice
+landed in the legacy history region and was all zeros. Reported 2.0% against `HeuristicBot` and a
+mean final turn of 1.37 while the run's own rollouts averaged turn 6.7 — the contradiction is what
+exposed it. The same 35M snapshot, given its own layout, beats `HeuristicBot` 81.3%. `NeuralAgent`
+now derives the layout from the model and `_assert_width` raises on a mismatch. **Every arm E
+evaluation logged before that fix is void.**
+
+**`snapshot_final.pt` is not a distinct model.** It is weight-identical to the last step snapshot
+(97/97 tensors; only the file hash differs). Listing both in a tournament enters one player twice
+and lets it accumulate a rating partly against its own duplicate. Checked before the 240M run and
+excluded; the 80M comparison had used explicit step snapshots and was unaffected.
+
+**Sorting snapshot paths numerically does not sort them numerically.** `sort -t_ -k2 -n` over full
+paths reads field 2 of a path that is itself full of underscores — `E` in `arm_E_cont_80to240` — so
+every line compares equal and `ls`'s lexical order survives. Lexical equals numeric only while every
+step count has the same digit count: arm D's are all 9 digits and came out correct, while arm E's
+span 85000192 to 240058368, so the 8-digit names sorted last and `tail -4` selected 85M, 90M and 95M
+as that arm's "late" snapshots. Caught before the tournament ran, by printing the selection. **A
+check that passes on one arm by arithmetic accident is not a check** — the selection is now made by
+extracting the step count and sorting on it, and verified to return matched lists for both arms.
