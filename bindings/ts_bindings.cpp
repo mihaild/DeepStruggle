@@ -789,7 +789,7 @@ NB_MODULE(ts_engine, m) {
     //   "v2.1"   3891 -- card tracking in, the dead history block out
     //   "v2.2"   3988 -- the decision context in, turn_aggregates and active_player out
     m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
-                                    const std::string& layout) {
+                                    const std::string& layout, uint32_t flags) {
         size_t n = 0;
         if (layout == "legacy")     n = ts::OBS_SIZE_LEGACY;
         else if (layout == "v2.1")  n = ts::OBS_SIZE_V21;
@@ -808,13 +808,16 @@ NB_MODULE(ts_engine, m) {
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         } else {
             ts::ObservationBufferV22 buf;
-            ts::Observation::extract_v22(state, perspective, &buf);
+            ts::Observation::extract_v22(state, perspective, &buf, flags);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         }
         size_t shape[1] = { n };
         nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<float*>(p); });
         return nb::ndarray<nb::numpy, float, nb::ndim<1>>(data, 1, shape, owner);
-    }, nb::arg("state"), nb::arg("perspective"), nb::arg("layout") = "legacy");
+    }, nb::arg("state"), nb::arg("perspective"), nb::arg("layout") = "legacy",
+       nb::arg("flags") = 0u);
+
+    m.attr("OBS_FLAG_STAGED_CARDS") = static_cast<uint32_t>(ts::obs_flags::STAGED_CARDS);
 
     m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
     m.attr("OBS_SIZE_V21") = static_cast<int>(ts::OBS_SIZE_V21);
@@ -841,6 +844,7 @@ NB_MODULE(ts_engine, m) {
         // so a runner that could switch layouts mid-episode would only be a way to produce a
         // buffer whose rows disagree.
         std::string layout;
+        uint32_t obs_flags_value;
         size_t obs_width;
 
         static size_t width_of(const std::string& l) {
@@ -851,8 +855,8 @@ NB_MODULE(ts_engine, m) {
                 "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + l + "'");
         }
 
-        VectorizedBatchRunner(size_t n, uint64_t base_seed, const std::string& l)
-            : num_envs(n), layout(l), obs_width(width_of(l)) {
+        VectorizedBatchRunner(size_t n, uint64_t base_seed, const std::string& l, uint32_t fl)
+            : num_envs(n), layout(l), obs_flags_value(fl), obs_width(width_of(l)) {
             states.resize(n);
             obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * 212);
@@ -885,7 +889,7 @@ NB_MODULE(ts_engine, m) {
                             obs_width * sizeof(float));
             } else if (layout == "v2.2") {
                 ts::ObservationBufferV22 ob;
-                ts::Observation::extract_v22(states[idx], p, &ob);
+                ts::Observation::extract_v22(states[idx], p, &ob, obs_flags_value);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             } else {
@@ -1010,10 +1014,11 @@ NB_MODULE(ts_engine, m) {
     };
 
     nb::class_<VectorizedBatchRunner>(m, "VectorizedBatchRunner")
-        .def(nb::init<size_t, uint64_t, const std::string&>(), nb::arg("num_envs"),
-             nb::arg("base_seed") = 12345, nb::arg("layout") = "legacy")
+        .def(nb::init<size_t, uint64_t, const std::string&, uint32_t>(), nb::arg("num_envs"),
+             nb::arg("base_seed") = 12345, nb::arg("layout") = "legacy", nb::arg("flags") = 0u)
         .def_ro("obs_width", &VectorizedBatchRunner::obs_width)
         .def_ro("layout", &VectorizedBatchRunner::layout)
+        .def_ro("obs_flags", &VectorizedBatchRunner::obs_flags_value)
         .def("reset_game", &VectorizedBatchRunner::reset_game)
         .def("refresh_all", &VectorizedBatchRunner::refresh_all)
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)

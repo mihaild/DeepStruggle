@@ -757,7 +757,11 @@ class TestMidWarCards:
         done = ts_engine.CardHandlers.trigger_event(state, 77, ts_engine.Player.US)
         assert done == False
         ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 4))
-        assert state.get_card_location(4) == ts_engine.CardLocation.PEEKED_TEMP
+        # Staged, not moved. It used to be parked in PEEKED_TEMP, which is what stopped the mask
+        # offering it twice -- at the cost of a player's own card reading as PEEKED to them, and
+        # to the opponent, since PEEKED_TEMP shows to both sides. "Already chosen" now lives in
+        # ctx.temp_cards, where the handler was recording it anyway.
+        assert ts_engine.in_hand_of(state.get_card_location(4), ts_engine.Player.US)
         action = ts_engine.MicroAction(ts_engine.DecisionType.SELECT_CARD, 0)
         action.flags = 0x80 # CONFIRM_DONE
         ts_engine.CardHandlers.handle_event_step(state, action)

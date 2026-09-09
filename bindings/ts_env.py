@@ -150,6 +150,7 @@ class TsVectorizedEnv:
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
         layout: str = "legacy",
+        obs_flags: int = 0,
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
@@ -157,6 +158,7 @@ class TsVectorizedEnv:
         # Fixed for the environment's lifetime: the model's input width is built from it, so an
         # env that changed layout mid-run would simply be a way to feed a network garbage.
         self.layout = str(layout)
+        self.obs_flags = int(obs_flags)
         self.observation_size = int({"legacy": ts.OBS_SIZE_LEGACY,
                                      "v2.1": ts.OBS_SIZE_V21,
                                      "v2.2": ts.OBS_SIZE_V22}[self.layout])
@@ -172,7 +174,7 @@ class TsVectorizedEnv:
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
-        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed, self.layout)
+        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed, self.layout, self.obs_flags)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
 
@@ -183,7 +185,7 @@ class TsVectorizedEnv:
         if base_seed is not None:
             self.base_seed = base_seed
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed,
-                                                   self.layout)
+                                                   self.layout, self.obs_flags)
         else:
             self.runner.refresh_all()
         for _i in range(self.num_envs):

@@ -408,6 +408,17 @@ constexpr size_t V22_BOARD_FEATURES = 26;
 
 // Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
 // invisible: every one of these is a legitimate 0.0 most of the time.
+// Engine feature flags. A run records which of these it trained under, and anything missing from
+// a record is false -- so an old checkpoint keeps the behaviour it learned without anyone having
+// to remember what that was. Width is not a version number: two layouts of the same width can
+// differ in content, and that difference is invisible to every check we have.
+namespace obs_flags {
+    constexpr uint32_t NONE          = 0u;
+    //: A card staged in ctx.temp_cards is shown to the player whose decision it is. Without this
+    //: the Grain Sales branch asks the US to keep or return a card it cannot see.
+    constexpr uint32_t STAGED_CARDS  = 1u << 0;
+}
+
 namespace ctx_slots {
     // 72, not 76: legacy reserved 76 globals and only ever wrote 0..71, so v2.2 reclaims
     // the four it left blank rather than carrying them forward as padding.

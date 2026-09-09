@@ -25,14 +25,18 @@ public:
     // feature marking the card currently being played, and twenty global scalars describing the
     // decision being asked. What it drops is turn_aggregates and active_player, which the network
     // never sliced.
+    // `flags` is a bitmask of obs_flags. Defaults to none, so a caller that does not know what
+    // a checkpoint was trained under gets the original behaviour rather than the newest.
     static void extract_v22(const GameState& state, Player perspective,
-                           ObservationBufferV22* out_buf) noexcept;
+                           ObservationBufferV22* out_buf,
+                           uint32_t flags = obs_flags::NONE) noexcept;
 };
 
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept;
 void extract_observation_v21(const GameState& state, Player perspective,
                             ObservationBufferV21* out_buf) noexcept;
 void extract_observation_v22(const GameState& state, Player perspective,
-                            ObservationBufferV22* out_buf) noexcept;
+                            ObservationBufferV22* out_buf,
+                            uint32_t flags = obs_flags::NONE) noexcept;
 
 } // namespace ts

@@ -1344,8 +1344,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
             uint8_t card_id = action.primary_id;
             if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US)) {
-                state.card_locations[card_id] = CardLocation::PEEKED_TEMP;
-                if (state.ctx().temp_card_cnt < state.ctx().temp_cards.size()) {
+                // Staged, not moved. The card stays in the US hand until the player confirms,
+                // so it keeps reading as theirs; the mask above skips anything already staged.
+                bool already = false;
+                for (uint8_t k = 0; k < state.ctx().temp_card_cnt &&
+                                    k < state.ctx().temp_cards.size(); ++k) {
+                    if (state.ctx().temp_cards[k] == card_id) { already = true; break; }
+                }
+                if (!already && state.ctx().temp_card_cnt < state.ctx().temp_cards.size()) {
                     state.ctx().temp_cards[state.ctx().temp_card_cnt++] = card_id;
                 }
                 return false;
@@ -1767,6 +1773,21 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                         Operations::get_effective_ops(state, i, Player::US) >= 3) {
                         mask_out[i] = 1;
                     }
+                }
+                break;
+            case card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU:
+                // The cards chosen so far stay in hand until the player confirms, so "already
+                // chosen" is tracked here rather than by moving them out of the hand. Parking
+                // them in PEEKED_TEMP was what stopped a second selection, and it made a
+                // player's own cards read as something they were not.
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (!in_hand_of(state.card_locations[i], p)) continue;
+                    bool already = false;
+                    for (uint8_t k = 0; k < state.ctx().temp_card_cnt &&
+                                        k < state.ctx().temp_cards.size(); ++k) {
+                        if (state.ctx().temp_cards[k] == i) { already = true; break; }
+                    }
+                    if (!already) mask_out[i] = 1;
                 }
                 break;
             default:

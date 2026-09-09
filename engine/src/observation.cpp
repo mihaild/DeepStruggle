@@ -383,7 +383,7 @@ void Observation::extract_v21(const GameState& state, Player perspective,
 }
 
 void Observation::extract_v22(const GameState& state, Player perspective,
-                              ObservationBufferV22* out_buf) noexcept {
+                              ObservationBufferV22* out_buf, uint32_t flags) noexcept {
     // Built on v2.1 for the same reason v2.1 is built on legacy: the sections that are supposed
     // to be identical are identical by construction, not by inspection. Only the card block's
     // extra feature and the global block's extra twenty are v2.2's own work.
@@ -448,20 +448,18 @@ void Observation::extract_v22(const GameState& state, Player perspective,
             }
         }
 
-        // A card staged in ctx.temp_cards is one this decision is *about*: Grain Sales hands the
-        // US a card and asks whether to play it, Star Wars offers one out of the discard pile,
-        // Cambridge Five and "Lone Gunman" show cards from a hand. The engine stages them without
-        // touching card_locations, so the card kept reading DECK_OR_HIDDEN and the player being
-        // asked could not see what they were deciding about -- at the Grain Sales branch the US
-        // chose "play it or give it back" with the card indistinguishable from the draw deck.
+        // obs_flags::STAGED_CARDS. A card in ctx.temp_cards is one this decision is *about* --
+        // Grain Sales hands the US a card and asks whether to keep it -- and the engine stages it
+        // without touching card_locations, so it read as DECK_OR_HIDDEN and the player choosing
+        // could not see what they were choosing. Shown in the PEEKED slot, which is what that slot
+        // means, and only where they could not already see it: Missile Envy's tie-break stages the
+        // giver's own cards and must keep reading MY_HAND.
         //
-        // Only revealed to the player whose decision it is, and only when they could not already
-        // see it. Missile Envy's tie-break stages the giver's *own* cards, and overwriting the
-        // slot there would replace MY_HAND with something weaker.
-        if (state.ctx().decision_player == my_player) {
-            const uint8_t staged = state.ctx().temp_card_cnt;
-            for (uint8_t k = 0; k < staged && k < state.ctx().temp_cards.size(); ++k) {
-                if (state.ctx().temp_cards[k] != card_id) continue;
+        // Behind a flag because arms F and F2 trained without it, and the width is unchanged --
+        // so nothing would catch a checkpoint being evaluated against the wrong one.
+        if ((flags & obs_flags::STAGED_CARDS) && ctx.decision_player == my_player) {
+            for (uint8_t k = 0; k < ctx.temp_card_cnt && k < ctx.temp_cards.size(); ++k) {
+                if (ctx.temp_cards[k] != card_id) continue;
                 float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
                 if (row[card_slots::DECK_OR_HIDDEN] > 0.0f) {
                     row[card_slots::DECK_OR_HIDDEN] = 0.0f;
@@ -529,8 +527,8 @@ void extract_observation_v21(const GameState& state, Player perspective,
 }
 
 void extract_observation_v22(const GameState& state, Player perspective,
-                            ObservationBufferV22* out_buf) noexcept {
-    Observation::extract_v22(state, perspective, out_buf);
+                            ObservationBufferV22* out_buf, uint32_t flags) noexcept {
+    Observation::extract_v22(state, perspective, out_buf, flags);
 }
 
 } // namespace ts

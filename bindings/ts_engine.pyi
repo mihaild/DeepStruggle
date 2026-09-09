@@ -742,8 +742,9 @@ OBS_SIZE_LEGACY: int
 
 OBS_SIZE_V21: int
 OBS_SIZE_V22: int
+OBS_FLAG_STAGED_CARDS: int
 
-def extract_observation(state: GameState, perspective: Player, layout: str = "legacy") -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
+def extract_observation(state: GameState, perspective: Player, layout: str = "legacy", flags: int = 0) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
 
 class ActionMask:
     @staticmethod
@@ -757,13 +758,15 @@ class ActionMask:
 
 class VectorizedBatchRunner:
     def __init__(self, num_envs: int, base_seed: int = 12345,
-                 layout: str = "legacy") -> None: ...
+                 layout: str = "legacy", flags: int = 0) -> None: ...
 
     @property
     def obs_width(self) -> int: ...
 
     @property
     def layout(self) -> str: ...
+    @property
+    def obs_flags(self) -> int: ...
 
     def reset_game(self, arg0: int, arg1: int, /) -> None: ...
 

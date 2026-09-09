@@ -145,7 +145,7 @@ def _observing_conversion(obs: _Observation) -> Iterator[None]:
     original = ts.extract_observation
 
     def observe(state: ts.GameState, perspective: ts.Player,
-                layout: str = "legacy") -> Any:
+                layout: str = "legacy", flags: int = 0) -> Any:
         # Named `perspective` to match the binding it replaces: a caller may pass it
         # by keyword, and a wrapper with a different parameter name would break there
         # and nowhere else.
@@ -172,7 +172,7 @@ def _observing_conversion(obs: _Observation) -> Iterator[None]:
         obs.turns.append(int(state.turn))
         obs.vps.append(int(state.victory_points))
         obs.movers.append(US if mover == ts.Player.US else USSR)
-        return original(state, mover, layout)
+        return original(state, mover, layout, flags)
 
     ts.extract_observation = observe
     try:

@@ -402,43 +402,55 @@ def _staged_decisions(max_games: int = 150):
     return out
 
 
-def test_a_staged_card_is_visible_to_the_player_deciding_about_it() -> None:
+STAGED_CARDS = 1  # ts.OBS_FLAG_STAGED_CARDS
+
+
+def _v22f(state: ts.GameState, side: ts.Player, flags: int) -> np.ndarray:
+    return np.asarray(ts.extract_observation(state, side, layout="v2.2", flags=flags),
+                      dtype=np.float32)
+
+
+def test_without_the_flag_a_staged_card_stays_hidden() -> None:
+    """What arms F and F2 trained on. The width is the same either way, so a checkpoint
+    evaluated under the wrong setting would misread in silence -- which is the whole reason
+    this is a recorded flag and not a new layout."""
     found = _staged_decisions()
     assert found, "no staged-card decision reached; widen the search before trusting this"
     for state, decider, card in found:
-        obs = _v22(state, decider)
-        hidden = _v22_card(obs, card, DECK_OR_HIDDEN)
-        assert hidden == 0.0, (
-            f"card {card} is staged for {decider} to decide about and still reads as "
-            f"deck-or-hidden; they cannot see what they are choosing")
+        if state.get_card_location(card) == ts.CardLocation.PEEKED_TEMP:
+            continue
+        if ts.in_hand_of(state.get_card_location(card), decider):
+            continue
+        assert _v22_card(_v22f(state, decider, 0), card, DECK_OR_HIDDEN) == 1.0
 
 
-def test_a_staged_card_is_not_revealed_to_the_other_player() -> None:
-    """The reveal is for the decision, not a leak of the opponent's hand."""
+def test_with_the_flag_a_staged_card_is_visible_to_the_player_deciding() -> None:
+    found = _staged_decisions()
+    assert found
+    for state, decider, card in found:
+        obs = _v22f(state, decider, STAGED_CARDS)
+        assert _v22_card(obs, card, DECK_OR_HIDDEN) == 0.0, (
+            f"card {card} is staged for {decider} and still reads as deck-or-hidden")
+
+
+def test_the_flag_does_not_reveal_it_to_the_other_player() -> None:
     found = _staged_decisions()
     assert found
     for state, decider, card in found:
         other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
         loc = state.get_card_location(card)
-        # CardLocation::PEEKED_TEMP is the engine's own "temporarily out of play and being
-        # looked at", and the existing chain maps it to the peeked slot for both sides. That is
-        # pre-existing and not what this reveal does, so those cases are not evidence either way.
         if loc == ts.CardLocation.PEEKED_TEMP:
             continue
-        # The case that matters: a card sitting hidden in the decider's hand must not become
-        # visible to the opponent just because a decision is pending about it.
         if ts.in_hand_of(loc, decider) and not ts.known_to_opponent(loc):
-            assert _v22_card(_v22(state, other), card, PEEKED) == 0.0, (
-                f"card {card} is hidden in {decider}'s hand and was revealed to {other}")
+            assert _v22_card(_v22f(state, other, STAGED_CARDS), card, PEEKED) == 0.0
 
 
-def test_a_card_the_decider_already_sees_keeps_its_slot() -> None:
-    """Missile Envy's tie-break stages the giver's own cards; overwriting the slot there would
-    replace MY_HAND with something weaker."""
+def test_the_flag_leaves_a_card_the_decider_already_sees_alone() -> None:
+    """Missile Envy's tie-break stages the giver's own cards; they must keep reading MY_HAND."""
     found = _staged_decisions()
     assert found
     for state, decider, card in found:
         if ts.in_hand_of(state.get_card_location(card), decider):
-            obs = _v22(state, decider)
+            obs = _v22f(state, decider, STAGED_CARDS)
             assert _v22_card(obs, card, MY_HAND) == 1.0
             assert _v22_card(obs, card, PEEKED) == 0.0

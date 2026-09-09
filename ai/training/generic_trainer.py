@@ -34,6 +34,7 @@ from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.batch_tournament import BatchMatchRunner
+from tools.lib.engine_config import to_mask as engine_config_to_mask
 from tools.lib.tournament_evaluator import TournamentEvaluator
 
 # TensorBoard is optional: a missing (or broken) install must never take down a
@@ -733,6 +734,7 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 def train_pipeline(
     arch: str = "v2",
     obs_layout: str = "legacy",
+    engine_config: Optional[Dict[str, bool]] = None,
     seed: Optional[int] = None,
     resume: Optional[str] = None,
     resume_every_snapshot: bool = True,
@@ -793,6 +795,8 @@ def train_pipeline(
             f"obs_layout must be 'legacy', 'v2.1' or 'v2.2', got {obs_layout!r}")
     # One decision, read by both the network's input width and the environment's output width.
     # Deriving them separately is how they would come to disagree.
+    engine_config = dict(engine_config or {})
+    obs_flag_mask = engine_config_to_mask(engine_config)
     legacy_obs = obs_layout == "legacy"
     card_features = int(LAYOUTS[obs_layout]["card_features"])
     # v2 also drops the history block, which is a constant zero vector in every layout, so the
@@ -826,6 +830,9 @@ def train_pipeline(
         "run_id": os.path.basename(out_dir),
         "arch": arch,
         "obs_layout": obs_layout,
+        # Which engine features this run trained under. Anything absent is false, so a
+        # checkpoint from before a flag existed keeps the behaviour it learned.
+        "engine_config": dict(engine_config or {}),
         "seed": seed,
         "resumed_from": resume,
         "base_commit": git_commit,
@@ -904,10 +911,10 @@ def train_pipeline(
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
                               reward_calculator=reward_calc,
                               start_provider=_start_provider,
-                              layout=obs_layout)
+                              layout=obs_layout, obs_flags=obs_flag_mask)
     else:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
-                              reward_calculator=reward_calc, layout=obs_layout)
+                              reward_calculator=reward_calc, layout=obs_layout, obs_flags=obs_flag_mask)
 
     # Curriculum timing configuration
     if is_curriculum:
