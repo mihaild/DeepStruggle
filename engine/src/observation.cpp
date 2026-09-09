@@ -214,7 +214,12 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
     out_buf->global_features[10] = (state.china_card_holder == my_player) ? 1.0f : -1.0f;
     out_buf->global_features[11] = state.china_card_playable ? 1.0f : 0.0f;
 
-    for (size_t b = 0; b < 47; ++b) {
+    // Bits 0..44 only. The span is global_features[12..56]: 57 and 58 are defcon_dropped_to_2
+    // and ctx_stack_depth, assigned just below, so a loop to 47 wrote bits 45 and 46
+    // (SPACE_USSR_ATTEMPT_1/2) and had them overwritten on the next two lines. Their information
+    // reaches the model through global_features[59]/[60] instead. Anything added at bit >= 45
+    // needs its own feature; it will not appear here.
+    for (size_t b = 0; b < 45; ++b) {
         out_buf->global_features[12 + b] = ((state.persistent_effects & (1ULL << b)) != 0) ? 1.0f : 0.0f;
     }
 
@@ -336,6 +341,25 @@ void Observation::extract_v21(const GameState& state, Player perspective,
         } else if (loc == CardLocation::PEEKED_TEMP) {
             slot = card_slots::PEEKED;
         }
+
+        // The China Card is not in card_locations and must not be. It is fixed at ONGOING_EVENT
+        // for the whole game because the cards that scan a hand -- Grain Sales To Soviets, Five
+        // Year Plan, Missile Envy, The Cambridge Five, Terrorism -- test membership through
+        // card_locations, and a hand variant there would let it be stolen, discarded or forced,
+        // which the rules forbid. So the observation reads china_card_holder directly, which is
+        // public knowledge: both players always know who holds it.
+        //
+        // Without this the card block showed it as an ongoing event in every position, to holder
+        // and opponent alike, and the card branch never saw the one card that is always safe to
+        // play -- 4 Ops, no event of its own, so it can never fire an opponent event and can never
+        // move DEFCON. Whether it is playable *this* turn stays in global_features[11]; being face
+        // down does not take it out of the hand.
+        if (i == card_ids::THE_CHINA_CARD) {
+            slot = (state.china_card_holder == my_player) ? card_slots::MY_HAND
+                 : (state.china_card_holder == opp_player) ? card_slots::KNOWN_OPPONENT_HAND
+                 : card_slots::DECK_OR_HIDDEN;
+        }
+
         out_buf->card_features[offset + slot] = 1.0f;
 
         const size_t base = card_slots::V21_PROPERTY_BASE;

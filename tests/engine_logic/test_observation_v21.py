@@ -227,3 +227,54 @@ def test_runner_rows_match_the_single_state_extractor() -> None:
             direct = np.asarray(ts.extract_observation(state, side, legacy=legacy))
             assert np.array_equal(rows[i], direct), (
                 f"batched and direct observations disagree at env {i}, legacy={legacy}")
+
+
+# --- The China Card ---------------------------------------------------------------------------
+#
+# card_locations[6] is ONGOING_EVENT for the whole game and has to stay that way: the cards that
+# scan a hand (Grain Sales To Soviets, Five Year Plan, Missile Envy, The Cambridge Five,
+# Terrorism) test membership through card_locations, so a hand variant there would let the China
+# Card be stolen, discarded or forced. v2.1 therefore reads china_card_holder in the observation
+# instead. Before that, the card block showed it as an ongoing event in every position sampled --
+# to holder and opponent alike -- so the card branch never saw the one card that is always safe to
+# play.
+
+CHINA = 6
+
+
+def test_the_china_card_reads_as_a_hand_card_to_its_holder() -> None:
+    state = _fresh()
+    holder = state.china_card_holder
+    other = ts.Player.US if holder == ts.Player.USSR else ts.Player.USSR
+
+    assert _card_slot(_v2(state, holder), CHINA, MY_HAND) == 1.0
+    assert _card_slot(_v2(state, holder), CHINA, ONGOING) == 0.0
+    # Its holder is public in this game, so the opponent sees it as a known held card.
+    assert _card_slot(_v2(state, other), CHINA, KNOWN_OPPONENT_HAND) == 1.0
+    assert _card_slot(_v2(state, other), CHINA, ONGOING) == 0.0
+
+
+def test_the_china_card_stays_a_hand_card_while_face_down() -> None:
+    """Passing it face down makes it unplayable this turn; it has not left the hand.
+
+    Playability is global_features[11] and is a separate question from where the card is.
+    """
+    state = _fresh()
+    holder = state.china_card_holder
+    state.china_card_playable = 0
+    assert _card_slot(_v2(state, holder), CHINA, MY_HAND) == 1.0
+
+
+def test_the_engine_still_holds_the_china_card_out_of_play() -> None:
+    """The observation changed; card_locations did not, and must not."""
+    state = _fresh()
+    assert state.get_card_location(CHINA) == ts.CardLocation.ONGOING_EVENT
+
+
+def test_the_legacy_layout_is_untouched_by_the_china_fix() -> None:
+    """Legacy has to keep reproducing the observation its checkpoints were trained against."""
+    state = _fresh()
+    holder = state.china_card_holder
+    obs = _legacy(state, holder)
+    assert _card_slot(obs, CHINA, ONGOING, LEGACY_FEATURES) == 1.0
+    assert _card_slot(obs, CHINA, MY_HAND, LEGACY_FEATURES) == 0.0
