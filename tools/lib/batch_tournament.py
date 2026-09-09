@@ -57,11 +57,13 @@ def _obs_for(
     if not mixed:
         return obs_batch[indices]
     layout = str(getattr(agent, "layout", "legacy"))
+    flags = int(getattr(agent, "obs_flags", 0))
     rows = []
     for idx in indices:
         st = runner.get_state(int(idx))
         rows.append(np.asarray(
-            ts.extract_observation(st, ts.Player(int(d_players[idx])), layout=layout),
+            ts.extract_observation(st, ts.Player(int(d_players[idx])), layout=layout,
+                                   flags=flags),
             dtype=np.float32))
     return np.stack(rows) if rows else np.zeros((0, getattr(agent, "obs_size", 4293)),
                                                 dtype=np.float32)
@@ -112,10 +114,13 @@ class BatchMatchRunner:
         # not a shape error the runner would raise on -- a model reads fixed slices, so it misreads
         # a wrong-width observation silently and just plays badly -- so mixed matchups take the
         # per-state path in _obs_for below, and the runner's own layout stops mattering.
-        layouts = {getattr(a, "layout", "legacy") for a in (agent_a, agent_b)
-                   if getattr(a, "model", None) is not None}
+        # The engine flags count as part of the layout here: two agents at the same width but
+        # different flags see different observations, and one runner emits only one of them.
+        layouts = {(getattr(a, "layout", "legacy"), int(getattr(a, "obs_flags", 0)))
+                   for a in (agent_a, agent_b) if getattr(a, "model", None) is not None}
         mixed_layouts = len(layouts) > 1
-        runner_layout = "legacy" if mixed_layouts else (layouts.pop() if layouts else "legacy")
+        runner_layout, runner_flags = ("legacy", 0) if mixed_layouts else (
+            layouts.pop() if layouts else ("legacy", 0))
 
         # Resume from supplied positions instead of dealing fresh games. Each position is
         # played twice with the sides swapped, which is the same pairing the seeded path
@@ -176,7 +181,8 @@ class BatchMatchRunner:
             cur_games = cur_half * 2
             seed_start = base_seed + (chunk_idx * chunk_size)
 
-            runner = ts.VectorizedBatchRunner(cur_games, seed_start, runner_layout)
+            runner = ts.VectorizedBatchRunner(cur_games, seed_start, runner_layout,
+                                              runner_flags)
             # Paired deals: env i and env i + cur_half are the same matchup with the sides
             # swapped, so give them the same seed and therefore the same shuffle. Deal luck
             # then cancels between the halves rather than adding variance to the result.

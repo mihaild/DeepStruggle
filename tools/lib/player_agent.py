@@ -12,6 +12,7 @@ from ai.training.behavioral_cloning import HeuristicPolicy, OldHeuristicPolicy
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import (ColdWarNetV2, create_coldwar_net_v2,
                                      create_for_layout, layout_of)
+from tools.lib.engine_config import mask_for_checkpoint
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 
@@ -163,6 +164,7 @@ class NeuralAgent:
         model: Union[ColdWarModel, nn.Module],
         name: str = "NeuralBot",
         device: Optional[Union[torch.device, str]] = None,
+        obs_flags: int = 0,
     ):
         self.device = resolve_device(device) if device is not None else next(model.parameters()).device
         self.model = cast(ColdWarModel, model.to(self.device))
@@ -173,6 +175,10 @@ class NeuralAgent:
         self.layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                        int(ts.OBS_SIZE_V21): "v2.1",
                        int(ts.OBS_SIZE_V22): "v2.2"}.get(self.obs_size, "legacy")
+        # Which engine features the checkpoint trained under. The observation width is identical
+        # with a flag on or off, so this cannot be read off the weights and is never guessed --
+        # it comes from the run's recorded engine_config, and defaults to none.
+        self.obs_flags = int(obs_flags)
         self.model.eval()
         self.name = name
 
@@ -216,7 +222,8 @@ class NeuralAgent:
         load_checkpoint_into(model, state_dict)
         model.to(dev)
         agent_name = name or os.path.splitext(os.path.basename(checkpoint_path))[0]
-        return cls(model=model, name=agent_name, device=dev)
+        return cls(model=model, name=agent_name, device=dev,
+                   obs_flags=mask_for_checkpoint(checkpoint_path))
 
     def select_action(
         self,
@@ -224,7 +231,8 @@ class NeuralAgent:
         player: ts.Player,
         temperature: float = 0.1,
     ) -> int:
-        obs = ts.extract_observation(state, player, layout=self.layout)
+        obs = ts.extract_observation(state, player, layout=self.layout,
+                                     flags=self.obs_flags)
         mask = ActionEncoder.get_legal_mask(state)
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)

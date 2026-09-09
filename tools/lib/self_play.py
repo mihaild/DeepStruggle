@@ -11,6 +11,7 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
 from ai.eval.blunders import BlunderCounts, check_play
+from tools.lib.engine_config import mask_for_checkpoint
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
@@ -57,6 +58,9 @@ def generate_self_play_replay(
     # -- so a v2.1 or v2.2 policy was silently handed the wrong regions and played accordingly,
     # without raising. Every self-play replay generated for a non-legacy checkpoint before this
     # was produced by a model reading scrambled input.
+    # Flags come from the checkpoint's run metadata when a path was given; a model object
+    # handed in directly carries no provenance, so none are applied.
+    obs_flag_mask = mask_for_checkpoint(model) if isinstance(model, str) else 0
     _obs_width = int(getattr(active_model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
     obs_layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                   int(ts.OBS_SIZE_V21): "v2.1",
@@ -107,7 +111,8 @@ def generate_self_play_replay(
         p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
         player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
 
-        obs = np.array(ts.extract_observation(state, p, layout=obs_layout),
+        obs = np.array(ts.extract_observation(state, p, layout=obs_layout,
+                                              flags=obs_flag_mask),
                        copy=False).reshape(1, -1)
         mask = np.array(ActionEncoder.get_legal_mask(state), copy=False).reshape(1, -1)
 
