@@ -24,10 +24,13 @@ product. The literature behind the ordering is in [`../references.md`](../refere
 | P4 | [setup: macro-action credit](P4_setup_macro_action_credit.md) | λ=1 inside a placement block, bootstrap at its boundary | 1 arm × 2 seeds × 80M | P0 setup probe |
 | P5 | [oracle critic](P5_oracle_critic.md) | the implemented-but-never-measured privileged critic as a deal-side variance reducer | 1 arm × 2 seeds × 80M | after P2, so it is not confounded |
 | P6 | [attention backbone](P6_attention_backbone.md) | global attention over country + card tokens | 1 arm × 2 seeds × 80M | perturbation probe still flat after P1–P2 |
-| — | [reserve](reserve.md) | annealed shaping, league, AIVAT evaluation, the cloud consolidation run | — | triggered by specific measurements |
+| P7 | [human data](P7_human_data.md) | ~3,000 strong one-perspective games: conversion + strength-split instruments; positions as a small start pool; critic-only targets; a §22 replication as the discriminator | conversion now; 3 arms × 2 seeds × 80M | conversion first; the arms slot in once positions exist |
+| — | [reserve](reserve.md) | annealed shaping, league, AIVAT evaluation, human-policy anchors, the cloud consolidation run | — | triggered by specific measurements |
 
 Order is by expected information per GPU-hour, and P4 may move ahead of P2 if P0's setup probe
 is as bad as the anecdotes say — it is the cheapest change aimed at the most visible failure.
+P7's conversion is engineering time, not GPU time, and runs alongside P0–P2; its arms take the
+next free slot once positions exist.
 
 ## Budget rule
 

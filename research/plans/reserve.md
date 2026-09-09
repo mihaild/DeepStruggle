@@ -47,6 +47,34 @@ The 51-atom "VP & end types" head of `ideas_and_plans.md` §3.
 **Trigger:** P3 finds search helps on *beyond-horizon* decisions (setup, battlegrounds), which
 would say the policy head, not the critic, is what is weak.
 
+## Human policy anchor, card-level only (piKL form)
+**Trigger:** P7d — the §22 replication with the new corpus — *still* costs Elo, i.e. the
+mechanism, not the data, was at fault. A fixed human-trained policy π_h as a second KL anchor
+in `nash_pg.py` (the machinery already exists for π_ref; this one is never refreshed), small
+coefficient annealed to zero, applied only at card-level decision types (`SELECT_CARD`,
+headline, play mode, space) where strong players agree and self-play is blind; placement
+micro-actions untouched. `paper_cicero_diplomacy.md`, `paper_kl_regularized_search.md`.
+
+## Advantage-filtered imitation
+**Trigger:** P7d now *helps*, i.e. the old corpus was at fault. Imitate a human decision only
+where the current critic does not rate it clearly bad (the P1 filtering machinery, applied to
+the injected batch), so mistakes in the corpus are not copied. Still policy-side; still behind
+P7b/P7c.
+
+## Expert iteration on human positions
+**Trigger:** P7b adopted and P3 finds search helps. Run P3's determinized searcher on human
+positions — boards self-play never reaches — and distil into the network. Combines the
+state-distribution benefit with the model's own value; no human *decision* is imitated.
+
+## Belief-head targets from reconstructed human hands
+**Trigger:** P5 adopted and the opponent hands in the P7 corpus are determined by the solver
+for a useful share of positions. Supervised targets for β_opp on human play.
+
+## Setup anchor from human setups
+**Trigger:** P4 (macro-action credit) and its MC-target fallback both fail to move the setup
+probe. ~3,000 strong setups are a good prior for a decision with ~1,000 candidates; yardstick
+first (P0), prior only if learning it from the game fails.
+
 ## The cloud consolidation run
 **Trigger:** the recipe is fixed — no queued step would change it. Then one ~400M-step run of
 the winning configuration on rented GPUs (arm E was still gaining ~57 Elo per budget doubling
