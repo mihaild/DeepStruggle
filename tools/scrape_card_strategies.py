@@ -21,24 +21,27 @@ with open(CARDS_JSON, "r", encoding="utf-8") as f:
     cards_list = json.load(f)
     cards_dict: Dict[int, Dict[str, Any]] = {c["id"]: c for c in cards_list}
 
-# Load list page to extract exact canonical URLs
-with open("/home/mihaild/.gemini/antigravity-ide/brain/d50a8c6e-f3ee-4ffd-b654-77ad741ed39f/.system_generated/steps/15/content.md", "r", encoding="utf-8") as f:
-    soup = bs4.BeautifulSoup(f.read(), "html.parser")
-
-entry_content = soup.find("div", class_="entry-content")
-tables = entry_content.find_all("table")
+# Load list page to extract canonical URLs if present
+list_page_path = os.environ.get("STRATEGY_LIST_PAGE", os.path.join(CACHE_DIR, "card_list.html"))
 card_urls: Dict[int, str] = {}
-for table in tables:
-    for tr in table.find_all("tr"):
-        tds = tr.find_all(["td", "th"])
-        if not tds:
-            continue
-        row_text = [td.get_text(strip=True) for td in tds]
-        a = tr.find("a")
-        if a and a.get("href"):
-            match = re.match(r"^#?(\d+)", row_text[0])
-            if match:
-                card_urls[int(match.group(1))] = a.get("href")
+if os.path.exists(list_page_path):
+    with open(list_page_path, "r", encoding="utf-8") as f:
+        soup = bs4.BeautifulSoup(f.read(), "html.parser")
+
+    entry_content = soup.find("div", class_="entry-content")
+    if entry_content:
+        tables = entry_content.find_all("table")
+        for table in tables:
+            for tr in table.find_all("tr"):
+                tds = tr.find_all(["td", "th"])
+                if not tds:
+                    continue
+                row_text = [td.get_text(strip=True) for td in tds]
+                a = tr.find("a")
+                if a and a.get("href"):
+                    match = re.match(r"^#?(\d+)", row_text[0])
+                    if match:
+                        card_urls[int(match.group(1))] = a.get("href")
 
 
 def clean_inner_html_to_markdown(elem: bs4.PageElement) -> str:

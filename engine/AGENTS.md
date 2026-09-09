@@ -18,7 +18,7 @@ This directory contains the zero-allocation, high-throughput simulation engine f
 
 > [!IMPORTANT]
 > **Keep Engine Documentation Synchronized**:
-> Whenever adding or modifying card handlers (`events/*.cpp`), updating `GameState`, adding tests in `tests/`, or adjusting fuzzer/sanitizer flags, you **MUST** update this file and root [`AGENTS.md`](file:///home/mihaild/prog/ts_ai/AGENTS.md).
+> Whenever adding or modifying card handlers (`events/*.cpp`), updating `GameState`, adding tests in `tests/`, or adjusting fuzzer/sanitizer flags, you **MUST** update this file and root [`AGENTS.md`](../AGENTS.md).
 >
 > **Mandatory Engine Change Rule**:
 > Agents must **NEVER make any changes to the C++ engine (`engine/`) without explicitly asking the user and obtaining prior confirmation**.

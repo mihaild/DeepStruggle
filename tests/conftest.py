@@ -92,9 +92,11 @@ def generated_replay_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[s
     previous = os.environ.get(REPLAYS_DIR_ENV)
     os.environ[REPLAYS_DIR_ENV] = str(target)
     try:
+        from ai.models.coldwar_net import create_coldwar_net
         from tools.lib.self_play import generate_self_play_replay
 
         _, saved = generate_self_play_replay(
+            model=create_coldwar_net("cpu"),
             seed=2026,
             game_id="fixture_selfplay",
             output_path=out,

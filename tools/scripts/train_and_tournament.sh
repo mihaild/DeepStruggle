@@ -21,7 +21,7 @@ echo " Arch: $ARCH | Duration: ${DURATION}s | Snapshot Every: ${SNAPSHOT_INTERVA
 echo " Warmup Checkpoint: ${WARMUP_CHECKPOINT:-None}"
 echo "================================================================================"
 
-TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/home/mihaild/prog/ts_ai/.triton_cache}" \
+TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$(pwd)/.triton_cache}" \
 PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch "$ARCH" \
   --duration-seconds "$DURATION" \

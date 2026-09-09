@@ -8,4 +8,5 @@ project-excludes = [
 ]
 search-path = [
     "external/struggler/src",
+    "bindings",
 ]

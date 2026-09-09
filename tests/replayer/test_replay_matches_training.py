@@ -103,12 +103,13 @@ def test_generator_never_asks_the_policy_at_a_chance_node(tmp_path) -> None:
     the defect that halved replay game length.
     """
     pytest.importorskip("torch")
+    from ai.models.coldwar_net import create_coldwar_net
     from tools.lib.self_play import generate_self_play_replay
 
     # Write into tmp_path: the workbench lists data/replays non-recursively, and a test
     # artefact appearing beside real games is how a stale replay gets reviewed by mistake.
     log, _ = generate_self_play_replay(
-        model_path=None, seed=91004, temperature=0.3,
+        model=create_coldwar_net("cpu"), seed=91004, temperature=0.3,
         game_id="pytest_replay_contract", device="cpu", verbose=False,
         output_path=str(tmp_path / "pytest_replay_contract.tslog.json"),
     )

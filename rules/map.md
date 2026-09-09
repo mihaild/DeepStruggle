@@ -1,6 +1,6 @@
 # Twilight Struggle: Complete 84-Country Map Topology Specification
 
-This document provides the exhaustive country-by-country graph topology of the Deluxe Edition board (84 countries + 2 superpower nodes). It cross-references [`map.json`](file:///home/mihaild/prog/ts_ai/map.json) and [`render_map.py`](file:///home/mihaild/prog/ts_ai/render_map.py).
+This document provides the exhaustive country-by-country graph topology of the Deluxe Edition board (84 countries + 2 superpower nodes). It cross-references [`map.json`](map.json) and [`render_map.py`](render_map.py).
 
 ---
 

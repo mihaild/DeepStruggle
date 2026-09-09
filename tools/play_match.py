@@ -288,7 +288,7 @@ def main():
     if args.agent is not None and os.path.exists(args.agent):
         from tools.lib.self_play import generate_self_play_replay
         generate_self_play_replay(
-            model_path=args.agent,
+            model=args.agent,
             seed=match_seed,
             temperature=args.temperature,
             game_id=args.game_id,

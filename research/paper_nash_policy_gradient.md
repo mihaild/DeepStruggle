@@ -24,7 +24,7 @@ While DeepMind's R-NaD established convergence guarantees, it suffered from prac
 ---
 
 ## 3. Implementation in Our Codebase
-NashPG serves as the core training engine in [`ai/training/nash_pg.py`](file:///home/mihaild/prog/ts_ai/ai/training/nash_pg.py):
+NashPG serves as the core training engine in [`ai/training/nash_pg.py`](../ai/training/nash_pg.py):
 - Maintains the frozen reference anchor network $\pi_{\text{ref}}^{(k)}$.
 - Evaluates legal-action KL divergence over batch rollouts.
 - Integrates seamlessly with GAE, PPO clipping, and multi-temperature exploration.

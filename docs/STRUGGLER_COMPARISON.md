@@ -90,7 +90,7 @@ All 110 cards (Early War 1..35, Mid War 36..81, Late War 82..110) match 100% in:
 
 ## 4. Game Rules & Mechanics Validation
 
-The cross-engine differential validation suite ([`tests/test_struggler_differential.py`](file:///home/mihaild/prog/ts_ai/tests/test_struggler_differential.py)) proves mechanical parity across the following systems:
+The cross-engine differential validation suite ([`tests/differential/test_unified_differential.py`](../tests/differential/test_unified_differential.py)) proves mechanical parity across the following systems:
 
 1. **Opening Setup Phase**:
    - USSR 6 influence placement across Eastern Europe (identical legal candidates at each step).

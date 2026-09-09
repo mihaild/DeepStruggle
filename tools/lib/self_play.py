@@ -16,8 +16,7 @@ from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 
 def generate_self_play_replay(
-    model: Optional[Any] = None,
-    model_path: Optional[str] = None,
+    model: Union[torch.nn.Module, str, Any],
     model_name: str = "ColdWarNet",
     seed: int = 2026,
     temperature: float = 0.3,
@@ -32,33 +31,25 @@ def generate_self_play_replay(
     """Simulates a complete self-play game between neural policies and saves standardized .tslog.json replay."""
     dev: torch.device = torch.device(device if torch.cuda.is_available() and str(device) == "cuda" else "cpu")
 
-    if model is None:
+    active_model: Any
+    if isinstance(model, str):
+        if not os.path.exists(model):
+            raise FileNotFoundError(f"Model checkpoint path not found: {model}")
         from tools.lib.player_agent import load_agent, NeuralAgent
-        candidates = [
-            model_path,
-            "checkpoints/snapshot_20m.pt",
-            "checkpoints/coldwar_net.pt",
-            "checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
-        ]
-        found_path = None
-        for c in candidates:
-            if c and os.path.exists(c):
-                found_path = c
-                break
-
-        if found_path is not None:
-            agent = load_agent(found_path, device=dev)
-            if isinstance(agent, NeuralAgent):
-                active_model: Any = agent.model
-            else:
-                raise ValueError(f"Model path {found_path} did not produce a NeuralAgent")
+        agent = load_agent(model, device=dev)
+        if isinstance(agent, NeuralAgent):
+            active_model = agent.model
         else:
-            from ai.models.coldwar_net import create_coldwar_net
-            active_model = create_coldwar_net(dev)
+            raise ValueError(f"Model path {model} did not produce a NeuralAgent")
+    elif isinstance(model, torch.nn.Module):
+        active_model = model.to(dev)
+    elif hasattr(model, "model"):
+        active_model = model.model.to(dev) if hasattr(model.model, "to") else model.model
     else:
-        active_model: Any = model.to(dev) if hasattr(model, "to") else model
-        if hasattr(active_model, "eval"):
-            active_model.eval()
+        active_model = model
+
+    if hasattr(active_model, "eval"):
+        active_model.eval()
 
     gid = game_id
     if not gid:

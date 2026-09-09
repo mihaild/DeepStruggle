@@ -9,6 +9,7 @@ from typing import Dict, Any
 
 import ts_engine as ts
 from tools.lib.self_play import generate_self_play_replay
+from ai.models.coldwar_net import create_coldwar_net
 from web.server.replay import ReplayLogger, ReplayManager, replays_dir
 from web.server.replay_types import (
     GameStateDict,
@@ -99,7 +100,7 @@ def test_generate_self_play_replay_execution(tmp_path):
     out_file = str(tmp_path / "test_self_play.tslog.json")
 
     replay_dict, saved_path = generate_self_play_replay(
-        model=None,
+        model=create_coldwar_net("cpu"),
         seed=101,
         temperature=0.3,
         game_id="test_sim_game",
