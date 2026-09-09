@@ -51,12 +51,24 @@ def main():
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
     parser.add_argument("--resume", type=str, default=None,
-                        help="Resume a run from its resume_state.pt (pass the file or the\n"
-                             "run directory). Restores the weights, the optimiser moments,\n"
-                             "the reference policy and the step counter, so training\n"
+                        help="Resume a run from a resume state. Pass the file, the run\n"
+                             "directory (its newest state), or '<run_dir>:<steps>' to branch\n"
+                             "from a particular snapshot. Restores the weights, the optimiser\n"
+                             "moments, the reference policy and the step counter, so training\n"
                              "continues rather than restarting. The environment is not\n"
                              "restored -- the games are an i.i.d. stream, so a resumed run\n"
-                             "simply deals fresh ones.")
+                             "simply deals fresh ones. Giving a --seed that differs from the\n"
+                             "one the state was written under also re-seeds torch and numpy,\n"
+                             "so the continuation genuinely diverges instead of replaying the\n"
+                             "original sampling.")
+    parser.add_argument("--resume-every-snapshot", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="Write a resume state beside every snapshot, so any snapshot can\n"
+                             "be branched from later and not just the run's end. Costs 38 MB a\n"
+                             "snapshot on top of the 13 MB snapshot itself. With this off, a\n"
+                             "run keeps only its newest state, and a stretch of it can never\n"
+                             "be re-run from -- which is how arm E came to have no branch\n"
+                             "point at 160M.")
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed the environment stream and torch together. Left unset,\n"
                              "the environment seed is fixed at 12345 and the network is\n"
@@ -167,6 +179,7 @@ def main():
             obs_layout=args.obs_layout,
             seed=args.seed,
             resume=args.resume,
+            resume_every_snapshot=args.resume_every_snapshot,
             snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,

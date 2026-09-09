@@ -55,6 +55,31 @@ length; the final evaluation of a 3-hour run faced 14 opponents and took 957s ag
 Snapshot evaluation runs through the same vectorized path as `tools/tournament.py`
 (~30x the one-game-at-a-time loop it replaced).
 
+### Resuming and branching
+
+`--resume` restores the weights, the optimiser moments, the frozen reference policy and the step
+counter, so a run continues rather than restarts. It takes a file, a run directory (its newest
+state), or `<run_dir>:<steps>` to branch from a particular snapshot:
+
+```bash
+# continue where it stopped
+--resume data/checkpoints/arm_D_cont_80to160
+# branch from the 160M snapshot of a run that went further
+--resume data/checkpoints/arm_D_cont_80to160:160038912
+```
+
+A resume state is written beside **every** snapshot (`resume_<steps>steps.pt`, 51 MB against the
+snapshot's 13), not only at the run's end, so any point of a run stays branchable. Turn it off with
+`--no-resume-every-snapshot` if disk matters more than that; a run then keeps only its newest state
+and no stretch of it can be re-run from later, which is how one arm came to have no branch point at
+160M and could not be replicated there at all.
+
+**Giving a `--seed` that differs from the one the state was written under also re-seeds torch and
+numpy**, so the continuation genuinely diverges. Without that the restore would hand back the
+original run's action sampling and minibatch order and only the environment deals would differ --
+half a seed change, and a seed replicate that understates the variance it exists to measure. The
+same seed, or none, restores the stream as before.
+
 Every iteration is logged to `<output-dir>/training_metrics.jsonl` and mirrored to TensorBoard
 event files in `<output-dir>/tb/` (`--no-tensorboard` disables the mirror; the JSONL is always
 written, and a missing/broken `tensorboard` install only prints a warning). Watch a live run with:

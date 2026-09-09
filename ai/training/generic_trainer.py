@@ -9,6 +9,7 @@ import subprocess
 import time
 import collections
 import json
+import re
 import argparse
 from typing import List, Optional, Dict, Any, Union
 import numpy as np
@@ -615,9 +616,55 @@ def run_post_training_tournament(
 #: dicts would break each of those readers silently.
 RESUME_FILENAME = "resume_state.pt"
 
+#: Per-snapshot resume states sit beside their snapshot under this name, so any snapshot can be
+#: branched from and not only the run's end. resume_state.pt remains the newest one, which is what
+#: an ordinary continuation wants and what --resume <dir> resolves to.
+RESUME_AT_STEPS = "resume_{steps}steps.pt"
+
+
+def resume_states_in(run_dir: str) -> Dict[int, str]:
+    """Step count -> path, for every branch point a run directory offers."""
+    found: Dict[int, str] = {}
+    try:
+        names = os.listdir(run_dir)
+    except OSError:
+        return found
+    for name in names:
+        m = re.fullmatch(r"resume_(\d+)steps\.pt", name)
+        if m:
+            found[int(m.group(1))] = os.path.join(run_dir, name)
+    return found
+
+
+def resolve_resume(resume: str) -> str:
+    """The resume state a --resume argument names.
+
+    Accepts a file, a run directory (its newest state), or `<run_dir>:<steps>` / `<run_dir>@<steps>`
+    to branch from a particular snapshot. A step count that does not exist is an error listing what
+    the directory has, rather than a silent fall back to the newest -- resuming from the wrong point
+    produces a run that looks entirely normal and answers a different question.
+    """
+    for sep in (":", "@"):
+        if sep in resume:
+            head, _, tail = resume.rpartition(sep)
+            if head and tail.isdigit():
+                want = int(tail)
+                states = resume_states_in(head)
+                if want not in states:
+                    have = ", ".join(f"{k:,}" for k in sorted(states)) or "none"
+                    raise FileNotFoundError(
+                        f"{head} has no resume state at {want:,} steps. Available: {have}. "
+                        f"(Per-snapshot states are only written by runs since they were added; "
+                        f"an older run has just its final {RESUME_FILENAME}.)")
+                return states[want]
+    if os.path.isfile(resume):
+        return resume
+    return os.path.join(resume, RESUME_FILENAME)
+
 
 def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
-                      total_env_steps: int, elapsed_seconds: float) -> None:
+                      total_env_steps: int, elapsed_seconds: float,
+                      seed: Optional[int] = None) -> None:
     """Everything needed to pick a run back up, except the environment.
 
     The environment is deliberately not saved: `VectorizedBatchRunner` holds 512 live games and
@@ -636,11 +683,25 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         "elapsed_seconds": float(elapsed_seconds),
         "torch_rng_state": torch.get_rng_state(),
         "numpy_rng_state": np.random.get_state(),
+        # Recorded so a later resume can tell "continue this run" from "branch it": restoring the
+        # RNG is right for the first and wrong for the second.
+        "seed": None if seed is None else int(seed),
     }, path)
 
 
-def load_resume_state(path: str, model: nn.Module, trainer: Any) -> Dict[str, Any]:
-    """Restore a run in place and return where it left off."""
+def load_resume_state(path: str, model: nn.Module, trainer: Any,
+                      seed: Optional[int] = None) -> Dict[str, Any]:
+    """Restore a run in place and return where it left off.
+
+    `seed` is the seed the *resuming* run was given. Where it differs from the one the state was
+    written under, the restored RNG is replaced by it: the caller asked for a different stream, and
+    a restore would otherwise hand back the original run's action sampling and minibatch order,
+    leaving only the environment deals to differ. Where it matches, or where neither is given, the
+    RNG is restored and the continuation is the run it would have been.
+
+    A state written before the seed was recorded has none, and an explicit `seed` then wins --
+    honouring the flag is less surprising than silently ignoring it.
+    """
     blob = torch.load(path, map_location=trainer.device, weights_only=False)
     model.load_state_dict(blob["model_state_dict"])
     trainer.optimizer.load_state_dict(blob["optimizer_state_dict"])
@@ -648,12 +709,21 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any) -> Dict[str, An
     trainer.total_env_steps = int(blob["total_env_steps"])
     if hasattr(trainer, "total_iterations"):
         trainer.total_iterations = int(blob.get("total_iterations", 0))
-    try:
-        torch.set_rng_state(blob["torch_rng_state"].cpu().to(torch.uint8))
-        np.random.set_state(blob["numpy_rng_state"])
-    except Exception as exc:                      # a resumed run is still valid without these
-        print(f"Warning: could not restore RNG state ({exc}); continuing with the current one.",
+    recorded_seed = blob.get("seed", None)
+    reseed = seed is not None and (recorded_seed is None or int(recorded_seed) != int(seed))
+    if reseed:
+        torch.manual_seed(int(seed))
+        np.random.seed(int(seed) & 0xFFFFFFFF)
+        print(f"Reseeded to {seed} (state was written under {recorded_seed}); the RNG in the "
+              f"resume file is deliberately not restored, so this continuation diverges.",
               flush=True)
+    else:
+        try:
+            torch.set_rng_state(blob["torch_rng_state"].cpu().to(torch.uint8))
+            np.random.set_state(blob["numpy_rng_state"])
+        except Exception as exc:                  # a resumed run is still valid without these
+            print(f"Warning: could not restore RNG state ({exc}); continuing with the current one.",
+                  flush=True)
     return {
         "iteration": int(blob.get("iteration", 0)),
         "total_env_steps": int(blob["total_env_steps"]),
@@ -666,6 +736,7 @@ def train_pipeline(
     obs_layout: str = "legacy",
     seed: Optional[int] = None,
     resume: Optional[str] = None,
+    resume_every_snapshot: bool = True,
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
     inject_dataset: Optional[str] = None,
@@ -763,6 +834,7 @@ def train_pipeline(
         "training_mode": reward_scheme,
         "reward_scheme": reward_scheme,
         "duration_seconds": duration_seconds,
+        "resume_every_snapshot": bool(resume_every_snapshot),
         "decisiveness_turns": decisiveness_turns,
         "snapshot_interval_seconds": snapshot_interval_seconds,
         "num_envs": num_envs,
@@ -937,8 +1009,8 @@ def train_pipeline(
     resume_path = os.path.join(out_dir, RESUME_FILENAME)
     resumed_elapsed = 0.0
     if resume:
-        src = resume if os.path.isfile(resume) else os.path.join(resume, RESUME_FILENAME)
-        state = load_resume_state(src, model, trainer)
+        src = resolve_resume(resume)
+        state = load_resume_state(src, model, trainer, seed=seed)
         it = state["iteration"]
         resumed_elapsed = state["elapsed_seconds"]
         # Rewind the clock so elapsed keeps counting from where the run stopped rather than from
@@ -1111,7 +1183,16 @@ def train_pipeline(
             torch.save(model.state_dict(), snap_path)
             # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
             # load_agent, the tournament runner and every eval module read it as one.
-            save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed)
+            save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,
+                              seed=seed)
+            if resume_every_snapshot:
+                # A second copy under this snapshot's own step count, so this point stays
+                # branchable after the next snapshot overwrites resume_state.pt. 38 MB more than
+                # the snapshot itself; a run with one branch point cost more than that in GPU
+                # hours the first time an experiment needed a different one.
+                save_resume_state(
+                    os.path.join(out_dir, RESUME_AT_STEPS.format(steps=total_env_steps)),
+                    model, trainer, it, total_env_steps, elapsed, seed=seed)
             decisive = evaluate_and_log_snapshot(
                 model=model,
                 opponents=opponents,
@@ -1146,7 +1227,7 @@ def train_pipeline(
     # that ends between them leaves a resume point up to one interval behind its own final
     # weights, and picking it back up would silently repeat those steps.
     save_resume_state(resume_path, model, trainer, it, trainer.total_env_steps,
-                      time.time() - t_start - overhead_seconds)
+                      time.time() - t_start - overhead_seconds, seed=seed)
     evaluate_and_log_snapshot(
         model=model,
         opponents=opponents,
