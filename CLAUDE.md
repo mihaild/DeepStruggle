@@ -234,6 +234,24 @@ drift is caught separately by `tests/bindings/replay_schema.golden.json`; regene
 
 **Bindings (`bindings/`):** nanobind module (`ts_bindings.cpp`) exports `ts_engine` and a vectorized batch runner. `action_encoder.py` is the bidirectional Python codec for the 212-dim flat action space; `ts_env.py` wraps single and vectorized (batched, C++-driven) environments for RL training.
 
+**Never change the observation without asking.** The layout is a representation decision and it
+is the owner's, not a detail to be improved in passing. This includes adding a feature, removing
+one, changing what a slot means, and changing the width. Two things make it worse than an ordinary
+refactor:
+
+* A network reads fixed slices, so a changed observation does not fail — a checkpoint keeps
+  loading and simply misreads. A change of *content* at the same width is quieter still: even the
+  width assertions that guard the extraction call sites pass it. Arms F and F2 were briefly in
+  this state, evaluated against a v2.2 that had gained a feature after they trained on it.
+* It invalidates every checkpoint and every `(seed, actions)` dataset (invariant 10), and resets
+  the Elo ladder, so the cost is paid by every measurement that came before.
+
+Propose the change, say what it costs in floats, and wait. Two standing preferences from the
+owner, both learned the expensive way: **do not spend a large vector on a rare mechanism** — a
+per-country or per-card bit for one card is not worth 84 or 110 floats — and **a partial version
+of a feature is worse than none**, which is why the turn-history block was dropped rather than
+completed.
+
 **Baseline (as of 2026-09-09):** observation layout **v2.1** (3,891 floats, 13 card features), which
 adds the two card-tracking slots — the opponent is known to hold this card, this card is not in the
 game yet — and drops the 512-float history block that was never written to. `--obs-layout` defaults

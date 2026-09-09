@@ -249,6 +249,19 @@ cmake --build build_san -j
 
 ---
 
+## 6a. The observation is not yours to change
+
+Adding a feature, removing one, changing what a slot means or changing the width are all
+representation decisions and all belong to the project owner. Ask first.
+
+A network reads fixed slices, so a changed observation never raises — the checkpoint loads and
+misreads, and a content change at unchanged width slips past the width assertions too. Every
+checkpoint and every `(seed, actions)` dataset is invalidated by a width change (root `AGENTS.md`
+invariant 10), which means the cost lands on every number measured before it.
+
+Two standing preferences: a large vector for a rare mechanism is not worth it (a per-country or
+per-card bit serving one card costs 84 or 110 floats), and a partial feature is worse than none.
+
 ## 7. Why hand knowledge lives in `CardLocation`
 
 `card_locations` distinguishes `HAND_US_KNOWN` from `HAND_US_UNKNOWN` rather than carrying a
