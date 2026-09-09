@@ -363,3 +363,82 @@ def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
     # Exactly one region is named while it is in play; the engine sets both the flag and the
     # region index together, so this checks the shape rather than driving the card.
     assert obs[CHERNOBYL_REGION:CHERNOBYL_REGION + 6].max() <= 1.0
+
+
+# --- Cards staged for a decision -----------------------------------------------------------
+#
+# The engine stages a card in ctx.temp_cards when a decision is *about* that card -- Grain Sales
+# hands one over and asks whether to play it, Star Wars offers one from the discard pile -- and
+# does so without touching card_locations. So the card kept reading DECK_OR_HIDDEN, and the player
+# being asked could not see what they were deciding about. v2.2 shows it in the PEEKED slot, but
+# only to the player whose decision it is, and only where they could not already see it.
+
+
+def _staged_decisions(max_games: int = 150):
+    """Real positions where a card is staged for the player to move. Reached by play, because
+    ctx.temp_cards is exposed to Python as a copy and cannot be set."""
+    from bindings.action_encoder import ActionEncoder
+
+    rng = np.random.default_rng(11)
+    out = []
+    for g in range(max_games):
+        state = ts.GameState()
+        ts.Engine.init_game(state, 90000 + g)
+        for _ in range(4000):
+            if ts.Engine.is_terminal(state) or len(out) >= 5:
+                break
+            ctx = state.ctx()
+            if int(ctx.temp_card_cnt) >= 1 and ctx.decision_player != ts.Player.NONE:
+                card = int(ctx.temp_cards[0])
+                if 1 <= card <= 110:
+                    out.append((state.clone(), ctx.decision_player, card))
+            mask = np.asarray(ActionEncoder.get_legal_mask(state))
+            legal = np.flatnonzero(mask)
+            if legal.size == 0:
+                break
+            ts.Engine.step_flat(state, int(rng.choice(legal)))
+        if len(out) >= 5:
+            break
+    return out
+
+
+def test_a_staged_card_is_visible_to_the_player_deciding_about_it() -> None:
+    found = _staged_decisions()
+    assert found, "no staged-card decision reached; widen the search before trusting this"
+    for state, decider, card in found:
+        obs = _v22(state, decider)
+        hidden = _v22_card(obs, card, DECK_OR_HIDDEN)
+        assert hidden == 0.0, (
+            f"card {card} is staged for {decider} to decide about and still reads as "
+            f"deck-or-hidden; they cannot see what they are choosing")
+
+
+def test_a_staged_card_is_not_revealed_to_the_other_player() -> None:
+    """The reveal is for the decision, not a leak of the opponent's hand."""
+    found = _staged_decisions()
+    assert found
+    for state, decider, card in found:
+        other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
+        loc = state.get_card_location(card)
+        # CardLocation::PEEKED_TEMP is the engine's own "temporarily out of play and being
+        # looked at", and the existing chain maps it to the peeked slot for both sides. That is
+        # pre-existing and not what this reveal does, so those cases are not evidence either way.
+        if loc == ts.CardLocation.PEEKED_TEMP:
+            continue
+        # The case that matters: a card sitting hidden in the decider's hand must not become
+        # visible to the opponent just because a decision is pending about it.
+        if ts.in_hand_of(loc, decider) and not ts.known_to_opponent(loc):
+            assert _v22_card(_v22(state, other), card, PEEKED) == 0.0, (
+                f"card {card} is hidden in {decider}'s hand and was revealed to {other}")
+
+
+def test_a_card_the_decider_already_sees_keeps_its_slot() -> None:
+    """Missile Envy's tie-break stages the giver's own cards; overwriting the slot there would
+    replace MY_HAND with something weaker."""
+    found = _staged_decisions()
+    assert found
+    for state, decider, card in found:
+        if ts.in_hand_of(state.get_card_location(card), decider):
+            obs = _v22(state, decider)
+            assert _v22_card(obs, card, MY_HAND) == 1.0
+            assert _v22_card(obs, card, PEEKED) == 0.0

@@ -448,6 +448,29 @@ void Observation::extract_v22(const GameState& state, Player perspective,
             }
         }
 
+        // A card staged in ctx.temp_cards is one this decision is *about*: Grain Sales hands the
+        // US a card and asks whether to play it, Star Wars offers one out of the discard pile,
+        // Cambridge Five and "Lone Gunman" show cards from a hand. The engine stages them without
+        // touching card_locations, so the card kept reading DECK_OR_HIDDEN and the player being
+        // asked could not see what they were deciding about -- at the Grain Sales branch the US
+        // chose "play it or give it back" with the card indistinguishable from the draw deck.
+        //
+        // Only revealed to the player whose decision it is, and only when they could not already
+        // see it. Missile Envy's tie-break stages the giver's *own* cards, and overwriting the
+        // slot there would replace MY_HAND with something weaker.
+        if (state.ctx().decision_player == my_player) {
+            const uint8_t staged = state.ctx().temp_card_cnt;
+            for (uint8_t k = 0; k < staged && k < state.ctx().temp_cards.size(); ++k) {
+                if (state.ctx().temp_cards[k] != card_id) continue;
+                float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
+                if (row[card_slots::DECK_OR_HIDDEN] > 0.0f) {
+                    row[card_slots::DECK_OR_HIDDEN] = 0.0f;
+                    row[card_slots::PEEKED] = 1.0f;
+                }
+                break;
+            }
+        }
+
         out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
             active ? 1.0f : 0.0f;
     }
