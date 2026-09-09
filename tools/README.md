@@ -146,6 +146,11 @@ PYTHONPATH=. .venv/bin/python tools/inspect_checkpoints.py
 
 ## 6. `tools/download_ts_replayer.py` (Human Game Corpus) and the Converter
 
+> Every discrepancy found between these logs and the engine -- score reconciliation, the Shuttle
+> Diplomacy/Japan log fault, what the hand solver may and may not supply, and what the 300 files
+> actually contain -- is recorded in
+> [`research/experiments_replayer_conversion.md`](../research/experiments_replayer_conversion.md).
+
 Human Twilight Struggle games, played by people on the Playdek/Steam app and uploaded to
 ts-replayer.fly.dev, turned into engine decisions. The downloader fetches each replay's four
 JSON islands once and caches them under `data/datasets/ts_replayer/<id>.json.gz`; it throttles
