@@ -794,9 +794,8 @@ NB_MODULE(ts_engine, m) {
         if (layout == "legacy")     n = ts::OBS_SIZE_LEGACY;
         else if (layout == "v2.1")  n = ts::OBS_SIZE_V21;
         else if (layout == "v2.2")  n = ts::OBS_SIZE_V22;
-        else if (layout == "v2.3")  n = ts::OBS_SIZE_V23;
         else throw std::invalid_argument(
-            "layout must be 'legacy', 'v2.1', 'v2.2' or 'v2.3', got '" + layout + "'");
+            "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + layout + "'");
 
         float* data = new float[n];
         if (layout == "legacy") {
@@ -807,13 +806,9 @@ NB_MODULE(ts_engine, m) {
             ts::ObservationBufferV21 buf;
             ts::Observation::extract_v21(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
-        } else if (layout == "v2.2") {
+        } else {
             ts::ObservationBufferV22 buf;
             ts::Observation::extract_v22(state, perspective, &buf);
-            std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
-        } else {
-            ts::ObservationBufferV23 buf;
-            ts::Observation::extract_v23(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         }
         size_t shape[1] = { n };
@@ -824,7 +819,6 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
     m.attr("OBS_SIZE_V21") = static_cast<int>(ts::OBS_SIZE_V21);
     m.attr("OBS_SIZE_V22") = static_cast<int>(ts::OBS_SIZE_V22);
-    m.attr("OBS_SIZE_V23") = static_cast<int>(ts::OBS_SIZE_V23);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
@@ -853,9 +847,8 @@ NB_MODULE(ts_engine, m) {
             if (l == "legacy") return ts::OBS_SIZE_LEGACY;
             if (l == "v2.1")   return ts::OBS_SIZE_V21;
             if (l == "v2.2")   return ts::OBS_SIZE_V22;
-            if (l == "v2.3")   return ts::OBS_SIZE_V23;
             throw std::invalid_argument(
-                "layout must be 'legacy', 'v2.1', 'v2.2' or 'v2.3', got '" + l + "'");
+                "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + l + "'");
         }
 
         VectorizedBatchRunner(size_t n, uint64_t base_seed, const std::string& l)
@@ -893,11 +886,6 @@ NB_MODULE(ts_engine, m) {
             } else if (layout == "v2.2") {
                 ts::ObservationBufferV22 ob;
                 ts::Observation::extract_v22(states[idx], p, &ob);
-                std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
-                            obs_width * sizeof(float));
-            } else if (layout == "v2.3") {
-                ts::ObservationBufferV23 ob;
-                ts::Observation::extract_v23(states[idx], p, &ob);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             } else {

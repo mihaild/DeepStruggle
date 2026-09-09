@@ -60,13 +60,11 @@ def generate_self_play_replay(
     _obs_width = int(getattr(active_model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
     obs_layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                   int(ts.OBS_SIZE_V21): "v2.1",
-                  int(ts.OBS_SIZE_V22): "v2.2",
-                  int(ts.OBS_SIZE_V23): "v2.3"}.get(_obs_width)
+                  int(ts.OBS_SIZE_V22): "v2.2"}.get(_obs_width)
     if obs_layout is None:
         raise ValueError(
             f"model expects an observation of width {_obs_width}, which matches no known layout "
-            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V22} v2.2, "
-            f"{ts.OBS_SIZE_V23} v2.3)")
+            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V22} v2.2)")
 
     gid = game_id
     if not gid:

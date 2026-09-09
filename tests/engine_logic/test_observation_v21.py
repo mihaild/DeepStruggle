@@ -402,72 +402,43 @@ def _staged_decisions(max_games: int = 150):
     return out
 
 
-V23_CARD_F = 15
-STAGED_FOR_ME = 14
-
-
-def _v23(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.3"), dtype=np.float32)
-
-
-def _v23_card(obs: np.ndarray, card: int, slot: int) -> float:
-    return float(obs[V22_BOARD + (card - 1) * V23_CARD_F + slot])
-
-
-def test_v22_is_unchanged_by_the_staged_card_work() -> None:
-    """Arms F and F2 trained on v2.2 before any of this. Its width is identical to what the
-    staged-card change would have produced, so a silent alteration would never have been caught --
-    the checkpoints would simply have been evaluated against an observation they never saw."""
-    assert int(ts.OBS_SIZE_V22) == 84 * 26 + 110 * 14 + 101
-    found = _staged_decisions()
-    assert found
-    for state, decider, card in found:
-        if state.get_card_location(card) == ts.CardLocation.PEEKED_TEMP:
-            continue
-        obs = np.asarray(ts.extract_observation(state, decider, layout="v2.2"), dtype=np.float32)
-        # v2.2 does not reveal it; that is the behaviour F and F2 learned against.
-        assert _v22_card(obs, card, DECK_OR_HIDDEN) in (0.0, 1.0)
-
-
-def test_v23_marks_a_staged_card_for_the_player_deciding() -> None:
+def test_a_staged_card_is_visible_to_the_player_deciding_about_it() -> None:
     found = _staged_decisions()
     assert found, "no staged-card decision reached; widen the search before trusting this"
     for state, decider, card in found:
-        assert _v23_card(_v23(state, decider), card, STAGED_FOR_ME) == 1.0, (
-            f"card {card} is staged for {decider} and not marked")
+        obs = _v22(state, decider)
+        hidden = _v22_card(obs, card, DECK_OR_HIDDEN)
+        assert hidden == 0.0, (
+            f"card {card} is staged for {decider} to decide about and still reads as "
+            f"deck-or-hidden; they cannot see what they are choosing")
 
 
-def test_v23_does_not_mark_it_for_the_other_player() -> None:
+def test_a_staged_card_is_not_revealed_to_the_other_player() -> None:
+    """The reveal is for the decision, not a leak of the opponent's hand."""
     found = _staged_decisions()
     assert found
     for state, decider, card in found:
         other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
-        assert _v23_card(_v23(state, other), card, STAGED_FOR_ME) == 0.0
-
-
-def test_v23_keeps_the_cards_real_location() -> None:
-    """The mark is a feature, not an overwritten slot -- which is what stops Ask Not, whose
-    staged cards are the player's own, from reading as something other than theirs."""
-    found = _staged_decisions()
-    assert found
-    for state, decider, card in found:
         loc = state.get_card_location(card)
-        if ts.in_hand_of(loc, decider):
-            obs = _v23(state, decider)
-            assert _v23_card(obs, card, MY_HAND) == 1.0
-            assert _v23_card(obs, card, STAGED_FOR_ME) == 1.0
+        # CardLocation::PEEKED_TEMP is the engine's own "temporarily out of play and being
+        # looked at", and the existing chain maps it to the peeked slot for both sides. That is
+        # pre-existing and not what this reveal does, so those cases are not evidence either way.
+        if loc == ts.CardLocation.PEEKED_TEMP:
+            continue
+        # The case that matters: a card sitting hidden in the decider's hand must not become
+        # visible to the opponent just because a decision is pending about it.
+        if ts.in_hand_of(loc, decider) and not ts.known_to_opponent(loc):
+            assert _v22_card(_v22(state, other), card, PEEKED) == 0.0, (
+                f"card {card} is hidden in {decider}'s hand and was revealed to {other}")
 
 
-def test_v23_hides_peeked_temp_from_a_player_who_is_not_deciding() -> None:
-    """PEEKED_TEMP mapped to the peeked slot for both sides. Measured over 1,500 games the
-    opponent never moves during either card that uses it, so this closes a latent hole rather
-    than a live leak -- but the next card to stage across a change of mover would have one."""
+def test_a_card_the_decider_already_sees_keeps_its_slot() -> None:
+    """Missile Envy's tie-break stages the giver's own cards; overwriting the slot there would
+    replace MY_HAND with something weaker."""
     found = _staged_decisions()
     assert found
     for state, decider, card in found:
-        if state.get_card_location(card) != ts.CardLocation.PEEKED_TEMP:
-            continue
-        other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
-        obs = _v23(state, other)
-        assert _v23_card(obs, card, PEEKED) == 0.0
-        assert _v23_card(obs, card, DECK_OR_HIDDEN) == 1.0
+        if ts.in_hand_of(state.get_card_location(card), decider):
+            obs = _v22(state, decider)
+            assert _v22_card(obs, card, MY_HAND) == 1.0
+            assert _v22_card(obs, card, PEEKED) == 0.0

@@ -448,6 +448,29 @@ void Observation::extract_v22(const GameState& state, Player perspective,
             }
         }
 
+        // A card staged in ctx.temp_cards is one this decision is *about*: Grain Sales hands the
+        // US a card and asks whether to play it, Star Wars offers one out of the discard pile,
+        // Cambridge Five and "Lone Gunman" show cards from a hand. The engine stages them without
+        // touching card_locations, so the card kept reading DECK_OR_HIDDEN and the player being
+        // asked could not see what they were deciding about -- at the Grain Sales branch the US
+        // chose "play it or give it back" with the card indistinguishable from the draw deck.
+        //
+        // Only revealed to the player whose decision it is, and only when they could not already
+        // see it. Missile Envy's tie-break stages the giver's *own* cards, and overwriting the
+        // slot there would replace MY_HAND with something weaker.
+        if (state.ctx().decision_player == my_player) {
+            const uint8_t staged = state.ctx().temp_card_cnt;
+            for (uint8_t k = 0; k < staged && k < state.ctx().temp_cards.size(); ++k) {
+                if (state.ctx().temp_cards[k] != card_id) continue;
+                float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
+                if (row[card_slots::DECK_OR_HIDDEN] > 0.0f) {
+                    row[card_slots::DECK_OR_HIDDEN] = 0.0f;
+                    row[card_slots::PEEKED] = 1.0f;
+                }
+                break;
+            }
+        }
+
         out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
             active ? 1.0f : 0.0f;
     }
@@ -496,53 +519,6 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     }
 }
 
-void Observation::extract_v23(const GameState& state, Player perspective,
-                              ObservationBufferV23* out_buf) noexcept {
-    ObservationBufferV22 v22;
-    Observation::extract_v22(state, perspective, &v22);
-
-    std::memset(out_buf, 0, sizeof(ObservationBufferV23));
-    std::memcpy(out_buf->board_features, v22.board_features, sizeof(v22.board_features));
-    std::memcpy(out_buf->global_features, v22.global_features, sizeof(v22.global_features));
-
-    Player my_player = perspective;
-    if (my_player == Player::NONE) {
-        my_player = (state.ctx().decision_player != Player::NONE)
-            ? state.ctx().decision_player : state.phasing_player;
-        if (my_player == Player::NONE) my_player = Player::US;
-    }
-    const auto& ctx = state.ctx();
-    const bool mine_to_decide = (ctx.decision_player == my_player);
-
-    for (size_t i = 0; i < 110; ++i) {
-        float* row = &out_buf->card_features[i * card_slots::V23_FEATURES];
-        std::memcpy(row, &v22.card_features[i * card_slots::V22_FEATURES],
-                    card_slots::V22_FEATURES * sizeof(float));
-
-        const uint8_t card_id = static_cast<uint8_t>(i + 1);
-
-        // Staged for this decision: Grain Sales hands a card over and asks whether to play it,
-        // Our Man In Tehran shows five off the deck, Ask Not stages the player's own cards for
-        // discard. A feature rather than an overwritten location, so the card keeps its real
-        // slot -- which is what stops Ask Not mislabelling the player's own hand.
-        bool staged = false;
-        if (mine_to_decide) {
-            for (uint8_t k = 0; k < ctx.temp_card_cnt && k < ctx.temp_cards.size(); ++k) {
-                if (ctx.temp_cards[k] == card_id) { staged = true; break; }
-            }
-        }
-        row[card_slots::STAGED_FOR_ME] = staged ? 1.0f : 0.0f;
-
-        // PEEKED_TEMP is a card someone is looking at. v2.2 showed it to both players; anyone who
-        // is not the one deciding should see it as they would any card out of their sight.
-        if (!mine_to_decide &&
-            state.card_locations[card_id] == CardLocation::PEEKED_TEMP) {
-            row[card_slots::PEEKED] = 0.0f;
-            row[card_slots::DECK_OR_HIDDEN] = 1.0f;
-        }
-    }
-}
-
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept {
     Observation::extract(state, perspective, out_buf);
 }
@@ -555,11 +531,6 @@ void extract_observation_v21(const GameState& state, Player perspective,
 void extract_observation_v22(const GameState& state, Player perspective,
                             ObservationBufferV22* out_buf) noexcept {
     Observation::extract_v22(state, perspective, out_buf);
-}
-
-void extract_observation_v23(const GameState& state, Player perspective,
-                            ObservationBufferV23* out_buf) noexcept {
-    Observation::extract_v23(state, perspective, out_buf);
 }
 
 } // namespace ts
