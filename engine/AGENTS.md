@@ -341,3 +341,56 @@ same breaking change as removing the history, behind helpers that force the comp
 sites. And keep §19.4's caveat — this addresses the §14–§17 card-play cluster, not the game-length
 constraint that §18 identifies as binding.
 
+---
+
+## 8. Free-coup events must go through `Operations::can_coup`
+
+An event that grants a coup outside the ordinary Operations path does not get target
+validation for free. Two handlers once built their own target lists and offered coups the rules
+forbid; the account below is kept because the consequence reached the training signal, not just
+a metric. Fixed, with `tests/engine_logic/test_free_coup_target_legality.py` covering both.
+
+
+My first reading of these, that DEFCON-1 losses were attributed to the wrong player, was **wrong**.
+`resolve_defcon_one_loss` (`engine/include/ts/defcon.hpp:28`) makes the *phasing* player lose
+regardless of who drove DEFCON down, which is the rule. The engine is right about that.
+
+The actual defect is narrower and worse. **Two events run their own free-coup target lists and
+never consult `Operations::can_coup`:**
+
+| card | site | what it validates |
+|:---|:---|:---|
+| #91 Ortega Elected in Nicaragua | `card_dispatcher.cpp:1431` | adjacency to Nicaragua only |
+| #107 Che | `card_dispatcher.cpp:1402` | region, non-battleground, not visited |
+
+`can_coup_or_realign` refuses a country the opponent has no influence in
+(`engine/src/ops.cpp:119`), and `get_coup_target_mask` is built on it, so an ordinary Ops coup is
+filtered correctly. These two bypass it, and so offer coups the rules forbid — along with,
+presumably, the DEFCON regional restrictions, NATO and The Reformer, which live in the same
+function.
+
+**Replay 139, turn 9, action round 2.** The US played Ortega — a USSR card — for Ops, so its event
+fired and handed the USSR a free coup. The engine offered **Cuba**. The log records Cuba as
+`inflUS 0 / inflUSSR 3` at *every* entry of turn 9, and the engine state agrees exactly, so the
+reconstruction is correct and the board is not in doubt. With no US influence there, the USSR
+cannot coup Cuba. But Cuba is a battleground, so the offered coup took DEFCON 2 → 1 and ended the
+game against the phasing player, the US. That is why it scored as a USSR "win".
+
+Same shape at **replay 16 T9 AR3**, **replay 165 T9 AR3**, **replay 245 T8 AR1** — all Ortega, all
+Cuba, all `US 0 / USSR 3`.
+
+`tests/engine_logic/test_free_coup_target_legality.py` reproduces both synthetically: Ortega offers
+`[67, 68, 71]` including Cuba with zero US influence, and Che offers 26 countries without checking
+influence at all. A third test confirms the ordinary Ops path filters correctly, so the defect is
+in the two event handlers, not in the coup rule. **Fixed** (approved): both handlers now call `Operations::can_coup(state, Player::USSR, i)`, at
+the target mask in `get_event_action_mask` and again where the chosen target is applied. The
+forced win at replay 139 T9 AR2 is gone, all 368 C++ tests pass, the fuzzer is clean over 3,000
+games, and all 282 corpus games still convert with 0 failures. One existing C++ test,
+`OrtegaElected_CanCoupCuba_AndAdjacentCountries`, asserted the old behaviour -- it gave Cuba US
+influence but left Costa Rica and Honduras empty and expected them offered anyway -- and now sets
+up influence in those two and additionally asserts that an adjacent country with none is refused.
+
+**Why this matters beyond the metric.** `classify_legal_actions` reads the engine's terminal
+utility, and so does every reward. A policy trained against this learns that an opponent's Ortega
+is a free win whenever a battleground sits next to Nicaragua — a move the rules do not permit.
+

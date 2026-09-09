@@ -14,7 +14,8 @@ numbering here is a section that stayed behind because it is about play rather t
 
 The maintenance rules are `experiments.md`'s: record what was compared, the numbers with their
 sample size, and what the measurement cannot tell you; revise rather than delete when a later
-finding invalidates an earlier one, and say what invalidated it.
+finding invalidates an earlier one, and say what invalidated it. Instrument faults and what a
+measurement is reproducible to are in [`metrics.md`](metrics.md).
 
 ---
 

@@ -15,8 +15,8 @@ This directory documents foundational literature, game-theoretic algorithms, and
 - [**experiments_replayer_conversion.md**](experiments_replayer_conversion.md): **How the human corpus is read, and every place the log and the engine disagree**  
   *Split out of experiments.md. Score reconciliation against the log's narration, the Shuttle Diplomacy/Japan log fault, hand reconstruction and what the solver may supply, and corpus composition. Read this when changing `tools/lib/ts_replayer_*`; read experiments.md when asking how well the agents play. Section numbers are the ones these entries were first written under, so cross-references still resolve.*
 
-- [**metrics.md**](metrics.md): **How the reported measures are defined**  
-  *What agreement with human play forgives (the order of a placement) and what it does not (coups and realignments, where the board changes between points), and why the in-batch and post-epoch figures differ. experiments.md records what the measurements said; this records what they are.*
+- [**metrics.md**](metrics.md): **Measurement — what the numbers can bear**  
+  *The seven instruments that reported confident numbers while measuring nothing; how to run an arm so its result means something; what a tournament is reproducible to (~1.5 points, not the binomial SE); how much of a final rating is just where the run stopped (rate four snapshots, ~20 Elo between-run SD); and how agreement with human play is defined. Read this before quoting a figure from experiments.md.*
 
 - [**ideas_and_plans.md**](ideas_and_plans.md): **Ideas, Strategic Insights & Technical Roadmap**  
   *The single, evolving design document covering domain insights (hand scheduling, DEFCON trapping, asymmetric war phase access), tabula rasa learning without demonstrations, ColdWarNetV4 architecture with Oracle Guiding, Multi-Agent League training, and the two-level NashPG + $\pi\text{KL}$ Subgame Resolving duality.*

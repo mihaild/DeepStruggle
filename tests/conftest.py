@@ -73,7 +73,7 @@ def generated_replay_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[s
     `data/replays/` is git-ignored, so nothing in the suite may assume it holds anything. The
     tempting alternative -- skip when it is empty -- is the failure mode this repository keeps
     rediscovering: a check that quietly measures nothing while passing everywhere. Three
-    instances are on record (research/experiments.md section 1), pyrefly was found exiting 0
+    instances are on record (research/metrics.md section 1), pyrefly was found exiting 0
     having examined zero files, and the test written to catch a stale engine spent two commits
     silently skipping after a directory move.
 

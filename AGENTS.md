@@ -452,7 +452,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 `data/replays/` and `data/checkpoints/` are git-ignored, so **no test may assume either holds
 anything**. Do not guard such a test with a skip: a check that skips when its input is missing
 passes on every machine while verifying nothing, which is this repository's most repeated bug
-(`research/experiments.md` §1, plus a `pyrefly` invocation found checking zero files and a
+(`research/metrics.md` §1, plus a `pyrefly` invocation found checking zero files and a
 stale-engine test disabled for two commits by a directory move).
 
 Use the `generated_replay_dir` fixture in `tests/conftest.py` instead. It generates a replay with
