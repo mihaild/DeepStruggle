@@ -29,7 +29,8 @@ def _state() -> ts.GameState:
 
 @pytest.mark.parametrize("layout", LAYOUT_NAMES)
 def test_the_engine_width_and_the_model_width_agree(layout: str) -> None:
-    want = {"legacy": ts.OBS_SIZE_LEGACY, "v2.1": ts.OBS_SIZE_V21, "v2.2": ts.OBS_SIZE_V22}[layout]
+    want = {"legacy": ts.OBS_SIZE_LEGACY, "v2.1": ts.OBS_SIZE_V21,
+            "v2.2": ts.OBS_SIZE_V22, "v2.3": ts.OBS_SIZE_V23}[layout]
     assert create_for_layout(layout).TOTAL_OBS_SIZE == int(want)
     obs = np.asarray(ts.extract_observation(_state(), ts.Player.USSR, layout=layout))
     assert obs.shape[0] == int(want)

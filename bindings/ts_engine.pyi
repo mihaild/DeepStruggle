@@ -742,6 +742,7 @@ OBS_SIZE_LEGACY: int
 
 OBS_SIZE_V21: int
 OBS_SIZE_V22: int
+OBS_SIZE_V23: int
 
 def extract_observation(state: GameState, perspective: Player, layout: str = "legacy") -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
 

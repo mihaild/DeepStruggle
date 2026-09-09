@@ -159,7 +159,8 @@ class TsVectorizedEnv:
         self.layout = str(layout)
         self.observation_size = int({"legacy": ts.OBS_SIZE_LEGACY,
                                      "v2.1": ts.OBS_SIZE_V21,
-                                     "v2.2": ts.OBS_SIZE_V22}[self.layout])
+                                     "v2.2": ts.OBS_SIZE_V22,
+                                     "v2.3": ts.OBS_SIZE_V23}[self.layout])
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:

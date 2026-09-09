@@ -172,7 +172,8 @@ class NeuralAgent:
         self.obs_size = int(getattr(self.model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
         self.layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                        int(ts.OBS_SIZE_V21): "v2.1",
-                       int(ts.OBS_SIZE_V22): "v2.2"}.get(self.obs_size, "legacy")
+                       int(ts.OBS_SIZE_V22): "v2.2",
+                       int(ts.OBS_SIZE_V23): "v2.3"}.get(self.obs_size, "legacy")
         self.model.eval()
         self.name = name
 

@@ -27,6 +27,11 @@ public:
     // never sliced.
     static void extract_v22(const GameState& state, Player perspective,
                            ObservationBufferV22* out_buf) noexcept;
+
+    // Layout v2.3: v2.2 plus the cards a decision is staged around, and PEEKED_TEMP no longer
+    // shown to a player who is not the one deciding.
+    static void extract_v23(const GameState& state, Player perspective,
+                           ObservationBufferV23* out_buf) noexcept;
 };
 
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept;
@@ -34,5 +39,7 @@ void extract_observation_v21(const GameState& state, Player perspective,
                             ObservationBufferV21* out_buf) noexcept;
 void extract_observation_v22(const GameState& state, Player perspective,
                             ObservationBufferV22* out_buf) noexcept;
+void extract_observation_v23(const GameState& state, Player perspective,
+                            ObservationBufferV23* out_buf) noexcept;
 
 } // namespace ts

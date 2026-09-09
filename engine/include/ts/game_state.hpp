@@ -377,6 +377,12 @@ struct alignas(64) ObservationBufferV22 {
     // feature around it.
 };
 
+struct alignas(64) ObservationBufferV23 {
+    float board_features[84 * 26];
+    float card_features[110 * 15];   // v2.2's 14, plus "staged for the decision I am asked"
+    float global_features[101];
+};
+
 // Card status slots, shared by both layouts where they overlap. The v2.1 names are the authority;
 // the legacy layout uses 0..6 with the same meanings, lacks KNOWN_OPPONENT_HAND and UNAVAILABLE,
 // and starts its property block at 7 rather than 8.
@@ -392,7 +398,9 @@ namespace card_slots {
     constexpr size_t ACTIVE_CARD          = 13; // v2.2 only: resolving_card or pending_op_card
     constexpr size_t LEGACY_FEATURES      = 12;
     constexpr size_t V21_FEATURES          = 13;
+    constexpr size_t STAGED_FOR_ME        = 14; // v2.3 only: in ctx.temp_cards, and mine to decide
     constexpr size_t V22_FEATURES          = 14;
+    constexpr size_t V23_FEATURES          = 15;
     constexpr size_t LEGACY_PROPERTY_BASE = 7;
     constexpr size_t V21_PROPERTY_BASE     = 8;
 }
@@ -404,6 +412,7 @@ constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES +
                                  + 16 * 32 + 32 + 1;
 constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
 constexpr size_t OBS_SIZE_V22 = 84 * 26 + 110 * card_slots::V22_FEATURES + 101;
+constexpr size_t OBS_SIZE_V23 = 84 * 26 + 110 * card_slots::V23_FEATURES + 101;
 constexpr size_t V22_BOARD_FEATURES = 26;
 
 // Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
