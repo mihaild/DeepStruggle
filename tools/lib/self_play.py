@@ -10,6 +10,7 @@ import torch
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
+from ai.eval.blunders import BlunderCounts, check_play
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
@@ -51,6 +52,20 @@ def generate_self_play_replay(
     if hasattr(active_model, "eval"):
         active_model.eval()
 
+    # The observation layout the model was trained for, read off the model. Left to the default
+    # this extracted the 4,293-wide legacy block for every model, and a network reads fixed slices
+    # -- so a v2.1 or v2.2 policy was silently handed the wrong regions and played accordingly,
+    # without raising. Every self-play replay generated for a non-legacy checkpoint before this
+    # was produced by a model reading scrambled input.
+    _obs_width = int(getattr(active_model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
+    obs_layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
+                  int(ts.OBS_SIZE_V21): "v2.1",
+                  int(ts.OBS_SIZE_V22): "v2.2"}.get(_obs_width)
+    if obs_layout is None:
+        raise ValueError(
+            f"model expects an observation of width {_obs_width}, which matches no known layout "
+            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V22} v2.2)")
+
     gid = game_id
     if not gid:
         if isinstance(output_path, str):
@@ -81,6 +96,8 @@ def generate_self_play_replay(
     )
 
     step_index = 0
+    blunders = BlunderCounts()
+    last_card: dict[str, int] = {}
     if verbose:
         print("Step | Turn | AR | Player | DEFCON | VP | Action Description")
         print("-" * 75)
@@ -90,7 +107,8 @@ def generate_self_play_replay(
         p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
         player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
 
-        obs = np.array(ts.extract_observation(state, p), copy=False).reshape(1, -1)
+        obs = np.array(ts.extract_observation(state, p, layout=obs_layout),
+                       copy=False).reshape(1, -1)
         mask = np.array(ActionEncoder.get_legal_mask(state), copy=False).reshape(1, -1)
 
         obs_t = torch.from_numpy(obs).float().to(dev)
@@ -106,6 +124,22 @@ def generate_self_play_replay(
 
         action_desc = ActionEncoder.get_action_name(state, action_idx)
         ma = ts.ActionMask.decode_flat_action(state, action_idx)
+
+        # Blunder check. SELECT_PLAY_MODE is where both halves are known -- which card and what it
+        # is being spent on -- and the card is still in its owner's hand there, which the rules
+        # read. Missile Envy forces a card on its recipient, so that play is not their error.
+        _dt = int(ma.decision_type)
+        if _dt == 1:
+            last_card[player_name] = int(ma.primary_id)
+        elif _dt == 2:
+            _mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+            _card = last_card.get(player_name, 0)
+            if _mode and 1 <= _card <= 110:
+                _forced = (int(getattr(state, "forced_card_id", 0)) == _card
+                           and getattr(state, "forced_card_player", None) == p)
+                for _b in check_play(state, p, _card, _mode, forced=_forced, counts=blunders):
+                    if verbose:
+                        print(f"     !! BLUNDER {_b}")
 
         action_dict: ReplayActionDict = {
             "flat_action_idx": action_idx,
@@ -180,6 +214,9 @@ def generate_self_play_replay(
     if verbose:
         print("-" * 75)
         print(f" Game Ended on Turn {state.turn} (Step {step_index})")
+        if blunders.opportunities:
+            print(" Blunders (committed / chances):")
+            print(blunders.summary())
         print(f" Winner: {winner} (VP: {state.victory_points:+d}, DEFCON: {state.defcon})")
         print(f" Reason: {reason}")
         print(f" Replay saved to: {saved_primary_path}")
