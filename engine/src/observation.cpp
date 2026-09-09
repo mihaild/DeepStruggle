@@ -382,7 +382,16 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     Observation::extract_v21(state, perspective, &v21);
 
     std::memset(out_buf, 0, sizeof(ObservationBufferV22));
-    std::memcpy(out_buf->board_features, v21.board_features, sizeof(v21.board_features));
+
+    // The board is restrided rather than copied: v2.2 drops features 23 and 24 (can_my_realign,
+    // can_opp_realign) out of the middle of each country's row, so what follows them shifts down
+    // by two. Copied in two pieces per country so the surviving columns keep their meanings.
+    for (size_t c = 0; c < 84; ++c) {
+        const float* src = &v21.board_features[c * 28];
+        float* dst = &out_buf->board_features[c * V22_BOARD_FEATURES];
+        std::memcpy(dst, src, 23 * sizeof(float));            // 0..22 unchanged
+        std::memcpy(dst + 23, src + 25, 3 * sizeof(float));   // 25..27 -> 23..25
+    }
     std::memcpy(out_buf->global_features, v21.global_features, sizeof(v21.global_features));
     // turn_aggregates and active_player are deliberately not carried over; see
     // ObservationBufferV22.

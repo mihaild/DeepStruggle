@@ -363,7 +363,11 @@ struct alignas(64) ObservationBufferV21 {
 };
 
 struct alignas(64) ObservationBufferV22 {
-    float board_features[84 * 28];
+    // 26, not 28: can_my_realign and can_opp_realign are dropped. can_realign is exactly
+    // can_coup_or_realign, and can_coup is that plus "The Reformer blocks USSR coups in Europe",
+    // so the two pairs are identical outside that one late-war card -- 168 floats for a case that
+    // effectively does not arise. can_my_coup / can_opp_coup carry the whole signal.
+    float board_features[84 * 26];
     float card_features[110 * 14];   // v2.1's 13, plus "this is the card being played"
     float global_features[92];       // v2.1's 72 written ones, plus the 20-float context
     // No turn_aggregates and no active_player. Twenty of those 32 floats had no writer anywhere
@@ -399,7 +403,8 @@ namespace card_slots {
 constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
                                  + 16 * 32 + 32 + 1;
 constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
-constexpr size_t OBS_SIZE_V22 = 84 * 28 + 110 * card_slots::V22_FEATURES + 92;
+constexpr size_t OBS_SIZE_V22 = 84 * 26 + 110 * card_slots::V22_FEATURES + 92;
+constexpr size_t V22_BOARD_FEATURES = 26;
 
 // Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
 // invisible: every one of these is a legitimate 0.0 most of the time.

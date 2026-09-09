@@ -97,7 +97,8 @@ class ColdWarNetV2(nn.Module):
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
                  card_features: int = CARD_FEATURES, use_history: bool = True,
-                 global_features: int = GLOBAL_SIZE, has_tail: bool = True):
+                 global_features: int = GLOBAL_SIZE, has_tail: bool = True,
+                 board_features: int = 28):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -115,6 +116,11 @@ class ColdWarNetV2(nn.Module):
         # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.2 drops both:
         # the forward pass never sliced them, so of the 33 floats not one reached the network.
         self.has_tail = bool(has_tail)
+        # 28 in legacy and v2.1; 26 in v2.2, which drops the two per-country realignment
+        # legality features -- can_realign differs from can_coup only under The Reformer.
+        self.board_features = int(board_features)
+        self.BOARD_SIZE = 84 * self.board_features
+        self.CARD_OFFSET = self.BOARD_SIZE
         self.CARD_SIZE = 110 * self.card_features
         self.GLOBAL_OFFSET = self.CARD_OFFSET + self.CARD_SIZE
         self.HIST_OFFSET = self.GLOBAL_OFFSET + self.GLOBAL_SIZE
@@ -122,7 +128,7 @@ class ColdWarNetV2(nn.Module):
         self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + (33 if self.has_tail else 0)
 
         # 1. Board Graph Encoder (84 nodes x 28 features -> 64)
-        self.gconv1 = GraphConvLayer(28, 64)
+        self.gconv1 = GraphConvLayer(self.board_features, 64)
         self.gconv2 = GraphConvLayer(64, 64)
         self.board_proj = nn.Sequential(
             nn.Linear(64 * 2, 256),  # Mean + Max pooling over 84 nodes
@@ -361,6 +367,7 @@ class LayoutSpec(TypedDict):
 
     card_features: int
     global_features: int
+    board_features: int
     use_history: bool
     has_tail: bool
 
@@ -368,9 +375,9 @@ class LayoutSpec(TypedDict):
 #: Every observation layout, as the model dimensions it implies. Keyed by the name the engine and
 #: the CLI use, so there is one spelling of "which layout" across the whole stack.
 LAYOUTS: dict[str, LayoutSpec] = {
-    "legacy": {"card_features": 12, "global_features": 76, "use_history": True,  "has_tail": True},
-    "v2.1":   {"card_features": 13, "global_features": 76, "use_history": False, "has_tail": True},
-    "v2.2":   {"card_features": 14, "global_features": 92, "use_history": False, "has_tail": False},
+    "legacy": {"card_features": 12, "global_features": 76, "board_features": 28, "use_history": True,  "has_tail": True},
+    "v2.1":   {"card_features": 13, "global_features": 76, "board_features": 28, "use_history": False, "has_tail": True},
+    "v2.2":   {"card_features": 14, "global_features": 92, "board_features": 26, "use_history": False, "has_tail": False},
 }
 
 
@@ -378,11 +385,13 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           card_features: int = ColdWarNetV2.CARD_FEATURES,
                           use_history: bool = True,
                           global_features: int = ColdWarNetV2.GLOBAL_SIZE,
-                          has_tail: bool = True) -> ColdWarNetV2:
+                          has_tail: bool = True,
+                          board_features: int = 28) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device."""
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
                          card_features=card_features, use_history=use_history,
-                         global_features=global_features, has_tail=has_tail)
+                         global_features=global_features, has_tail=has_tail,
+                         board_features=board_features)
     return model.to(device)
 
 
@@ -396,7 +405,8 @@ def create_for_layout(layout: str, device: torch.device | str = "cpu") -> ColdWa
         card_features=kw["card_features"],
         use_history=kw["use_history"],
         global_features=kw["global_features"],
-        has_tail=kw["has_tail"])
+        has_tail=kw["has_tail"],
+        board_features=kw["board_features"])
 
 
 def layout_of(state_dict: dict) -> str:

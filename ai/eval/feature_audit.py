@@ -43,11 +43,11 @@ class Feature:
 
 def v22_features() -> List[Feature]:
     """The v2.2 observation, named. Offsets follow `engine/src/observation.cpp`."""
-    board = 84 * 28
+    board = 84 * 26
     cards = 110 * 14
     g = board + cards
     feats: List[Feature] = [
-        Feature("board", 0, board, "84 countries x 28"),
+        Feature("board", 0, board, "84 countries x 26"),
         Feature("cards", board, cards, "110 cards x 14"),
         # Global block, named individually -- this is where a silent gap would hide.
         Feature("global/my_vp", g + 0, 1),
