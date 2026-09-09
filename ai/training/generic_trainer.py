@@ -79,6 +79,10 @@ TB_TAGS: Dict[str, str] = {
     "episodes_completed": "game/episodes_completed",
     "mean_turn": "game/mean_turn",
     "median_turn": "game/median_turn",
+    "ussr_win_rate": "game/ussr_win_rate",
+    "draw_rate": "game/draw_rate",
+    "mean_terminal_utility": "game/mean_terminal_utility",
+    "steps_per_sec_avg": "progress/steps_per_sec_avg",
     "ending_frac_20vp": "endings/20vp",
     "ending_frac_final_scoring": "endings/final_scoring",
     "ending_frac_defcon1_self": "endings/defcon1_self",
@@ -87,8 +91,9 @@ TB_TAGS: Dict[str, str] = {
     "ending_frac_wargames": "endings/wargames",
 }
 
-# Per-start-turn variants. With mid-game start sampling on, a pooled game metric mixes
-# real games with resumed ones; these keep the series separable in TensorBoard.
+# Per-start-turn variants, emitted only when mid-game start sampling is actually in use (see
+# summarize_completed_episodes). With it off -- which is every run since it was settled negative --
+# every game starts at turn 1 and these would duplicate the unsuffixed series exactly.
 for _t in (1, 4, 6, 8, 10):
     TB_TAGS[f"episodes_completed_start{_t}"] = f"game_start{_t}/episodes_completed"
     TB_TAGS[f"mean_turn_start{_t}"] = f"game_start{_t}/mean_turn"
@@ -99,7 +104,8 @@ for _t in (1, 4, 6, 8, 10):
 # Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
 # iteration where no game finished, so they are held back from TensorBoard then.
 EPISODE_DEPENDENT_KEYS = frozenset(
-    ["mean_turn", "median_turn"] + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
+    ["mean_turn", "median_turn", "ussr_win_rate", "draw_rate", "mean_terminal_utility"]
+    + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
 )
 
 
@@ -115,6 +121,20 @@ def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
         if k in EPISODE_DEPENDENT_KEYS
         or any(k.startswith(f"{stem}_start") for stem in EPISODE_DEPENDENT_KEYS)
     )
+
+
+def _tb_tag(key: str) -> str:
+    """The TensorBoard tag for a metric key.
+
+    Most are looked up. Per-opponent evaluation results cannot be: the opponent list is built at
+    runtime, so those are matched by prefix. Anything unrecognised still lands under misc/ rather
+    than being dropped, so a new metric cannot go missing silently.
+    """
+    if key in TB_TAGS:
+        return TB_TAGS[key]
+    if key.startswith("eval_win_rate_"):
+        return "eval/win_rate_vs_" + key[len("eval_win_rate_"):]
+    return f"misc/{key}"
 
 
 class TensorBoardLogger:
@@ -153,7 +173,7 @@ class TensorBoardLogger:
                     continue
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue
-                self.writer.add_scalar(TB_TAGS.get(key, f"misc/{key}"), float(value), step)
+                self.writer.add_scalar(_tb_tag(key), float(value), step)
         except Exception as e:
             print(f"Warning: TensorBoard logging failed ({e}); disabling TensorBoard for the rest of the run.", flush=True)
             self.writer = None
@@ -190,6 +210,17 @@ def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[st
     stats[f"mean_turn{suffix}"] = float(np.mean(turns)) if turns else 0.0
     stats[f"median_turn{suffix}"] = float(np.median(turns)) if turns else 0.0
 
+    # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance and
+    # which nothing was tracking during a run. Free here: the episode records carry the winner.
+    winners = [str(ep.get("winner", "")) for ep in episodes]
+    decided = [w for w in winners if w in ("US", "USSR")]
+    stats[f"ussr_win_rate{suffix}"] = (
+        float(sum(1 for w in decided if w == "USSR")) / float(len(decided)) if decided else 0.0)
+    stats[f"draw_rate{suffix}"] = (
+        float(sum(1 for w in winners if w == "DRAW")) / float(len(winners)) if winners else 0.0)
+    utils = [float(ep["terminal_utility"]) for ep in episodes if "terminal_utility" in ep]
+    stats[f"mean_terminal_utility{suffix}"] = float(np.mean(utils)) if utils else 0.0
+
     reasons = [str(ep.get("ending_reason", "")) for ep in episodes]
     counted = [r for r in reasons if r]
     for key in ENDING_REASON_KEYS:
@@ -205,19 +236,23 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
     Game length is reported at the game-turn granularity (mean and median terminal turn),
     and the ending-reason mix as a fraction of the episodes completed this iteration.
 
-    Everything is also reported per *start* turn. With mid-game start sampling on, half the
-    environments begin partway through a game, so a pooled mean turn or ending mix
-    describes neither the real game nor the resumed one -- a run reads a mean turn of 8
-    while its turn-1 games still end at 6. The unsuffixed keys keep the pooled figures for
-    continuity; read the _start1 series when comparing against runs without a pool.
+    With mid-game start sampling on, half the environments begin partway through a game, so a
+    pooled mean turn or ending mix describes neither the real game nor the resumed one -- a run
+    reads a mean turn of 8 while its turn-1 games still end at 6. The per-start-turn breakdown
+    exists for that case and is emitted **only** in it.
+
+    With the pool off, every episode starts at turn 1 and each suffixed series is an exact copy of
+    its unsuffixed twin: a 320M run logged ten such copies for 1,220 iterations. Start sampling is
+    settled negative (3.2, 3.3) and --start-pool-frac defaults to 0, so that is every ordinary run.
     """
     stats = _episode_group_stats(episodes, "")
 
     by_start: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
     for ep in episodes:
         by_start[int(ep.get("start_turn", 1))].append(ep)
-    for start_turn, group in by_start.items():
-        stats.update(_episode_group_stats(group, f"_start{start_turn}"))
+    if len(by_start) > 1:
+        for start_turn, group in by_start.items():
+            stats.update(_episode_group_stats(group, f"_start{start_turn}"))
     return stats
 
 
@@ -470,7 +505,13 @@ def evaluate_and_log_snapshot(
     report_entry.append("| Opponent | Overall Win Rate | As US Win Rate | As USSR Win Rate | Top Loss Causes (US) | Top Loss Causes (USSR) |\n")
     report_entry.append("|:---|:---:|:---:|:---:|:---|:---|\n")
 
-    for opp in opponents:
+    # Win rate against each fixed baseline, which is the curve this whole evaluation exists to
+    # produce and which used to reach only the markdown table. Keyed by opponent name, so only the
+    # baselines qualify: the snapshot opponents are renamed every interval and would each start a
+    # new series that stops one interval later.
+    eval_metrics: Dict[str, float] = {}
+
+    for idx, opp in enumerate(opponents):
         res = BatchMatchRunner.play_parallel_matchup(
             current_agent, opp, games_per_side=games_per_side, device=dev, temperature=0.1)
         wr_tot = res["win_rate_a"] * 100.0
@@ -483,6 +524,11 @@ def evaluate_and_log_snapshot(
         print(f"  vs {opp.name:<25s} -> Overall: {wr_tot:5.1f}% ({res['a_wins']}W-{res['b_wins']}L) | US: {wr_us:5.1f}% ({res['a_wins_as_us']}W-{res['a_losses_as_us']}L) | USSR: {wr_ussr:5.1f}% ({res['a_wins_as_ussr']}W-{res['a_losses_as_ussr']}L)", flush=True)
         print(f"       Losses as US:   {top_us}", flush=True)
         print(f"       Losses as USSR: {top_ussr}", flush=True)
+
+        if idx < num_baselines:
+            eval_metrics[f"eval_win_rate_{opp.name}"] = float(res["win_rate_a"])
+            eval_metrics[f"eval_win_rate_{opp.name}_as_us"] = float(res["win_rate_a_as_us"])
+            eval_metrics[f"eval_win_rate_{opp.name}_as_ussr"] = float(res["win_rate_a_as_ussr"])
 
         report_entry.append(f"| **{opp.name}** | **{wr_tot:.1f}%** ({res['a_wins']}W-{res['b_wins']}L) | {wr_us:.1f}% ({res['a_wins_as_us']}W-{res['a_losses_as_us']}L) | {wr_ussr:.1f}% ({res['a_wins_as_ussr']}W-{res['a_losses_as_ussr']}L) | {top_us} | {top_ussr} |\n")
 
@@ -523,7 +569,7 @@ def evaluate_and_log_snapshot(
             if excess > 0:
                 del opponents[num_baselines:num_baselines + excess]
 
-    return {**decisive_metrics, **position_metrics}
+    return {**decisive_metrics, **position_metrics, **eval_metrics}
 
 
 def run_post_training_tournament(
@@ -954,6 +1000,22 @@ def train_pipeline(
         eta = int(train_elapsed + overhead_seconds + remaining)
         return f"{steps_done:,}/{step_budget:,} steps, ETA {eta}s"
 
+    # Which auxiliary loss terms this configuration actually trains. Everything else would be a
+    # constant zero series.
+    active_aux_losses: List[str] = []
+    if arch == "v4":
+        active_aux_losses += ["belief_loss", "oracle_loss", "distill_loss"]
+    if defcon_coef > 0.0:
+        active_aux_losses.append("defcon_risk_loss")
+    if injector is not None:
+        active_aux_losses.append("inject_loss")
+
+    # Seeded from the trainer, not from the loop variable, which does not exist yet -- and from
+    # the clock as it stands, not from zero: a resumed run's elapsed already includes the previous
+    # leg, so a zero baseline would divide the first iteration's steps by hours and report ~0.
+    prev_steps = int(trainer.total_env_steps)
+    prev_elapsed = time.time() - t_start - overhead_seconds
+
     _refresh_start_pool("initial")
 
     while True:
@@ -986,23 +1048,29 @@ def train_pipeline(
             "iteration": it,
             "elapsed_seconds": int(elapsed),
             "total_steps": total_env_steps,
-            "steps_per_sec": int(total_env_steps / max(1.0, elapsed)),
+            # Rate since the previous iteration, not total/elapsed. The lifetime average is
+            # meaningless on a resumed run -- its clock is rewound to include the previous leg, so
+            # a run actually doing 7,123 steps/s reported 9,930 -- and it is what a reader checking
+            # throughput is looking at. The lifetime figure is kept beside it, named for what it is.
+            "steps_per_sec": int((total_env_steps - prev_steps) / max(1e-6, elapsed - prev_elapsed)),
+            "steps_per_sec_avg": int(total_env_steps / max(1.0, elapsed)),
             "loss": iteration_metrics["loss"],
             "policy_loss": iteration_metrics["policy_loss"],
             "value_loss": iteration_metrics["val_loss"],
             "kl_div": iteration_metrics["kl_div"],
             "entropy": iteration_metrics["entropy"],
             "clip_frac": iteration_metrics.get("clip_frac", 0.0),
-            "defcon_risk_loss": iteration_metrics.get("defcon_risk_loss", 0.0),
-            "belief_loss": iteration_metrics.get("belief_loss", 0.0),
-            "oracle_loss": iteration_metrics.get("oracle_loss", 0.0),
-            "distill_loss": iteration_metrics.get("distill_loss", 0.0),
-            "inject_loss": float(iteration_metrics.get("inject_loss", 0.0)),
             "explained_variance": float(iteration_metrics.get("explained_variance", 0.0)),
             "adv_std": float(iteration_metrics.get("adv_std", 0.0)),
             "adv_std_raw": float(iteration_metrics.get("adv_std_raw", 0.0)),
             "adv_frac_near_zero": float(iteration_metrics.get("adv_frac_near_zero", 0.0)),
         }
+        # Auxiliary losses only where the term that produces them is switched on. Logged
+        # unconditionally they are a flat zero line for the whole run -- five of them on an
+        # ordinary v2 run -- which reads as "trained and converged" rather than "not present".
+        for _aux in active_aux_losses:
+            step_metrics[_aux] = float(iteration_metrics.get(_aux, 0.0))
+
         step_metrics.update(episode_stats)
         if "entropy_fixed_probe" in iteration_metrics:
             step_metrics["entropy_fixed_probe"] = float(iteration_metrics["entropy_fixed_probe"])
@@ -1016,6 +1084,8 @@ def train_pipeline(
             skip_keys=(episode_dependent_in(episode_stats)
                        if episode_stats["episodes_completed"] == 0.0 else None),
         )
+        prev_steps, prev_elapsed = total_env_steps, elapsed
+
         if it % 10 == 0:
             tb.flush()
 

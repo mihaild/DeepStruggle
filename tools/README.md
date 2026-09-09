@@ -66,9 +66,28 @@ written, and a missing/broken `tensorboard` install only prints a warning). Watc
 Beyond the loss terms, each iteration records `explained_variance` (`1 - Var(G - V) / Var(G)` for
 the win-value head — the primary read on whether the critic is learning), advantage-distribution
 health (`adv_std`, `adv_std_raw`, `adv_frac_near_zero`), game length (`mean_turn`, `median_turn`,
-`episodes_completed`), the ending-reason mix (`ending_frac_*`), and `entropy_fixed_probe` — mean
-masked policy entropy on a pool of ~2,000 (observation, mask) pairs frozen at the start of the run,
-which unlike the on-policy `entropy` cannot be masked by state-distribution drift.
+`episodes_completed`), the ending-reason mix (`ending_frac_*`), which side won (`ussr_win_rate`,
+`draw_rate`, `mean_terminal_utility` — US-positive), and `entropy_fixed_probe`: mean masked policy
+entropy on a pool of ~2,000 (observation, mask) pairs frozen at the start of the run, which unlike
+the on-policy `entropy` cannot be masked by state-distribution drift.
+
+At every snapshot it also records the win rate against each fixed baseline, overall and per side
+(`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and
+position diagnostics. Snapshot *opponents* are deliberately excluded: they are renamed every
+interval, so each would start a series that stops one interval later.
+
+Three things are deliberately **not** logged, because a series that cannot vary is worse than an
+absent one — it reads as a measurement:
+
+* **Auxiliary losses whose term is switched off.** `belief_loss`, `oracle_loss` and `distill_loss`
+  are v4-only, `defcon_risk_loss` needs `--defcon-coef`, `inject_loss` needs `--inject-dataset`.
+  On an ordinary v2 run all five were a flat zero line for the whole run.
+* **Per-start-turn breakdowns when no start pool is in use.** `--start-pool-frac` defaults to 0, so
+  every game starts at turn 1 and `game_start1/*` duplicated `game/*` exactly. They reappear
+  automatically when episodes actually start at more than one turn.
+* `steps_per_sec` is the rate **since the previous iteration**. The lifetime average is kept as
+  `steps_per_sec_avg`, and is the one to ignore on a resumed run: its clock is rewound to include
+  the previous leg, so a run doing 7,123 steps/s can report 9,930.
 
 ---
 
