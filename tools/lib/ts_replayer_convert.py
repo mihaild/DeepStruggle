@@ -1160,8 +1160,7 @@ def _pending_roll(state: ts.GameState) -> Tuple[int, str]:
     """What the chance node about to resolve is for and whose roll it is, as the engine
     itself classifies them.
 
-    The RollType is kept in the context's temp_cards, which reach Python trimmed to
-    temp_card_cnt and so do not include it. Rather than infer the kind from the card -- an
+    The RollType is on the context as pending_roll_type. Rather than infer the kind from the card -- an
     ordinary Ops coup has no resolving card at all, while Junta's and Che's do -- the node is
     resolved on a throwaway clone and the record it writes is read back. One clone per chance
     node is nothing next to the seed searches this replaces.

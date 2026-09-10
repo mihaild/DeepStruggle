@@ -198,8 +198,8 @@ cmake --build build_san -j
    allowed and usual, and inside a coup they make, where it is not -- couping without paying
    loses the game. Both are a `POINT_NODE` with `resolving_card == CUBAN_MISSILE_CRISIS`: the US
    pays from West Germany or Turkey, the USSR from Cuba. The coup's is asked before its die, so
-   the coup is already staged in `temp_cards` and the chance node opens on the far side of the
-   answer; `temp_cards[1]` being `RollType::COUP` is what tells the two apart. With one payer, or
+   the coup is already staged and the chance node opens on the far side of the answer;
+   `ctx().pending_roll == RollType::COUP` is what tells the two apart. With one payer, or
    none, `execute_coup` settles it inline as before.
 11. **An Opponent's Card Owes Its Event In A Headline Too**: playing an opponent's card for
    Operations asks which resolves first, and `OPS_FIRST` leaves the Event owed until the Ops

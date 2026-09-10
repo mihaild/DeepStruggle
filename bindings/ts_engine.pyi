@@ -405,8 +405,6 @@ class DecisionContext:
     @resolving_card.setter
     def resolving_card(self, arg: int, /) -> None: ...
 
-    @property
-    def temp_card_cnt(self) -> int: ...
 
     @property
     def op_mode(self) -> OpMode:
@@ -421,14 +419,23 @@ class DecisionContext:
         """Which kind of chance node is pending; RollType.TURN_CLEANUP for the turn's cleanup."""
         ...
 
-    @temp_card_cnt.setter
-    def temp_card_cnt(self, arg: int, /) -> None: ...
+    @property
+    def roll_target(self) -> int:
+        """What the pending die is about: a country id, or a card id for SPACE_RACE/TRAP_ESCAPE."""
+        ...
 
     @property
-    def temp_cards(self) -> list[int]: ...
+    def roll_actor(self) -> Player:
+        """Who rolls the pending die; Player.NONE means the phasing player."""
+        ...
 
-    @temp_cards.setter
-    def temp_cards(self, arg: Sequence[int], /) -> None: ...
+    @property
+    def event_stage(self) -> int:
+        """Which half of a two-part event is being answered (Che, De-Stalinization)."""
+        ...
+
+    @event_stage.setter
+    def event_stage(self, arg: int, /) -> None: ...
 
     def is_visited(self, arg: int, /) -> bool: ...
 

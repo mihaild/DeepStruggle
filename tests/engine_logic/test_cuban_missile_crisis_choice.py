@@ -6,7 +6,7 @@ West Germany, that was right in eight of the corpus's ten US cancellations and w
 turn 5 AR7 of ts-replayer game 234 the US holds 5 in West Germany and 2 in Turkey and pays from
 Turkey.
 
-The choice is asked before the coup's die, so the coup is already staged in temp_cards and the
+The choice is asked before the coup's die, so the coup is already staged and the
 chance node opens on the far side of the answer with nothing to rebuild. Where only one country
 can pay there is nothing to choose and execute_coup settles it as before; the USSR side is
 Cuba alone and has no choice at all.

@@ -35,10 +35,11 @@ def test_pass_action_decodes_as_confirm_done_for_select_card() -> None:
     state.ctx().resolving_card = OUR_MAN_IN_TEHRAN
     state.ctx().allow_early_stop = 1
 
+    # The peek is the set of cards at PEEKED_TEMP -- being looked at is a location, so setting
+    # them there is the whole of it.
     peek: List[int] = [4, 8, 47, 53, 75]
     for c in peek:
         state.set_card_location(c, ts.CardLocation.PEEKED_TEMP)
-    state.ctx().temp_cards = peek
     state.ctx().remaining_steps = len(peek)
 
     mask = np.asarray(ts.ActionMask.generate_flat_mask(state))

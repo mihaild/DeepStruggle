@@ -775,30 +775,38 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         case card_ids::DE_STALINIZATION: {
             // Stage 1 (removal) and Stage 2 (placement)
             uint8_t cid = action.primary_id;
-            if (state.ctx().max_per_country == 0) {
-                // Stage 1: Removal of USSR influence
+            // How many have been removed so far is what the allowance has been spent down by,
+            // so no separate tally is kept. It used to live in the staged-card count, which
+            // meant that count said "cards" for every other card and "influence points" here.
+            const uint8_t removed = static_cast<uint8_t>(
+                de_stalinization::MAX_REMOVALS - state.ctx().remaining_steps);
+
+            // Opening the placement phase: place back exactly what was removed, at most two per
+            // country, and no declining. The per-country tracking starts fresh because the
+            // countries removed from are not the countries placed into.
+            auto begin_placement = [&state](uint8_t to_place) {
+                state.ctx().event_stage = de_stalinization::STAGE_PLACE;
+                state.ctx().remaining_steps = to_place;
+                state.ctx().max_per_country = 2;
+                state.ctx().allow_early_stop = 0;
+                state.ctx().visited_nodes = {};
+                state.ctx().node_counts = {};
+            };
+
+            if (state.ctx().event_stage == de_stalinization::STAGE_REMOVE) {
                 if (action.is_confirm_done()) {
-                    if (state.ctx().temp_card_cnt == 0) {
+                    if (removed == 0) {
                         state.ctx().resolving_card = 0;
                         return true;
                     }
-                    state.ctx().remaining_steps = state.ctx().temp_card_cnt;
-                    state.ctx().max_per_country = 2;
-                    state.ctx().allow_early_stop = 0; // MUST place all removed influence
-                    state.ctx().visited_nodes = {};
-                    state.ctx().node_counts = {};
+                    begin_placement(removed);
                     return false;
                 }
                 if (cid < 84 && state.countries[cid].ussr_influence > 0) {
                     state.countries[cid].remove_influence(Player::USSR, 1);
-                    state.ctx().temp_card_cnt++; // Tracks total removed
                     if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                     if (state.ctx().remaining_steps == 0) {
-                        state.ctx().remaining_steps = state.ctx().temp_card_cnt;
-                        state.ctx().max_per_country = 2;
-                        state.ctx().allow_early_stop = 0; // MUST place all removed influence
-                        state.ctx().visited_nodes = {};
-                        state.ctx().node_counts = {};
+                        begin_placement(de_stalinization::MAX_REMOVALS);
                         return false;
                     }
                     return false;
@@ -1650,7 +1658,7 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     }
                     break;
                 case card_ids::DE_STALINIZATION:
-                    if (state.ctx().max_per_country == 0) {
+                    if (state.ctx().event_stage == de_stalinization::STAGE_REMOVE) {
                         // Stage 1: Removal of USSR influence
                         if (state.countries[i].ussr_influence > 0) {
                             mask_out[i] = 1;

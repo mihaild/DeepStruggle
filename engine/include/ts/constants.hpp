@@ -285,6 +285,18 @@ namespace ask_not {
     constexpr uint8_t MAX_DISCARDS = 9;
 }
 
+// De-Stalinization removes up to four USSR Influence and then places exactly that many. The
+// allowance is the tally: what it has been spent down by during the removal phase is how many
+// must go back down in the placement phase.
+namespace de_stalinization {
+    constexpr uint8_t MAX_REMOVALS = 4;
+    //: Which half of the card is being answered. Was inferred from `max_per_country == 0`,
+    //: a sentinel that meant "removal phase" only by coincidence of the placement phase
+    //: capping at two per country.
+    constexpr uint8_t STAGE_REMOVE = 0;
+    constexpr uint8_t STAGE_PLACE  = 1;
+}
+
 namespace may_fizzle {
     inline constexpr bool allowed(uint8_t card_id) noexcept {
         return card_id == card_ids::TRUMAN_DOCTRINE ||

@@ -18,7 +18,11 @@ from ai.eval.feature_audit import audit, collect, v22_features
 #: Diagnosed dead, with the reason. Empty for v2.2, and it should stay that way: every float in
 #: the observation is now written by something and varies on real positions. A name appearing here
 #: means a feature was added and never wired up.
-KNOWN_DEAD: Set[str] = set()
+#: Dead on purpose, for one commit. Nothing counts staged cards any more -- no event stores a
+#: list of them -- so ctx/temp_card_count is written zero while v2.2 still has the width. The
+#: next change drops the slot and takes the layout to v2.3, and this entry goes with it. Listed
+#: rather than silenced so the audit keeps failing if it is ever forgotten.
+KNOWN_DEAD: Set[str] = {"ctx/temp_card_count"}
 
 #: Features that need a broad state sample before they vary; excluded from the live check because
 #: 40 games of uniform-random play is not guaranteed to reach them. They are covered by the

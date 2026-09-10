@@ -540,7 +540,6 @@ NB_MODULE(ts_engine, m) {
         .def_rw("max_per_country", &ts::DecisionContext::max_per_country)
         .def_rw("allow_early_stop", &ts::DecisionContext::allow_early_stop)
         .def_rw("resolving_card", &ts::DecisionContext::resolving_card)
-        .def_rw("temp_card_cnt", &ts::DecisionContext::temp_card_cnt)
         // Which kind of Operation the pending point decisions belong to. Needed to tell
         // apart a run of point decisions whose order carries no meaning (spreading
         // Influence) from one where it does: a coup or a realignment changes the board
@@ -562,21 +561,12 @@ NB_MODULE(ts_engine, m) {
             [](const ts::DecisionContext& c) { return c.pending_roll; })
         .def_prop_ro("roll_target", [](const ts::DecisionContext& c) { return c.roll_target; })
         .def_prop_ro("roll_actor", [](const ts::DecisionContext& c) { return c.roll_actor; })
-        // Exposed so a replay can be reconstructed against a log that records only part of a
-        // peeked set: Our Man in Tehran prints which cards the US discarded but not which it
-        // saw, and this is the buffer the legal-action mask is built from.
-        .def_prop_rw(
-            "temp_cards",
-            [](const ts::DecisionContext& c) {
-                return std::vector<uint8_t>(c.temp_cards.begin(),
-                                            c.temp_cards.begin() + c.temp_card_cnt);
-            },
-            [](ts::DecisionContext& c, const std::vector<uint8_t>& v) {
-                const size_t n = std::min(v.size(), c.temp_cards.size());
-                c.temp_cards.fill(0);
-                std::copy_n(v.begin(), n, c.temp_cards.begin());
-                c.temp_card_cnt = static_cast<uint8_t>(n);
-            })
+        // Which half of a two-part event is being answered -- Che's second coup,
+        // De-Stalinization's placement phase.
+        .def_rw("event_stage", &ts::DecisionContext::event_stage)
+        // temp_cards is gone. It was exposed so a replay could steer a peeked set, which is now
+        // done by setting card locations: a peeked card sits at PEEKED_TEMP, which is both what
+        // the mask reads and what the observation shows.
         .def("is_visited", &ts::DecisionContext::is_visited);
 
     nb::class_<ts::GameState>(m, "GameState")

@@ -140,8 +140,6 @@ struct alignas(64) DecisionContext {
     std::array<uint64_t, 2> start_influence_nodes; // Bitmask of countries with friendly influence at start of Op
     std::array<uint64_t, 2> visited_nodes;         // 128-bit bitmask of nodes already modified
     std::array<uint8_t, 84> node_counts;           // Placements/removals per node during this event
-    std::array<uint8_t, 16> temp_cards;            // Temp buffer for peeked/searched card IDs
-    uint8_t                 temp_card_cnt;         // Number of valid cards in temp_cards
     uint8_t                 suppress_op_card_event; // 1 = do not fire pending_op_card's event
     uint8_t                 event_granted_ops;      // 1 = Ops came from an event, not a card play
 
@@ -431,8 +429,11 @@ constexpr size_t V22_BOARD_FEATURES = 26;
 // differ in content, and that difference is invisible to every check we have.
 namespace obs_flags {
     constexpr uint32_t NONE          = 0u;
-    //: A card staged in ctx.temp_cards is shown to the player whose decision it is. Without this
-    //: the Grain Sales branch asks the US to keep or return a card it cannot see.
+    //: Retired, and kept only so the bit is not reused with a different meaning while
+    //: checkpoints recording it by name still exist. It made a card being decided about visible
+    //: to the decider, which Grain Sales needed because it showed a card without moving it. The
+    //: card now goes to PEEKED_TEMP and reaches the observation through the ordinary location
+    //: chain, so there is nothing left for the flag to do.
     constexpr uint32_t STAGED_CARDS  = 1u << 0;
 }
 

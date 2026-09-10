@@ -337,11 +337,11 @@ bool trigger_de_stalinization(GameState& state, Player p) noexcept {
     // USSR removes up to 4 influence from countries and places in non-US controlled countries (max 2 per country)
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::POINT_NODE; // Stage 1: Removal (up to 4)
-    state.ctx().remaining_steps = 4;
-    state.ctx().max_per_country = 0; // Stage 1 removal flag
+    state.ctx().remaining_steps = de_stalinization::MAX_REMOVALS;
+    state.ctx().max_per_country = 0;
+    state.ctx().event_stage = de_stalinization::STAGE_REMOVE;
     state.ctx().allow_early_stop = 1;
     state.ctx().resolving_card = card_ids::DE_STALINIZATION;
-    state.ctx().temp_card_cnt = 0; // Counts total removed
     return false;
 }
 

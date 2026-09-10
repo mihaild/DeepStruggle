@@ -367,7 +367,7 @@ def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
 
 # --- Cards staged for a decision -----------------------------------------------------------
 #
-# The engine stages a card in ctx.temp_cards when a decision is *about* that card -- Grain Sales
+# The engine puts a card at PEEKED_TEMP when a decision is *about* that card -- Grain Sales
 # hands one over and asks whether to play it, Star Wars offers one from the discard pile -- and
 # does so without touching card_locations. So the card kept reading DECK_OR_HIDDEN, and the player
 # being asked could not see what they were deciding about. v2.2 shows it in the PEEKED slot, but

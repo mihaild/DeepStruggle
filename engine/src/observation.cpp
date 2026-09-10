@@ -448,26 +448,10 @@ void Observation::extract_v22(const GameState& state, Player perspective,
             }
         }
 
-        // obs_flags::STAGED_CARDS. A card in ctx.temp_cards is one this decision is *about* --
-        // Grain Sales hands the US a card and asks whether to keep it -- and the engine stages it
-        // without touching card_locations, so it read as DECK_OR_HIDDEN and the player choosing
-        // could not see what they were choosing. Shown in the PEEKED slot, which is what that slot
-        // means, and only where they could not already see it: Missile Envy's tie-break stages the
-        // giver's own cards and must keep reading MY_HAND.
-        //
-        // Behind a flag because arms F and F2 trained without it, and the width is unchanged --
-        // so nothing would catch a checkpoint being evaluated against the wrong one.
-        if ((flags & obs_flags::STAGED_CARDS) && ctx.decision_player == my_player) {
-            for (uint8_t k = 0; k < ctx.temp_card_cnt && k < ctx.temp_cards.size(); ++k) {
-                if (ctx.temp_cards[k] != card_id) continue;
-                float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
-                if (row[card_slots::DECK_OR_HIDDEN] > 0.0f) {
-                    row[card_slots::DECK_OR_HIDDEN] = 0.0f;
-                    row[card_slots::PEEKED] = 1.0f;
-                }
-                break;
-            }
-        }
+        // Nothing here for a card being decided about. Grain Sales used to show a card without
+        // moving it, so the player choosing saw DECK_OR_HIDDEN and obs_flags::STAGED_CARDS was
+        // added to paper over it; the card now goes to PEEKED_TEMP and reaches the PEEKED slot
+        // through the ordinary location chain above.
 
         out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
             active ? 1.0f : 0.0f;
@@ -496,7 +480,10 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     out_buf->global_features[ctx_slots::TIMING_EVENT_FIRST] = (ctx.timing_branch == 1) ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::EVENT_GRANTED_OPS]  = ctx.event_granted_ops ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::SUPPRESS_OP_EVENT]  = ctx.suppress_op_card_event ? 1.0f : 0.0f;
-    out_buf->global_features[ctx_slots::TEMP_CARD_COUNT]    = static_cast<float>(ctx.temp_card_cnt) / 8.0f;
+    // Nothing counts staged cards any more -- no event stores a list of them. The slot is
+    // written zero rather than left to whatever the buffer held, so v2.2's width and content
+    // stay defined while it lives; the next change drops it and takes the layout to v2.3.
+    out_buf->global_features[ctx_slots::TEMP_CARD_COUNT]    = 0.0f;
 
     // Headline stage and resolution order. Which card resolves first is a mechanic (Space box 4
     // lets a player see the opponent's headline before choosing), and none of this reached the
