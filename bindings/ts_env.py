@@ -12,6 +12,7 @@ from ai.game_length import ply as _game_ply
 # which stays the single source of truth for the classification itself.
 ENDING_REASON_KEYS: Tuple[str, ...] = (
     "20vp",
+    "europe_control",
     "final_scoring",
     "defcon1_self",
     "defcon1_provoked",
@@ -21,6 +22,7 @@ ENDING_REASON_KEYS: Tuple[str, ...] = (
 
 _ENDING_REASON_MAP: Dict[str, str] = {
     "20 VP": "20vp",
+    "Europe Control": "europe_control",
     "final scoring": "final_scoring",
     "DEFCON 1 (own decision)": "defcon1_self",
     "DEFCON 1 (opponent decision)": "defcon1_provoked",

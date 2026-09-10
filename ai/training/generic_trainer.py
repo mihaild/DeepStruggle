@@ -94,6 +94,7 @@ TB_TAGS: Dict[str, str] = {
     "mean_ply": "endgame/ply",
     "median_ply": "endgame/median_ply",
     "ending_frac_20vp": "endgame/ending_20vp",
+    "ending_frac_europe_control": "endgame/ending_europe_control",
     "ending_frac_final_scoring": "endgame/ending_final_scoring",
     "ending_frac_wargames": "endgame/ending_wargames",
     "ending_frac_held_scoring": "endgame/ending_held_scoring",
@@ -165,6 +166,7 @@ MULTILINE_CHARTS: Dict[str, Dict[str, Union[str, float]]] = {
     },
     "endgame/ending_mix": {
         "20vp": "ending_frac_20vp",
+        "europe_control": "ending_frac_europe_control",
         "final_scoring": "ending_frac_final_scoring",
         "wargames": "ending_frac_wargames",
         "defcon1": "ending_frac_defcon1",

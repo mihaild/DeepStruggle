@@ -11,6 +11,7 @@ from ai.game_length import ply as game_ply
 def classify_game_ending_reason(state: ts.GameState) -> str:
     """Accurately determines the exact cause of game termination from the canonical list:
     - 20 VP
+    - Europe Control
     - DEFCON 1 (own decision)
     - DEFCON 1 (opponent decision)
     - final scoring
@@ -39,11 +40,17 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
     if state.turn <= 10 and abs(state.victory_points) < 20 and state.current_phase == ts.Phase.GAME_OVER:
         return "wargames"
 
-    # 3. 20 VP Milestone, Europe Control, or Held Scoring
+    # 3. Europe Control: controlling Europe when Europe is scored ends the game at +/-20 VP,
+    # which is indistinguishable from any other 20 VP win without the flag the engine sets.
+    # It is 1.4% of the ITS corpus and was being counted as an ordinary 20 VP win here.
+    if state.has_flag(ts.EffectBits.EUROPE_CONTROL_WIN):
+        return "Europe Control"
+
+    # 4. 20 VP Milestone or Held Scoring
     if abs(state.victory_points) >= 20:
         return "20 VP"
 
-    # 4. Final Scoring (Turn 10)
+    # 5. Final Scoring
     if state.turn >= 10:
         return "final scoring"
 

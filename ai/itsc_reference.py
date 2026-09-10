@@ -47,7 +47,8 @@ ITSC_REFERENCE: Final[Dict[str, float]] = {
     "mean_ply": 119.85,
     "median_ply": 127.5,
 
-    "ending_frac_20vp": 0.43062,
+    "ending_frac_20vp": 0.41513,
+    "ending_frac_europe_control": 0.01550,
     "ending_frac_final_scoring": 0.28983,
     "ending_frac_wargames": 0.14884,
     "ending_frac_defcon1": 0.11712,
@@ -57,7 +58,8 @@ ITSC_REFERENCE: Final[Dict[str, float]] = {
     "median_turn_won_us": 9.0,
     "mean_ply_won_us": 124.05,
     "median_ply_won_us": 135.7,
-    "ending_frac_20vp_won_us": 0.36221,
+    "ending_frac_20vp_won_us": 0.34288,
+    "ending_frac_europe_control_won_us": 0.01933,
     "ending_frac_final_scoring_won_us": 0.32127,
     "ending_frac_wargames_won_us": 0.14474,
     "ending_frac_defcon1_won_us": 0.15561,
@@ -67,7 +69,8 @@ ITSC_REFERENCE: Final[Dict[str, float]] = {
     "median_turn_won_ussr": 8.0,
     "mean_ply_won_ussr": 115.10,
     "median_ply_won_ussr": 119.7,
-    "ending_frac_20vp_won_ussr": 0.50819,
+    "ending_frac_20vp_won_ussr": 0.49622,
+    "ending_frac_europe_control_won_ussr": 0.01197,
     "ending_frac_final_scoring_won_ussr": 0.25031,
     "ending_frac_wargames_won_ussr": 0.14933,
     "ending_frac_defcon1_won_ussr": 0.08088,
@@ -81,6 +84,11 @@ ITSC_MEAN_PLY_BOUNDS: Final[tuple[float, float]] = (112.1, 122.5)
 #: ITS records DEFCON 1 as one outcome and cannot say whose decision caused it, so there is no
 #: reference for `defcon1_self` / `defcon1_provoked` separately -- only for their sum, which is
 #: why the trainer emits a combined `ending_frac_defcon1`.
+#:
+#: Europe Control, by contrast, *is* recorded separately by ITS (684 games, 1.55% of those with
+#: a rules ending) and used to be folded into `20vp` here, because the engine could not tell the
+#: two apart: controlling Europe when Europe is scored ends the game at +/-20 VP like any other
+#: 20 VP win. `effect_bits::EUROPE_CONTROL_WIN` now records which it was, so the two are split.
 NO_REFERENCE_SPLIT: Final[tuple[str, ...]] = ("defcon1_self", "defcon1_provoked")
 
 

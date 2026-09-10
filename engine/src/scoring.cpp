@@ -164,15 +164,19 @@ void Scoring::score_region(GameState& state, Region r) noexcept {
 
     auto summary = evaluate_region(state, r);
 
-    // Europe Control Instant Victory check
+    // Europe Control Instant Victory check. The flag records *why* the game ended: the score
+    // and phase it leaves behind are identical to any other 20 VP win, so without it the
+    // ending cannot be classified afterwards. Analytics only -- see effect_bits.
     if (r == Region::EUROPE) {
         if (summary.us_status == RegionalStatus::CONTROL) {
             state.victory_points = 20;
+            state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
             state.current_phase = Phase::GAME_OVER;
             return;
         }
         if (summary.ussr_status == RegionalStatus::CONTROL) {
             state.victory_points = -20;
+            state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
             state.current_phase = Phase::GAME_OVER;
             return;
         }
