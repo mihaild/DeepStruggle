@@ -1723,6 +1723,45 @@ def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player
         state.set_card_location(revealed, ts.hand_of(giver))
 
 
+def _cap_draw_deck(state: ts.GameState, revealed: int) -> List[int]:
+    """Hold the Missile Envy cap over the draw deck, and report what was set aside.
+
+    _seed_missile_envy_hand fixes the hand as it stands. It cannot fix a hand the engine is
+    about to *replace*: at turn 7's headline of replay 96 "Ask Not What Your Country Can Do For
+    You" is 3 Ops against Missile Envy's 2, so it resolves first, discards six cards and draws
+    six more -- and the draw and the exchange happen inside a single engine step, leaving no
+    moment between them at which the hand can be corrected from outside.
+
+    The log constrains those six all the same. Missile Envy took a 3 Ops card, so the hand it
+    read held nothing higher, and the six drawn were part of that hand. Parking everything above
+    the cap makes the cards the engine invents exactly the cards the log allows. Scoring cards
+    are left alone because Missile Envy skips them.
+
+    UNAVAILABLE is the parking slot because nothing draws from it -- deal_cards_to_hands reads
+    DRAW_DECK and reshuffle_discard_into_draw reads DISCARD_PILE, so a parked card cannot come
+    back through either, including when the deck runs out mid-draw. Every caller must hand them
+    back on the far side of the step; the observation for the decision is recorded before this
+    runs, so no training sample ever sees the parked deck.
+    """
+    want = int(ts.CardData.get_card_info(revealed)["ops"])
+    parked: List[int] = []
+    for c in range(1, 111):
+        if c == revealed or state.get_card_location(c) != ts.CardLocation.DRAW_DECK:
+            continue
+        info = ts.CardData.get_card_info(c)
+        if not info["is_scoring"] and int(info["ops"]) > want:
+            state.set_card_location(c, ts.CardLocation.UNAVAILABLE)
+            parked.append(c)
+    return parked
+
+
+def _restore_draw_deck(state: ts.GameState, parked: List[int]) -> None:
+    """Give back what _cap_draw_deck set aside, leaving anything the step itself moved."""
+    for c in parked:
+        if state.get_card_location(c) == ts.CardLocation.UNAVAILABLE:
+            state.set_card_location(c, ts.CardLocation.DRAW_DECK)
+
+
 def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
     """Make the card the engine drew at random be the one the log says was revealed.
 
@@ -2158,12 +2197,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                                 or _MISSILE_ENVY in headline_ids.values()) and reveal_queue:
         giver = ts.Player.US if (e.revealed or [("US", "")])[0][0] == "US" else ts.Player.USSR
         envy_reveal = ("US" if giver == ts.Player.US else "USSR", reveal_queue[0])
+    envy_giver: Optional[ts.Player] = None
+    envy_spent_first: Set[int] = set()
     if envy_reveal is not None:
-        _seed_missile_envy_hand(
-            state, envy_reveal[1],
-            ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR,
-            {c for c in (card_id(nm) for sd, nm in (e.discards or [])
-                         if sd == envy_reveal[0]) if c})
+        envy_giver = ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR
+        envy_spent_first = {c for c in (card_id(nm) for sd, nm in (e.discards or [])
+                                        if sd == envy_reveal[0]) if c}
+        _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first)
     # The level How I Learned To Stop Worrying sets, where the entry prints it.
     hils_defcon = _defcon_set_under(e, "Event: How I Learned To Stop Worrying*")
     # The die each war in this entry was decided on, in log order.
@@ -2273,6 +2313,26 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
     pending_account: Optional[Tuple[Optional[Tuple[List[int], int]],
                                     Dict[int, Tuple[int, int]], int]] = None
     for _ in range(max_steps):
+        # Missile Envy reads the hand as it stands when its Event fires, and that is not the
+        # hand the entry opened with. At turn 7's headline of replay 96 "Ask Not What Your
+        # Country Can Do For You" is 3 Ops against Missile Envy's 2, so it resolves first --
+        # and it discards six cards and *draws six more*, none of which the log names. Seeding
+        # once before the entry therefore fixes a hand the engine then replaces underneath us:
+        # it drew Marshall Plan at 4 Ops, and Missile Envy took that instead of the U-2 Incident
+        # the log records, for a VP swing that never happened.
+        #
+        # So the cap is a standing constraint rather than an opening position. Nothing above the
+        # Ops of the card the log says was handed over may sit in that hand at any point before
+        # the exchange -- ties included, since the giver chooses among equals and the log names
+        # which one they chose. Re-asserted every step until Missile Envy itself lands in the
+        # giver's hand, which is the engine's own record that the exchange has happened
+        # (trigger_missile_envy writes it there), so this stops the moment it is satisfied.
+        if envy_giver is not None and envy_reveal is not None:
+            if ts.in_hand_of(state.get_card_location(_MISSILE_ENVY), envy_giver):
+                envy_giver = None
+            else:
+                _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first)
+
         # A die the previous decision already chose a seed for must be left alone: force_outcome
         # picks a seed by draining the coup's own chance node, and re-seeding here threw that
         # away. At turn 4's headline of replay 100 that turned the failed Libya coup into a
@@ -3005,7 +3065,16 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                               int(state.get_country(cid).ussr_influence))
                         for cid in watching}
 
+        # The cap is a standing constraint, not an opening position: nothing above the Ops of the
+        # card the log says was handed over may be in that hand at any point before the exchange.
+        # Held over the draw deck for the duration of the step, because an event resolving ahead
+        # of Missile Envy in the same entry can replace the hand inside that same step.
+        envy_parked = (_cap_draw_deck(state, envy_reveal[1])
+                       if envy_giver is not None and envy_reveal is not None else [])
+
         ts.Engine.step_flat(state, int(chosen))
+
+        _restore_draw_deck(state, envy_parked)
 
         pending_account = (answered, before_board, int(ctx.resolving_card))
 
