@@ -88,6 +88,32 @@ written, and a missing/broken `tensorboard` install only prints a warning). Watc
 .venv/bin/python -m tensorboard.main --logdir data/checkpoints/my_new_run/tb
 ```
 
+### The TensorBoard layout
+
+Three sections, plus two probe groups and the snapshot evaluations:
+
+| prefix | what it holds |
+|:---|:---|
+| `progress/` | steps, elapsed time, throughput |
+| `internal/` | the optimiser's own view — losses, KL, entropy, clip fraction, explained variance, advantage health. Nothing here says whether the agent *plays* well. |
+| `game/` | what the games look like — win rate per side, draw rate, turns, plies, final score, and the share of games ending each way |
+| `game_won_us/`, `game_won_ussr/` | the same length and ending series over the games each side won |
+| `positions/`, `decisive/` | play quality measured off fixed probe positions and forced decisions rather than off training episodes |
+| `eval/` | win rate against each fixed baseline, at snapshots only |
+
+`internal/` was `train/` + `diagnostics/`, and the ending fractions moved from `endings/` into
+`game/ending_*`, so charts from runs before this change sit under the old names.
+
+**Human reference lines.** Every `game/` series with a human counterpart is also emitted, at the
+same tag and step, into a sibling run directory `human_ITS`. TensorBoard draws one line per *run*
+per chart, so pointing it at `<out_dir>/tb` overlays a flat human line on each of those charts
+rather than putting it in a chart of its own. The values come from `ai/itsc_reference.py` —
+44,136 completed games from the ITS Junta results database. Two cautions carried there: the ply
+values are estimates (the rows give the ending turn, not the action round) while the turn values
+are measurements, and `mean_victory_points` / `mean_vp_margin` have no line because ITS does not
+record the final score. DEFCON 1 has a line only on the combined `game/ending_defcon1`, since ITS
+records the outcome without saying whose decision caused it.
+
 Beyond the loss terms, each iteration records `explained_variance` (`1 - Var(G - V) / Var(G)` for
 the win-value head — the primary read on whether the critic is learning), advantage-distribution
 health (`adv_std`, `adv_std_raw`, `adv_frac_near_zero`), game length (`mean_turn`, `median_turn`,

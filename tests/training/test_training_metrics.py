@@ -326,7 +326,7 @@ class TestTensorBoardLogger:
             skip_keys=EPISODE_DEPENDENT_KEYS,
         )
         tags = [t for t, _, _ in recorded]
-        assert tags == ["train/loss"], f"unexpected tags logged: {tags}"
+        assert tags == ["internal/loss"], f"unexpected tags logged: {tags}"
 
     def test_jsonl_schema_is_still_a_flat_scalar_record(self, tmp_path):
         # Guards the JSONL contract the run loop writes: one flat JSON object per line.

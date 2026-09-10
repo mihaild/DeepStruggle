@@ -264,6 +264,35 @@ The ITS ply figure is an estimate, not a measurement: a turn pins the ply only t
 16-wide interval, so the point value applies ts-replayer's mean *within-turn* offset per ending
 kind (20 VP lands late in a turn, 13.7 of 16; Wargames early, 5.5). Report it with its interval.
 
+### 1.5.2 Side balance and per-side asymmetry in the ITS corpus
+
+Human play is almost exactly balanced: **49.90% USSR** over 43,685 decided games (451 ties,
+1.02%). Every arm so far has wandered well outside that — H2 has ranged 41.9% to 54.8% within a
+single run — so the pooled figure is a target the runs are not obviously converging on.
+
+The two sides do not win the *same way*, and a pooled ending mix hides it:
+
+| | US wins | USSR wins |
+|:---|---:|---:|
+| n | 21,888 | 21,797 |
+| mean end turn | 8.62 | 8.00 |
+| mean ply | ~124 | ~115 |
+| went the distance | 33.4% | 25.2% |
+| 20 VP | 36.2% | **50.8%** |
+| final scoring | **32.1%** | 25.0% |
+| wargames | 14.5% | 14.9% |
+| DEFCON 1 | **15.6%** | 8.1% |
+| held scoring | 1.6% | 1.1% |
+
+The USSR takes half its wins on the VP track and wins faster; the US wins later, more often by
+scoring the board out. Read the other way, within each ending: the USSR wins 58.3% of 20 VP
+games, while the US wins **65.9%** of games that end at DEFCON 1 — that is, the USSR is far more
+often the side that walks into the war it loses to. Ties are almost entirely final scoring
+(67.4%) and Wargames (32.4%), which is what a 6 VP Wargames swing landing on zero looks like.
+
+This is why the trainer now splits length and ending mix by winning side (`game_won_us/`,
+`game_won_ussr/`): a run can hit the pooled human numbers while getting both halves wrong.
+
 ### The gap this exposes
 
 Self-play at temperature 0.1, 1,000 games each, measured through the batched match runner:

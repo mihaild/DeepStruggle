@@ -11,7 +11,7 @@ import collections
 import json
 import re
 import argparse
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Final, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -32,6 +32,7 @@ from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
+from ai.itsc_reference import ITSC_GAMES, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.engine_config import to_mask as engine_config_to_mask
@@ -51,24 +52,55 @@ except Exception as _tb_err:  # pragma: no cover - depends on the local install
 # Maps training_metrics.jsonl keys to TensorBoard tags. Every JSONL metric is mirrored;
 # anything not listed here lands under "misc/" so new metrics cannot silently go missing.
 TB_TAGS: Dict[str, str] = {
+    # --- progress: where the run is, and how fast ------------------------------------------
     "elapsed_seconds": "progress/elapsed_seconds",
     "total_steps": "progress/total_steps",
     "steps_per_sec": "progress/steps_per_sec",
-    "loss": "train/loss",
-    "policy_loss": "train/policy_loss",
-    "value_loss": "train/value_loss",
-    "kl_div": "train/kl_div",
-    "entropy": "train/entropy",
-    "clip_frac": "train/clip_frac",
-    "defcon_risk_loss": "train/defcon_risk_loss",
-    "belief_loss": "train/belief_loss",
-    "oracle_loss": "train/oracle_loss",
-    "distill_loss": "train/distill_loss",
-    "explained_variance": "diagnostics/explained_variance",
-    "adv_std": "diagnostics/adv_std",
-    "adv_std_raw": "diagnostics/adv_std_raw",
-    "adv_frac_near_zero": "diagnostics/adv_frac_near_zero",
-    "entropy_fixed_probe": "diagnostics/entropy_fixed_probe",
+    "steps_per_sec_avg": "progress/steps_per_sec_avg",
+
+    # --- internal: the optimiser's own view. Nothing here says whether the agent plays well,
+    # only whether the update is sane and the critic is learning. -------------------------
+    "loss": "internal/loss",
+    "policy_loss": "internal/policy_loss",
+    "value_loss": "internal/value_loss",
+    "kl_div": "internal/kl_div",
+    "entropy": "internal/entropy",
+    "entropy_fixed_probe": "internal/entropy_fixed_probe",
+    "clip_frac": "internal/clip_frac",
+    "explained_variance": "internal/explained_variance",
+    "adv_std": "internal/adv_std",
+    "adv_std_raw": "internal/adv_std_raw",
+    "adv_frac_near_zero": "internal/adv_frac_near_zero",
+    # Auxiliary heads. Emitted only when the corresponding option is on, so an absent series
+    # here means "not enabled for this run", not "broken".
+    "defcon_risk_loss": "internal/defcon_risk_loss",
+    "belief_loss": "internal/belief_loss",
+    "oracle_loss": "internal/oracle_loss",
+    "distill_loss": "internal/distill_loss",
+
+    # --- game: what the games themselves look like. Every series here has a human counterpart
+    # in ai/itsc_reference.py except episodes_completed and mean_terminal_utility. ----------
+    "episodes_completed": "game/episodes_completed",
+    "us_win_rate": "game/us_win_rate",
+    "ussr_win_rate": "game/ussr_win_rate",
+    "draw_rate": "game/draw_rate",
+    "mean_terminal_utility": "game/mean_terminal_utility",
+    "mean_victory_points": "game/mean_victory_points",
+    "mean_vp_margin": "game/mean_vp_margin",
+    "mean_turn": "game/mean_turn",
+    "median_turn": "game/median_turn",
+    "mean_ply": "game/mean_ply",
+    "median_ply": "game/median_ply",
+    "ending_frac_20vp": "game/ending_20vp",
+    "ending_frac_final_scoring": "game/ending_final_scoring",
+    "ending_frac_wargames": "game/ending_wargames",
+    "ending_frac_held_scoring": "game/ending_held_scoring",
+    "ending_frac_defcon1": "game/ending_defcon1",
+    "ending_frac_defcon1_self": "game/ending_defcon1_self",
+    "ending_frac_defcon1_provoked": "game/ending_defcon1_provoked",
+
+    # --- probe positions and forced decisions: play quality measured off fixed positions
+    # rather than off the training episodes. ------------------------------------------------
     "diag/mean_final_turn": "positions/mean_final_turn",
     "diag/frac_reaching_turn9": "positions/frac_reaching_turn9",
     "diag/empty_battlegrounds_turn8": "positions/empty_battlegrounds_turn8",
@@ -79,22 +111,17 @@ TB_TAGS: Dict[str, str] = {
     "decisive_loss_avoid_rate": "decisive/loss_avoid_rate",
     "decisive_win_available": "decisive/win_available",
     "decisive_loss_avoidable": "decisive/loss_avoidable",
-    "episodes_completed": "game/episodes_completed",
-    "mean_turn": "game/mean_turn",
-    "median_turn": "game/median_turn",
-    "mean_ply": "game/mean_ply",
-    "median_ply": "game/median_ply",
-    "ussr_win_rate": "game/ussr_win_rate",
-    "draw_rate": "game/draw_rate",
-    "mean_terminal_utility": "game/mean_terminal_utility",
-    "steps_per_sec_avg": "progress/steps_per_sec_avg",
-    "ending_frac_20vp": "endings/20vp",
-    "ending_frac_final_scoring": "endings/final_scoring",
-    "ending_frac_defcon1_self": "endings/defcon1_self",
-    "ending_frac_defcon1_provoked": "endings/defcon1_provoked",
-    "ending_frac_held_scoring": "endings/held_scoring",
-    "ending_frac_wargames": "endings/wargames",
 }
+
+# The per-winner split of the game section: same length and ending series, over the games each
+# side won. `game_won_us/` and `game_won_ussr/` rather than a suffix inside `game/`, so the
+# pooled section stays readable at a glance instead of tripling in width.
+for _side in ("us", "ussr"):
+    for _stem in ("episodes_completed", "mean_turn", "median_turn", "mean_ply", "median_ply",
+                  "mean_victory_points", "mean_vp_margin"):
+        TB_TAGS[f"{_stem}_won_{_side}"] = f"game_won_{_side}/{_stem}"
+    for _k in tuple(ENDING_REASON_KEYS) + ("defcon1",):
+        TB_TAGS[f"ending_frac_{_k}_won_{_side}"] = f"game_won_{_side}/ending_{_k}"
 
 # Per-start-turn variants, emitted only when mid-game start sampling is actually in use (see
 # summarize_completed_episodes). With it off -- which is every run since it was settled negative --
@@ -106,15 +133,22 @@ for _t in (1, 4, 6, 8, 10):
     TB_TAGS[f"mean_ply_start{_t}"] = f"game_start{_t}/mean_ply"
     TB_TAGS[f"median_ply_start{_t}"] = f"game_start{_t}/median_ply"
     for _k in ENDING_REASON_KEYS:
-        TB_TAGS[f"ending_frac_{_k}_start{_t}"] = f"endings_start{_t}/{_k}"
+        TB_TAGS[f"ending_frac_{_k}_start{_t}"] = f"game_start{_t}/ending_{_k}"
 
 # Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
 # iteration where no game finished, so they are held back from TensorBoard then.
 EPISODE_DEPENDENT_KEYS = frozenset(
     ["mean_turn", "median_turn", "mean_ply", "median_ply",
-     "ussr_win_rate", "draw_rate", "mean_terminal_utility"]
-    + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
+     "us_win_rate", "ussr_win_rate", "draw_rate", "mean_terminal_utility",
+     "mean_victory_points", "mean_vp_margin"]
+    + [f"ending_frac_{k}" for k in tuple(ENDING_REASON_KEYS) + ("defcon1",)]
 )
+
+#: Suffixes the episode-dependent stems appear under: the per-start-turn groups and the
+#: per-winner ones. A group with no episodes this iteration must be held back exactly as the
+#: pooled one is, or an iteration the USSR happened to lose every game in reports a US mean
+#: turn of 0 rather than nothing.
+_GROUP_SUFFIXES: Tuple[str, ...] = ("_start", "_won_us", "_won_ussr")
 
 
 def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
@@ -127,7 +161,8 @@ def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
     return frozenset(
         k for k in stats
         if k in EPISODE_DEPENDENT_KEYS
-        or any(k.startswith(f"{stem}_start") for stem in EPISODE_DEPENDENT_KEYS)
+        or any(k.startswith(f"{stem}{sfx}")
+               for stem in EPISODE_DEPENDENT_KEYS for sfx in _GROUP_SUFFIXES)
     )
 
 
@@ -145,12 +180,21 @@ def _tb_tag(key: str) -> str:
     return f"misc/{key}"
 
 
+#: Name of the sibling run directory holding the human reference lines. TensorBoard draws one
+#: line per *run* in each chart, so the only way to get a horizontal marker inside the same chart
+#: as a metric is to emit it as a second run under the same logdir. Pointing tensorboard at
+#: `<out_dir>/tb` therefore shows the run and a flat `human_ITS` line in every chart that has a
+#: human counterpart.
+_REFERENCE_RUN_DIR: Final[str] = "human_ITS"
+
+
 class TensorBoardLogger:
     """Best-effort TensorBoard writer. Any failure disables it instead of raising."""
 
     def __init__(self, log_dir: str, enabled: bool = True) -> None:
         self.log_dir = log_dir
         self.writer: Optional[Any] = None
+        self.reference_writer: Optional[Any] = None
         if not enabled:
             return
         if _SUMMARY_WRITER_CLS is None:
@@ -163,9 +207,14 @@ class TensorBoardLogger:
         try:
             os.makedirs(log_dir, exist_ok=True)
             self.writer = _SUMMARY_WRITER_CLS(log_dir=log_dir)
+            ref_dir = os.path.join(log_dir, _REFERENCE_RUN_DIR)
+            os.makedirs(ref_dir, exist_ok=True)
+            self.reference_writer = _SUMMARY_WRITER_CLS(log_dir=ref_dir)
             print(f"TensorBoard logging enabled -> {log_dir}  (tensorboard --logdir {log_dir})", flush=True)
+            print(f"  human reference lines from {ITSC_GAMES:,} ITS games -> run '{_REFERENCE_RUN_DIR}'", flush=True)
         except Exception as e:
             self.writer = None
+            self.reference_writer = None
             print(f"Warning: Could not start TensorBoard writer at {log_dir}: {e}. Continuing without it.", flush=True)
 
     @property
@@ -181,7 +230,13 @@ class TensorBoardLogger:
                     continue
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue
-                self.writer.add_scalar(_tb_tag(key), float(value), step)
+                tag = _tb_tag(key)
+                self.writer.add_scalar(tag, float(value), step)
+                # The human value for this metric, re-emitted at the same step so the flat line
+                # spans exactly the range the run covers rather than stopping at step 0.
+                human = reference_for(key)
+                if human is not None and self.reference_writer is not None:
+                    self.reference_writer.add_scalar(tag, float(human), step)
         except Exception as e:
             print(f"Warning: TensorBoard logging failed ({e}); disabling TensorBoard for the rest of the run.", flush=True)
             self.writer = None
@@ -195,6 +250,11 @@ class TensorBoardLogger:
             pass
 
     def flush(self) -> None:
+        if self.reference_writer is not None:
+            try:
+                self.reference_writer.flush()
+            except Exception:
+                pass
         if self.writer is None:
             return
         try:
@@ -203,6 +263,12 @@ class TensorBoardLogger:
             pass
 
     def close(self) -> None:
+        if self.reference_writer is not None:
+            try:
+                self.reference_writer.close()
+            except Exception:
+                pass
+            self.reference_writer = None
         if self.writer is None:
             return
         try:
@@ -212,7 +278,13 @@ class TensorBoardLogger:
         self.writer = None
 
 
-def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[str, float]:
+def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str,
+                         include_outcome: bool = True) -> Dict[str, float]:
+    """Scalar summary of one group of finished episodes.
+
+    `include_outcome` is False for the per-winner groups, where "who won" is the thing that
+    defines the group: a ussr_win_rate of exactly 1.0 on every iteration is not a measurement.
+    """
     stats: Dict[str, float] = {f"episodes_completed{suffix}": float(len(episodes))}
     turns = [float(ep["turn"]) for ep in episodes if "turn" in ep]
     stats[f"mean_turn{suffix}"] = float(np.mean(turns)) if turns else 0.0
@@ -227,14 +299,29 @@ def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[st
 
     # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance and
     # which nothing was tracking during a run. Free here: the episode records carry the winner.
-    winners = [str(ep.get("winner", "")) for ep in episodes]
-    decided = [w for w in winners if w in ("US", "USSR")]
-    stats[f"ussr_win_rate{suffix}"] = (
-        float(sum(1 for w in decided if w == "USSR")) / float(len(decided)) if decided else 0.0)
-    stats[f"draw_rate{suffix}"] = (
-        float(sum(1 for w in winners if w == "DRAW")) / float(len(winners)) if winners else 0.0)
-    utils = [float(ep["terminal_utility"]) for ep in episodes if "terminal_utility" in ep]
-    stats[f"mean_terminal_utility{suffix}"] = float(np.mean(utils)) if utils else 0.0
+    if include_outcome:
+        # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance
+        # and which nothing was tracking during a run. Free here: the episode records carry the
+        # winner. Both sides are emitted rather than only the USSR: us_win_rate is derivable but
+        # a dashboard should not make the reader do arithmetic to see the other half.
+        winners = [str(ep.get("winner", "")) for ep in episodes]
+        decided = [w for w in winners if w in ("US", "USSR")]
+        stats[f"ussr_win_rate{suffix}"] = (
+            float(sum(1 for w in decided if w == "USSR")) / float(len(decided)) if decided else 0.0)
+        stats[f"us_win_rate{suffix}"] = (
+            float(sum(1 for w in decided if w == "US")) / float(len(decided)) if decided else 0.0)
+        stats[f"draw_rate{suffix}"] = (
+            float(sum(1 for w in winners if w == "DRAW")) / float(len(winners)) if winners else 0.0)
+        utils = [float(ep["terminal_utility"]) for ep in episodes if "terminal_utility" in ep]
+        stats[f"mean_terminal_utility{suffix}"] = float(np.mean(utils)) if utils else 0.0
+
+    # Final score, which the episode records have always carried and nothing displayed. It
+    # separates a run that wins narrowly from one that wins by a mile, which the +/-1 terminal
+    # utility cannot. US-positive, as everywhere else. ITS records no final score, so these
+    # deliberately have no human reference line.
+    vps = [float(ep["victory_points"]) for ep in episodes if "victory_points" in ep]
+    stats[f"mean_victory_points{suffix}"] = float(np.mean(vps)) if vps else 0.0
+    stats[f"mean_vp_margin{suffix}"] = float(np.mean(np.abs(vps))) if vps else 0.0
 
     reasons = [str(ep.get("ending_reason", "")) for ep in episodes]
     counted = [r for r in reasons if r]
@@ -242,6 +329,11 @@ def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[st
         stats[f"ending_frac_{key}{suffix}"] = (
             float(sum(1 for r in counted if r == key)) / float(len(counted)) if counted else 0.0
         )
+    # DEFCON 1 as one number as well as split by whose decision caused it. The ITS results
+    # database records the outcome without the cause, so the combined figure is the only one it
+    # can be compared against -- see ai/itsc_reference.py.
+    stats[f"ending_frac_defcon1{suffix}"] = (
+        stats[f"ending_frac_defcon1_self{suffix}"] + stats[f"ending_frac_defcon1_provoked{suffix}"])
     return stats
 
 
@@ -261,6 +353,14 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
     settled negative (3.2, 3.3) and --start-pool-frac defaults to 0, so that is every ordinary run.
     """
     stats = _episode_group_stats(episodes, "")
+
+    # Length and ending mix split by which side won. The two are not interchangeable in human
+    # play and the difference is a real signal: in the ITS corpus a US win runs 8.62 turns and a
+    # USSR win 8.00, the USSR takes half its wins on the VP track against the US's third, and the
+    # US wins two thirds of the games that end at DEFCON 1. A pooled mix hides all of it.
+    for side, tag in (("US", "_won_us"), ("USSR", "_won_ussr")):
+        group = [ep for ep in episodes if str(ep.get("winner", "")) == side]
+        stats.update(_episode_group_stats(group, tag, include_outcome=False))
 
     by_start: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
     for ep in episodes:
