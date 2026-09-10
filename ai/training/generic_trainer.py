@@ -4,6 +4,7 @@ if 'TRITON_CACHE_DIR' not in os.environ:
 # Generic Trainer: Configurable multi-stage training with live snapshot tournament evaluation.
 
 import os
+import re
 import sys
 import subprocess
 import time
@@ -113,27 +114,34 @@ TB_TAGS: Dict[str, str] = {
     "decisive_loss_avoidable": "decisive/loss_avoidable",
 }
 
-# The per-winner split of the game section: same length and ending series, over the games each
-# side won. `game_won_us/` and `game_won_ussr/` rather than a suffix inside `game/`, so the
-# pooled section stays readable at a glance instead of tripling in width.
-for _side in ("us", "ussr"):
-    for _stem in ("episodes_completed", "mean_turn", "median_turn", "mean_ply", "median_ply",
-                  "mean_victory_points", "mean_vp_margin"):
-        TB_TAGS[f"{_stem}_won_{_side}"] = f"game_won_{_side}/{_stem}"
-    for _k in tuple(ENDING_REASON_KEYS) + ("defcon1",):
-        TB_TAGS[f"ending_frac_{_k}_won_{_side}"] = f"game_won_{_side}/ending_{_k}"
+#: The metric stems that make up the game section, in the order they should read. Every one of
+#: these also exists per winning side and, when mid-game start sampling is on, per start turn --
+#: which is why the groups below are built from this list rather than written out three times.
+GAME_STEMS: Tuple[str, ...] = (
+    "episodes_completed",
+    "mean_turn", "median_turn", "mean_ply", "median_ply",
+    "mean_victory_points", "mean_vp_margin",
+) + tuple(f"ending_frac_{k}" for k in tuple(ENDING_REASON_KEYS) + ("defcon1",))
 
-# Per-start-turn variants, emitted only when mid-game start sampling is actually in use (see
-# summarize_completed_episodes). With it off -- which is every run since it was settled negative --
-# every game starts at turn 1 and these would duplicate the unsuffixed series exactly.
-for _t in (1, 4, 6, 8, 10):
-    TB_TAGS[f"episodes_completed_start{_t}"] = f"game_start{_t}/episodes_completed"
-    TB_TAGS[f"mean_turn_start{_t}"] = f"game_start{_t}/mean_turn"
-    TB_TAGS[f"median_turn_start{_t}"] = f"game_start{_t}/median_turn"
-    TB_TAGS[f"mean_ply_start{_t}"] = f"game_start{_t}/mean_ply"
-    TB_TAGS[f"median_ply_start{_t}"] = f"game_start{_t}/median_ply"
-    for _k in ENDING_REASON_KEYS:
-        TB_TAGS[f"ending_frac_{_k}_start{_t}"] = f"game_start{_t}/ending_{_k}"
+
+def _game_chart(stem: str) -> str:
+    """Chart name for a game-section stem: `ending_frac_20vp` reads better as `ending_20vp`."""
+    if stem.startswith("ending_frac_"):
+        return "ending_" + stem[len("ending_frac_"):]
+    return stem
+
+
+# The per-winner split: the same series over the games each side won. Separate groups rather
+# than a suffix inside `game/`, so the pooled section stays readable instead of tripling.
+for _side in ("us", "ussr"):
+    for _stem in GAME_STEMS:
+        TB_TAGS[f"{_stem}_won_{_side}"] = f"game_won_{_side}/{_game_chart(_stem)}"
+
+# Per-start-turn variants are NOT pre-registered. They exist only when mid-game start sampling
+# is on, which is no run since it was settled negative (--start-pool-frac defaults to 0), and
+# enumerating five turns x eleven stems put 55 dead entries -- 42% of the whole table -- in
+# front of every reader. `_tb_tag` derives them by rule instead, so the series still appear
+# correctly if anyone turns start sampling back on.
 
 # Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
 # iteration where no game finished, so they are held back from TensorBoard then.
@@ -149,6 +157,9 @@ EPISODE_DEPENDENT_KEYS = frozenset(
 #: pooled one is, or an iteration the USSR happened to lose every game in reports a US mean
 #: turn of 0 rather than nothing.
 _GROUP_SUFFIXES: Tuple[str, ...] = ("_start", "_won_us", "_won_ussr")
+
+#: Matches the `<stem>_start<turn>` keys the start-pool breakdown emits.
+_START_SUFFIX = re.compile(r"^(.*)_start(\d+)$")
 
 
 def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
@@ -177,6 +188,14 @@ def _tb_tag(key: str) -> str:
         return TB_TAGS[key]
     if key.startswith("eval_win_rate_"):
         return "eval/win_rate_vs_" + key[len("eval_win_rate_"):]
+    # Per-start-turn variants, derived rather than enumerated: they exist only under mid-game
+    # start sampling, so pre-registering five turns x every game stem filled the table with
+    # entries no ordinary run ever emits.
+    match = _START_SUFFIX.match(key)
+    if match:
+        stem, turn = match.group(1), match.group(2)
+        if stem in GAME_STEMS:
+            return f"game_start{turn}/{_game_chart(stem)}"
     return f"misc/{key}"
 
 
@@ -565,6 +584,7 @@ def evaluate_and_log_snapshot(
     position_games: int = 128,
     num_baselines: int = 0,
     max_snapshot_opponents: int = 4,
+    obs_flags: int = 0,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
@@ -578,7 +598,8 @@ def evaluate_and_log_snapshot(
         from ai.eval.decisive_probe import measure_decisive_batched
         # Batched: the single-state loop spends 96.9% of its time in the policy forward,
         # so handing the GPU one state at a time was the whole cost.
-        stats = measure_decisive_batched(model, num_envs=decisive_games)
+        stats = measure_decisive_batched(model, num_envs=decisive_games,
+                                         obs_flags=obs_flags)
         decisive_metrics = stats.as_metrics()
         print(f"  decisive: takes {stats.win_take_rate * 100:.0f}% of {stats.win_available} forced wins | "
               f"avoids {stats.loss_avoid_rate * 100:.0f}% of {stats.loss_avoidable} avoidable losses",
@@ -595,7 +616,8 @@ def evaluate_and_log_snapshot(
         from ai.eval.position_diagnostics import format_report, profile_self_play_batched
         # Batched: ~106k decisions/sec against ~890 for the one-state-at-a-time loop, so
         # this costs seconds rather than minutes of every snapshot evaluation.
-        profile = profile_self_play_batched(model, num_envs=position_games)
+        profile = profile_self_play_batched(model, num_envs=position_games,
+                                            obs_flags=obs_flags)
         position_metrics = profile["scalars"]
         print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty "
               f"battlegrounds at turn 8 | "
@@ -1159,6 +1181,7 @@ def train_pipeline(
         arch=arch,
         num_baselines=num_baselines,
         max_snapshot_opponents=max_snapshot_opponents,
+        obs_flags=obs_flag_mask,
     )
 
     def _refresh_start_pool(tag: str) -> Dict[str, float]:
@@ -1326,6 +1349,7 @@ def train_pipeline(
                 arch=arch,
                 num_baselines=num_baselines,
                 max_snapshot_opponents=max_snapshot_opponents,
+                obs_flags=obs_flag_mask,
             )
             pool_metrics = _refresh_start_pool(f"@{int(elapsed)}s")
             if pool_metrics:
@@ -1361,6 +1385,7 @@ def train_pipeline(
         arch=arch,
         num_baselines=num_baselines,
         max_snapshot_opponents=max_snapshot_opponents,
+        obs_flags=obs_flag_mask,
     )
 
     tb.flush()

@@ -49,6 +49,37 @@ def _classify_ending(state: ts.GameState, held_scoring: bool) -> str:
     return key
 
 
+#: Observation width -> layout name. The width is the one thing a trained model always carries
+#: with it, so it is what a probe can recover its layout from without being told.
+LAYOUT_BY_OBS_SIZE: Dict[int, str] = {
+    int(ts.OBS_SIZE_LEGACY): "legacy",
+    int(ts.OBS_SIZE_V21): "v2.1",
+    int(ts.OBS_SIZE_V23): "v2.3",
+}
+
+
+def layout_for_model(model: Any) -> str:
+    """The observation layout a model expects, from its own input width.
+
+    Anything that drives a trained model through `TsVectorizedEnv` must call this rather than
+    accept the constructor's `legacy` default. A layout mismatch does not raise: the widths of
+    the extraction and the network are checked at different places, so the model simply reads
+    the wrong floats and plays near-randomly. That is how `ai/eval/position_diagnostics.py` came
+    to report a mean final turn of 1-2 against an actual 6.8, and 0.0 empty battlegrounds at
+    turn 8 against a measured 6.15 -- the games were dying in turn 1, so nothing reached turn 8
+    and the average was over an empty set (`research/metrics.md` 1.4.1). It is the fourth
+    instance of this bug class in this repository, hence a shared helper that raises.
+    """
+    width = int(getattr(model, "TOTAL_OBS_SIZE", 0) or 0)
+    layout = LAYOUT_BY_OBS_SIZE.get(width)
+    if layout is None:
+        raise ValueError(
+            f"cannot determine the observation layout for a model of width {width}; "
+            f"known widths are {sorted(LAYOUT_BY_OBS_SIZE)}. Refusing to guess: a wrong "
+            f"layout does not raise, it silently feeds the model the wrong floats.")
+    return layout
+
+
 class TsEnv:
     """Gymnasium-like single-game environment wrapper for ts::Engine."""
 

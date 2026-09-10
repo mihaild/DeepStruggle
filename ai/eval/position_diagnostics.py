@@ -230,6 +230,7 @@ def profile_self_play_batched(
     base_seed: int = 820_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
+    obs_flags: int = 0,
 ) -> Dict[str, Any]:
     """Same profile, driven through the vectorized runner instead of one state at a time.
 
@@ -255,13 +256,17 @@ def profile_self_play_batched(
     import numpy as np
     import torch
 
-    from bindings.ts_env import TsVectorizedEnv
+    from bindings.ts_env import TsVectorizedEnv, layout_for_model
 
     device = next(model.parameters()).device
     was_training = model.training
     model.eval()
 
-    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
+    # The layout comes from the model, never from the constructor's default: feeding a
+    # v2.1/v2.3 network legacy observations does not raise, it just makes it play at
+    # random, which is what every number this probe reported before this line existed.
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed,
+                          layout=layout_for_model(model), obs_flags=obs_flags)
     obs, masks, _ = env.reset_all()
 
     reach: collections.Counter = collections.Counter()

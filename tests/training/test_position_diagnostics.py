@@ -195,7 +195,15 @@ def test_batched_profile_mean_turn_matches_an_independent_drain() -> None:
     from bindings.ts_env import TsVectorizedEnv
 
     class FirstLegal(torch.nn.Module):
-        """Deterministic: always take the lowest-indexed legal action."""
+        """Deterministic: always take the lowest-indexed legal action.
+
+        It ignores the observation entirely, but must still declare a width: the profiler now
+        derives the env's layout from the model rather than defaulting to legacy, and refuses
+        to guess for a model that does not say. Legacy here so it matches the reference env
+        built below, which takes the constructor default.
+        """
+
+        TOTAL_OBS_SIZE = int(ts.OBS_SIZE_LEGACY)
 
         def __init__(self) -> None:
             super().__init__()

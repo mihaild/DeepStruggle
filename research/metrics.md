@@ -236,10 +236,22 @@ reads 0.0 -- which would mean every battleground is contested by turn 8. Walking
 games from the same checkpoint gives **6.15 of 29 battlegrounds still completely untouched** at
 turn 8, with Saudi Arabia empty in 33 of the 33 games that got there, India in 30, Algeria in 27.
 
-So the probe is not measuring what its tag says, and every `positions/` series is currently
-uninterpretable. The direct measurement is the one to trust until this is fixed; do not read
-`positions/` in TensorBoard meanwhile. Not diagnosed here beyond establishing that it is wrong --
-P0 already owns rebuilding these instruments.
+**Cause: the fourth instance of the wrong-layout bug.** `profile_self_play_batched` built its
+`TsVectorizedEnv` without passing a layout, and the constructor defaults to `legacy`. A v2.3
+model handed legacy observations does not raise -- the width assertions live elsewhere -- it just
+reads the wrong floats and plays at random. The games were dying in turn 1, so nothing reached
+turn 8 and `empty_battlegrounds_turn8` averaged over an empty set. `measure_decisive_batched` had
+the identical line, so the `decisive/` group was wrong the same way.
+
+Both now derive the layout from the model's own width via `bindings.ts_env.layout_for_model`,
+which raises rather than guessing, and both take the run's `obs_flags` so a flagged run is not
+probed with flags off. After the fix, on the same H2 @160M checkpoint: `mean_final_turn` 7.19
+(was 1-2, actual ~7.1) and `empty_battlegrounds_turn8` **6.258** against the 6.15 measured
+independently above -- two separate code paths agreeing is what says it is fixed.
+
+Every `positions/` and `decisive/` number recorded before this is void.
+`tests/training/test_probe_observation_layout.py` pins the class: it captures the layout each
+probe constructs its env with, and fails if it is not the model's.
 
 ### 1.5.3 Game shape varies between seeds by as much as it varies between arms
 

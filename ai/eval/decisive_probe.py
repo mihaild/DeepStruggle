@@ -112,6 +112,7 @@ def measure_decisive_batched(
     base_seed: int = 77_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
+    obs_flags: int = 0,
 ) -> DecisiveStats:
     """measure_decisive over parallel environments, with one forward pass per batch.
 
@@ -134,13 +135,15 @@ def measure_decisive_batched(
     import numpy as np
     import torch
 
-    from bindings.ts_env import TsVectorizedEnv
+    from bindings.ts_env import TsVectorizedEnv, layout_for_model
 
     device = next(model.parameters()).device
     was_training = model.training
     model.eval()
 
-    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
+    # See position_diagnostics: the layout must come from the model, not the default.
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed,
+                          layout=layout_for_model(model), obs_flags=obs_flags)
     obs, masks, _ = env.reset_all()
 
     out = DecisiveStats()
