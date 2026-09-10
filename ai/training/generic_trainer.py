@@ -55,7 +55,7 @@ except Exception as _tb_err:  # pragma: no cover - depends on the local install
 TB_TAGS: Dict[str, str] = {
     # --- progress: where the run is, and how fast ------------------------------------------
     "elapsed_seconds": "progress/elapsed_seconds",
-    "total_steps": "progress/total_steps",
+    "iteration": "progress/iteration",
     "steps_per_sec": "progress/steps_per_sec",
     "steps_per_sec_avg": "progress/steps_per_sec_avg",
 
@@ -177,6 +177,12 @@ def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
     )
 
 
+#: Kept in the JSONL but not mirrored to TensorBoard. `total_steps` *is* the x-axis now, so a
+#: chart of it would be the line y = x. Suppressed explicitly rather than left to fall into
+#: misc/, where it reads as a metric someone forgot to name.
+_TB_SUPPRESSED: frozenset = frozenset({"total_steps"})
+
+
 def _tb_tag(key: str) -> str:
     """The TensorBoard tag for a metric key.
 
@@ -245,7 +251,7 @@ class TensorBoardLogger:
             return
         try:
             for key, value in metrics.items():
-                if key == "iteration" or (skip_keys is not None and key in skip_keys):
+                if key in _TB_SUPPRESSED or (skip_keys is not None and key in skip_keys):
                     continue
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue
@@ -1293,9 +1299,12 @@ def train_pipeline(
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(step_metrics) + "\n")
 
+        # Indexed by environment steps, not iteration. Every experiment here is budgeted and
+        # compared by --train-steps (metrics.md 6), and iteration count depends on --num-envs
+        # and rollout length, so two directly comparable arms would sit on different x-axes.
         tb.log_metrics(
             step_metrics,
-            step=it,
+            step=total_env_steps,
             skip_keys=(episode_dependent_in(episode_stats)
                        if episode_stats["episodes_completed"] == 0.0 else None),
         )
@@ -1358,7 +1367,7 @@ def train_pipeline(
                 with open(log_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps({"iteration": it, "elapsed_seconds": int(elapsed), **decisive}) + "\n")
                 if tb is not None:
-                    tb.log_metrics(decisive, it)
+                    tb.log_metrics(decisive, total_env_steps)
             if step_budget > 0:
                 next_eval_steps += eval_every_steps
             else:

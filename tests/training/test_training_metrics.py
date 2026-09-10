@@ -317,16 +317,21 @@ class TestTensorBoardLogger:
         tb.log_metrics(
             {
                 "iteration": 7,
+                "total_steps": 5_000_000,
                 "loss": 1.5,
                 "mean_turn": 0.0,
                 "completed_episodes": [{"turn": 3}],
                 "note": "text",
             },
-            step=7,
+            step=5_000_000,
             skip_keys=EPISODE_DEPENDENT_KEYS,
         )
         tags = [t for t, _, _ in recorded]
-        assert tags == ["internal/loss"], f"unexpected tags logged: {tags}"
+        # iteration is a real series now that the x-axis is environment steps; total_steps is
+        # suppressed because it *is* that axis; mean_turn is episode-dependent and no game
+        # finished; completed_episodes and note are not scalars.
+        assert tags == ["progress/iteration", "internal/loss"], (
+            f"unexpected tags logged: {tags}")
 
     def test_jsonl_schema_is_still_a_flat_scalar_record(self, tmp_path):
         # Guards the JSONL contract the run loop writes: one flat JSON object per line.

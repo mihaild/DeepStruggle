@@ -94,7 +94,7 @@ Three sections, plus two probe groups and the snapshot evaluations:
 
 | prefix | what it holds |
 |:---|:---|
-| `progress/` | steps, elapsed time, throughput |
+| `progress/` | elapsed time, throughput, and the iteration counter |
 | `internal/` | the optimiser's own view — losses, KL, entropy, clip fraction, explained variance, advantage health. Nothing here says whether the agent *plays* well. |
 | `game/` | what the games look like — win rate per side, draw rate, turns, plies, final score, and the share of games ending each way |
 | `game_won_us/`, `game_won_ussr/` | the same length and ending series over the games each side won |
@@ -103,6 +103,18 @@ Three sections, plus two probe groups and the snapshot evaluations:
 
 `internal/` was `train/` + `diagnostics/`, and the ending fractions moved from `endings/` into
 `game/ending_*`, so charts from runs before this change sit under the old names.
+
+**The x-axis is environment steps, not iterations.** Every experiment here is budgeted and
+compared by `--train-steps`, while iteration count depends on `--num-envs` and rollout length —
+so indexing by iteration put two directly comparable arms on different x-axes. `total_steps` is
+therefore no longer a series (it would be the line *y = x*); `progress/iteration` is logged
+instead, and its slope is the steps-per-iteration. Runs logged before this change are indexed by
+iteration and will not line up with newer ones.
+
+The per-start-turn series (`game_start{N}/`) are not pre-registered: they exist only under
+mid-game start sampling, which no run uses (`--start-pool-frac` defaults to 0), and enumerating
+them filled 42% of the tag table with series nothing emits. They are derived on demand, so they
+still appear if start sampling is turned back on.
 
 **Human reference lines.** Every `game/` series with a human counterpart is also emitted, at the
 same tag and step, into a sibling run directory `human_ITS`. TensorBoard draws one line per *run*
