@@ -275,6 +275,21 @@ void StateMachine::offer_cuban_missile_payoff(GameState& state) noexcept {
     state.ctx().resolving_card = card_ids::CUBAN_MISSILE_CRISIS;
 }
 
+namespace {
+
+// Did the event on a card spent for Operations actually occur?
+//
+// Only an opponent's card fires its event when played for Ops, and only when it was not
+// suppressed. The phasing player's own card and a neutral card never do, which is what decides
+// whether a starred card is removed from the game or discarded.
+bool event_occurred_on_ops_play(const GameState& state, uint8_t card, Player p) noexcept {
+    if (card == 0) return false;
+    if (!CardData::is_opponent_card(card, p)) return false;
+    return state.ctx().suppress_op_card_event == 0;
+}
+
+} // namespace
+
 void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
     if (state.current_phase == Phase::HEADLINE) {
@@ -357,8 +372,12 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
                 state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
                 state.card_locations[op_card] = CardLocation::ONGOING_EVENT;
             } else {
-                state.card_locations[op_card] = op_info.one_time
-                    ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+                // Same rule inside a headline: Ops spent do not fire the player's own event, so
+                // a starred card of theirs is discarded rather than removed.
+                state.card_locations[op_card] =
+                    (op_info.one_time && event_occurred_on_ops_play(state, op_card,
+                                                                   state.phasing_player))
+                        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
             }
         }
         advance_headline_step(state);
@@ -430,7 +449,15 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
             state.card_locations[card] = CardLocation::ONGOING_EVENT;
         } else {
-            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+            // A starred card is removed when its *event* occurs, not when it is spent for
+            // Operations (rules.md 280-282; the Space Race path says the same at 252). This
+            // branch is reached both by an opponent's card whose event fired on the EVENT_FIRST
+            // path and by the player's own or a neutral card, whose event never fires -- and
+            // removing on one_time alone treated the two the same, permanently deleting a card
+            // whose event had not happened.
+            state.card_locations[card] =
+                (c_info.one_time && event_occurred_on_ops_play(state, card, p))
+                    ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
         }
     }
     advance_after_action_round(state);
