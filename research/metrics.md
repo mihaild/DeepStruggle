@@ -191,6 +191,32 @@ extracting the step count and sorting on it, and verified to return matched list
   Current state: training does **not** use it; `tools/tournament.py` defaults it off; five
   `ai/eval/` probes (dominance_cost, battleground_value, critic_calibration,
   round_counterfactual, input_ablation) pass `auto_advance=True` on the batch runner.
+- **The Python chance-drain loop is not worth moving into C++.** A *chance node* is a point
+  where the engine has stopped for a die nobody chooses: `ctx().decision_player` is `NONE` and
+  `decision_type` is `ROLL_DIE`. Draining is stepping it with `MicroAction(ROLL_DIE, 0, 0, 0)`
+  until it is gone; the zero means "roll it yourself", since `execute_coup` and friends do
+  `forced > 0 ? forced : Prng::roll_d6(state.rng_state)` (a non-zero payload is how the replay
+  converter forces a recorded die). If nobody drains, the next agent is handed the roll: the
+  single-state loop falls back to `phasing_player` when `decision_player` is `NONE`, which had a
+  policy network picking its own dice, and made that path disagree with the batched one by more
+  than 25 points.
+
+  `VectorizedBatchRunner::step_flat_all` already drains inside C++ *whether or not*
+  `auto_advance` is set, so the batched path never crosses the binding boundary twice. Only the
+  single-state paths drain in Python (`tournament_evaluator`, `position_diagnostics`,
+  `blunders`), and moving that into C++ **loses 6.7% of wall time**, measured over 120 real
+  games with the order alternated. The reason is the same one that makes `auto_advance` a
+  per-step cost: `auto_advance_step` scans after *every* action, while chance nodes are only
+  **10.1 per game against 249 real decisions** — 3.9% of stops (WAR_EVENT 41%, TURN_CLEANUP 36%,
+  OLYMPIC_GAMES 15%, TRAP_ESCAPE 6%, SUMMIT 3%). The Python check is cheaper than the scan that
+  would replace it.
+
+  A first attempt measured this as a 16% *win*, because it drove the engine with
+  `get_legal_action_indices` — a different index space that `step_flat` rejects, so the loop
+  spun on an invalid action for 4,000 iterations and never played a game. Both modes stalled
+  identically, and the drain check ran 4,000 times against nothing. Drive the engine with
+  `ActionMask.generate_flat_mask` and check that `step_flat` returned true.
+
 - **Measure game length in plies, not turns.** A ply is one player's single opportunity to act
   — one headline, or one action round for one side — numbered continuously from the start of the
   game, so ply 1 is the USSR's turn-1 headline and **154 is a game that played all ten turns
