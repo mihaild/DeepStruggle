@@ -2,63 +2,36 @@
 
 from collections.abc import Sequence
 import enum
-from typing import TypedDict, Annotated, overload
+from typing import Annotated, Final, TypedDict, overload
 
 import numpy
 from numpy.typing import NDArray
 
-class EffectBits:
-    ALDRICH_AMES_ACTIVE: int
-    AWACS_PLAYED: int
-    BEAR_TRAP_ACTIVE: int
-    BREZHNEV_DOCTRINE_ACTIVE: int
-    CAMP_DAVID_PLAYED: int
-    CHERNOBYL_ACTIVE: int
-    CHERNOBYL_REGION_MASK: int
-    CHERNOBYL_REGION_SHIFT: int
-    CMC_ACTIVE_US: int
-    CMC_ACTIVE_USSR: int
-    CONTAINMENT_ACTIVE: int
-    DEATH_SQUADS_US: int
-    DEATH_SQUADS_USSR: int
-    DEFCON_SUICIDE_PROVOKED: int
-    CMC_SUICIDE_LOSS: int
-    EUROPE_CONTROL_WIN: int
-    EVIL_EMPIRE_PLAYED: int
-    FLOWER_POWER_ACTIVE: int
-    FORMOSAN_RESOLUTION_ACTIVE: int
-    IRANIAN_HOSTAGE_CRISIS_PLAY: int
-    IRAN_CONTRA_ACTIVE: int
-    IRON_LADY_PLAYED: int
-    JOHN_PAUL_II_PLAYED: int
-    MARSHALL_PLAN_PLAYED: int
-    NATO_ACTIVE: int
-    NATO_CANCELED_FRANCE: int
-    NATO_CANCELED_WEST_GERMANY: int
-    NORAD_ACTIVE: int
-    NORTH_SEA_OIL_ACTIVE: int
-    NORTH_SEA_OIL_PLAYED: int
-    NUCLEAR_SUBS_ACTIVE: int
-    PURGE_USSR_ACTIVE: int
-    PURGE_US_ACTIVE: int
-    QUAGMIRE_ACTIVE: int
-    SALT_ACTIVE: int
-    SHUTTLE_DIPLOMACY_ACTIVE: int
-    SPACE_USSR_ATTEMPT_1: int
-    SPACE_USSR_ATTEMPT_2: int
-    SPACE_US_ATTEMPT_1: int
-    SPACE_US_ATTEMPT_2: int
-    TEAR_DOWN_THIS_WALL_PLAYED: int
-    THE_REFORMER_PLAYED: int
-    U2_INCIDENT_ACTIVE: int
-    US_JAPAN_PACT_ACTIVE: int
-    VIETNAM_REVOLTS_ACTIVE: int
-    WARSAW_PACT_PLAYED: int
-    WE_WILL_BURY_YOU_PENDING: int
-    WILLY_BRANDT_PLAYED: int
-    YURI_AND_SAMANTHA_ACTIVE: int
+from ts_engine import EffectBits as EffectBits
 
 
+
+class CountryInfo(TypedDict):
+    """Static map data for one country, as `MapData.get_country_info` returns it.
+
+    A TypedDict rather than a bare `dict` so a checker sees the keys and their types: a
+    misspelled key and a field used at the wrong type are both errors against this.
+
+    Note `region` is the `Region` enum, not an int. It is bound with nb::is_arithmetic(),
+    so int(), `== 0`, numpy conversion and sorting all still work -- but comparing it to a
+    `Region` member works too, which against a bare int was silently always False.
+    """
+
+    id: int
+    name: str
+    stability: int
+    battleground: bool
+    region: Region
+    in_western_europe: bool
+    in_eastern_europe: bool
+    in_southeast_asia: bool
+    superpower_adjacent: str
+    neighbors: list[int]
 
 class RollType(enum.IntEnum):
     NONE = 0
@@ -205,6 +178,37 @@ INFLUENCE: OpMode = OpMode.INFLUENCE
 
 REALIGN: OpMode = OpMode.REALIGN
 
+def reveal_hand(state: GameState, player: Player) -> None:
+    """
+    Mark every card that player is holding right now as public to the opponent. Cards drawn afterwards are hidden again -- knowledge attaches to cards, not to players.
+    """
+
+def reveal_both_hands(state: GameState) -> None:
+    """
+    Mark both hands public, as when the draw deck runs out and each side can name the other's hand as the complement of what it can see.
+    """
+
+def in_hand_of(location: CardLocation, player: Player) -> bool:
+    """
+    True when the card is in that player's hand, known to the opponent or not.
+    """
+
+def known_to_opponent(location: CardLocation) -> bool:
+    """
+    True when the player who is not holding the card knows it is in that hand.
+    """
+
+def hand_of(player: Player, known: bool = False) -> CardLocation:
+    """
+    The hand location for a player; hidden from the opponent unless known=True.
+    """
+
+def hand_holder(location: CardLocation) -> Player:
+    """Whose hand it is, or Player.NONE when the card is not in one."""
+
+def revealed(location: CardLocation) -> CardLocation:
+    """The same hand, marked public. Identity for anything not in a hand."""
+
 class CardLocation(enum.IntEnum):
     UNAVAILABLE = 0
 
@@ -247,22 +251,8 @@ REMOVED_FROM_GAME: CardLocation = CardLocation.REMOVED_FROM_GAME
 ONGOING_EVENT: CardLocation = CardLocation.ONGOING_EVENT
 
 PEEKED_TEMP: CardLocation = CardLocation.PEEKED_TEMP
+
 HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
-HEADLINE_COMMITTED: CardLocation = CardLocation.HEADLINE_COMMITTED
-
-def in_hand_of(location: CardLocation, player: Player) -> bool: ...
-
-def reveal_hand(state: GameState, player: Player) -> None: ...
-
-def reveal_both_hands(state: GameState) -> None: ...
-
-def known_to_opponent(location: CardLocation) -> bool: ...
-
-def hand_of(player: Player, known: bool = False) -> CardLocation: ...
-
-def hand_holder(location: CardLocation) -> Player: ...
-
-def revealed(location: CardLocation) -> CardLocation: ...
 
 class WarEra(enum.IntEnum):
     EARLY = 0
@@ -343,29 +333,7 @@ class MicroAction:
 
     def __repr__(self) -> str: ...
 
-class CountryInfo(TypedDict):
-    """The static map data for one country, as `MapData.get_country_info` returns it.
-
-    Declared as a TypedDict rather than `dict` so a checker sees the keys and their types: a
-    misspelled key and a field used at the wrong type are both errors against this, where
-    against a bare `dict` neither is.
-    """
-
-    id: int
-    name: str
-    stability: int
-    battleground: bool
-    region: Region
-    in_western_europe: bool
-    in_eastern_europe: bool
-    in_southeast_asia: bool
-    superpower_adjacent: str
-    neighbors: list[int]
-
-
 class CountryState:
-    """A *copy* of a country's influence. Read-only: see GameState.set_country."""
-
     @property
     def us_influence(self) -> int: ...
 
@@ -421,45 +389,33 @@ class DecisionContext:
     @resolving_card.setter
     def resolving_card(self, arg: int, /) -> None: ...
 
-
     @property
-    def op_mode(self) -> OpMode:
-        """Which Operation the pending point decisions belong to (INFLUENCE / COUP / REALIGN)."""
-        ...
+    def op_mode(self) -> OpMode: ...
 
     @op_mode.setter
     def op_mode(self, arg: OpMode, /) -> None: ...
 
     @property
-    def pending_roll_type(self) -> RollType:
-        """Which kind of chance node is pending; RollType.TURN_CLEANUP for the turn's cleanup."""
-        ...
+    def pending_roll_type(self) -> RollType: ...
 
     @property
-    def roll_target(self) -> int:
-        """What the pending die is about: a country id, or a card id for SPACE_RACE/TRAP_ESCAPE."""
-        ...
+    def roll_target(self) -> int: ...
 
     @property
-    def roll_actor(self) -> Player:
-        """Who rolls the pending die; Player.NONE means the phasing player."""
-        ...
+    def roll_actor(self) -> Player: ...
 
     @property
-    def event_stage(self) -> int:
-        """Which half of a two-part event is being answered (Che, De-Stalinization)."""
-        ...
+    def event_stage(self) -> int: ...
 
     @event_stage.setter
     def event_stage(self, arg: int, /) -> None: ...
 
     def is_visited(self, arg: int, /) -> bool: ...
 
-    def node_count(self, arg: int, /) -> int:
-        """How much this event has already moved in one country (0..NODE_COUNT_MAX)."""
-        ...
+    def node_count(self, arg: int, /) -> int: ...
 
-    NODE_COUNT_MAX: int
+    NODE_COUNT_MAX: Final[int] = ...
+    """(arg: object, /) -> int"""
 
 class GameState:
     def __init__(self) -> None: ...
@@ -630,18 +586,24 @@ class GameState:
 
     def to_json(self) -> str: ...
 
+def has_held_scoring_card(arg0: GameState, arg1: Player, /) -> bool: ...
+
+def is_held_scoring_game_over(arg: GameState, /) -> bool: ...
+
+def is_held_scoring_loss(arg0: GameState, arg1: Player, /) -> bool: ...
+
 class StateMachine:
     @staticmethod
-    def deal_cards_to_hands(state: GameState, /) -> None: ...
+    def advance_headline_step(arg: GameState, /) -> None: ...
 
     @staticmethod
-    def reshuffle_discard_into_draw(state: GameState, /) -> None: ...
+    def advance_after_action_round(arg: GameState, /) -> None: ...
 
     @staticmethod
-    def advance_headline_step(state: GameState, /) -> None: ...
+    def deal_cards_to_hands(arg: GameState, /) -> None: ...
 
     @staticmethod
-    def advance_after_action_round(state: GameState, /) -> None: ...
+    def reshuffle_discard_into_draw(arg: GameState, /) -> None: ...
 
 class Engine:
     @staticmethod
@@ -655,6 +617,15 @@ class Engine:
 
     @staticmethod
     def get_terminal_utility(arg: GameState, /) -> float: ...
+
+    @staticmethod
+    def has_held_scoring_card(arg0: GameState, arg1: Player, /) -> bool: ...
+
+    @staticmethod
+    def is_held_scoring_game_over(arg: GameState, /) -> bool: ...
+
+    @staticmethod
+    def is_held_scoring_loss(arg0: GameState, arg1: Player, /) -> bool: ...
 
     @staticmethod
     def get_legal_action_mask(arg: GameState, /) -> list: ...
@@ -671,15 +642,6 @@ class Engine:
     @staticmethod
     def auto_advance_step(state: GameState, max_steps: int = 128) -> int: ...
 
-    @staticmethod
-    def has_held_scoring_card(arg0: GameState, arg1: Player, /) -> bool: ...
-
-    @staticmethod
-    def is_held_scoring_game_over(arg: GameState, /) -> bool: ...
-
-    @staticmethod
-    def is_held_scoring_loss(arg0: GameState, arg1: Player, /) -> bool: ...
-
 class MapData:
     @staticmethod
     def get_country_name(arg: int, /) -> str: ...
@@ -688,40 +650,65 @@ class MapData:
     def get_country_by_name(arg: str, /) -> int: ...
 
     @staticmethod
-    def get_country_info(arg: int, /) -> CountryInfo: ...
+    def get_country_info(arg: int, /) -> CountryInfo:
+        """Static map data for one country. See `CountryInfo`."""
 
 class CardHandlers:
-    @staticmethod
-    def can_trigger_event(state: GameState, card_id: int, player: Player) -> bool: ...
-
     @staticmethod
     def trigger_event(state: GameState, card_id: int, player: Player, forced_roll: int = 0) -> bool: ...
 
     @staticmethod
+    def can_trigger_event(state: GameState, card_id: int, player: Player) -> bool: ...
+
+    @staticmethod
     def handle_event_step(arg0: GameState, arg1: MicroAction, /) -> bool: ...
 
-class RegionalStatus:
-    NONE: int
-    PRESENCE: int
-    DOMINATION: int
-    CONTROL: int
+class RegionalStatus(enum.IntEnum):
+    NONE = 0
+
+    PRESENCE = 1
+
+    DOMINATION = 2
+
+    CONTROL = 3
 
 class RegionScoreSummary:
-    us_status: RegionalStatus
-    ussr_status: RegionalStatus
-    us_countries: int
-    ussr_countries: int
-    us_battlegrounds: int
-    ussr_battlegrounds: int
-    us_superpower_adjacent: int
-    ussr_superpower_adjacent: int
-    us_score: int
-    ussr_score: int
-    net_delta: int
+    @property
+    def us_status(self) -> RegionalStatus: ...
+
+    @property
+    def ussr_status(self) -> RegionalStatus: ...
+
+    @property
+    def us_countries(self) -> int: ...
+
+    @property
+    def ussr_countries(self) -> int: ...
+
+    @property
+    def us_battlegrounds(self) -> int: ...
+
+    @property
+    def ussr_battlegrounds(self) -> int: ...
+
+    @property
+    def us_superpower_adjacent(self) -> int: ...
+
+    @property
+    def ussr_superpower_adjacent(self) -> int: ...
+
+    @property
+    def us_score(self) -> int: ...
+
+    @property
+    def ussr_score(self) -> int: ...
+
+    @property
+    def net_delta(self) -> int: ...
 
 class Operations:
     @staticmethod
-    def can_place_influence(state: GameState, player: Player, country_id: int, /) -> bool: ...
+    def can_place_influence(arg0: GameState, arg1: Player, arg2: int, /) -> bool: ...
 
 class Scoring:
     @staticmethod
@@ -737,16 +724,16 @@ class Scoring:
     def evaluate_military_ops(arg: GameState, /) -> None: ...
 
     @staticmethod
-    def evaluate_region(state: GameState, region: Region, is_final_scoring: bool = False, /) -> RegionScoreSummary: ...
+    def evaluate_region(state: GameState, region: Region, is_final_scoring: bool = False) -> RegionScoreSummary: ...
 
     @staticmethod
-    def get_country_control(state: GameState, country_id: int, /) -> Player: ...
+    def get_country_control(arg0: GameState, arg1: int, /) -> Player: ...
 
     @staticmethod
-    def is_controlled_by(state: GameState, country_id: int, player: Player, /) -> bool: ...
+    def is_controlled_by(arg0: GameState, arg1: int, arg2: Player, /) -> bool: ...
 
     @staticmethod
-    def compute_useful_actions_potential(state: GameState, player: Player, /) -> float: ...
+    def compute_useful_actions_potential(arg0: GameState, arg1: Player, /) -> float: ...
 
 class CardData:
     @staticmethod
@@ -767,13 +754,15 @@ def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction: ...
 
 def encode_micro_action(arg0: GameState, arg1: MicroAction, /) -> int: ...
 
-OBS_SIZE_LEGACY: int
+def extract_observation(state: GameState, perspective: Player, layout: str = 'legacy', flags: int = 0) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
 
-OBS_SIZE_V21: int
-OBS_SIZE_V23: int
-OBS_FLAG_STAGED_CARDS: int
+OBS_FLAG_STAGED_CARDS: int = 1
 
-def extract_observation(state: GameState, perspective: Player, layout: str = "legacy", flags: int = 0) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
+OBS_SIZE_LEGACY: int = 4293
+
+OBS_SIZE_V21: int = 3891
+
+OBS_SIZE_V23: int = 3824
 
 class ActionMask:
     @staticmethod
@@ -786,14 +775,14 @@ class ActionMask:
     def encode_micro_action(arg0: GameState, arg1: MicroAction, /) -> int: ...
 
 class VectorizedBatchRunner:
-    def __init__(self, num_envs: int, base_seed: int = 12345,
-                 layout: str = "legacy", flags: int = 0) -> None: ...
+    def __init__(self, num_envs: int, base_seed: int = 12345, layout: str = 'legacy', flags: int = 0) -> None: ...
 
     @property
     def obs_width(self) -> int: ...
 
     @property
     def layout(self) -> str: ...
+
     @property
     def obs_flags(self) -> int: ...
 
@@ -815,12 +804,12 @@ class VectorizedBatchRunner:
 
     def get_victory_points(self) -> list[int]: ...
 
-    def get_opponent_hands(self, acting_players: list[int], /) -> list[float]: ...
+    def get_opponent_hands(self, arg: Sequence[int], /) -> list[float]: ...
+
     def get_turns(self) -> list[int]: ...
 
     def get_state(self, arg: int, /) -> GameState: ...
 
     def set_state(self, idx: int, state: GameState) -> None: ...
 
-    def set_state(self, idx: int, state: GameState) -> None: ...
-    def compute_useful_actions_potentials(self, acting_players: list[int], /) -> list[float]: ...
+    def compute_useful_actions_potentials(self, arg: Sequence[int], /) -> list[float]: ...

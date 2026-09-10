@@ -33,6 +33,14 @@ cmake --build build/release -j
 The extension lands at `build/release/ts_engine.cpython-*.so` — the binary root, not
 `build/release/bindings/` — and is imported via `PYTHONPATH=.:build/release`.
 
+**The type stubs are generated, not written.** Building also regenerates
+`bindings/ts_engine/` (a stub *package*: `__init__.pyi` plus one file per nanobind
+submodule) from the module just built, so it cannot drift from the bindings.
+`tests/bindings/test_stub_is_generated.py` fails if the committed copy no longer matches.
+Never hand-edit those files — rebuild and commit what changed. To express something
+introspection cannot recover, such as the shape of a value returned as an untyped
+`nb::dict`, edit `bindings/ts_engine.pyi.pattern`.
+
 **Never run an experiment against a stale engine** (key invariant #10). Guard every command
 that generates or consumes a checkpoint, dataset, Elo anchor or diagnostic:
 

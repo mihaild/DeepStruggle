@@ -1,0 +1,41 @@
+# Pattern file for nanobind's stubgen (see bindings/CMakeLists.txt).
+#
+# Everything in ts_engine.pyi is generated from the built module by introspection, which gets
+# classes, enums, overloads and read-only-ness right on its own. What introspection *cannot*
+# recover is the shape of anything returned as an untyped `nb::dict`: at runtime that is just a
+# dict, so the stub would say `dict` and a checker would have nothing to check. The patterns
+# below supply those shapes.
+#
+# Format: a line ending in `:` is a regular expression matched against the fully qualified name,
+# followed by indented replacement lines.
+
+# Injected at the top of the generated stub.
+ts_engine.__prefix__:
+    \from typing import TypedDict
+
+    class CountryInfo(TypedDict):
+        """Static map data for one country, as `MapData.get_country_info` returns it.
+
+        A TypedDict rather than a bare `dict` so a checker sees the keys and their types: a
+        misspelled key and a field used at the wrong type are both errors against this.
+
+        Note `region` is the `Region` enum, not an int. It is bound with nb::is_arithmetic(),
+        so int(), `== 0`, numpy conversion and sorting all still work -- but comparing it to a
+        `Region` member works too, which against a bare int was silently always False.
+        """
+
+        id: int
+        name: str
+        stability: int
+        battleground: bool
+        region: Region
+        in_western_europe: bool
+        in_eastern_europe: bool
+        in_southeast_asia: bool
+        superpower_adjacent: str
+        neighbors: list[int]
+
+ts_engine.MapData.get_country_info:
+    @staticmethod
+    def get_country_info(arg: int, /) -> CountryInfo:
+        """Static map data for one country. See `CountryInfo`."""
