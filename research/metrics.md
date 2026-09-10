@@ -228,25 +228,69 @@ The 119, classified from the terminal position the converter now records (`final
 67.2% of finished human games play all ten turns out. 20 of the 119 contain an AR8, which the
 ply scheme counts at its nominal 16 and so under-counts by 2 apiece.
 
+### 1.5.1 The ts-replayer figure is biased long; the ITS results database is the better baseline
+
+`/workspace/data/itsc-games` is a scrape of the ITS Junta results table at twilight-struggle.com
+— **47,928** digital (Playdek, Deluxe) games, 44,136 of them with a rules ending, against
+ts-replayer's 119. It is results-only: one row per game with `endTurn` and `endMode` and no
+moves, so it can give length and ending mix and **cannot** replace ts-replayer as a training
+corpus.
+
+Its `endTurn` uses the same convention the engine does — 12,787 of its 12,792 Final Scoring games
+are recorded at turn 11 — which is independent confirmation of the turn-11 artefact above, from a
+source that has never seen this code.
+
+It disagrees with ts-replayer sharply, and in the direction that says ts-replayer is the biased
+one:
+
+| | ts-replayer (119) | ITS (44,136) |
+|:---|---:|---:|
+| went the distance | 67.2% | **29.7%** |
+| mean end turn (engine scale) | 9.99 | **8.33** |
+| mean ply | 142.2 | **~119** (bounded [112, 123]) |
+| final scoring | 56.3% | 29.0% |
+| 20 VP | 23.5% | 43.1% |
+| wargames | 18.5% | 14.9% |
+| DEFCON 1 | 1.7% | **11.7%** |
+| held scoring | (folded into 20 VP) | 1.4% |
+
+ts-replayer's 119 are the subset of 274 logs whose *recording* completed, and that filter is not
+independent of how the game ended: a game that blows up at turn 6 leaves a log that stops
+mid-turn and lands in the 146-game fragment pile, while a game that goes the distance gets
+recorded to the end. The DEFCON-1 row is the tell — 1.7% against 11.7% is not sampling noise at
+these sizes. Use ITS for length and ending-mix baselines; use ts-replayer where moves are needed.
+
+The ITS ply figure is an estimate, not a measurement: a turn pins the ply only to a 14- or
+16-wide interval, so the point value applies ts-replayer's mean *within-turn* offset per ending
+kind (20 VP lands late in a turn, 13.7 of 16; Wargames early, 5.5). Report it with its interval.
+
 ### The gap this exposes
 
 Self-play at temperature 0.1, 1,000 games each, measured through the batched match runner:
 
-| | mean ply | of 154 | DEFCON-1 | final scoring |
-|:---|---:|---:|---:|---:|
-| RandomBot | 40.3 | 26.1% | 50.5% | 0.6% |
-| arm D (legacy, 80M) | 99.0 | 64.3% | 42.9% | 11.0% |
-| arm E (v2.1, 80M) | 100.1 | 65.0% | 44.2% | 9.6% |
-| arm H (v2.3, corrected engine, 80M) | 106.7 | 69.3% | 47.5% | 14.4% |
-| HeuristicBot | 114.6 | 74.4% | 0.0% | 25.4% |
-| humans | 142.2 | 92.3% | 1.7% | 56.3% |
+| | mean ply | of 154 | 20 VP | final scoring | DEFCON-1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| RandomBot | 40.3 | 26.1% | 47.4% | 0.6% | 50.5% | 1.5% |
+| arm D (legacy, 80M) | 99.0 | 64.3% | 46.1% | 11.0% | 42.9% | 0.0% |
+| arm E (v2.1, 80M) | 100.1 | 65.0% | 46.0% | 9.6% | 44.2% | 0.2% |
+| arm H (v2.3, corrected engine, 80M) | 106.7 | 69.3% | 38.0% | 14.4% | 47.5% | 0.1% |
+| HeuristicBot | 114.6 | 74.4% | 74.6% | 25.4% | 0.0% | 0.0% |
+| **humans (ITS, 44,136)** | **~119** | **77.4%** | **43.1%** | **29.0%** | **11.7%** | **14.9%** |
+| humans (ts-replayer, 119) | 142.2 | 92.3% | 23.5% | 56.3% | 1.7% | 18.5% |
 
-The models sit closer to RandomBot than to humans on length, and the ordering of the arms is
-the same as the training-time turn figures gave (H ahead of E and D) but the *gap to humans* is
-much larger than the turn scale suggested. Humans decide games by scoring the board at turn 10;
-every arm decides them by someone dying, and DEFCON-1 accounts for 43-48% of arm games against
-1.7% of human ones. HeuristicBot, which carries an explicit instant-loss safety layer, never
-does it at all.
+Against the ITS baseline the length gap is modest -- arm H at 106.7 against ~119, and
+HeuristicBot at 114.6 is essentially at human length -- and the arms match humans on 20 VP
+endings almost exactly (38-46% against 43.1%). The deficit is in *how* games end, in two
+specific ways:
+
+- **DEFCON 1 is four times too common**: 43-48% of arm games against 11.7% of human ones.
+  HeuristicBot, which carries an explicit instant-loss safety layer, never does it at all, and
+  that alone is most of its length advantage over the arms.
+- **Wargames is never played**: 0-0.2% of arm games against 14.9% of human ones. It is a real
+  human resource for closing out a won position at DEFCON 2, and no arm has found it.
+
+Held scoring is folded into the 20 VP column for the arms and for ts-replayer: our classifier
+only separates it on the training path, where ts_env supplies the flag.
 
 Arms F, F2 and G cannot be re-measured: they are observation layout v2.2, which is retired, so
 their checkpoints cannot be loaded. Their turn-only training figures remain the only record.

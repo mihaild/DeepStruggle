@@ -104,7 +104,9 @@ finer, so a game abandoned at turn 7 AR1 and one that ran to turn 7 AR7 are the 
 it carries an artefact at the top of its range: `finish_end_turn` increments the turn and only
 then tests `turn <= 10`, so a completed game terminates holding turn **11** while a human replay
 log numbers that same game turn 10. Reference points, self-play at temperature 0.1: RandomBot 40,
-the 80M arms 99-107, HeuristicBot 115, and the 119 finished games of the human corpus 142.
+the 80M arms 99-107, HeuristicBot 115, and human play ~119 (the 44,136 completed games of the
+ITS results database; the ts-replayer corpus gives 142, but its finished subset is biased long
+-- see `research/metrics.md` §1.5.1).
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and
