@@ -139,16 +139,19 @@ struct alignas(64) DecisionContext {
     // Transient tracking across sub-actions (cleared when resolving_card finishes)
     std::array<uint64_t, 2> start_influence_nodes; // Bitmask of countries with friendly influence at start of Op
     std::array<uint64_t, 2> visited_nodes;         // 128-bit bitmask of nodes already modified
-    // Placements or removals per country during this event, three bits each: 84 countries in
-    // 32 bytes rather than 84. Behind accessors so the packing is not visible to callers.
+    // Placements or removals per country during this event, two bits each: 84 countries in
+    // 24 bytes rather than 84. Behind accessors so the packing is not visible to callers.
     //
-    // Three bits and not two. Every guarded increment tests `< 2` first, so ordinary play never
-    // exceeds 2 -- but Suez Crisis increments unguarded (its cap of two per country lives in the
-    // mask, not the handler), so a caller stepping past the mask could reach its allowance of 4.
-    // That is an illegal action being accepted rather than a legal state, and narrowing to two
-    // bits would have turned it into silent corruption of a neighbouring country's count. Seven
-    // saturates instead.
-    std::array<uint64_t, 4> node_count_bits;
+    // Two bits is exactly the range. No card allows more than two per country -- every
+    // max_per_country in the engine is 0, 1 or 2 -- and every handler that bumps a count now
+    // enforces its own limit, either `node_count(cid) < 2` or `!is_visited(cid)`, which caps at
+    // one. Socialist Governments was the single exception and is fixed alongside this; it left
+    // the cap to the mask, so a caller stepping past the mask could take all three of its
+    // Influence out of one country.
+    //
+    // Three is therefore unreachable and saturating there is a backstop, not a design margin.
+    // Each field sits at an even bit offset, so none straddles a word.
+    std::array<uint64_t, 3> node_count_bits;
     uint8_t                 suppress_op_card_event; // 1 = do not fire pending_op_card's event
     uint8_t                 event_granted_ops;      // 1 = Ops came from an event, not a card play
 
@@ -170,29 +173,21 @@ struct alignas(64) DecisionContext {
 
     uint8_t                 pad[1];
 
-    static constexpr uint8_t NODE_COUNT_MAX = 7;   // three bits
+    static constexpr uint8_t NODE_COUNT_MAX = 3;   // two bits; no card allows more than 2
 
     inline uint8_t node_count(uint8_t node) const noexcept {
         if (node >= 84) return 0;
-        const size_t bit = static_cast<size_t>(node) * 3;
-        return static_cast<uint8_t>((node_count_bits[bit >> 6] >> (bit & 63)) & 0x7ULL)
-             | static_cast<uint8_t>(((bit & 63) > 61)
-                   ? ((node_count_bits[(bit >> 6) + 1] << (64 - (bit & 63))) & 0x7ULL) : 0ULL);
+        const size_t bit = static_cast<size_t>(node) * 2;
+        return static_cast<uint8_t>((node_count_bits[bit >> 6] >> (bit & 63)) & 0x3ULL);
     }
 
     inline void set_node_count(uint8_t node, uint8_t value) noexcept {
         if (node >= 84) return;
-        const uint64_t v = static_cast<uint64_t>(value & 0x7);
-        const size_t bit = static_cast<size_t>(node) * 3;
+        const size_t bit = static_cast<size_t>(node) * 2;
         const size_t word = bit >> 6;
         const size_t off = bit & 63;
-        node_count_bits[word] &= ~(0x7ULL << off);
-        node_count_bits[word] |= (v << off);
-        if (off > 61) {   // the field straddles two words
-            const size_t spill = 64 - off;
-            node_count_bits[word + 1] &= ~(0x7ULL >> spill);
-            node_count_bits[word + 1] |= (v >> spill);
-        }
+        node_count_bits[word] &= ~(0x3ULL << off);
+        node_count_bits[word] |= (static_cast<uint64_t>(value & 0x3) << off);
     }
 
     inline void bump_node_count(uint8_t node) noexcept {

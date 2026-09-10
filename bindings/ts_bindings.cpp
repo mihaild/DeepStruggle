@@ -567,7 +567,11 @@ NB_MODULE(ts_engine, m) {
         // temp_cards is gone. It was exposed so a replay could steer a peeked set, which is now
         // done by setting card locations: a peeked card sits at PEEKED_TEMP, which is both what
         // the mask reads and what the observation shows.
-        .def("is_visited", &ts::DecisionContext::is_visited);
+        .def("is_visited", &ts::DecisionContext::is_visited)
+        // How much this event has already moved in one country. Packed two bits per country
+        // behind these, so callers see a count and not the packing.
+        .def("node_count", &ts::DecisionContext::node_count)
+        .def_ro_static("NODE_COUNT_MAX", &ts::DecisionContext::NODE_COUNT_MAX);
 
     nb::class_<ts::GameState>(m, "GameState")
         .def("clone", [](const ts::GameState& s) -> ts::GameState { return s; })

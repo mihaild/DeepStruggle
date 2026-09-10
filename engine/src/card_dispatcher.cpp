@@ -450,7 +450,13 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).in_western_europe && state.countries[cid].us_influence > 0) {
+            // At most two from any one country -- three Influence, no more than two anywhere.
+            // The cap was in the mask and in the card's own max_per_country, but not here, so a
+            // caller stepping past the mask could take all three out of one country. It is the
+            // only one of the sixteen per-country limits that the handler did not enforce.
+            if (cid < 84 && MapData::get_country(cid).in_western_europe
+                && state.countries[cid].us_influence > 0
+                && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].remove_influence(Player::US, 1);
                 state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;

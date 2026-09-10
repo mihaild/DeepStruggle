@@ -439,6 +439,12 @@ class DecisionContext:
 
     def is_visited(self, arg: int, /) -> bool: ...
 
+    def node_count(self, arg: int, /) -> int:
+        """How much this event has already moved in one country (0..NODE_COUNT_MAX)."""
+        ...
+
+    NODE_COUNT_MAX: int
+
 class GameState:
     def __init__(self) -> None: ...
 
