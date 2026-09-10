@@ -257,15 +257,27 @@ def test_canonical_game_ending_reasons():
     st.victory_points = -20
     assert classify_game_ending_reason(st) == "20 VP"
 
-    # 4. Final Scoring (Turn 10)
+    # 4. Final Scoring -- which the engine reaches holding turn *11*, not 10. finish_end_turn
+    # increments the turn and only then tests `turn <= 10` before calling execute_final_scoring,
+    # so a game that goes the distance terminates at turn 11 / AR 0. Driving 40 heuristic games
+    # produces exactly that and never a turn-10 final scoring. This case previously asserted
+    # turn 10, which is a position final scoring cannot occupy -- see case 5.
     st.defcon = 2
     st.victory_points = 6
-    st.turn = 10
+    st.turn = 11
     st.current_phase = ts_engine.Phase.GAME_OVER
     assert classify_game_ending_reason(st) == "final scoring"
 
-    # 5. Wargames (#100) - Early game termination before Turn 10 with DEFCON 2 and abs(VP) < 20
+    # 5. Wargames (#100) - the game is over, short of final scoring, with abs(VP) < 20.
     st.turn = 8
     st.victory_points = 4
+    st.current_phase = ts_engine.Phase.GAME_OVER
+    assert classify_game_ending_reason(st) == "wargames"
+
+    # 5b. Wargames played *in* turn 10 -- the case the `turn < 10` bound used to miss, sending
+    # it to rule 4 and reporting it as final scoring. 3 of the 119 finished games in the human
+    # corpus end this way (e.g. replay 163, turn 10 AR1).
+    st.turn = 10
+    st.victory_points = 1
     st.current_phase = ts_engine.Phase.GAME_OVER
     assert classify_game_ending_reason(st) == "wargames"

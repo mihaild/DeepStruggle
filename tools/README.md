@@ -91,10 +91,20 @@ written, and a missing/broken `tensorboard` install only prints a warning). Watc
 Beyond the loss terms, each iteration records `explained_variance` (`1 - Var(G - V) / Var(G)` for
 the win-value head — the primary read on whether the critic is learning), advantage-distribution
 health (`adv_std`, `adv_std_raw`, `adv_frac_near_zero`), game length (`mean_turn`, `median_turn`,
-`episodes_completed`), the ending-reason mix (`ending_frac_*`), which side won (`ussr_win_rate`,
+`mean_ply`, `median_ply`, `episodes_completed`), the ending-reason mix (`ending_frac_*`), which side won (`ussr_win_rate`,
 `draw_rate`, `mean_terminal_utility` — US-positive), and `entropy_fixed_probe`: mean masked policy
 entropy on a pool of ~2,000 (observation, mask) pairs frozen at the start of the run, which unlike
 the on-policy `entropy` cannot be masked by state-distribution drift.
+
+`mean_ply` / `median_ply` measure game length in the continuous player-slot numeration defined by
+[`ai/game_length.py`](../ai/game_length.py): ply 1 is the USSR's turn-1 headline, ply 2 the US's,
+ply 3 the USSR's turn-1 AR1, and **154 is a game that played all ten turns out**. Prefer it to
+`mean_turn` when comparing lengths. The turn counter answers "which of the ten" and nothing
+finer, so a game abandoned at turn 7 AR1 and one that ran to turn 7 AR7 are the same number, and
+it carries an artefact at the top of its range: `finish_end_turn` increments the turn and only
+then tests `turn <= 10`, so a completed game terminates holding turn **11** while a human replay
+log numbers that same game turn 10. Reference points, self-play at temperature 0.1: RandomBot 40,
+the 80M arms 99-107, HeuristicBot 115, and the 119 finished games of the human corpus 142.
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and

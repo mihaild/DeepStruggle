@@ -289,6 +289,23 @@ class Conversion:
     # before the game did, which is what marks a game's samples as having no value target.
     final_victory_points: Optional[int] = None
     us_utility: Optional[float] = None
+    # The rest of the finished position, recorded here for the same reason as the score above:
+    # this is the only place the terminal state is in scope. Together with the score these give
+    # the ending its reason (DEFCON 1 is not inferable from the score, and the log's own defcon
+    # field holds the value *before* the ending resolved) and its length in plies -- see
+    # ai.eval.game_length. None wherever final_victory_points is.
+    final_turn: Optional[int] = None
+    final_action_round: Optional[int] = None
+    final_defcon: Optional[int] = None
+    final_phasing_is_us: Optional[bool] = None
+    # The two flags an ending's reason cannot be read without. A Cuban Missile Crisis suicide
+    # ends at +/-20 with DEFCON untouched, so it is indistinguishable from a won game without
+    # the first; the second splits a DEFCON 1 the loser walked into from one they were pushed
+    # into. Recorded rather than the classification itself: classify_game_ending_reason lives
+    # in tools.lib.tournament_evaluator, whose import chain pulls in torch.
+    final_cmc_suicide: Optional[bool] = None
+    final_defcon_provoked: Optional[bool] = None
+    final_game_over_phase: Optional[bool] = None
     first_board_mismatch: Optional[Mismatch] = None
     first_vp_drift: Optional[Mismatch] = None
     # Set when conversion stopped: the entry that could not be reproduced. Entries after it
@@ -3450,6 +3467,13 @@ def convert_game(game: Dict, on_decision: Optional[Callable] = None,
         # scope. A dataset built from a conversion needs it and has no other way to reach it.
         conv.final_victory_points = int(state.victory_points)
         conv.us_utility = float(ts.Engine.get_terminal_utility(state))
+        conv.final_turn = int(state.turn)
+        conv.final_action_round = int(state.action_round)
+        conv.final_defcon = int(state.defcon)
+        conv.final_phasing_is_us = (state.phasing_player == ts.Player.US)
+        conv.final_cmc_suicide = bool(state.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS))
+        conv.final_defcon_provoked = bool(state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED))
+        conv.final_game_over_phase = (state.current_phase == ts.Phase.GAME_OVER)
     if conv.failure is None and conv.truncated_at is None and not conv.game_ended:
         # The log played no ending and stopped mid-turn: that turn is a fragment, whether or
         # not anything in it happened to fail. See unfinished_final_turn.

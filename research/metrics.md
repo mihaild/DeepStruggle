@@ -166,9 +166,90 @@ extracting the step count and sorting on it, and verified to return matched list
 - **Enable `--auto-advance` freely.** It is outcome-neutral, verified bit-exact under a
   position-derived policy on the vectorized path (§7.1). It is also a smaller speed win than it
   looks (3.3% fewer batched steps).
+- **Measure game length in plies, not turns.** A ply is one player's single opportunity to act
+  — one headline, or one action round for one side — numbered continuously from the start of the
+  game, so ply 1 is the USSR's turn-1 headline and **154 is a game that played all ten turns
+  out** (`ai/game_length.py`). The turn counter is wrong for this in two ways. It is too coarse:
+  a game abandoned at turn 7 AR1 and one that ran to turn 7 AR7 are both "turn 7", which is 14
+  plies apart. And it has an artefact at the top of its range — `finish_end_turn` increments the
+  turn and only *then* tests `turn <= 10` before calling `execute_final_scoring`, so a completed
+  game terminates holding turn **11**, while a human replay log numbers that same game turn 10.
+  Comparing a model's mean turn against a corpus mean turn therefore compares two different
+  scales, and the error runs in the flattering direction. Logged as `mean_ply` / `median_ply`,
+  reported as `avg_ply` by both tournament paths.
+
 - **Beware `harvest()` in analysis scripts.** It calls `retire_stale()`, which drops older
   generations by design, so positions must be taken out of the pool after each round or they
   are lost. This silently reduced a 1,000-position sample to 91.
+
+---
+
+## 1.4 A Wargames ending in turn 10 was reported as final scoring
+
+`classify_game_ending_reason` tested `state.turn < 10` for Wargames and `state.turn >= 10` for
+final scoring. Real final scoring terminates at turn **11** (above), so the `>= 10` branch was
+only ever reachable by a game that ended *inside* turn 10 — which, with `abs(VP) < 20` and
+`GAME_OVER`, is a Wargames. Every turn-10 Wargames was therefore counted as final scoring in
+`ending_frac_*` and in tournament reports. 3 of the 119 finished human games end exactly that
+way. The bound is now `turn <= 10`; `tests/engine_logic/test_game_invariants.py` had encoded the
+same misconception and asserted a turn-10 state was final scoring, so it was corrected against
+40 driven heuristic games, all of which terminate final scoring at turn 11 / AR 0 and never at
+turn 10.
+
+The effect on the arms is nil in practice — they play Wargames essentially never (0-1 games in
+1,000) — but it mattered for the human baseline, where Wargames is **18.5%** of finished games.
+
+---
+
+## 1.5 Human game length, and what the corpus can and cannot say about it
+
+The corpus is 274 distinct logs: **119** reach a terminal state, **146** are fragments whose
+recording stops, and 9 are empty. Only the 119 are a game length. Two traps:
+
+- The fragments' mean *last* turn is 6.77, which happens to land right on top of the arms'
+  6.5-7.2. Averaging all 265 usable logs gives 7.95. Neither is a game length; both flatter the
+  models by measuring when ts-replayer users stopped recording.
+- `game_ended` must come from the converter's terminal test, not from the log's own fields. The
+  log's `defcon` on the last entry holds the value *before* the ending resolved, so classifying
+  by it found 2 DEFCON-1 endings where there are 21.
+
+The 119, classified from the terminal position the converter now records (`final_turn`,
+`final_action_round`, `final_defcon`, `final_cmc_suicide`, `final_defcon_provoked`):
+
+| | mean ply | share |
+|:---|---:|---:|
+| final scoring | 154.0 | 56.3% |
+| 20 VP / held scoring | 129.9 | 23.5% |
+| wargames | 121.7 | 18.5% |
+| DEFCON 1 (own) | 153.0 | 0.8% |
+| DEFCON 1 (provoked) | 137.0 | 0.8% |
+| **all** | **142.2** | 92.3% of a full game |
+
+67.2% of finished human games play all ten turns out. 20 of the 119 contain an AR8, which the
+ply scheme counts at its nominal 16 and so under-counts by 2 apiece.
+
+### The gap this exposes
+
+Self-play at temperature 0.1, 1,000 games each, measured through the batched match runner:
+
+| | mean ply | of 154 | DEFCON-1 | final scoring |
+|:---|---:|---:|---:|---:|
+| RandomBot | 40.3 | 26.1% | 50.5% | 0.6% |
+| arm D (legacy, 80M) | 99.0 | 64.3% | 42.9% | 11.0% |
+| arm E (v2.1, 80M) | 100.1 | 65.0% | 44.2% | 9.6% |
+| arm H (v2.3, corrected engine, 80M) | 106.7 | 69.3% | 47.5% | 14.4% |
+| HeuristicBot | 114.6 | 74.4% | 0.0% | 25.4% |
+| humans | 142.2 | 92.3% | 1.7% | 56.3% |
+
+The models sit closer to RandomBot than to humans on length, and the ordering of the arms is
+the same as the training-time turn figures gave (H ahead of E and D) but the *gap to humans* is
+much larger than the turn scale suggested. Humans decide games by scoring the board at turn 10;
+every arm decides them by someone dying, and DEFCON-1 accounts for 43-48% of arm games against
+1.7% of human ones. HeuristicBot, which carries an explicit instant-loss safety layer, never
+does it at all.
+
+Arms F, F2 and G cannot be re-measured: they are observation layout v2.2, which is retired, so
+their checkpoints cannot be loaded. Their turn-only training figures remain the only record.
 
 ---
 

@@ -5,6 +5,7 @@ import numpy as np
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 from ai.rewards.reward_calculator import RewardCalculator, ZeroSumTerminalReward, BlunderAwareRewardCalculator
+from ai.game_length import ply as _game_ply
 
 # Canonical short keys for the game-ending reasons reported per completed episode.
 # The long-form strings come from tools.lib.tournament_evaluator.classify_game_ending_reason,
@@ -245,6 +246,10 @@ class TsVectorizedEnv:
         # rather than the final move, and its credit must keep propagating backwards.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
+        # Terminal length in plies. The turn alone cannot express it: a game abandoned at
+        # turn 7 AR1 and one that ran to turn 7 AR7 share a turn number, and a game that
+        # went the distance reads 11 because finish_end_turn increments before testing.
+        terminal_plies = np.zeros(self.num_envs, dtype=np.int16)
         done_idx = np.flatnonzero(dones)
         if len(done_idx):
             # Only a handful of the envs finish on any given step, so walk the terminal
@@ -266,6 +271,8 @@ class TsVectorizedEnv:
                 ending_reasons[i] = _classify_ending(
                     st, bool(held_scoring_us[i] or held_scoring_ussr[i])
                 )
+                terminal_plies[i] = _game_ply(
+                    int(st.turn), int(st.action_round), st.phasing_player == ts.Player.US)
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
@@ -305,6 +312,7 @@ class TsVectorizedEnv:
                         "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
                         "victory_points": int(curr_vp[i]),
                         "turn": int(curr_turns[i]),
+                        "ply": int(terminal_plies[i]),
                         "ending_reason": ending_reasons[i],
                         "start_turn": int(self.env_start_turn[i]),
                     })
@@ -335,6 +343,7 @@ class TsVectorizedEnv:
         info["defcon_blunder"] = defcon_blunder
         info["ending_reasons"] = ending_reasons
         info["terminal_turns"] = curr_turns
+        info["terminal_plies"] = terminal_plies
         info["dones"] = dones
 
         return obs, masks, rewards, dones, info

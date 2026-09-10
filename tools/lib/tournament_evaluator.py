@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 import numpy as np
 import ts_engine as ts
 from tools.lib.player_agent import PlayerAgent
+from ai.game_length import ply as game_ply
 
 
 def classify_game_ending_reason(state: ts.GameState) -> str:
@@ -27,8 +28,15 @@ def classify_game_ending_reason(state: ts.GameState) -> str:
         is_provoked = state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
         return "DEFCON 1 (opponent decision)" if is_provoked else "DEFCON 1 (own decision)"
 
-    # 2. Wargames (#100) (Triggered before Turn 10 without 20 VP)
-    if state.turn < 10 and abs(state.victory_points) < 20 and state.current_phase == ts.Phase.GAME_OVER:
+    # 2. Wargames (#100): the game is over, before final scoring, without 20 VP.
+    #
+    # The bound is `<= 10`, not `< 10`. A game that goes the distance terminates holding
+    # turn *11*: finish_end_turn increments the turn and only then tests `turn <= 10` before
+    # calling execute_final_scoring. So turn 10 is not final scoring -- it is a game that
+    # ended during the last turn -- and with `< 10` a Wargames played in turn 10 fell past
+    # this test to rule 4 and was reported as final scoring. 3 of the 119 finished games in
+    # the human corpus end exactly that way.
+    if state.turn <= 10 and abs(state.victory_points) < 20 and state.current_phase == ts.Phase.GAME_OVER:
         return "wargames"
 
     # 3. 20 VP Milestone, Europe Control, or Held Scoring
@@ -89,6 +97,11 @@ class TournamentEvaluator:
 
         steps_list: List[int] = []
         turns_list: List[int] = []
+        # Length in plies as well as turns: the turn counter answers "which of the ten" and
+        # nothing finer, so a game abandoned at turn 7 AR1 and one that runs to turn 7 AR7 are
+        # the same number, and a completed game reads 11 rather than the 10 a human log calls
+        # it. See ai.eval.game_length.
+        plies_list: List[int] = []
         vp_margins: List[int] = []
 
         causes_loss_us: Dict[str, int] = {}
@@ -129,6 +142,8 @@ class TournamentEvaluator:
             causes_all[reason] = causes_all.get(reason, 0) + 1
             steps_list.append(step)
             turns_list.append(turn)
+            plies_list.append(game_ply(turn, int(st.action_round),
+                                       st.phasing_player == ts.Player.US))
 
             a_won = (term_util > 0 and not a_is_ussr) or (term_util < 0 and a_is_ussr)
             b_won = (term_util < 0 and not a_is_ussr) or (term_util > 0 and a_is_ussr)
@@ -180,6 +195,7 @@ class TournamentEvaluator:
             "win_rate_a_as_ussr": float(a_ussr_wins / max(1, games_per_side)),
             "avg_steps": float(np.mean(steps_list)),
             "avg_turn": float(np.mean(turns_list)),
+            "avg_ply": float(np.mean(plies_list)),
             "avg_vp_margin_a": float(np.mean(vp_margins)),
             "causes_loss_us": causes_loss_us,
             "causes_loss_ussr": causes_loss_ussr,

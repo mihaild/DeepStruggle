@@ -82,6 +82,8 @@ TB_TAGS: Dict[str, str] = {
     "episodes_completed": "game/episodes_completed",
     "mean_turn": "game/mean_turn",
     "median_turn": "game/median_turn",
+    "mean_ply": "game/mean_ply",
+    "median_ply": "game/median_ply",
     "ussr_win_rate": "game/ussr_win_rate",
     "draw_rate": "game/draw_rate",
     "mean_terminal_utility": "game/mean_terminal_utility",
@@ -101,13 +103,16 @@ for _t in (1, 4, 6, 8, 10):
     TB_TAGS[f"episodes_completed_start{_t}"] = f"game_start{_t}/episodes_completed"
     TB_TAGS[f"mean_turn_start{_t}"] = f"game_start{_t}/mean_turn"
     TB_TAGS[f"median_turn_start{_t}"] = f"game_start{_t}/median_turn"
+    TB_TAGS[f"mean_ply_start{_t}"] = f"game_start{_t}/mean_ply"
+    TB_TAGS[f"median_ply_start{_t}"] = f"game_start{_t}/median_ply"
     for _k in ENDING_REASON_KEYS:
         TB_TAGS[f"ending_frac_{_k}_start{_t}"] = f"endings_start{_t}/{_k}"
 
 # Metrics that describe completed episodes; meaningless (and misleading as zeros) on an
 # iteration where no game finished, so they are held back from TensorBoard then.
 EPISODE_DEPENDENT_KEYS = frozenset(
-    ["mean_turn", "median_turn", "ussr_win_rate", "draw_rate", "mean_terminal_utility"]
+    ["mean_turn", "median_turn", "mean_ply", "median_ply",
+     "ussr_win_rate", "draw_rate", "mean_terminal_utility"]
     + [f"ending_frac_{k}" for k in ENDING_REASON_KEYS]
 )
 
@@ -212,6 +217,13 @@ def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str) -> Dict[st
     turns = [float(ep["turn"]) for ep in episodes if "turn" in ep]
     stats[f"mean_turn{suffix}"] = float(np.mean(turns)) if turns else 0.0
     stats[f"median_turn{suffix}"] = float(np.median(turns)) if turns else 0.0
+    # Length in plies: the finer, artefact-free companion to the turn counter. A turn
+    # number cannot separate a game abandoned at turn 7 AR1 from one that ran to turn 7
+    # AR7, and it reads 11 for a game that went the distance because finish_end_turn
+    # increments before testing. 154 plies is a full game. See ai.game_length.
+    plies = [float(ep["ply"]) for ep in episodes if "ply" in ep]
+    stats[f"mean_ply{suffix}"] = float(np.mean(plies)) if plies else 0.0
+    stats[f"median_ply{suffix}"] = float(np.median(plies)) if plies else 0.0
 
     # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance and
     # which nothing was tracking during a run. Free here: the episode records carry the winner.
@@ -1173,7 +1185,8 @@ def train_pipeline(
             print(
                 f"[{_progress_label(elapsed, total_env_steps)}] It {it:4d} | Steps: {total_env_steps:,} ({step_metrics['steps_per_sec']:,} st/s) | "
                 f"Loss: {step_metrics['loss']:.3f} | KL: {step_metrics['kl_div']:.4f} | Ent: {step_metrics['entropy']:.3f} | Clip: {step_metrics['clip_frac']*100:.1f}% | "
-                f"EV: {step_metrics['explained_variance']:+.3f} | Turn: {step_metrics['mean_turn']:.1f}",
+                f"EV: {step_metrics['explained_variance']:+.3f} | Turn: {step_metrics['mean_turn']:.1f} "
+                f"| Ply: {step_metrics['mean_ply']:.0f}/154",
                 flush=True,
             )
 

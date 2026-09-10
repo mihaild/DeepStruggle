@@ -11,6 +11,7 @@ import torch
 
 import ts_engine as ts
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, RandomAgent, load_agent, resolve_device
+from ai.game_length import ply as game_ply
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 
@@ -152,6 +153,10 @@ class BatchMatchRunner:
 
         all_steps = []
         all_turns = []
+        # Length in plies alongside turns. A turn number cannot separate a game abandoned
+        # at turn 7 AR1 from one that ran to turn 7 AR7, and it reads 11 for a game that
+        # went the distance because finish_end_turn increments before testing its bound.
+        all_plies = []
         all_vps = []
 
         causes_loss_us: Dict[str, int] = {}
@@ -205,6 +210,7 @@ class BatchMatchRunner:
             chunk_utils = np.zeros(cur_games, dtype=np.float32)
             chunk_vps = np.zeros(cur_games, dtype=np.int32)
             chunk_turns = np.zeros(cur_games, dtype=np.int32)
+            chunk_plies = np.zeros(cur_games, dtype=np.int32)
             chunk_steps = np.zeros(cur_games, dtype=np.int32)
             chunk_causes = [""] * cur_games
 
@@ -226,6 +232,8 @@ class BatchMatchRunner:
                         chunk_utils[idx] = float(ts.Engine.get_terminal_utility(st))
                         chunk_vps[idx] = int(st.victory_points)
                         chunk_turns[idx] = int(st.turn)
+                        chunk_plies[idx] = game_ply(int(st.turn), int(st.action_round),
+                                                    st.phasing_player == ts.Player.US)
                         chunk_steps[idx] = steps
                         chunk_causes[idx] = classify_game_ending_reason(st)
                     active = active & (~terms)
@@ -335,6 +343,7 @@ class BatchMatchRunner:
                 causes_all[reason] = causes_all.get(reason, 0) + 1
                 all_steps.append(chunk_steps[idx])
                 all_turns.append(turn)
+                all_plies.append(chunk_plies[idx])
 
                 vp_for_a = -vp if a_is_ussr else vp
                 all_vps.append(vp_for_a)
@@ -395,6 +404,7 @@ class BatchMatchRunner:
                             "winner": winner,
                             "victory_points": int(chunk_vps[idx]),
                             "turn": int(chunk_turns[idx]),
+                            "ply": int(chunk_plies[idx]),
                             "steps": int(chunk_steps[idx]),
                             "cause": chunk_causes[idx] or "Early Termination",
                             "ussr_total_micro_actions": m_ussr_tot,
@@ -431,6 +441,7 @@ class BatchMatchRunner:
             "win_rate_a_as_ussr": float(a_ussr_wins / max(1, games_per_side)),
             "avg_steps": float(np.mean(all_steps)) if all_steps else 0.0,
             "avg_turn": float(np.mean(all_turns)) if all_turns else 0.0,
+            "avg_ply": float(np.mean(all_plies)) if all_plies else 0.0,
             "avg_vp_margin_a": float(np.mean(all_vps)) if all_vps else 0.0,
             "causes_loss_us": causes_loss_us,
             "causes_loss_ussr": causes_loss_ussr,
