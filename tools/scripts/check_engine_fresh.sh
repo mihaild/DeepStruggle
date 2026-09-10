@@ -25,13 +25,26 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="${1:-$ROOT/build/release}"
 STAMP="$BUILD_DIR/.engine_fingerprint"
 
+# Defined in tools/lib/engine_fingerprint.py and shelled out to rather than reimplemented here.
+# The stamp this script writes is read back by the pytest guard, and two hand-kept versions of
+# the same hash would eventually disagree -- at which point one of them certifies nothing.
+PY_BIN="${TS_PYTHON:-}"
+if [[ -z "$PY_BIN" ]]; then
+    if [[ -x "$ROOT/.venv/bin/python3" ]]; then
+        PY_BIN="$ROOT/.venv/bin/python3"
+    else
+        PY_BIN="python3"
+    fi
+fi
+
 fingerprint() {
-    find "$ROOT/engine" "$ROOT/bindings" -type f \
-        \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' -o -name 'CMakeLists.txt' \) -print0 \
-        | LC_ALL=C sort -z \
-        | xargs -0 sha256sum \
-        | sha256sum \
-        | cut -d' ' -f1
+    PYTHONPATH="$ROOT" "$PY_BIN" "$ROOT/tools/lib/engine_fingerprint.py"
+}
+
+# A stamp sitting next to an extension that is not there would certify nothing. This is the
+# case that bit: build/release held a stale ts_engine and no stamp, and pytest imported it.
+built_extension_exists() {
+    compgen -G "$BUILD_DIR/ts_engine*.so" > /dev/null 2>&1
 }
 
 if [[ ! -d "$BUILD_DIR" ]]; then
@@ -44,7 +57,7 @@ fi
 want="$(fingerprint)"
 have="$(cat "$STAMP" 2>/dev/null || true)"
 
-if [[ "$want" == "$have" && -n "$have" ]]; then
+if [[ "$want" == "$have" && -n "$have" ]] && built_extension_exists; then
     echo "check_engine_fresh: engine build matches sources ($want)"
     exit 0
 fi
@@ -52,6 +65,13 @@ fi
 echo "check_engine_fresh: engine build is stale or unstamped -- rebuilding" >&2
 if ! cmake --build "$BUILD_DIR" -j >&2; then
     echo "check_engine_fresh: rebuild FAILED" >&2
+    exit 2
+fi
+if ! built_extension_exists; then
+    echo "check_engine_fresh: the build succeeded but no ts_engine*.so is in $BUILD_DIR," >&2
+    echo "  so there is nothing here for pytest to import. Configure the build there, which" >&2
+    echo "  is where LIBRARY_OUTPUT_DIRECTORY puts the extension:" >&2
+    echo "  cmake -B $BUILD_DIR -S . -DPython_EXECUTABLE=\$(pwd)/.venv/bin/python3" >&2
     exit 2
 fi
 fingerprint > "$STAMP"

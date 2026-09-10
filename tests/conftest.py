@@ -120,12 +120,51 @@ def generated_replay_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[s
 # ts-replayer corpus
 # ---------------------------------------------------------------------------------------------
 
+def _verify_engine_is_not_stale() -> None:
+    """Abort the run when the imported ts_engine was not built from these sources.
+
+    Key invariant 10 -- never measure against a stale engine -- was enforced only for commands
+    launched through `tools/scripts/check_engine_fresh.sh`. pytest is the one entry point that
+    never goes through it, and the one where the mistake is easiest to make: `pytest.ini` sets
+
+        pythonpath = build/release .
+
+    and an ini `pythonpath` is prepended *ahead of* the environment's PYTHONPATH. So a stale
+    extension left in build/release wins over the build the caller passed in, and nothing says
+    which one was loaded. A checkout carrying a months-old one there produced 175 failures and
+    222 errors that had nothing to do with the code under test. The green version of the same
+    mistake is worse, because nothing looks wrong at all.
+
+    The check is against the directory `ts_engine` was actually imported from, not against the
+    build directory named in a config file -- importing one build while believing you configured
+    another is precisely the failure.
+
+    No engine at all is left alone: an ImportError here would say nothing useful, and the tests
+    that need it fail on their own import with a clearer message.
+    """
+    try:
+        import ts_engine
+    except Exception:
+        return
+
+    module_file = getattr(ts_engine, "__file__", None)
+    if not module_file:
+        return
+
+    from tools.lib.engine_fingerprint import staleness_reason
+
+    reason = staleness_reason(module_file)
+    if reason is not None:
+        raise pytest.UsageError("stale ts_engine\n\n" + reason)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "corpus_full: converts the entire ts-replayer corpus; minutes, not seconds. "
         "Deselected by default -- run with -m corpus_full before merging.",
     )
+    _verify_engine_is_not_stale()
 
 
 @pytest.fixture(scope="session")
