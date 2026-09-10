@@ -69,3 +69,26 @@ def test_the_probes_build_their_env_with_the_models_layout(monkeypatch, probe_mo
         f"{probe_name} built its env with layout {captured.get('layout')!r}; a v2.3 model fed "
         f"legacy observations plays at random and every number the probe returns is noise")
     assert captured.get("obs_flags") == 0
+
+
+def test_the_probe_scalars_and_the_trainer_tag_table_agree() -> None:
+    """Every `diag/` key the probe produces is charted, and every charted one is produced.
+
+    This is a drift guard with a real precedent. `diag/frac_reaching_turn9` was dropped from the
+    probe while the snapshot-evaluation print still read it; the KeyError was caught by the broad
+    `except Exception` around that block, so position_metrics came back **empty** and the whole
+    strategy/ battleground group would have gone missing from the run, announced only by one line
+    in a long log. Checking both directions catches the drift whichever side moves.
+    """
+    from ai.eval.position_diagnostics import profile_self_play_batched
+    from ai.models.coldwar_net_v2 import create_for_layout
+    from ai.training.generic_trainer import TB_TAGS
+
+    produced = set(profile_self_play_batched(
+        create_for_layout("v2.3"), num_envs=4, max_iters=80)["scalars"])
+    charted = {k for k in TB_TAGS if k.startswith("diag/")}
+
+    assert produced == charted, (
+        f"probe scalars and TB tags have drifted apart; "
+        f"produced but not charted: {sorted(produced - charted)}; "
+        f"charted but not produced: {sorted(charted - produced)}")

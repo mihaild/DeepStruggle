@@ -764,9 +764,9 @@ def evaluate_and_log_snapshot(
         profile = profile_self_play_batched(model, num_envs=position_games,
                                             obs_flags=obs_flags)
         position_metrics = profile["scalars"]
-        print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty "
+        print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty / "
+              f"{profile['scalars']['diag/uncontrolled_battlegrounds_turn8']:.1f} uncontrolled "
               f"battlegrounds at turn 8 | "
-              f"{100 * profile['scalars']['diag/frac_reaching_turn9']:.0f}% reach turn 9 | "
               f"{100 * profile['scalars']['diag/salvageable_frac_turn6']:.0f}% salvageable at turn 6",
               flush=True)
         with open(report_path, "a", encoding="utf-8") as f:
