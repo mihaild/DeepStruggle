@@ -2617,3 +2617,66 @@ other 20 VP win, so every such game was counted as `20vp`. `effect_bits::EUROPE_
 makes it visible, and what it shows is that the models never win this way. Winning Europe
 outright is a strategic plan the policy has no representation of, which is consistent with §25's
 finding that it plays tactics and not strategy.
+
+---
+
+## 26. The NashPG KL penalty: there is no intransitivity to prevent, and removing it still costs 169 Elo
+
+NashPG regularises the active policy toward a frozen reference with weight `eta`
+(`policy_loss = ppo_loss + eta * kl_div - ent_coef * entropy`). The justification is anti-cycling
+— stopping the policy beating what it just beat and losing to what came before. Nothing here had
+ever checked that this game *has* cycles, and the term is a standing tax on exploration either
+way.
+
+**Arm I**: `--eta 0`, cold start, 80M steps, otherwise arm H2's recipe and its seed (20260921).
+One variable.
+
+### The penalty is not buying anti-cycling
+
+Every pair on each run's own snapshot ladder, 7 snapshots from 20M to 80M, 21 pairs x 200 games:
+
+| | 3-cycles among triples | later snapshot losing to an earlier one |
+|:---|---:|---:|
+| arm H2 (KL on) | **0** | **0 of 21** |
+| arm I (KL off) | **0** | **5 of 21** |
+
+**No intransitivity in either arm.** The hypothesis that motivated the term is not supported at
+this budget: no triple anywhere cycles, with or without the regulariser.
+
+### What it *is* buying is monotonicity
+
+H2's ladder is perfectly ordered — every later snapshot beats every earlier one, all 21 pairs.
+Arm I's is not. It peaks around 60M and then goes backwards: 80M scores **41% against its own
+60M** and **38% against its own 70M**, and 70M scores 40% against 60M. (Two of the five
+regressions, at 49%, are inside the ±3.5% noise of a 200-game cell; those three are not.)
+
+So the failure mode without the penalty is not a cycle. It is a run that stops improving and
+drifts, while still being totally ordered — it goes *down* a ladder rather than around a loop.
+
+### And it costs
+
+- **arm I vs arm H2, pooled over four late snapshots a side, 3,200 games: 27.5%, -169 Elo.**
+- against the anchor: 86.1% (H2) against **79.4%** (arm I).
+
+### No sign of the exploration it was supposed to be taxing
+
+The premise was that the penalty suppresses exploration. It does not show up:
+
+| self-play, 1,000 games | mean ply | 20 VP | Europe Control | final scoring | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| H2 @80M (KL on) | 97.1 | 50.8% | 0.0% | 8.1% | 41.0% | 0.1% |
+| arm I @80M (KL off) | 91.7 | **62.0%** | 0.0% | 7.3% | 30.7% | 0.0% |
+| humans (ITS) | ~119.9 | 41.5% | 1.6% | 29.0% | 11.7% | 14.9% |
+
+Entropy ran 1.00-1.11 without the penalty against H2's 1.09-1.18 *with* it — no higher. Wargames
+stayed at 0% and Europe Control at 0%, so none of the rare lines opened up. What did change is
+that arm I plays a narrower game: 62% of its endings are VP-track wins against H2's 51%, and its
+games are shorter. Unpenalised, the policy specialised rather than explored.
+
+`kl_div` is still computed at `eta = 0`, and it ran 0.08-0.18 against H2's 0.02-0.06 — so the
+policy did drift several times further from `pi_ref` when nothing pulled it back. The drift is
+real; it simply did not buy anything.
+
+**Keep `eta = 0.1`.** Not for the reason it was introduced — there are no cycles here to
+prevent — but because it is worth 169 Elo as a stabiliser, and the exploration it was suspected
+of costing is not visible.
