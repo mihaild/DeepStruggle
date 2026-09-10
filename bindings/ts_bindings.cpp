@@ -787,7 +787,7 @@ NB_MODULE(ts_engine, m) {
     //
     //   "legacy" 4293 -- what every pre-v2.1 checkpoint was trained against; frozen
     //   "v2.1"   3891 -- card tracking in, the dead history block out
-    //   "v2.2"   3988 -- the decision context in, turn_aggregates and active_player out
+    //   "v2.2"   3825 -- the decision context in, turn_aggregates and active_player out
     m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
                                     const std::string& layout, uint32_t flags) {
         size_t n = 0;

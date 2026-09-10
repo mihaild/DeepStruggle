@@ -339,7 +339,7 @@ struct alignas(64) ObservationBuffer {
     float active_player;               // +1.0 (US), -1.0 (USSR)
 };
 
-// Observation layout v2.1 -- 4403 floats. Identical to the legacy buffer except that each card
+// Observation layout v2.1 -- 3891 floats. Identical to the legacy buffer except that each card
 // carries 13 status features instead of 12, splitting two things the old slot 0 could not:
 //
 //   slot 2  the opponent holds this card *and I know it* -- previously indistinguishable from
@@ -451,6 +451,14 @@ static_assert(OBS_SIZE_V21 == 3891,
 static_assert(sizeof(ObservationBuffer) >= OBS_SIZE_LEGACY * sizeof(float),
               "the buffer must hold every float a reader will copy out of it");
 static_assert(sizeof(ObservationBufferV21) >= OBS_SIZE_V21 * sizeof(float),
+              "the buffer must hold every float a reader will copy out of it");
+// v2.2 is the only layout still being changed -- the staged-card flag landed against it, and
+// arms F and F2 were evaluated against a v2.2 that had gained a feature after they trained on
+// it -- and it was the one layout with neither guard. Add or remove a feature and the width
+// changes silently, every v2.2 checkpoint misreads its input, and the build stays green.
+static_assert(OBS_SIZE_V22 == 3825,
+              "v2.2 is a checkpoint contract: 84*26 board + 110*14 card + 101 global");
+static_assert(sizeof(ObservationBufferV22) >= OBS_SIZE_V22 * sizeof(float),
               "the buffer must hold every float a reader will copy out of it");
 
 // Missile Envy moves itself into the opponent's hand, who must play it on their next
