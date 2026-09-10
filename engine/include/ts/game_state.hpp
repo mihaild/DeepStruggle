@@ -139,7 +139,16 @@ struct alignas(64) DecisionContext {
     // Transient tracking across sub-actions (cleared when resolving_card finishes)
     std::array<uint64_t, 2> start_influence_nodes; // Bitmask of countries with friendly influence at start of Op
     std::array<uint64_t, 2> visited_nodes;         // 128-bit bitmask of nodes already modified
-    std::array<uint8_t, 84> node_counts;           // Placements/removals per node during this event
+    // Placements or removals per country during this event, three bits each: 84 countries in
+    // 32 bytes rather than 84. Behind accessors so the packing is not visible to callers.
+    //
+    // Three bits and not two. Every guarded increment tests `< 2` first, so ordinary play never
+    // exceeds 2 -- but Suez Crisis increments unguarded (its cap of two per country lives in the
+    // mask, not the handler), so a caller stepping past the mask could reach its allowance of 4.
+    // That is an illegal action being accepted rather than a legal state, and narrowing to two
+    // bits would have turned it into silent corruption of a neighbouring country's count. Seven
+    // saturates instead.
+    std::array<uint64_t, 4> node_count_bits;
     uint8_t                 suppress_op_card_event; // 1 = do not fire pending_op_card's event
     uint8_t                 event_granted_ops;      // 1 = Ops came from an event, not a card play
 
@@ -160,6 +169,38 @@ struct alignas(64) DecisionContext {
     uint8_t  event_stage;
 
     uint8_t                 pad[1];
+
+    static constexpr uint8_t NODE_COUNT_MAX = 7;   // three bits
+
+    inline uint8_t node_count(uint8_t node) const noexcept {
+        if (node >= 84) return 0;
+        const size_t bit = static_cast<size_t>(node) * 3;
+        return static_cast<uint8_t>((node_count_bits[bit >> 6] >> (bit & 63)) & 0x7ULL)
+             | static_cast<uint8_t>(((bit & 63) > 61)
+                   ? ((node_count_bits[(bit >> 6) + 1] << (64 - (bit & 63))) & 0x7ULL) : 0ULL);
+    }
+
+    inline void set_node_count(uint8_t node, uint8_t value) noexcept {
+        if (node >= 84) return;
+        const uint64_t v = static_cast<uint64_t>(value & 0x7);
+        const size_t bit = static_cast<size_t>(node) * 3;
+        const size_t word = bit >> 6;
+        const size_t off = bit & 63;
+        node_count_bits[word] &= ~(0x7ULL << off);
+        node_count_bits[word] |= (v << off);
+        if (off > 61) {   // the field straddles two words
+            const size_t spill = 64 - off;
+            node_count_bits[word + 1] &= ~(0x7ULL >> spill);
+            node_count_bits[word + 1] |= (v >> spill);
+        }
+    }
+
+    inline void bump_node_count(uint8_t node) noexcept {
+        const uint8_t now = node_count(node);
+        if (now < NODE_COUNT_MAX) set_node_count(node, static_cast<uint8_t>(now + 1));
+    }
+
+    inline void clear_node_counts() noexcept { node_count_bits = {}; }
 
     inline void set_start_influence(uint8_t node) noexcept {
         if (node < 64) start_influence_nodes[0] |= (1ULL << node);
@@ -251,8 +292,16 @@ struct alignas(64) GameState {
     // -------------------------------------------------------------------------
     // 8. Re-entrant Decision State Machine Stack (Max Depth 3)
     // -------------------------------------------------------------------------
-    std::array<DecisionContext, 3> ctx_stack;
-    uint8_t                       ctx_stack_depth; // 0 = base context, 1..2 = nested
+    // Events nest: Missile Envy takes a card whose Event fires, that Event is Five Year Plan
+    // and makes its opponent discard a card whose Event fires in turn, and so on. Three frames
+    // was not enough for chains the game can actually produce -- Missile Envy into Five Year
+    // Plan into Grain Sales into Star Wars is already four -- and going past the end did
+    // nothing at all, silently, so the fourth link ran inside the third link's frame.
+    //
+    // Packing node_counts took the frame from 192 bytes to 128, so six frames cost 768 against
+    // the old three's 576 -- 192 bytes for twice the depth, in a GameState with 2.5 KB spare.
+    std::array<DecisionContext, 6> ctx_stack;
+    uint8_t                       ctx_stack_depth; // 0 = base context, 1..5 = nested
 
     inline DecisionContext& ctx() noexcept {
         return ctx_stack[ctx_stack_depth];
@@ -260,11 +309,13 @@ struct alignas(64) GameState {
     inline const DecisionContext& ctx() const noexcept {
         return ctx_stack[ctx_stack_depth];
     }
-    inline void push_context() noexcept {
-        if (ctx_stack_depth < 2) {
-            ctx_stack_depth++;
-            ctx_stack[ctx_stack_depth] = DecisionContext{};
-        }
+    // Returns false when the stack is full, which the caller must not ignore: running the next
+    // event in the current frame is how the old silent version corrupted it.
+    [[nodiscard]] inline bool push_context() noexcept {
+        if (ctx_stack_depth + 1 >= ctx_stack.size()) return false;
+        ctx_stack_depth++;
+        ctx_stack[ctx_stack_depth] = DecisionContext{};
+        return true;
     }
     inline void pop_context() noexcept {
         if (ctx_stack_depth > 0) {

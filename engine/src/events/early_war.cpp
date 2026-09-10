@@ -1,4 +1,5 @@
 #include "ts/card_handlers.hpp"
+#include "ts/invariant.hpp"
 #include "ts/war_events.hpp"
 #include "ts/card_data.hpp"
 #include "ts/map_data.hpp"
@@ -60,7 +61,9 @@ bool trigger_five_year_plan(GameState& state, Player p) noexcept {
             state, chosen_card,
             CardHandlers::event_has_effect(state, chosen_card, Player::US),
             CardHandlers::Handover::Respect);
-        state.push_context();
+        if (!state.push_context()) {
+            invariant_failed("event chain too deep; card", static_cast<int>(chosen_card));
+        }
         state.ctx().decision_player = Player::US;
         state.ctx().resolving_card = chosen_card;
         bool done = CardHandlers::trigger_event(state, chosen_card, Player::US);

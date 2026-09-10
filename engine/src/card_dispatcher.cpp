@@ -1,4 +1,5 @@
 #include "ts/card_handlers.hpp"
+#include "ts/invariant.hpp"
 #include "ts/war_events.hpp"
 #include "ts/card_data.hpp"
 #include "ts/map_data.hpp"
@@ -451,7 +452,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).in_western_europe && state.countries[cid].us_influence > 0) {
                 state.countries[cid].remove_influence(Player::US, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -469,7 +470,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).in_eastern_europe && !Scoring::is_controlled_by(state, cid, Player::US) && !state.ctx().is_visited(cid)) {
                 state.countries[cid].add_influence(Player::USSR, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 state.ctx().mark_visited(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
@@ -513,7 +514,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().remaining_steps = 5;
                     state.ctx().max_per_country = 2;
                     state.ctx().allow_early_stop = 1;
-                    state.ctx().node_counts = {};
+                    state.ctx().clear_node_counts();
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::POINT_NODE) {
@@ -531,9 +532,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                             return false;
                         }
                     } else {
-                        if (state.ctx().node_counts[cid] < 2) {
+                        if (state.ctx().node_count(cid) < 2) {
                             state.countries[cid].add_influence(Player::USSR, 1);
-                            state.ctx().node_counts[cid]++;
+                            state.ctx().bump_node_count(cid);
                         } else {
                             return false;
                         }
@@ -685,9 +686,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             };
             bool valid = false;
             for (uint8_t v : SUEZ_COUNTRIES) if (v == cid) valid = true;
-            if (valid && state.countries[cid].us_influence > 0 && state.ctx().node_counts[cid] < 2) {
+            if (valid && state.countries[cid].us_influence > 0 && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].remove_influence(Player::US, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -725,7 +726,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             if (cid < 84 && (MapData::get_country(cid).region == Region::AFRICA || MapData::get_country(cid).in_southeast_asia) && !state.ctx().is_visited(cid)) {
                 state.countries[cid].add_influence(Player::USSR, 1);
                 state.ctx().mark_visited(cid);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -790,7 +791,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.ctx().max_per_country = 2;
                 state.ctx().allow_early_stop = 0;
                 state.ctx().visited_nodes = {};
-                state.ctx().node_counts = {};
+                state.ctx().clear_node_counts();
             };
 
             if (state.ctx().event_stage == de_stalinization::STAGE_REMOVE) {
@@ -813,9 +814,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 }
             } else {
                 // Stage 2: Placement into non-US controlled countries (max 2 per country)
-                if (cid < 84 && !Scoring::is_controlled_by(state, cid, Player::US) && state.ctx().node_counts[cid] < 2) {
+                if (cid < 84 && !Scoring::is_controlled_by(state, cid, Player::US) && state.ctx().node_count(cid) < 2) {
                     state.countries[cid].add_influence(Player::USSR, 1);
-                    state.ctx().node_counts[cid]++;
+                    state.ctx().bump_node_count(cid);
                     if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                     if (state.ctx().remaining_steps == 0) {
                         state.ctx().resolving_card = 0;
@@ -1095,7 +1096,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
             uint8_t card_id = action.primary_id;
             if (card_id >= 1 && card_id <= 110 && state.card_locations[card_id] == CardLocation::DISCARD_PILE) {
-                state.push_context();
+                if (!state.push_context()) {
+                    invariant_failed("event chain too deep; card", static_cast<int>(card_id));
+                }
                 state.ctx().decision_player = Player::US;
                 state.ctx().resolving_card = card_id;
                 const bool fired = event_has_effect(state, card_id, Player::US);
@@ -1178,9 +1181,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && (MapData::get_country(cid).region == Region::CENTRAL_AMERICA || MapData::get_country(cid).region == Region::SOUTH_AMERICA) && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && (MapData::get_country(cid).region == Region::CENTRAL_AMERICA || MapData::get_country(cid).region == Region::SOUTH_AMERICA) && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].add_influence(Player::US, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1196,9 +1199,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).region != Region::EUROPE && state.countries[cid].ussr_influence > 0 && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && MapData::get_country(cid).region != Region::EUROPE && state.countries[cid].ussr_influence > 0 && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].remove_influence(Player::USSR, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1214,9 +1217,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).region == Region::CENTRAL_AMERICA && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && MapData::get_country(cid).region == Region::CENTRAL_AMERICA && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].add_influence(Player::USSR, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1232,9 +1235,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).region == Region::ASIA && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && MapData::get_country(cid).region == Region::ASIA && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].add_influence(Player::US, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1268,9 +1271,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).region == Region::EUROPE && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && MapData::get_country(cid).region == Region::EUROPE && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].add_influence(Player::USSR, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1286,9 +1289,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t cid = action.primary_id;
-            if (cid < 84 && MapData::get_country(cid).region == Region::MIDDLE_EAST && state.countries[cid].us_influence > 0 && state.ctx().node_counts[cid] < 2) {
+            if (cid < 84 && MapData::get_country(cid).region == Region::MIDDLE_EAST && state.countries[cid].us_influence > 0 && state.ctx().node_count(cid) < 2) {
                 state.countries[cid].remove_influence(Player::US, 1);
-                state.ctx().node_counts[cid]++;
+                state.ctx().bump_node_count(cid);
                 if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 if (state.ctx().remaining_steps == 0) {
                     state.ctx().resolving_card = 0;
@@ -1652,7 +1655,7 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                         }
                     } else {
                         // Add 5 USSR influence in Eastern Europe (max 2 per country)
-                        if (c_info.in_eastern_europe && state.ctx().node_counts[i] < 2) {
+                        if (c_info.in_eastern_europe && state.ctx().node_count(i) < 2) {
                             mask_out[i] = 1;
                         }
                     }
@@ -1665,13 +1668,13 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                         }
                     } else {
                         // Stage 2: Placement into non-US controlled countries (max 2 per country)
-                        if (!Scoring::is_controlled_by(state, i, Player::US) && state.ctx().node_counts[i] < 2) {
+                        if (!Scoring::is_controlled_by(state, i, Player::US) && state.ctx().node_count(i) < 2) {
                             mask_out[i] = 1;
                         }
                     }
                     break;
                 case card_ids::SOCIALIST_GOVERNMENTS:
-                    if (c_info.in_western_europe && state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
+                    if (c_info.in_western_europe && state.countries[i].us_influence > 0 && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
@@ -1751,38 +1754,38 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     if (state.countries[i].us_influence == 0 && state.countries[i].ussr_influence == 0 && !state.ctx().is_visited(i)) mask_out[i] = 1;
                     break;
                 case card_ids::OAS_FOUNDED:
-                    if ((c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA) && state.ctx().node_counts[i] < 2) {
+                    if ((c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA) && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::THE_VOICE_OF_AMERICA:
-                    if (c_info.region != Region::EUROPE && state.countries[i].ussr_influence > 0 && state.ctx().node_counts[i] < 2) {
+                    if (c_info.region != Region::EUROPE && state.countries[i].ussr_influence > 0 && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::LIBERATION_THEOLOGY:
-                    if (c_info.region == Region::CENTRAL_AMERICA && state.ctx().node_counts[i] < 2) {
+                    if (c_info.region == Region::CENTRAL_AMERICA && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::USSURI_RIVER_SKIRMISH:
-                    if (c_info.region == Region::ASIA && state.ctx().node_counts[i] < 2) {
+                    if (c_info.region == Region::ASIA && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::THE_REFORMER:
-                    if (c_info.region == Region::EUROPE && state.ctx().node_counts[i] < 2) {
+                    if (c_info.region == Region::EUROPE && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::MARINE_BARRACKS_BOMBING:
-                    if (c_info.region == Region::MIDDLE_EAST && state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
+                    if (c_info.region == Region::MIDDLE_EAST && state.countries[i].us_influence > 0 && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;
                 case card_ids::SUEZ_CRISIS:
                     if ((i == countries::UNITED_KINGDOM || i == countries::FRANCE || i == countries::ISRAEL) &&
-                        state.countries[i].us_influence > 0 && state.ctx().node_counts[i] < 2) {
+                        state.countries[i].us_influence > 0 && state.ctx().node_count(i) < 2) {
                         mask_out[i] = 1;
                     }
                     break;

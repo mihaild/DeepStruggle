@@ -127,7 +127,7 @@ void Observation::extract(const GameState& state, Player perspective, Observatio
         out_buf->board_features[offset + 23] = can_my_realign ? 1.0f : 0.0f;
         out_buf->board_features[offset + 24] = can_opp_realign ? 1.0f : 0.0f;
 
-        out_buf->board_features[offset + 25] = static_cast<float>(state.ctx().node_counts[i]) / 5.0f;
+        out_buf->board_features[offset + 25] = static_cast<float>(state.ctx().node_count(i)) / 5.0f;
         
         // 26. Influence Deficit to My Control: How many Ops needed to achieve control
         int my_def_stab = std::max(0, static_cast<int>(c_info.stability) - static_cast<int>(my_inf));

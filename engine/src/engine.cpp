@@ -57,9 +57,9 @@ size_t Engine::auto_advance_step(GameState& state, size_t max_steps) noexcept {
             uint8_t uk = state.countries[countries::UNITED_KINGDOM].us_influence;
             uint8_t fr = state.countries[countries::FRANCE].us_influence;
             uint8_t isr = state.countries[countries::ISRAEL].us_influence;
-            uint8_t used_uk = state.ctx().node_counts[countries::UNITED_KINGDOM];
-            uint8_t used_fr = state.ctx().node_counts[countries::FRANCE];
-            uint8_t used_isr = state.ctx().node_counts[countries::ISRAEL];
+            uint8_t used_uk = state.ctx().node_count(countries::UNITED_KINGDOM);
+            uint8_t used_fr = state.ctx().node_count(countries::FRANCE);
+            uint8_t used_isr = state.ctx().node_count(countries::ISRAEL);
             uint8_t cap_uk = (used_uk < 2) ? static_cast<uint8_t>(2 - used_uk) : 0;
             uint8_t cap_fr = (used_fr < 2) ? static_cast<uint8_t>(2 - used_fr) : 0;
             uint8_t cap_isr = (used_isr < 2) ? static_cast<uint8_t>(2 - used_isr) : 0;

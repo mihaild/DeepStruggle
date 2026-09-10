@@ -1005,7 +1005,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().decision_player = p;
-                    state.push_context();
+                    if (!state.push_context()) {
+                        invariant_failed("event chain too deep; card", static_cast<int>(card));
+                    }
 
                     Player opp = get_opponent(p);
                     state.ctx().decision_player = opp;
