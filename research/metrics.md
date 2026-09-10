@@ -228,6 +228,48 @@ The 119, classified from the terminal position the converter now records (`final
 67.2% of finished human games play all ten turns out. 20 of the 119 contain an AR8, which the
 ply scheme counts at its nominal 16 and so under-counts by 2 apiece.
 
+### 1.5.3 Game shape varies between seeds by as much as it varies between arms
+
+Arm H2 is arm H's configuration on a second seed (20260921, v2.3, corrected engine). At an equal
+80M budget the two are the same strength -- pooled over four late snapshots a side and all 16
+pairings, 3,200 games, **50.4%, +3 Elo**. A clean replication.
+
+Their *games* are not the same shape:
+
+| self-play, 1,000 games | mean ply | 20 VP | final scoring | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|
+| H @80M | 107.0 | 40.9% | 15.7% | 43.2% | 0.2% |
+| H2 @80M | 98.6 | 47.4% | 9.6% | 42.8% | 0.2% |
+| H2 @160M | 100.8 | 50.4% | 10.6% | 37.7% | 1.3% |
+| (arm D, legacy, 80M) | 99.0 | 46.1% | 11.0% | 42.9% | 0.0% |
+| (arm E, v2.1, 80M) | 100.1 | 46.0% | 9.6% | 44.2% | 0.2% |
+
+Two runs of identical configuration and indistinguishable strength differ by **8.4 plies** and by
+6 points of final-scoring share -- more than H differed from the pre-fix arms D and E. H2 lands
+squarely on top of D and E, not on H.
+
+**This retires the claim that the corrected engine lengthens games.** That was read off arm H
+alone (§25 draft, and reported as "the first arm to move final scoring at all"), and it does not
+replicate: H is the outlier of the three v2.3-or-earlier runs at 80M, not the start of a trend.
+Game length and ending mix are seed-noisy at this budget and cannot carry a conclusion from a
+single run, exactly as Elo cannot (§20.7). Nothing here contradicts the starred-card fix being
+*correct* -- it is a rules bug either way -- only the evidence offered that it changed play.
+
+What does survive is a budget effect, consistent across two independent comparisons:
+
+- H2 at 160M vs H at 80M: **61.0%, +78 Elo**
+- H2 at 160M vs H2 at 80M: **60.9%, +77 Elo**
+- against the anchor: 83.0% (H @80M), 84.2% (H2 @80M), **88.0% (H2 @160M)**
+
+and, at 160M, the first movement on the two human gaps that is visible in both the binned
+training log and self-play: DEFCON 1 falls 42.8% -> 37.7% and wargames rises 0.2% -> 1.3%. Set
+against ITS's 11.7% and 14.9% those are still a factor of three and a factor of eleven away.
+
+A caution on reading the per-iteration monitor: it reports a mean over the last 40 logged
+iterations, which overlaps heavily between consecutive reports and made H2's USSR win rate look
+like a monotone late-run climb to 66%. Binned by 20M it oscillates 48.5-58.0% for the whole run
+with no drift. Bin before believing a trend in it.
+
 ### 1.5.1 The ts-replayer figure is biased long; the ITS results database is the better baseline
 
 `/workspace/data/itsc-games` is a scrape of the ITS Junta results table at twilight-struggle.com
@@ -303,11 +345,14 @@ Self-play at temperature 0.1, 1,000 games each, measured through the batched mat
 | arm D (legacy, 80M) | 99.0 | 64.3% | 46.1% | 11.0% | 42.9% | 0.0% |
 | arm E (v2.1, 80M) | 100.1 | 65.0% | 46.0% | 9.6% | 44.2% | 0.2% |
 | arm H (v2.3, corrected engine, 80M) | 106.7 | 69.3% | 38.0% | 14.4% | 47.5% | 0.1% |
+| arm H2 (same config, second seed, 80M) | 98.6 | 64.0% | 47.4% | 9.6% | 42.8% | 0.2% |
 | HeuristicBot | 114.6 | 74.4% | 74.6% | 25.4% | 0.0% | 0.0% |
 | **humans (ITS, 44,136)** | **~119** | **77.4%** | **43.1%** | **29.0%** | **11.7%** | **14.9%** |
 | humans (ts-replayer, 119) | 142.2 | 92.3% | 23.5% | 56.3% | 1.7% | 18.5% |
 
-Against the ITS baseline the length gap is modest -- arm H at 106.7 against ~119, and
+H and H2 are the same configuration on two seeds and the same strength to +/-3 Elo, yet differ by 8.4 plies (§1.5.3): read the pair, never H alone.
+
+Against the ITS baseline the length gap is modest -- the arms at 99-107 against ~119, and
 HeuristicBot at 114.6 is essentially at human length -- and the arms match humans on 20 VP
 endings almost exactly (38-46% against 43.1%). The deficit is in *how* games end, in two
 specific ways:
