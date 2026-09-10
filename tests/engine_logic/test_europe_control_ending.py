@@ -12,12 +12,9 @@ import ts_engine
 
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
-#: `get_country_info` reports the region as its integer value, not the enum member.
-EUROPE = int(ts_engine.Region.EUROPE)
-
 EUROPE_COUNTRIES = [
     cid for cid in range(84)
-    if int(ts_engine.MapData.get_country_info(cid)["region"]) == EUROPE
+    if ts_engine.MapData.get_country_info(cid)["region"] == ts_engine.Region.EUROPE
 ]
 
 

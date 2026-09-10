@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 import enum
-from typing import Annotated, overload
+from typing import TypedDict, Annotated, overload
 
 import numpy
 from numpy.typing import NDArray
@@ -343,18 +343,34 @@ class MicroAction:
 
     def __repr__(self) -> str: ...
 
+class CountryInfo(TypedDict):
+    """The static map data for one country, as `MapData.get_country_info` returns it.
+
+    Declared as a TypedDict rather than `dict` so a checker sees the keys and their types: a
+    misspelled key and a field used at the wrong type are both errors against this, where
+    against a bare `dict` neither is.
+    """
+
+    id: int
+    name: str
+    stability: int
+    battleground: bool
+    region: Region
+    in_western_europe: bool
+    in_eastern_europe: bool
+    in_southeast_asia: bool
+    superpower_adjacent: str
+    neighbors: list[int]
+
+
 class CountryState:
+    """A *copy* of a country's influence. Read-only: see GameState.set_country."""
+
     @property
     def us_influence(self) -> int: ...
 
-    @us_influence.setter
-    def us_influence(self, arg: int, /) -> None: ...
-
     @property
     def ussr_influence(self) -> int: ...
-
-    @ussr_influence.setter
-    def ussr_influence(self, arg: int, /) -> None: ...
 
 class DecisionContext:
     @property
@@ -672,7 +688,7 @@ class MapData:
     def get_country_by_name(arg: str, /) -> int: ...
 
     @staticmethod
-    def get_country_info(arg: int, /) -> dict: ...
+    def get_country_info(arg: int, /) -> CountryInfo: ...
 
 class CardHandlers:
     @staticmethod

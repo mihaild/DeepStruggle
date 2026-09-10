@@ -528,9 +528,15 @@ NB_MODULE(ts_engine, m) {
                    " flags=" + std::to_string(static_cast<int>(a.flags)) + ">";
         });
 
+    // Read-only on purpose. `GameState::get_country` returns a *copy*, so a writable field
+    // here made `state.get_country(cid).us_influence = 9` a silent no-op: it mutated a
+    // temporary that was discarded on the next line. That is how a test came to set up a
+    // US-controlled Iran that was never actually set up. With def_ro the same line raises
+    // AttributeError, and `GameState::set_country(cid, us, ussr)` is the one way to change
+    // the board -- which is also the only place the engine's own invariants can be enforced.
     nb::class_<ts::CountryState>(m, "CountryState")
-        .def_rw("us_influence", &ts::CountryState::us_influence)
-        .def_rw("ussr_influence", &ts::CountryState::ussr_influence);
+        .def_ro("us_influence", &ts::CountryState::us_influence)
+        .def_ro("ussr_influence", &ts::CountryState::ussr_influence);
 
     nb::class_<ts::DecisionContext>(m, "DecisionContext")
         .def_rw("decision_player", &ts::DecisionContext::decision_player)
@@ -690,7 +696,11 @@ NB_MODULE(ts_engine, m) {
             d["name"] = std::string(c.name);
             d["stability"] = c.stability;
             d["battleground"] = c.battleground;
-            d["region"] = static_cast<int>(c.region);
+            // The enum, not static_cast<int>. `Region` is bound with nb::is_arithmetic(), so
+            // int(), `== 0`, numpy conversion and sorting all still work -- but
+            // `info["region"] == ts.Region.EUROPE` now works too, where against a bare int it
+            // was silently always False.
+            d["region"] = c.region;
             d["in_western_europe"] = c.in_western_europe;
             d["in_eastern_europe"] = c.in_eastern_europe;
             d["in_southeast_asia"] = c.in_southeast_asia;

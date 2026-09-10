@@ -29,7 +29,9 @@ def test_pass_action_decodes_as_confirm_done_for_select_card() -> None:
     _drain(state)
 
     # Put the US in a peek: it needs a Middle East country to trigger the event at all.
-    state.get_country(15).us_influence = 9  # Iran, comfortably US-controlled
+    # set_country, not `get_country(15).us_influence = 9`: get_country hands back a copy, so
+    # the assigning form silently changed nothing and Iran was never US-controlled here.
+    state.set_country(15, 9, 0)  # Iran, comfortably US-controlled
     state.ctx().decision_player = ts.Player.US
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD
     state.ctx().resolving_card = OUR_MAN_IN_TEHRAN
