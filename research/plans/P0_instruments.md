@@ -82,12 +82,21 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 tools/scripts/check_engine_fresh.sh          # rebuilds, stamps, exit 1; rerun for exit 0
 ```
 
-**Unresolved, and worth the owner's eye before P0 runs:** `arm_I_no_kl` is training right now
-with `--obs-layout v2.3` and `PYTHONPATH=.:build/release`, which the extension in that directory
-cannot serve. Either this sandbox's `build/` is a stale copy of the host's, or the live run is
-not reading the engine this checkout would load. Under the second reading the run and the probes
-would not share a decision stream. Confirm which before taking any number against arm I; the
-rebuild above is safe under the first reading and changes nothing about the second.
+**The live run is not affected, and this is checked.** `arm_I_no_kl` runs from the
+`fix-profiler-bias` worktree, so its `PYTHONPATH=.:build/release` resolves to *that* worktree's
+build — a v2.3 extension, built 21:38, stamped, and matching its own sources exactly. Only the
+main checkout's build is stale. And the two share one engine: `engine/` and `bindings/`
+fingerprint identically in both trees —
+
+```
+sources (fix-profiler-bias) = sources (main checkout) = b96d6883a0b6b671…8b4fa4b2
+stamp on arm I's build      = b96d6883a0b6b671…8b4fa4b2   MATCH
+stamp on the main build     = (none)
+```
+
+— so rebuilding the main checkout reproduces arm I's engine rather than a different one, and no
+decision-stream comparison is needed beyond this. Do the rebuild in a worktree of your own rather
+than in `build/release` under the live run.
 
 ## Change
 
@@ -308,6 +317,89 @@ until §1.2.
 `tools/probe_suite.py --models <paths and baselines> --probes setup voa chance calibration
 sequencing existing --output-json <path> --device cpu`, one row per model. One entry point, so a
 later arm reports the same numbers by running the same command.
+
+## Implementation order
+
+Seven commits. Each one is separately reviewable and separately revertible, and each has an
+acceptance check that fails loudly if it did not work. Nothing measures anything until step 2 has
+landed, which is why it is not last.
+
+**0. Build the engine in a worktree of your own** — not code, but nothing runs without it.
+
+```bash
+cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
+tools/scripts/check_engine_fresh.sh          # rebuilds and stamps, exit 1; rerun for exit 0
+```
+
+*Accept when:* the script exits 0, the stamp reads `b96d6883…`, `ts.OBS_SIZE_V23 == 3824`, and
+`NeuralAgent.from_checkpoint('data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt')` loads and
+reports layout `v2.3`. ~10 min, mostly compile.
+
+**1. The width guard, on its own** (§1.3). `ai/models/coldwar_net.py`, three `forward` methods.
+Deliberately first and deliberately alone: it is four lines, it converts every remaining instance
+of this bug class from silent to loud, and landing it separately means the next commit's
+conversions are *verified* by it rather than merely intended.
+
+*Accept when:* the backend suite passes — and note that a guard firing in an existing test is a
+finding, not a regression to paper over. Expect one or two synthetic-observation call sites to
+need their widths corrected.
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python -m pytest -q -n auto \
+    tests/bindings tests/engine_logic tests/training
+```
+
+**2. `EvalHandle`, and the seven conversions** (§1.1, §1.2, §1.4). New `ai/eval/handle.py`
+(~70 lines, wrapping `layout_for_model` and `mask_for_checkpoint`, adding nothing of its own);
+edits to `behavioral_suite`, `card_probe`, `battleground_value`, `dominance_cost`,
+`round_counterfactual`, `input_ablation`, `critic_calibration`, and `tools/generate_dataset.py`;
+new `tests/training/test_eval_handle_layout.py`.
+
+*Accept when:* the new test passes both directions — a legacy-width observation into a v2.3 model
+raises, and `EvalHandle.from_checkpoint` recovers `v2.3` plus the run's flags — and
+`.venv/bin/pyrefly check ai tools tests web bindings` is at 0 errors with **explicit paths**
+(a bare `pyrefly check` in a worktree examines zero files and still exits 0). ~2–3 h.
+
+**3. `ai/eval/rollout.py`** (§1.5), with `tests/training/test_rollout_driver.py`.
+
+*Accept when:* driven greedily from the same seeds with chance drained the default way, the
+driver's terminal utilities and action streams are **identical** to `VectorizedBatchRunner`'s over
+64 games. That equivalence is the whole warrant for using it in probes 2 and 4, so it is the test
+that matters; a driver that merely "looks right" reintroduces the 25-point disagreement
+`metrics.md` records from the last time a single-state path diverged from the batched one. ~2 h.
+
+**4. Probes 1 and 5** — setup and sequencing. `ai/eval/setup_probe.py`, `ai/eval/sequencing.py`,
+additions to `ai/eval/claims.py`, and the corpus setup reader. These two come first among the
+probes because they are the cheapest to run (15 batched forwards, and 500 games), they need only
+the C++ runner, and they produce the two numbers that gate P4 — the step most likely to jump the
+queue.
+
+*Accept when:* `random` places roughly uniformly over the legal setup countries and `heuristic`
+does not, which is the sanity check that the probe reads placements rather than noise; and the
+human yardstick is stable across a re-run of the corpus reader. ~3 h.
+
+**5. Probes 2 and 4** — VOA exposure and pre-deal calibration. Both need step 3's `observe_node`.
+Includes replacing `classify_ending` with the trainer's `ending_frac_*` taxonomy.
+
+*Accept when:* the ending distribution the probe reports on H2 @240M self-play reproduces §25.1's
+table (mean ply ~105, DEFCON 1 ~34%, Europe Control 0.0%) — an independent path onto numbers that
+are already published is the cheapest available check that the new taxonomy is wired correctly.
+~3 h.
+
+**6. Probe 3** — chance decomposition, including the draw-fidelity metric. Heaviest to write and
+the only one with a real runtime.
+
+*Accept when:* condition A returns **exactly zero** variance. If it does not, the replay is not
+deterministic and every share below it is meaningless, so this is a hard gate rather than a
+diagnostic. ~3 h to write, ~1.5 h to run on CPU.
+
+**7. `tools/probe_suite.py`, the baseline run, and the write-up.** One CLI over all five probes
+plus the existing instruments; run it over the *Procedure* table; write `experiments.md` §26 with
+the baseline rows; add the columns to the standard eval row in `metrics.md`; `git rm` this file
+and drop its row from `plans/README.md`.
+
+Steps 0–3 are the ones that have to be right; 4–6 are independent of each other and can land in
+any order, or in parallel. Total ~2 days including the write-up, none of it on the GPU.
 
 ## Procedure
 
