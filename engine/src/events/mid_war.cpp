@@ -181,14 +181,10 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             state.push_context();
             state.ctx().decision_player = p;
             state.ctx().resolving_card = chosen_card;
+            const bool fired = CardHandlers::event_has_effect(state, chosen_card, p);
             bool done = CardHandlers::trigger_event(state, chosen_card, p);
-            if (chosen_card != card_ids::KITCHEN_DEBATES) {
-                if (chosen_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                    state.card_locations[chosen_card] = CardLocation::ONGOING_EVENT;
-                } else {
-                    state.card_locations[chosen_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                }
-            }
+            CardHandlers::relocate_played_card(state, chosen_card, fired,
+                                               CardHandlers::Handover::Respect);
             if (done) state.pop_context();
             return done;
         } else {

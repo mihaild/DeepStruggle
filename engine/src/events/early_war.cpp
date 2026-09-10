@@ -53,8 +53,13 @@ bool trigger_five_year_plan(GameState& state, Player p) noexcept {
 
     const auto& c_info = CardData::get_card(chosen_card);
     if (c_info.side == Player::US) {
-        // Discard card, but trigger event!
-        state.card_locations[chosen_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+        // Discard card, but trigger event! Where the Event cannot occur it has not been
+        // implemented, so a starred card is discarded rather than removed -- asked before the
+        // Event runs, since an Event that fires sets the flags this reads.
+        CardHandlers::relocate_played_card(
+            state, chosen_card,
+            CardHandlers::event_has_effect(state, chosen_card, Player::US),
+            CardHandlers::Handover::Respect);
         state.push_context();
         state.ctx().decision_player = Player::US;
         state.ctx().resolving_card = chosen_card;

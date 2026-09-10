@@ -36,6 +36,23 @@ public:
     // Must be evaluated BEFORE trigger_event: an Event that fires sets flags, and asking
     // afterwards can read the answer the Event itself just produced.
     static bool event_has_effect(const GameState& state, uint8_t card_id, Player player) noexcept;
+
+    // Whether this cleanup may sweep out a card an Event has just placed into a hand -- in
+    // practice Missile Envy, which lives in the recipient's hand until their next action round.
+    // Not a tidy Event/Operations split: every Event site and the headline's Ops cleanup respect
+    // the handover, while the action round's Ops cleanup ignores it, because there the card
+    // being spent *is* Missile Envy.
+    enum class Handover : uint8_t { Respect, Ignore };
+
+    // Where a card goes once it has been played.
+    //
+    // One implementation for what used to be eleven copies that had drifted apart. A starred
+    // card leaves the game only when its Event is *implemented* (rules.md 280-282), so
+    // `event_occurred` -- which must come from event_has_effect, evaluated BEFORE the Event runs
+    // -- is what separates removal from a discard. Kitchen Debates is skipped because its
+    // handler sets its own location, the outcome being known only there.
+    static void relocate_played_card(GameState& state, uint8_t card, bool event_occurred,
+                                     Handover handover) noexcept;
 };
 
 } // namespace ts

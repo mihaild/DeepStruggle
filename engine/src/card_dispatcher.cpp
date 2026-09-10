@@ -199,6 +199,21 @@ bool CardHandlers::event_has_effect(const GameState& state, uint8_t card_id, Pla
     }
 }
 
+void CardHandlers::relocate_played_card(GameState& state, uint8_t card, bool event_occurred,
+                                       Handover handover) noexcept {
+    if (card == 0 || card > 110) return;
+    if (card == card_ids::KITCHEN_DEBATES) return;
+    if (handover == Handover::Respect && keeps_own_card_location(state, card)) return;
+
+    if (card == card_ids::SHUTTLE_DIPLOMACY &&
+        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+        state.card_locations[card] = CardLocation::ONGOING_EVENT;
+        return;
+    }
+    state.card_locations[card] = (CardData::get_card(card).one_time && event_occurred)
+        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+}
+
 bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player player, uint8_t forced_roll) noexcept {
     if (!can_trigger_event(state, card_id, player)) {
         return true; // Unmet prerequisite: event does not occur
@@ -930,14 +945,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             if (c_info.side == p_player || c_info.side == Player::NONE) {
                 state.ctx().decision_player = p_player;
                 state.ctx().resolving_card = chosen_card;
+                const bool fired = event_has_effect(state, chosen_card, p_player);
                 bool done = trigger_event(state, chosen_card, p_player);
-                if (chosen_card != card_ids::KITCHEN_DEBATES) {
-                    if (chosen_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                        state.card_locations[chosen_card] = CardLocation::ONGOING_EVENT;
-                    } else {
-                        state.card_locations[chosen_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                    }
-                }
+                relocate_played_card(state, chosen_card, fired, Handover::Respect);
                 if (done) state.ctx().resolving_card = 0;
                 return done;
             } else {
@@ -996,14 +1006,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.push_context();
                 state.ctx().decision_player = Player::US;
                 state.ctx().resolving_card = card_id;
+                const bool fired = event_has_effect(state, card_id, Player::US);
                 bool done = trigger_event(state, card_id, Player::US);
-                if (card_id != card_ids::KITCHEN_DEBATES) {
-                    if (card_id == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                        state.card_locations[card_id] = CardLocation::ONGOING_EVENT;
-                    } else {
-                        state.card_locations[card_id] = CardData::get_card(card_id).one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                    }
-                }
+                relocate_played_card(state, card_id, fired, Handover::Respect);
                 if (done) state.pop_context();
                 return done;
             }

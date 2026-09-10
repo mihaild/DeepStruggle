@@ -33,7 +33,14 @@ _SAMPLE_SENSITIVE: Set[str] = {"board", "cards", "ctx/chernobyl_region"}
 
 @pytest.fixture(scope="module")
 def rows():
-    obs = collect(num_games=40, seed=99)
+    # 120, not 40. How deep a uniform-random sample gets is a property of the sample and of the
+    # decision stream, not of the observation, so it moves whenever the engine legitimately
+    # changes. Starred cards now reach the discard pile instead of leaving the game, which puts
+    # more cards -- scoring cards among them -- back in circulation, and random play loses to a
+    # held scoring card sooner: 40 games stopped reaching turn 8 and the turn-span check below
+    # failed. Widening is what that check's own message asks for, and is the honest fix; lowering
+    # the bar would weaken the assertion to match the sample rather than the other way round.
+    obs = collect(num_games=120, seed=99)
     assert obs.shape[0] > 3000, f"only {obs.shape[0]} positions; the sample is too thin to judge"
     return audit(obs, v22_features())
 
