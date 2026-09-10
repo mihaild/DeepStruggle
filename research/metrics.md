@@ -346,6 +346,35 @@ iterations, which overlaps heavily between consecutive reports and made H2's USS
 like a monotone late-run climb to 66%. Binned by 20M it oscillates 48.5-58.0% for the whole run
 with no drift. Bin before believing a trend in it.
 
+### 1.4.2 The per-region scoring scalars are not architecturally connected to their countries
+
+`global_features[64..69]` carry the live net VP differential per region, from
+`Scoring::evaluate_region`, so presence, domination, control, battlegrounds and superpower
+adjacency are all folded in. Measured on Europe: empty 0.000, domination **+0.500**, control
+**+1.000**. Control is forced to ±20 because its raw `net_delta` is *8* against domination's
+*10* -- Europe's `control_vp` is 0, so without the special case the observation would rank a won
+position below a merely dominated one.
+
+Each country also carries a 6-way region one-hot in `board_features[10..15]`, plus Western
+Europe / Eastern Europe / South-East Asia flags at 16..18. So the country-to-region *mapping* is
+an explicit input; nothing has to learn it from data.
+
+**What is missing is the binding between the two.** In `ColdWarNetV2.extract_features` the board
+branch runs two GraphConv layers over the 84 countries and then **mean- and max-pools across all
+of them** into 128 floats before the global block is ever seen. The region scalars arrive
+through a separate `global_proj`, and the two meet only in the fused trunk. The policy head is
+then `Linear(hidden -> 256) -> Linear(256 -> 212)` off that fused vector: there is no
+per-country output path at all.
+
+So there is no architectural route from "the Europe scalar rose" to "because of France". The
+association has to be discovered statistically, through a trunk that has already discarded which
+country is which. That is a plausible reason the critic values regional position poorly, and it
+is not fixed by adding features -- the information is already there and correctly scaled.
+
+Compounding it: arm H2 reaches Europe control in **0.0%** of games, so the top of that ramp is
+essentially unvisited and whatever the critic predicts at 1.0 is extrapolation from the 0.5
+neighbourhood. The feature makes control *learnable*; visitation is what would make it learned.
+
 ### 1.5.1 The ts-replayer figure is biased long; the ITS results database is the better baseline
 
 `/workspace/data/itsc-games` is a scrape of the ITS Junta results table at twilight-struggle.com

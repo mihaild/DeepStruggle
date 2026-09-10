@@ -259,15 +259,20 @@ void Scoring::evaluate_military_ops(GameState& state) noexcept {
 void Scoring::execute_final_scoring(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
 
-    // 1. Europe Control Instant Victory check
+    // 1. Europe Control Instant Victory check. The flag matters here for the same reason it
+    // does in score_region: this leaves +/-20 and GAME_OVER, indistinguishable afterwards from
+    // a win on the VP track. Reaching final scoring while controlling Europe is a Europe
+    // Control win, not a 20 VP one.
     auto europe_summary = evaluate_region(state, Region::EUROPE);
     if (europe_summary.us_status == RegionalStatus::CONTROL) {
         state.victory_points = 20;
+        state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
         state.current_phase = Phase::GAME_OVER;
         return;
     }
     if (europe_summary.ussr_status == RegionalStatus::CONTROL) {
         state.victory_points = -20;
+        state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
         state.current_phase = Phase::GAME_OVER;
         return;
     }
