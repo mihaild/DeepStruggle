@@ -2452,6 +2452,12 @@ does not touch `card_locations`, so at the Grain Sales branch the US is asked to
 card that reads as the draw deck. Showing it to the player deciding is obviously *correct*. Is it
 worth anything?
 
+> **Superseded.** The flag is retired and does nothing. `ctx.temp_cards` no longer exists: Grain
+> Sales moves the drawn card to `PEEKED_TEMP`, so it reaches the observation through the ordinary
+> card-location chain and the visibility is structural rather than conditional. The question this
+> arm asked can no longer be posed as an A/B, because there is no B. The result below stands as a
+> record of what was measured at the time.
+
 **Setup.** Arm G, v2.2 with the flag, seeded 20260920 to pair with arm F — the flag the only
 difference between them.
 

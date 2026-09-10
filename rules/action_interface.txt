@@ -66,7 +66,7 @@ static_assert(sizeof(MicroAction) == 4, "MicroAction must be exactly 4 bytes");
               • Discard card                                      -> SELECT_CARD (opponent card)
               • AR ends                                           -> SELECT_OP_MODE
                                                                 • Grain Sales (#67):
-                                                                  -> Draw random card into temp_cards[0]
+                                                                  -> Draw random card to PEEKED_TEMP
                                                                   -> CHOOSE_BRANCH (0: Play, 1: Return)
                                                                 • Standard Event:
                                                                   -> Point nodes / execute event
@@ -126,8 +126,9 @@ static_assert(sizeof(MicroAction) == 4, "MicroAction must be exactly 4 bytes");
 //    - Engine sets ctx().pending_op_card = 67, ctx().pending_ops_value = 2.
 //    - Engine transitions ctx().decision_type = DecisionType::SELECT_OP_MODE.
 // 2. If USSR hand is non-empty:
-//    - Engine randomly samples 1 card from USSR hand into ctx().temp_cards[0].
-//    - Engine sets ctx().temp_card_cnt = 1, ctx().decision_player = Player::US.
+//    - Engine randomly samples 1 card from the USSR hand and moves it to PEEKED_TEMP, which
+//      is what "being looked at" is; the US sees it in the observation's PEEKED slot.
+//    - Engine sets ctx().decision_player = Player::US.
 //    - Engine sets ctx().decision_type = DecisionType::CHOOSE_BRANCH.
 //    - Branch 0: PLAY_DRAWN_CARD
 //      - Card removed from USSR hand, becomes ctx().pending_op_card.

@@ -138,11 +138,23 @@ struct alignas(64) DecisionContext {
     uint8_t      resolving_card;        // Card ID currently executing (1..110)
 
     // Transient tracking across sub-actions (cleared when resolving_card finishes)
-    std::array<uint64_t, 2> visited_nodes; // 128-bit bitmask of nodes already modified
-    std::array<uint8_t, 84> node_counts;   // Placements/removals per node during this event
-    std::array<uint8_t, 5>  temp_cards;    // Temp buffer for peeked/searched card IDs
-    uint8_t                 temp_card_cnt; // Number of valid cards in temp_cards
+    std::array<uint64_t, 2> visited_nodes;   // 128-bit bitmask of nodes already modified
+    std::array<uint64_t, 4> node_count_bits; // Placements/removals per node, 3 bits each
+
+    // The chance node about to resolve. Forced dice are not here: they are a test and replayer
+    // affordance and are carried on the ROLL_DIE action, primary_id for the acting player and
+    // secondary_id for the opponent.
+    RollType pending_roll;                   // NONE when no chance node is staged
+    uint8_t  roll_target;                    // country id; a card id for SPACE_RACE/TRAP_ESCAPE
+    Player   roll_actor;                     // NONE means the phasing player
+
+    uint8_t  event_stage;                    // which half of Che / De-Stalinization is being asked
 };
+
+// There is no buffer of "cards this decision is about". Every event that needs one derives it
+// from where the cards are: a peeked card sits at PEEKED_TEMP, a revealed one is marked known in
+// its holder's hand, and a chosen one has already moved. Card knowledge lives in CardLocation and
+// nowhere else, so nothing has to remember to clear it.
 
 // =============================================================================
 // Complete Unified Game State

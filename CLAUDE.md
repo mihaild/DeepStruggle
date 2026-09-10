@@ -260,6 +260,14 @@ is `data/checkpoints/arm_E_cont_240to320/snapshot_final.pt` at 320,012,288 steps
 than legacy — three budgets say the two are tied — but is the same strength for 134,496 fewer
 parameters, and carries the card signal. See `research/experiments.md` §23.
 
+**Layouts available:** `legacy` (4,293), `v2.1` (3,891), `v2.3` (3,824). **`v2.2` is retired and
+asking for it raises.** Its `ctx/temp_card_count` slot counted an array of staged card ids that no
+longer exists — every event that kept one now derives the same set from where the cards are — so
+the layout is one float narrower and cannot be reproduced. A v2.2 checkpoint has to be retired with
+it: run against v2.3 it would load cleanly and misread every input, which is the failure the
+refusal exists to prevent. `obs_flags::STAGED_CARDS` is retired with it and does nothing; the bit
+and its `engine_config` name stay reserved so runs that recorded them still read back.
+
 **AI (`ai/`):** `models/coldwar_net.py` (ColdWarNet: GNN GraphConv + card + global ResNet with masked action heads, V1/V2/V3 variants auto-detected from checkpoints). `training/nash_pg.py` implements NashPG — PPO-style loss with KL regularization against a frozen reference policy snapshot (`π_ref`), refreshed periodically, to converge toward Nash equilibrium without cycling. `training/rollout_buffer.py` does trajectory storage + GAE (zero-sum, alternating between players). `rewards/reward_calculator.py` holds the reward strategies (`BlunderAwareRewardCalculator`, `ZeroSumTerminalReward`, `ShapedZeroSumReward`, `UsefulActionsReward`) — perspective-aligned and zero-sum across US/USSR.
 
 **Bots (`bot/`):** all inherit `BaseBot` (`select_action` for dict/JSON-based servers, `select_flat_action` for the fast 212-dim vectorized path, `reset`). Baselines: `random_bot`, `heuristic_bot`, `exploratory_bot`, `strategic_bot` (DEFCON-2 containment focus), `event_heavy_bot`, `human_bot` (interactive CLI); `neural_bot` loads ColdWarNet checkpoints.
