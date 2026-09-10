@@ -28,6 +28,49 @@ bool has_legal_point_target(const GameState& state) noexcept {
     return false;
 }
 
+// Where a card goes once it has been played, in one place.
+//
+// This decision was written out six times and the copies disagreed: a starred card leaves the
+// game only when its Event is *implemented* (rules.md 280-282), and sites that tested
+// `one_time` alone removed cards whose Event had been fired but could not occur -- NATO with
+// neither Marshall Plan nor Warsaw Pact played, Solidarity without John Paul II, Star Wars with
+// the US behind on the space track, Our Man in Tehran with no Middle East country, and Willy
+// Brandt or Flower Power under the card that cancels them.
+//
+// `event_occurred` must be computed BEFORE the Event runs; see CardHandlers::event_has_effect.
+//
+// Kitchen Debates is skipped rather than special-cased at each call: its outcome is only known
+// inside its handler, which sets its own location.
+//
+// `handover` says whether this cleanup may sweep out a card that an Event has just placed into
+// a hand, which in practice means Missile Envy: its Event moves it into the opponent's hand to
+// be played on their next action round, and discarding it straight back out would strand
+// forced_card_id on a card nobody holds.
+//
+// The two answers are not a tidy Event/Operations split, and the asymmetry is deliberate rather
+// than tidy-able: every Event site and the *headline* Ops cleanup respect the handover, while
+// the action round's Ops cleanup ignores it, because there the card being spent IS Missile Envy
+// and the recipient playing it is an ordinary play that discards it
+// (MidCardsTest.Card49_MissileEnvy_RecipientMustPlayForOps). Collapsing the two broke turn 7's
+// headline of ts-replayer game 96, where Missile Envy is a headline card: swept out of the hand
+// it had just been handed to, the USSR was asked for Operations the log never records.
+enum class Handover : uint8_t { Respect, Ignore };
+
+void relocate_played_card(GameState& state, uint8_t card, bool event_occurred,
+                          Handover handover) noexcept {
+    if (card == 0 || card > 110) return;
+    if (card == card_ids::KITCHEN_DEBATES) return;
+    if (handover == Handover::Respect && keeps_own_card_location(state, card)) return;
+
+    if (card == card_ids::SHUTTLE_DIPLOMACY &&
+        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+        state.card_locations[card] = CardLocation::ONGOING_EVENT;
+        return;
+    }
+    state.card_locations[card] = (CardData::get_card(card).one_time && event_occurred)
+        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
+}
+
 } // namespace
 
 
@@ -224,14 +267,9 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
             state.ctx().decision_player = exec_player;
             state.ctx().resolving_card = h2_card;
 
+            const bool h2_fired = CardHandlers::event_has_effect(state, h2_card, exec_player);
             bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
-            if (h2_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, h2_card)) {
-                if (h2_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                    state.card_locations[h2_card] = CardLocation::ONGOING_EVENT;
-                } else {
-                    state.card_locations[h2_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                }
-            }
+            relocate_played_card(state, h2_card, h2_fired, Handover::Respect);
             if (done) {
                 advance_headline_step(state);
             }
@@ -316,22 +354,13 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
             state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
             CardData::is_opponent_card(owed_card, card_player)) {
             Player opp = get_opponent(card_player);
-            const auto& owed_info = CardData::get_card(owed_card);
             state.ctx().decision_player = opp;
             state.ctx().resolving_card = owed_card;
             state.ctx().timing_branch = 255; // cleared
 
+            const bool owed_fired = CardHandlers::event_has_effect(state, owed_card, opp);
             bool done = CardHandlers::trigger_event(state, owed_card, opp);
-            if (owed_card != card_ids::KITCHEN_DEBATES &&
-                !keeps_own_card_location(state, owed_card)) {
-                if (owed_card == card_ids::SHUTTLE_DIPLOMACY &&
-                    state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                    state.card_locations[owed_card] = CardLocation::ONGOING_EVENT;
-                } else {
-                    state.card_locations[owed_card] = owed_info.one_time
-                        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                }
-            }
+            relocate_played_card(state, owed_card, owed_fired, Handover::Respect);
             // An event that asks something of its player is not finished, and the headline
             // resumes here once it is.
             if (!done || state.current_phase == Phase::GAME_OVER) return;
@@ -366,19 +395,15 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         uint8_t op_card = state.ctx().pending_op_card;
         if (op_card != 0 && op_card != card_ids::THE_CHINA_CARD &&
             op_card != state.headline_first_card && op_card != state.headline_second_card &&
-            op_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, op_card)) {
-            const auto& op_info = CardData::get_card(op_card);
-            if (op_card == card_ids::SHUTTLE_DIPLOMACY &&
-                state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                state.card_locations[op_card] = CardLocation::ONGOING_EVENT;
-            } else {
-                // Same rule inside a headline: Ops spent do not fire the player's own event, so
-                // a starred card of theirs is discarded rather than removed.
-                state.card_locations[op_card] =
-                    (op_info.one_time && event_occurred_on_ops_play(state, op_card,
-                                                                   state.phasing_player))
-                        ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-            }
+            is_in_any_hand(state.card_locations[op_card])) {
+            // Still in a hand means nothing has placed it yet. On an EVENT_FIRST play the
+            // card was placed when its Event fired, by the site that knew whether the Event
+            // could occur; re-deciding here on "it is an opponent's card" alone would throw
+            // that answer away and remove a card whose Event never happened.
+            relocate_played_card(state, op_card,
+                                 event_occurred_on_ops_play(state, op_card,
+                                                            state.phasing_player),
+                                 Handover::Respect);
         }
         advance_headline_step(state);
         return;
@@ -418,19 +443,13 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
         // Trigger opponent event!
         Player opp = get_opponent(p);
-        const auto& c_info = CardData::get_card(card);
         state.ctx().decision_player = opp;
         state.ctx().resolving_card = card;
         state.ctx().timing_branch = 255; // cleared
 
+        const bool owed_fired = CardHandlers::event_has_effect(state, card, opp);
         bool done = CardHandlers::trigger_event(state, card, opp);
-        if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
-            if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                state.card_locations[card] = CardLocation::ONGOING_EVENT;
-            } else {
-                state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-            }
-        }
+        relocate_played_card(state, card, owed_fired, Handover::Respect);
         if (done) {
             advance_after_action_round(state);
         }
@@ -444,21 +463,18 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         if (p == Player::US) {
             state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
         }
-    } else if (card != 0) {
-        const auto& c_info = CardData::get_card(card);
-        if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-            state.card_locations[card] = CardLocation::ONGOING_EVENT;
-        } else {
-            // A starred card is removed when its *event* occurs, not when it is spent for
-            // Operations (rules.md 280-282; the Space Race path says the same at 252). This
-            // branch is reached both by an opponent's card whose event fired on the EVENT_FIRST
-            // path and by the player's own or a neutral card, whose event never fires -- and
-            // removing on one_time alone treated the two the same, permanently deleting a card
-            // whose event had not happened.
-            state.card_locations[card] =
-                (c_info.one_time && event_occurred_on_ops_play(state, card, p))
-                    ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-        }
+    } else if (card != 0 && is_in_any_hand(state.card_locations[card])) {
+        // A starred card is removed when its *event* occurs, not when it is spent for
+        // Operations (rules.md 280-282; the Space Race path says the same at 252).
+        //
+        // The in-hand test is what separates the two ways this branch is reached. The phasing
+        // player's own or a neutral card is still in their hand, and its Event never fired.
+        // An opponent's card played EVENT_FIRST was already placed when the Event resolved,
+        // by the site that knew whether the Event could occur -- so it is left alone here
+        // rather than re-judged on "it is an opponent's card", which cannot tell an Event that
+        // happened from one that was fired and could not occur.
+        relocate_played_card(state, card, event_occurred_on_ops_play(state, card, p),
+                             Handover::Ignore);
     }
     advance_after_action_round(state);
 }
@@ -764,14 +780,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         state.ctx().decision_player = exec_player;
         state.ctx().resolving_card = first_card;
 
+        const bool first_fired = CardHandlers::event_has_effect(state, first_card, exec_player);
         bool done = CardHandlers::trigger_event(state, first_card, exec_player);
-        if (first_card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, first_card)) {
-            if (first_card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                state.card_locations[first_card] = CardLocation::ONGOING_EVENT;
-            } else {
-                state.card_locations[first_card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-            }
-        }
+        relocate_played_card(state, first_card, first_fired, Handover::Respect);
         if (done) {
             advance_headline_step(state);
         }
@@ -972,15 +983,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                         !CardHandlers::can_trigger_event(state, card, p)) {
                         return false; // Illegal event play
                     }
-                    const auto& c_info = CardData::get_card(card);
+                    const bool fired = CardHandlers::event_has_effect(state, card, p);
                     bool done = CardHandlers::trigger_event(state, card, p, action.secondary_id);
-                    if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
-                        if (card == card_ids::SHUTTLE_DIPLOMACY && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
-                            state.card_locations[card] = CardLocation::ONGOING_EVENT;
-                        } else {
-                            state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                        }
-                    }
+                    relocate_played_card(state, card, fired, Handover::Respect);
                     if (done && state.current_phase != Phase::GAME_OVER) {
                         if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
                         else advance_after_action_round(state);
@@ -1041,14 +1046,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.push_context();
 
                     Player opp = get_opponent(p);
-                    const auto& c_info = CardData::get_card(card);
                     state.ctx().decision_player = opp;
                     state.ctx().resolving_card = card;
 
+                    const bool fired = CardHandlers::event_has_effect(state, card, opp);
                     bool done = CardHandlers::trigger_event(state, card, opp);
-                    if (card != card_ids::KITCHEN_DEBATES && !keeps_own_card_location(state, card)) {
-                        state.card_locations[card] = c_info.one_time ? CardLocation::REMOVED_FROM_GAME : CardLocation::DISCARD_PILE;
-                    }
+                    relocate_played_card(state, card, fired, Handover::Respect);
                     if (done) {
                         state.pop_context();
                     }

@@ -160,6 +160,45 @@ bool CardHandlers::can_trigger_event(const GameState& state, uint8_t card_id, Pl
     }
 }
 
+// Cards whose "can this Event do anything" test lives inside the handler rather than in the
+// prerequisite table above, hoisted here so the handler and the removal decision share one
+// definition. Adding a card here without routing its handler through the same predicate is the
+// drift this exists to prevent.
+namespace {
+
+bool us_controls_a_middle_east_country(const GameState& state) noexcept {
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (MapData::get_country(i).region == Region::MIDDLE_EAST &&
+            Scoring::is_controlled_by(state, i, Player::US)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool us_leads_on_battlegrounds(const GameState& state) noexcept {
+    uint8_t us_bgs = 0;
+    uint8_t ussr_bgs = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (!MapData::get_country(i).battleground) continue;
+        Player ctrl = Scoring::get_country_control(state, i);
+        if (ctrl == Player::US) us_bgs++;
+        else if (ctrl == Player::USSR) ussr_bgs++;
+    }
+    return us_bgs > ussr_bgs;
+}
+
+} // namespace
+
+bool CardHandlers::event_has_effect(const GameState& state, uint8_t card_id, Player player) noexcept {
+    if (!can_trigger_event(state, card_id, player)) return false;
+    switch (card_id) {
+        case card_ids::OUR_MAN_IN_TEHRAN: return us_controls_a_middle_east_country(state);
+        case card_ids::KITCHEN_DEBATES:   return us_leads_on_battlegrounds(state);
+        default: return true;
+    }
+}
+
 bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player player, uint8_t forced_roll) noexcept {
     if (!can_trigger_event(state, card_id, player)) {
         return true; // Unmet prerequisite: event does not occur

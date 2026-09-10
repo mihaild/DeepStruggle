@@ -116,16 +116,15 @@ bool trigger_junta(GameState& state, Player p) noexcept {
 }
 
 bool trigger_kitchen_debates(GameState& state, Player p) noexcept {
-    uint8_t us_bgs = 0;
-    uint8_t ussr_bgs = 0;
-    for (uint8_t i = 0; i < 84; ++i) {
-        if (MapData::get_country(i).battleground) {
-            Player ctrl = Scoring::get_country_control(state, i);
-            if (ctrl == Player::US) us_bgs++;
-            else if (ctrl == Player::USSR) ussr_bgs++;
-        }
-    }
-    if (us_bgs > ussr_bgs) {
+    // The US must control more battlegrounds than the USSR. Asked through event_has_effect for
+    // the same reason Our Man in Tehran does: the condition that decides whether the Event
+    // happens is the condition that decides whether the card leaves the game, and it should not
+    // be written twice.
+    //
+    // This card sets its own location -- every caller in the state machine skips it -- because
+    // the Event's outcome is only known here. The generic path would now reach the same answer,
+    // but leaving the card in charge of itself keeps the two from disagreeing.
+    if (CardHandlers::event_has_effect(state, card_ids::KITCHEN_DEBATES, p)) {
         state.victory_points = static_cast<int8_t>(std::min(20, state.victory_points + 2));
         if (state.victory_points >= 20) state.current_phase = Phase::GAME_OVER;
         state.card_locations[card_ids::KITCHEN_DEBATES] = CardLocation::REMOVED_FROM_GAME;
@@ -579,15 +578,10 @@ bool trigger_che(GameState& state, Player p) noexcept {
 }
 
 bool trigger_our_man_in_tehran(GameState& state, Player p) noexcept {
-    // Check if US controls >= 1 ME country
-    bool has_me = false;
-    for (uint8_t i = 0; i < 84; ++i) {
-        if (MapData::get_country(i).region == Region::MIDDLE_EAST && Scoring::is_controlled_by(state, i, Player::US)) {
-            has_me = true;
-            break;
-        }
-    }
-    if (!has_me) return true;
+    // The US must control a Middle East country. Asked through event_has_effect so the same
+    // answer decides whether the card is removed from the game or discarded -- the condition
+    // has one definition, not one here and a copy at the removal site.
+    if (!CardHandlers::event_has_effect(state, card_ids::OUR_MAN_IN_TEHRAN, p)) return true;
 
     // Draw up to 5 cards from draw deck
     uint8_t draw_pool[111];

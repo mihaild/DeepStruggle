@@ -22,6 +22,20 @@ public:
 
     // Prerequisite checks (e.g. NATO requires Marshall or Warsaw)
     static bool can_trigger_event(const GameState& state, uint8_t card_id, Player player) noexcept;
+
+    // Would this card's Event actually do anything if it were fired right now?
+    //
+    // Distinct from can_trigger_event, which is the *mask* question -- may this card be chosen
+    // as an Event -- and is answered for a card the player is about to select. This is the
+    // *removal* question: a starred card leaves the game only when its Event is implemented
+    // (rules.md 280-282), and an Event that is fired but cannot occur has not been implemented.
+    // The two differ because some conditions live inside the handler rather than in the
+    // prerequisite table; those handlers call this so the condition has one definition and
+    // cannot drift from the removal decision that depends on it.
+    //
+    // Must be evaluated BEFORE trigger_event: an Event that fires sets flags, and asking
+    // afterwards can read the answer the Event itself just produced.
+    static bool event_has_effect(const GameState& state, uint8_t card_id, Player player) noexcept;
 };
 
 } // namespace ts
