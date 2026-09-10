@@ -2392,3 +2392,103 @@ one figure here that may be real; a seed replicate of it is running.
 **Caveats.** One lineage per layout, and the arms differ in seed. Elo is not comparable across
 tournaments: the identical comparison (D's late four against its own 160M start) read 60.50% in one
 pool and 62.25% in another. Within a tournament it is fine; across them, ±15 Elo.
+
+---
+
+## 24. Observation layout v2.2 — the first change to the observation that was worth anything
+
+**Question.** §23 found v2.1 neutral against legacy at three budgets. v2.2 removes what nothing read
+and adds what the network was never told. Does it move anything?
+
+**What changed, from v2.1's 3,891 floats to v2.2's 3,825.** Removed: `turn_aggregates` (32) and
+`active_player` (1) — twenty of the aggregate floats had no writer anywhere in `engine/src`, and
+the decisive fact is that `ColdWarNetV2.forward` never sliced past the global block, so all 33 were
+invisible to the network including the 12 that were written; and the per-country realignment
+legality (168), since `can_realign` is exactly `can_coup_or_realign` and `can_coup` is that plus
+one condition, so the two differ only under The Reformer. Added: the 20-float decision context —
+`DecisionContext` carries twelve fields describing what is being asked and the observation used
+*one* of them, so mid-play the network was told to place a point without being told which card it
+was spending or how many points remained; a card feature marking the card being played; the China
+Card visible as a hand card; committed headlines visible to their owner; Europe Control reported as
+a win; and Chernobyl's region as a one-hot.
+
+**Result — three cold starts, matched on everything but the layout.**
+
+| budget | v2.2 (F) | v2.1 (E) | legacy (D) | F vs E | F vs D |
+|:---|---:|---:|---:|---:|---:|
+| 80M | **1817.5** | 1736.9 | 1729.3 | 61.52% ±0.84 (+80.5) | 63.55% ±0.83 (+88.1) |
+| 160M | **1909.8** | 1818.2 | 1800.8 | 62.73% ±0.84 (+91.6) | 66.42% ±0.82 (+109.0) |
+
+Head-to-heads pool all sixteen snapshot pairings, 12,800 games each. At 160M all three arms had
+snapshots at identical step counts, so the four rated points are the same in every arm.
+
+**Verdict — settled, and the first observation change in this project to clear noise.** The lead
+*grew* from +80.5 to +91.6, which is not what a lucky draw does; within-arm SD fell to 8–9 Elo, the
+tightest measured here; and the E-vs-D control stayed near even at both budgets (+7.6, +17.4),
+consistent with §23's four independent measurements of that pair. At roughly 4.5σ against §20.6's
+~20 Elo between-run SD this is not a seed effect.
+
+**Confirmed on a second seed.** Arm F2 (20260921 against F's 20260920) reached 1830.1 against F's
+1807.1 — 23.0 Elo apart, head-to-head 46.82%, inside the seed floor — while v2.1 sat at 1726.8. The
+combined v2.2 mean is +91.7 Elo over v2.1, the individual seeds +80.2 and +103.2. The falsification
+criterion set before the run (F2 landing near v2.1's 1736.9) did not occur. This is also the first
+seed spread measured *within* v2.2, so the noise floor the verdict rests on is its own rather than
+borrowed.
+
+**What is not established is which of the changes did it.** The China Card fix, which had the
+clearest mechanism, is ruled out: DEFCON-1 losses with a playable China Card in hand were 31.8% for
+v2.2 against v2.1's 29.4% at matched budget — no improvement. The decision context is the natural
+suspect, being the only change that alters what the network knows at *every* microstep rather than
+in rare positions, but that is inference. Isolating it is three or four arms at two seeds.
+
+**Budget.** v2.2 keeps paying at budgets where the others stopped. Arm G reached **1957.2 at 320M**,
+the strongest checkpoint measured in this project, beating `dec_turns40` 84.8%, and gained +80.9 Elo
+pooled from 80M to 160M — against v2.1's +4.1/+19.3 over its last leg and legacy's +52.7.
+
+### 24.1 The `staged_cards` engine flag — NOT DEMONSTRATED
+
+**Question.** The engine stages a card in `ctx.temp_cards` when a decision is about that card and
+does not touch `card_locations`, so at the Grain Sales branch the US is asked to keep or return a
+card that reads as the draw deck. Showing it to the player deciding is obviously *correct*. Is it
+worth anything?
+
+**Setup.** Arm G, v2.2 with the flag, seeded 20260920 to pair with arm F — the flag the only
+difference between them.
+
+| | 4 late snapshots | mean | SD |
+|:---|:---|---:|---:|
+| G @80M | 1727, 1726, 1770, 1776 | 1749.9 | 27.0 |
+| F @80M | 1717, 1725, 1711, 1728 | 1720.2 | 7.5 |
+| G @160M | 1808, 1811, 1844, 1861 | 1830.8 | 25.7 |
+| F @160M | 1835, 1836, 1859, 1839 | 1842.2 | 11.2 |
+
+**G vs F: 52.73% ±0.86 at 80M (+29.7 Elo), 48.61% ±0.87 at 160M (−11.4).** Opposite directions,
+both inside the 23–25 Elo seed floor. **Not demonstrated.** The flag stays off by default; the
+argument for it was correctness, not strength, and the mechanism is rare enough — three cards, and
+the Grain Sales branch in a minority of games — that a measurable Elo effect was never likely.
+
+**A measurement caution, and it is the point of this entry.** The first pass used a *single*
+snapshot per budget: 800-game cells at ±24 Elo, against §20.3's 30.7 Elo mean within-run
+oscillation. It reported +52.8 Elo at 80M and +4.7 at 160M, and the 80M figure was the headline
+until pooling replaced it with +29.7 and flipped 160M to −11.4. G's within-run SD is 27.0 against
+F's 7.5 — three times as much oscillation from one flag at the same seed, unexplained — so its
+final snapshot flattered it. **A single snapshot cannot measure an effect smaller than a run's own
+oscillation**, which is most effects worth arguing about.
+
+### 24.2 Engine configuration, and why width is not a version number
+
+Two layouts of the same width can differ in *content*, and nothing in the stack can tell them
+apart: not the width assertions guarding the extraction sites, not `layout_of`, not a forward pass.
+The staged-card reveal was briefly added to v2.2 after arms F and F2 had trained on it, which would
+have had them evaluated against an observation they had never seen, silently.
+
+A run now records what it trained under in its `metadata.json` as `engine_config`, set by
+`--engine-flag NAME`, and **a missing entry is false** — so a checkpoint from before a flag existed
+keeps the behaviour it learned without anyone having to remember. The flags travel with the
+checkpoint wherever the layout does: `NeuralAgent` reads them from the metadata beside the
+snapshot, the batched tournament treats `(layout, flags)` as the pair that must match and falls
+back to per-state extraction when they differ, and `self_play` does the same.
+
+An earlier attempt at this used a wider layout so the difference would be inferable from the
+weights. That worked and was the wrong trade: it spent 110 floats — a per-card feature — on a
+mechanism that fires for three cards.

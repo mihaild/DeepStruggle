@@ -351,6 +351,28 @@ configuration, with no visible cause. Four snapshots is the practice, not a guar
 
 ---
 
+### 20.7 A single snapshot cannot measure an effect smaller than a run's oscillation
+
+20.3 established that rating four late snapshots instead of one cuts between-run SD from 58.5 to
+20.1, and it was adopted as practice. 24.1 is what happens when the practice is skipped.
+
+The `staged_cards` flag was first measured with one snapshot per budget: 800-game cells at about
++/-24 Elo, against a mean within-run oscillation of 30.7. It read **+52.8 Elo at 80M and +4.7 at
+160M**, and the 80M figure stood as the headline until the pooled version replaced it with **+29.7
+and -11.4** -- a different sign at one budget and half the size at the other.
+
+The arm that looked better was also the noisier one: G's within-run SD was 27.0 against F's 7.5, at
+the same seed with one flag between them, which is unexplained and was invisible from a single
+checkpoint. Picking its final snapshot flattered it.
+
+**So the error bar on a single-cell comparison is the run's oscillation, not the binomial SE of the
+games played.** 12,800 games across sixteen pairings gives +/-0.87pp; 800 games in one cell gives
++/-3.4pp, and the snapshot choice on top of that is worth another 30. Two arms compared one
+snapshot each cannot resolve anything below roughly 50 Elo, which is larger than most effects worth
+arguing about.
+
+---
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
