@@ -217,6 +217,9 @@ Acceptance is a probe, not Elo: the rate of Poland ≥ 3 (USSR) and West Germany
 
 ## 7. Budgeting note
 
-An 80M-step arm is ~1.5 h on the 4090 and gains are measurable through 240M (`experiments.md`
-§23). Screen every factor at 2 seeds × 80M (3 h); confirm only the winner of a screen at
-2 seeds × 240M (9 h); rate the last four snapshots; never compare across budgets.
+An 80M-step arm is ~1.5 h on the 4090 and gains on the current recipe are still measurable at
+320M (`experiments.md` §24). Screen every factor at 2 seeds × 80M (3 h); confirm only the winner
+of a screen at 2 seeds × 240M (9 h); rate the last four snapshots and pool all sixteen
+pairings; never compare across budgets or tournaments. A leg's gain carries ±16 Elo
+(`metrics.md` §20.6), so within-lineage trends need that bar. The current ordering and budget
+rule live in [`plans/README.md`](plans/README.md).

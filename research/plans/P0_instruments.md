@@ -7,7 +7,8 @@
 ## Goal
 
 Four measurements that the later steps are judged by, taken once on the current best checkpoint
-(`dec_turns40`, arm E lineage — `experiments.md` §21–22) so every later arm has a before/after.
+(arm G's 320M snapshot, v2.2 — `experiments.md` §24; its `engine_config` metadata travels with
+it) and once on the clean-recipe baseline (arm F), so every later arm has a before/after.
 Two are new probes, two are existing instruments pointed at new states.
 
 ## Why
@@ -30,9 +31,11 @@ position with a known answer) and into a standalone CLI otherwise:
    same statistic from the 266 human games (`ai/eval/human_corpus.py` gives the positions).
    *Decide before running:* whether to condition on "Europe Scoring in hand", which is the one
    hand feature that plausibly changes the answer.
-2. **VOA-exposure probe.** Over ~500 self-play games, at every USSR end-of-turn: is Voice of
-   America unplayed (in deck, or in an unknown slot of the US hand — the v2.1 observation's
-   `CardLocation` tracking says which), and does USSR hold a non-European country at ≤ 2
+2. **VOA-exposure probe.** `ai/eval/blunders.py` now counts named in-play mistakes with a
+   position-independent answer; this probe has the same shape and belongs beside it (or in it,
+   if the owner's DEFCON-2 scope is widened). Over ~500 self-play games, at every USSR
+   end-of-turn: is Voice of America unplayed (in deck, or in an unknown slot of the US hand —
+   the observation's `CardLocation` tracking says which), and does USSR hold a non-European country at ≤ 2
    influence with no control? Report the rate, and the fraction of those exposures VOA actually
    punished when it was later played. Same statistic on the human corpus.
 3. **Chance-variance decomposition.** From ~2,000 saved decision states spread over turns, replay

@@ -41,14 +41,15 @@ Advantage filtering: drop samples with |A| below a quantile threshold (*decide b
 Ataraxos's setting, or the bottom 50% as a first guess) from the policy loss only; value loss
 sees all samples. One flag, default off.
 
-Everything else fixed at the arm E recipe: v2.1 layout, `blunder_aware`, K = 40, cold start,
-no human data.
+Everything else fixed at the arm F recipe (`experiments.md` §24): v2.2 layout, `staged_cards`
+off, `blunder_aware`, K = 40, cold start, no human data.
 
 ## Procedure
 
 2×2: {scalar, categorical} × {no filter, filter}, 2 seeds each, 80M steps — 8 runs, ~12 h.
-The (scalar, no filter) cell is the arm E control and can reuse an existing pair of runs if one
-exists at exactly this recipe and budget; otherwise run it, do not quote an old number.
+The (scalar, no filter) cell is the arm F control: arms F and F2 are exactly this recipe and
+budget, so their 80M snapshots can be reused if the pooled-pairings comparison is run fresh in
+one tournament with the new arms — never quote their Elo from the old pool (`metrics.md` §20.6).
 Confirm the winning cell at 2 × 240M (~9 h).
 
 ## Measure

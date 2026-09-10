@@ -49,7 +49,8 @@ if the block rule is not enough, because the critic at turn 1 is itself being le
 
 ## Procedure
 
-1 arm × 2 seeds × 80M against the current baseline (P1's if adopted, else arm E). Confirm at
+1 arm × 2 seeds × 80M against the current baseline (P1's if adopted, else arm F's v2.2 recipe,
+`experiments.md` §24). Confirm at
 240M. Cheap enough to run twice: once as "setup block only", once as "all blocks", if the first
 moves the setup probe — that separates the setup effect from the general effect.
 
