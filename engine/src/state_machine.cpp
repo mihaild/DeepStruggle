@@ -522,7 +522,7 @@ void StateMachine::begin_turn_cleanup(GameState& state) noexcept {
     state.ctx() = DecisionContext{};
     state.ctx().decision_player = Player::NONE;
     state.ctx().decision_type = DecisionType::ROLL_DIE;
-    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::TURN_CLEANUP);
+    state.ctx().pending_roll = RollType::TURN_CLEANUP;
 }
 
 void StateMachine::end_turn(GameState& state) noexcept {
@@ -675,7 +675,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     }
 
     // 2. HEADLINE PHASE CARD SELECTION
-    if (state.current_phase == Phase::HEADLINE && state.ctx().temp_cards[4] == 0 && state.ctx().decision_type == DecisionType::SELECT_CARD && state.ctx().resolving_card == 0) {
+    // `state.headline_stage == 0` is "both cards still to be chosen". This used to read
+    // temp_cards[4], which held the headline stage in a much older design; that role moved to
+    // headline_stage and the read survived, guarding on a slot whose only remaining writer was
+    // realignment staging.
+    if (state.current_phase == Phase::HEADLINE && state.headline_stage == 0 &&
+        state.ctx().decision_type == DecisionType::SELECT_CARD && state.ctx().resolving_card == 0) {
         Player p = state.ctx().decision_player;
         uint8_t card = action.primary_id;
         if (p == Player::US && state.headline_us_card == 0) {
@@ -864,9 +869,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                             state.forced_card_id = 0;
                         }
                         state.card_locations[card] = CardLocation::DISCARD_PILE;
-                        state.ctx().temp_cards[0] = card;
-                        state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::TRAP_ESCAPE);
-                        state.ctx().temp_cards[2] = action.secondary_id;
+                        state.ctx().pending_roll = RollType::TRAP_ESCAPE;
+                        state.ctx().roll_target = card;
+                        state.ctx().roll_actor = p;
                         state.ctx().decision_player = Player::NONE;
                         state.ctx().decision_type = DecisionType::ROLL_DIE;
                         return true;
@@ -925,9 +930,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (mode == PlayMode::SPACE) {
-                    state.ctx().temp_cards[0] = card;
-                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::SPACE_RACE);
-                    state.ctx().temp_cards[2] = action.secondary_id;
+                    state.ctx().pending_roll = RollType::SPACE_RACE;
+                    state.ctx().roll_target = card;
+                    state.ctx().roll_actor = p;
                     state.ctx().decision_player = Player::NONE;
                     state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
@@ -1076,8 +1081,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 uint8_t cid = action.primary_id;
-                uint8_t forced_roll = action.secondary_id;
-                uint8_t forced_opp_roll = action.flags;
+                // No forced dice are read here any more. A POINT_NODE names a target; the die
+                // that resolves it is supplied on the ROLL_DIE action that follows, which is
+                // the only place either die is read. `secondary_id` and `flags` are ignored.
 
                 if (state.ctx().op_mode == OpMode::COUP) {
                     uint8_t coup_ops = state.ctx().pending_ops_value;
@@ -1098,10 +1104,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                             coup_ops += 1;
                         }
                     }
-                    state.ctx().temp_cards[0] = cid;
-                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
-                    state.ctx().temp_cards[2] = forced_roll;
-                    state.ctx().temp_cards[3] = (p == Player::US) ? 1 : (p == Player::USSR ? 2 : 0);
+                    state.ctx().pending_roll = RollType::COUP;
+                    state.ctx().roll_target = cid;
+                    state.ctx().roll_actor = p;
                     state.ctx().pending_ops_value = coup_ops;
 
                     // Couping under Cuban Missile Crisis cancels it, and the US may pay from
@@ -1112,7 +1117,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     // Turkey and pays from Turkey.
                     //
                     // Asked here, before the die, so the coup's own setup above is already in
-                    // temp_cards and the chance node opens on the far side of the answer with
+                    // the roll fields and the chance node opens on the far side of the answer with
                     // nothing to rebuild. Where only one country can pay, or neither, there is
                     // no choice to make and execute_coup settles it as before.
                     if (p == Player::US && state.has_flag(effect_bits::CMC_ACTIVE_USSR) &&
@@ -1132,13 +1137,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (state.ctx().op_mode == OpMode::REALIGN) {
-                    uint8_t forced_us = (p == Player::US) ? forced_roll : forced_opp_roll;
-                    uint8_t forced_ussr = (p == Player::USSR) ? forced_roll : forced_opp_roll;
-                    state.ctx().temp_cards[0] = cid;
-                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::REALIGNMENT);
-                    state.ctx().temp_cards[2] = forced_us;
-                    state.ctx().temp_cards[3] = forced_ussr;
-                    state.ctx().temp_cards[4] = (p == Player::US) ? 1 : (p == Player::USSR ? 2 : 0);
+                    state.ctx().pending_roll = RollType::REALIGNMENT;
+                    state.ctx().roll_target = cid;
+                    state.ctx().roll_actor = p;
                     state.ctx().decision_player = Player::NONE;
                     state.ctx().decision_type = DecisionType::ROLL_DIE;
                     return true;
@@ -1211,22 +1212,28 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 return false;
             }
 
-                        case DecisionType::ROLL_DIE: {
-                RollType rt = static_cast<RollType>(state.ctx().temp_cards[1]);
+            case DecisionType::ROLL_DIE: {
+                const RollType rt = state.ctx().pending_roll;
 
                 if (rt == RollType::TURN_CLEANUP) {
                     end_turn(state);
                     return true;
                 }
 
-                uint8_t forced_r1 = action.primary_id != 0 ? action.primary_id : state.ctx().temp_cards[2];
-                uint8_t forced_r2 = action.secondary_id != 0 ? action.secondary_id : state.ctx().temp_cards[3];
+                // The only source of a forced die is this action. `primary_id` is the acting
+                // player's die and `secondary_id` the opponent's; realignment is the only roll
+                // that uses both. Nothing is read back out of the state, which is what makes
+                // the two dice impossible to transpose.
+                const uint8_t forced_actor = action.primary_id;
+                const uint8_t forced_opponent = action.secondary_id;
+                const Player roll_actor = (state.ctx().roll_actor != Player::NONE)
+                    ? state.ctx().roll_actor : state.phasing_player;
 
                 if (rt == RollType::COUP) {
-                    uint8_t cid = state.ctx().temp_cards[0];
+                    uint8_t cid = state.ctx().roll_target;
                     uint8_t coup_ops = state.ctx().pending_ops_value;
-                    Player coup_player = (state.ctx().temp_cards[3] == 1) ? Player::US : ((state.ctx().temp_cards[3] == 2) ? Player::USSR : state.phasing_player);
-                    Operations::execute_coup(state, coup_player, cid, coup_ops, forced_r1);
+                    Player coup_player = roll_actor;
+                    Operations::execute_coup(state, coup_player, cid, coup_ops, forced_actor);
                     if (state.current_phase != Phase::GAME_OVER) {
                         advance_after_ops(state);
                     }
@@ -1234,10 +1241,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (rt == RollType::REALIGNMENT) {
-                    uint8_t cid = state.ctx().temp_cards[0];
-                    Player realign_player = (state.ctx().temp_cards[4] == 1) ? Player::US : ((state.ctx().temp_cards[4] == 2) ? Player::USSR : state.phasing_player);
-                    uint8_t forced_us = (realign_player == Player::US) ? forced_r1 : forced_r2;
-                    uint8_t forced_ussr = (realign_player == Player::USSR) ? forced_r1 : forced_r2;
+                    uint8_t cid = state.ctx().roll_target;
+                    Player realign_player = roll_actor;
+                    // Mapping the acting player's die onto the side that rolls it, in the one
+                    // place that knows who is acting. Previously the two dice were stored per
+                    // side and re-read per actor, and a USSR realignment came out transposed.
+                    uint8_t forced_us = (realign_player == Player::US) ? forced_actor : forced_opponent;
+                    uint8_t forced_ussr = (realign_player == Player::USSR) ? forced_actor : forced_opponent;
                     Operations::execute_realign(state, realign_player, cid, forced_us, forced_ussr);
                     state.ctx().remaining_steps -= 1;
 
@@ -1283,9 +1293,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (rt == RollType::SPACE_RACE) {
-                    uint8_t card = state.ctx().temp_cards[0];
-                    Player space_player = state.phasing_player;
-                    SpaceRace::attempt_space(state, space_player, card, forced_r1);
+                    uint8_t card = state.ctx().roll_target;
+                    Player space_player = roll_actor;
+                    SpaceRace::attempt_space(state, space_player, card, forced_actor);
                     if (state.current_phase != Phase::GAME_OVER) {
                         if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
                         else advance_after_action_round(state);
@@ -1294,9 +1304,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (rt == RollType::TRAP_ESCAPE) {
-                    uint8_t card = state.ctx().temp_cards[0];
-                    Player trapped_p = state.phasing_player;
-                    uint8_t roll = (forced_r1 >= 1 && forced_r1 <= 6) ? forced_r1 : Prng::roll_d6(state.rng_state);
+                    uint8_t card = state.ctx().roll_target;
+                    Player trapped_p = roll_actor;
+                    uint8_t roll = (forced_actor >= 1 && forced_actor <= 6) ? forced_actor : Prng::roll_d6(state.rng_state);
                     state.last_die_roll = roll;
                     bool escaped = (roll <= 4);
                     if (escaped) {

@@ -144,7 +144,24 @@ struct alignas(64) DecisionContext {
     uint8_t                 temp_card_cnt;         // Number of valid cards in temp_cards
     uint8_t                 suppress_op_card_event; // 1 = do not fire pending_op_card's event
     uint8_t                 event_granted_ops;      // 1 = Ops came from an event, not a card play
-    uint8_t                 pad[5];
+
+    // The chance node about to resolve, named rather than packed into temp_cards.
+    //
+    // Forced dice deliberately do NOT live here. A forced roll is a test and replayer
+    // affordance, not game state, and the ROLL_DIE action already carries two: `primary_id` is
+    // the acting player's die and `secondary_id` the opponent's. Storing them per-side here and
+    // reading them per-actor at the chance node is what made a USSR realignment read its two
+    // dice swapped; with nothing stored there is nothing to swap.
+    RollType pending_roll;    // NONE when no chance node is staged
+    uint8_t  roll_target;     // country id; a card id for SPACE_RACE and TRAP_ESCAPE
+    Player   roll_actor;      // who rolls; NONE means the phasing player
+
+    // Which stage a multi-stage event is in: CHE's second coup, De-Stalinization's placement
+    // phase. Both used to fake this -- CHE by storing `country + 1` in a card slot,
+    // De-Stalinization by reading `max_per_country == 0` -- for want of a field to put it in.
+    uint8_t  event_stage;
+
+    uint8_t                 pad[1];
 
     inline void set_start_influence(uint8_t node) noexcept {
         if (node < 64) start_influence_nodes[0] |= (1ULL << node);

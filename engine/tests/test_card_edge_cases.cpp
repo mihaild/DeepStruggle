@@ -178,10 +178,10 @@ TEST(CardEdgeCasesTest, OrtegaElected_CanCoupCuba_AndAdjacentCountries) {
 
     // Choosing the target opens a chance node; the coup resolves when that is rolled.
     // Roll 6: 6 + 2 ops - 2 * 3 (stability) = 2 coup value
-    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::POINT_NODE, countries::CUBA, 6, 0});
+    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::POINT_NODE, countries::CUBA, 0, 0});
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
-    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+    done = CardHandlers::handle_event_step(state, MicroAction{DecisionType::ROLL_DIE, 6, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[countries::CUBA].us_influence, 1); // 3 - 2 = 1
     // The event grants the attempt, not the Operations to buy it with, so nothing is spent and
@@ -520,15 +520,15 @@ TEST(CardEdgeCasesTest, Che_SecondCoupGrantedOnlyOnSuccess) {
 
     // First coup in Colombia with forced roll 6: 6 + 3 - 2 * 1 = 7 (removes 2 US, adds 5 USSR).
     // Each coup takes two steps now: the target choice, then its own chance node.
-    CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 6, 0});
-    done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+    CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 0, 0});
+    done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::ROLL_DIE, 6, 0, 0});
     ASSERT_FALSE(done); // Second coup is offered because US influence was removed
     ASSERT_EQ(s1.countries[countries::COLOMBIA].us_influence, 0);
     ASSERT_EQ(s1.countries[countries::COLOMBIA].ussr_influence, 5);
 
     // Second coup in Peru with forced roll 6
-    CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::PERU, 6, 0});
-    done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+    CardHandlers::handle_event_step(s1, MicroAction{DecisionType::POINT_NODE, countries::PERU, 0, 0});
+    done = CardHandlers::handle_event_step(s1, MicroAction{DecisionType::ROLL_DIE, 6, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(s1.countries[countries::PERU].us_influence, 0);
     ASSERT_EQ(s1.countries[countries::PERU].ussr_influence, 3);
@@ -879,8 +879,8 @@ TEST(CardEdgeCasesTest, Che_OpsModifiers_Suite) {
         GameState s{};
         s.countries[countries::COLOMBIA].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::CHE, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 1, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 1, 0, 0});
         ASSERT_EQ(s.countries[countries::COLOMBIA].us_influence, 1); // 3 - 2 = 1
     }
     // Brezhnev (4 ops): 1 + 4 - 2 = 3 coup val (removes 3 US)
@@ -889,8 +889,8 @@ TEST(CardEdgeCasesTest, Che_OpsModifiers_Suite) {
         s.set_flag(effect_bits::BREZHNEV_DOCTRINE_ACTIVE);
         s.countries[countries::COLOMBIA].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::CHE, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 1, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 1, 0, 0});
         ASSERT_EQ(s.countries[countries::COLOMBIA].us_influence, 0); // 3 - 3 = 0
     }
     // Purge (2 ops): 1 + 2 - 2 = 1 coup val (removes 1 US)
@@ -899,8 +899,8 @@ TEST(CardEdgeCasesTest, Che_OpsModifiers_Suite) {
         s.set_flag(effect_bits::PURGE_USSR_ACTIVE);
         s.countries[countries::COLOMBIA].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::CHE, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 1, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 1, 0, 0});
         ASSERT_EQ(s.countries[countries::COLOMBIA].us_influence, 2); // 3 - 1 = 2
     }
     // Brezhnev + Purge (3 ops): 1 + 3 - 2 = 2 coup val (removes 2 US)
@@ -910,8 +910,8 @@ TEST(CardEdgeCasesTest, Che_OpsModifiers_Suite) {
         s.set_flag(effect_bits::PURGE_USSR_ACTIVE);
         s.countries[countries::COLOMBIA].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::CHE, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 1, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::COLOMBIA, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 1, 0, 0});
         ASSERT_EQ(s.countries[countries::COLOMBIA].us_influence, 1); // 3 - 2 = 1
     }
 }
@@ -924,8 +924,8 @@ TEST(CardEdgeCasesTest, OrtegaElected_OpsModifiers_Suite) {
         GameState s{};
         s.countries[countries::HONDURAS].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::ORTEGA_ELECTED_IN_NICARAGUA, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 4, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 4, 0, 0});
         ASSERT_EQ(s.countries[countries::HONDURAS].us_influence, 1); // 3 - 2 = 1
     }
     // Brezhnev (3 ops): 4 + 3 - 4 = 3 coup val (removes 3 US)
@@ -934,8 +934,8 @@ TEST(CardEdgeCasesTest, OrtegaElected_OpsModifiers_Suite) {
         s.set_flag(effect_bits::BREZHNEV_DOCTRINE_ACTIVE);
         s.countries[countries::HONDURAS].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::ORTEGA_ELECTED_IN_NICARAGUA, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 4, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 4, 0, 0});
         ASSERT_EQ(s.countries[countries::HONDURAS].us_influence, 0); // 3 - 3 = 0
     }
     // Purge (1 op): 4 + 1 - 4 = 1 coup val (removes 1 US)
@@ -944,8 +944,8 @@ TEST(CardEdgeCasesTest, OrtegaElected_OpsModifiers_Suite) {
         s.set_flag(effect_bits::PURGE_USSR_ACTIVE);
         s.countries[countries::HONDURAS].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::ORTEGA_ELECTED_IN_NICARAGUA, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 4, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 4, 0, 0});
         ASSERT_EQ(s.countries[countries::HONDURAS].us_influence, 2); // 3 - 1 = 2
     }
     // Brezhnev + Purge (2 ops): 4 + 2 - 4 = 2 coup val (removes 2 US)
@@ -955,8 +955,8 @@ TEST(CardEdgeCasesTest, OrtegaElected_OpsModifiers_Suite) {
         s.set_flag(effect_bits::PURGE_USSR_ACTIVE);
         s.countries[countries::HONDURAS].us_influence = 3;
         CardHandlers::trigger_event(s, card_ids::ORTEGA_ELECTED_IN_NICARAGUA, Player::USSR);
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 4, 0});
-        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::POINT_NODE, countries::HONDURAS, 0, 0});
+        CardHandlers::handle_event_step(s, MicroAction{DecisionType::ROLL_DIE, 4, 0, 0});
         ASSERT_EQ(s.countries[countries::HONDURAS].us_influence, 1); // 3 - 2 = 1
     }
 }

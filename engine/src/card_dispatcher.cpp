@@ -351,7 +351,15 @@ bool CardHandlers::trigger_event(GameState& state, uint8_t card_id, Player playe
 
 bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action) noexcept {
     uint8_t card = state.ctx().resolving_card;
-    Player p = (state.ctx().decision_player != Player::NONE) ? state.ctx().decision_player : ((state.ctx().decision_type == DecisionType::ROLL_DIE && state.ctx().temp_cards[3] != 0) ? ((state.ctx().temp_cards[3] == 1) ? Player::US : Player::USSR) : state.phasing_player);
+    // At a chance node there is no decision_player, so the roller is whoever staged the die.
+    // This used to read a card slot that held a player code for a coup or a war and a *country
+    // id* for CHE and Ortega -- harmless only because the id that aliases onto "US" is the
+    // United Kingdom, which neither card can target.
+    Player p = (state.ctx().decision_player != Player::NONE)
+        ? state.ctx().decision_player
+        : ((state.ctx().decision_type == DecisionType::ROLL_DIE
+            && state.ctx().roll_actor != Player::NONE)
+               ? state.ctx().roll_actor : state.phasing_player);
 
     switch (card) {
         case card_ids::BLOCKADE: {
@@ -513,7 +521,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     // Participate: transition to ROLL_DIE
                     state.ctx().decision_player = Player::NONE;
                     state.ctx().decision_type = DecisionType::ROLL_DIE;
-                    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::OLYMPIC_GAMES);
+                    state.ctx().pending_roll = RollType::OLYMPIC_GAMES;
                     return false;
                 } else {
                     // Boycott: DEFCON degrades by 1, and sponsor conducts Operations (as if played 4 Ops)
@@ -885,8 +893,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             state.ctx().resolving_card = 0;
             state.ctx().remaining_steps = 0;
             state.ctx().allow_early_stop = 0;
-            if (state.ctx().temp_cards[1] == static_cast<uint8_t>(RollType::COUP)) {
-                // A coup provoked this and is already staged in temp_cards; open its die.
+            if (state.ctx().pending_roll == RollType::COUP) {
+                // A coup provoked this and is already staged; open its die.
                 state.ctx().decision_player = Player::NONE;
                 state.ctx().decision_type = DecisionType::ROLL_DIE;
             } else {
@@ -1417,9 +1425,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             // engine. Rolling it here, inside the target choice, left it the one coup a caller
             // could not steer without knowing to put the value in secondary_id.
             if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
-                uint8_t cid = state.ctx().temp_cards[3];
-                uint8_t forced = (action.primary_id >= 1 && action.primary_id <= 6)
-                                     ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t cid = state.ctx().roll_target;
+                uint8_t forced = action.primary_id;
                 uint8_t che_ops = Operations::get_modified_ops(state, 3, Player::USSR);
                 // execute_coup credits the military operations; crediting them again here
                 // spent each coup twice, so a single coup reached the cap of 5 where it should
@@ -1427,10 +1434,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 auto coup_res = Operations::execute_coup(state, Player::USSR, cid, che_ops, forced);
 
                 // If US influence was removed and this was coup 1, offer coup 2
-                if (coup_res.opp_inf_removed > 0 && state.ctx().temp_cards[0] == 0) {
+                if (coup_res.opp_inf_removed > 0 && state.ctx().event_stage == 0) {
                     state.ctx().mark_visited(cid);
-                    state.ctx().temp_cards[0] = cid + 1; // Mark stage 2
-                    state.ctx().temp_cards[2] = 0;
+                    state.ctx().event_stage = 1;   // the second coup is now the one on offer
                     state.ctx().decision_player = Player::USSR;
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = 1;
@@ -1451,9 +1457,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA || c_info.region == Region::AFRICA) &&
                 !state.ctx().is_visited(cid) &&
                 Operations::can_coup(state, Player::USSR, cid)) {
-                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
-                state.ctx().temp_cards[2] = action.secondary_id;
-                state.ctx().temp_cards[3] = cid;
+                state.ctx().pending_roll = RollType::COUP;
+                state.ctx().roll_target = cid;
+                state.ctx().roll_actor = Player::USSR;
                 state.ctx().decision_player = Player::NONE;
                 state.ctx().decision_type = DecisionType::ROLL_DIE;
                 return false;
@@ -1464,9 +1470,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
         case card_ids::ORTEGA_ELECTED_IN_NICARAGUA: {
             if (state.ctx().decision_type == DecisionType::ROLL_DIE) {   // as Che, above
-                uint8_t target_cid = state.ctx().temp_cards[3];
-                uint8_t forced = (action.primary_id >= 1 && action.primary_id <= 6)
-                                     ? action.primary_id : state.ctx().temp_cards[2];
+                uint8_t target_cid = state.ctx().roll_target;
+                uint8_t forced = action.primary_id;
                 uint8_t ortega_ops = Operations::get_modified_ops(state, 2, Player::USSR);
                 Operations::execute_coup(state, Player::USSR, target_cid, ortega_ops, forced);
                 state.ctx().resolving_card = 0;
@@ -1483,9 +1488,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 if (nic.neighbors[n] == target_cid) { is_adj = true; break; }
             }
             if (is_adj && target_cid < 84 && Operations::can_coup(state, Player::USSR, target_cid)) {
-                state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::COUP);
-                state.ctx().temp_cards[2] = action.secondary_id;
-                state.ctx().temp_cards[3] = target_cid;
+                state.ctx().pending_roll = RollType::COUP;
+                state.ctx().roll_target = target_cid;
+                state.ctx().roll_actor = Player::USSR;
                 state.ctx().decision_player = Player::NONE;
                 state.ctx().decision_type = DecisionType::ROLL_DIE;
                 return false;

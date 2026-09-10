@@ -65,10 +65,13 @@ inline bool trigger_war(GameState& state, uint8_t card_id, Player player, uint8_
         state.ctx().decision_player = Player::NONE;
         state.ctx().decision_type = DecisionType::ROLL_DIE;
         state.ctx().resolving_card = card_id;
-        state.ctx().temp_cards[0] = fixed_target;
-        state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
-        state.ctx().temp_cards[2] = forced_roll;
-        state.ctx().temp_cards[3] = (player == Player::US) ? 1 : 2;
+        state.ctx().pending_roll = RollType::WAR_EVENT;
+        state.ctx().roll_target = fixed_target;
+        state.ctx().roll_actor = player;
+        // `forced_roll` is not stored. A war with a fixed target rolls inside the event with
+        // nothing to choose, so the caller that wants a specific die passes it on the ROLL_DIE
+        // action; see the read below.
+        (void)forced_roll;
         return false;
     }
 
@@ -100,18 +103,17 @@ inline bool handle_war_step(GameState& state, uint8_t card_id, Player p, const M
         if (!is_valid_war_target(state, card_id, p, target)) {
             return false;
         }
-        state.ctx().temp_cards[0] = target;
-        state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::WAR_EVENT);
-        state.ctx().temp_cards[2] = action.secondary_id;
-        state.ctx().temp_cards[3] = (p == Player::US) ? 1 : 2;
+        state.ctx().pending_roll = RollType::WAR_EVENT;
+        state.ctx().roll_target = target;
+        state.ctx().roll_actor = p;
         state.ctx().decision_player = Player::NONE;
         state.ctx().decision_type = DecisionType::ROLL_DIE;
         return false;
     }
 
     if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
-        uint8_t target = state.ctx().temp_cards[0];
-        Player roller = (state.ctx().temp_cards[3] == 1) ? Player::US : ((state.ctx().temp_cards[3] == 2) ? Player::USSR : p);
+        uint8_t target = state.ctx().roll_target;
+        Player roller = (state.ctx().roll_actor != Player::NONE) ? state.ctx().roll_actor : p;
         Player opp = get_opponent(roller);
 
         uint8_t mil_ops = (card_id == card_ids::BRUSH_WAR) ? 3 : 2;
@@ -137,7 +139,7 @@ inline bool handle_war_step(GameState& state, uint8_t card_id, Player p, const M
         }
 
         // 3. Roll Die & Record DieRollRecord
-        uint8_t forced_roll = (action.primary_id >= 1 && action.primary_id <= 6) ? action.primary_id : state.ctx().temp_cards[2];
+        uint8_t forced_roll = action.primary_id;
         uint8_t roll = (forced_roll >= 1 && forced_roll <= 6) ? forced_roll : Prng::roll_d6(state.rng_state);
         state.last_die_roll = roll;
         bool success = (roll + mod >= threshold);

@@ -546,17 +546,22 @@ NB_MODULE(ts_engine, m) {
         // Influence) from one where it does: a coup or a realignment changes the board
         // between points, so the sequence is itself the decision.
         .def_rw("op_mode", &ts::DecisionContext::op_mode)
-        // Which kind of chance node is pending. The state machine keeps the roll type in
-        // temp_cards[1], but the temp_cards property below is truncated to temp_card_cnt and
-        // the roll type is not counted in it, so it cannot be read that way -- indexing it
-        // raises IndexError at exactly the node this exists for. A caller has to be able to
-        // tell a die roll from the turn's cleanup (RollType::TURN_CLEANUP), which is a chance
-        // node that rolls nothing and is where the pre-cleanup score is still readable.
+        // Which kind of chance node is pending, read straight off the field that holds it.
+        //
+        // This used to reinterpret a card slot, which was only ever a roll type when a roll was
+        // what happened to be staged there. In any frame holding staged cards the same byte is a
+        // *card id*, and ids 1..8 alias exactly onto COUP..TURN_CLEANUP -- so the property
+        // silently answered "Asia Scoring is a coup". Where the id was above 8 it raised
+        // ValueError instead, which is how it was noticed.
+        //
+        // A caller needs this to tell a die roll from the turn's cleanup
+        // (RollType::TURN_CLEANUP), a chance node that rolls nothing and is the last moment the
+        // pre-cleanup score is readable.
         .def_prop_ro(
             "pending_roll_type",
-            [](const ts::DecisionContext& c) {
-                return static_cast<ts::RollType>(c.temp_cards[1]);
-            })
+            [](const ts::DecisionContext& c) { return c.pending_roll; })
+        .def_prop_ro("roll_target", [](const ts::DecisionContext& c) { return c.roll_target; })
+        .def_prop_ro("roll_actor", [](const ts::DecisionContext& c) { return c.roll_actor; })
         // Exposed so a replay can be reconstructed against a log that records only part of a
         // peeked set: Our Man in Tehran prints which cards the US discarded but not which it
         // saw, and this is the buffer the legal-action mask is built from.

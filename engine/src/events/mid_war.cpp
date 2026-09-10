@@ -89,7 +89,7 @@ bool trigger_summit(GameState& state, Player p) noexcept {
     state.ctx().decision_player = Player::NONE;
     state.ctx().decision_type = DecisionType::ROLL_DIE;
     state.ctx().resolving_card = card_ids::SUMMIT;
-    state.ctx().temp_cards[1] = static_cast<uint8_t>(RollType::SUMMIT);
+    state.ctx().pending_roll = RollType::SUMMIT;
     return false;
 }
 

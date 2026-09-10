@@ -1094,14 +1094,14 @@ TEST(MidCardsTest, Card107_Che) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
 
     // Choosing the target opens the roll rather than settling it.
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::COLOMBIA, 6, 0});
+    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::COLOMBIA, 0, 0});
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ASSERT_EQ(state.ctx().decision_player, ts::Player::NONE);
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 2); // nothing yet
 
     // Roll 6 -> coup value: 6 + 3 - 2*1 = 7. Removes 2 US and adds 5 USSR.
-    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0});
+    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
     ASSERT_FALSE(done); // Second coup is offered because US influence was removed
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].us_influence, 0);
     ASSERT_EQ(state.countries[ts::countries::COLOMBIA].ussr_influence, 5);
