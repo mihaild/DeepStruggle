@@ -1767,10 +1767,16 @@ def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
 
     Grain Sales takes a random card from the USSR hand and offers it to the US; the log names
     it ("USSR reveals NATO*"), so the draw is not really a chance node for our purposes.
+
+    The drawn card is the one at PEEKED_TEMP -- being looked at is a location, not a note kept
+    beside one -- so seeding it means putting it there and taking whatever the engine drew back
+    out. There should be exactly one, but the sweep is unconditional so a stale peek from an
+    earlier event cannot survive into this one.
     """
-    if not ts.in_hand_of(state.get_card_location(cid), ts.Player.USSR):
-        state.set_card_location(cid, ts.hand_of(ts.Player.USSR))
-    state.ctx().temp_cards = [cid]
+    for c in range(1, 111):
+        if c != cid and state.get_card_location(c) == ts.CardLocation.PEEKED_TEMP:
+            state.set_card_location(c, ts.hand_of(ts.Player.USSR))
+    state.set_card_location(cid, ts.CardLocation.PEEKED_TEMP)
 
 
 def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) -> None:
@@ -1817,7 +1823,8 @@ def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) ->
 
     for c in peek:
         state.set_card_location(c, ts.CardLocation.PEEKED_TEMP)
-    state.ctx().temp_cards = peek
+    # The peek is exactly the cards at PEEKED_TEMP; the engine reads it from there rather than
+    # from a list handed alongside.
     state.ctx().remaining_steps = len(peek)
 
 

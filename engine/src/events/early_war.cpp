@@ -399,12 +399,9 @@ bool trigger_defectors(GameState& state, Player p) noexcept {
 bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     if (state.turn >= 8) return true; // Cannot be played in Late War
     // Check if US has scoring cards
-    uint8_t score_cards[16];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (in_hand_of(state.card_locations[i], Player::US) && CardData::is_scoring_card(i)) {
-            if (cnt < 16) score_cards[cnt++] = i;
-        }
+        if (in_hand_of(state.card_locations[i], Player::US) && CardData::is_scoring_card(i)) cnt++;
     }
     if (cnt == 0) return true;
 
@@ -414,9 +411,19 @@ bool trigger_cambridge_five(GameState& state, Player p) noexcept {
     state.ctx().remaining_steps = 1;
     state.ctx().allow_early_stop = 0;   // the no-scoring-card case returned above
     state.ctx().resolving_card = card_ids::THE_CAMBRIDGE_FIVE;
-    uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(cnt, state.ctx().temp_cards.size()));
-    for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = score_cards[k];
-    state.ctx().temp_card_cnt = stored_cnt;
+    // The card reveals those scoring cards, so say so in the only place card knowledge lives.
+    // The regions the USSR may then place in are derived from the US hand wherever they are
+    // needed, rather than from a list copied out of it here.
+    //
+    // What this does not record is which scoring cards the US does *not* hold -- the reveal
+    // tells the USSR that too, and a list could have carried it. That is an accepted loss: the
+    // regions on offer are the same either way, and knowledge that lives in card locations
+    // cannot go stale, which a list beside them repeatedly did.
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (in_hand_of(state.card_locations[i], Player::US) && CardData::is_scoring_card(i)) {
+            state.card_locations[i] = revealed(state.card_locations[i]);
+        }
+    }
     return false;
 }
 

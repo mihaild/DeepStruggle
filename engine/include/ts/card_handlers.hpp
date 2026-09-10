@@ -44,6 +44,16 @@ public:
     // being spent *is* Missile Envy.
     enum class Handover : uint8_t { Respect, Ignore };
 
+    // The set of cards Missile Envy may take from `giver`: the non-scoring ones of highest
+    // Ops. A property of that hand, recomputed wherever it is asked -- the trigger, the legal
+    // mask and the validation all use these -- so there is no stored list to fall out of step
+    // with the hand it describes. `highest_takeable_ops` returns 0 when there is nothing to
+    // take. Both skip ctx().resolving_card, since the engine leaves an Ops card in its owner's
+    // hand until the play finishes and the event would otherwise find the card in front of it.
+    static uint8_t highest_takeable_ops(const GameState& state, Player giver) noexcept;
+    static bool missile_envy_may_take(const GameState& state, uint8_t card, Player giver,
+                                      uint8_t best_ops) noexcept;
+
     // Where a card goes once it has been played.
     //
     // One implementation for what used to be eleven copies that had drifted apart. A starred

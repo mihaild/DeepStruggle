@@ -375,8 +375,12 @@ def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
 
 
 def _staged_decisions(max_games: int = 150):
-    """Real positions where a card is staged for the player to move. Reached by play, because
-    ctx.temp_cards is exposed to Python as a copy and cannot be set."""
+    """Positions where a card is being shown to the player who must decide about it.
+
+    Grain Sales is the case: it draws a card out of the USSR hand and asks the US to keep or
+    return it. The card sits at PEEKED_TEMP -- being looked at is a location -- so it is found
+    by looking there rather than in a list kept beside the hand.
+    """
     from bindings.action_encoder import ActionEncoder
 
     rng = np.random.default_rng(11)
@@ -388,10 +392,11 @@ def _staged_decisions(max_games: int = 150):
             if ts.Engine.is_terminal(state) or len(out) >= 5:
                 break
             ctx = state.ctx()
-            if int(ctx.temp_card_cnt) >= 1 and ctx.decision_player != ts.Player.NONE:
-                card = int(ctx.temp_cards[0])
-                if 1 <= card <= 110:
-                    out.append((state.clone(), ctx.decision_player, card))
+            if ctx.decision_player != ts.Player.NONE:
+                peeked = [c for c in range(1, 111)
+                          if state.get_card_location(c) == ts.CardLocation.PEEKED_TEMP]
+                if len(peeked) == 1:
+                    out.append((state.clone(), ctx.decision_player, peeked[0]))
             mask = np.asarray(ActionEncoder.get_legal_mask(state))
             legal = np.flatnonzero(mask)
             if legal.size == 0:
@@ -424,33 +429,33 @@ def test_without_the_flag_a_staged_card_stays_hidden() -> None:
         assert _v22_card(_v22f(state, decider, 0), card, DECK_OR_HIDDEN) == 1.0
 
 
-def test_with_the_flag_a_staged_card_is_visible_to_the_player_deciding() -> None:
+def test_a_card_being_decided_about_is_visible_to_the_decider() -> None:
+    """No flag: the card is at PEEKED_TEMP, which the card block already reads.
+
+    obs_flags::STAGED_CARDS existed only because Grain Sales showed a card without moving it,
+    leaving the US choosing about a card that read as deck-or-hidden. Moving it makes the
+    visibility structural, and the flag has nothing left to do.
+    """
     found = _staged_decisions()
-    assert found
+    assert found, "no position reached where a card is being shown to a decider"
     for state, decider, card in found:
-        obs = _v22f(state, decider, STAGED_CARDS)
+        obs = _v22(state, decider)
         assert _v22_card(obs, card, DECK_OR_HIDDEN) == 0.0, (
-            f"card {card} is staged for {decider} and still reads as deck-or-hidden")
+            f"card {card} is being decided about by {decider} and still reads as "
+            f"deck-or-hidden")
+        assert _v22_card(obs, card, PEEKED) == 1.0, (
+            f"card {card} is at PEEKED_TEMP and should read as peeked")
 
 
-def test_the_flag_does_not_reveal_it_to_the_other_player() -> None:
+def test_it_reads_the_same_to_both_players() -> None:
+    """Grain Sales' draw is public: the USSR watches it leave their hand and the log records it.
+
+    Contrast the hand itself, which stays hidden -- that separation is what the card-location
+    split is for, and it is checked elsewhere in this file.
+    """
     found = _staged_decisions()
     assert found
     for state, decider, card in found:
         other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
-        loc = state.get_card_location(card)
-        if loc == ts.CardLocation.PEEKED_TEMP:
-            continue
-        if ts.in_hand_of(loc, decider) and not ts.known_to_opponent(loc):
-            assert _v22_card(_v22f(state, other, STAGED_CARDS), card, PEEKED) == 0.0
-
-
-def test_the_flag_leaves_a_card_the_decider_already_sees_alone() -> None:
-    """Missile Envy's tie-break stages the giver's own cards; they must keep reading MY_HAND."""
-    found = _staged_decisions()
-    assert found
-    for state, decider, card in found:
-        if ts.in_hand_of(state.get_card_location(card), decider):
-            obs = _v22f(state, decider, STAGED_CARDS)
-            assert _v22_card(obs, card, MY_HAND) == 1.0
-            assert _v22_card(obs, card, PEEKED) == 0.0
+        assert _v22_card(_v22(state, other), card, PEEKED) == 1.0, (
+            f"card {card} was drawn in the open and should read as peeked to both sides")

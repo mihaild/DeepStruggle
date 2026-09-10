@@ -277,6 +277,14 @@ namespace free_action {
     }
 }
 
+// "Ask Not What Your Country Can Do For You" lets the US discard up to a full hand and draw
+// that many replacements. The allowance doubles as the tally: each discard spends one, so what
+// it has been spent down by is how many to draw. Shared so the trigger that sets it and the
+// confirm that reads it cannot disagree about the ceiling.
+namespace ask_not {
+    constexpr uint8_t MAX_DISCARDS = 9;
+}
+
 namespace may_fizzle {
     inline constexpr bool allowed(uint8_t card_id) noexcept {
         return card_id == card_ids::TRUMAN_DOCTRINE ||

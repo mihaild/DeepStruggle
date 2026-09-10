@@ -188,7 +188,69 @@ bool us_leads_on_battlegrounds(const GameState& state) noexcept {
     return us_bgs > ussr_bgs;
 }
 
+// Does a scoring card in the US hand name the region `country` is in?
+//
+// The Cambridge Five reveals the US's scoring cards and lets the USSR place in a region one of
+// them names. Both the legal mask and the validation ask this, and they used to carry separate
+// copies of the same seven-way table over a list of card ids copied out of the hand. The hand
+// is the authority; the reveal is recorded by marking those cards known, not by listing them.
+bool cambridge_five_allows(const GameState& state, uint8_t country) noexcept {
+    if (country >= 84) return false;
+    const auto& c = MapData::get_country(country);
+    for (uint8_t sc = 1; sc <= 110; ++sc) {
+        if (!in_hand_of(state.card_locations[sc], Player::US)) continue;
+        if (!CardData::is_scoring_card(sc)) continue;
+        switch (sc) {
+            case card_ids::ASIA_SCORING:            if (c.region == Region::ASIA) return true; break;
+            case card_ids::EUROPE_SCORING:          if (c.region == Region::EUROPE) return true; break;
+            case card_ids::MIDDLE_EAST_SCORING:     if (c.region == Region::MIDDLE_EAST) return true; break;
+            case card_ids::CENTRAL_AMERICA_SCORING: if (c.region == Region::CENTRAL_AMERICA) return true; break;
+            case card_ids::SOUTH_AMERICA_SCORING:   if (c.region == Region::SOUTH_AMERICA) return true; break;
+            case card_ids::AFRICA_SCORING:          if (c.region == Region::AFRICA) return true; break;
+            case card_ids::SE_ASIA_SCORING:         if (c.in_southeast_asia) return true; break;
+            default: break;
+        }
+    }
+    return false;
+}
+
+// Is any card sitting in `where`? Used where a set of cards is represented by their location
+// rather than by a list kept alongside it.
+bool any_card_at(const GameState& state, CardLocation where) noexcept {
+    for (uint8_t c = 1; c <= 110; ++c) {
+        if (state.card_locations[c] == where) return true;
+    }
+    return false;
+}
+
 } // namespace
+
+// Missile Envy takes the opponent's highest-Ops card, scoring cards excepted. The set it may
+// take is therefore a property of that hand and is recomputed wherever it is needed, so there
+// is no stored list to fall out of step with the hand it describes.
+//
+// `in_play` is the card currently resolving: the engine leaves an Ops card in its owner's hand
+// until the play finishes, so the event can otherwise find the very card in front of it.
+uint8_t CardHandlers::highest_takeable_ops(const GameState& state, Player giver) noexcept {
+    const uint8_t in_play = state.ctx().resolving_card;
+    uint8_t best = 0;
+    for (uint8_t c = 1; c <= 110; ++c) {
+        if (c == in_play || !in_hand_of(state.card_locations[c], giver)) continue;
+        if (CardData::is_scoring_card(c)) continue;
+        const uint8_t ops = CardData::get_card(c).ops;
+        if (ops > best) best = ops;
+    }
+    return best;
+}
+
+bool CardHandlers::missile_envy_may_take(const GameState& state, uint8_t card, Player giver,
+                                         uint8_t best_ops) noexcept {
+    if (best_ops == 0 || card < 1 || card > 110) return false;
+    if (card == state.ctx().resolving_card) return false;
+    if (!in_hand_of(state.card_locations[card], giver)) return false;
+    if (CardData::is_scoring_card(card)) return false;
+    return CardData::get_card(card).ops == best_ops;
+}
 
 bool CardHandlers::event_has_effect(const GameState& state, uint8_t card_id, Player player) noexcept {
     if (!can_trigger_event(state, card_id, player)) return false;
@@ -933,14 +995,15 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             uint8_t chosen_card = action.primary_id;
             if (chosen_card < 1 || chosen_card > 110) return false;
 
-            // Validate chosen_card is in temp_cards
-            bool is_tied = false;
-            for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                if (state.ctx().temp_cards[k] == chosen_card) { is_tied = true; break; }
-            }
-            if (!is_tied && state.ctx().temp_card_cnt > 0) return false;
-
             Player opp = state.ctx().decision_player;
+            // The card must be one Missile Envy could actually take -- highest Ops among the
+            // giver's non-scoring cards. Asked of the hand rather than of a list stored when
+            // the tie was found: the hand is the thing the rule talks about, and a list can
+            // only ever agree with it or be wrong.
+            if (!CardHandlers::missile_envy_may_take(state, chosen_card, opp,
+                                             CardHandlers::highest_takeable_ops(state, opp))) {
+                return false;
+            }
             Player p_player = get_opponent(opp);
             if (!in_hand_of(state.card_locations[chosen_card], opp)) return false;
 
@@ -970,16 +1033,29 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::GRAIN_SALES: {
+            // The drawn card is the one being looked at, so it is the card at PEEKED_TEMP.
+            uint8_t drawn_card = 0;
+            for (uint8_t c = 1; c <= 110; ++c) {
+                if (state.card_locations[c] == CardLocation::PEEKED_TEMP) { drawn_card = c; break; }
+            }
+            if (drawn_card == 0) {
+                // Nothing staged: the event drew nothing, and there is no choice to answer.
+                state.ctx().resolving_card = 0;
+                return true;
+            }
             if (action.primary_id == 0) {
-                // Play drawn card
-                uint8_t drawn_card = state.ctx().temp_cards[0];
+                // Play the drawn card. It must leave PEEKED_TEMP before its Event can fire --
+                // if it is Our Man in Tehran, an event that peeks five cards of its own, a card
+                // still sitting there would be inside its own peek and could discard itself.
                 state.card_locations[drawn_card] = hand_of(Player::US, /*known=*/true);
                 state.ctx().pending_op_card = drawn_card;
                 state.ctx().resolving_card = 0;
                 state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
                 return false;
             } else {
-                // Return card, US conducts 2 Ops
+                // Return it and conduct 2 Ops. It goes back to the hand it came from, marked
+                // known: the US has seen it, and that is exactly what the location records.
+                state.card_locations[drawn_card] = hand_of(Player::USSR, /*known=*/true);
                 state.ctx().pending_op_card = card_ids::GRAIN_SALES;
                 state.ctx().pending_ops_value = Operations::grant_ops(state, 2, Player::US);
                 state.ctx().resolving_card = 0;
@@ -1279,19 +1355,7 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
             uint8_t cid = action.primary_id;
             if (cid < 84) {
-                const auto& c_info = MapData::get_country(cid);
-                bool valid = false;
-                for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                    uint8_t sc = state.ctx().temp_cards[k];
-                    if (sc == card_ids::ASIA_SCORING && c_info.region == Region::ASIA) valid = true;
-                    else if (sc == card_ids::EUROPE_SCORING && c_info.region == Region::EUROPE) valid = true;
-                    else if (sc == card_ids::MIDDLE_EAST_SCORING && c_info.region == Region::MIDDLE_EAST) valid = true;
-                    else if (sc == card_ids::CENTRAL_AMERICA_SCORING && c_info.region == Region::CENTRAL_AMERICA) valid = true;
-                    else if (sc == card_ids::SE_ASIA_SCORING && c_info.in_southeast_asia) valid = true;
-                    else if (sc == card_ids::SOUTH_AMERICA_SCORING && c_info.region == Region::SOUTH_AMERICA) valid = true;
-                    else if (sc == card_ids::AFRICA_SCORING && c_info.region == Region::AFRICA) valid = true;
-                }
-                if (valid) {
+                if (cambridge_five_allows(state, cid)) {
                     state.countries[cid].add_influence(Player::USSR, 1);
                     state.ctx().resolving_card = 0;
                     return true;
@@ -1362,12 +1426,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
 
         case card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU: {
             if (action.is_confirm_done() || action.primary_id == 0 || action.primary_id == 255) {
-                // Discard all staged cards and draw all replacements
-                uint8_t discard_count = state.ctx().temp_card_cnt;
-                for (uint8_t k = 0; k < discard_count; ++k) {
-                    uint8_t c = state.ctx().temp_cards[k];
-                    state.card_locations[c] = CardLocation::DISCARD_PILE;
-                }
+                // Each card was discarded as it was chosen, so how many to draw is what the
+                // allowance has been spent down by -- no list of the cards themselves is kept.
+                uint8_t discard_count = static_cast<uint8_t>(ask_not::MAX_DISCARDS - state.ctx().remaining_steps);
                 for (uint8_t k = 0; k < discard_count; ++k) {
                     uint8_t draw_cards[111];
                     uint8_t draw_cnt = 0;
@@ -1396,16 +1457,12 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
             }
             uint8_t card_id = action.primary_id;
             if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US)) {
-                // Staged, not moved. The card stays in the US hand until the player confirms,
-                // so it keeps reading as theirs; the mask above skips anything already staged.
-                bool already = false;
-                for (uint8_t k = 0; k < state.ctx().temp_card_cnt &&
-                                    k < state.ctx().temp_cards.size(); ++k) {
-                    if (state.ctx().temp_cards[k] == card_id) { already = true; break; }
-                }
-                if (!already && state.ctx().temp_card_cnt < state.ctx().temp_cards.size()) {
-                    state.ctx().temp_cards[state.ctx().temp_card_cnt++] = card_id;
-                }
+                // Discarded as it is chosen. "Already chosen" is then simply "no longer in the
+                // hand", which the mask reads directly -- where a parallel list of the chosen
+                // ids used to say the same thing in a second place, and outlived the decision
+                // it belonged to.
+                state.card_locations[card_id] = CardLocation::DISCARD_PILE;
+                if (state.ctx().remaining_steps > 0) state.ctx().remaining_steps--;
                 return false;
             }
             return false;
@@ -1530,18 +1587,14 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 return true;
             }
             uint8_t chosen_card = action.primary_id;
-            if (chosen_card >= 1 && chosen_card <= 110 && state.card_locations[chosen_card] == CardLocation::PEEKED_TEMP) {
+            if (chosen_card >= 1 && chosen_card <= 110 &&
+                state.card_locations[chosen_card] == CardLocation::PEEKED_TEMP) {
+                // The peek is the set of cards at PEEKED_TEMP, so discarding one removes it
+                // from the set by moving it. A parallel list of the same ids was kept alongside
+                // and shuffled down on every discard; it could only ever agree with the
+                // locations, and the check just above already trusted the locations over it.
                 state.card_locations[chosen_card] = CardLocation::DISCARD_PILE;
-                for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                    if (state.ctx().temp_cards[k] == chosen_card) {
-                        for (uint8_t j = k; j + 1 < state.ctx().temp_card_cnt; ++j) {
-                            state.ctx().temp_cards[j] = state.ctx().temp_cards[j + 1];
-                        }
-                        state.ctx().temp_card_cnt--;
-                        break;
-                    }
-                }
-                if (state.ctx().temp_card_cnt == 0) {
+                if (!any_card_at(state, CardLocation::PEEKED_TEMP)) {
                     state.ctx().resolving_card = 0;
                     return true;
                 }
@@ -1631,16 +1684,7 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     }
                     break;
                 case card_ids::THE_CAMBRIDGE_FIVE:
-                    for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                        uint8_t sc = state.ctx().temp_cards[k];
-                        if (sc == card_ids::ASIA_SCORING && c_info.region == Region::ASIA) mask_out[i] = 1;
-                        else if (sc == card_ids::EUROPE_SCORING && c_info.region == Region::EUROPE) mask_out[i] = 1;
-                        else if (sc == card_ids::MIDDLE_EAST_SCORING && c_info.region == Region::MIDDLE_EAST) mask_out[i] = 1;
-                        else if (sc == card_ids::CENTRAL_AMERICA_SCORING && c_info.region == Region::CENTRAL_AMERICA) mask_out[i] = 1;
-                        else if (sc == card_ids::SE_ASIA_SCORING && c_info.in_southeast_asia) mask_out[i] = 1;
-                        else if (sc == card_ids::SOUTH_AMERICA_SCORING && c_info.region == Region::SOUTH_AMERICA) mask_out[i] = 1;
-                        else if (sc == card_ids::AFRICA_SCORING && c_info.region == Region::AFRICA) mask_out[i] = 1;
-                    }
+                    if (cambridge_five_allows(state, i)) mask_out[i] = 1;
                     break;
                 case card_ids::LATIN_AMERICAN_DEBT_CRISIS:
                     if (c_info.region == Region::SOUTH_AMERICA && state.countries[i].ussr_influence > 0 && !state.ctx().is_visited(i)) {
@@ -1796,17 +1840,20 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 }
                 break;
             case card_ids::OUR_MAN_IN_TEHRAN:
-                for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                    uint8_t c = state.ctx().temp_cards[k];
-                    if (c >= 1 && c <= 110) mask_out[c] = 1;
+                for (uint8_t c = 1; c <= 110; ++c) {
+                    if (state.card_locations[c] == CardLocation::PEEKED_TEMP) mask_out[c] = 1;
                 }
                 break;
-            case card_ids::MISSILE_ENVY:
-                for (uint8_t k = 0; k < state.ctx().temp_card_cnt; ++k) {
-                    uint8_t c = state.ctx().temp_cards[k];
-                    if (c >= 1 && c <= 110) mask_out[c] = 1;
+            case card_ids::MISSILE_ENVY: {
+                // Whichever of the giver's cards Missile Envy could take: the non-scoring ones
+                // of highest Ops. Recomputed rather than stored, exactly as SALT Negotiations
+                // and Star Wars recompute their offer from the discard pile.
+                uint8_t best = CardHandlers::highest_takeable_ops(state, p);
+                for (uint8_t c = 1; c <= 110; ++c) {
+                    if (CardHandlers::missile_envy_may_take(state, c, p, best)) mask_out[c] = 1;
                 }
                 break;
+            }
             case card_ids::ALDRICH_AMES:
                 for (uint8_t i = 1; i <= 110; ++i) {
                     if (in_hand_of(state.card_locations[i], Player::US)) {
@@ -1825,18 +1872,10 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                 }
                 break;
             case card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU:
-                // The cards chosen so far stay in hand until the player confirms, so "already
-                // chosen" is tracked here rather than by moving them out of the hand. Parking
-                // them in PEEKED_TEMP was what stopped a second selection, and it made a
-                // player's own cards read as something they were not.
+                // A chosen card has already gone to the discard pile, so whatever is still in
+                // hand is what may still be chosen.
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (!in_hand_of(state.card_locations[i], p)) continue;
-                    bool already = false;
-                    for (uint8_t k = 0; k < state.ctx().temp_card_cnt &&
-                                        k < state.ctx().temp_cards.size(); ++k) {
-                        if (state.ctx().temp_cards[k] == i) { already = true; break; }
-                    }
-                    if (!already) mask_out[i] = 1;
+                    if (in_hand_of(state.card_locations[i], p)) mask_out[i] = 1;
                 }
                 break;
             default:

@@ -137,36 +137,23 @@ bool trigger_kitchen_debates(GameState& state, Player p) noexcept {
 bool trigger_missile_envy(GameState& state, Player p) noexcept {
     Player opp = get_opponent(p);
 
-    // Find highest ops cards in opp hand
-    uint8_t max_ops = 0;
-    uint8_t tied_cards[111];
+    // What the card may take, asked once and shared with the legal mask and the validation
+    // rather than scanned separately here. The helper skips ctx().resolving_card for the reason
+    // trigger_grain_sales does: an opponent's card played for Operations fires its own event,
+    // so the event can otherwise find the very card in front of it.
+    const uint8_t best_ops = CardHandlers::highest_takeable_ops(state, opp);
     uint8_t tied_cnt = 0;
-
-    // Not the card being played. The engine leaves an Ops card in its owner's hand until the
-    // play finishes, and an opponent's card played for Operations fires its own event -- so
-    // the event can find the very card in front of it. resolving_card is that card; where the
-    // event is fired some other way it is not in anyone's hand and skipping it changes
-    // nothing. See trigger_grain_sales.
-    const uint8_t envy_in_play = state.ctx().resolving_card;
-
+    uint8_t first_tied = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != envy_in_play && in_hand_of(state.card_locations[i], opp)) {
-            if (CardData::is_scoring_card(i)) continue;
-            uint8_t ops = CardData::get_card(i).ops;
-            if (ops > max_ops) {
-                max_ops = ops;
-                tied_cnt = 0;
-                tied_cards[tied_cnt++] = i;
-            } else if (ops == max_ops) {
-                tied_cards[tied_cnt++] = i;
-            }
-        }
+        if (!CardHandlers::missile_envy_may_take(state, i, opp, best_ops)) continue;
+        if (tied_cnt == 0) first_tied = i;
+        tied_cnt++;
     }
 
     if (tied_cnt == 0) return true;
 
     if (tied_cnt == 1) {
-        uint8_t chosen_card = tied_cards[0];
+        uint8_t chosen_card = first_tied;
         // Exchange cards
         // Both halves of the exchange are public: the opponent hands over a named card and
         // receives Missile Envy in return, so each side has seen the other's new card.
@@ -198,10 +185,9 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             return false;
         }
     } else {
-        // Opponent selects which tied card to give
-        uint8_t stored_cnt = static_cast<uint8_t>(std::min<size_t>(tied_cnt, state.ctx().temp_cards.size()));
-        for (uint8_t k = 0; k < stored_cnt; ++k) state.ctx().temp_cards[k] = tied_cards[k];
-        state.ctx().temp_card_cnt = stored_cnt;
+        // Opponent selects which tied card to give. Which cards those are is recomputed from
+        // their hand wherever it is asked -- the mask and the validation both do it -- so the
+        // tie is not written down anywhere it could go stale.
         state.ctx().decision_player = opp;
         state.ctx().decision_type = DecisionType::SELECT_CARD;
         state.ctx().remaining_steps = 1;
@@ -420,8 +406,14 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
 
     uint32_t chosen_idx = Prng::random_index(state.rng_state, cnt);
     uint8_t chosen_card = ussr_cards[chosen_idx];
-    state.ctx().temp_cards[0] = chosen_card;
-    state.ctx().temp_card_cnt = 1;
+    // Drawn out of the USSR hand and shown to the US, which is a location and not a note kept
+    // beside one. PEEKED_TEMP is where the engine already puts a card someone is looking at,
+    // and it is what the observation reads, so the player being asked to keep or return the
+    // card can now see which card it is without a special case.
+    //
+    // Both players know it: the USSR watches it leave their hand, and the log records the
+    // reveal. Whichever way the US answers, the card leaves PEEKED_TEMP in the same step.
+    state.card_locations[chosen_card] = CardLocation::PEEKED_TEMP;
 
     // US chooses: Branch 0 = Play drawn card, Branch 1 = Return card and conduct Ops with 2 Ops
     state.ctx().decision_player = Player::US;
@@ -518,9 +510,8 @@ bool trigger_ask_not(GameState& state, Player p) noexcept {
     // US selects cards to discard: SELECT_CARD with allow_early_stop (CONFIRM_DONE / 0x80)
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
-    state.ctx().remaining_steps = 9;
+    state.ctx().remaining_steps = ask_not::MAX_DISCARDS;
     state.ctx().allow_early_stop = 1;
-    state.ctx().temp_card_cnt = 0;
     state.ctx().resolving_card = card_ids::ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU;
     return false;
 }
@@ -568,7 +559,7 @@ bool trigger_che(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 1;
     state.ctx().allow_early_stop = 1;
-    state.ctx().temp_cards[0] = 0; // Stage 1 indicator
+    state.ctx().event_stage = 0;   // the first of Che's two coups
     state.ctx().resolving_card = card_ids::CHE;
     return false;
 }
@@ -602,9 +593,9 @@ bool trigger_our_man_in_tehran(GameState& state, Player p) noexcept {
         uint8_t drawn_card = draw_pool[chosen_idx];
         draw_pool[chosen_idx] = draw_pool[--draw_cnt];
         state.card_locations[drawn_card] = CardLocation::PEEKED_TEMP;
-        state.ctx().temp_cards[k] = drawn_card;
     }
-    state.ctx().temp_card_cnt = sample_count;
+    // The peek is the set of cards at PEEKED_TEMP. A list of the same ids was kept beside it
+    // and shuffled down on each discard; the handler already trusted the locations over it.
 
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
