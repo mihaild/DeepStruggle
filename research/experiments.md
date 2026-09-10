@@ -2583,3 +2583,37 @@ Grain Sales instead wins the game for the USSR. The model had every piece of the
 picked the wrong order — it can play the tactic when the card is in front of it, and cannot plan
 which card the tactic should be spent on. That is the gap between this and a mediocre human, and
 it is what the P0 probes and P4 (setup / macro-action credit) exist to measure.
+
+### 25.1 Continuing H2 to 240M: +16 Elo, and Wargames finally appearing
+
+Arm H2 resumed from its own 160M state and ran to 240,058,368 steps (5,559s for the leg).
+Same recipe, same seed, weights and optimiser moments restored.
+
+**Strength is flattening.** Pooled over four late snapshots a side, 3,200 games:
+H2 @240M beats H2 @160M **52.2%, +16 Elo**. The previous leg (80M → 160M, a doubling) was
+worth +55; this one is 1.5x the budget and would have been ~+32 at that rate. Against the
+anchor, 89.6% → **93.0%**.
+
+**Game shape, self-play, 1,000 games each:**
+
+| | mean ply | 20 VP | Europe Control | final scoring | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| H2 @160M | 100.9 | 50.9% | 0.0% | 13.2% | 34.2% | 1.7% |
+| H2 @240M | 105.3 | 47.6% | 0.0% | 14.4% | 33.8% | **4.2%** |
+| humans (ITS) | ~119.9 | 41.5% | 1.6% | 29.0% | 11.7% | 14.9% |
+
+The one clear behavioural change is **Wargames, 1.7% → 4.2%** — two and a half times, and the
+first sustained movement on a resource the arms had never used (§25 recorded 0-0.2% at 80M).
+The binned training log agrees: it sits at 2-3% across the whole leg where it was under 1%
+before. DEFCON 1 fell 46% → 37% over the leg in the training log, though self-play at
+temperature 0.1 shows it flat at ~34%, so treat the decline as unconfirmed.
+
+Everything else moved a little in the right direction and remains far off: ply 105 against ~120,
+final scoring 14.4% against 29.0%, DEFCON 1 three times the human rate.
+
+**Europe Control is 0.0% for both arms against 1.6% for humans.** That number could not be
+measured at all before this run — the engine set ±20 VP and GAME_OVER for it, identical to any
+other 20 VP win, so every such game was counted as `20vp`. `effect_bits::EUROPE_CONTROL_WIN`
+makes it visible, and what it shows is that the models never win this way. Winning Europe
+outright is a strategic plan the policy has no representation of, which is consistent with §25's
+finding that it plays tactics and not strategy.
