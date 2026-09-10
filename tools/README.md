@@ -90,41 +90,51 @@ written, and a missing/broken `tensorboard` install only prints a warning). Watc
 
 ### The TensorBoard layout
 
-Three sections, plus two probe groups and the snapshot evaluations:
+Four groups, plus the per-opponent evaluations:
 
 | prefix | what it holds |
 |:---|:---|
-| `progress/` | elapsed time, throughput, and the iteration counter |
+| `progress/` | how fast the run is going: throughput, elapsed time, iteration counter |
 | `internal/` | the optimiser's own view — losses, KL, entropy, clip fraction, explained variance, advantage health. Nothing here says whether the agent *plays* well. |
-| `game/` | what the games look like — win rate per side, draw rate, turns, plies, final score, and the share of games ending each way |
-| `game_won_us/`, `game_won_ussr/` | the same length and ending series over the games each side won |
-| `positions/`, `decisive/` | play quality measured off fixed probe positions and forced decisions rather than off training episodes |
-| `eval/` | win rate against each fixed baseline, at snapshots only |
-
-`internal/` was `train/` + `diagnostics/`, and the ending fractions moved from `endings/` into
-`game/ending_*`, so charts from runs before this change sit under the old names.
+| `endgame/` | what the finished games look like, and the only group with human counterparts: win rate per side, draws, turns, plies, final score, ending mix |
+| `strategy/` | is it playing the board well — empty and uncontrolled battlegrounds at turns 5 and 8, salvageability, forced-decision take rates, and the named blunder rates |
+| `eval/` | win rate against each fixed baseline, at snapshots only. Strength rather than shape, so it sits outside the four. |
 
 **The x-axis is environment steps, not iterations.** Every experiment here is budgeted and
 compared by `--train-steps`, while iteration count depends on `--num-envs` and rollout length —
 so indexing by iteration put two directly comparable arms on different x-axes. `total_steps` is
 therefore no longer a series (it would be the line *y = x*); `progress/iteration` is logged
-instead, and its slope is the steps-per-iteration. Runs logged before this change are indexed by
-iteration and will not line up with newer ones.
+instead, and its slope is the steps-per-iteration.
 
-The per-start-turn series (`game_start{N}/`) are not pre-registered: they exist only under
-mid-game start sampling, which no run uses (`--start-pool-frac` defaults to 0), and enumerating
-them filled 42% of the tag table with series nothing emits. They are derived on demand, so they
-still appear if start sampling is turned back on.
+**Several lines per chart, not several charts.** TensorBoard draws one line per *run* per chart,
+so the pooled series, the per-winner splits and the human references are written as sibling run
+directories under the same tag. `endgame/turn` therefore carries six lines — pooled, games the
+US won, games the USSR won, and a human line for each — instead of occupying six charts. The
+runs are `.` (the run itself), `won_us`, `won_ussr`, `human_ITS`, `human_won_us`,
+`human_won_ussr`. Charts that combine genuinely *different* quantities go through
+`add_scalars` instead: `endgame/win_rate` (US / USSR / draw against their human values),
+`endgame/ending_mix`, and `strategy/battlegrounds_turn8` (empty against uncontrolled).
 
-**Human reference lines.** Every `game/` series with a human counterpart is also emitted, at the
-same tag and step, into a sibling run directory `human_ITS`. TensorBoard draws one line per *run*
-per chart, so pointing it at `<out_dir>/tb` overlays a flat human line on each of those charts
-rather than putting it in a chart of its own. The values come from `ai/itsc_reference.py` —
-44,136 completed games from the ITS Junta results database. Two cautions carried there: the ply
-values are estimates (the rows give the ending turn, not the action round) while the turn values
-are measurements, and `mean_victory_points` / `mean_vp_margin` have no line because ITS does not
-record the final score. DEFCON 1 has a line only on the combined `game/ending_defcon1`, since ITS
-records the outcome without saying whose decision caused it.
+`endgame/turn_distribution` and `endgame/ply_distribution` are histograms rather than scalars:
+a mean of 6.8 turns is either most games ending near turn 7 or a mixture of turn-3 blowups and
+full-length games, and only the second resembles the human corpus.
+
+Human lines come from `ai/itsc_reference.py` — 44,136 completed games from the ITS Junta
+results database. Three things deliberately have no line: `mean_victory_points` and
+`mean_vp_margin` (ITS does not record the final score), the `defcon1_self` / `defcon1_provoked`
+split (ITS records the outcome without the cause, so only the combined `ending_defcon1` can be
+compared), and everything under `strategy/`. The ply references are estimates while the turn
+references are measurements — see `research/metrics.md` §1.5.1.
+
+Not charted, but kept in the JSONL: `total_steps` (it is the axis) and `mean_terminal_utility`
+(exactly `us_win_rate − ussr_win_rate`, both of which are charted). The per-start-turn series
+(`game_start{N}/`) are not pre-registered — they exist only under mid-game start sampling, which
+no run uses, and are derived on demand so they still appear if it is turned back on.
+
+**Cost.** Measured: ~21 µs and ~57 bytes per scalar write. A 160M-step run logs ~2,442 points,
+so one extra series costs 0.05 s and 0.14 MB over an entire run, and a hundred more would cost
+~5 s and ~14 MB against a 10,521-second run. The budget is not the constraint; how many charts
+a person can read is.
 
 Beyond the loss terms, each iteration records `explained_variance` (`1 - Var(G - V) / Var(G)` for
 the win-value head — the primary read on whether the critic is learning), advantage-distribution

@@ -69,6 +69,19 @@ def empty_battlegrounds(state: ts.GameState) -> List[int]:
     return out
 
 
+def uncontrolled_battlegrounds(state: ts.GameState) -> List[int]:
+    """Battlegrounds neither side controls.
+
+    A strictly weaker condition than `empty_battlegrounds` and a different question. An empty
+    battleground is one nobody has touched; an uncontrolled one may be heavily contested and
+    still score for nobody. Both matter: the first says the agent is not showing up, the second
+    says it is showing up and not finishing, and a policy can improve on one while the other
+    stands still.
+    """
+    return [cid for cid in BATTLEGROUNDS
+            if ts.Scoring.get_country_control(state, cid) == ts.Player.NONE]
+
+
 def region_score_net(state: ts.GameState) -> int:
     """US minus USSR if every region were scored now; the swing the board is holding."""
     us, ussr = region_score_sums(state)
@@ -117,6 +130,7 @@ def profile_self_play(
     reach: collections.Counter = collections.Counter()
     salvageable: collections.Counter = collections.Counter()
     empty_bgs: Dict[int, List[int]] = collections.defaultdict(list)
+    unctrl_bgs: Dict[int, List[int]] = collections.defaultdict(list)
     per_bg_empty: collections.Counter = collections.Counter()
     late_samples = 0
     us_scores: Dict[int, List[int]] = collections.defaultdict(list)
@@ -141,6 +155,7 @@ def profile_self_play(
                     salvageable[turn] += 1
                 empty = empty_battlegrounds(state)
                 empty_bgs[turn].append(len(empty))
+                unctrl_bgs[turn].append(len(uncontrolled_battlegrounds(state)))
                 us, ussr = region_score_sums(state)
                 us_scores[turn].append(us)
                 ussr_scores[turn].append(ussr)
@@ -164,6 +179,7 @@ def profile_self_play(
             "salvageable_frac": salvageable[t] / num_games,
             "salvageable_given_reached": salvageable[t] / reach[t] if reach[t] else 0.0,
             "mean_empty_battlegrounds": mean(empty_bgs[t]),
+            "mean_uncontrolled_battlegrounds": mean(unctrl_bgs[t]),
             "mean_us_region_score": mean(us_scores[t]),
             "mean_ussr_region_score": mean(ussr_scores[t]),
             "mean_abs_region_net": mean([abs(v) for v in nets[t]]),
@@ -192,11 +208,15 @@ def scalar_metrics(per_turn: Dict[int, Dict[str, float]], mean_final_turn: float
     def at(turn: int, key: str) -> float:
         return per_turn.get(turn, {}).get(key, 0.0)
 
+    # frac_reaching_turn9 is deliberately absent: game length is measured on every training
+    # iteration by game/mean_ply and the end-turn histogram, over every episode rather than
+    # this probe's sample, so a second sparse copy of the same fact was only another chart.
     return {
         "diag/mean_final_turn": mean_final_turn,
-        "diag/frac_reaching_turn9": at(9, "reached_frac"),
         "diag/empty_battlegrounds_turn8": at(8, "mean_empty_battlegrounds"),
         "diag/empty_battlegrounds_turn5": at(5, "mean_empty_battlegrounds"),
+        "diag/uncontrolled_battlegrounds_turn8": at(8, "mean_uncontrolled_battlegrounds"),
+        "diag/uncontrolled_battlegrounds_turn5": at(5, "mean_uncontrolled_battlegrounds"),
         "diag/salvageable_frac_turn6": at(6, "salvageable_frac"),
         "diag/salvageable_given_reached_turn6": at(6, "salvageable_given_reached"),
     }
@@ -272,6 +292,7 @@ def profile_self_play_batched(
     reach: collections.Counter = collections.Counter()
     salvageable: collections.Counter = collections.Counter()
     empty_bgs: Dict[int, List[int]] = collections.defaultdict(list)
+    unctrl_bgs: Dict[int, List[int]] = collections.defaultdict(list)
     us_scores: Dict[int, List[int]] = collections.defaultdict(list)
     ussr_scores: Dict[int, List[int]] = collections.defaultdict(list)
     nets: Dict[int, List[int]] = collections.defaultdict(list)
@@ -288,11 +309,12 @@ def profile_self_play_batched(
         if not pending[i]:
             pending[i], seen[i] = [], set()
             return
-        for (turn, salv, empty_ids, us, ussr) in pending[i]:
+        for (turn, salv, empty_ids, us, ussr, n_unctrl) in pending[i]:
             reach[turn] += 1
             if salv:
                 salvageable[turn] += 1
             empty_bgs[turn].append(len(empty_ids))
+            unctrl_bgs[turn].append(n_unctrl)
             us_scores[turn].append(us)
             ussr_scores[turn].append(ussr)
             nets[turn].append(us - ussr)
@@ -321,8 +343,9 @@ def profile_self_play_batched(
                     continue
                 seen[i].add(turn)
                 empty = empty_battlegrounds(state)
+                unctrl = uncontrolled_battlegrounds(state)
                 us, ussr = region_score_sums(state)
-                pending[i].append((turn, is_salvageable(state), empty, us, ussr))
+                pending[i].append((turn, is_salvageable(state), empty, us, ussr, len(unctrl)))
 
             obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
             mask_t = torch.from_numpy(np.asarray(masks)).to(device)
@@ -339,11 +362,11 @@ def profile_self_play_batched(
 
     # Envs whose first episode never finished inside max_iters are dropped rather than
     # counted half-played. That is a bounded, symmetric loss, not a length filter.
-    return _assemble(episodes, final_turns, reach, salvageable, empty_bgs,
+    return _assemble(episodes, final_turns, reach, salvageable, empty_bgs, unctrl_bgs,
                      us_scores, ussr_scores, nets, per_bg_empty, late_samples)
 
 
-def _assemble(num_games, final_turns, reach, salvageable, empty_bgs,
+def _assemble(num_games, final_turns, reach, salvageable, empty_bgs, unctrl_bgs,
               us_scores, ussr_scores, nets, per_bg_empty, late_samples) -> Dict[str, Any]:
     def mean(xs) -> float:
         xs = list(xs)
@@ -359,6 +382,7 @@ def _assemble(num_games, final_turns, reach, salvageable, empty_bgs,
             "salvageable_frac": salvageable[t] / started,
             "salvageable_given_reached": salvageable[t] / reach[t] if reach[t] else 0.0,
             "mean_empty_battlegrounds": mean(empty_bgs[t]),
+            "mean_uncontrolled_battlegrounds": mean(unctrl_bgs[t]),
             "mean_us_region_score": mean(us_scores[t]),
             "mean_ussr_region_score": mean(ussr_scores[t]),
             "mean_abs_region_net": mean(abs(v) for v in nets[t]),

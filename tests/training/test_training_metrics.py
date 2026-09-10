@@ -243,9 +243,20 @@ class TestEpisodeSummaries:
             assert stats[f"ending_frac_{key}"] == 0.0
 
     def test_every_summary_key_has_a_tensorboard_tag(self):
+        from ai.training.generic_trainer import POPULATIONS, _TB_SUPPRESSED
+
         stats = summarize_completed_episodes(self._episodes())
         for key in stats:
-            assert key in TB_TAGS, f"{key} would fall back to a misc/ tag"
+            if key in _TB_SUPPRESSED:
+                continue  # deliberately not charted; see the constant for why
+            # A per-winner key shares its pooled chart, written from that population's run,
+            # so it resolves through the base key rather than having a table entry of its own.
+            base = key
+            for suffix, _run in POPULATIONS:
+                if suffix and key.endswith(suffix):
+                    base = key[: -len(suffix)]
+                    break
+            assert base in TB_TAGS, f"{key} would fall back to a misc/ tag"
         assert EPISODE_DEPENDENT_KEYS <= set(stats)
 
 

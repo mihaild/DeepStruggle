@@ -12,7 +12,7 @@ import collections
 import json
 import re
 import argparse
-from typing import List, Optional, Dict, Any, Final, Tuple, Union
+from typing import List, Optional, Dict, Any, Final, Sequence, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -33,7 +33,8 @@ from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
 from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.ts_env import ENDING_REASON_KEYS
-from ai.itsc_reference import ITSC_GAMES, reference_for
+from ai.eval.blunders import RULES as BLUNDER_RULES
+from ai.itsc_reference import ITSC_GAMES, ITSC_REFERENCE, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.engine_config import to_mask as engine_config_to_mask
@@ -79,44 +80,53 @@ TB_TAGS: Dict[str, str] = {
     "oracle_loss": "internal/oracle_loss",
     "distill_loss": "internal/distill_loss",
 
-    # --- game: what the games themselves look like. Every series here has a human counterpart
-    # in ai/itsc_reference.py except episodes_completed and mean_terminal_utility. ----------
-    "episodes_completed": "game/episodes_completed",
-    "us_win_rate": "game/us_win_rate",
-    "ussr_win_rate": "game/ussr_win_rate",
-    "draw_rate": "game/draw_rate",
-    "mean_terminal_utility": "game/mean_terminal_utility",
-    "mean_victory_points": "game/mean_victory_points",
-    "mean_vp_margin": "game/mean_vp_margin",
-    "mean_turn": "game/mean_turn",
-    "median_turn": "game/median_turn",
-    "mean_ply": "game/mean_ply",
-    "median_ply": "game/median_ply",
-    "ending_frac_20vp": "game/ending_20vp",
-    "ending_frac_final_scoring": "game/ending_final_scoring",
-    "ending_frac_wargames": "game/ending_wargames",
-    "ending_frac_held_scoring": "game/ending_held_scoring",
-    "ending_frac_defcon1": "game/ending_defcon1",
-    "ending_frac_defcon1_self": "game/ending_defcon1_self",
-    "ending_frac_defcon1_provoked": "game/ending_defcon1_provoked",
+    # --- endgame: what the games themselves look like, and the only group with human
+    # counterparts. Every chart here is shared by up to six lines -- pooled, the games the US
+    # won, the games the USSR won, and a human line for each -- written from sibling runs.
+    "episodes_completed": "endgame/episodes_completed",
+    "us_win_rate": "endgame/us_win_rate",
+    "ussr_win_rate": "endgame/ussr_win_rate",
+    "draw_rate": "endgame/draw_rate",
+    "mean_victory_points": "endgame/mean_victory_points",
+    "mean_vp_margin": "endgame/mean_vp_margin",
+    "mean_turn": "endgame/turn",
+    "median_turn": "endgame/median_turn",
+    "mean_ply": "endgame/ply",
+    "median_ply": "endgame/median_ply",
+    "ending_frac_20vp": "endgame/ending_20vp",
+    "ending_frac_final_scoring": "endgame/ending_final_scoring",
+    "ending_frac_wargames": "endgame/ending_wargames",
+    "ending_frac_held_scoring": "endgame/ending_held_scoring",
+    "ending_frac_defcon1": "endgame/ending_defcon1",
+    "ending_frac_defcon1_self": "endgame/ending_defcon1_self",
+    "ending_frac_defcon1_provoked": "endgame/ending_defcon1_provoked",
 
-    # --- probe positions and forced decisions: play quality measured off fixed positions
-    # rather than off the training episodes. ------------------------------------------------
-    "diag/mean_final_turn": "positions/mean_final_turn",
-    "diag/frac_reaching_turn9": "positions/frac_reaching_turn9",
-    "diag/empty_battlegrounds_turn8": "positions/empty_battlegrounds_turn8",
-    "diag/empty_battlegrounds_turn5": "positions/empty_battlegrounds_turn5",
-    "diag/salvageable_frac_turn6": "positions/salvageable_frac_turn6",
-    "diag/salvageable_given_reached_turn6": "positions/salvageable_given_reached_turn6",
-    "decisive_win_take_rate": "decisive/win_take_rate",
-    "decisive_loss_avoid_rate": "decisive/loss_avoid_rate",
-    "decisive_win_available": "decisive/win_available",
-    "decisive_loss_avoidable": "decisive/loss_avoidable",
+    # --- strategy: is it playing the board well? Measured off probe games at snapshots, not
+    # off the training rollouts, and none of it has a human counterpart yet.
+    "diag/empty_battlegrounds_turn5": "strategy/empty_battlegrounds_turn5",
+    "diag/empty_battlegrounds_turn8": "strategy/empty_battlegrounds_turn8",
+    "diag/uncontrolled_battlegrounds_turn5": "strategy/uncontrolled_battlegrounds_turn5",
+    "diag/uncontrolled_battlegrounds_turn8": "strategy/uncontrolled_battlegrounds_turn8",
+    "diag/salvageable_frac_turn6": "strategy/salvageable_frac_turn6",
+    "diag/salvageable_given_reached_turn6": "strategy/salvageable_given_reached_turn6",
+    "diag/mean_final_turn": "strategy/probe_mean_final_turn",
+    "decisive_win_take_rate": "strategy/decisive_win_take_rate",
+    "decisive_loss_avoid_rate": "strategy/decisive_loss_avoid_rate",
+    "decisive_win_available": "strategy/decisive_win_available",
+    "decisive_loss_avoidable": "strategy/decisive_loss_avoidable",
 }
 
-#: The metric stems that make up the game section, in the order they should read. Every one of
-#: these also exists per winning side and, when mid-game start sampling is on, per start turn --
-#: which is why the groups below are built from this list rather than written out three times.
+#: Blunder rules from ai/eval/blunders.py, logged as `strategy/blunder_<rule>_rate` plus the
+#: numerator and denominator. A rate with no denominator cannot be compared across runs: a
+#: policy that never held Olympic Games at DEFCON 2 has demonstrated nothing by not misplaying
+#: it, which is why `_chances` is logged beside `_rate`.
+for _rule in BLUNDER_RULES:
+    TB_TAGS[f"blunder_{_rule}_rate"] = f"strategy/blunder_{_rule}_rate"
+    TB_TAGS[f"blunder_{_rule}_count"] = f"strategy/blunder_{_rule}_count"
+    TB_TAGS[f"blunder_{_rule}_chances"] = f"strategy/blunder_{_rule}_chances"
+
+#: The metric stems that make up the endgame section. Each also exists per winning side, and
+#: under mid-game start sampling per start turn.
 GAME_STEMS: Tuple[str, ...] = (
     "episodes_completed",
     "mean_turn", "median_turn", "mean_ply", "median_ply",
@@ -125,17 +135,54 @@ GAME_STEMS: Tuple[str, ...] = (
 
 
 def _game_chart(stem: str) -> str:
-    """Chart name for a game-section stem: `ending_frac_20vp` reads better as `ending_20vp`."""
+    """Chart name for an endgame stem: `ending_frac_20vp` reads better as `ending_20vp`."""
     if stem.startswith("ending_frac_"):
         return "ending_" + stem[len("ending_frac_"):]
     return stem
 
 
-# The per-winner split: the same series over the games each side won. Separate groups rather
-# than a suffix inside `game/`, so the pooled section stays readable instead of tripling.
-for _side in ("us", "ussr"):
-    for _stem in GAME_STEMS:
-        TB_TAGS[f"{_stem}_won_{_side}"] = f"game_won_{_side}/{_game_chart(_stem)}"
+#: Populations that share the endgame charts, as (metric-key suffix, run directory). Each is
+#: written as its own TensorBoard *run* under the same tag, because TensorBoard draws one line
+#: per run per chart -- so `endgame/turn` carries the pooled mean, the mean over games the US
+#: won, the mean over games the USSR won, and a human line for each, in one chart rather than
+#: six. "." is the run's own directory, i.e. the main writer.
+POPULATIONS: Tuple[Tuple[str, str], ...] = (
+    ("", "."),
+    ("_won_us", "won_us"),
+    ("_won_ussr", "won_ussr"),
+)
+
+#: Where each population's human reference line is written. Same tags again, one run each.
+HUMAN_RUNS: Dict[str, str] = {
+    "": "human_ITS",
+    "_won_us": "human_won_us",
+    "_won_ussr": "human_won_ussr",
+}
+
+#: Charts that combine metrics which are *different quantities*, not one quantity over
+#: different populations -- the sibling-run trick cannot express those, so they go through
+#: SummaryWriter.add_scalars. Values are metric keys, or floats for a fixed human line.
+MULTILINE_CHARTS: Dict[str, Dict[str, Union[str, float]]] = {
+    "endgame/win_rate": {
+        "us": "us_win_rate",
+        "ussr": "ussr_win_rate",
+        "draw": "draw_rate",
+        "human_us": ITSC_REFERENCE["us_win_rate"],
+        "human_ussr": ITSC_REFERENCE["ussr_win_rate"],
+        "human_draw": ITSC_REFERENCE["draw_rate"],
+    },
+    "endgame/ending_mix": {
+        "20vp": "ending_frac_20vp",
+        "final_scoring": "ending_frac_final_scoring",
+        "wargames": "ending_frac_wargames",
+        "defcon1": "ending_frac_defcon1",
+        "held_scoring": "ending_frac_held_scoring",
+    },
+    "strategy/battlegrounds_turn8": {
+        "empty": "diag/empty_battlegrounds_turn8",
+        "uncontrolled": "diag/uncontrolled_battlegrounds_turn8",
+    },
+}
 
 # Per-start-turn variants are NOT pre-registered. They exist only when mid-game start sampling
 # is on, which is no run since it was settled negative (--start-pool-frac defaults to 0), and
@@ -180,7 +227,13 @@ def episode_dependent_in(stats: Dict[str, float]) -> frozenset:
 #: Kept in the JSONL but not mirrored to TensorBoard. `total_steps` *is* the x-axis now, so a
 #: chart of it would be the line y = x. Suppressed explicitly rather than left to fall into
 #: misc/, where it reads as a metric someone forgot to name.
-_TB_SUPPRESSED: frozenset = frozenset({"total_steps"})
+_TB_SUPPRESSED: frozenset = frozenset({
+    # The x-axis itself; a chart of it would be the line y = x.
+    "total_steps",
+    # sign(final VP) averaged over episodes, i.e. exactly us_win_rate - ussr_win_rate, both of
+    # which are charted. Kept in the JSONL because older analysis reads it.
+    "mean_terminal_utility",
+})
 
 
 def _tb_tag(key: str) -> str:
@@ -205,21 +258,21 @@ def _tb_tag(key: str) -> str:
     return f"misc/{key}"
 
 
-#: Name of the sibling run directory holding the human reference lines. TensorBoard draws one
-#: line per *run* in each chart, so the only way to get a horizontal marker inside the same chart
-#: as a metric is to emit it as a second run under the same logdir. Pointing tensorboard at
-#: `<out_dir>/tb` therefore shows the run and a flat `human_ITS` line in every chart that has a
-#: human counterpart.
-_REFERENCE_RUN_DIR: Final[str] = "human_ITS"
-
-
 class TensorBoardLogger:
-    """Best-effort TensorBoard writer. Any failure disables it instead of raising."""
+    """Best-effort TensorBoard writer. Any failure disables it instead of raising.
+
+    Charts are shared by several *runs* rather than split into several tags. TensorBoard draws
+    one line per run per chart, so writing the same tag from sibling directories is what puts
+    the pooled series, the per-winner splits and the human references together in one chart --
+    `endgame/turn` carries six lines instead of occupying six charts. `add_scalars` covers the
+    other case, where a chart combines genuinely different quantities (US / USSR / draw rate).
+    """
 
     def __init__(self, log_dir: str, enabled: bool = True) -> None:
         self.log_dir = log_dir
         self.writer: Optional[Any] = None
-        self.reference_writer: Optional[Any] = None
+        #: run directory -> writer, for every population and human reference line.
+        self.side_writers: Dict[str, Any] = {}
         if not enabled:
             return
         if _SUMMARY_WRITER_CLS is None:
@@ -232,21 +285,47 @@ class TensorBoardLogger:
         try:
             os.makedirs(log_dir, exist_ok=True)
             self.writer = _SUMMARY_WRITER_CLS(log_dir=log_dir)
-            ref_dir = os.path.join(log_dir, _REFERENCE_RUN_DIR)
-            os.makedirs(ref_dir, exist_ok=True)
-            self.reference_writer = _SUMMARY_WRITER_CLS(log_dir=ref_dir)
-            print(f"TensorBoard logging enabled -> {log_dir}  (tensorboard --logdir {log_dir})", flush=True)
-            print(f"  human reference lines from {ITSC_GAMES:,} ITS games -> run '{_REFERENCE_RUN_DIR}'", flush=True)
+            for _suffix, run_dir in POPULATIONS:
+                if run_dir != ".":
+                    self.side_writers[run_dir] = self._open(run_dir)
+            for run_dir in HUMAN_RUNS.values():
+                self.side_writers[run_dir] = self._open(run_dir)
+            print(f"TensorBoard logging enabled -> {log_dir}  (tensorboard --logdir {log_dir})",
+                  flush=True)
+            print(f"  lines per chart: pooled + won_us + won_ussr, each against a human "
+                  f"reference from {ITSC_GAMES:,} ITS games", flush=True)
         except Exception as e:
             self.writer = None
-            self.reference_writer = None
-            print(f"Warning: Could not start TensorBoard writer at {log_dir}: {e}. Continuing without it.", flush=True)
+            self.side_writers = {}
+            print(f"Warning: Could not start TensorBoard writer at {log_dir}: {e}. "
+                  f"Continuing without it.", flush=True)
+
+    def _open(self, run_dir: str) -> Any:
+        if _SUMMARY_WRITER_CLS is None:  # unreachable: __init__ returns early without it
+            raise RuntimeError("no SummaryWriter available")
+        path = os.path.join(self.log_dir, run_dir)
+        os.makedirs(path, exist_ok=True)
+        return _SUMMARY_WRITER_CLS(log_dir=path)
 
     @property
     def active(self) -> bool:
         return self.writer is not None
 
-    def log_metrics(self, metrics: Dict[str, Any], step: int, skip_keys: Optional[frozenset[str]] = None) -> None:
+    def _writer_for(self, key: str) -> tuple[Any, str, str]:
+        """(writer, base metric key, population suffix) for a metric key.
+
+        A `_won_us` / `_won_ussr` metric is the same quantity over a subset of the games, so it
+        belongs on the same chart as the pooled one, written from that population's run.
+        """
+        for suffix, run_dir in POPULATIONS:
+            if suffix and key.endswith(suffix):
+                writer = self.side_writers.get(run_dir)
+                if writer is not None:
+                    return writer, key[: -len(suffix)], suffix
+        return self.writer, key, ""
+
+    def log_metrics(self, metrics: Dict[str, Any], step: int,
+                    skip_keys: Optional[frozenset[str]] = None) -> None:
         if self.writer is None:
             return
         try:
@@ -255,16 +334,60 @@ class TensorBoardLogger:
                     continue
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue
-                tag = _tb_tag(key)
-                self.writer.add_scalar(tag, float(value), step)
-                # The human value for this metric, re-emitted at the same step so the flat line
-                # spans exactly the range the run covers rather than stopping at step 0.
+                writer, base, suffix = self._writer_for(key)
+                tag = _tb_tag(base)
+                writer.add_scalar(tag, float(value), step)
+                # The human counterpart for this population, re-emitted at the same step so the
+                # flat line spans exactly the range the run covers rather than stopping at 0.
                 human = reference_for(key)
-                if human is not None and self.reference_writer is not None:
-                    self.reference_writer.add_scalar(tag, float(human), step)
+                human_writer = self.side_writers.get(HUMAN_RUNS.get(suffix, ""))
+                if human is not None and human_writer is not None:
+                    human_writer.add_scalar(tag, float(human), step)
+            self._log_multiline(metrics, step, skip_keys)
         except Exception as e:
-            print(f"Warning: TensorBoard logging failed ({e}); disabling TensorBoard for the rest of the run.", flush=True)
+            print(f"Warning: TensorBoard logging failed ({e}); disabling TensorBoard for the "
+                  f"rest of the run.", flush=True)
             self.writer = None
+
+    def _log_multiline(self, metrics: Dict[str, Any], step: int,
+                       skip_keys: Optional[frozenset[str]]) -> None:
+        """Charts combining different quantities, via add_scalars.
+
+        A chart is emitted only when every one of its metric lines is present and not held
+        back: a partial group would draw some lines and silently omit others, which reads as
+        the missing ones being zero.
+        """
+        if self.writer is None:
+            return
+        for main_tag, lines in MULTILINE_CHARTS.items():
+            values: Dict[str, float] = {}
+            complete = True
+            for label, source in lines.items():
+                if isinstance(source, (int, float)):
+                    values[label] = float(source)
+                    continue
+                if source not in metrics or (skip_keys is not None and source in skip_keys):
+                    complete = False
+                    break
+                values[label] = float(metrics[source])
+            if complete and values:
+                self.writer.add_scalars(main_tag, values, step)
+
+    def log_histogram(self, tag: str, values: Sequence[float], step: int) -> None:
+        """A distribution rather than its mean -- the end-turn spread, chiefly.
+
+        `endgame/turn` says games average 6.8; it cannot say whether that is most games ending
+        near turn 7 or a mixture of turn-3 blowups and full-length games, which is the actual
+        question when comparing against humans.
+        """
+        if self.writer is None or not len(values):
+            return
+        try:
+            import numpy as np
+
+            self.writer.add_histogram(tag, np.asarray(values, dtype=np.float32), step)
+        except Exception:
+            pass
 
     def log_text(self, tag: str, text: str, step: int) -> None:
         if self.writer is None:
@@ -275,9 +398,9 @@ class TensorBoardLogger:
             pass
 
     def flush(self) -> None:
-        if self.reference_writer is not None:
+        for w in self.side_writers.values():
             try:
-                self.reference_writer.flush()
+                w.flush()
             except Exception:
                 pass
         if self.writer is None:
@@ -288,12 +411,12 @@ class TensorBoardLogger:
             pass
 
     def close(self) -> None:
-        if self.reference_writer is not None:
+        for w in self.side_writers.values():
             try:
-                self.reference_writer.close()
+                w.close()
             except Exception:
                 pass
-            self.reference_writer = None
+        self.side_writers = {}
         if self.writer is None:
             return
         try:
@@ -588,6 +711,7 @@ def evaluate_and_log_snapshot(
     arch: str = "v2",
     decisive_games: int = 128,
     position_games: int = 128,
+    blunder_games: int = 32,
     num_baselines: int = 0,
     max_snapshot_opponents: int = 4,
     obs_flags: int = 0,
@@ -617,6 +741,21 @@ def evaluate_and_log_snapshot(
     # these read the board instead. empty_battlegrounds_turn8 is the sharpest -- roughly a
     # quarter of battlegrounds sit untouched from turn 8 on, always the same ones, and the
     # count stops falling rather than slowly improving.
+    # Named mistakes, with their denominators. These ran only in tools/play_match.py before,
+    # so nothing was tracking them during training -- which is where they matter, because a
+    # policy can gain Elo while learning the mistakes better rather than fewer.
+    blunder_metrics: Dict[str, float] = {}
+    try:
+        from ai.eval.blunders import measure_blunders
+
+        counts = measure_blunders(
+            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
+            num_games=blunder_games)
+        blunder_metrics = counts.metrics()
+        print("  blunders:\n" + counts.summary(), flush=True)
+    except Exception as e:
+        print(f"  blunder probe failed ({e}); continuing", flush=True)
+
     position_metrics: Dict[str, float] = {}
     try:
         from ai.eval.position_diagnostics import format_report, profile_self_play_batched
@@ -710,7 +849,7 @@ def evaluate_and_log_snapshot(
             if excess > 0:
                 del opponents[num_baselines:num_baselines + excess]
 
-    return {**decisive_metrics, **position_metrics, **eval_metrics}
+    return {**decisive_metrics, **position_metrics, **blunder_metrics, **eval_metrics}
 
 
 def run_post_training_tournament(
@@ -1302,6 +1441,18 @@ def train_pipeline(
         # Indexed by environment steps, not iteration. Every experiment here is budgeted and
         # compared by --train-steps (metrics.md 6), and iteration count depends on --num-envs
         # and rollout length, so two directly comparable arms would sit on different x-axes.
+        # The end-turn distribution, not just its mean: a mean of 6.8 is either most games
+        # ending near turn 7 or a mixture of turn-3 blowups and full-length games, and only the
+        # second is what the human corpus looks like.
+        _finished = iteration_metrics.get("completed_episodes", [])
+        if _finished:
+            tb.log_histogram("endgame/turn_distribution",
+                             [float(e["turn"]) for e in _finished if "turn" in e],
+                             total_env_steps)
+            tb.log_histogram("endgame/ply_distribution",
+                             [float(e["ply"]) for e in _finished if "ply" in e],
+                             total_env_steps)
+
         tb.log_metrics(
             step_metrics,
             step=total_env_steps,

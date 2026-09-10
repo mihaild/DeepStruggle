@@ -74,5 +74,11 @@ class TestTagMapping:
         assert _tb_tag("something_new") == "misc/something_new"
 
     def test_known_keys_still_map(self) -> None:
-        assert _tb_tag("mean_turn") == "game/mean_turn"
-        assert _tb_tag("ussr_win_rate") == "game/ussr_win_rate"
+        # Four groups: progress / internal / endgame / strategy. mean_turn and mean_ply share
+        # one chart each with their per-winner and human lines, hence the bare chart names.
+        assert _tb_tag("mean_turn") == "endgame/turn"
+        assert _tb_tag("mean_ply") == "endgame/ply"
+        assert _tb_tag("ussr_win_rate") == "endgame/ussr_win_rate"
+        assert _tb_tag("loss") == "internal/loss"
+        assert _tb_tag("diag/uncontrolled_battlegrounds_turn8") == (
+            "strategy/uncontrolled_battlegrounds_turn8")

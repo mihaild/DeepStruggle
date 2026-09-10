@@ -101,12 +101,20 @@ def test_every_reference_key_is_a_metric_the_trainer_emits() -> None:
 
 def test_every_reference_key_has_a_tensorboard_tag() -> None:
     """A reference without a tag lands in misc/ and never shares a chart with its metric."""
-    untagged = sorted(k for k in itsc.ITSC_REFERENCE if k not in TB_TAGS)
+    from ai.training.generic_trainer import POPULATIONS
+
+    def base_of(key: str) -> str:
+        for suffix, _run in POPULATIONS:
+            if suffix and key.endswith(suffix):
+                return key[: -len(suffix)]
+        return key
+
+    untagged = sorted(k for k in itsc.ITSC_REFERENCE if base_of(k) not in TB_TAGS)
     assert not untagged, f"reference keys missing a TB tag: {untagged}"
-    # The reference is emitted under the *same* tag, from a sibling run, which is what puts it
-    # in the same chart.
-    assert _tb_tag("mean_ply") == "game/mean_ply"
-    assert _tb_tag("ending_frac_20vp_won_ussr") == "game_won_ussr/ending_20vp"
+    # Pooled series, per-winner series and human lines all share one chart, written from
+    # sibling runs under the same tag -- that is what puts six lines on `endgame/turn`.
+    assert _tb_tag("mean_ply") == "endgame/ply"
+    assert _tb_tag(base_of("ending_frac_20vp_won_ussr")) == "endgame/ending_20vp"
 
 
 def test_reference_values_are_on_the_right_scales() -> None:

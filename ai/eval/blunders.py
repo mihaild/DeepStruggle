@@ -31,7 +31,7 @@ None of this is fed to the agent. It measures.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 import ts_engine as ts
 
@@ -266,3 +266,65 @@ def check_play(state: ts.GameState, player: ts.Player, card_id: int, mode: str,
         for b in found:
             counts.note_blunder(b)
     return found
+
+
+# --- measuring a policy's blunder rate ----------------------------------------------------
+
+def _drain(state: ts.GameState) -> None:
+    """Resolve pending die rolls, so the policy is only ever asked for real decisions."""
+    while (not ts.Engine.is_terminal(state)
+           and state.ctx().decision_player == ts.Player.NONE
+           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
+
+def measure_blunders(
+    select_action: Callable[[ts.GameState, Any], Optional[int]],
+    num_games: int = 32,
+    base_seed: int = 830_000,
+    max_steps: int = 3000,
+) -> BlunderCounts:
+    """Play games and count the named mistakes, with their denominators.
+
+    `select_action(state, player) -> flat action index`, matching PlayerAgent.select_action, so
+    the caller owns the observation layout rather than this module guessing at it -- a probe
+    that guessed is exactly how position_diagnostics came to report noise for a whole run.
+
+    Single-state rather than batched on purpose: a blunder is defined on the decision, and the
+    rule needs the card, the mode and the hand at the moment of play. That costs seconds per
+    snapshot, and only runs at snapshots.
+
+    The detection is the same path as `tools/lib/self_play.py`: SELECT_PLAY_MODE is where both
+    halves are known -- which card, and what it is being spent on -- and the card is still in
+    its owner's hand there, which the rules read.
+    """
+    counts = BlunderCounts()
+    for i in range(num_games):
+        state = ts.GameState()
+        ts.Engine.init_game(state, base_seed + i)
+        last_card: Dict[str, int] = {}
+        for _ in range(max_steps):
+            _drain(state)
+            if ts.Engine.is_terminal(state):
+                break
+            player = state.ctx().decision_player
+            if player == ts.Player.NONE:
+                player = state.phasing_player
+            action = select_action(state, player)
+            if action is None:
+                break
+            ma = ts.ActionMask.decode_flat_action(state, int(action))
+            side = "US" if player == ts.Player.US else "USSR"
+            dt = int(ma.decision_type)
+            if dt == 1:
+                last_card[side] = int(ma.primary_id)
+            elif dt == 2:
+                mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                card = last_card.get(side, 0)
+                if mode and 1 <= card <= 110:
+                    # Missile Envy forces a card on its recipient, so that play is not theirs.
+                    forced = (int(getattr(state, "forced_card_id", 0)) == card
+                              and getattr(state, "forced_card_player", None) == player)
+                    check_play(state, player, card, mode, forced=forced, counts=counts)
+            ts.Engine.step_flat(state, int(action))
+    return counts
