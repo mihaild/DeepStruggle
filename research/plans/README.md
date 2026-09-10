@@ -3,6 +3,17 @@
 This directory is the **queue**. Each file is one step that has not been run yet. `experiments.md`
 is the **record** of what was run. A step lives in exactly one of the two places at a time.
 
+> **Stale baseline throughout this directory.** Every plan here was written when observation
+> layout **v2.2** was the adopted baseline and arm G's 320M snapshot the strongest checkpoint.
+> Both are gone. v2.2 is retired — its `ctx/temp_card_count` slot counted an array of staged card
+> ids that no longer exists, so the layout cannot be reproduced and **arms F, F2 and G cannot be
+> loaded at all**; a v2.2 checkpoint run against v2.3 would read every input wrong. The current
+> baseline is layout **v2.3** on the corrected engine (the starred-card fix), arms H and H2. Read
+> "v2.2 / arm F recipe / arm G's 320M snapshot" in the plans below as "the current baseline
+> recipe", and re-derive any control number: everything measured on a v2.2 checkpoint is void.
+> `research/metrics.md` §1.5.3 also retires the claim that the corrected engine lengthens games,
+> which two of these plans lean on. See `CLAUDE.md` for the layout table.
+
 ## The current goal
 
 A no-search player at the level of a **mediocre human**: no simple mistakes, basic strategy. In
