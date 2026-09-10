@@ -163,9 +163,34 @@ extracting the step count and sorting on it, and verified to return matched list
   configuration: deals are seeded, but the agents sample, so two identical 6,000-game runs differ
   by ~1.5 points on a matchup (§7.2). Treat that as the noise floor at 1,000 games a pair, not the
   binomial SE, which assumes away exactly this source of variation.
-- **Enable `--auto-advance` freely.** It is outcome-neutral, verified bit-exact under a
-  position-derived policy on the vectorized path (§7.1). It is also a smaller speed win than it
-  looks (3.3% fewer batched steps).
+- **`--auto-advance` is outcome-neutral but not free, and it redefines a training step.**
+  Re-measured on the current engine. Outcomes are identical -- 256 of 256 games end on the same
+  turn, action round, VP, DEFCON and result -- and a game takes **4.2% fewer batched steps**,
+  because forced decisions are resolved inside the engine instead of being handed to the policy.
+
+  The speed is the surprise. `auto_advance_step` runs after *every* action on *every* env and
+  scans for its auto-resolvable cases even when there are none, and that costs more than the
+  round-trips it saves when nothing else is in the loop: engine-only, 512 envs, order
+  alternated, auto-advance is **6.3% slower in wall time** despite the 4.2% fewer steps. Put a
+  real v2.3 forward pass in the loop and it turns around, because the network is most of the
+  cost: **+2.5% per step, 4.2% fewer steps, net +1.8% wall time for the same amount of game**.
+  So it is worth having where a network drives the loop, and a small loss where one does not.
+
+  **The catch for training.** `steps_collected = buffer_size * num_envs`, so a "step" is one
+  decision the policy was *asked about*, and auto-advance removes the forced ones. An 80M-step
+  budget with it on therefore covers ~4.2% more game than the same budget with it off -- about
+  +3 Elo by the budget curve (§20), which is inside the ±16-24 Elo noise floor but is a real
+  shift against every arm measured so far. It belongs in `engine_config` and a fresh baseline,
+  not switched on mid-programme for 1.8%.
+
+  One more caveat on "outcome-neutral": that is per decision stream, verified with a
+  deterministic policy. A *sampling* policy consumes RNG at every decision it is asked about, so
+  removing the forced ones shifts every later draw. Games are then statistically equivalent, not
+  bit-identical -- fine for a tournament, not a basis for reproducing a specific run.
+
+  Current state: training does **not** use it; `tools/tournament.py` defaults it off; five
+  `ai/eval/` probes (dominance_cost, battleground_value, critic_calibration,
+  round_counterfactual, input_ablation) pass `auto_advance=True` on the batch runner.
 - **Measure game length in plies, not turns.** A ply is one player's single opportunity to act
   — one headline, or one action round for one side — numbered continuously from the start of the
   game, so ply 1 is the USSR's turn-1 headline and **154 is a game that played all ten turns
