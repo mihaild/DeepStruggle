@@ -103,17 +103,11 @@ TB_TAGS: Dict[str, str] = {
 
     # --- strategy: is it playing the board well? Measured off probe games at snapshots, not
     # off the training rollouts, and none of it has a human counterpart yet.
-    "diag/empty_battlegrounds_turn5": "strategy/empty_battlegrounds_turn5",
-    "diag/empty_battlegrounds_turn8": "strategy/empty_battlegrounds_turn8",
-    "diag/uncontrolled_battlegrounds_turn5": "strategy/uncontrolled_battlegrounds_turn5",
-    "diag/uncontrolled_battlegrounds_turn8": "strategy/uncontrolled_battlegrounds_turn8",
     "diag/salvageable_frac_turn6": "strategy/salvageable_frac_turn6",
     "diag/salvageable_given_reached_turn6": "strategy/salvageable_given_reached_turn6",
     "diag/mean_final_turn": "strategy/probe_mean_final_turn",
-    "decisive_win_take_rate": "strategy/decisive_win_take_rate",
-    "decisive_loss_avoid_rate": "strategy/decisive_loss_avoid_rate",
-    "decisive_win_available": "strategy/decisive_win_available",
-    "decisive_loss_avoidable": "strategy/decisive_loss_avoidable",
+    "decisive_win_take_rate": "strategy/decisive_win_take",
+    "decisive_loss_avoid_rate": "strategy/decisive_loss_avoid",
 }
 
 #: Blunder rules from ai/eval/blunders.py, logged as `strategy/blunder_<rule>_rate` plus the
@@ -121,9 +115,7 @@ TB_TAGS: Dict[str, str] = {
 #: policy that never held Olympic Games at DEFCON 2 has demonstrated nothing by not misplaying
 #: it, which is why `_chances` is logged beside `_rate`.
 for _rule in BLUNDER_RULES:
-    TB_TAGS[f"blunder_{_rule}_rate"] = f"strategy/blunder_{_rule}_rate"
-    TB_TAGS[f"blunder_{_rule}_count"] = f"strategy/blunder_{_rule}_count"
-    TB_TAGS[f"blunder_{_rule}_chances"] = f"strategy/blunder_{_rule}_chances"
+    TB_TAGS[f"blunder_{_rule}_rate"] = f"strategy/blunder_{_rule}"
 
 #: The metric stems that make up the endgame section. Each also exists per winning side, and
 #: under mid-game start sampling per start turn.
@@ -178,11 +170,34 @@ MULTILINE_CHARTS: Dict[str, Dict[str, Union[str, float]]] = {
         "defcon1": "ending_frac_defcon1",
         "held_scoring": "ending_frac_held_scoring",
     },
-    "strategy/battlegrounds_turn8": {
-        "empty": "diag/empty_battlegrounds_turn8",
-        "uncontrolled": "diag/uncontrolled_battlegrounds_turn8",
+    # All four battleground series on one chart. Empty and uncontrolled answer different
+    # questions -- an empty battleground is one nobody has touched, an uncontrolled one may be
+    # heavily contested and still score for nobody -- and both are worth watching at the point
+    # the board is set (turn 5) and the point it stops moving (turn 8).
+    "strategy/battlegrounds": {
+        "empty_turn5": "diag/empty_battlegrounds_turn5",
+        "empty_turn8": "diag/empty_battlegrounds_turn8",
+        "uncontrolled_turn5": "diag/uncontrolled_battlegrounds_turn5",
+        "uncontrolled_turn8": "diag/uncontrolled_battlegrounds_turn8",
     },
 }
+
+# A rate and its 95% Wilson interval on one chart, instead of three series (rate, numerator,
+# denominator) that the reader has to combine mentally. The band is what makes the rate safe to
+# read alone: it encodes the sample size, so a rule with two chances is visibly a band across
+# most of [0, 1] rather than a confident-looking 0.0.
+for _rule in BLUNDER_RULES:
+    MULTILINE_CHARTS[f"strategy/blunder_{_rule}"] = {
+        "rate": f"blunder_{_rule}_rate",
+        "ci_low": f"blunder_{_rule}_ci_low",
+        "ci_high": f"blunder_{_rule}_ci_high",
+    }
+for _name in ("win_take", "loss_avoid"):
+    MULTILINE_CHARTS[f"strategy/decisive_{_name}"] = {
+        "rate": f"decisive_{_name}_rate",
+        "ci_low": f"decisive_{_name}_ci_low",
+        "ci_high": f"decisive_{_name}_ci_high",
+    }
 
 # Per-start-turn variants are NOT pre-registered. They exist only when mid-game start sampling
 # is on, which is no run since it was settled negative (--start-pool-frac defaults to 0), and
@@ -233,6 +248,26 @@ _TB_SUPPRESSED: frozenset = frozenset({
     # sign(final VP) averaged over episodes, i.e. exactly us_win_rate - ussr_win_rate, both of
     # which are charted. Kept in the JSONL because older analysis reads it.
     "mean_terminal_utility",
+    # Numerators and denominators behind the banded rate charts. The Wilson interval drawn
+    # around each rate already carries the sample size -- two chances give a band across most
+    # of [0, 1], four hundred give a tight one -- so these no longer need a chart each. Still
+    # written to the JSONL.
+    "decisive_win_available",
+    "decisive_loss_avoidable",
+    # Drawn on the combined strategy/battlegrounds chart instead of four charts of their own.
+    "diag/empty_battlegrounds_turn5",
+    "diag/empty_battlegrounds_turn8",
+    "diag/uncontrolled_battlegrounds_turn5",
+    "diag/uncontrolled_battlegrounds_turn8",
+} | {
+    f"blunder_{_r}_{_part}" for _r in BLUNDER_RULES for _part in ("count", "chances")
+} | {
+    # Interval bounds belong to their rate's band chart and nowhere else; written as scalars of
+    # their own they would each open a chart containing one edge of a band.
+    f"blunder_{_r}_{_part}" for _r in BLUNDER_RULES for _part in ("ci_low", "ci_high")
+} | {
+    f"decisive_{_n}_{_part}" for _n in ("win_take", "loss_avoid")
+    for _part in ("ci_low", "ci_high")
 })
 
 

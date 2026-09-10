@@ -80,5 +80,12 @@ class TestTagMapping:
         assert _tb_tag("mean_ply") == "endgame/ply"
         assert _tb_tag("ussr_win_rate") == "endgame/ussr_win_rate"
         assert _tb_tag("loss") == "internal/loss"
-        assert _tb_tag("diag/uncontrolled_battlegrounds_turn8") == (
-            "strategy/uncontrolled_battlegrounds_turn8")
+        # The four battleground series share one chart, so they are suppressed as individual
+        # scalars and reach TensorBoard only as lines of `strategy/battlegrounds`.
+        from ai.training.generic_trainer import MULTILINE_CHARTS, _TB_SUPPRESSED
+
+        assert "diag/uncontrolled_battlegrounds_turn8" in _TB_SUPPRESSED
+        assert set(MULTILINE_CHARTS["strategy/battlegrounds"].values()) == {
+            "diag/empty_battlegrounds_turn5", "diag/empty_battlegrounds_turn8",
+            "diag/uncontrolled_battlegrounds_turn5", "diag/uncontrolled_battlegrounds_turn8"}
+        assert _tb_tag("diag/salvageable_frac_turn6") == "strategy/salvageable_frac_turn6"

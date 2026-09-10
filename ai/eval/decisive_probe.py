@@ -21,6 +21,7 @@ import numpy as np
 import ts_engine as ts
 
 from ai.eval.safety import classify_legal_actions
+from ai.stats import wilson_interval
 
 # (state, player) -> chosen flat action
 ActionFn = Callable[[ts.GameState, ts.Player], int]
@@ -47,9 +48,23 @@ class DecisiveStats:
         return 1.0 - (self.loss_taken / self.loss_avoidable)
 
     def as_metrics(self) -> dict:
+        """Both rates with 95% Wilson intervals, plus the denominators.
+
+        Forced wins are rare -- of the order of a hundred over a probe run against a couple of
+        thousand avoidable losses -- so the two rates are known to very different precision and
+        a bare pair of numbers hides that. The interval carries it.
+        """
+        win_lo, win_hi = wilson_interval(self.win_taken, self.win_available)
+        # Avoiding is not taking: the successes here are the losses *not* walked into.
+        avoided = max(0, self.loss_avoidable - self.loss_taken)
+        loss_lo, loss_hi = wilson_interval(avoided, self.loss_avoidable)
         return {
             "decisive_win_take_rate": self.win_take_rate,
+            "decisive_win_take_ci_low": win_lo,
+            "decisive_win_take_ci_high": win_hi,
             "decisive_loss_avoid_rate": self.loss_avoid_rate,
+            "decisive_loss_avoid_ci_low": loss_lo,
+            "decisive_loss_avoid_ci_high": loss_hi,
             "decisive_win_available": float(self.win_available),
             "decisive_loss_avoidable": float(self.loss_avoidable),
         }

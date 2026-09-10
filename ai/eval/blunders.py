@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 import ts_engine as ts
 
 from ai.eval import dominance
+from ai.stats import wilson_interval
 
 # --- card ids, from engine/include/ts/constants.hpp -------------------------------------------
 DUCK_AND_COVER = 4
@@ -108,11 +109,23 @@ class BlunderCounts:
         return (self.committed.get(rule, 0) / n) if n else 0.0
 
     def metrics(self, prefix: str = "blunder") -> Dict[str, float]:
+        """Rate with a 95% Wilson interval, plus the raw counts.
+
+        The interval is what makes the rate readable on its own: it carries the denominator,
+        so a rule with two chances shows as a band across most of [0, 1] and a rule with four
+        hundred shows as a tight one. `_count` and `_chances` stay in the record for anything
+        that wants the raw numbers, but they no longer need a chart each.
+        """
         out: Dict[str, float] = {}
         for rule in RULES:
+            committed = int(self.committed.get(rule, 0))
+            chances = int(self.opportunities.get(rule, 0))
+            lo, hi = wilson_interval(committed, chances)
             out[f"{prefix}_{rule}_rate"] = self.rate(rule)
-            out[f"{prefix}_{rule}_count"] = float(self.committed.get(rule, 0))
-            out[f"{prefix}_{rule}_chances"] = float(self.opportunities.get(rule, 0))
+            out[f"{prefix}_{rule}_ci_low"] = lo
+            out[f"{prefix}_{rule}_ci_high"] = hi
+            out[f"{prefix}_{rule}_count"] = float(committed)
+            out[f"{prefix}_{rule}_chances"] = float(chances)
         return out
 
     def merge(self, other: "BlunderCounts") -> None:

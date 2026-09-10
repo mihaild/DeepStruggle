@@ -82,11 +82,19 @@ def test_the_probe_scalars_and_the_trainer_tag_table_agree() -> None:
     """
     from ai.eval.position_diagnostics import profile_self_play_batched
     from ai.models.coldwar_net_v2 import create_for_layout
-    from ai.training.generic_trainer import TB_TAGS
+    from ai.training.generic_trainer import MULTILINE_CHARTS, TB_TAGS
 
     produced = set(profile_self_play_batched(
         create_for_layout("v2.3"), num_envs=4, max_iters=80)["scalars"])
-    charted = {k for k in TB_TAGS if k.startswith("diag/")}
+
+    # A key is charted either as a series of its own or as one line of a combined chart -- the
+    # four battleground series share `strategy/battlegrounds` rather than having four charts.
+    on_a_combined_chart = {
+        source for lines in MULTILINE_CHARTS.values() for source in lines.values()
+        if isinstance(source, str)
+    }
+    charted = {k for k in TB_TAGS if k.startswith("diag/")} | {
+        k for k in on_a_combined_chart if k.startswith("diag/")}
 
     assert produced == charted, (
         f"probe scalars and TB tags have drifted apart; "
