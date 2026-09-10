@@ -17,7 +17,17 @@ only with a specific flat-probe result to justify it.
 **Trigger:** head-to-head results between snapshots of one lineage are non-transitive
 (A > B > C > A) or a specific exploit (DEFCON trap, space rush) appears in self-play and
 disappears when the opponent changes. `ideas_and_plans.md` §4. Not before, because self-play
-against the current policy is still gaining ~57 Elo per doubling and nothing has shown cycling.
+on the v2.2 recipe is still gaining with budget (`experiments.md` §24) and nothing has shown
+cycling.
+
+## Layout attribution: which v2.2 change did it, and are the card slots worth anything
+**Trigger:** a future observation decision depends on knowing — e.g. before proposing any v2.3
+to the owner. Two open questions from the log: which of v2.2's changes carried the ~+92 Elo
+(§24 — the decision context is the suspect, the China Card fix is ruled out; isolating it is
+3–4 arms × 2 seeds), and whether v2.1's card-tracking slots do anything at all (§23.2 — three
+budgets showed no benefit; isolating them is a third arm at 2–3 seeds, several GPU-days).
+Attribution, not strength: nothing here changes the recipe, so it stays behind every step that
+might.
 
 ## AIVAT-style evaluation
 **Trigger:** two arms land within ~20 Elo of each other and the decision matters. Value-based
@@ -76,10 +86,12 @@ probe. ~3,000 strong setups are a good prior for a decision with ~1,000 candidat
 first (P0), prior only if learning it from the game fails.
 
 ## The cloud consolidation run
-**Trigger:** the recipe is fixed — no queued step would change it. Then one ~400M-step run of
-the winning configuration on rented GPUs (arm E was still gaining ~57 Elo per budget doubling
-at 240M, so this is worth ~+100 Elo on top of the recipe changes). Spend the budget once, on a
-recipe that has been screened and confirmed on the 4090; never on a screen.
+**Trigger:** the recipe is fixed — no queued step would change it. Then one long run (~400M+
+steps) of the winning configuration on rented GPUs: v2.2 was still gaining at 320M where earlier
+layouts had stopped (`experiments.md` §24), so budget keeps paying on the current recipe — though
+per-leg gains carry ±16 Elo (`metrics.md` §20.6), so the payoff is not extrapolatable to a
+number in advance. Spend the budget once, on a recipe that has been screened and confirmed on
+the 4090; never on a screen.
 
 ## Play-time search as a product
 **Trigger:** the no-search player has reached the mediocre-human bar and the owner wants more.

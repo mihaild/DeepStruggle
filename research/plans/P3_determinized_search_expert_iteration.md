@@ -22,7 +22,7 @@ express?** Then act on the answer:
   measurement and a teacher here, not the product.
 - The game sits in the corner where determinization is legitimate — high disambiguation, high
   leaf correlation (PIMC conditions, Maven; `references.md` §2) — so sampling consistent
-  opponent hands from the v2.1 known-card tracking is the right search, and the belief network
+  opponent hands from the observation's known-card tracking (v2.1+) is the right search, and the belief network
   Ataraxos needed for Stratego is not required.
 - `ai/search/pimcts.py` exists but is *perfect-information*: it sees the opponent's hand, so it
   measures an upper bound with privileged information. It was run once (`experiments.md` §4.4

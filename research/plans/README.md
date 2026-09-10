@@ -32,14 +32,44 @@ is as bad as the anecdotes say — it is the cheapest change aimed at the most v
 P7's conversion is engineering time, not GPU time, and runs alongside P0–P2; its arms take the
 next free slot once positions exist.
 
+## The baseline these arms run against
+
+Observation layout **v2.2** — the decision context in, everything unread out — the default for
+`--arch v2` and worth **~+92 Elo** over v2.1 at matched budget, confirmed on a second seed
+(`experiments.md` §24): the first observation change in the project to clear noise, and it keeps
+gaining at budgets where earlier layouts stopped (arm G: 1957.2 at 320M, beating `dec_turns40`
+84.8%). The strongest checkpoint is arm G's 320M snapshot; the clean baseline *recipe* is arm
+F's (v2.2, `staged_cards` off — the flag is not demonstrated, §24.1). Consequences for this
+queue:
+
+- **The observation is not to be changed without asking** (`CLAUDE.md`). Every step here leaves
+  it alone: P1/P5/P6 change heads, losses and the encoder; P2/P4 change the trace.
+- v2.2's gain came from *information*, not capacity — which supports the ordering here: fix what
+  the network is told (value targets included) before making it bigger (P6 last).
+- Controls predating v2.2 are stale; every control is rerun on the current recipe. A
+  checkpoint's `engine_config` travels in its `metadata.json` and evaluation matches on
+  `(layout, flags)` (§24.2), so old checkpoints stay evaluable but are not controls.
+
 ## Budget rule
 
-An 80M-step arm is ~1.5 h on the 4090; gains are still measurable at 240M (`experiments.md`
-§23). So: **screen** every factor at 2 seeds × 80M (~3 h); **confirm** only the winner of a
-screen at 2 seeds × 240M (~9 h); rate the last four snapshots of a run, not the final one
-(`metrics.md` §20); never compare across budgets. A tournament number is reproducible to
-~1.5 points at 1,000 games, and a rating to ~20 Elo between runs — an arm that lands inside that
-is *neutral*, not *better*. Read `metrics.md` §1 before adding a new instrument.
+An 80M-step arm is ~1.5 h on the 4090, and v2.2 still gains at 320M (`experiments.md` §24). So:
+**screen** every factor at 2 seeds × 80M (~3 h); **confirm** only the winner of a screen at
+2 seeds × 240M (~9 h); never compare across budgets. And read `metrics.md` §20.6–20.7 before
+quoting anything:
+
+- rate **four late snapshots** and compare arms by the **pooled head-to-head over all sixteen
+  snapshot pairings**; a single-cell comparison cannot resolve below ~50 Elo, which is most
+  effects worth arguing about (§20.7, learned again on `staged_cards`);
+- a continuation seed is worth ~15 Elo and a leg's *gain* carries **±16 Elo** (§20.6) — quote a
+  within-lineage gain with that bar, or not as a trend;
+- never compare Elo across tournaments (~±15 between pools of the same files); within one
+  tournament a direct head-to-head carries ~±12 Elo before any seed effect;
+- every snapshot is now a branch point and `--seed` works on a resume, so paired continuations
+  from one state are cheap — but they still differ by the seed floor, so branching does not
+  substitute for two seeds.
+
+An arm inside these bars is *neutral*, not *better*. Read `metrics.md` §1 before adding a new
+instrument.
 
 ## How to maintain this directory
 

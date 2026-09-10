@@ -26,9 +26,10 @@ experiment log: `oracle_loss_coef = 0.25` and `belief_loss_coef = 0.10` in
 
 ## Change
 
-None to code, if the paths still run on the current layout (v2.1 changed the observation; the
-oracle path consumes `opp_hands` separately, so check it, and check that `forward_all` exists on
-the categorical head from P1). *Decide before running:* the two coefficients — keep the defaults
+None to code, if the paths still run on the current layout (the observation has changed twice
+since these heads were written — v2.1 and then v2.2, `experiments.md` §24; the oracle path
+consumes `opp_hands` separately from the observation, so check it, and check that `forward_all`
+exists on the categorical head from P1). *Decide before running:* the two coefficients — keep the defaults
 for the screen; do not tune on the screen.
 
 Everything else fixed at the current baseline.

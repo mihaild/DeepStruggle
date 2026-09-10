@@ -4,8 +4,11 @@
 **Gate:** the §12.1 perturbation probe (`ai/eval/battleground_value.py`) is *still* flat — the
 value does not respond to Poland's influence changing together with Europe Scoring's status —
 after P1 and P2 have fixed the target. Architecture is last because `experiments.md` §5 found
-capacity is not the bottleneck on v2, and a backbone change on a bad target measures nothing.
-**Needs approval:** none (model only). Observation layout unchanged.
+capacity is not the bottleneck on v2, and §24 confirmed it from the other side: the one +90 Elo
+jump in the project came from telling the same network more (layout v2.2), not from making it
+bigger. A backbone change on a bad target measures nothing.
+**Needs approval:** none (model only). The observation layout is unchanged — this re-encodes
+the same floats, which is what keeps it out of the `CLAUDE.md` observation rule.
 
 ## Goal
 
