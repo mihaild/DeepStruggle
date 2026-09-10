@@ -2498,3 +2498,88 @@ back to per-state extraction when they differ, and `self_play` does the same.
 An earlier attempt at this used a wider layout so the difference would be inferable from the
 weights. That worked and was the wrong trade: it spent 110 floats — a per-card feature — on a
 mechanism that fires for three cards.
+
+---
+
+## 25. Arms H and H2 on the corrected engine — the first model with tactics, and still none with strategy
+
+The first runs after the starred-card fix (a starred card spent for Operations was being deleted
+from the game for 380 of the repo's 389 commits) and the first on observation layout **v2.3**.
+Arm H is 80M steps, seed 20260920; arm H2 is the same recipe on seed 20260921, run to 160M.
+
+**Nothing before this is comparable to it.** The fix changes the decision stream, so every Elo in
+§1–§24 is on a different ladder. v2.2 is retired with its `temp_card_count` slot, so arms F, F2
+and G cannot be re-rated even in principle — arm G's 1957.2 is not a number this can be measured
+against, and reading H2's 1925 as a regression from it would be wrong.
+
+### Elo, on the corrected-engine ladder
+
+7 players, 500 games a side per pair, 21,000 games, Bradley-Terry MLE anchored on HeuristicBot at
+1500 (a rule-based bot, and so the same player on any engine):
+
+| model | Elo | vs HeuristicBot |
+|:---|---:|---:|
+| **H2 @160M** | **1925.4** | 89.2% |
+| H2 @80M | 1872.1 | 87.3% |
+| H @80M | 1867.4 | 89.2% |
+| arm E (v2.1, 80M, pre-fix) | 1763.2 | 84.3% |
+| arm D (legacy, 80M, pre-fix) | 1739.7 | 82.5% |
+| HeuristicBot | 1500.0 | — |
+| RandomBot | 866.1 | 2.6% |
+
+**The seed is worth nothing measurable.** H2 @80M and H @80M differ by 4.7 Elo, and their direct
+matchup is 50.8% — matching an independent pooled measurement over four late snapshots a side and
+all 16 pairings (50.4%, +3 Elo). A clean replication, which is what a second seed was for.
+
+**The budget is worth ~+55 Elo per doubling here**: 1867/1872 at 80M to 1925 at 160M, confirmed
+twice by direct matchup (H2@160M beats H@80M 59.7%, and its own 80M self 60.9%).
+
+**Game *shape* does not replicate, and that retires a claim.** H2 lands on the pre-fix arms D and
+E, not on H — 98.6 plies against H's 107.0, 9.6% final scoring against 15.7%, a wider gap than H
+had over D and E. The earlier reading that the corrected engine lengthens games came from H alone
+and does not survive its own replicate. The fix is still correct — it is a rules bug either way —
+but H was not evidence that it changed play. Details in [`metrics.md`](metrics.md) §1.5.3.
+
+### Tactics, for the first time
+
+H2 @160M is the first model here that does something a human would recognise as a *tactic*: it
+uses **UN Intervention to defuse an opponent-associated card and keep its Operations**. Across
+five self-play games it played UN Intervention ten times, every one of them on an opponent card —
+and in `h2_160M_selfplay_20260401`, turn 7 AR1, the USSR ran **Grain Sales to Soviets** through it
+and couped with the Ops. Grain Sales is one of the DEFCON-suicide cards for the USSR
+(`ai/eval/blunders.py`); playing it through UN Intervention is exactly the right handling of it,
+and no earlier arm did this.
+
+The blunder counters agree that the crude mistakes are gone: Olympic Games at DEFCON 2 fired 0 of
+23 opportunities across the five games, and DEFCON-suicide-with-an-alternative 3 of 108 (2.8%).
+
+### No strategy
+
+**Battlegrounds stay empty, and the same ones every game.** Measured on 60 live self-play games
+from the 160M snapshot, mean battlegrounds still completely untouched at the start of each turn:
+
+| turn | 1 | 3 | 5 | 6 | 7 | 8 | 9 | 10 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|
+| empty of 29 | 20.0 | 14.6 | 10.9 | 8.7 | 7.4 | **6.2** | 5.7 | 5.2 |
+
+Of the 33 games that reached turn 8, **Saudi Arabia was empty in all 33**, India in 30, Algeria in
+27. This is the §12 finding unchanged: the model does not contest a battleground it has no
+influence adjacent to, and the same countries are conceded every game.
+
+*(These are direct measurements. The trainer's own `diag/empty_battlegrounds_turn8` reports 0.0
+for the whole run while `diag/mean_final_turn` reports 1–2 against an actual mean turn of 6.8 —
+that probe is measuring something other than what it claims and should not be read. Filed as a
+P0 item.)*
+
+**And it cannot sequence a turn.** `h2_160M_selfplay_20260405`, turn 10, USSR to play, holding
+both Tear Down this Wall and Grain Sales — two US cards — plus UN Intervention:
+
+- AR3: spends **UN Intervention on Tear Down this Wall**, taking the Ops for influence.
+- AR7: plays **Grain Sales to Soviets** raw, `EVENT_FIRST`, handing the US the event.
+- The US coups Cuba on the same action round; DEFCON hits 1 and the USSR loses, +20 US.
+
+The owner's read of the position: spacing Tear Down this Wall and holding UN Intervention for
+Grain Sales instead wins the game for the USSR. The model had every piece of the right line and
+picked the wrong order — it can play the tactic when the card is in front of it, and cannot plan
+which card the tactic should be spent on. That is the gap between this and a mediocre human, and
+it is what the P0 probes and P4 (setup / macro-action credit) exist to measure.

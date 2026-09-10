@@ -228,6 +228,19 @@ The 119, classified from the terminal position the converter now records (`final
 67.2% of finished human games play all ten turns out. 20 of the 119 contain an AR8, which the
 ply scheme counts at its nominal 16 and so under-counts by 2 apiece.
 
+### 1.4.1 The position-diagnostics probe is reporting nonsense
+
+`diag/mean_final_turn` reads 1-2 across the whole of arm H2 while the run's actual mean terminal
+turn is ~6.8; `diag/frac_reaching_turn9` reads 0.0 throughout, and `diag/empty_battlegrounds_turn8`
+reads 0.0 -- which would mean every battleground is contested by turn 8. Walking 60 live self-play
+games from the same checkpoint gives **6.15 of 29 battlegrounds still completely untouched** at
+turn 8, with Saudi Arabia empty in 33 of the 33 games that got there, India in 30, Algeria in 27.
+
+So the probe is not measuring what its tag says, and every `positions/` series is currently
+uninterpretable. The direct measurement is the one to trust until this is fixed; do not read
+`positions/` in TensorBoard meanwhile. Not diagnosed here beyond establishing that it is wrong --
+P0 already owns rebuilding these instruments.
+
 ### 1.5.3 Game shape varies between seeds by as much as it varies between arms
 
 Arm H2 is arm H's configuration on a second seed (20260921, v2.3, corrected engine). At an equal
