@@ -1161,6 +1161,14 @@ def train_pipeline(
         "decisiveness_turns": decisiveness_turns,
         "snapshot_interval_seconds": snapshot_interval_seconds,
         "num_envs": num_envs,
+        # The hyperparameters that distinguish one arm from another. Without these an ablation
+        # is indistinguishable from its control in the record: arm I (--eta 0, the NashPG KL
+        # penalty off) wrote metadata identical to arm H2's apart from the description, and the
+        # description is prose nobody can filter on.
+        "train_steps": train_steps,
+        "eta": eta,
+        "ent_coef": entropy_coef,
+        "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
     }
     with open(metadata_path, "w", encoding="utf-8") as f:
