@@ -55,7 +55,7 @@ def generate_self_play_replay(
 
     # The observation layout the model was trained for, read off the model. Left to the default
     # this extracted the 4,293-wide legacy block for every model, and a network reads fixed slices
-    # -- so a v2.1 or v2.2 policy was silently handed the wrong regions and played accordingly,
+    # -- so a v2.1 or v2.3 policy was silently handed the wrong regions and played accordingly,
     # without raising. Every self-play replay generated for a non-legacy checkpoint before this
     # was produced by a model reading scrambled input.
     # Flags come from the checkpoint's run metadata when a path was given; a model object
@@ -64,11 +64,11 @@ def generate_self_play_replay(
     _obs_width = int(getattr(active_model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
     obs_layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                   int(ts.OBS_SIZE_V21): "v2.1",
-                  int(ts.OBS_SIZE_V22): "v2.2"}.get(_obs_width)
+                  int(ts.OBS_SIZE_V23): "v2.3"}.get(_obs_width)
     if obs_layout is None:
         raise ValueError(
             f"model expects an observation of width {_obs_width}, which matches no known layout "
-            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V22} v2.2)")
+            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V23} v2.3)")
 
     gid = game_id
     if not gid:

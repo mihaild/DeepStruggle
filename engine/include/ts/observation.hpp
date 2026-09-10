@@ -18,25 +18,25 @@ public:
     static void extract_v21(const GameState& state, Player perspective,
                            ObservationBufferV21* out_buf) noexcept;
 
-    // Layout v2.2: v2.1 plus the decision context, minus the blocks nothing read.
+    // Layout v2.3: v2.1 plus the decision context, minus the blocks nothing read.
     //
     // Built on top of `extract_v21` for the same reason it is built on `extract` -- the sections
-    // that are meant to be identical are identical by construction. What v2.2 adds is a card
+    // that are meant to be identical are identical by construction. What v2.3 adds is a card
     // feature marking the card currently being played, and twenty global scalars describing the
     // decision being asked. What it drops is turn_aggregates and active_player, which the network
     // never sliced.
     // `flags` is a bitmask of obs_flags. Defaults to none, so a caller that does not know what
     // a checkpoint was trained under gets the original behaviour rather than the newest.
-    static void extract_v22(const GameState& state, Player perspective,
-                           ObservationBufferV22* out_buf,
+    static void extract_v23(const GameState& state, Player perspective,
+                           ObservationBufferV23* out_buf,
                            uint32_t flags = obs_flags::NONE) noexcept;
 };
 
 void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept;
 void extract_observation_v21(const GameState& state, Player perspective,
                             ObservationBufferV21* out_buf) noexcept;
-void extract_observation_v22(const GameState& state, Player perspective,
-                            ObservationBufferV22* out_buf,
+void extract_observation_v23(const GameState& state, Player perspective,
+                            ObservationBufferV23* out_buf,
                             uint32_t flags = obs_flags::NONE) noexcept;
 
 } // namespace ts

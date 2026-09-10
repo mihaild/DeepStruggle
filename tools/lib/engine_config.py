@@ -18,6 +18,13 @@ from typing import Dict
 import ts_engine as ts
 
 #: Flag name -> bit. The name is what appears in metadata.json; the bit is what the engine takes.
+#:
+#: `staged_cards` is retired and does nothing. It made a card a decision was *about* visible to
+#: the player deciding, which Grain Sales needed because it showed a card without moving it; the
+#: card now goes to PEEKED_TEMP and reaches the observation through the ordinary location chain,
+#: so there is nothing left to switch on. It stays listed, and the bit stays reserved, because
+#: runs that recorded it by name are still on disk and `to_mask` refuses names it does not know
+#: -- dropping it would turn reading their metadata into an error.
 FLAGS: Dict[str, int] = {
     "staged_cards": int(ts.OBS_FLAG_STAGED_CARDS),
 }

@@ -174,7 +174,7 @@ class NeuralAgent:
         self.obs_size = int(getattr(self.model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
         self.layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
                        int(ts.OBS_SIZE_V21): "v2.1",
-                       int(ts.OBS_SIZE_V22): "v2.2"}.get(self.obs_size, "legacy")
+                       int(ts.OBS_SIZE_V23): "v2.3"}.get(self.obs_size, "legacy")
         # Which engine features the checkpoint trained under. The observation width is identical
         # with a flag on or off, so this cannot be read off the weights and is never guessed --
         # it comes from the run's recorded engine_config, and defaults to none.

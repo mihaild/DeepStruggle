@@ -41,8 +41,8 @@ class Feature:
     note: str = ""
 
 
-def v22_features() -> List[Feature]:
-    """The v2.2 observation, named. Offsets follow `engine/src/observation.cpp`."""
+def v23_features() -> List[Feature]:
+    """The v2.3 observation, named. Offsets follow `engine/src/observation.cpp`."""
     board = 84 * 26
     cards = 110 * 14
     g = board + cards
@@ -84,16 +84,17 @@ def v22_features() -> List[Feature]:
         Feature("ctx/timing_event_first", g + 88, 1),
         Feature("ctx/event_granted_ops", g + 89, 1),
         Feature("ctx/suppress_op_event", g + 90, 1),
-        Feature("ctx/temp_card_count", g + 91, 1),
-        Feature("ctx/headline_stage", g + 92, 1),
-        Feature("ctx/headline_first_mine", g + 93, 1),
-        Feature("ctx/headline_second_mine", g + 94, 1),
-        Feature("ctx/chernobyl_region", g + 95, 6, "one-hot, all zero when not in play"),
+        # v2.2's ctx/temp_card_count was at g + 91; the slot is gone and everything after it
+        # shifts down one.
+        Feature("ctx/headline_stage", g + 91, 1),
+        Feature("ctx/headline_first_mine", g + 92, 1),
+        Feature("ctx/headline_second_mine", g + 93, 1),
+        Feature("ctx/chernobyl_region", g + 94, 6, "one-hot, all zero when not in play"),
     ]
     return feats
 
 
-def collect(num_games: int, seed: int = 4242, layout: str = "v2.2") -> npt.NDArray[np.float32]:
+def collect(num_games: int, seed: int = 4242, layout: str = "v2.3") -> npt.NDArray[np.float32]:
     """Observations from self-play games driven by the legal-action distribution.
 
     Random play reaches turn ~2.7 and would leave every late-game feature constant by accident, so
@@ -155,13 +156,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=4242)
-    ap.add_argument("--layout", default="v2.2", choices=["legacy", "v2.1", "v2.2"],
+    ap.add_argument("--layout", default="v2.3", choices=["legacy", "v2.1", "v2.3"],
                     help="which observation layout to audit")
     a = ap.parse_args()
 
     obs = collect(a.games, a.seed, layout=a.layout)
     print(f"{obs.shape[0]:,} positions from {a.games} games, observation width {obs.shape[1]}\n")
-    rows = audit(obs, v22_features())
+    rows = audit(obs, v23_features())
 
     print(f"{'feature':38} {'width':>6} {'const':>7} {'min':>8} {'max':>8}  note")
     dead: List[str] = []

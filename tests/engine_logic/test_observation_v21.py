@@ -216,7 +216,7 @@ def test_the_batch_runner_defaults_to_legacy() -> None:
 
 def test_runner_rows_match_the_single_state_extractor() -> None:
     """The batched path and the one-off path must agree, in every layout."""
-    for layout in ("legacy", "v2.1", "v2.2"):
+    for layout in ("legacy", "v2.1", "v2.3"):
         runner = ts.VectorizedBatchRunner(3, 555, layout)
         rows = np.asarray(runner.get_observations())
         for i in range(3):
@@ -280,24 +280,25 @@ def test_the_legacy_layout_is_untouched_by_the_china_fix() -> None:
     assert _card_slot(obs, CHINA, MY_HAND, LEGACY_FEATURES) == 0.0
 
 
-# --- v2.2: Europe, the headline, and Chernobyl -------------------------------------------------
+# --- v2.3: Europe, the headline, and Chernobyl -------------------------------------------------
 
-V22_BOARD = 84 * 26
-V22_CARD_F = 14
-V22_GLOBAL = V22_BOARD + 110 * V22_CARD_F
-EUROPE_VP = V22_GLOBAL + 64
-CTX = V22_GLOBAL + 72
-HEADLINE_STAGE, HEADLINE_FIRST_MINE, HEADLINE_SECOND_MINE = CTX + 20, CTX + 21, CTX + 22
-CHERNOBYL_REGION = CTX + 23
+V23_BOARD = 84 * 26
+V23_CARD_F = 14
+V23_GLOBAL = V23_BOARD + 110 * V23_CARD_F
+EUROPE_VP = V23_GLOBAL + 64
+CTX = V23_GLOBAL + 72
+# v2.2 had ctx/temp_card_count at CTX + 19; the slot is gone in v2.3 and these shift down one.
+HEADLINE_STAGE, HEADLINE_FIRST_MINE, HEADLINE_SECOND_MINE = CTX + 19, CTX + 20, CTX + 21
+CHERNOBYL_REGION = CTX + 22
 
 
 def _v22(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.2"), dtype=np.float32)
+    return np.asarray(ts.extract_observation(state, side, layout="v2.3"), dtype=np.float32)
 
 
 def _v22_card(obs: np.ndarray, card: int, slot: int) -> float:
-    """v2.2's board is 84x26, so the module-level _card_slot's 84x28 offset does not apply."""
-    return float(obs[V22_BOARD + (card - 1) * V22_CARD_F + slot])
+    """v2.3's board is 84x26, so the module-level _card_slot's 84x28 offset does not apply."""
+    return float(obs[V23_BOARD + (card - 1) * V23_CARD_F + slot])
 
 
 def _europe() -> list[int]:
@@ -324,7 +325,7 @@ def test_the_other_regions_keep_their_scoring() -> None:
     state = _fresh()
     obs = _v22(state, ts.Player.US)
     for r in range(1, 6):
-        assert -1.0 <= float(obs[V22_GLOBAL + 64 + r]) <= 1.0
+        assert -1.0 <= float(obs[V23_GLOBAL + 64 + r]) <= 1.0
 
 
 def test_a_committed_headline_is_visible_to_its_owner() -> None:
@@ -370,7 +371,7 @@ def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
 # The engine puts a card at PEEKED_TEMP when a decision is *about* that card -- Grain Sales
 # hands one over and asks whether to play it, Star Wars offers one from the discard pile -- and
 # does so without touching card_locations. So the card kept reading DECK_OR_HIDDEN, and the player
-# being asked could not see what they were deciding about. v2.2 shows it in the PEEKED slot, but
+# being asked could not see what they were deciding about. v2.3 shows it in the PEEKED slot, but
 # only to the player whose decision it is, and only where they could not already see it.
 
 
@@ -411,7 +412,7 @@ STAGED_CARDS = 1  # ts.OBS_FLAG_STAGED_CARDS
 
 
 def _v22f(state: ts.GameState, side: ts.Player, flags: int) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.2", flags=flags),
+    return np.asarray(ts.extract_observation(state, side, layout="v2.3", flags=flags),
                       dtype=np.float32)
 
 

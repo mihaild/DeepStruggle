@@ -77,7 +77,7 @@ def main():
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
                              "seed to two arms that differ in one thing, to pair them.")
-    parser.add_argument("--obs-layout", choices=["legacy", "v2.1", "v2.2"], default=None,
+    parser.add_argument("--obs-layout", choices=["legacy", "v2.1", "v2.3"], default=None,
                         help="Observation layout. 'v2.1' is the baseline (3891 wide): it adds\n"
                              "two card slots -- the opponent is known to hold this card, and\n"
                              "this card is not in the game yet -- and drops the 512-float\n"
@@ -199,7 +199,7 @@ def main():
             # defaulting it outright would make a bare `tools/train.py` (which is --arch v4) raise.
             engine_config=engine_config_from_names(args.engine_flag),
             obs_layout=(args.obs_layout if args.obs_layout is not None
-                        else ("v2.2" if args.arch == "v2" else "legacy")),
+                        else ("v2.3" if args.arch == "v2" else "legacy")),
             seed=args.seed,
             resume=args.resume,
             resume_every_snapshot=args.resume_every_snapshot,

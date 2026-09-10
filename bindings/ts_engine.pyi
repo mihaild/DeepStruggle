@@ -748,7 +748,7 @@ def encode_micro_action(arg0: GameState, arg1: MicroAction, /) -> int: ...
 OBS_SIZE_LEGACY: int
 
 OBS_SIZE_V21: int
-OBS_SIZE_V22: int
+OBS_SIZE_V23: int
 OBS_FLAG_STAGED_CARDS: int
 
 def extract_observation(state: GameState, perspective: Player, layout: str = "legacy", flags: int = 0) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...

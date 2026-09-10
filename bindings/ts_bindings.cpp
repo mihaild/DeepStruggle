@@ -782,15 +782,26 @@ NB_MODULE(ts_engine, m) {
     //
     //   "legacy" 4293 -- what every pre-v2.1 checkpoint was trained against; frozen
     //   "v2.1"   3891 -- card tracking in, the dead history block out
-    //   "v2.2"   3825 -- the decision context in, turn_aggregates and active_player out
+    //   "v2.3"   3824 -- the decision context in, turn_aggregates and active_player out
+    //
+    // "v2.2" is refused rather than aliased to v2.3. It is one float wider and its extra slot
+    // cannot be recreated, so silently answering with v2.3 is exactly the same-width,
+    // different-content substitution this table exists to prevent.
     m.def("extract_observation", [](const ts::GameState& state, ts::Player perspective,
                                     const std::string& layout, uint32_t flags) {
         size_t n = 0;
         if (layout == "legacy")     n = ts::OBS_SIZE_LEGACY;
         else if (layout == "v2.1")  n = ts::OBS_SIZE_V21;
-        else if (layout == "v2.2")  n = ts::OBS_SIZE_V22;
+        else if (layout == "v2.3")  n = ts::OBS_SIZE_V23;
+        else if (layout == "v2.2")
+            throw std::invalid_argument(
+                "observation layout 'v2.2' has been retired. Its ctx/temp_card_count slot "
+                "counted an array of staged card ids that no longer exists, so the layout "
+                "cannot be reproduced -- it is 'v2.3' now, one float narrower (3824). A "
+                "checkpoint trained on v2.2 must be retired with it; running it against v2.3 "
+                "would load cleanly and misread every input.");
         else throw std::invalid_argument(
-            "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + layout + "'");
+            "layout must be 'legacy', 'v2.1' or 'v2.3', got '" + layout + "'");
 
         float* data = new float[n];
         if (layout == "legacy") {
@@ -802,8 +813,8 @@ NB_MODULE(ts_engine, m) {
             ts::Observation::extract_v21(state, perspective, &buf);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         } else {
-            ts::ObservationBufferV22 buf;
-            ts::Observation::extract_v22(state, perspective, &buf, flags);
+            ts::ObservationBufferV23 buf;
+            ts::Observation::extract_v23(state, perspective, &buf, flags);
             std::memcpy(data, reinterpret_cast<const float*>(&buf), n * sizeof(float));
         }
         size_t shape[1] = { n };
@@ -816,7 +827,7 @@ NB_MODULE(ts_engine, m) {
 
     m.attr("OBS_SIZE_LEGACY") = static_cast<int>(ts::OBS_SIZE_LEGACY);
     m.attr("OBS_SIZE_V21") = static_cast<int>(ts::OBS_SIZE_V21);
-    m.attr("OBS_SIZE_V22") = static_cast<int>(ts::OBS_SIZE_V22);
+    m.attr("OBS_SIZE_V23") = static_cast<int>(ts::OBS_SIZE_V23);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
@@ -845,9 +856,16 @@ NB_MODULE(ts_engine, m) {
         static size_t width_of(const std::string& l) {
             if (l == "legacy") return ts::OBS_SIZE_LEGACY;
             if (l == "v2.1")   return ts::OBS_SIZE_V21;
-            if (l == "v2.2")   return ts::OBS_SIZE_V22;
+            if (l == "v2.3")   return ts::OBS_SIZE_V23;
+            if (l == "v2.2")
             throw std::invalid_argument(
-                "layout must be 'legacy', 'v2.1' or 'v2.2', got '" + l + "'");
+                "observation layout 'v2.2' has been retired. Its ctx/temp_card_count slot "
+                "counted an array of staged card ids that no longer exists, so the layout "
+                "cannot be reproduced -- it is 'v2.3' now, one float narrower (3824). A "
+                "checkpoint trained on v2.2 must be retired with it; running it against v2.3 "
+                "would load cleanly and misread every input.");
+            throw std::invalid_argument(
+                "layout must be 'legacy', 'v2.1' or 'v2.3', got '" + l + "'");
         }
 
         VectorizedBatchRunner(size_t n, uint64_t base_seed, const std::string& l, uint32_t fl)
@@ -882,9 +900,9 @@ NB_MODULE(ts_engine, m) {
                 ts::Observation::extract(states[idx], p, &ob);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
-            } else if (layout == "v2.2") {
-                ts::ObservationBufferV22 ob;
-                ts::Observation::extract_v22(states[idx], p, &ob, obs_flags_value);
+            } else if (layout == "v2.3") {
+                ts::ObservationBufferV23 ob;
+                ts::Observation::extract_v23(states[idx], p, &ob, obs_flags_value);
                 std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                             obs_width * sizeof(float));
             } else {

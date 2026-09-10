@@ -110,13 +110,13 @@ class ColdWarNetV2(nn.Module):
         # nowhere -- so with use_history=False both the branch that encodes it and its share of
         # the fusion trunk go away, and the observation is that much narrower.
         self.use_history = bool(use_history)
-        # 76 globals in legacy and v2.1; 96 in v2.2, which appends the decision context --
+        # 76 globals in legacy and v2.1; 96 in v2.3, which appends the decision context --
         # decision type, op mode, points remaining, the per-country cap, the timing branch.
         self.GLOBAL_SIZE = int(global_features)
-        # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.2 drops both:
+        # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.3 drops both:
         # the forward pass never sliced them, so of the 33 floats not one reached the network.
         self.has_tail = bool(has_tail)
-        # 28 in legacy and v2.1; 26 in v2.2, which drops the two per-country realignment
+        # 28 in legacy and v2.1; 26 in v2.3, which drops the two per-country realignment
         # legality features -- can_realign differs from can_coup only under The Reformer.
         self.board_features = int(board_features)
         self.BOARD_SIZE = 84 * self.board_features
@@ -377,7 +377,7 @@ class LayoutSpec(TypedDict):
 LAYOUTS: dict[str, LayoutSpec] = {
     "legacy": {"card_features": 12, "global_features": 76, "board_features": 28, "use_history": True,  "has_tail": True},
     "v2.1":   {"card_features": 13, "global_features": 76, "board_features": 28, "use_history": False, "has_tail": True},
-    "v2.2":   {"card_features": 14, "global_features": 101, "board_features": 26, "use_history": False, "has_tail": False},
+    "v2.3":   {"card_features": 14, "global_features": 100, "board_features": 26, "use_history": False, "has_tail": False},
 }
 
 

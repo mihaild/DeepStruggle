@@ -1,7 +1,7 @@
 """Every layout can actually run the network, end to end from the engine.
 
 Checking that a model's TOTAL_OBS_SIZE equals the engine's width is not the same as checking the
-model runs: v2.2 matched on width and still could not do a forward pass, because the board reshape
+model runs: v2.3 matched on width and still could not do a forward pass, because the board reshape
 was hardcoded to 84x28 while its board block is 84x26. Widths agreed, `layout_of` round-tripped,
 629 tests passed, and the layout could not have trained a single step.
 
@@ -29,7 +29,7 @@ def _state() -> ts.GameState:
 
 @pytest.mark.parametrize("layout", LAYOUT_NAMES)
 def test_the_engine_width_and_the_model_width_agree(layout: str) -> None:
-    want = {"legacy": ts.OBS_SIZE_LEGACY, "v2.1": ts.OBS_SIZE_V21, "v2.2": ts.OBS_SIZE_V22}[layout]
+    want = {"legacy": ts.OBS_SIZE_LEGACY, "v2.1": ts.OBS_SIZE_V21, "v2.3": ts.OBS_SIZE_V23}[layout]
     assert create_for_layout(layout).TOTAL_OBS_SIZE == int(want)
     obs = np.asarray(ts.extract_observation(_state(), ts.Player.USSR, layout=layout))
     assert obs.shape[0] == int(want)

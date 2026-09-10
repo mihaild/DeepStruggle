@@ -790,9 +790,9 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    if obs_layout not in ("legacy", "v2.1", "v2.2"):
+    if obs_layout not in ("legacy", "v2.1", "v2.3"):
         raise ValueError(
-            f"obs_layout must be 'legacy', 'v2.1' or 'v2.2', got {obs_layout!r}")
+            f"obs_layout must be 'legacy', 'v2.1' or 'v2.3', got {obs_layout!r}")
     # One decision, read by both the network's input width and the environment's output width.
     # Deriving them separately is how they would come to disagree.
     engine_config = dict(engine_config or {})

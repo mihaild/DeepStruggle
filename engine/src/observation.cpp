@@ -382,28 +382,28 @@ void Observation::extract_v21(const GameState& state, Player perspective,
     }
 }
 
-void Observation::extract_v22(const GameState& state, Player perspective,
-                              ObservationBufferV22* out_buf, uint32_t flags) noexcept {
+void Observation::extract_v23(const GameState& state, Player perspective,
+                              ObservationBufferV23* out_buf, uint32_t flags) noexcept {
     // Built on v2.1 for the same reason v2.1 is built on legacy: the sections that are supposed
     // to be identical are identical by construction, not by inspection. Only the card block's
     // extra feature and the global block's extra twenty are v2.2's own work.
     ObservationBufferV21 v21;
     Observation::extract_v21(state, perspective, &v21);
 
-    std::memset(out_buf, 0, sizeof(ObservationBufferV22));
+    std::memset(out_buf, 0, sizeof(ObservationBufferV23));
 
     // The board is restrided rather than copied: v2.2 drops features 23 and 24 (can_my_realign,
     // can_opp_realign) out of the middle of each country's row, so what follows them shifts down
     // by two. Copied in two pieces per country so the surviving columns keep their meanings.
     for (size_t c = 0; c < 84; ++c) {
         const float* src = &v21.board_features[c * 28];
-        float* dst = &out_buf->board_features[c * V22_BOARD_FEATURES];
+        float* dst = &out_buf->board_features[c * V23_BOARD_FEATURES];
         std::memcpy(dst, src, 23 * sizeof(float));            // 0..22 unchanged
         std::memcpy(dst + 23, src + 25, 3 * sizeof(float));   // 25..27 -> 23..25
     }
     std::memcpy(out_buf->global_features, v21.global_features, sizeof(v21.global_features));
     // turn_aggregates and active_player are deliberately not carried over; see
-    // ObservationBufferV22.
+    // ObservationBufferV23.
 
     // The same perspective resolution the other extractors do; needed here because the headline
     // and region features below are relative to it.
@@ -417,7 +417,7 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     // Card block: v2.1's 13 features per card, restrided to 14, plus the active-card marker.
     const auto& ctx = state.ctx();
     for (size_t i = 0; i < 110; ++i) {
-        std::memcpy(&out_buf->card_features[i * card_slots::V22_FEATURES],
+        std::memcpy(&out_buf->card_features[i * card_slots::V23_FEATURES],
                     &v21.card_features[i * card_slots::V21_FEATURES],
                     card_slots::V21_FEATURES * sizeof(float));
 
@@ -427,7 +427,29 @@ void Observation::extract_v22(const GameState& state, Player perspective,
         // question this feature answers. Without it the network was asked to place a point with
         // no indication of what it was spending.
         const uint8_t card_id = static_cast<uint8_t>(i + 1);
-        bool active = (ctx.resolving_card == card_id) || (ctx.pending_op_card == card_id);
+
+        // Graded across the whole chain, not a flag on the top frame. Events nest -- Missile
+        // Envy takes a card whose Event fires, and that Event can make its opponent discard a
+        // card whose Event fires in turn -- and a model mid-chain could previously see only the
+        // innermost card. Walking ctx_stack costs no extra floats, because the slot is already
+        // one per card.
+        float active = 0.0f;
+        for (size_t d = 0; d <= state.ctx_stack_depth && d < state.ctx_stack.size(); ++d) {
+            const DecisionContext& frame = state.ctx_stack[d];
+            if (frame.resolving_card != card_id && frame.pending_op_card != card_id) continue;
+            active = (d == state.ctx_stack_depth) ? card_slots::ACTIVE_NOW
+                                                  : card_slots::ACTIVE_SUSPENDED;
+            if (d == state.ctx_stack_depth) break;
+        }
+
+        // The card committed to resolve after this one. Both headlines are revealed together and
+        // then resolved in Ops order, so while the first is resolving the second is public and
+        // known to be next -- which the model could see the owner of (HEADLINE_SECOND_MINE) but
+        // not the identity of.
+        if (active == 0.0f && state.headline_stage == 1 &&
+            state.headline_second_card == card_id) {
+            active = card_slots::ACTIVE_NEXT;
+        }
 
         // A card committed to the headline has no branch in the v2.1 chain, so it arrives here as
         // DECK_OR_HIDDEN -- indistinguishable from a card still in the deck. That hides a player's
@@ -440,11 +462,16 @@ void Observation::extract_v22(const GameState& state, Player perspective,
                                : (state.headline_ussr_card == card_id) ? Player::USSR
                                : Player::NONE;
             if (owner != Player::NONE) {
-                float* row = &out_buf->card_features[i * card_slots::V22_FEATURES];
+                float* row = &out_buf->card_features[i * card_slots::V23_FEATURES];
                 for (size_t sl = 0; sl < 8; ++sl) row[sl] = 0.0f;
                 row[(owner == my_player) ? card_slots::MY_HAND
                                          : card_slots::KNOWN_OPPONENT_HAND] = 1.0f;
-                active = true;   // committed to the headline is in play, which is what this means
+                // Committed to the headline is in play. Only raise it -- a card already
+                // resolving must not be demoted to "next".
+                if (active < card_slots::ACTIVE_NOW) {
+                    active = (state.headline_stage == 1 && state.headline_second_card == card_id)
+                        ? card_slots::ACTIVE_NEXT : card_slots::ACTIVE_NOW;
+                }
             }
         }
 
@@ -453,8 +480,7 @@ void Observation::extract_v22(const GameState& state, Player perspective,
         // added to paper over it; the card now goes to PEEKED_TEMP and reaches the PEEKED slot
         // through the ordinary location chain above.
 
-        out_buf->card_features[i * card_slots::V22_FEATURES + card_slots::ACTIVE_CARD] =
-            active ? 1.0f : 0.0f;
+        out_buf->card_features[i * card_slots::V23_FEATURES + card_slots::ACTIVE_CARD] = active;
     }
 
     // Decision context. Every field here is a pure function of the state, so an observation
@@ -480,10 +506,6 @@ void Observation::extract_v22(const GameState& state, Player perspective,
     out_buf->global_features[ctx_slots::TIMING_EVENT_FIRST] = (ctx.timing_branch == 1) ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::EVENT_GRANTED_OPS]  = ctx.event_granted_ops ? 1.0f : 0.0f;
     out_buf->global_features[ctx_slots::SUPPRESS_OP_EVENT]  = ctx.suppress_op_card_event ? 1.0f : 0.0f;
-    // Nothing counts staged cards any more -- no event stores a list of them. The slot is
-    // written zero rather than left to whatever the buffer held, so v2.2's width and content
-    // stay defined while it lives; the next change drops it and takes the layout to v2.3.
-    out_buf->global_features[ctx_slots::TEMP_CARD_COUNT]    = 0.0f;
 
     // Headline stage and resolution order. Which card resolves first is a mechanic (Space box 4
     // lets a player see the opponent's headline before choosing), and none of this reached the
@@ -513,9 +535,9 @@ void extract_observation_v21(const GameState& state, Player perspective,
     Observation::extract_v21(state, perspective, out_buf);
 }
 
-void extract_observation_v22(const GameState& state, Player perspective,
-                            ObservationBufferV22* out_buf, uint32_t flags) noexcept {
-    Observation::extract_v22(state, perspective, out_buf, flags);
+void extract_observation_v23(const GameState& state, Player perspective,
+                            ObservationBufferV23* out_buf, uint32_t flags) noexcept {
+    Observation::extract_v23(state, perspective, out_buf, flags);
 }
 
 } // namespace ts

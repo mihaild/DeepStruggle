@@ -428,14 +428,14 @@ struct alignas(64) ObservationBufferV21 {
     float active_player;
 };
 
-struct alignas(64) ObservationBufferV22 {
+struct alignas(64) ObservationBufferV23 {
     // 26, not 28: can_my_realign and can_opp_realign are dropped. can_realign is exactly
     // can_coup_or_realign, and can_coup is that plus "The Reformer blocks USSR coups in Europe",
     // so the two pairs are identical outside that one late-war card -- 168 floats for a case that
     // effectively does not arise. can_my_coup / can_opp_coup carry the whole signal.
     float board_features[84 * 26];
-    float card_features[110 * 14];   // v2.1's 13, plus "this is the card being played"
-    float global_features[101];      // v2.1's 72 written ones, plus the 29-float context
+    float card_features[110 * 14];   // v2.1's 13, plus "which card this decision is about"
+    float global_features[100];      // v2.1's 72 written ones, plus the 28-float context
     // No turn_aggregates and no active_player. Twenty of those 32 floats had no writer anywhere
     // in the engine, and ColdWarNetV2 never sliced any of them -- its forward pass stops at the
     // global block -- so the 12 that were written never reached a network either. Which side is
@@ -455,10 +455,19 @@ namespace card_slots {
     constexpr size_t ONGOING              = 5;
     constexpr size_t PEEKED               = 6;
     constexpr size_t NOT_IN_GAME          = 7; // v2.1 only
-    constexpr size_t ACTIVE_CARD          = 13; // v2.2 only: resolving_card or pending_op_card
+    // v2.2 and later. Graded rather than a flag, so one slot answers three questions about the
+    // chain a decision sits in: 1.0 is the card this decision is about, 0.6 a card suspended
+    // below it while that one resolves, and 0.3 the card committed to resolve next -- the
+    // unrevealed second headline, which the model could previously see the *owner* of but not
+    // the card. Magnitudes rather than extra blocks: another 110-wide slot would be empty
+    // almost always, and this one already exists.
+    constexpr size_t ACTIVE_CARD          = 13;
+    constexpr float  ACTIVE_NOW           = 1.0f;
+    constexpr float  ACTIVE_SUSPENDED     = 0.6f;
+    constexpr float  ACTIVE_NEXT          = 0.3f;
     constexpr size_t LEGACY_FEATURES      = 12;
     constexpr size_t V21_FEATURES          = 13;
-    constexpr size_t V22_FEATURES          = 14;
+    constexpr size_t V23_FEATURES          = 14;
     constexpr size_t LEGACY_PROPERTY_BASE = 7;
     constexpr size_t V21_PROPERTY_BASE     = 8;
 }
@@ -469,8 +478,8 @@ namespace card_slots {
 constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
                                  + 16 * 32 + 32 + 1;
 constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
-constexpr size_t OBS_SIZE_V22 = 84 * 26 + 110 * card_slots::V22_FEATURES + 101;
-constexpr size_t V22_BOARD_FEATURES = 26;
+constexpr size_t OBS_SIZE_V23 = 84 * 26 + 110 * card_slots::V23_FEATURES + 100;
+constexpr size_t V23_BOARD_FEATURES = 26;
 
 // Where the decision context sits inside v2.2's global block. Named because an off-by-one here is
 // invisible: every one of these is a legitimate 0.0 most of the time.
@@ -502,17 +511,19 @@ namespace ctx_slots {
     constexpr size_t TIMING_EVENT_FIRST   = BASE + 16;
     constexpr size_t EVENT_GRANTED_OPS    = BASE + 17;
     constexpr size_t SUPPRESS_OP_EVENT    = BASE + 18;
-    constexpr size_t TEMP_CARD_COUNT      = BASE + 19;
+    // v2.2's TEMP_CARD_COUNT was here. It counted an array of staged card ids that no longer
+    // exists -- every event that kept one now derives the same set from where the cards are --
+    // so the slot is gone rather than left writing zero, and everything after it shifts down.
     // Headline: which stage, and whose card resolves when. Space box 4 makes the order a
     // mechanic, and none of headline_stage / headline_first_owner was read before.
-    constexpr size_t HEADLINE_STAGE       = BASE + 20;
-    constexpr size_t HEADLINE_FIRST_MINE  = BASE + 21;
-    constexpr size_t HEADLINE_SECOND_MINE = BASE + 22;
+    constexpr size_t HEADLINE_STAGE       = BASE + 19;
+    constexpr size_t HEADLINE_FIRST_MINE  = BASE + 20;
+    constexpr size_t HEADLINE_SECOND_MINE = BASE + 21;
     // Chernobyl's forbidden region as a one-hot, all zero when it is not in play. The three raw
     // bits at 40..42 encode the same index in binary and stay in the effect dump; this is the
     // form the network can separate.
-    constexpr size_t CHERNOBYL_REGION     = BASE + 23; // 6 wide
-    constexpr size_t COUNT                = 29;
+    constexpr size_t CHERNOBYL_REGION     = BASE + 22; // 6 wide
+    constexpr size_t COUNT                = 28;
 }
 static_assert(OBS_SIZE_LEGACY == 4293, "the legacy observation width is a checkpoint contract");
 static_assert(OBS_SIZE_V21 == 3891,
@@ -525,9 +536,9 @@ static_assert(sizeof(ObservationBufferV21) >= OBS_SIZE_V21 * sizeof(float),
 // arms F and F2 were evaluated against a v2.2 that had gained a feature after they trained on
 // it -- and it was the one layout with neither guard. Add or remove a feature and the width
 // changes silently, every v2.2 checkpoint misreads its input, and the build stays green.
-static_assert(OBS_SIZE_V22 == 3825,
-              "v2.2 is a checkpoint contract: 84*26 board + 110*14 card + 101 global");
-static_assert(sizeof(ObservationBufferV22) >= OBS_SIZE_V22 * sizeof(float),
+static_assert(OBS_SIZE_V23 == 3824,
+              "v2.3 is a checkpoint contract: 84*26 board + 110*14 card + 100 global");
+static_assert(sizeof(ObservationBufferV23) >= OBS_SIZE_V23 * sizeof(float),
               "the buffer must hold every float a reader will copy out of it");
 
 // Missile Envy moves itself into the opponent's hand, who must play it on their next
