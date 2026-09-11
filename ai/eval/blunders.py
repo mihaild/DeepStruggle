@@ -95,6 +95,12 @@ class BlunderCounts:
     opportunities: Dict[str, int] = field(default_factory=dict)
     examples: List[Blunder] = field(default_factory=list)
     max_examples: int = 50
+    # Which rules `metrics` and `summary` enumerate. It is the module's own RULES here, and the
+    # sequencing probe passes its own -- the counting, the Wilson band and the examples are the
+    # same machinery, only the rule names differ. Enumerating a fixed list rather than whatever
+    # keys happen to be present is deliberate: a rule with no chances this run must still emit
+    # its metric keys, or the TensorBoard tags come and go between runs.
+    rules: Sequence[str] = RULES
 
     def note_opportunity(self, rule: str) -> None:
         self.opportunities[rule] = self.opportunities.get(rule, 0) + 1
@@ -117,7 +123,7 @@ class BlunderCounts:
         that wants the raw numbers, but they no longer need a chart each.
         """
         out: Dict[str, float] = {}
-        for rule in RULES:
+        for rule in self.rules:
             committed = int(self.committed.get(rule, 0))
             chances = int(self.opportunities.get(rule, 0))
             lo, hi = wilson_interval(committed, chances)
@@ -138,7 +144,7 @@ class BlunderCounts:
 
     def summary(self) -> str:
         lines = []
-        for rule in RULES:
+        for rule in self.rules:
             n = self.opportunities.get(rule, 0)
             c = self.committed.get(rule, 0)
             if n:
