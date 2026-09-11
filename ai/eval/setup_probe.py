@@ -48,18 +48,41 @@ SETUP_DECISIONS = 15
 
 POLAND = 15
 WEST_GERMANY = 7
+ITALY = 10
+IRAN = 25
+EAST_GERMANY = 14
 EUROPE_SCORING = 2
 
-#: Control thresholds, which are what the queue's goal statement names. Control is
-#: `mine >= theirs + stability`, and with the opponent at zero that is just the stability.
-POLAND_TARGET = 3
-WEST_GERMANY_TARGET = 4
 
-#: The overcontrol bar: one point past control. A country held at exactly control is taken back
-#: by a single influence, which in Europe one card routinely supplies -- so the standard opening
-#: buys the buffer. Humans put a mean 4.21 into Poland and bring East Germany from 3 to 4.
-POLAND_BUFFERED = 4
-WEST_GERMANY_BUFFERED = 5
+@dataclass(frozen=True)
+class Target:
+    """One country the opening is expected to hold, and the influence that holds it."""
+
+    side: str            # "US" or "USSR"
+    cid: int
+    threshold: int
+    note: str = ""
+
+    @property
+    def name(self) -> str:
+        return _country_name(self.cid)
+
+
+#: What the opening has to achieve. Every one of these is the *control* threshold for its
+#: country -- control is `mine >= theirs + stability`, and with the opponent at zero that is
+#: just the stability -- so the set asks one question: does the opening take the four countries
+#: an opening is for?
+#:
+#: Holding a country with a point to spare is a separate and longer question. A country at
+#: exactly control is taken back by one influence, and a good opening does buy the spare point
+#: where it can afford it -- but where it can afford it varies by side and by country, so the
+#: margin is reported below the table rather than folded into these bars.
+SETUP_TARGETS: Tuple["Target", ...] = (
+    Target("USSR", POLAND, 3, "stability 3, empty at the start"),
+    Target("US", WEST_GERMANY, 4, "stability 4 -- the most expensive country in the opening"),
+    Target("US", ITALY, 2, "stability 2"),
+    Target("US", IRAN, 2, "stability 2, and starts at 1 -- one bonus point takes it"),
+)
 
 _STABILITY: np.ndarray = np.array(
     [int(ts.MapData.get_country_info(c)["stability"]) for c in range(84)], dtype=np.int16)
@@ -386,32 +409,27 @@ def format_corpus_report(m: SetupMeasurement) -> str:
     std = split["standard"]
     lines = [f"=== setup probe: human corpus ({m.games} games"
              + (f", {m.malformed} unusable" if m.malformed else "") + ") ==="]
-    for name, side, cid, target, buffered in (
-            ("USSR", m.ussr, POLAND, POLAND_TARGET, POLAND_BUFFERED),
-            ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET, WEST_GERMANY_BUFFERED)):
-        held = side.final_at_least(cid, target)
-        buf = side.final_at_least(cid, buffered)
-        lines.append(f"  {name}: {_country_name(cid)} controlled {held[0] * 100:5.1f}%, "
-                     f"with a buffer (>= {buffered}) {buf[0] * 100:5.1f}%   "
-                     f"mean {side.final[:, cid].mean():.2f}   "
-                     f"entropy {side.entropy():.2f} bits")
-        lines.append(_margin_line(side))
+    for t, rate, lo, hi in target_rates(m):
+        side = m.ussr if t.side == "USSR" else m.us
         sub = SideSetup(side.influence[std], side.hand_has_europe_scoring[std],
                         side.final[std], side.opponent_final[std])
-        if sub.influence.shape[0]:
-            r, l, h = sub.final_at_least(cid, buffered)
-            lines.append(f"      no handicap           n={int(std.sum()):5d}  "
-                         f"buffered {r * 100:5.1f}% [{l * 100:.1f}, {h * 100:.1f}]")
+        r_std = sub.final_at_least(t.cid, t.threshold)[0] if sub.final.shape[0] else float("nan")
+        lines.append(
+            f"  {t.side:<4} {t.name:<13} >= {t.threshold}  {rate * 100:5.1f}% "
+            f"[{lo * 100:4.1f}, {hi * 100:4.1f}]   mean {side.final[:, t.cid].mean():.2f}"
+            f"   no handicap {r_std * 100:5.1f}%")
+    for name, side in (("USSR", m.ussr), ("US", m.us)):
+        lines.append("  " + _margin_line(side).strip() + f"   [{name}]")
         top = side.mean_per_country()
         order = np.argsort(-top)[:6]
         lines.append("      mean placement: " + ", ".join(
             f"{_country_name(int(c))} {top[c]:.2f}" for c in order if top[c] > 0.01))
+    rate, lo, hi = all_targets_met(m)
+    lines.append(f"  {'ALL FOUR':<19}   {rate * 100:5.1f}% [{lo * 100:4.1f}, {hi * 100:4.1f}]")
     lines.append(f"  placed per game: USSR {split['ussr_placed'].mean():.2f} (engine 6), "
                  f"US {split['us_placed'].mean():.2f} (engine 9); "
                  f"{int(std.sum())} of {m.games} played without a handicap")
     return "\n".join(lines)
-
-
 def _margin_line(side: "SideSetup") -> str:
     """Europe, held how firmly. Control at margin zero is one opponent influence from gone."""
     frag = side.fragile(EUROPE).mean()
@@ -421,28 +439,52 @@ def _margin_line(side: "SideSetup") -> str:
             f"surplus beyond one buffer {side.surplus().mean():.2f}")
 
 
+def target_rates(m: SetupMeasurement) -> List[Tuple[Target, float, float, float]]:
+    """Each target's rate on the finished board, with a Wilson 95% band."""
+    out: List[Tuple[Target, float, float, float]] = []
+    for t in SETUP_TARGETS:
+        side = m.ussr if t.side == "USSR" else m.us
+        rate, lo, hi = side.final_at_least(t.cid, t.threshold)
+        out.append((t, rate, lo, hi))
+    return out
+
+
+def all_targets_met(m: SetupMeasurement) -> Tuple[float, float, float]:
+    """P(the opening takes every target country), with a Wilson band.
+
+    The composite is the number to track. Each target on its own can be met by an opening that
+    misses the others, and the checkpoints do exactly that -- one takes Italy and not Iran, the
+    next the reverse -- so a per-target table read row by row flatters all of them.
+    """
+    hit: Optional[np.ndarray] = None
+    for t in SETUP_TARGETS:
+        side = m.ussr if t.side == "USSR" else m.us
+        this = side.final[:, t.cid] >= t.threshold
+        hit = this if hit is None else (hit & this)
+    return _rate(hit if hit is not None else np.zeros(0, dtype=bool))
+
+
 def format_report(m: SetupMeasurement, label: str = "") -> str:
     lines: List[str] = [f"=== setup probe: {label or 'policy'} ({m.games} games) ==="]
     if m.malformed:
         lines.append(f"  !! {m.malformed} games did not have a well-formed setup block; "
                      f"every number below is suspect")
 
-    for name, side, cid, target, buffered in (
-            ("USSR", m.ussr, POLAND, POLAND_TARGET, POLAND_BUFFERED),
-            ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET, WEST_GERMANY_BUFFERED)):
-        held = side.final_at_least(cid, target)
-        buf = side.final_at_least(cid, buffered)
+    for t, rate, lo, hi in target_rates(m):
+        side = m.ussr if t.side == "USSR" else m.us
         lines.append(
-            f"  {name}: {_country_name(cid)} controlled {held[0] * 100:5.1f}% "
-            f"[{held[1] * 100:.1f}, {held[2] * 100:.1f}], "
-            f"with a buffer (>= {buffered}) {buf[0] * 100:5.1f}% "
-            f"[{buf[1] * 100:.1f}, {buf[2] * 100:.1f}]   "
-            f"mean {side.final[:, cid].mean():.2f}   "
-            f"entropy {side.entropy():.2f} bits   "
-            f"{side.distinct_openings()} distinct openings")
-        lines.append(_margin_line(side))
+            f"  {t.side:<4} {t.name:<13} >= {t.threshold}  {rate * 100:5.1f}% "
+            f"[{lo * 100:4.1f}, {hi * 100:4.1f}]   mean {side.final[:, t.cid].mean():.2f}"
+            + (f"   ({t.note})" if t.note else ""))
 
-        # Conditioning on Europe Scoring: the one hand feature that plausibly moves the answer.
+    rate, lo, hi = all_targets_met(m)
+    lines.append(f"  {'ALL FOUR':<19}   {rate * 100:5.1f}% [{lo * 100:4.1f}, {hi * 100:4.1f}]")
+
+    for name, side in (("USSR", m.ussr), ("US", m.us)):
+        cid, thr = ((POLAND, 3) if name == "USSR" else (WEST_GERMANY, 4))
+        lines.append(f"  {name}: entropy {side.entropy():.2f} bits, "
+                     f"{side.distinct_openings()} distinct openings")
+        lines.append("  " + _margin_line(side).strip())
         for holder, sel in (("holds Europe Scoring", side.hand_has_europe_scoring),
                             ("does not", ~side.hand_has_europe_scoring)):
             n = int(sel.sum())
@@ -450,10 +492,9 @@ def format_report(m: SetupMeasurement, label: str = "") -> str:
                 continue
             sub = SideSetup(side.influence[sel], side.hand_has_europe_scoring[sel],
                             side.final[sel], side.opponent_final[sel])
-            r, l, h = sub.final_at_least(cid, target)
-            lines.append(f"      {holder:22s} n={n:5d}  controls {r * 100:5.1f}% "
-                         f"[{l * 100:.1f}, {h * 100:.1f}]")
-
+            r, l, h = sub.final_at_least(cid, thr)
+            lines.append(f"      {holder:22s} n={n:5d}  {_country_name(cid)} >= {thr}: "
+                         f"{r * 100:5.1f}% [{l * 100:.1f}, {h * 100:.1f}]")
         top = side.mean_per_country()
         order = np.argsort(-top)[:6]
         lines.append("      mean placement: " + ", ".join(

@@ -17,8 +17,11 @@ import ts_engine as ts
 from ai.eval.setup_probe import (
     POLAND,
     SETUP_DECISIONS,
+    SETUP_TARGETS,
     WEST_GERMANY,
+    all_targets_met,
     measure,
+    target_rates,
     uniform_policy,
 )
 
@@ -117,6 +120,34 @@ def test_the_margin_is_read_from_the_finished_board_not_the_placement() -> None:
         assert (m.ussr.fragile() > 0)[none_placed].all()
 
 
-@pytest.mark.parametrize("cid,name", [(POLAND, "Poland"), (WEST_GERMANY, "West Germany")])
-def test_the_named_countries_are_the_ones_the_goal_statement_names(cid: int, name: str) -> None:
-    assert ts.MapData.get_country_info(cid)["name"] == name
+@pytest.mark.parametrize("target", SETUP_TARGETS, ids=lambda t: t.name)
+def test_every_target_is_its_countrys_control_threshold(target) -> None:
+    """Each bar is `stability`, which with the opponent at zero is exactly what control costs.
+
+    If a country's stability ever changes, the bar has to move with it -- otherwise the probe
+    goes on reporting a threshold that no longer means "controlled".
+    """
+    info = ts.MapData.get_country_info(target.cid)
+    st = ts.GameState()
+    ts.Engine.init_game(st, 1)
+    opponent = (int(st.get_country(target.cid).ussr_influence) if target.side == "US"
+                else int(st.get_country(target.cid).us_influence))
+    assert opponent == 0, f"{target.name} does not start empty for the opponent"
+    assert target.threshold == int(info["stability"]), (
+        f"{target.name} has stability {info['stability']} but the target is "
+        f"{target.threshold}; control costs the stability")
+
+
+def test_the_composite_is_the_conjunction_of_the_targets() -> None:
+    """"All four" must be per game, not the product of four independent rates."""
+    m = measure(uniform_policy(4), num_games=64, batch_size=64)
+    rate = all_targets_met(m)[0]
+
+    expected = np.ones(m.games, dtype=bool)
+    for t in SETUP_TARGETS:
+        side = m.ussr if t.side == "USSR" else m.us
+        expected &= (side.final[:, t.cid] >= t.threshold)
+    assert rate == pytest.approx(expected.mean())
+
+    for t, r, _lo, _hi in target_rates(m):
+        assert rate <= r + 1e-9, f"the composite cannot exceed {t.name}'s own rate"
