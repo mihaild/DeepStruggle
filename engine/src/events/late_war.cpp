@@ -252,10 +252,17 @@ bool trigger_aldrich_ames(GameState& state, Player p) noexcept {
     // "The US reveals their hand of cards, face-up, for the remainder of the turn." The flag
     // above already told the network that a reveal is in force; this is what the reveal showed.
     reveal_hand(state, Player::US);
-    // USSR chooses card from US hand to discard
+    // USSR chooses card from US hand to discard. The discard is mandatory -- "the USSR player
+    // chooses one card from the US hand and discards it" -- so early stop is cleared rather
+    // than left at whatever the previous decision set it to. It was inherited before, and an
+    // inherited 1 turned a required discard into an optional one: in a logged game the USSR was
+    // offered CONFIRM_DONE alongside the two US cards and took it. If the US hand is empty the
+    // mask finds no legal card and falls back to pass on its own, which is the only case where
+    // declining is right.
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // the discard is mandatory; see trigger_war
     state.ctx().resolving_card = card_ids::ALDRICH_AMES;
     return false;
 }
