@@ -122,6 +122,14 @@ def main():
     parser.add_argument("--batch-size", type=int, default=4096, help="Mini-batch size for SGD updates")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
+    parser.add_argument("--vf-coef", type=float, default=0.5,
+                        help="Weight on the value loss in the shared-trunk objective.\n"
+                             "0.5 suits the scalar heads, whose MSE sits near 0.04 against a\n"
+                             "policy loss near 0.04. Cross-entropy over 41 atoms sits near 1.5,\n"
+                             "so the same coefficient makes the value objective outweigh the\n"
+                             "policy one by ~100x, and the policy stops moving -- high explained\n"
+                             "variance, collapsed entropy, a 3% clip fraction and play far below\n"
+                             "the scalar control. Set it ~40x lower with --categorical-value.")
     parser.add_argument("--categorical-value", action="store_true", default=False,
                         help="P1: replace the two scalar value heads with one categorical\n"
                              "distribution over final VP (41 atoms across [-20, +20]), trained\n"
@@ -183,6 +191,7 @@ def main():
             batch_size=args.batch_size,
             lr=args.lr,
             eta=args.eta,
+            vf_coef=args.vf_coef,
             categorical_value=args.categorical_value,
             adv_filter_quantile=args.adv_filter_quantile,
             defcon_coef=args.defcon_coef,

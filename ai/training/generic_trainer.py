@@ -1064,6 +1064,7 @@ def train_pipeline(
     batch_size: int = 4096,
     lr: float = 3e-4,
     eta: float = 0.1,
+    vf_coef: float = 0.5,
     categorical_value: bool = False,
     adv_filter_quantile: float = 0.0,
     entropy_coef: float = 0.01,
@@ -1143,6 +1144,7 @@ def train_pipeline(
         # description is prose nobody can filter on.
         "train_steps": train_steps,
         "eta": eta,
+        "vf_coef": vf_coef,
         "categorical_value": bool(categorical_value),
         "adv_filter_quantile": adv_filter_quantile,
         "ent_coef": entropy_coef,
@@ -1237,6 +1239,7 @@ def train_pipeline(
         batch_size=batch_size,
         lr=lr,
         eta=eta,
+        vf_coef=vf_coef,
         adv_filter_quantile=adv_filter_quantile,
         ent_coef=entropy_coef,
         gamma=gamma,
