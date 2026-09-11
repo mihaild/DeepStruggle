@@ -1,0 +1,38 @@
+# Python dependencies for ts_ai.
+#
+#     python3 -m venv .venv && source .venv/bin/activate
+#     pip install -r requirements.txt
+#
+# The versions are the ones the project is developed and tested against, floored rather than
+# pinned: a newer patch release is fine, an older one may not be. `ts_engine` itself is not here
+# -- it is the C++ extension, built by CMake (see README.md).
+
+# --- core: the engine bindings, the network, and the arrays everything passes around ----------
+nanobind>=2.15.0           # build-time dependency of the ts_engine extension; CMake finds it here
+numpy>=2.5.0
+torch>=2.13.0              # for a CUDA build, install from pytorch.org first, then this file
+
+# --- the web workbench (web/server, web/bot_client) --------------------------------------------
+fastapi>=0.141.0
+uvicorn[standard]>=0.52.0
+websockets>=17.0.0
+pydantic>=2.13.0
+
+# --- tests -------------------------------------------------------------------------------------
+pytest>=9.1.0
+pytest-xdist>=3.8.0        # -n auto takes the backend suite from ~7 min to ~1 min
+httpx>=0.28.0              # starlette's TestClient, used by tests/web
+
+# --- optional, and what they cost if absent ----------------------------------------------------
+# z3-solver reconstructs the hands behind a ts-replayer log. Without it the converter falls back
+# to per-turn heuristics, so tests/replayer will not reproduce the corpus faithfully.
+z3-solver>=5.1.0
+# TensorBoard is how a training run is watched; without it the trainer still runs and still
+# writes training_metrics.jsonl, it just logs no event files.
+tensorboard>=2.21.0
+# Playwright drives the browser end-to-end tests in tests/web. It also needs a browser:
+#     python -m playwright install chromium
+playwright>=1.62.0
+# beautifulsoup4 is used only by tools/scrape_card_strategies.py, which regenerates the local
+# card strategy notes. Nothing in the engine, the training stack or the server imports it.
+beautifulsoup4>=4.12.0

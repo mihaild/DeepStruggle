@@ -28,6 +28,10 @@ echo " Master Label Tag:      '${TAG_NAME}'"
 echo "================================================================================"
 
 # 1. Capture source commit on master
+if ! git rev-parse --verify --quiet "refs/heads/${SOURCE_BRANCH}" >/dev/null; then
+    echo "ERROR: source branch '${SOURCE_BRANCH}' does not exist." >&2
+    exit 1
+fi
 SOURCE_COMMIT=$(git rev-parse "${SOURCE_BRANCH}")
 SOURCE_SHORT=$(git rev-parse --short "${SOURCE_BRANCH}")
 
@@ -38,21 +42,70 @@ trap 'rm -f "$TMP_INDEX"' EXIT
 GIT_INDEX_FILE="$TMP_INDEX" git read-tree "$SOURCE_COMMIT"
 
 # 3. Strip all excluded paths
+#
+# Every path here is one this repository must not publish. The strip used to run as
+#
+#     git rm -r --cached --ignore-unmatch ... 2>/dev/null || true
+#
+# which suppressed the error *and* forced success: a renamed path silently stopped being
+# stripped and its contents went public with nothing said. `ts_engine.pyi` had already drifted
+# that way -- the stub became the package `bindings/ts_engine/` and the entry matched nothing --
+# which is how the failure mode announces itself, i.e. not at all. So the removal is checked
+# against the written tree below, and a survivor is fatal.
+EXCLUDED_PATHS=(
+    Dockerfile
+    data
+    research
+    checkpoints
+    replays
+    .claude
+    docs
+    "$SCRIPT_REL_PATH"
+)
+
 echo "--> Stripping excluded paths..."
-GIT_INDEX_FILE="$TMP_INDEX" git rm -r --cached --ignore-unmatch \
-    Dockerfile \
-    data \
-    research \
-    checkpoints \
-    replays \
-    ts_engine.pyi \
-    .claude \
-    docs \
-    "$SCRIPT_REL_PATH" \
-    2>/dev/null || true
+GIT_INDEX_FILE="$TMP_INDEX" git rm -r --cached --ignore-unmatch --quiet "${EXCLUDED_PATHS[@]}"
 
 TREE=$(GIT_INDEX_FILE="$TMP_INDEX" git write-tree)
 echo "--> Clean tree created: $TREE"
+
+# 3b. Prove it. --ignore-unmatch cannot tell "already absent" from "no longer matches", so the
+# only trustworthy check is what the tree actually contains.
+echo "--> Verifying the published tree..."
+TREE_FILES=$(git ls-tree -r --name-only "$TREE")
+SURVIVORS=()
+for path in "${EXCLUDED_PATHS[@]}"; do
+    if printf '%s\n' "$TREE_FILES" | grep -qE "^${path}(/|$)"; then
+        SURVIVORS+=("$path")
+    fi
+done
+if [ ${#SURVIVORS[@]} -gt 0 ]; then
+    echo "" >&2
+    echo "ERROR: these excluded paths are still in the tree that would be published:" >&2
+    printf '  %s\n' "${SURVIVORS[@]}" >&2
+    echo "" >&2
+    echo "Nothing has been published and no ref was moved. Fix the exclude list and rerun." >&2
+    exit 1
+fi
+
+# A tree that lost everything is also a failure, and an empty commit on main would look fine.
+FILE_COUNT=$(printf '%s\n' "$TREE_FILES" | grep -c . || true)
+if [ "$FILE_COUNT" -lt 100 ]; then
+    echo "ERROR: the published tree has only ${FILE_COUNT} files, which is not a whole repository." >&2
+    echo "Nothing has been published and no ref was moved." >&2
+    exit 1
+fi
+
+# The things a public checkout is useless without. A typo in the exclude list that took one of
+# these out would otherwise publish quietly.
+for required in README.md LICENSE requirements.txt CMakeLists.txt engine bindings tools; do
+    if ! printf '%s\n' "$TREE_FILES" | grep -qE "^${required}(/|$)"; then
+        echo "ERROR: '${required}' is missing from the published tree." >&2
+        echo "Nothing has been published and no ref was moved." >&2
+        exit 1
+    fi
+done
+echo "--> ${FILE_COUNT} files, no excluded path survived."
 
 # 4. Chain to previous main commit (if any)
 PARENT_ARGS=()
