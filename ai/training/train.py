@@ -147,6 +147,21 @@ def main():
     parser.add_argument("--batch-size", type=int, default=4096, help="Mini-batch size for SGD updates")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
+    parser.add_argument("--categorical-value", action="store_true", default=False,
+                        help="P1: replace the two scalar value heads with one categorical\n"
+                             "distribution over final VP (41 atoms across [-20, +20]), trained\n"
+                             "by cross-entropy against the two-hot-projected lambda-return.\n"
+                             "v_win and v_vp are still exposed, derived from the distribution,\n"
+                             "so every consumer runs unchanged. Outcomes here are multimodal and\n"
+                             "MSE on a scalar regresses to the mean of the modes -- a value that\n"
+                             "is never observed. Changes the checkpoint shape: a categorical\n"
+                             "checkpoint cannot be loaded as a scalar one or the reverse.")
+    parser.add_argument("--adv-filter-quantile", type=float, default=0.0,
+                        help="P1: drop samples whose |advantage| falls below this quantile of\n"
+                             "the minibatch from the POLICY loss only; the value head still sees\n"
+                             "every sample. 0 disables it. Reported at 2.5x wall-clock in\n"
+                             "Ataraxos. It changes the effective batch size, so screen it as its\n"
+                             "own factor rather than folding it in with --categorical-value.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
@@ -193,6 +208,8 @@ def main():
             batch_size=args.batch_size,
             lr=args.lr,
             eta=args.eta,
+            categorical_value=args.categorical_value,
+            adv_filter_quantile=args.adv_filter_quantile,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             # Unset follows the architecture: v2.1 is the baseline but is only wired for v2, so

@@ -1073,6 +1073,8 @@ def train_pipeline(
     batch_size: int = 4096,
     lr: float = 3e-4,
     eta: float = 0.1,
+    categorical_value: bool = False,
+    adv_filter_quantile: float = 0.0,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
@@ -1167,6 +1169,8 @@ def train_pipeline(
         # description is prose nobody can filter on.
         "train_steps": train_steps,
         "eta": eta,
+        "categorical_value": bool(categorical_value),
+        "adv_filter_quantile": adv_filter_quantile,
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
@@ -1183,7 +1187,7 @@ def train_pipeline(
     elif arch == "v2":
         # Shaped from the layout table rather than from card_features and use_history passed
         # separately, so the two cannot be set to a combination no real layout has.
-        model = create_for_layout(obs_layout, dev)
+        model = create_for_layout(obs_layout, dev, categorical_value=categorical_value)
     else:
         model = create_coldwar_net(dev)
 
@@ -1262,6 +1266,7 @@ def train_pipeline(
         batch_size=batch_size,
         lr=lr,
         eta=eta,
+        adv_filter_quantile=adv_filter_quantile,
         ent_coef=entropy_coef,
         gamma=gamma,
         gae_lambda=0.98,

@@ -1,12 +1,20 @@
 """ColdWarNetV2: Graph-Card Cross-Attention Neural Network for Twilight Struggle."""
 
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import ts_engine as ts
+
+
+#: Final VP is clamped to +/-20 by the engine, and every abrupt ending is normalised to exactly
+#: that, so the categorical head's support is the true range rather than a hyperparameter.
+VP_LIMIT: int = 20
+#: One atom per integer VP across [-20, +20]. 41 puts an atom exactly on 0, which is what makes
+#: P(VP > 0) - P(VP < 0) a clean read of the win probability.
+VALUE_ATOMS: int = 2 * VP_LIMIT + 1
 
 
 def build_normalized_adjacency_matrix() -> torch.Tensor:
@@ -120,10 +128,18 @@ class ColdWarNetV2(nn.Module):
     TOTAL_OBS_SIZE = 4293
     ACTION_SPACE_SIZE = 212
 
+    # Declared for the type checker: `value_support` is a registered buffer, and the two scalar
+    # heads are None on a categorical instance (and the distribution head None on a scalar one).
+    value_support: torch.Tensor
+    val_win_head: nn.Module | None
+    val_vp_head: nn.Module | None
+    value_dist_head: nn.Module | None
+
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
                  card_features: int = CARD_FEATURES, use_history: bool = True,
                  global_features: int = GLOBAL_SIZE, has_tail: bool = True,
-                 board_features: int = 28):
+                 board_features: int = 28, categorical_value: bool = False,
+                 value_atoms: int = VALUE_ATOMS):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -223,20 +239,49 @@ class ColdWarNetV2(nn.Module):
             nn.Linear(256, self.ACTION_SPACE_SIZE),
         )
 
-        # 8. Dual Value Heads (Win/Loss Utility in [-1, 1] and Auxiliary VP in [-20, 20])
-        self.val_win_head = nn.Sequential(
-            nn.Linear(hidden_dim, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-            nn.Linear(128, 1),
-            nn.Tanh(),
-        )
-        self.val_vp_head = nn.Sequential(
-            nn.Linear(hidden_dim, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-            nn.Linear(128, 1),
-        )
+        # 8. Value head(s).
+        #
+        # Scalar (the default, and what every existing checkpoint carries): win/loss utility in
+        # [-1, 1] and an auxiliary VP estimate in [-20, 20], each regressed with MSE.
+        #
+        # Categorical (P1): one distribution over final VP on integer atoms spanning [-20, +20],
+        # trained by cross-entropy. Outcomes here are multimodal -- a coup hits or misses, the
+        # scoring card is or is not in hand -- and MSE on a scalar regresses to the mean of the
+        # modes, a value that is never observed. The two scalars are still exposed, derived from
+        # the distribution, so nash_pg, the tournament code and every probe run unchanged:
+        #   v_vp  = E[VP]
+        #   v_win = P(VP > 0) - P(VP < 0)
+        # The support is exact rather than a modelling choice: the engine normalises every abrupt
+        # ending (20 VP, DEFCON 1, Europe Control) to exactly +/-20.
+        self.categorical_value = bool(categorical_value)
+        self.value_atoms = int(value_atoms)
+        if self.categorical_value:
+            self.val_win_head = None
+            self.val_vp_head = None
+            self.value_dist_head = nn.Sequential(
+                nn.Linear(hidden_dim, 128),
+                nn.LayerNorm(128),
+                nn.GELU(),
+                nn.Linear(128, self.value_atoms),
+            )
+            self.register_buffer(
+                "value_support",
+                torch.linspace(-VP_LIMIT, VP_LIMIT, self.value_atoms, dtype=torch.float32))
+        else:
+            self.value_dist_head = None
+            self.val_win_head = nn.Sequential(
+                nn.Linear(hidden_dim, 128),
+                nn.LayerNorm(128),
+                nn.GELU(),
+                nn.Linear(128, 1),
+                nn.Tanh(),
+            )
+            self.val_vp_head = nn.Sequential(
+                nn.Linear(hidden_dim, 128),
+                nn.LayerNorm(128),
+                nn.GELU(),
+                nn.Linear(128, 1),
+            )
 
         # Auxiliary DEFCON-risk head: logit of "the player to move loses to DEFCON 1 (or a
         # Cuban Missile Crisis coup) within the next few of its own plies". See the note in
@@ -247,6 +292,69 @@ class ColdWarNetV2(nn.Module):
             nn.GELU(),
             nn.Linear(128, 1),
         )
+
+    def _value_scalars(self, h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """(v_win, v_vp), from whichever value head this instance has.
+
+        Keeping the derivation here means every caller -- forward, forward_with_risk, the
+        tournament code, the probes -- sees the same two tensors it always did, whichever head
+        produced them.
+        """
+        if not self.categorical_value:
+            assert self.val_win_head is not None and self.val_vp_head is not None
+            return self.val_win_head(h), self.val_vp_head(h)
+        assert self.value_dist_head is not None
+        probs = torch.softmax(self.value_dist_head(h), dim=-1)
+        support = self.value_support.to(probs.dtype)
+        v_vp = (probs * support).sum(dim=-1, keepdim=True)
+        # A win is VP > 0; a draw is the single atom at 0 and counts for neither side.
+        v_win = ((probs * (support > 0).to(probs.dtype)).sum(dim=-1, keepdim=True)
+                 - (probs * (support < 0).to(probs.dtype)).sum(dim=-1, keepdim=True))
+        return v_win, v_vp
+
+    def forward_with_value_logits(
+        self, obs: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+        """forward() plus the raw value-distribution logits, from one backbone pass.
+
+        The cross-entropy loss needs the logits, and re-running the trunk to get them would
+        double the cost of every update. `None` on a scalar-headed model.
+        """
+        h = cast(torch.Tensor, self.extract_features(obs))
+        raw_logits = self.policy_head(h)
+        if mask is not None:
+            mask_bool = mask.bool() if mask.dtype != torch.bool else mask
+            masked_logits = torch.where(
+                mask_bool, raw_logits,
+                torch.tensor(-1e9, device=raw_logits.device, dtype=raw_logits.dtype))
+        else:
+            masked_logits = raw_logits
+        v_win, v_vp = self._value_scalars(h)
+        value_logits = None
+        if self.categorical_value:
+            assert self.value_dist_head is not None
+            value_logits = self.value_dist_head(h)
+        return masked_logits, v_win, v_vp, value_logits
+
+    def two_hot(self, vp: torch.Tensor) -> torch.Tensor:
+        """Project VP-valued targets onto the atom support as a two-hot distribution.
+
+        `vp` is (B,) or (B, 1) in VP units. Values outside [-20, +20] are clamped rather than
+        dropped -- the engine cannot produce them, so anything outside is a bug upstream and
+        clamping keeps it visible as a pile-up on the end atom rather than a crash.
+        """
+        support = self.value_support.to(vp.dtype)
+        atoms = support.numel()
+        step = (support[-1] - support[0]) / (atoms - 1)
+        x = vp.reshape(-1).clamp(float(support[0]), float(support[-1]))
+        pos = (x - support[0]) / step
+        lower = pos.floor().clamp(0, atoms - 1).long()
+        upper = (lower + 1).clamp(max=atoms - 1)
+        upper_w = pos - lower.to(pos.dtype)
+        target = torch.zeros(x.shape[0], atoms, device=vp.device, dtype=vp.dtype)
+        target.scatter_add_(1, lower.unsqueeze(1), (1.0 - upper_w).unsqueeze(1))
+        target.scatter_add_(1, upper.unsqueeze(1), upper_w.unsqueeze(1))
+        return target
 
     def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
         """Extracts fused latent state representation and optional cross-attention maps."""
@@ -314,7 +422,7 @@ class ColdWarNetV2(nn.Module):
             v_win: (B, 1) float tensor in [-1, 1].
             v_vp: (B, 1) float tensor in [-20, 20].
         """
-        h = self.extract_features(obs)
+        h = cast(torch.Tensor, self.extract_features(obs))
         raw_logits = self.policy_head(h)
 
         if mask is not None:
@@ -325,8 +433,7 @@ class ColdWarNetV2(nn.Module):
         else:
             masked_logits = raw_logits
 
-        v_win = self.val_win_head(h)
-        v_vp = self.val_vp_head(h)
+        v_win, v_vp = self._value_scalars(h)
         return masked_logits, v_win, v_vp
 
     def forward_with_risk(
@@ -337,7 +444,7 @@ class ColdWarNetV2(nn.Module):
         Kept separate from forward() so the existing three-value contract, which every
         other caller depends on, is untouched.
         """
-        h = self.extract_features(obs)
+        h = cast(torch.Tensor, self.extract_features(obs))
         raw_logits = self.policy_head(h)
         if mask is not None:
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
@@ -347,8 +454,8 @@ class ColdWarNetV2(nn.Module):
             )
         else:
             masked_logits = raw_logits
-        return (masked_logits, self.val_win_head(h), self.val_vp_head(h),
-                self.defcon_risk_head(h))
+        v_win, v_vp = self._value_scalars(h)
+        return masked_logits, v_win, v_vp, self.defcon_risk_head(h)
 
     @torch.no_grad()
     def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
@@ -411,12 +518,14 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           use_history: bool = True,
                           global_features: int = ColdWarNetV2.GLOBAL_SIZE,
                           has_tail: bool = True,
-                          board_features: int = 28) -> ColdWarNetV2:
+                          board_features: int = 28,
+                          categorical_value: bool = False) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device."""
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
-                         board_features=board_features)
+                         board_features=board_features,
+                         categorical_value=categorical_value)
     return model.to(device)
 
 
@@ -435,11 +544,18 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         use_history=bool(getattr(model, "use_history", True)),
         global_features=int(getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE)),
         has_tail=bool(getattr(model, "has_tail", True)),
-        board_features=int(getattr(model, "board_features", 28)))
+        board_features=int(getattr(model, "board_features", 28)),
+        categorical_value=bool(getattr(model, "categorical_value", False)))
 
 
-def create_for_layout(layout: str, device: torch.device | str = "cpu") -> ColdWarNetV2:
-    """The network shaped for a named observation layout."""
+def create_for_layout(layout: str, device: torch.device | str = "cpu",
+                      categorical_value: bool = False) -> ColdWarNetV2:
+    """The network shaped for a named observation layout.
+
+    `categorical_value` is the P1 value head. It is orthogonal to the layout -- it changes the
+    output side, not the input -- but it does change the checkpoint shape, so a run must be
+    loaded with the same setting it was trained with.
+    """
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {sorted(LAYOUTS)}, got {layout!r}")
     kw = LAYOUTS[layout]
@@ -449,7 +565,8 @@ def create_for_layout(layout: str, device: torch.device | str = "cpu") -> ColdWa
         use_history=kw["use_history"],
         global_features=kw["global_features"],
         has_tail=kw["has_tail"],
-        board_features=kw["board_features"])
+        board_features=kw["board_features"],
+        categorical_value=categorical_value)
 
 
 def layout_of(state_dict: dict) -> str:

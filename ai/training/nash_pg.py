@@ -114,6 +114,7 @@ class BaseNashPGTrainer:
         ent_coef: float = 0.01,        # Entropy exploration coefficient
         vf_coef: float = 0.5,          # Value loss coefficient
         vp_coef: float = 0.05,         # Auxiliary VP loss weight
+        adv_filter_quantile: float = 0.0,  # P1: drop the lowest-|A| share from the policy loss
         defcon_coef: float = 0.0,      # Auxiliary DEFCON-risk loss weight (0 disables the head)
         gamma: float = 1.0,            # Undiscounted: see note below
         # gamma must be exactly 1.0. Twilight Struggle is zero-sum and decided only at the
@@ -148,6 +149,12 @@ class BaseNashPGTrainer:
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.vp_coef = vp_coef
+        # P1 advantage filtering. Samples whose |advantage| falls below this quantile of the
+        # minibatch are dropped from the *policy* term only; the value head still sees every
+        # sample, which is the point -- the critic needs the uninformative states too.
+        # 0.0 disables it. It changes the effective batch size, so it is screened as its own
+        # factor rather than folded into the categorical change.
+        self.adv_filter_quantile = float(adv_filter_quantile)
         self.defcon_coef = defcon_coef
         if defcon_coef > 0.0 and not hasattr(self.active_net, "forward_with_risk"):
             raise ValueError(
@@ -349,6 +356,28 @@ class BaseNashPGTrainer:
 class NashPGTrainer(BaseNashPGTrainer):
     """Standard NashPG Trainer for ColdWarNet V1, V2, and V3."""
 
+    def _value_loss(self, cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, value_logits):
+        """MSE on the two scalars, or cross-entropy on the distribution.
+
+        The categorical target is the lambda-return *in VP units* projected two-hot onto the
+        atoms -- not the realised final VP. The buffer already computes that return for the
+        auxiliary VP head, so this reuses the same bootstrapped target the scalar head was
+        fitting, which keeps the change to the loss and not to what is being learned.
+
+        `cur_v_win` is still produced (derived from the distribution) but is not regressed
+        against separately: it is a function of the same distribution, and adding an MSE term on
+        it would pull the head toward two different objectives at once.
+        """
+        if value_logits is None:
+            return (F.mse_loss(cur_v_win, b_ret_win)
+                    + self.vp_coef * F.mse_loss(cur_v_vp, b_ret_vp))
+        # getattr for the same reason forward_with_risk uses it: active_net is typed
+        # nn.Module, and these live on ColdWarNetV2.
+        two_hot = getattr(self.active_net, "two_hot")
+        target = two_hot(b_ret_vp.detach())
+        log_p = F.log_softmax(value_logits, dim=-1)
+        return -(target * log_p).sum(dim=-1).mean()
+
     def train_step(self) -> Dict[str, float]:
         self.active_net.train()
 
@@ -365,10 +394,20 @@ class NashPGTrainer(BaseNashPGTrainer):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
                  b_defcon_risk) in self.buffer.get_batches(self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
+                cur_value_logits = None
                 if use_risk:
                     forward_with_risk = getattr(self.active_net, "forward_with_risk")
                     cur_logits, cur_v_win, cur_v_vp, cur_risk = forward_with_risk(b_obs, b_mask)
                     cur_risk = cur_risk.squeeze(-1)
+                elif getattr(self.active_net, "categorical_value", False):
+                    # One backbone pass for the policy, both scalars and the value logits the
+                    # cross-entropy needs; re-running the trunk for the logits would double the
+                    # cost of every update.
+                    forward_with_value_logits = getattr(
+                        self.active_net, "forward_with_value_logits")
+                    cur_logits, cur_v_win, cur_v_vp, cur_value_logits = (
+                        forward_with_value_logits(b_obs, b_mask))
+                    cur_risk = None
                 else:
                     cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
                     cur_risk = None
@@ -382,7 +421,18 @@ class NashPGTrainer(BaseNashPGTrainer):
                 ratio = torch.exp(cur_lp - b_old_lp)
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
-                ppo_loss = -torch.min(surr1, surr2).mean()
+                surrogate = -torch.min(surr1, surr2)
+                if self.adv_filter_quantile > 0.0 and surrogate.numel() > 1:
+                    # Keep the samples the policy can actually learn from. The threshold is a
+                    # quantile of this minibatch rather than a fixed |A|, so it adapts as the
+                    # advantage scale shrinks over training instead of silently dropping
+                    # everything late on.
+                    keep = (b_adv.abs()
+                            >= torch.quantile(b_adv.abs().float(), self.adv_filter_quantile))
+                    ppo_loss = (surrogate[keep].mean() if bool(keep.any())
+                                else surrogate.mean() * 0.0)
+                else:
+                    ppo_loss = surrogate.mean()
 
                 clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean().item()
 
@@ -395,7 +445,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                 kl_div = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1).mean()
 
                 policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * cur_entropy.mean()
-                val_loss = F.mse_loss(cur_v_win, b_ret_win) + self.vp_coef * F.mse_loss(cur_v_vp, b_ret_vp)
+                val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
+                                            cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss
 
                 # Auxiliary DEFCON-risk objective. Positives are rare (a few percent of
