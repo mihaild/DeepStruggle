@@ -677,6 +677,37 @@ arguing about.
 
 ---
 
+## 21. What an 80M arm actually spends its budget learning
+
+Measured on `p1_scalar_nofilter`, binned by snapshot (eval rows carry `iteration`, not
+`total_steps`; 80,019,456 steps at iteration 1221 is 65,536 steps/iteration):
+
+| | 5M | 30M | 60M | 80M | 90% of the run's movement by |
+|:---|---:|---:|---:|---:|---:|
+| anchor win rate | 32% | 85% | 84% | 84% | **30M** |
+| empty battlegrounds, turn 8 | 11.91 | 9.49 | 7.62 | 7.60 | **60M** |
+| uncontrolled battlegrounds, turn 8 | 20.88 | 17.95 | 16.47 | 16.33 | **60M** |
+| DEFCON-suicide blunder rate | 9.8% | 6.2% | 7.3% | **10.0%** | **flat** |
+
+Two things follow.
+
+**Most of the anchor number is bought in the first 30M**, about 38% of the budget, and the
+remaining 50M moves it by a few points inside the noise band. The strategic diagnostics are the
+opposite: they improve steadily and are still moving at 60M. So the anchor metric saturates long
+before the behaviour does — another reason (§20.7) not to rate an arm by it.
+
+**The DEFCON-suicide rate does not improve over a whole run.** It starts at 9.8%, wanders between
+4.6% and 10.7%, and ends at 10.0%. This is the mistake the project goal names first, and 80M
+steps of self-play do not touch it. That is a finding about the *reward*, not about the budget: a
+warm start cannot save re-learning something nothing learns in the first place.
+
+> **The taxonomy changed underneath this metric.** `blunder_defcon_suicide_with_alternative`
+> was redefined (battleground-conditioned influence, Tear Down This Wall added, Nuclear Subs made
+> one-sided, Ortega and Star Wars added, We Will Bury You / How I Learned / Junta removed). The
+> table above is the **old** definition. Runs from the second P1 leg onward use the new one, so
+> the series is **not continuous across that boundary** — a step change there is the definition
+> moving, not the policy. Re-measure before comparing across it.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
