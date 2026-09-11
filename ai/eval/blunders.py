@@ -76,6 +76,11 @@ AMERICAS = (CENTRAL_AMERICA, SOUTH_AMERICA)
 #: Operations, and Five Year Plan makes the USSR discard, so the action that would reach DEFCON 1
 #: is the opponent's, not the player's. How I Learned is here and nowhere else: it sets DEFCON
 #: outright rather than by way of a coup.
+#:
+#: Junta is deliberately absent. Taken by the *US*, its free coup is the US's to aim, so the US
+#: can steer it off a battleground -- avoidable, and not a suicide. Taken by the US after the
+#: *USSR* played Star Wars for Operations, the USSR has no such say, which is why Junta appears
+#: in the USSR's branch instead.
 STAR_WARS_DISCARD_DANGERS = (OLYMPIC_GAMES, DUCK_AND_COVER, KAL_007, CIA_CREATED, GRAIN_SALES,
                              TEAR_DOWN_THIS_WALL, WE_WILL_BURY_YOU, HOW_I_LEARNED)
 
@@ -256,6 +261,17 @@ def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
             # closes the region -- so European battlegrounds are exposed by this card alone.
             if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
                 out.add(TEAR_DOWN_THIS_WALL)
+            # Star Wars is a US event, so the USSR playing it for Operations fires it: with
+            # the US ahead on the track, the US takes a card from the discard and plays it at
+            # once. Junta there is the dangerous one -- it grants a free coup in Central or
+            # South America, which the US aims, so unlike the US's own copy of this problem the
+            # USSR cannot steer it away from a battleground. Only an Americas battleground is
+            # reachable: Junta's coup is region-locked to those two regions.
+            if (int(state.us_space_track) > int(state.ussr_space_track)
+                    and JUNTA in discard_pile(state)
+                    and has_influence_in(state, ts.Player.USSR, AMERICAS,
+                                         battleground_only=True)):
+                out.add(STAR_WARS)
         # Five Year Plan discards a random USSR card and fires it if it is a US event, so it is
         # dangerous exactly when one of the above is already in hand to be hit.
         if any(c in out for c in hand_of(state, ts.Player.USSR)):

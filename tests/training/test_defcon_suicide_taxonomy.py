@@ -13,12 +13,13 @@ any country made these cards look dangerous in positions where they were not.
 import ts_engine as ts
 
 from ai.eval.blunders import (CIA_CREATED, DUCK_AND_COVER, FIVE_YEAR_PLAN, GRAIN_SALES,
-                              HOW_I_LEARNED, KAL_007, LONE_GUNMAN, NUCLEAR_SUBS_ACTIVE,
+                              HOW_I_LEARNED, JUNTA, KAL_007, LONE_GUNMAN, NUCLEAR_SUBS_ACTIVE,
                               OLYMPIC_GAMES, ORTEGA_ELECTED, STAR_WARS, TEAR_DOWN_THIS_WALL,
                               WE_WILL_BURY_YOU, defcon_suicide_cards)
 from ai.eval.positions import PositionBuilder
 
 ALGERIA, CUBA, NICARAGUA, MOROCCO = 47, 71, 69, 46
+AMERICAS_REGIONS = (4, 5)
 EUROPE_REGION = 0
 COUPABLE_REGIONS = (3, 4, 5)      # Africa, Central America, South America
 NEUTRAL_HAND = (23, 27)          # Marshall Plan, US/Japan Pact -- dangerous to neither side
@@ -34,10 +35,12 @@ def _cleared(player: ts.Player, regions, keep=()) -> tuple[tuple[int, ts.Player]
                  and cid not in kept)
 
 
-def ussr(hand=NEUTRAL_HAND, influence=(), clear_europe=True, flags=(), discard=()):
+def ussr(hand=NEUTRAL_HAND, influence=(), clear_europe=True, flags=(), discard=(),
+         us_space=0, ussr_space=0):
     return PositionBuilder(
         hand=hand, side=ts.Player.USSR, defcon=2, turn=8, action_round=1,
         influence=influence, flags=flags, discard=discard,
+        us_space=us_space, ussr_space=ussr_space,
         clear_influence=(_cleared(ts.Player.USSR, (EUROPE_REGION,), influence)
                          if clear_europe else ()),
     ).build()
@@ -114,6 +117,50 @@ def test_the_ussr_may_play_its_own_defcon_cards_for_operations() -> None:
     """We Will Bury You is the USSR's own event, so declining it is free."""
     assert WE_WILL_BURY_YOU not in defcon_suicide_cards(ussr(clear_europe=False),
                                                         ts.Player.USSR)
+
+
+def test_star_wars_is_deadly_for_the_ussr_through_junta() -> None:
+    """The USSR plays it for Operations, the US event fires and the US picks the card.
+
+    Junta hands the US a free coup in Central or South America, and the US aims it -- so where
+    the US's own copy of this problem is avoidable, this one is not.
+    """
+    exposed = ussr(influence=((CUBA, ts.Player.USSR, 2),), discard=(JUNTA,),
+                   us_space=3, ussr_space=1)
+    assert STAR_WARS in defcon_suicide_cards(exposed, ts.Player.USSR)
+
+
+def test_the_ussr_star_wars_clause_needs_all_three_conditions() -> None:
+    def without(**kw):
+        base = dict(influence=((CUBA, ts.Player.USSR, 2),), discard=(JUNTA,),
+                    us_space=3, ussr_space=1)
+        base.update(kw)
+        return defcon_suicide_cards(ussr(**base), ts.Player.USSR)
+
+    # The US must lead the space race, or the event does nothing at all.
+    assert STAR_WARS not in without(us_space=1, ussr_space=3)
+    # Junta must actually be in the discard to be taken.
+    assert STAR_WARS not in without(discard=(23,))
+    # And the coup has to have a battleground to land on. Nicaragua is in Central America and
+    # is not one; Cuba is.
+    assert STAR_WARS not in without(influence=((NICARAGUA, ts.Player.USSR, 2),))
+    # Junta's coup is region-locked to the Americas, so Africa does not expose it.
+    assert STAR_WARS not in without(influence=((ALGERIA, ts.Player.USSR, 2),))
+
+
+def test_nuclear_subs_disarms_the_ussr_star_wars_clause_too() -> None:
+    """The coup at the end of that chain is the US's, which is what Nuclear Subs exempts."""
+    pos = ussr(influence=((CUBA, ts.Player.USSR, 2),), discard=(JUNTA,),
+               us_space=3, ussr_space=1, flags=(NUCLEAR_SUBS_ACTIVE,))
+    assert STAR_WARS not in defcon_suicide_cards(pos, ts.Player.USSR)
+
+
+def test_five_year_plan_sees_star_wars_once_it_is_banned() -> None:
+    """Whatever is in the banned set is what a random discard can hit."""
+    pos = ussr(hand=(STAR_WARS, 23), influence=((CUBA, ts.Player.USSR, 2),),
+               discard=(JUNTA,), us_space=3, ussr_space=1)
+    banned = defcon_suicide_cards(pos, ts.Player.USSR)
+    assert STAR_WARS in banned and FIVE_YEAR_PLAN in banned
 
 
 # --- US -----------------------------------------------------------------------------------
