@@ -90,16 +90,31 @@ def test_europe_scoring_is_read_before_any_placement() -> None:
         "Europe Scoring was in nobody's hand in eight fresh games; the deal has not happened yet"
 
 
-def test_waste_counts_only_already_controlled_countries() -> None:
-    """East Germany starts USSR-controlled at 3, so placing there buys nothing."""
+def test_the_margin_is_read_from_the_finished_board_not_the_placement() -> None:
+    """East Germany starts at 3 against stability 3: held, with nothing to spare.
+
+    A probe that read the placement alone would score one influence there as "1" and miss that
+    the country went from takeable-by-one to buffered. That is the whole reason the standard
+    opening puts a point in, so the probe has to see it.
+    """
     st = ts.GameState()
     ts.Engine.init_game(st, 1)
+    assert int(st.get_country(14).ussr_influence) == 3
+    assert ts.MapData.get_country_info(14)["stability"] == 3
     assert ts.Scoring.get_country_control(st, 14) == ts.Player.USSR, "East Germany moved"
 
-    m = measure(uniform_policy(3), num_games=32, batch_size=32)
-    east_germany = m.ussr.influence[:, 14].astype(np.int16)
-    assert (m.ussr.wasted() >= east_germany).all(), \
-        "influence into East Germany must be counted as wasted"
+    m = measure(uniform_policy(3), num_games=64, batch_size=64)
+    placed = m.ussr.influence[:, 14].astype(np.int16)
+    final = m.ussr.final[:, 14].astype(np.int16)
+    assert (final == placed + 3).all(), "the finished board must include the starting influence"
+
+    margin = m.ussr.margin()[:, 14]
+    assert (margin == placed).all(), \
+        "with the US at zero and stability 3, the margin in East Germany is what was placed"
+    # A game that placed nothing there holds it at exactly control, and is counted as fragile.
+    none_placed = placed == 0
+    if none_placed.any():
+        assert (m.ussr.fragile() > 0)[none_placed].all()
 
 
 @pytest.mark.parametrize("cid,name", [(POLAND, "Poland"), (WEST_GERMANY, "West Germany")])

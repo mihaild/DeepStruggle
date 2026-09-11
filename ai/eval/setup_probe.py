@@ -6,10 +6,19 @@ Western Europe and 2 more wherever it already sits -- taken before a single card
 no rollout and no chance. Fifteen batched forward passes describe a checkpoint's entire opening
 repertoire.
 
-It is also where the anecdotes are. A USSR that does not put 3 into Poland, or a US that does not
-put 4 into West Germany, has given up the two most contested countries on the board before the
-game starts, and `experiments.md` §12 records that the agent "fights where it was placed and
-never opens a new front" -- which makes the placement the whole front.
+It is also where the anecdotes are. A USSR that does not hold Poland, or a US that does not hold
+West Germany, has given up the two most contested countries on the board before the game starts,
+and `experiments.md` §12 records that the agent "fights where it was placed and never opens a new
+front" -- which makes the placement the whole front.
+
+**Control is not the bar; control with a point to spare is.** A country held at exactly the
+control threshold is taken back by a single influence, and in Europe one card routinely supplies
+it. The standard USSR opening is Poland 4 and East Germany 4 -- both overcontrolled by one -- and
+the US buys the same buffer in Italy at 3. The human corpus agrees: 97.3% of games finish setup
+with Poland at 4 or more and East Germany at 4 or more, and 1.95 European countries held with a
+buffer against 0.08 held at exactly control. So every threshold here is reported twice, at
+control and at control-plus-one, and the finished board is what they are read from -- not the
+placement, because East Germany starts at 3 and a single point there buys the buffer.
 
 Two things this deliberately does *not* do:
 
@@ -41,9 +50,22 @@ POLAND = 15
 WEST_GERMANY = 7
 EUROPE_SCORING = 2
 
-#: The two statistics the queue's goal statement names.
+#: Control thresholds, which are what the queue's goal statement names. Control is
+#: `mine >= theirs + stability`, and with the opponent at zero that is just the stability.
 POLAND_TARGET = 3
 WEST_GERMANY_TARGET = 4
+
+#: The overcontrol bar: one point past control. A country held at exactly control is taken back
+#: by a single influence, which in Europe one card routinely supplies -- so the standard opening
+#: buys the buffer. Humans put a mean 4.21 into Poland and bring East Germany from 3 to 4.
+POLAND_BUFFERED = 4
+WEST_GERMANY_BUFFERED = 5
+
+_STABILITY: np.ndarray = np.array(
+    [int(ts.MapData.get_country_info(c)["stability"]) for c in range(84)], dtype=np.int16)
+_REGION: np.ndarray = np.array(
+    [int(ts.MapData.get_country_info(c)["region"]) for c in range(84)], dtype=np.int16)
+EUROPE = int(ts.Region.EUROPE)
 
 
 @dataclass
@@ -52,18 +74,24 @@ class SideSetup:
 
     influence: np.ndarray          # (games, 84) int8 -- influence placed during setup
     hand_has_europe_scoring: np.ndarray   # (games,) bool
-    #: Countries this side already controlled before placing anything. The board is not empty at
-    #: setup: East Germany starts USSR-controlled with 3, the UK US-controlled with 5. Influence
-    #: put into one of those buys nothing -- the country was already held and the opponent has
-    #: none there to outbid.
-    already_controlled: Tuple[int, ...] = ()
+    #: (games, 84) -- this side's influence on the finished board, and the opponent's. The
+    #: placements alone cannot answer the question that matters, because the board is not empty
+    #: when the block starts: East Germany already holds 3 USSR.
+    final: np.ndarray = field(default_factory=lambda: np.zeros((0, 84), np.int16))
+    opponent_final: np.ndarray = field(default_factory=lambda: np.zeros((0, 84), np.int16))
 
     def rate_at_least(self, cid: int, threshold: int) -> Tuple[float, float, float]:
-        """P(influence in `cid` >= threshold), with a Wilson 95% band."""
-        hits = int((self.influence[:, cid] >= threshold).sum())
-        n = int(self.influence.shape[0])
-        lo, hi = wilson_interval(hits, n)
-        return (hits / n if n else float("nan")), lo, hi
+        """P(influence *placed* in `cid` >= threshold), with a Wilson 95% band."""
+        return _rate(self.influence[:, cid] >= threshold)
+
+    def final_at_least(self, cid: int, threshold: int) -> Tuple[float, float, float]:
+        """P(influence in `cid` *on the finished board* >= threshold).
+
+        This, not the placement, is what the thresholds mean. East Germany starts at 3, so a
+        USSR that places one there holds it at 4 -- and a probe reading the placement alone
+        would call that "1" and miss that the country is now buffered.
+        """
+        return _rate(self.final[:, cid] >= threshold)
 
     def mean_per_country(self) -> np.ndarray:
         return self.influence.mean(axis=0)
@@ -95,17 +123,49 @@ class SideSetup:
     def distinct_openings(self) -> int:
         return len({tuple(row.tolist()) for row in self.influence})
 
-    def wasted(self) -> np.ndarray:
-        """Influence per game placed into a country this side already controlled.
+    def margin(self) -> np.ndarray:
+        """(games, 84): influence above the amount control requires.
 
-        Not a judgement call: at setup the opponent has no influence in any of these, so there
-        is nothing to contest and no margin to build against. Every point spent there is a point
-        not spent on Poland, West Germany or anywhere the game is actually decided.
+        `mine - (theirs + stability)`. Zero is control with nothing to spare -- a single
+        opponent influence, from one card, takes the country back. One is the buffer a standard
+        opening buys, and it is why placing into a country you already control is not waste:
+        East Germany starts at exactly 3 against stability 3, so it is held at margin zero until
+        a fourth goes in.
+
+        Negative means not controlled, and is reported only through `controls()`.
         """
-        if not self.already_controlled:
-            return np.zeros(self.influence.shape[0], dtype=np.int16)
-        idx = np.asarray(self.already_controlled, dtype=int)
-        return self.influence[:, idx].sum(axis=1).astype(np.int16)
+        return (self.final.astype(np.int16)
+                - self.opponent_final.astype(np.int16)
+                - _STABILITY[None, :])
+
+    def controls(self) -> np.ndarray:
+        return self.margin() >= 0
+
+    def fragile(self, region: Optional[int] = None) -> np.ndarray:
+        """Per game: controlled countries held at margin exactly zero, i.e. one draw from losing."""
+        sel = self.controls() & (self.margin() == 0)
+        if region is not None:
+            sel = sel & (_REGION[None, :] == region)
+        return sel.sum(axis=1).astype(np.int16)
+
+    def buffered(self, region: Optional[int] = None) -> np.ndarray:
+        """Per game: controlled countries held with at least one point to spare."""
+        sel = self.controls() & (self.margin() >= 1)
+        if region is not None:
+            sel = sel & (_REGION[None, :] == region)
+        return sel.sum(axis=1).astype(np.int16)
+
+    def surplus(self) -> np.ndarray:
+        """Per game: influence beyond a one-point buffer, where the side placed any.
+
+        Reported, not judged. A second point of buffer is a real choice -- the owner's note on
+        Italy is "3, and even one more eventually" -- so this is set beside the human figure
+        rather than called waste. What it does catch is the opening that puts three more into a
+        country already held.
+        """
+        extra = np.clip(self.margin() - 1, 0, None)
+        touched = self.influence > 0
+        return (extra * touched).sum(axis=1).astype(np.int16)
 
 
 @dataclass
@@ -116,6 +176,13 @@ class SetupMeasurement:
     #: Games where a placement decision had no legal action, which would mean the block was
     #: shorter than SETUP_DECISIONS and every row after it is misaligned. Must be 0.
     malformed: int = 0
+
+
+def _rate(hits: np.ndarray) -> Tuple[float, float, float]:
+    n = int(hits.shape[0])
+    k = int(hits.sum())
+    lo, hi = wilson_interval(k, n)
+    return (k / n if n else float("nan")), lo, hi
 
 
 def _country_name(cid: int) -> str:
@@ -134,8 +201,8 @@ def measure(select_action: Any, num_games: int = 2000, base_seed: int = 20260911
     ussr_rows: List[np.ndarray] = []
     us_has_es: List[bool] = []
     ussr_has_es: List[bool] = []
-    us_pre_controlled: List[int] = []
-    ussr_pre_controlled: List[int] = []
+    us_final: List[np.ndarray] = []
+    ussr_final: List[np.ndarray] = []
     malformed = 0
 
     done = 0
@@ -151,14 +218,6 @@ def measure(select_action: Any, num_games: int = 2000, base_seed: int = 20260911
             ussr_has_es.append(bool(ts.in_hand_of(loc, ts.Player.USSR)))
 
         before = np.stack([_influence_row(runner.get_state(i)) for i in range(n)])
-        if not us_pre_controlled:
-            st0 = runner.get_state(0)
-            for cid in range(84):
-                ctrl = ts.Scoring.get_country_control(st0, cid)
-                if ctrl == ts.Player.US:
-                    us_pre_controlled.append(cid)
-                elif ctrl == ts.Player.USSR:
-                    ussr_pre_controlled.append(cid)
 
         for _ in range(SETUP_DECISIONS):
             obs = np.asarray(runner.get_observations(), dtype=np.float32)
@@ -175,13 +234,14 @@ def measure(select_action: Any, num_games: int = 2000, base_seed: int = 20260911
             after = _influence_row(state)
             us_rows.append((after[0] - before[i][0]).astype(np.int8))
             ussr_rows.append((after[1] - before[i][1]).astype(np.int8))
+            us_final.append(after[0].copy())
+            ussr_final.append(after[1].copy())
         done += n
 
+    us_fin, ussr_fin = np.stack(us_final), np.stack(ussr_final)
     return SetupMeasurement(
-        us=SideSetup(np.stack(us_rows), np.asarray(us_has_es, dtype=bool),
-                     tuple(us_pre_controlled)),
-        ussr=SideSetup(np.stack(ussr_rows), np.asarray(ussr_has_es, dtype=bool),
-                       tuple(ussr_pre_controlled)),
+        us=SideSetup(np.stack(us_rows), np.asarray(us_has_es, dtype=bool), us_fin, ussr_fin),
+        ussr=SideSetup(np.stack(ussr_rows), np.asarray(ussr_has_es, dtype=bool), ussr_fin, us_fin),
         games=num_games,
         malformed=malformed,
     )
@@ -255,12 +315,8 @@ def measure_corpus(paths: Optional[Sequence[str]] = None) -> SetupMeasurement:
         paths = sorted(glob.glob(os.path.join(str(corpus_dir()), "*.json.gz")))
 
     base = initial_board()
-    _probe_state = ts.GameState()
-    ts.Engine.init_game(_probe_state, 1)
-    us_pre = tuple(c for c in range(84)
-                   if ts.Scoring.get_country_control(_probe_state, c) == ts.Player.US)
-    ussr_pre = tuple(c for c in range(84)
-                     if ts.Scoring.get_country_control(_probe_state, c) == ts.Player.USSR)
+    us_final: List[np.ndarray] = []
+    ussr_final: List[np.ndarray] = []
     us_rows: List[np.ndarray] = []
     ussr_rows: List[np.ndarray] = []
     malformed = 0
@@ -282,6 +338,7 @@ def measure_corpus(paths: Optional[Sequence[str]] = None) -> SetupMeasurement:
                 continue
             us[cid] = int(rec.get("inflUS", 0) or 0)
             ussr[cid] = int(rec.get("inflUSSR", 0) or 0)
+        board_us, board_ussr = us.copy(), ussr.copy()
         for cid, (bu, bs) in base.items():
             us[cid] -= bu
             ussr[cid] -= bs
@@ -293,12 +350,17 @@ def measure_corpus(paths: Optional[Sequence[str]] = None) -> SetupMeasurement:
             continue
         us_rows.append(us.astype(np.int8))
         ussr_rows.append(ussr.astype(np.int8))
+        us_final.append(board_us)
+        ussr_final.append(board_ussr)
 
     n = len(us_rows)
     empty = np.zeros(n, dtype=bool)     # the log does not state hands at setup
+    zeros = np.zeros((0, 84), np.int8)
+    us_fin = np.stack(us_final) if n else np.zeros((0, 84), np.int16)
+    ussr_fin = np.stack(ussr_final) if n else np.zeros((0, 84), np.int16)
     return SetupMeasurement(
-        us=SideSetup(np.stack(us_rows) if n else np.zeros((0, 84), np.int8), empty, us_pre),
-        ussr=SideSetup(np.stack(ussr_rows) if n else np.zeros((0, 84), np.int8), empty, ussr_pre),
+        us=SideSetup(np.stack(us_rows) if n else zeros, empty, us_fin, ussr_fin),
+        ussr=SideSetup(np.stack(ussr_rows) if n else zeros, empty, ussr_fin, us_fin),
         games=n,
         malformed=malformed,
     )
@@ -324,21 +386,22 @@ def format_corpus_report(m: SetupMeasurement) -> str:
     std = split["standard"]
     lines = [f"=== setup probe: human corpus ({m.games} games"
              + (f", {m.malformed} unusable" if m.malformed else "") + ") ==="]
-    for name, side, cid, target in (("USSR", m.ussr, POLAND, POLAND_TARGET),
-                                    ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET)):
-        rate, lo, hi = side.rate_at_least(cid, target)
-        lines.append(f"  {name}: P({_country_name(cid)} >= {target}) = {rate * 100:5.1f}% "
-                     f"[{lo * 100:.1f}, {hi * 100:.1f}]   mean {side.mean_per_country()[cid]:.2f}   "
+    for name, side, cid, target, buffered in (
+            ("USSR", m.ussr, POLAND, POLAND_TARGET, POLAND_BUFFERED),
+            ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET, WEST_GERMANY_BUFFERED)):
+        held = side.final_at_least(cid, target)
+        buf = side.final_at_least(cid, buffered)
+        lines.append(f"  {name}: {_country_name(cid)} controlled {held[0] * 100:5.1f}%, "
+                     f"with a buffer (>= {buffered}) {buf[0] * 100:5.1f}%   "
+                     f"mean {side.final[:, cid].mean():.2f}   "
                      f"entropy {side.entropy():.2f} bits")
-        waste = side.wasted()
-        lines.append(f"      wasted on already-controlled countries: {waste.mean():.2f} per game "
-                     f"({float((waste > 0).mean()) * 100:.0f}% of games)")
+        lines.append(_margin_line(side))
         sub = SideSetup(side.influence[std], side.hand_has_europe_scoring[std],
-                        side.already_controlled)
+                        side.final[std], side.opponent_final[std])
         if sub.influence.shape[0]:
-            r, l, h = sub.rate_at_least(cid, target)
+            r, l, h = sub.final_at_least(cid, buffered)
             lines.append(f"      no handicap           n={int(std.sum()):5d}  "
-                         f"{r * 100:5.1f}% [{l * 100:.1f}, {h * 100:.1f}]")
+                         f"buffered {r * 100:5.1f}% [{l * 100:.1f}, {h * 100:.1f}]")
         top = side.mean_per_country()
         order = np.argsort(-top)[:6]
         lines.append("      mean placement: " + ", ".join(
@@ -349,24 +412,35 @@ def format_corpus_report(m: SetupMeasurement) -> str:
     return "\n".join(lines)
 
 
+def _margin_line(side: "SideSetup") -> str:
+    """Europe, held how firmly. Control at margin zero is one opponent influence from gone."""
+    frag = side.fragile(EUROPE).mean()
+    buff = side.buffered(EUROPE).mean()
+    return (f"      Europe after setup: {buff:.2f} controlled with a buffer, "
+            f"{frag:.2f} at exactly control (one influence from losing it); "
+            f"surplus beyond one buffer {side.surplus().mean():.2f}")
+
+
 def format_report(m: SetupMeasurement, label: str = "") -> str:
     lines: List[str] = [f"=== setup probe: {label or 'policy'} ({m.games} games) ==="]
     if m.malformed:
         lines.append(f"  !! {m.malformed} games did not have a well-formed setup block; "
                      f"every number below is suspect")
 
-    for name, side, cid, target in (("USSR", m.ussr, POLAND, POLAND_TARGET),
-                                    ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET)):
-        rate, lo, hi = side.rate_at_least(cid, target)
+    for name, side, cid, target, buffered in (
+            ("USSR", m.ussr, POLAND, POLAND_TARGET, POLAND_BUFFERED),
+            ("US", m.us, WEST_GERMANY, WEST_GERMANY_TARGET, WEST_GERMANY_BUFFERED)):
+        held = side.final_at_least(cid, target)
+        buf = side.final_at_least(cid, buffered)
         lines.append(
-            f"  {name}: P({_country_name(cid)} >= {target}) = {rate * 100:5.1f}% "
-            f"[{lo * 100:.1f}, {hi * 100:.1f}]   "
-            f"mean {side.mean_per_country()[cid]:.2f}   "
+            f"  {name}: {_country_name(cid)} controlled {held[0] * 100:5.1f}% "
+            f"[{held[1] * 100:.1f}, {held[2] * 100:.1f}], "
+            f"with a buffer (>= {buffered}) {buf[0] * 100:5.1f}% "
+            f"[{buf[1] * 100:.1f}, {buf[2] * 100:.1f}]   "
+            f"mean {side.final[:, cid].mean():.2f}   "
             f"entropy {side.entropy():.2f} bits   "
             f"{side.distinct_openings()} distinct openings")
-        waste = side.wasted()
-        lines.append(f"      wasted on already-controlled countries: {waste.mean():.2f} per game "
-                     f"({float((waste > 0).mean()) * 100:.0f}% of games)")
+        lines.append(_margin_line(side))
 
         # Conditioning on Europe Scoring: the one hand feature that plausibly moves the answer.
         for holder, sel in (("holds Europe Scoring", side.hand_has_europe_scoring),
@@ -375,9 +449,10 @@ def format_report(m: SetupMeasurement, label: str = "") -> str:
             if n == 0:
                 continue
             sub = SideSetup(side.influence[sel], side.hand_has_europe_scoring[sel],
-                            side.already_controlled)
-            r, l, h = sub.rate_at_least(cid, target)
-            lines.append(f"      {holder:22s} n={n:5d}  {r * 100:5.1f}% [{l * 100:.1f}, {h * 100:.1f}]")
+                            side.final[sel], side.opponent_final[sel])
+            r, l, h = sub.final_at_least(cid, target)
+            lines.append(f"      {holder:22s} n={n:5d}  controls {r * 100:5.1f}% "
+                         f"[{l * 100:.1f}, {h * 100:.1f}]")
 
         top = side.mean_per_country()
         order = np.argsort(-top)[:6]
