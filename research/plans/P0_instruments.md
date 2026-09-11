@@ -232,40 +232,51 @@ Intervention on either is fine and the claim is only that it is spent on one of 
 
 Baselines here, not gates. These are the numbers a later strategy arm has to move.
 
-**Built, and two things came out of building it.**
+**Built** as `ai/eval/sequencing.py` (`fa8be41`), with two rules rather than three:
+`un_intervention_off_target` and `un_intervention_on_spaceable`, counted through `BlunderCounts`
+so the Wilson bands, the examples and the metric keys are the existing machinery rather than a
+second copy of it.
 
-*`blunders.defcon_suicide_cards` does not list Tear Down this Wall*, though the §25 position turns
-on it: the US free coup in Europe at DEFCON 2 drops DEFCON, and the USSR, as the phasing player
-that spent it for Ops, loses. The probe uses that function as the single definition of "a card
-you must not play here" rather than keeping a second list, so it does not currently count that
-card. Whether the list should gain it is a question about `blunders.py` and its published rate,
-so it is left to the owner. `tests/training/test_sequencing_probe.py` reconstructs the §25
-*structure* with Duck and Cover (3 Ops, US, on the list) standing in for Tear Down this Wall.
+Two things came out of building it, and both survive the implementation.
 
 *Spaceability has to be asked one decision earlier than it is used.* At the companion node a card
 action means "UN Intervention takes this one", so stepping it there answers a different question
-and reports every card as unspaceable. The probe takes the answer at the decision where UN
-Intervention is chosen, where playing the card is still the live question, and carries it
-forward.
+and reports every card as unspaceable. The probe keeps the last ordinary card-selection node per
+environment and asks there, where playing the card is still the live question. Two independent
+implementations of this probe both hit that, one of them scoring zero opportunities on a
+hand-built position that contained one before it was found.
 
-**First numbers, 300 games a checkpoint:**
+*`blunders.defcon_suicide_cards` does not list Tear Down this Wall*, though the §25 position turns
+on it: the US free coup in Europe at DEFCON 2 drops DEFCON, and the USSR, as the phasing player
+that spent it for Ops, loses. The probe uses that function as the single definition of "a card you
+must not play here" rather than keeping a second list, so **the position the probe was written
+from is not one the probe would currently flag**. Whether the list should gain the card is a
+question about `blunders.py` and the `defcon_suicide_with_alternative` rate it already publishes,
+so it is recorded here rather than changed. `tests/training/test_sequencing_probe.py` uses Duck
+and Cover -- 3 Ops, US-associated, on the list -- so the spaceable/unspaceable pair is structurally
+identical.
+
+**First numbers, 300 games a checkpoint**, from a run of the two rules plus a third measure that
+was tried and is *not* in the merged implementation (a card that must not be played is played for
+Operations anyway, with UN Intervention still in hand):
 
 | | H2 @240M | H2 @480M |
 |:---|---:|---:|
-| UN Intervention spent elsewhere | 12.5% (9/72) | 14.1% (11/78) |
+| UN Intervention spent off target | 12.5% (9/72) | 14.1% (11/78) |
 | spent on the spaceable one of two | 10.0% (1/10) | 20.0% (1/5) |
-| suicide card played raw anyway | 38.7% (12/31) | 77.8% (14/18) |
+| *(tried, not merged)* suicide card played raw | 38.7% (12/31) | 77.8% (14/18) |
 
-**The middle measure is not readable and should not be quoted.** It is the sharpest of the three
-and the §25 error exactly, and it arose ten times in 300 games at 240M and five at 480M -- bands
-of [1.8, 40.4] and [3.6, 62.4]. Either it needs thousands of games or the configuration is simply
-rare in self-play; that is a question for whoever runs the baseline row.
+**The second rule is the sharpest and is not readable at this sample size.** It is the §25 error
+exactly, and it arose ten times in 300 games at 240M and five at 480M -- bands of [1.8, 40.4] and
+[3.6, 62.4]. Either the baseline row runs thousands of games or the configuration is simply rare
+in self-play; decide which before quoting it.
 
-The third is the informative one, and it is the measure that joins up with `dcedb8a`: a card that
-must not be played was played for Operations anyway, with the tool to avoid it still in hand,
-38.7% of the time at 240M and 77.8% at 480M. The bands touch at one point, so the doubling is
-suggestive rather than established -- and the denominators are small enough (31, 18) that the
-baseline row should widen the sample before anyone builds on it.
+The first rule reads the other way round and is worth saying plainly: when UN Intervention *is*
+spent and a card that must not be played is in hand, it goes to that card 86-88% of the time. The
+model is not misdirecting the tool. The third measure, if it is ever added, is the one that says
+what happens instead -- it joins up with `dcedb8a`'s finding that 82.7% of DEFCON-1 endings are
+provoked -- but its bands touch at one point over 31 and 18 opportunities, so it is suggestive
+and nothing more.
 
 ### 3. Existing instruments, on the same checkpoints
 

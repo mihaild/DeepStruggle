@@ -1,193 +1,116 @@
-"""The card-disposal probe, checked against the shape of the position it was written from.
+"""P0 probe 4, against the position it was written from.
 
-A probe that does not catch the case that motivated it catches nothing. `experiments.md` §25 is
-that case: the USSR holds UN Intervention and two US cards it must not play, at a space box
-needing 3 Ops, and only one of the two can space itself. It spent the scarce exit on the card
-that had its own.
+`experiments.md` §25: the USSR held UN Intervention, Tear Down this Wall and Grain Sales to
+Soviets at a space box requiring 3 Ops, and spent UN Intervention on Tear Down this Wall — the
+card that could have spaced itself — leaving Grain Sales with one exit fewer. A probe that does
+not catch the case it was written from catches nothing, so that position is the test.
 
-The §25 hand was Tear Down this Wall and Grain Sales. **This file uses Duck and Cover in place of
-Tear Down this Wall**, because `blunders.defcon_suicide_cards` -- the project's one definition of
-"a card you must not play here" -- does not list Tear Down this Wall, and a test that asserted
-otherwise would be asserting against a definition the probe does not use. Duck and Cover is 3 Ops
-and US-associated, so the structure is identical: two banned US cards, one spaceable at this box
-and one not. Whether Tear Down this Wall belongs in that list is a question about `blunders.py`,
-noted where the probe is reported rather than settled here.
+It is constructed rather than replayed: `data/replays/` is git-ignored, so a test that read the
+original self-play log would pass on one machine and fail everywhere else.
 """
 
-from __future__ import annotations
-
 import numpy as np
-import pytest
+
 import ts_engine as ts
 
-from ai.eval.positions import PositionBuilder, card_action
-from ai.eval.sequencing import (
-    SPACE_ACTION,
-    UN_INTERVENTION,
-    DisposalCounts,
-    is_spaceable,
-    is_un_intervention_companion_node,
-    measure,
-    observe,
-)
+from ai.eval.positions import (PLAY_MODE_ACTION, PositionBuilder, card_action, legal_mask,
+                               legal_play_modes, step_to_play_mode)
+from ai.eval.sequencing import classify, is_companion_node, legal_companions, new_counts
 
-#: 3 Ops, US-associated, and on the DEFCON-suicide list: the spaceable half of the pair.
-DUCK_AND_COVER = 4
-#: 2 Ops, US-associated, and on the list: the half with no way out at this box.
-GRAIN_SALES = 67
-
-#: Box 5 needs 3 Ops, so a track at 4 is the §25 situation: the 3-Ops card can space and the
-#: 2-Ops card cannot.
-SPACE_TRACK_AT_FOUR = 4
+UN_INTERVENTION, TEAR_DOWN_THIS_WALL, GRAIN_SALES = 32, 96, 67
+MOROCCO = 46      # Africa, so coupable while DEFCON is 2
+# Next box requires 3 Ops here. Read off the engine, not off the box table: at 3 both cards are
+# spaceable and at 7 neither is, so this is the one position that reproduces §25's asymmetry.
+SPACE_BOX = 4
 
 
-def _the_section_25_hand() -> ts.GameState:
-    """The §25 structure, with a foothold that makes the two cards actually dangerous.
-
-    `defcon_suicide_cards` bans the "opponent gets Operations and coups" cards only when there is
-    something to coup -- USSR influence in Africa or the Americas. Without it the position is not
-    the one §25 describes, so the probe would be scored against a hand with nothing at stake.
-    """
-    nigeria = next(c for c in range(84)
-                   if ts.MapData.get_country_info(c)["name"] == "Nigeria")
+def section_25_position() -> ts.GameState:
     return PositionBuilder(
-        hand=[UN_INTERVENTION, DUCK_AND_COVER, GRAIN_SALES],
-        side=ts.Player.USSR, turn=8, defcon=2, ussr_space=SPACE_TRACK_AT_FOUR,
-        influence=[(nigeria, ts.Player.USSR, 2)],
+        hand=(UN_INTERVENTION, TEAR_DOWN_THIS_WALL, GRAIN_SALES),
+        side=ts.Player.USSR,
+        defcon=2,
+        turn=10,
+        action_round=1,
+        ussr_space=SPACE_BOX,
+        # Grain Sales is a card the USSR must not play only while it has influence somewhere
+        # the US can coup at DEFCON 2 -- see blunders.defcon_suicide_cards. Morocco is in
+        # Africa; the opening setup puts USSR influence only in Europe and the Middle East,
+        # which are closed at DEFCON 2, so this has to be placed explicitly.
+        influence=((MOROCCO, ts.Player.USSR, 2),),
     ).build()
 
 
-def _at_the_companion_node(counts: DisposalCounts) -> tuple[ts.GameState, dict]:
-    """Step the §25 hand to where UN Intervention asks which card to spend itself on.
-
-    Driven exactly as `measure` drives it, including the carry: the spaceability answer is taken
-    at the decision where UN Intervention is chosen, because at the companion node a card action
-    means something else entirely.
-    """
-    carry: dict = {}
-    state = _the_section_25_hand()
-    observe(state, card_action(UN_INTERVENTION), counts, carry)
-    assert carry.get("spaceable"), "spaceability should have been recorded at the card choice"
-
-    ts.Engine.step_flat(state, card_action(UN_INTERVENTION))
-    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
-    ts.Engine.step_flat(state, 110 + int(ts.PlayMode.EVENT))
-    assert is_un_intervention_companion_node(state)
-    return state, carry
+def companion_node(state: ts.GameState) -> ts.GameState:
+    """Play UN Intervention as an event, landing on the companion choice."""
+    nxt = step_to_play_mode(state, UN_INTERVENTION).clone()
+    ts.Engine.step_flat(nxt, PLAY_MODE_ACTION["event"])
+    return nxt
 
 
-def test_the_position_reproduces_at_all() -> None:
-    """Both cards must be DEFCON-suicide here, or the probe is measuring a different position."""
-    from ai.eval.blunders import defcon_suicide_cards
-
-    state = _the_section_25_hand()
-    banned = defcon_suicide_cards(state, ts.Player.USSR)
-    assert DUCK_AND_COVER in banned and GRAIN_SALES in banned, (
-        f"both US cards must read as DEFCON-suicide for the position to be the one §25 "
-        f"describes; banned here: {sorted(banned)}")
+def test_the_position_splits_the_two_cards_on_spaceability() -> None:
+    """The asymmetry the whole probe turns on, asserted rather than assumed."""
+    st = section_25_position()
+    assert "space" in legal_play_modes(step_to_play_mode(st, TEAR_DOWN_THIS_WALL))
+    assert "space" not in legal_play_modes(step_to_play_mode(st, GRAIN_SALES))
 
 
-def test_spaceability_is_the_distinction() -> None:
-    """3 Ops reaches box 5 and 2 Ops does not. This is the whole of the §25 error."""
-    state = _the_section_25_hand()
-    assert is_spaceable(state, DUCK_AND_COVER), "Duck and Cover must be spaceable here"
-    assert not is_spaceable(state, GRAIN_SALES), "Grain Sales must not be spaceable here"
+def test_un_intervention_reaches_a_companion_node_here() -> None:
+    node = companion_node(section_25_position())
+    assert is_companion_node(node), "playing UN Intervention must ask for a companion"
+    companions = legal_companions(legal_mask(node))
+    assert TEAR_DOWN_THIS_WALL in companions and GRAIN_SALES in companions
 
 
-def test_spaceability_is_read_from_the_engine_not_from_printed_ops() -> None:
-    """With the track one box lower, the 2-Ops card becomes spaceable and the answer flips.
+def test_spending_it_on_the_card_that_could_space_itself_is_flagged() -> None:
+    """The §25 error exactly."""
+    st = section_25_position()
+    node = companion_node(st)
+    counts = new_counts()
+    classify(node, st, legal_mask(node), card_action(TEAR_DOWN_THIS_WALL), counts)
 
-    Printed Ops does not move; what the engine allows does. A probe that compared Ops against a
-    constant would give the same answer in both positions.
-    """
-    nigeria = next(c for c in range(84)
-                   if ts.MapData.get_country_info(c)["name"] == "Nigeria")
-    low = PositionBuilder(
-        hand=[UN_INTERVENTION, DUCK_AND_COVER, GRAIN_SALES],
-        side=ts.Player.USSR, turn=8, defcon=2, ussr_space=0,
-        influence=[(nigeria, ts.Player.USSR, 2)],
+    assert counts.committed.get("un_intervention_off_target", 0) == 1, (
+        "Tear Down this Wall is not a card the USSR must not play, so spending the scarce "
+        "exit on it left the card that needed it in hand"
+    )
+    assert counts.opportunities.get("un_intervention_off_target", 0) == 1
+
+
+def test_spending_it_on_the_card_that_needs_it_is_not_flagged() -> None:
+    st = section_25_position()
+    node = companion_node(st)
+    counts = new_counts()
+    classify(node, st, legal_mask(node), card_action(GRAIN_SALES), counts)
+
+    assert counts.opportunities.get("un_intervention_off_target", 0) == 1, \
+        "the chance was still there -- it was taken correctly"
+    assert counts.committed.get("un_intervention_off_target", 0) == 0
+
+
+def test_a_hand_with_nothing_it_must_not_play_is_not_an_opportunity() -> None:
+    """No problem in hand means no mistake available, so it must not enter the denominator."""
+    st = PositionBuilder(
+        hand=(UN_INTERVENTION, TEAR_DOWN_THIS_WALL, 23),   # Marshall Plan, not a banned card
+        side=ts.Player.USSR,
+        defcon=2, turn=10, action_round=1, ussr_space=SPACE_BOX,
+        # No coupable influence, so Grain Sales is not a card it must not play -- and the hand
+        # holds none of the ones that are banned unconditionally.
     ).build()
-    assert is_spaceable(low, GRAIN_SALES), "box 1 needs 2 Ops, which Grain Sales has"
+    node = companion_node(st)
+    counts = new_counts()
+    classify(node, st, legal_mask(node), card_action(TEAR_DOWN_THIS_WALL), counts)
+    assert counts.opportunities.get("un_intervention_off_target", 0) == 0
 
 
-def test_the_section_25_mistake_is_counted() -> None:
-    """Spending UN Intervention on the card that could have spaced itself."""
-    counts = DisposalCounts()
-    state, carry = _at_the_companion_node(counts)
-    observe(state, card_action(DUCK_AND_COVER), counts, carry)
-
-    assert counts.spent_on_spaceable.opportunities == 1
-    assert counts.spent_on_spaceable.mistakes == 1, (
-        "the §25 error must be counted: UN Intervention went to the card with another exit")
-    # It is also, trivially, a use of the tool on *a* suicide card, so the looser measure counts
-    # the opportunity and no mistake.
-    assert counts.spent_elsewhere.opportunities == 1
-    assert counts.spent_elsewhere.mistakes == 0
+def test_an_ordinary_card_selection_is_not_a_companion_node() -> None:
+    """The two share DecisionType.SELECT_CARD; only pending_op_card separates them."""
+    st = section_25_position()
+    assert st.ctx().decision_type == ts.DecisionType.SELECT_CARD
+    assert not is_companion_node(st)
 
 
-def test_the_correct_play_is_not_counted() -> None:
-    """Spending it on the card with no other way out is the right answer and scores clean."""
-    counts = DisposalCounts()
-    state, carry = _at_the_companion_node(counts)
-    observe(state, card_action(GRAIN_SALES), counts, carry)
-
-    assert counts.spent_on_spaceable.opportunities == 1
-    assert counts.spent_on_spaceable.mistakes == 0
-    assert counts.spent_elsewhere.mistakes == 0
-
-
-def test_playing_the_suicide_card_raw_is_counted() -> None:
-    """The outcome the first two measures are upstream of."""
-    state = _the_section_25_hand()
-    ts.Engine.step_flat(state, card_action(GRAIN_SALES))
-    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
-    assert int(state.ctx().pending_op_card) == GRAIN_SALES
-
-    counts = DisposalCounts()
-    observe(state, 110 + int(ts.PlayMode.OPS), counts)
-    assert counts.played_raw.opportunities == 1
-    assert counts.played_raw.mistakes == 1
-
-
-def test_spacing_the_suicide_card_is_the_exit_and_is_not_counted() -> None:
-    state = _the_section_25_hand()
-    ts.Engine.step_flat(state, card_action(DUCK_AND_COVER))
-    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
-
-    counts = DisposalCounts()
-    observe(state, SPACE_ACTION, counts)
-    assert counts.played_raw.opportunities == 1
-    assert counts.played_raw.mistakes == 0, "spacing it is exactly the way out, not a mistake"
-
-
-def test_nothing_is_counted_above_defcon_2() -> None:
-    """'A card you must not play' is a DEFCON-2 statement; at DEFCON 3 there is no bar."""
-    nigeria = next(c for c in range(84)
-                   if ts.MapData.get_country_info(c)["name"] == "Nigeria")
-    state = PositionBuilder(
-        hand=[UN_INTERVENTION, DUCK_AND_COVER, GRAIN_SALES],
-        side=ts.Player.USSR, turn=8, defcon=3, ussr_space=SPACE_TRACK_AT_FOUR,
-        influence=[(nigeria, ts.Player.USSR, 2)],
-    ).build()
-    ts.Engine.step_flat(state, card_action(GRAIN_SALES))
-    counts = DisposalCounts()
-    observe(state, 110 + int(ts.PlayMode.OPS), counts)
-    assert counts.played_raw.opportunities == 0
-
-
-def test_the_probe_runs_over_real_games() -> None:
-    """End to end on random play: it must not raise, and rates stay within their denominators."""
-    rng = np.random.default_rng(0)
-
-    def random_policy(obs: np.ndarray, masks: np.ndarray) -> np.ndarray:
-        del obs
-        out: list[int] = []
-        for row in masks:
-            legal = np.flatnonzero(row)
-            out.append(int(rng.choice(legal)) if legal.size else 0)
-        return np.array(out)
-
-    counts = measure(random_policy, num_games=8, batch_size=8, max_steps=2000)
-    assert counts.games == 8
-    for r in counts.all_rates():
-        assert 0 <= r.mistakes <= r.opportunities
+def test_legal_companions_uses_the_flat_action_convention() -> None:
+    """A card is selected by flat action `card_id - 1`, not by its id."""
+    mask = np.zeros(212, dtype=np.uint8)
+    mask[card_action(GRAIN_SALES)] = 1
+    mask[card_action(TEAR_DOWN_THIS_WALL)] = 1
+    assert legal_companions(mask) == sorted((GRAIN_SALES, TEAR_DOWN_THIS_WALL))

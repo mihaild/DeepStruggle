@@ -1,258 +1,241 @@
-"""Disposing of a card you must not play.
+"""P0 probe 4 — disposing of a card you must not play.
 
-`experiments.md` §25 names turn sequencing as the gap between this agent and a mediocre human,
-and the position it names is about *exits*, not about severity. Turn 10, USSR holding UN
-Intervention, Tear Down this Wall and Grain Sales to Soviets. Both US cards are DEFCON-suicide
-there -- playing either for Operations fires its event, the event drops DEFCON to 1, and
-`resolve_defcon_one_loss` makes the phasing player the loser. That is not the distinction. The
-distinction is what each card can do *instead* of being played:
+`experiments.md` §25 names turn sequencing as *the* gap to a mediocre human: the model can play
+a tactic when the card is in front of it, and cannot choose which card to spend it on. Nothing
+in `ai/eval/` measured that, which is why this probe exists.
 
-| card | Ops | at that space box (3 required) |
+**The position it comes from** (`h2_160M_selfplay_20260405`, turn 10, USSR to play). The USSR
+held UN Intervention, Tear Down this Wall and Grain Sales to Soviets. Both US cards are
+DEFCON-suicide there — that is not the distinction. The distinction is the *exit* each one has:
+
+| card | ops | at a space box requiring 3 |
 |:---|---:|:---|
-| Tear Down this Wall | 3 | spaceable -- spent on the track, the event never fires |
-| Grain Sales to Soviets | 2 | not spaceable -- too few Ops for the next box |
+| Tear Down this Wall (`cid 96`) | 3 | **spaceable** — the event never fires |
+| Grain Sales to Soviets (`cid 67`) | 2 | **not spaceable** |
 
-A card you must not play has three exits: space it, run it through UN Intervention, or hold it at
-end of turn. Tear Down this Wall had all three; Grain Sales had two. UN Intervention is the
-scarce exit and belongs on the card with fewer. The model spent it on the one that could have
-spaced itself and was then left holding the one that could not.
+A card you must not play has exactly three exits: space it, run it through UN Intervention, or
+hold it at end of turn. Tear Down this Wall has all three; Grain Sales has two. So UN
+Intervention — the scarce exit — belongs on the card with fewer of them. The model spent it on
+the card that could have spaced itself and was left holding the other.
 
-And UN Intervention costs a card most of the accounting misses. Its event plays an opponent card
-for Operations *in the same action round*, so it consumes two cards in one AR -- which is exactly
-the card that would otherwise have been held back at end of turn. Using it does not only spend
-itself; it removes the "hold it" exit for everything else in the hand.
+Three measures, in order of how little judgement each needs. The first two are here; the third
+is `blunders.py`'s `defcon_suicide_with_alternative`, reported beside them by `format_report`
+so the chain reads in one place.
 
-This is a baseline, not a gate. `dcedb8a` counted 34.1% of self-play games ending at DEFCON 1
-with 82.7% of those provoked -- the loser pushed into it -- and Grain Sales alone a quarter of
-them, so the §25 position is the modal failure rather than an anecdote. These are the numbers a
-later strategy arm has to move.
+1. **`un_intervention_off_target`** — the hand holds a DEFCON-suicide card, UN Intervention is
+   being resolved and a companion is being chosen, and the choice falls on some other card. No
+   judgement about the best line: the problem was in hand, the tool was in hand, it went
+   elsewhere.
+2. **`un_intervention_on_spaceable`** — two or more suicide cards are available as companions,
+   at least one spaceable and at least one not, and the choice falls on a spaceable one. A
+   strict subset of (1), and the sharpest single number, because the alternative is not a
+   matter of taste.
+
+**Spaceability is read from the engine, never reimplemented.** `SpaceRace::can_attempt_space` is
+not exposed to Python and should not be added for this: the candidate is stepped to its
+`SELECT_PLAY_MODE` node and the legality of the space action is read off the mask, which is the
+engine's own rule including every Ops modifier. Printed Ops is not the test — the same card is
+spaceable or not depending on the box, the attempts already made and the modifiers in play.
+
+That test needs a state where the player is still choosing a card, so the probe keeps the last
+ordinary card-selection node per environment and asks the question there. By the time UN
+Intervention is resolving, its own play has already consumed the action round.
+
+The two `SELECT_CARD` nodes are told apart by `pending_op_card == UN_INTERVENTION`
+(`action_mask.cpp:58`). Verified over 66,535 selection nodes: that field and `resolving_card`
+agree in every case, with no stale-context disagreement of the kind that produced the Aldrich
+Ames defect.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
 import ts_engine as ts
 
-from ai.eval.blunders import defcon_suicide_cards, hand_of, in_action_round_at_defcon_2
-from ai.stats import wilson_interval
+from ai.eval.blunders import Blunder, BlunderCounts, _name, defcon_suicide_cards
+from ai.eval.positions import legal_play_modes, step_to_play_mode
 
 UN_INTERVENTION = 32
 
-#: Flat action indices. Cards are 0..109 for ids 1..110; the play modes follow.
-CARD_ACTION_START = 0
-PLAY_MODE_START = 110
-SPACE_ACTION = PLAY_MODE_START + int(ts.PlayMode.SPACE)
+RULES = ("un_intervention_off_target", "un_intervention_on_spaceable")
 
 
-@dataclass
-class Rate:
-    """One measure: how often the chance arose, and how often it was taken badly."""
-
-    name: str
-    opportunities: int = 0
-    mistakes: int = 0
-    #: Card ids involved, so a rate can be read back as a story rather than a number.
-    examples: List[str] = field(default_factory=list)
-
-    def rate(self) -> float:
-        return self.mistakes / self.opportunities if self.opportunities else float("nan")
-
-    def band(self) -> Tuple[float, float]:
-        return wilson_interval(self.mistakes, self.opportunities)
-
-    def note(self, mistake: bool, detail: str = "") -> None:
-        self.opportunities += 1
-        if mistake:
-            self.mistakes += 1
-            if detail and len(self.examples) < 8:
-                self.examples.append(detail)
+def new_counts() -> BlunderCounts:
+    """A counter that enumerates this probe's rules rather than `blunders.RULES`."""
+    return BlunderCounts(rules=RULES)
 
 
-@dataclass
-class DisposalCounts:
-    """The three measures, in order of how little judgement each needs."""
-
-    #: UN Intervention was spent on a card that was not the one it was needed for.
-    spent_elsewhere: Rate = field(default_factory=lambda: Rate("un_spent_elsewhere"))
-    #: Two suicide cards, one spaceable and one not, and it went to the spaceable one.
-    spent_on_spaceable: Rate = field(default_factory=lambda: Rate("un_spent_on_spaceable"))
-    #: The suicide card was played for Operations anyway, with UN Intervention still in hand.
-    played_raw: Rate = field(default_factory=lambda: Rate("suicide_played_raw"))
-    games: int = 0
-
-    def all_rates(self) -> List[Rate]:
-        return [self.spent_elsewhere, self.spent_on_spaceable, self.played_raw]
-
-    def metrics(self) -> Dict[str, float]:
-        out: Dict[str, float] = {}
-        for r in self.all_rates():
-            out[f"disposal/{r.name}"] = r.rate()
-            out[f"disposal/{r.name}_opportunities"] = float(r.opportunities)
-        return out
-
-
-def _name(card_id: int) -> str:
-    try:
-        return str(ts.CardData.get_card_info(int(card_id))["name"])
-    except Exception:
-        return f"card {card_id}"
-
-
-def legal_cards(state: ts.GameState) -> Set[int]:
-    """Card ids the mask allows at this node."""
-    mask = np.asarray(ts.get_flat_action_mask(state), dtype=np.uint8)
-    return {int(i) + 1 for i in np.flatnonzero(mask) if i < 110}
-
-
-def is_spaceable(state: ts.GameState, card_id: int) -> bool:
-    """Can this card go on the space track from here?
-
-    Asked of the engine rather than worked out from printed Ops. `can_attempt_space` compares
-    *effective* Ops against the next box's minimum, so Brezhnev Doctrine or Containment can make
-    a 2-Ops card reach a 3-Ops box -- and the attempts-per-turn limit and the track position
-    matter too. Stepping to the card's play-mode node and reading the mask asks exactly the
-    question the engine would answer if the player tried it.
-    """
-    if not (1 <= card_id <= 110):
-        return False
-    probe = state.clone()
-    action = CARD_ACTION_START + card_id - 1
-    mask = np.asarray(ts.get_flat_action_mask(probe), dtype=np.uint8)
-    if action >= mask.shape[0] or not mask[action]:
-        return False
-    if not ts.Engine.step_flat(probe, action):
-        return False
-    if probe.ctx().decision_type != ts.DecisionType.SELECT_PLAY_MODE:
-        return False
-    modes = np.asarray(ts.get_flat_action_mask(probe), dtype=np.uint8)
-    return bool(modes[SPACE_ACTION])
-
-
-def is_un_intervention_companion_node(state: ts.GameState) -> bool:
-    """The node where UN Intervention's event asks which opponent card to spend it on.
-
-    `trigger_un_intervention` sets a SELECT_CARD decision with UN Intervention as the card being
-    resolved, and `ActionMask` then offers exactly the opponent-associated cards in hand.
-    """
+def is_companion_node(state: ts.GameState) -> bool:
+    """Is the engine asking which card to run through UN Intervention?"""
     ctx = state.ctx()
     return (ctx.decision_type == ts.DecisionType.SELECT_CARD
-            and int(ctx.resolving_card) == UN_INTERVENTION
             and int(ctx.pending_op_card) == UN_INTERVENTION)
 
 
-def observe(state: ts.GameState, action: int, counts: DisposalCounts,
-            carry: Optional[Dict[str, Any]] = None) -> None:
-    """Score one decision, before it is taken, against the three measures.
+def legal_companions(mask: np.ndarray) -> List[int]:
+    """Card ids selectable at a companion node, from the flat 212-wide mask.
 
-    `carry` is this env's scratch space, and it exists for one reason. Spaceability has to be
-    asked of a position where playing the card is the live question -- at the companion node a
-    card action means "UN Intervention takes this one", so stepping it there answers a different
-    question and reports everything as unspaceable. So the answer is taken one decision earlier,
-    where the player chose to play UN Intervention at all, and carried forward.
+    The flat action that selects a card is `card_id - 1` (`positions.card_action`) — not the
+    card id itself, which is the indexing the engine's internal 112-wide sub-mask uses.
     """
+    return [int(i) + 1 for i in np.flatnonzero(np.asarray(mask)[:110])]
+
+
+def spaceable(pre_play: ts.GameState, card_id: int) -> Optional[bool]:
+    """Can `card_id` be put on the space race from this position?
+
+    `None` when the question cannot be asked — the card is not selectable from the state that
+    was kept, so the answer would be about a different position. Counted and reported rather
+    than guessed: a probe that silently treats "unknown" as "not spaceable" would score the
+    model on a rule the engine never confirmed.
+    """
+    try:
+        at_mode = step_to_play_mode(pre_play, card_id)
+    except ValueError:
+        return None
+    return "space" in legal_play_modes(at_mode)
+
+
+def classify(state: ts.GameState, pre_play: Optional[ts.GameState], mask: np.ndarray,
+             chosen_action: int, counts: BlunderCounts) -> None:
+    """Record the opportunity and, if taken, the mistake, for one companion node."""
     ctx = state.ctx()
     player = ctx.decision_player
     if player == ts.Player.NONE:
+        player = state.phasing_player
+    side = "US" if player == ts.Player.US else "USSR"
+
+    companions = legal_companions(mask)
+    if len(companions) < 2:
+        return                      # forced: one legal companion is not a choice
+    banned = defcon_suicide_cards(state, player)
+    in_hand = [c for c in companions if c in banned]
+    if not in_hand:
+        return                      # nothing in hand it must not play; no problem to solve
+
+    chosen = int(chosen_action) + 1
+    turn, ar = int(state.turn), int(state.action_round)
+
+    counts.note_opportunity("un_intervention_off_target")
+    if chosen not in banned:
+        counts.note_blunder(Blunder(
+            rule="un_intervention_off_target", player=side, card_id=chosen,
+            card_name=_name(chosen), turn=turn, action_round=ar,
+            detail=(f"UN Intervention spent on {_name(chosen)} while holding "
+                    + ", ".join(_name(c) for c in in_hand) + " — cards it must not play"),
+        ))
+
+    # The sharper rule needs at least two banned candidates that differ in their exits.
+    if pre_play is None or len(in_hand) < 2:
         return
-    if carry is None:
-        carry = {}
-
-    # --- the companion node: what is UN Intervention actually spent on? -----------------------
-    if is_un_intervention_companion_node(state):
-        if not in_action_round_at_defcon_2(state):
-            return          # "must not play" is a DEFCON-2 statement; elsewhere there is no bar
-        chosen = action - CARD_ACTION_START + 1
-        offered = legal_cards(state)
-        banned = defcon_suicide_cards(state, player) & offered
-        if not banned:
-            carry.pop("spaceable", None)
-            return
-
-        counts.spent_elsewhere.note(
-            chosen not in banned,
-            f"spent on {_name(chosen)} with {sorted(_name(c) for c in banned)} in hand")
-
-        # The sharper question, and the §25 error exactly: among the cards that must not be
-        # played, was the one with another way out the one it was spent on?
-        known = carry.pop("spaceable", None)
-        if known is not None:
-            spaceable = {c for c in banned if known.get(c, False)}
-            unspaceable = banned - spaceable
-            if spaceable and unspaceable:
-                counts.spent_on_spaceable.note(
-                    chosen in spaceable,
-                    f"spent on {_name(chosen)} (spaceable) with "
-                    f"{sorted(_name(c) for c in unspaceable)} unspaceable")
+    exits = {c: spaceable(pre_play, c) for c in in_hand}
+    if any(v is None for v in exits.values()):
+        counts.note_opportunity("spaceability_unknown")
         return
+    if not (any(exits.values()) and not all(exits.values())):
+        return                      # all spaceable or none: the choice carries no information
 
-    # --- an ordinary card choice: if UN Intervention is being played, record what the cards it
-    # could be spent on could have done instead, while that is still answerable. ---------------
-    if ctx.decision_type == ts.DecisionType.SELECT_CARD:
-        chosen = action - CARD_ACTION_START + 1
-        if chosen == UN_INTERVENTION and in_action_round_at_defcon_2(state):
-            banned = defcon_suicide_cards(state, player)
-            carry["spaceable"] = {c: is_spaceable(state, c)
-                                  for c in banned if c in set(hand_of(state, player))}
-        return
-
-    # --- the play-mode node: was a card that must not be played played anyway? ----------------
-    if ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE:
-        if not in_action_round_at_defcon_2(state):
-            return
-        card = int(ctx.pending_op_card)
-        if card not in defcon_suicide_cards(state, player):
-            return
-        # Only counts while the tool was still available. Playing a suicide card with no exit
-        # left is a position, not a mistake.
-        if UN_INTERVENTION not in hand_of(state, player):
-            return
-        counts.played_raw.note(
-            action != SPACE_ACTION,
-            f"{_name(card)} played as {'SPACE' if action == SPACE_ACTION else 'OPS/EVENT'} "
-            f"with UN Intervention in hand")
+    counts.note_opportunity("un_intervention_on_spaceable")
+    if exits.get(chosen) is True:
+        other = [c for c, sp in exits.items() if sp is False]
+        counts.note_blunder(Blunder(
+            rule="un_intervention_on_spaceable", player=side, card_id=chosen,
+            card_name=_name(chosen), turn=turn, action_round=ar,
+            detail=(f"UN Intervention spent on {_name(chosen)}, which could have spaced "
+                    f"itself, leaving " + ", ".join(_name(c) for c in other)
+                    + " with one exit fewer"),
+        ))
 
 
-def measure(select_action: Any, num_games: int = 500, base_seed: int = 20260911,
-            batch_size: int = 128, max_steps: int = 4000) -> DisposalCounts:
-    """Play games and score every decision that touches card disposal.
+def measure_sequencing(model: Any, num_games: int = 500, base_seed: int = 830_000,
+                       temperature: float = 0.1, max_iters: int = 20_000) -> BlunderCounts:
+    """Drive self-play and score every UN Intervention companion choice.
 
-    `select_action(obs, masks) -> flat action indices`, batched, as the setup probe takes it.
+    Batched for the same reason `measure_blunders_batched` is: the per-decision inspection is
+    cheap and the forward pass is not.
     """
-    counts = DisposalCounts()
-    done = 0
-    while done < num_games:
-        n = min(batch_size, num_games - done)
-        runner = ts.VectorizedBatchRunner(n, base_seed + done * 7919)
-        carries: List[Dict[str, Any]] = [{} for _ in range(n)]
-        for _ in range(max_steps):
-            terminals = runner.get_terminals()
-            if all(terminals):
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
+
+    check_obs_width(model)
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_games, base_seed=base_seed)
+    obs, masks, _ = env.reset_all()
+
+    counts = new_counts()
+    # Per env, the last ordinary card-selection node, with the turn and player it belonged to.
+    # Spaceability is asked there, because UN Intervention's own play has consumed the action
+    # round by the time the companion is chosen.
+    pre_play: List[Optional[Tuple[ts.GameState, int, Any]]] = [None] * num_games
+    done = [False] * num_games
+
+    try:
+        for _ in range(max_iters):
+            if all(done):
                 break
-            obs = np.asarray(runner.get_observations(), dtype=np.float32)
-            masks = np.asarray(runner.get_action_masks())
-            actions = select_action(obs, masks)
-            for i in range(n):
-                if terminals[i]:
+            obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+            mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+            with torch.no_grad():
+                actions, *_ = model.sample_action(obs_t, mask_t, temperature=temperature)
+            acts = actions.cpu().numpy().astype(np.int64)
+
+            for i in range(num_games):
+                if done[i]:
                     continue
-                observe(runner.get_state(i), int(actions[i]), counts, carries[i])
-            runner.step_flat_all([int(a) for a in actions], auto_advance=False)
-        done += n
-    counts.games = num_games
+                state = env.runner.get_state(i)
+                if ts.Engine.is_terminal(state):
+                    done[i] = True
+                    continue
+                ctx = state.ctx()
+                if ctx.decision_type != ts.DecisionType.SELECT_CARD:
+                    continue
+                player = ctx.decision_player
+                if player == ts.Player.NONE:
+                    player = state.phasing_player
+                if is_companion_node(state):
+                    kept = pre_play[i]
+                    # Only usable if it is the same player's own turn -- otherwise it describes
+                    # a different position and the spaceability answer would be about that one.
+                    usable = (kept[0] if kept is not None
+                              and kept[1] == int(state.turn) and kept[2] == player else None)
+                    classify(state, usable, np.asarray(masks[i]), int(acts[i]), counts)
+                elif int(ctx.pending_op_card) == 0:
+                    pre_play[i] = (state.clone(), int(state.turn), player)
+
+            obs, masks, *_ = env.step(acts)
+    finally:
+        if was_training:
+            model.train()
     return counts
 
 
-def format_report(counts: DisposalCounts, label: str = "") -> str:
-    lines = [f"=== card disposal: {label or 'policy'} ({counts.games} games) ==="]
-    for r in counts.all_rates():
-        if not r.opportunities:
-            lines.append(f"  {r.name:<24} no opportunities arose")
-            continue
-        lo, hi = r.band()
-        lines.append(f"  {r.name:<24} {r.rate() * 100:5.1f}% [{lo * 100:4.1f}, {hi * 100:4.1f}]"
-                     f"   {r.mistakes}/{r.opportunities}")
-        for ex in r.examples[:2]:
-            lines.append(f"      e.g. {ex}")
+def metrics(counts: BlunderCounts, prefix: str = "sequencing") -> Dict[str, float]:
+    return counts.metrics(prefix=prefix)
+
+
+def format_report(counts: BlunderCounts, blunders: Optional[BlunderCounts] = None,
+                  label: str = "") -> str:
+    """The chain in one place: the tool misplaced, then the card played raw anyway."""
+    head = f"=== sequencing probe{(' ' + label) if label else ''} ==="
+    lines = [head, counts.summary()]
+    unknown = counts.opportunities.get("spaceability_unknown", 0)
+    if unknown:
+        lines.append(f"  (spaceability unreadable at {unknown} node(s); excluded from the "
+                     f"second rule rather than assumed)")
+    if blunders is not None:
+        lines.append("  and the outcome those two are upstream of:")
+        rule = "defcon_suicide_with_alternative"
+        c = blunders.committed.get(rule, 0)
+        n = blunders.opportunities.get(rule, 0)
+        lines.append(f"  {rule:34} {c:5}/{n:<6}"
+                     + (f" ({100.0 * c / n:5.1f}%)" if n else " (no chances)"))
+    for b in counts.examples[:5]:
+        lines.append(f"    {b}")
     return "\n".join(lines)

@@ -777,11 +777,9 @@ def evaluate_and_log_snapshot(
     # policy can gain Elo while learning the mistakes better rather than fewer.
     blunder_metrics: Dict[str, float] = {}
     try:
-        from ai.eval.blunders import measure_blunders
+        from ai.eval.blunders import measure_blunders_batched
 
-        counts = measure_blunders(
-            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
-            num_games=blunder_games)
+        counts = measure_blunders_batched(model, num_games=blunder_games)
         blunder_metrics = counts.metrics()
         print("  blunders:\n" + counts.summary(), flush=True)
     except Exception as e:
@@ -1060,6 +1058,8 @@ def train_pipeline(
     batch_size: int = 4096,
     lr: float = 3e-4,
     eta: float = 0.1,
+    vf_coef: float = 0.5,
+    value_dist_coef: float = 0.02,
     categorical_value: bool = False,
     adv_filter_quantile: float = 0.0,
     entropy_coef: float = 0.01,
@@ -1139,6 +1139,8 @@ def train_pipeline(
         # description is prose nobody can filter on.
         "train_steps": train_steps,
         "eta": eta,
+        "vf_coef": vf_coef,
+        "value_dist_coef": value_dist_coef,
         "categorical_value": bool(categorical_value),
         "adv_filter_quantile": adv_filter_quantile,
         "ent_coef": entropy_coef,
@@ -1228,6 +1230,8 @@ def train_pipeline(
         batch_size=batch_size,
         lr=lr,
         eta=eta,
+        vf_coef=vf_coef,
+        value_dist_coef=value_dist_coef,
         adv_filter_quantile=adv_filter_quantile,
         ent_coef=entropy_coef,
         gamma=gamma,

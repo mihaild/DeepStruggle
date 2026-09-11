@@ -21,6 +21,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ai.models.coldwar_net_v2 import VP_LIMIT
+
 from bindings.ts_env import TsVectorizedEnv
 from .rollout_buffer import RolloutBuffer
 
@@ -117,6 +119,7 @@ class BaseNashPGTrainer:
         ent_coef: float = 0.01,        # Entropy exploration coefficient
         vf_coef: float = 0.5,          # Value loss coefficient
         vp_coef: float = 0.05,         # Auxiliary VP loss weight
+        value_dist_coef: float = 0.02, # Categorical VP distribution loss weight
         adv_filter_quantile: float = 0.0,  # P1: drop the lowest-|A| share from the policy loss
         defcon_coef: float = 0.0,      # Auxiliary DEFCON-risk loss weight (0 disables the head)
         gamma: float = 1.0,            # Undiscounted: see note below
@@ -152,6 +155,7 @@ class BaseNashPGTrainer:
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.vp_coef = vp_coef
+        self.value_dist_coef = value_dist_coef
         # P1 advantage filtering. Samples whose |advantage| falls below this quantile of the
         # minibatch are dropped from the *policy* term only; the value head still sees every
         # sample, which is the point -- the critic needs the uninformative states too.
@@ -364,9 +368,12 @@ class NashPGTrainer(BaseNashPGTrainer):
         auxiliary VP head, so this reuses the same bootstrapped target the scalar head was
         fitting, which keeps the change to the loss and not to what is being learned.
 
-        `cur_v_win` is still produced (derived from the distribution) but is not regressed
-        against separately: it is a function of the same distribution, and adding an MSE term on
-        it would pull the head toward two different objectives at once.
+        `cur_v_win` keeps its own MSE against `b_ret_win`, exactly as in the scalar variant.
+        The distribution replaces the auxiliary *VP* head, not the win head: v_win is the
+        baseline GAE subtracts, and an earlier version that derived it from the distribution as
+        P(VP>0) - P(VP<0) saturated -- see the note in coldwar_net_v2 where the heads are built.
+        So the win objective here is bit-for-bit the control's, and the distribution is an
+        additive term carrying its own coefficient.
         """
         if value_logits is None:
             return (F.mse_loss(cur_v_win, b_ret_win)
@@ -374,9 +381,20 @@ class NashPGTrainer(BaseNashPGTrainer):
         # getattr for the same reason forward_with_risk uses it: active_net is typed
         # nn.Module, and these live on ColdWarNetV2.
         two_hot = getattr(self.active_net, "two_hot")
-        target = two_hot(b_ret_vp.detach())
+        # b_ret_vp is *normalised* VP in [-1, 1] -- rollout_buffer divides the final score by 20
+        # -- while the atom support is real VP across [-20, +20]. Rescaling here is not cosmetic:
+        # without it every target lands on the three middle atoms and the distribution never
+        # learns its tails. The arm that ran without the rescale oscillated between the two sides
+        # instead of learning both (80M, 40% against the anchor with 14% as the US, where the
+        # scalar control reached 84%). v_win no longer reads this distribution, so that arm's
+        # second failure mode is gone, but a degenerate distribution still makes v_vp useless.
+        target = two_hot(b_ret_vp.detach() * float(VP_LIMIT))
         log_p = F.log_softmax(value_logits, dim=-1)
-        return -(target * log_p).sum(dim=-1).mean()
+        cross_entropy = -(target * log_p).sum(dim=-1).mean()
+        # Its own coefficient, not vp_coef: cross-entropy over 41 atoms starts near ln(41) and
+        # settles around 1.6, where the MSE it replaces sits near 0.04, so reusing vp_coef would
+        # weight the same sub-objective about forty times harder.
+        return F.mse_loss(cur_v_win, b_ret_win) + self.value_dist_coef * cross_entropy
 
     def train_step(self) -> Dict[str, float]:
         self.active_net.train()
