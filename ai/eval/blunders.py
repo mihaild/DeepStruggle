@@ -80,7 +80,20 @@ AMERICAS = (CENTRAL_AMERICA, SOUTH_AMERICA)
 #: Junta is deliberately absent. Taken by the *US*, its free coup is the US's to aim, so the US
 #: can steer it off a battleground -- avoidable, and not a suicide. Taken by the US after the
 #: *USSR* played Star Wars for Operations, the USSR has no such say, which is why Junta appears
-#: in the USSR's branch instead.
+#: in the USSR's list below instead.
+
+#: What makes Star Wars fatal for the *USSR*: the US picks from the discard and plays it at once,
+#: so the question is only whether the pile holds something that degrades DEFCON **without the
+#: USSR getting a say**. Where the card hands the *USSR* the Operations or the choice, the USSR
+#: simply declines and nothing happens -- which is why Lone Gunman, Ortega and Olympic Games are
+#: not here. We Will Bury You is not here either: the US playing it degrades DEFCON by the US's
+#: own action, so the US would be picking its own loss.
+#:
+#: No influence condition. Duck and Cover and KAL-007 degrade from their own text and reach the
+#: USSR wherever it stands; seed 7107 of `h2_480M_provoked_*` is that game, with Duck and Cover
+#: taken out of a pile that also held Junta.
+STAR_WARS_USSR_DANGERS = (DUCK_AND_COVER, KAL_007, HOW_I_LEARNED, JUNTA, TEAR_DOWN_THIS_WALL,
+                          CIA_CREATED, GRAIN_SALES, FIVE_YEAR_PLAN)
 STAR_WARS_DISCARD_DANGERS = (OLYMPIC_GAMES, DUCK_AND_COVER, KAL_007, CIA_CREATED, GRAIN_SALES,
                              TEAR_DOWN_THIS_WALL, WE_WILL_BURY_YOU, HOW_I_LEARNED)
 
@@ -262,15 +275,11 @@ def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
             if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
                 out.add(TEAR_DOWN_THIS_WALL)
             # Star Wars is a US event, so the USSR playing it for Operations fires it: with
-            # the US ahead on the track, the US takes a card from the discard and plays it at
-            # once. Junta there is the dangerous one -- it grants a free coup in Central or
-            # South America, which the US aims, so unlike the US's own copy of this problem the
-            # USSR cannot steer it away from a battleground. Only an Americas battleground is
-            # reachable: Junta's coup is region-locked to those two regions.
+            # the US ahead on the track the US takes a card from the discard and plays it at
+            # once. Any degrader the USSR gets no say over is enough -- see the note on
+            # STAR_WARS_USSR_DANGERS.
             if (int(state.us_space_track) > int(state.ussr_space_track)
-                    and JUNTA in discard_pile(state)
-                    and has_influence_in(state, ts.Player.USSR, AMERICAS,
-                                         battleground_only=True)):
+                    and any(c in STAR_WARS_USSR_DANGERS for c in discard_pile(state))):
                 out.add(STAR_WARS)
         # Five Year Plan discards a random USSR card and fires it if it is a US event, so it is
         # dangerous exactly when one of the above is already in hand to be hit.
