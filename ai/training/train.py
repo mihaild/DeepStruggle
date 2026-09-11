@@ -123,20 +123,28 @@ def main():
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--vf-coef", type=float, default=0.5,
-                        help="Weight on the value loss in the shared-trunk objective.\n"
-                             "0.5 suits the scalar heads, whose MSE sits near 0.04 against a\n"
-                             "policy loss near 0.04. Cross-entropy over 41 atoms sits near 1.5,\n"
-                             "so the same coefficient makes the value objective outweigh the\n"
-                             "policy one by ~100x, and the policy stops moving -- high explained\n"
-                             "variance, collapsed entropy, a 3%% clip fraction and play far\n"
-                             "below the scalar control. Set it ~40x lower with\n"
-                             "--categorical-value; 0.0125 was measured to match the balance.")
+                        help="Weight on the value loss in the shared-trunk objective. 0.5 suits\n"
+                             "the win-value MSE, which sits near 0.04 against a policy loss near\n"
+                             "0.04, and it stays 0.5 under --categorical-value: the distribution\n"
+                             "carries its own --value-dist-coef instead, so the win objective is\n"
+                             "the control's either way. Retuning this to compensate for a\n"
+                             "differently-scaled value term was measured not to work -- the\n"
+                             "defect was the saturated baseline, not the weighting.")
+    parser.add_argument("--value-dist-coef", type=float, default=0.02,
+                        help="Weight on the categorical VP cross-entropy, inside the value loss.\n"
+                             "Not vp_coef: cross-entropy over 41 atoms starts near ln(41) and\n"
+                             "settles near 1.6, where the VP MSE it replaces sits near 0.04, so\n"
+                             "sharing a coefficient would weight it about forty times harder.\n"
+                             "0.02 puts the distribution objective on par with the win MSE.")
     parser.add_argument("--categorical-value", action="store_true", default=False,
                         help="P1: replace the two scalar value heads with one categorical\n"
                              "distribution over final VP (41 atoms across [-20, +20]), trained\n"
                              "by cross-entropy against the two-hot-projected lambda-return.\n"
-                             "v_win and v_vp are still exposed, derived from the distribution,\n"
-                             "so every consumer runs unchanged. Outcomes here are multimodal and\n"
+                             "It replaces the auxiliary *VP* head only: v_win keeps its own\n"
+                             "regressed scalar head, because it is the baseline GAE subtracts\n"
+                             "and deriving it from the distribution's sign mass saturates it.\n"
+                             "v_vp is exposed as E[VP]/20 from the distribution, so every\n"
+                             "consumer runs unchanged. Outcomes here are multimodal and\n"
                              "MSE on a scalar regresses to the mean of the modes -- a value that\n"
                              "is never observed. Changes the checkpoint shape: a categorical\n"
                              "checkpoint cannot be loaded as a scalar one or the reverse.")
@@ -193,6 +201,7 @@ def main():
             lr=args.lr,
             eta=args.eta,
             vf_coef=args.vf_coef,
+            value_dist_coef=args.value_dist_coef,
             categorical_value=args.categorical_value,
             adv_filter_quantile=args.adv_filter_quantile,
             defcon_coef=args.defcon_coef,

@@ -1,6 +1,7 @@
 # P1 — Categorical value head + advantage filtering
 
-**Status:** implemented, not yet run. `--categorical-value` and `--adv-filter-quantile`.
+**Status:** control run; categorical cell re-running after four void arms. Flags:
+`--categorical-value`, `--value-dist-coef`, `--adv-filter-quantile`.
 **Gate:** P0 probes exist (so the arms can be read by something other than Elo). The gate is
 on *reading* the arms, not on running them — the four cells can train while P0 lands.
 **Needs approval:** none (model and trainer only).
@@ -26,11 +27,23 @@ a 2×2 so each is attributable.
 
 ## Change
 
-`ai/models/coldwar_net.py`: `val_win_head` + `val_vp_head` → one head with 41 atoms over final
-VP in [−20, +20] (the engine already normalises abrupt endings — 20 VP, DEFCON 1 — to ±20, so
-the support is exact and the terminal utility is `sign`). Downstream consumers keep their
-interface: `v_win = E[sign(VP)]` (or P(VP>0) − P(VP<0)), `v_vp = E[VP]`, both computed from the
-distribution, so `nash_pg.py`, the tournament code and every probe run unchanged.
+`ai/models/coldwar_net.py`: `val_vp_head` → one head with 41 atoms over final VP in [−20, +20]
+(the engine already normalises abrupt endings — 20 VP, DEFCON 1 — to ±20, so the support is
+exact and the terminal utility is `sign`). `v_vp = E[VP]/20` is computed from the distribution,
+so `nash_pg.py`, the tournament code and every probe run unchanged.
+
+**`val_win_head` stays.** The original plan derived `v_win = P(VP>0) − P(VP<0)` from the same
+distribution and dropped the scalar head. That was measured to be the reason the first four arms
+failed. `P(VP>0) − P(VP<0)` reads only the distribution's *sign*: a head that merely leans
+returns ±1 while knowing nothing about the margin, so the baseline saturates long before it is
+accurate — on a 24-iteration net it put `|v_win|` above 0.9 in **49.6%** of states, where the
+regressed head never passed 0.8. `v_win` is what GAE subtracts, so the inflated baseline inflated
+`returns_win` with it (`returns_win[t] = last_gae + v_t`), doubled `adv_std_raw` (0.38 against the
+control's 0.20), and left the normalised advantage carrying proportionally less of the actual
+action difference. The symptom was a policy that barely moved: entropy 0.87 against the control's
+1.10, clip fraction 5% against 19%, KL 0.014 against 0.041, and **18%** against the anchor where
+the scalar control reached **84%**. The distribution is therefore *additive* — it replaces the
+auxiliary VP regression, not the baseline.
 
 `ai/training/nash_pg.py` value loss (currently `mse(v_win) + vp_coef · mse(v_vp)`): cross-entropy
 against the λ-return projected two-hot onto the atoms. *Decide before running:* whether the
@@ -94,4 +107,33 @@ against the control.
 
 ## Runs
 
-(none yet)
+| arm | result | why |
+|:---|:---|:---|
+| `p1_scalar_nofilter` (seed 20260921) | **84%** vs anchor at 80M | the control; stands |
+| categorical #1 `_VOID_unscaled_target` | 40% vs anchor, sides anti-correlated | two-hot target used normalised `returns_vp` ∈ [−1,1] against a support in real VP, so every target landed on 3 of 41 atoms |
+| categorical #2 | 3% vs anchor, clip collapsed to 3% | `v_vp` returned real VP where the buffer's contract is normalised (`last_ret_vp = last_v_vp.clone()`), poisoning the bootstrap 20× |
+| categorical #3 (`--vf-coef` sweep) | not run to completion | diagnosed the CE/MSE scale gap: `vf_coef=0.5` weighted a ~1.5 cross-entropy against a ~0.04 MSE, a 102× imbalance |
+| categorical #4 (`--vf-coef 0.0125`) | **18%** vs anchor at 80M | trained stably but weak — the real defect, below |
+
+Attempt #4 is the informative one: it ran clean for 80M steps with a balanced loss and still lost
+to the control by 66 points. Its internal metrics were out of the control's range in a consistent
+direction — entropy 0.87 (control 1.10), clip 5.3% (19%), KL 0.014 (0.041), `adv_std_raw` 0.38
+(0.20) — which is a starved policy, not a mis-weighted loss.
+
+Two hypotheses were tested and **rejected** by measurement before the real one was found:
+
+- *The global `clip_grad_norm_(1.0)` rescales the policy gradient when the value gradient is
+  large.* Measured gradient norms of 0.26–0.40 against a max of 1.0: **clipping never fires**.
+- *The derived `v_win` is badly scaled.* Regression of `returns_win` on `v_win` gave slope 0.939
+  and correlation 0.919 — better than the scalar head's 0.911/0.872. It is well scaled.
+
+What it actually was: the derived `v_win` is *saturated*, not mis-scaled — see **Change** above.
+`vf_coef` returns to 0.5 and the cross-entropy takes its own `--value-dist-coef`, measured at
+0.02 by matching the control's entropy, clip fraction and raw advantage spread over a 20-iteration
+sweep (0.005 / 0.02 / 0.08 all land in range; 0.02 is closest).
+
+**Lesson for the next loss-function change.** Three of the four arms died to a units or scale
+mismatch that no test caught, because every P1 test exercised `two_hot` in isolation. Tests that
+start from what the buffer actually holds, and a startup check that the value and policy terms
+are within an order of magnitude of each other, would have caught all three inside a minute
+rather than across ~7 h of GPU.

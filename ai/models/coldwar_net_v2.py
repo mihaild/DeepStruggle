@@ -249,14 +249,28 @@ class ColdWarNetV2(nn.Module):
         # scoring card is or is not in hand -- and MSE on a scalar regresses to the mean of the
         # modes, a value that is never observed. The two scalars are still exposed, derived from
         # the distribution, so nash_pg, the tournament code and every probe run unchanged:
-        #   v_vp  = E[VP]
-        #   v_win = P(VP > 0) - P(VP < 0)
+        #   v_vp  = E[VP] / VP_LIMIT, from the distribution
+        #   v_win = its own regressed scalar head, unchanged from the scalar variant
         # The support is exact rather than a modelling choice: the engine normalises every abrupt
         # ending (20 VP, DEFCON 1, Europe Control) to exactly +/-20.
         self.categorical_value = bool(categorical_value)
         self.value_atoms = int(value_atoms)
         if self.categorical_value:
-            self.val_win_head = None
+            # The win head stays. It is the baseline GAE subtracts, and deriving it from the
+            # distribution as P(VP>0) - P(VP<0) reads only the distribution's *sign*: a head
+            # that merely leans already returns +/-1, so the baseline saturates long before it
+            # is accurate. Measured on a 24-iteration net, the derived form put |v_win| above
+            # 0.9 in 49.6% of states where the regressed head never passed 0.8, which inflated
+            # returns_win, doubled adv_std_raw, and left the normalised advantage carrying
+            # proportionally less of the action difference. The distribution is therefore
+            # additive here -- it replaces the scalar *VP* head, not the win head.
+            self.val_win_head = nn.Sequential(
+                nn.Linear(hidden_dim, 128),
+                nn.LayerNorm(128),
+                nn.GELU(),
+                nn.Linear(128, 1),
+                nn.Tanh(),
+            )
             self.val_vp_head = None
             self.value_dist_head = nn.Sequential(
                 nn.Linear(hidden_dim, 128),
@@ -303,7 +317,7 @@ class ColdWarNetV2(nn.Module):
         if not self.categorical_value:
             assert self.val_win_head is not None and self.val_vp_head is not None
             return self.val_win_head(h), self.val_vp_head(h)
-        assert self.value_dist_head is not None
+        assert self.value_dist_head is not None and self.val_win_head is not None
         probs = torch.softmax(self.value_dist_head(h), dim=-1)
         support = self.value_support.to(probs.dtype)
         # E[VP] divided by VP_LIMIT, because `v_vp` is a *normalised* quantity by contract --
@@ -313,10 +327,9 @@ class ColdWarNetV2(nn.Module):
         # makes +/-20 land on the end atoms and the multimodality meaningful. Only what leaves
         # this method is rescaled, so the scalar and categorical heads present one contract.
         v_vp = (probs * support).sum(dim=-1, keepdim=True) / float(VP_LIMIT)
-        # A win is VP > 0; a draw is the single atom at 0 and counts for neither side.
-        v_win = ((probs * (support > 0).to(probs.dtype)).sum(dim=-1, keepdim=True)
-                 - (probs * (support < 0).to(probs.dtype)).sum(dim=-1, keepdim=True))
-        return v_win, v_vp
+        # v_win comes from its own regressed head, not from the sign mass of this
+        # distribution -- see the note where the heads are built.
+        return self.val_win_head(h), v_vp
 
     def forward_with_value_logits(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
