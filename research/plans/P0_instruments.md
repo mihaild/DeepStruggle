@@ -1,10 +1,8 @@
 # P0 — Instruments
 
-**Status:** queued (second revision 2026-09-10, after the starred-card fix and layout v2.3)
+**Status:** queued (third revision 2026-09-11, after the single-layout refactor)
 **Gate:** none. Everything after this is read through these, so they come first.
-**Blocked in this checkout** until the engine is rebuilt — see *Before anything runs*.
-**Needs approval:** none. No engine, bindings, observation or trainer change. One assertion is
-added to `ColdWarNetV2.forward` (§1.3); it changes no layout, no width and no content.
+**Needs approval:** none. No engine, bindings, observation or trainer change remains in it.
 
 ## Goal
 
@@ -38,11 +36,11 @@ This file was written against v2.2 and arm G. Both are gone. The reset:
 - **The starred-card bug** — a starred card spent for Operations was deleted from the game, for
   380 of the repo's 389 commits (`cff2344`, `25d9b70`) — changes the decision stream. Every Elo
   and every probe number in §1–§24 is on a different ladder.
-- **v2.2 is retired and raises**; `staged_cards` is retired with it and does nothing. Arms F, F2,
-  G and G2 cannot be loaded at all, so the previous version of this file's entire baseline table
-  is void. The current layouts are `legacy` (4293), `v2.1` (3891), `v2.3` (3824).
-- **The current arms are H (80M), H2 (80/160/240M) and I (80M, in flight).** H2 @240M is the
-  strongest at 93.0% against the anchor (§25.1).
+- **There is one observation layout, v2.3 (3824).** legacy, v2.1 and v2.2 are gone along with
+  every argument that named one. Arms A–G cannot be loaded at all, so the first version of this
+  file's entire baseline table is void.
+- **The current arms are H (80M), H2 (80/160/240M) and I (80M).** H2 @240M is the strongest at
+  93.0% against the anchor (§25.1).
 - `temp_cards` is gone (`49ed564`); the chance node is named (`ctx().pending_roll_type`,
   `ctx().roll_actor`) (`712bce4`). Probe 4 below used `temp_cards[1]` and no longer can.
 - Europe Control is its own recorded ending (`430ba9b`), and game length is measured in **plies**,
@@ -50,140 +48,43 @@ This file was written against v2.2 and arm G. Both are gone. The reset:
 - `metrics.md` §1.5.3 retires the claim that the corrected engine lengthens games — H2 does not
   replicate H's game shape. Nothing here leans on it.
 
-**Three things in the previous revision survive unchanged**, and they are the reason §1 is still
-first:
+**Two things in the previous revisions survive unchanged**, and they are what probes 3 and 4 are
+built on:
 
-1. The seven layout-blind call sites are still layout-blind (§1).
-2. The batch runner still drains chance inside C++ *whether or not* `auto_advance` is set — now
+1. The batch runner still drains chance inside C++ *whether or not* `auto_advance` is set — now
    documented in `metrics.md` §"The Python chance-drain loop is not worth moving into C++" — so
    the pre-deal node is still not reachable through it, and probe 4 still needs its own driver.
-3. The nested variance decomposition still needs no engine or bindings change: `rng_state` is
-   still read/write (`ts_bindings.cpp:608`), `set_card_location` is still there (`:629`), and
-   `get_state` still returns a mutable `reference_internal` (`:1061`).
+2. The nested variance decomposition still needs no engine or bindings change: `rng_state` is
+   still read/write, `set_card_location` is still there, and `get_state` still returns a mutable
+   `reference_internal`.
 
-## Before anything runs: this checkout cannot load the current arms
-
-`build/release/ts_engine*.so` here is **pre-v2.3**: it exports `OBS_SIZE_V22`, has no
-`OBS_SIZE_V23`, and contains no `"v2.3"` string at all. Loading the current baseline fails
-outright:
-
-```
-NeuralAgent.from_checkpoint('data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt')
-AttributeError: module 'ts_engine' has no attribute 'OBS_SIZE_V23'
-```
-
-That one is loud, which is the good case. `tools/scripts/check_engine_fresh.sh` cannot fix it by
-itself — it exits **2**, because `build/release/CMakeCache.txt` still records
-`/home/mihaild/prog/ts_ai` as its source directory, so the rebuild it attempts fails on a
-directory that does not exist here. Reconfigure first, which rewrites the cache:
-
-```bash
-cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
-tools/scripts/check_engine_fresh.sh          # rebuilds, stamps, exit 1; rerun for exit 0
-```
-
-**The live run is not affected, and this is checked.** `arm_I_no_kl` runs from the
-`fix-profiler-bias` worktree, so its `PYTHONPATH=.:build/release` resolves to *that* worktree's
-build — a v2.3 extension, built 21:38, stamped, and matching its own sources exactly. Only the
-main checkout's build is stale. And the two share one engine: `engine/` and `bindings/`
-fingerprint identically in both trees —
-
-```
-sources (fix-profiler-bias) = sources (main checkout) = b96d6883a0b6b671…8b4fa4b2
-stamp on arm I's build      = b96d6883a0b6b671…8b4fa4b2   MATCH
-stamp on the main build     = (none)
-```
-
-— so rebuilding the main checkout reproduces arm I's engine rather than a different one, and no
-decision-stream comparison is needed beyond this. Do the rebuild in a worktree of your own rather
-than in `build/release` under the live run.
+The third — seven layout-blind call sites in `ai/eval` — is **fixed**, by removing the layout
+argument rather than by converting them. See §1.
 
 ## Change
 
-### 1. Make the instruments read the observation the checkpoint was trained on
+### 1. Make the instruments read the observation the checkpoint was trained on — **mostly done**
 
-`ts.extract_observation` defaults to `layout="legacy"` and `ts.VectorizedBatchRunner` defaults to
-`("legacy", flags=0)`. A model reads fixed slices at fixed offsets, so an observation *wider* than
-the model expects does not raise — it returns a number computed from the wrong floats. Measured
-on the v2.2 engine before the merge, over 162 sampled self-play states, `v_win` from the legacy
-observation against `v_win` from the correct one: **corr +0.05, mean |Δ| 0.47, sign disagreeing
-60% of the time**. Not a degraded measurement — an unrelated one.
+This was the largest item in the plan and most of it has since landed, by a route that removes
+the failure rather than guarding it: **there is one observation layout, and no argument that
+names one.** `ts.extract_observation(state, perspective)` and `ts.VectorizedBatchRunner(n, seed)`
+take no `layout`; `TsVectorizedEnv` takes no `layout` or `obs_flags`. The seven layout-blind
+`ai/eval` call sites this file used to list are correct by construction — there is nothing left
+for them to default wrongly.
 
-`6220f32` fixed the two probes the trainer calls (`position_diagnostics`, `decisive_probe`) and
-added `bindings.ts_env.layout_for_model`, which raises rather than guessing. **The seven
-standalone probes were not part of that fix and are still blind today:**
+The other half landed with it. Every architecture now checks its input width in
+`extract_features`; `bindings.ts_env.check_obs_width` checks a model against the engine before a
+probe runs, and `ai.models.coldwar_net_v2.check_checkpoint_layout` refuses a checkpoint from a
+retired layout by its own weights. `tests/training/test_probe_observation_layout.py` and
+`tests/training/test_layout_forward.py` hold both directions.
 
-`behavioral_suite.py:217`, `card_probe.py:108`, `battleground_value.py:89,146`,
-`dominance_cost.py:77,162,212`, `round_counterfactual.py:219,290`, `input_ablation.py:63`,
-`critic_calibration.py:92` — plus `tools/generate_dataset.py:70`, which builds datasets.
+**What is left of this step:**
 
-That would be the fifth instance of this bug class, and the fourth cost a published number: arm
-H2 logged `mean_final_turn` 1–2 against an actual 6.8 and `empty_battlegrounds_turn8` 0.0 against
-6.2 (§25, `metrics.md` §1.4.1).
-
-**1.1 `ai/eval/handle.py` — one object that carries the configuration**, built on the two helpers
-that already exist rather than a third mapping:
-
-```python
-@dataclass(frozen=True)
-class EvalHandle:
-    model: ColdWarModel
-    layout: str          # bindings.ts_env.layout_for_model(model) -- raises, never guesses
-    obs_flags: int       # tools.lib.engine_config.mask_for_checkpoint(path)
-    device: torch.device
-    name: str
-    steps: int | None    # parsed from snapshot_<N>steps.pt, for the budget column
-    base_commit: str | None   # from the run's metadata.json; see Procedure
-
-    @classmethod
-    def from_checkpoint(cls, path, device) -> "EvalHandle": ...
-    def observe(self, state, perspective) -> np.ndarray: ...
-    def runner(self, n, seed) -> ts.VectorizedBatchRunner: ...
-    def value(self, states, perspectives) -> np.ndarray: ...
-```
-
-**1.2 Convert the seven call sites** to take an `EvalHandle` instead of a bare `model` + `device`.
-Mechanical: `ts.extract_observation(state, mover)` becomes `h.observe(state, mover)`,
-`ts.VectorizedBatchRunner(n, seed)` becomes `h.runner(n, seed)`. Their CLIs already take a
-checkpoint path, so no CLI changes.
-
-**1.3 Make the silent case loud** — the systemic fix, and the one that would have caught all four
-previous instances at the call site instead of in a retraction. `ColdWarNetV2.forward` has no
-width check today (`TOTAL_OBS_SIZE` is declared and never compared). Add to V1/V2/V3:
-
-```python
-if obs.shape[-1] != self.TOTAL_OBS_SIZE:
-    raise ValueError(f"observation width {obs.shape[-1]} != {self.TOTAL_OBS_SIZE} this model reads")
-```
-
-Extraction-side width guards already exist (`1f38004`); the network side is the half that is
-missing, which is exactly why `layout_for_model`'s docstring has to say "the widths of the
-extraction and the network are checked at different places". This is not an observation change —
-no slot moves, nothing is added or removed.
-
-**1.4 Regression test**, `tests/training/test_eval_handle_layout.py`, beside the existing
-`test_probe_observation_layout.py`: build a v2.3-shaped model, feed it a legacy-width observation,
-assert it raises; assert `EvalHandle.from_checkpoint` recovers `layout == "v2.3"` and the run's
-recorded flags.
-
-**1.5 `ai/eval/rollout.py` — a lockstep driver that does not swallow chance.** M states stepped
-together in Python, one batched forward per step, so it is fast without being the C++ runner:
-
-```python
-def rollout(h: EvalHandle, states: list[ts.GameState], *, temperature: float,
-            on_chance: Callable[[ts.GameState], ts.MicroAction] | None = None,
-            on_turn_start: Callable[[int, ts.GameState], None] | None = None,
-            observe_node: Callable[[int, ts.GameState], None] | None = None,
-            max_steps: int = 4000) -> list[float]:            # terminal utility, US perspective
-```
-
-`on_chance` defaults to `MicroAction(ROLL_DIE, 0, 0, 0)` — the zero means "roll it yourself".
-Returning a non-zero payload forces the die: `primary_id` is the **acting player's** die and
-`secondary_id` the opponent's, per-actor rather than per-side, which is the shape `712bce4` gave
-it after per-side storage made a USSR realignment read its two dice swapped. Draining in Python
-costs 6.7% of wall time against a C++ equivalent and is the cheaper side of that trade
-(`metrics.md`); chance nodes are only 10.1 per game against 249 real decisions. Probes 1, 2, 3
-and 5 stay on the C++ runner.
+* `ai/eval/handle.py` — still worth having, but smaller than specified: an `EvalHandle` now
+  carries only `(model, device, name, steps, base_commit)`, because layout and flags are no
+  longer per-checkpoint facts. It is a convenience for the probe suite's row labelling, not a
+  correctness measure. Build it in step 7 with the CLI, not ahead of everything else.
+* `ai/eval/rollout.py` (below, §1.5) — unchanged and still required for probes 2 and 4.
 
 ### 2. The probes
 
@@ -305,12 +206,13 @@ Two halves, cheap and independent:
 
 Both are baselines here, not gates. The rate is the number a later strategy arm has to move.
 
-### 3. Existing instruments, on the same checkpoints, after §1 lands
+### 3. Existing instruments, on the same checkpoints
 
 `battleground_value.py` (§12.1 perturbation probe), `position_diagnostics.py` (empty
-battlegrounds at turn 8, ply distribution, DEFCON-1 share), forced-win take rate as a floor.
-`position_diagnostics` was fixed by `6220f32` and can be trusted; the perturbation probe cannot
-until §1.2.
+battlegrounds at turn 8, ply distribution, DEFCON-1 share), forced-win take rate as a floor. All
+three can be trusted now: `position_diagnostics` was fixed by `6220f32`, and the perturbation
+probe by the single-layout refactor. Any number any of them produced on a v2.x checkpoint before
+those two changes is void.
 
 ### 4. One CLI
 
@@ -331,36 +233,17 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 tools/scripts/check_engine_fresh.sh          # rebuilds and stamps, exit 1; rerun for exit 0
 ```
 
-*Accept when:* the script exits 0, the stamp reads `b96d6883…`, `ts.OBS_SIZE_V23 == 3824`, and
-`NeuralAgent.from_checkpoint('data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt')` loads and
-reports layout `v2.3`. ~10 min, mostly compile.
+*Accept when:* the script exits 0, `ts.OBS_SIZE == 3824`, and
+`NeuralAgent.from_checkpoint('data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt')` loads.
+~10 min, mostly compile. pytest refuses to run against an unstamped build, so this is not
+skippable.
 
-**1. The width guard, on its own** (§1.3). `ai/models/coldwar_net.py`, three `forward` methods.
-Deliberately first and deliberately alone: it is four lines, it converts every remaining instance
-of this bug class from silent to loud, and landing it separately means the next commit's
-conversions are *verified* by it rather than merely intended.
+**1–2. The layout work — landed.** One layout, no `layout` argument anywhere, width guards on
+every architecture, and `check_obs_width` / `check_checkpoint_layout` refusing a retired
+checkpoint by width rather than letting it misread. The probes are correct by construction rather
+than by conversion. What remains of `EvalHandle` is row labelling and belongs to step 7.
 
-*Accept when:* the backend suite passes — and note that a guard firing in an existing test is a
-finding, not a regression to paper over. Expect one or two synthetic-observation call sites to
-need their widths corrected.
-
-```bash
-PYTHONPATH=.:build/release .venv/bin/python -m pytest -q -n auto \
-    tests/bindings tests/engine_logic tests/training
-```
-
-**2. `EvalHandle`, and the seven conversions** (§1.1, §1.2, §1.4). New `ai/eval/handle.py`
-(~70 lines, wrapping `layout_for_model` and `mask_for_checkpoint`, adding nothing of its own);
-edits to `behavioral_suite`, `card_probe`, `battleground_value`, `dominance_cost`,
-`round_counterfactual`, `input_ablation`, `critic_calibration`, and `tools/generate_dataset.py`;
-new `tests/training/test_eval_handle_layout.py`.
-
-*Accept when:* the new test passes both directions — a legacy-width observation into a v2.3 model
-raises, and `EvalHandle.from_checkpoint` recovers `v2.3` plus the run's flags — and
-`.venv/bin/pyrefly check ai tools tests web bindings` is at 0 errors with **explicit paths**
-(a bare `pyrefly check` in a worktree examines zero files and still exits 0). ~2–3 h.
-
-**3. `ai/eval/rollout.py`** (§1.5), with `tests/training/test_rollout_driver.py`.
+**3. `ai/eval/rollout.py`**, with `tests/training/test_rollout_driver.py`.
 
 *Accept when:* driven greedily from the same seeds with chance drained the default way, the
 driver's terminal utilities and action streams are **identical** to `VectorizedBatchRunner`'s over
@@ -398,8 +281,9 @@ plus the existing instruments; run it over the *Procedure* table; write `experim
 the baseline rows; add the columns to the standard eval row in `metrics.md`; `git rm` this file
 and drop its row from `plans/README.md`.
 
-Steps 0–3 are the ones that have to be right; 4–6 are independent of each other and can land in
-any order, or in parallel. Total ~2 days including the write-up, none of it on the GPU.
+Steps 1–2 have landed. Step 3 is the one left that has to be right; 4–6 are independent of each
+other and can land in any order, or in parallel. Total ~1.5 days including the write-up, none of
+it on the GPU.
 
 ## Procedure
 
@@ -413,7 +297,7 @@ below have a full 5M-step snapshot series.
 | v2.3 baseline | `arm_H_v23_corrected/snapshot_final.pt` | v2.3 | 80M | `32902a3` |
 | v2.3 seed B | `arm_H2_v23_seedB` @ 80M and 160M | v2.3 | 80M / 160M | `32902a3` |
 | **strongest** | `arm_H2_cont_160to240/snapshot_final.pt` | v2.3 | 240M | `71739f9` |
-| KL off, in flight | `arm_I_no_kl` @ 80M | v2.3 | 80M | `c391f2e` |
+| KL off | `arm_I_no_kl/snapshot_final.pt` | v2.3 | 80M | `c391f2e` |
 | floor | `heuristic`, `random` | — | — | — |
 | yardstick | human corpus; ITS results for game shape | — | — | — |
 
@@ -429,18 +313,14 @@ Comparisons that are licensed: H @80M vs H2 @80M (seed replication, known to be 
 4.7 Elo); H2 @80M vs @160M vs @240M (budget); **I @80M vs H2 @80M (the KL term, the one arm I is
 running to answer)**. Not licensed: anything against arms A–G, on either ladder.
 
-### The run that is training right now
+### Arm I
 
 `arm_I_no_kl` — v2.3, cold start, `--eta 0` (NashPG KL penalty off), 80M steps, seed 20260921,
-otherwise H2's recipe, so the only difference from H2 @80M is the KL term. Started 22:04, at 40M
-by 22:54, so **80M at roughly 23:45 today**.
+otherwise H2's recipe, so the only difference from H2 @80M is the KL term. **Finished**, and its
+row can be taken from its last four snapshots like any other.
 
-1. Do not rebuild into `build/release` while it runs — that is the path its `PYTHONPATH` names.
-   (See *Before anything runs* for why what is on that path is also the thing to resolve first.)
-2. Probes run on **CPU**, so they do not contend with the 4090.
-3. Develop and validate the whole suite against H and H2, whose runs are finished; take arm I's
-   row from its last four snapshots once it stops.
-4. Probes never write into a run directory. Output goes to `research/probe_baseline_20260911/`.
+Probes run on **CPU** and never write into a run directory; output goes to
+`research/probe_baseline_20260911/`.
 
 ### Recording
 
@@ -466,22 +346,16 @@ existing instruments. Rates as Wilson bands. No Elo.
 - Sequencing: baseline only. If the raw-play rate is high **and** the constructed positions pass,
   the model knows the tactic and cannot time it, which argues for P4's macro-action credit over
   P6's capacity.
-- If the engine question in *Before anything runs* is unresolved, nothing above is decided by
-  arm I's row.
 
 ## Follow-ups
 
 - Every later step reports these numbers. Add them to the standard eval row in `metrics.md`.
 - If the corpus is too small for a stable VOA yardstick, say so in the log and use the exposure
   rate alone.
-- **Queue the BC warmup layout fix** as its own change before P1 and P7: `WarmupDataset`
-  re-extracts observations with `ts.extract_observation(st, p)` at the legacy default
-  (`ai/training/warmup_dataset_loader.py:39,99`) and `run_bc_warmup` passes no layout down
-  (`generic_trainer.py:377-383`), while the RL path does (`:914,917`). Arms H, H2 and I are cold
-  starts and are unaffected; a v2.3 warmup today would train on legacy floats, silently. Thread
-  `obs_layout`/`obs_flags` through and assert the width against the model being warmed.
-- `tools/generate_dataset.py:70` builds its runner at the legacy default too. Same fix, and it
-  matters for P7.
+- ~~Queue the BC warmup layout fix~~ — **fixed by the single-layout refactor.** `WarmupDataset`
+  and `tools/generate_dataset.py` re-extracted at the legacy default and passed no layout down;
+  with one layout there is no default to be wrong. Arms H, H2 and I were cold starts and were
+  never affected.
 - If §1.3's width assertion fires anywhere outside the tests, that call site was measuring noise;
   note where in the log entry.
 
