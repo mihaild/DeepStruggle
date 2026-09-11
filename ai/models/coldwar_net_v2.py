@@ -65,14 +65,39 @@ class ColdWarNetV2(nn.Module):
     """
     ColdWarNetV2: Enhanced Policy-Value Architecture with Card <-> Country Cross-Attention.
     
-    Features:
-    - 2-layer GCN over 84 country nodes (28 -> 64 -> 64)
-    - 110-card MLP embedder (12 -> 64)
-    - Multi-Head Cross-Attention: Cards (Queries) attend to Country Nodes (Keys/Values)
-    - Global scalar projection (76 -> 128)
-    - 1D Temporal ConvNet over 16-step history (16x32 -> 128)
-    - Deep Residual MLP Fusion Trunk (1024 -> 512, 4 Pre-LN ResBlocks)
-    - Masked Policy Head (212-dim) + Dual Value Heads (Win/Loss Tanh & Auxiliary VP)
+    The widths are *per layout* -- one class serves all three, because a checkpoint has to keep
+    loading after the observation changes. Build it with `create_for_layout(name)`; the
+    class-level constants describe `legacy` only, and every offset is recomputed in __init__.
+
+    | | legacy | v2.1 | v2.3 (current) |
+    |:---|---:|---:|---:|
+    | board, per country | 28 | 28 | 26 |
+    | card, per card | 12 | 13 | 14 |
+    | global scalars | 76 | 76 | 100 |
+    | history block | 512 | -- | -- |
+    | tail (turn aggregates + active player) | 33 | 33 | -- |
+    | **observation** | **4293** | **3891** | **3824** |
+    | parameters | 3,223,223 | 3,088,727 | 3,091,735 |
+
+    Branches, for the current v2.3 layout:
+
+    - 2-layer GraphConv over the 84 country nodes on the map adjacency (26 -> 64 -> 64), then
+      mean- and max-pooled over all countries and projected to 256.
+    - 110-card MLP embedder (14 -> 64), likewise mean/max-pooled and projected to 256.
+    - Multi-head cross-attention, cards querying country nodes, pooled to 256.
+    - Global scalar projection (100 -> 128).
+    - Fusion trunk: concat -> 896 -> 512, four Pre-LN residual blocks.
+    - Masked policy head (212) and dual value heads (win/loss tanh, auxiliary VP).
+
+    **There is no history branch outside `legacy`.** The 512-float block was a constant zero
+    vector -- `ActionHistoryBuffer::record()` is called nowhere in the engine -- so v2.1 dropped
+    it, and with `use_history=False` both the temporal ConvNet and its 128 floats of trunk input
+    disappear (the trunk takes 896 rather than 1024). The branch survives in this class only so
+    `legacy` checkpoints still load and run; it is not part of the current architecture.
+
+    Note the board branch pools across all 84 countries *before* the global block is seen, and
+    the policy head is dense off the fused vector -- there is no per-country output path. See
+    `research/metrics.md` 1.4.2 for what that costs.
     """
 
     # Class-level values describe the legacy 12-feature card block, which is what every existing
@@ -110,7 +135,7 @@ class ColdWarNetV2(nn.Module):
         # nowhere -- so with use_history=False both the branch that encodes it and its share of
         # the fusion trunk go away, and the observation is that much narrower.
         self.use_history = bool(use_history)
-        # 76 globals in legacy and v2.1; 96 in v2.3, which appends the decision context --
+        # 76 globals in legacy and v2.1; 100 in v2.3, which appends the decision context --
         # decision type, op mode, points remaining, the per-country cap, the timing branch.
         self.GLOBAL_SIZE = int(global_features)
         # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.3 drops both:
