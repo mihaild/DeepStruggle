@@ -1,6 +1,6 @@
 """ColdWarNetV2: Graph-Card Cross-Attention Neural Network for Twilight Struggle."""
 
-from typing import TypedDict, cast
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -73,21 +73,19 @@ class ColdWarNetV2(nn.Module):
     """
     ColdWarNetV2: Enhanced Policy-Value Architecture with Card <-> Country Cross-Attention.
     
-    The widths are *per layout* -- one class serves all three, because a checkpoint has to keep
-    loading after the observation changes. Build it with `create_for_layout(name)`; the
-    class-level constants describe `legacy` only, and every offset is recomputed in __init__.
+    One observation layout, v2.3, and the class constants describe it. The constructor still
+    takes the four dimensions and recomputes every offset from them, so a model can be built to
+    a checkpoint's own shape -- but there is no second shape to build.
 
-    | | legacy | v2.1 | v2.3 (current) |
-    |:---|---:|---:|---:|
-    | board, per country | 28 | 28 | 26 |
-    | card, per card | 12 | 13 | 14 |
-    | global scalars | 76 | 76 | 100 |
-    | history block | 512 | -- | -- |
-    | tail (turn aggregates + active player) | 33 | 33 | -- |
-    | **observation** | **4293** | **3891** | **3824** |
-    | parameters | 3,223,223 | 3,088,727 | 3,091,735 |
+    | | v2.3 |
+    |:---|---:|
+    | board, per country | 26 |
+    | card, per card | 14 |
+    | global scalars | 100 |
+    | **observation** | **3824** |
+    | parameters | 3,091,735 |
 
-    Branches, for the current v2.3 layout:
+    Branches:
 
     - 2-layer GraphConv over the 84 country nodes on the map adjacency (26 -> 64 -> 64), then
       mean- and max-pooled over all countries and projected to 256.
@@ -97,35 +95,37 @@ class ColdWarNetV2(nn.Module):
     - Fusion trunk: concat -> 896 -> 512, four Pre-LN residual blocks.
     - Masked policy head (212) and dual value heads (win/loss tanh, auxiliary VP).
 
-    **There is no history branch outside `legacy`.** The 512-float block was a constant zero
-    vector -- `ActionHistoryBuffer::record()` is called nowhere in the engine -- so v2.1 dropped
-    it, and with `use_history=False` both the temporal ConvNet and its 128 floats of trunk input
-    disappear (the trunk takes 896 rather than 1024). The branch survives in this class only so
-    `legacy` checkpoints still load and run; it is not part of the current architecture.
+    **There is no history branch.** The 512-float block was a constant zero vector --
+    `ActionHistoryBuffer::record()` is called nowhere in the engine -- so v2.1 dropped it and no
+    layout has carried one since. `use_history` survives as a constructor argument and defaults
+    to False; with it set, the temporal ConvNet and its 128 floats of trunk input come back and
+    the trunk takes 1024 rather than 896. Nothing in the engine would fill them.
 
     Note the board branch pools across all 84 countries *before* the global block is seen, and
     the policy head is dense off the fused vector -- there is no per-country output path. See
     `research/metrics.md` 1.4.2 for what that costs.
     """
 
-    # Class-level values describe the legacy 12-feature card block, which is what every existing
-    # checkpoint was trained against. An instance built with card_features=13 overrides the four
-    # that move; the offsets are recomputed in __init__ rather than assumed, because only the
-    # card block changes width and everything after it shifts by the same amount.
+    # Observation layout v2.3, which is the only layout the engine emits. The offsets are still
+    # recomputed in __init__ from the four dimensions rather than assumed, because the class
+    # constants are defaults and an instance may be built to a checkpoint's own shape.
     BOARD_OFFSET = 0
-    BOARD_SIZE = 84 * 28  # 2352
+    BOARD_FEATURES = 26
+    BOARD_SIZE = 84 * 26  # 2184
 
-    CARD_OFFSET = 2352
-    CARD_FEATURES = 12
-    CARD_SIZE = 110 * 12  # 1320
+    CARD_OFFSET = 2184
+    CARD_FEATURES = 14
+    CARD_SIZE = 110 * 14  # 1540
 
-    GLOBAL_OFFSET = 2352 + 1320  # 3672
-    GLOBAL_SIZE = 76
+    GLOBAL_OFFSET = 2184 + 1540  # 3724
+    GLOBAL_SIZE = 100
 
-    HIST_OFFSET = 3672 + 76  # 3748
+    # Retained only to size the branch when a model is built with use_history=True. Nothing
+    # writes an action history into the observation and no current layout carries one.
+    HIST_OFFSET = 3724 + 100  # 3824
     HIST_SIZE = 16 * 32  # 512
 
-    TOTAL_OBS_SIZE = 4293
+    TOTAL_OBS_SIZE = 3824
     ACTION_SPACE_SIZE = 212
 
     # Declared for the type checker: `value_support` is a registered buffer, and the two scalar
@@ -136,29 +136,29 @@ class ColdWarNetV2(nn.Module):
     value_dist_head: nn.Module | None
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
-                 card_features: int = CARD_FEATURES, use_history: bool = True,
-                 global_features: int = GLOBAL_SIZE, has_tail: bool = True,
-                 board_features: int = 28, categorical_value: bool = False,
-                 value_atoms: int = VALUE_ATOMS):
+                 card_features: int = CARD_FEATURES, use_history: bool = False,
+                 global_features: int = GLOBAL_SIZE, has_tail: bool = False,
+                 board_features: int = BOARD_FEATURES,
+                 categorical_value: bool = False, value_atoms: int = VALUE_ATOMS):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
-        # 12 is the legacy card block; 13 is observation layout v2, which adds a slot for a card
-        # the opponent is known to hold and one for a card not yet in the game. Nothing else in
-        # the observation changes width, so every later offset simply moves by the difference.
+        # 14 in v2.3: eight slots saying where the card is, five card properties, and one
+        # saying whether this decision is about that card.
         self.card_features = int(card_features)
         # The history block is a constant zero vector -- ActionHistoryBuffer::record() is called
         # nowhere -- so with use_history=False both the branch that encodes it and its share of
         # the fusion trunk go away, and the observation is that much narrower.
         self.use_history = bool(use_history)
-        # 76 globals in legacy and v2.1; 100 in v2.3, which appends the decision context --
-        # decision type, op mode, points remaining, the per-country cap, the timing branch.
+        # 100: 72 board-and-track scalars, then the 28-float decision context -- decision type,
+        # op mode, points remaining, the per-country cap, the timing branch.
         self.GLOBAL_SIZE = int(global_features)
-        # legacy and v2.1 end with turn_aggregates (32) and active_player (1). v2.3 drops both:
-        # the forward pass never sliced them, so of the 33 floats not one reached the network.
+        # Retired layouts ended with turn_aggregates (32) and active_player (1). v2.3 has
+        # neither: the forward pass never sliced them, so of the 33 floats not one ever reached
+        # a network.
         self.has_tail = bool(has_tail)
-        # 28 in legacy and v2.1; 26 in v2.3, which drops the two per-country realignment
-        # legality features -- can_realign differs from can_coup only under The Reformer.
+        # 26 in v2.3, which has no per-country realignment legality pair -- can_realign differs
+        # from can_coup only under The Reformer.
         self.board_features = int(board_features)
         self.BOARD_SIZE = 84 * self.board_features
         self.CARD_OFFSET = self.BOARD_SIZE
@@ -358,6 +358,13 @@ class ColdWarNetV2(nn.Module):
 
     def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
         """Extracts fused latent state representation and optional cross-attention maps."""
+        if obs.shape[-1] != self.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"observation is {obs.shape[-1]} floats wide; this model reads "
+                f"{self.TOTAL_OBS_SIZE}. Every slice below is taken at a fixed offset, so a "
+                f"mismatched vector does not fail -- it is misread, and the network plays "
+                f"near-randomly while returning perfectly ordinary-looking numbers. That went "
+                f"unnoticed four times before this check existed.")
         batch_size = obs.shape[0]
 
         # 1. Board Graph Features: (B, 84, 28)
@@ -494,33 +501,19 @@ class ColdWarNetV2(nn.Module):
         return log_probs, entropy, v_win.squeeze(-1), v_vp.squeeze(-1)
 
 
-class LayoutSpec(TypedDict):
-    """The model dimensions an observation layout implies."""
-
-    card_features: int
-    global_features: int
-    board_features: int
-    use_history: bool
-    has_tail: bool
-
-
-#: Every observation layout, as the model dimensions it implies. Keyed by the name the engine and
-#: the CLI use, so there is one spelling of "which layout" across the whole stack.
-LAYOUTS: dict[str, LayoutSpec] = {
-    "legacy": {"card_features": 12, "global_features": 76, "board_features": 28, "use_history": True,  "has_tail": True},
-    "v2.1":   {"card_features": 13, "global_features": 76, "board_features": 28, "use_history": False, "has_tail": True},
-    "v2.3":   {"card_features": 14, "global_features": 100, "board_features": 26, "use_history": False, "has_tail": False},
-}
-
-
 def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           card_features: int = ColdWarNetV2.CARD_FEATURES,
-                          use_history: bool = True,
+                          use_history: bool = False,
                           global_features: int = ColdWarNetV2.GLOBAL_SIZE,
-                          has_tail: bool = True,
-                          board_features: int = 28,
+                          has_tail: bool = False,
+                          board_features: int = ColdWarNetV2.BOARD_FEATURES,
                           categorical_value: bool = False) -> ColdWarNetV2:
-    """Factory helper to instantiate ColdWarNetV2 on specified device."""
+    """Factory helper to instantiate ColdWarNetV2 on specified device.
+
+    The defaults are observation layout v2.3, which is the only layout the engine emits.
+    `categorical_value` is the P1 value head: it changes the output side, not the input, but it
+    does change the checkpoint shape, so a run must be loaded with the setting it trained with.
+    """
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
@@ -541,52 +534,36 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
     return create_coldwar_net_v2(
         device,
         card_features=int(getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES)),
-        use_history=bool(getattr(model, "use_history", True)),
+        use_history=bool(getattr(model, "use_history", False)),
         global_features=int(getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE)),
-        has_tail=bool(getattr(model, "has_tail", True)),
-        board_features=int(getattr(model, "board_features", 28)),
+        has_tail=bool(getattr(model, "has_tail", False)),
+        board_features=int(getattr(model, "board_features", ColdWarNetV2.BOARD_FEATURES)),
+        # The P1 head must be carried too: a frozen evaluation copy built without it would have
+        # a different state dict from the model it is copying, which is how arms E and F died.
         categorical_value=bool(getattr(model, "categorical_value", False)))
 
 
-def create_for_layout(layout: str, device: torch.device | str = "cpu",
-                      categorical_value: bool = False) -> ColdWarNetV2:
-    """The network shaped for a named observation layout.
+def check_checkpoint_layout(state_dict: dict) -> None:
+    """Refuses a checkpoint that was not trained on the engine's one observation layout.
 
-    `categorical_value` is the P1 value head. It is orthogonal to the layout -- it changes the
-    output side, not the input -- but it does change the checkpoint shape, so a run must be
-    loaded with the same setting it was trained with.
-    """
-    if layout not in LAYOUTS:
-        raise ValueError(f"layout must be one of {sorted(LAYOUTS)}, got {layout!r}")
-    kw = LAYOUTS[layout]
-    return create_coldwar_net_v2(
-        device,
-        card_features=kw["card_features"],
-        use_history=kw["use_history"],
-        global_features=kw["global_features"],
-        has_tail=kw["has_tail"],
-        board_features=kw["board_features"],
-        categorical_value=categorical_value)
+    Derived from the weights rather than from a recorded name, because a checkpoint is a bare
+    state dict. A model handed the wrong width does not fail on its own -- it reads fixed slices,
+    so the observation is silently misread and the network merely plays badly.
 
-
-def layout_of(state_dict: dict) -> str:
-    """Which observation layout a checkpoint expects, read off its own weights.
-
-    Derived rather than recorded: a checkpoint is a bare state dict, and a model handed the wrong
-    layout does not fail -- it reads fixed slices, so a wrong-width observation is silently
-    misread and the network merely plays badly.
+    Checkpoints from the retired layouts cannot be run and are not being converted: legacy, v2.1
+    and v2.2 all predate the starred-card fix, so they were trained against a different game and
+    are not comparable to anything measured now.
     """
     cards = card_features_of(state_dict)
     g = state_dict.get("global_proj.0.weight")
     globals_ = int(g.shape[1]) if g is not None else ColdWarNetV2.GLOBAL_SIZE
     has_hist = any(k.startswith("hist_conv.") for k in state_dict)
-    for name, kw in LAYOUTS.items():
-        if (kw["card_features"] == cards and kw["global_features"] == globals_
-                and kw["use_history"] == has_hist):
-            return name
-    raise ValueError(
-        f"no known layout has card_features={cards}, global_features={globals_}, "
-        f"history={has_hist}")
+    if (cards, globals_, has_hist) != (ColdWarNetV2.CARD_FEATURES, ColdWarNetV2.GLOBAL_SIZE, False):
+        raise ValueError(
+            f"this checkpoint has card_features={cards}, global_features={globals_}, "
+            f"history={has_hist}; layout v2.3 is card_features={ColdWarNetV2.CARD_FEATURES}, "
+            f"global_features={ColdWarNetV2.GLOBAL_SIZE}, history=False. Checkpoints from the "
+            f"retired layouts cannot be run.")
 
 
 def card_features_of(state_dict: dict) -> int:

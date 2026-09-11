@@ -47,7 +47,7 @@ engine/
 │   ├── card_handlers.hpp       // Card event handlers and sub-decision dispatch declarations
 │   ├── action_mask.hpp         // Legal action mask generator (per DecisionType and unified 212-dim flat mask)
 │   ├── state_machine.hpp       // Turn and Action Round lifecycle, Headline resolution
-│   ├── observation.hpp         // Neural observation feature extractor (ObservationBuffer)
+│   ├── observation.hpp         // Neural observation extractor (ObservationBufferV23, the one layout)
 │   ├── serialization.hpp       // Binary snapshot and JSON serialization
 │   └── engine.hpp              // Top-level ts::Engine public interface
 ├── src/                        // Engine implementations

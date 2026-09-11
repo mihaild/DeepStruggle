@@ -94,7 +94,7 @@ def v23_features() -> List[Feature]:
     return feats
 
 
-def collect(num_games: int, seed: int = 4242, layout: str = "v2.3") -> npt.NDArray[np.float32]:
+def collect(num_games: int, seed: int = 4242) -> npt.NDArray[np.float32]:
     """Observations from self-play games driven by the legal-action distribution.
 
     Random play reaches turn ~2.7 and would leave every late-game feature constant by accident, so
@@ -113,7 +113,7 @@ def collect(num_games: int, seed: int = 4242, layout: str = "v2.3") -> npt.NDArr
             if player == ts.Player.NONE:
                 player = state.phasing_player
             rows.append(np.asarray(
-                ts.extract_observation(state, player, layout=layout), dtype=np.float32))
+                ts.extract_observation(state, player), dtype=np.float32))
             mask = ActionEncoder.get_legal_mask(state)
             legal = np.flatnonzero(np.asarray(mask))
             if legal.size == 0:
@@ -156,11 +156,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=4242)
-    ap.add_argument("--layout", default="v2.3", choices=["legacy", "v2.1", "v2.3"],
-                    help="which observation layout to audit")
     a = ap.parse_args()
 
-    obs = collect(a.games, a.seed, layout=a.layout)
+    obs = collect(a.games, a.seed)
     print(f"{obs.shape[0]:,} positions from {a.games} games, observation width {obs.shape[1]}\n")
     rows = audit(obs, v23_features())
 

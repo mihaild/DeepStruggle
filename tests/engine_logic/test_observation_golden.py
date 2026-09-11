@@ -1,9 +1,12 @@
 """The observation, pinned exactly, so a change to it has to be deliberate.
 
-`CardLocation` is being split into finer variants -- known and unknown opponent hands, and
-`UNAVAILABLE` separated from `DRAW_DECK` -- and the old observation has to remain reproducible
-byte for byte so existing checkpoints keep loading. "Byte for byte" is not something that can be
-argued; it has to be pinned before the change and compared after.
+Layout v2.3 is the only layout, and every live checkpoint was trained against it. A change to
+any float here silently invalidates all of them: a network reads fixed slices, so it keeps
+loading and simply misreads. "Byte for byte" is not something that can be argued; it has to be
+pinned and compared.
+
+This file is what proved the extractor was unchanged when the three-layout chain was flattened
+into one function -- 4,288 observations across 40 games, not one float moved.
 
 The golden file records a deterministic walk: fixed seed, and at every decision the lowest legal
 flat action. That fixes the trajectory too, so the file also catches an engine change that alters
@@ -27,8 +30,8 @@ import ts_engine as ts
 
 GOLDEN = os.path.join(os.path.dirname(__file__), "observation.golden.npz")
 
-#: Legacy observation width. The new layout is wider; legacy must stay exactly this.
-LEGACY_OBS_SIZE = 4293
+#: The one observation width, and a checkpoint contract.
+OBS_SIZE = int(ts.OBS_SIZE)
 
 _SEED = 20260907
 _GAMES = 4
@@ -78,7 +81,7 @@ def _write_golden() -> None:
 
 @pytest.mark.skipif(not os.path.exists(GOLDEN),
                     reason="golden not yet generated; run this file as a script")
-def test_legacy_observation_is_unchanged() -> None:
+def test_observation_is_unchanged() -> None:
     """Every legacy observation must match the golden file exactly."""
     golden = np.load(GOLDEN)
     obs, actions, markers = _walk()
@@ -92,8 +95,8 @@ def test_legacy_observation_is_unchanged() -> None:
 
     expected = golden["obs"]
     assert obs.shape == expected.shape, (
-        f"legacy observation width changed: {obs.shape} against {expected.shape}. The legacy "
-        f"layout must stay {LEGACY_OBS_SIZE} wide or existing checkpoints stop loading.")
+        f"observation width changed: {obs.shape} against {expected.shape}. The legacy "
+        f"layout must stay {OBS_SIZE} wide or existing checkpoints stop loading.")
 
     if not np.array_equal(obs, expected):
         diff = np.flatnonzero((obs != expected).any(axis=0))
@@ -108,14 +111,19 @@ def test_golden_covers_both_perspectives_and_real_hands() -> None:
     golden = np.load(GOLDEN)
     obs = golden["obs"]
     assert obs.shape[0] >= 200, "too few positions to be a meaningful pin"
-    assert obs.shape[1] == LEGACY_OBS_SIZE
+    assert obs.shape[1] == OBS_SIZE
 
-    # active_player is the last float and must take both signs, or only one side was walked.
-    signs = set(np.sign(obs[:, -1]).tolist())
-    assert signs == {1.0, -1.0}, f"expected both perspectives, saw {signs}"
+    # I_AM_US is global feature 61 and must take both values, or only one side was walked.
+    # (The old check read `active_player`, the last float of the retired layouts; v2.3 has no
+    # such tail -- which side is to move is already in I_AM_US and in every perspective-relative
+    # feature around it.)
+    board, card_features = 84 * 26, 14
+    globals_at = board + 110 * card_features
+    values = set(obs[:, globals_at + 61].tolist())
+    assert values == {0.0, 1.0}, f"expected both perspectives, saw {values}"
 
-    # MY_HAND is card-feature slot 1 of 12, so cards 0..109 sit at 2352 + 12*i + 1.
-    my_hand = obs[:, 2352 + 1: 2352 + 1320: 12]
+    # MY_HAND is card-feature slot 1 of 14, so cards 0..109 sit at board + 14*i + 1.
+    my_hand = obs[:, board + 1: board + 110 * card_features: card_features]
     assert my_hand.sum() > 0, "no card was ever in the observer's hand"
 
 

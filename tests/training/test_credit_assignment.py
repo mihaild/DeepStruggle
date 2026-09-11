@@ -807,7 +807,7 @@ class TestHeldScoringAndPotentialFixes:
         device = torch.device("cpu")
         buffer = RolloutBuffer(buffer_size=6, num_envs=1, device=device)
 
-        obs = np.zeros((1, 4293), dtype=np.float32)
+        obs = np.zeros((1, int(ts.OBS_SIZE)), dtype=np.float32)
         mask = np.zeros((1, 212), dtype=np.uint8)
         mask[0, 0] = 1
 

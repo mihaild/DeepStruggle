@@ -13,22 +13,28 @@ is the **record** of what was run. A step lives in exactly one of the two places
 > recipe", and re-derive any control number: everything measured on a v2.2 checkpoint is void.
 > `research/metrics.md` §1.5.3 also retires the claim that the corrected engine lengthens games,
 > which two of these plans lean on. See `CLAUDE.md` for the layout table.
+>
+> **P0 has since been rewritten against v2.3 and arms H/H2/I and is current. The other six have
+> not.**
 
 ## The current goal
 
 A no-search player at the level of a **mediocre human**: no simple mistakes, basic strategy. In
 this game that means: a sane setup (Poland ≥ 3 as USSR, West Germany ≥ 4 as US), contesting
 battlegrounds instead of leaving ~7.5 of them empty from turn 8, not losing to its own DEFCON,
-and — as USSR — not leaving 1–2-influence footholds exposed to Voice of America while VOA is
-unaccounted for. Elo against the heuristic bot is the secondary number; the probes are the
-acceptance test. Search is acceptable as a diagnostic and as a distillation source, not as the
+and disposing of a card it must not play through the exit that card has — spacing it, running it
+through UN Intervention, or holding it — rather than spending the scarce exit on the card that
+had its own. (Not leaving 1–2-influence footholds exposed to Voice of America is on the same
+list, but it is behind contesting battlegrounds at all, so its probe sits in
+[`reserve.md`](reserve.md).) Elo against the heuristic bot is the secondary number; the probes
+are the acceptance test. Search is acceptable as a diagnostic and as a distillation source, not as the
 product. The literature behind the ordering is in [`../references.md`](../references.md).
 
 ## The queue
 
 | step | file | what it tests | budget | gate |
 |:---|:---|:---|:---|:---|
-| P0 | [instruments](P0_instruments.md) | setup probe, VOA-exposure probe, chance-variance decomposition, pre-deal calibration | CPU/eval only, ~1 day | none — do first |
+| P0 | [instruments](P0_instruments.md) | setup probe, card-disposal probe, chance-variance decomposition, pre-deal calibration | CPU/eval only, ~1 day | none — do first |
 | P1 | [categorical value + advantage filtering](P1_categorical_value_advantage_filtering.md) | replace the two scalar heads by one categorical VP head; filter low-advantage samples | 2 arms × 2 seeds × 80M, then confirm | P0 probes exist |
 | P2 | [chance-aware targets](P2_chance_aware_targets.md) | exact dice expectation in value targets; bootstrap at the pre-deal `TURN_CLEANUP` node | 1 arm × 2 seeds × 80M, then confirm | P0 decomposition says dice/deal matter; **owner approval for the bindings helper** |
 | P3 | [determinized search → expert iteration](P3_determinized_search_expert_iteration.md) | how much strength is in the value function but not the policy; distil it if the gap is large | eval ~1 day; 1 arm if triggered | P1/P2 winner exists |

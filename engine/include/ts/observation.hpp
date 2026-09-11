@@ -7,36 +7,18 @@ namespace ts {
 
 class Observation {
 public:
-    // Extracts neural network observation vector from perspective of player
-    static void extract(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept;
-
-    // Layout v2.1: the same observation with a wider card block, splitting "the opponent is known
-    // to hold this" and "this card is not in the game yet" out of the old catch-all slot 0.
+    // Extracts the observation from `perspective`'s point of view -- layout v2.3, and the only
+    // layout there is.
     //
-    // Implemented by running `extract` and rewriting only the card features, so every other
-    // section is identical to the legacy layout by construction rather than by inspection.
-    static void extract_v21(const GameState& state, Player perspective,
-                           ObservationBufferV21* out_buf) noexcept;
-
-    // Layout v2.3: v2.1 plus the decision context, minus the blocks nothing read.
-    //
-    // Built on top of `extract_v21` for the same reason it is built on `extract` -- the sections
-    // that are meant to be identical are identical by construction. What v2.3 adds is a card
-    // feature marking the card currently being played, and twenty global scalars describing the
-    // decision being asked. What it drops is turn_aggregates and active_player, which the network
-    // never sliced.
-    // `flags` is a bitmask of obs_flags. Defaults to none, so a caller that does not know what
-    // a checkpoint was trained under gets the original behaviour rather than the newest.
-    static void extract_v23(const GameState& state, Player perspective,
-                           ObservationBufferV23* out_buf,
-                           uint32_t flags = obs_flags::NONE) noexcept;
+    // This used to be a chain: v2.3 was built on v2.1, which was built on the legacy extractor,
+    // each stage copying the sections that were meant to be identical so they could not drift.
+    // That was the right shape while three layouts had to agree. With one layout the chain is
+    // just two intermediate buffers and a restride, so it is written out directly.
+    static void extract(const GameState& state, Player perspective,
+                        ObservationBufferV23* out_buf) noexcept;
 };
 
-void extract_observation(const GameState& state, Player perspective, ObservationBuffer* out_buf) noexcept;
-void extract_observation_v21(const GameState& state, Player perspective,
-                            ObservationBufferV21* out_buf) noexcept;
-void extract_observation_v23(const GameState& state, Player perspective,
-                            ObservationBufferV23* out_buf,
-                            uint32_t flags = obs_flags::NONE) noexcept;
+void extract_observation(const GameState& state, Player perspective,
+                         ObservationBufferV23* out_buf) noexcept;
 
 } // namespace ts

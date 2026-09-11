@@ -17,9 +17,10 @@ advantage over would import a different game's result.
 
 import torch
 
+import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
 
-OBS_DIM, ACTION_DIM = 4293, 212
+OBS_DIM, ACTION_DIM = int(ts.OBS_SIZE), 212
 
 
 def _buffer(size: int) -> RolloutBuffer:

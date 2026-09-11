@@ -51,80 +51,61 @@ def _classify_ending(state: ts.GameState, held_scoring: bool) -> str:
     return key
 
 
-#: Observation width -> layout name. The width is the one thing a trained model always carries
-#: with it, so it is what a probe can recover its layout from without being told.
-#: Layout name -> the ts_engine constant that carries its width.
-_OBS_SIZE_ATTRS: Dict[str, str] = {
-    "legacy": "OBS_SIZE_LEGACY",
-    "v2.1": "OBS_SIZE_V21",
-    "v2.3": "OBS_SIZE_V23",
-}
+#: The engine's one observation layout, by the name runs record in their metadata. A plain
+#: string, deliberately: nothing here reads an engine constant at import time -- see obs_size().
+OBS_LAYOUT_NAME: str = "v2.3"
 
 
-def _known_obs_sizes() -> Dict[int, str]:
-    """The widths *this* ts_engine build exposes.
+def obs_size() -> int:
+    """The observation width this ts_engine build emits, or a rebuild instruction.
 
-    Read with getattr, and missing constants are skipped rather than raised on. This runs at
-    import time, and reaching straight for `ts.OBS_SIZE_V23` meant an older build raised
-    AttributeError from inside `import bindings` -- which took down every consumer of the
-    package, the web server included, over a layout it never uses. A stale build is a real
-    problem and still gets a loud error, but from whatever actually needs the missing layout.
+    Read through getattr at *call* time, never at import time. Reaching straight for a constant
+    at module scope meant a build that predated it raised AttributeError from inside
+    `import bindings`, which took down every consumer of the package -- a web server included,
+    over a layout it never used. A stale build is a real problem and still gets a loud error,
+    but from whatever actually needs the engine rather than from the import.
     """
-    sizes: Dict[int, str] = {}
-    for name, attr in _OBS_SIZE_ATTRS.items():
-        width = getattr(ts, attr, None)
-        if width is not None:
-            sizes[int(width)] = name
-    return sizes
-
-
-LAYOUT_BY_OBS_SIZE: Dict[int, str] = _known_obs_sizes()
-
-
-def obs_size_for_layout(layout: str) -> int:
-    """Observation width for a layout name, or a rebuild instruction if this build lacks it."""
-    attr = _OBS_SIZE_ATTRS.get(layout)
-    if attr is None:
-        raise ValueError(f"unknown observation layout {layout!r}; "
-                         f"known layouts are {sorted(_OBS_SIZE_ATTRS)}")
-    width = getattr(ts, attr, None)
+    width = getattr(ts, "OBS_SIZE", None)
     if width is None:
         raise RuntimeError(
-            f"this ts_engine build does not define {attr}, so layout {layout!r} is "
-            f"unavailable. The build predates it -- rebuild the engine:\n"
-            f"    tools/scripts/check_engine_fresh.sh\n"
-            f"Widths this build does expose: "
-            f"{ {n: int(getattr(ts, a)) for n, a in _OBS_SIZE_ATTRS.items() if hasattr(ts, a)} }")
+            "this ts_engine build does not define OBS_SIZE, so it predates the single-layout "
+            "refactor. Rebuild the engine:\n"
+            "    tools/scripts/check_engine_fresh.sh")
     return int(width)
 
 
-def layout_for_model(model: Any) -> str:
-    """The observation layout a model expects, from its own input width.
+def check_obs_width(model: Any) -> int:
+    """The observation width a model reads, checked against the engine's one layout.
 
-    Anything that drives a trained model through `TsVectorizedEnv` must call this rather than
-    accept the constructor's `legacy` default. A layout mismatch does not raise: the widths of
-    the extraction and the network are checked at different places, so the model simply reads
-    the wrong floats and plays near-randomly. That is how `ai/eval/position_diagnostics.py` came
-    to report a mean final turn of 1-2 against an actual 6.8, and 0.0 empty battlegrounds at
-    turn 8 against a measured 6.15 -- the games were dying in turn 1, so nothing reached turn 8
-    and the average was over an empty set (`research/metrics.md` 1.4.1). It is the fourth
-    instance of this bug class in this repository, hence a shared helper that raises.
+    There used to be three layouts and a `layout_for_model` that mapped a width to a name. The
+    names are gone -- `ts.extract_observation` and `ts.VectorizedBatchRunner` take no layout, so
+    there is nothing left to select wrongly. What remains worth checking is the other half of the
+    old failure: a model whose input width is not the engine's, which does not raise on its own
+    because a network reads fixed slices and a mismatched vector simply gets misread. Four
+    separate probes did exactly that, one of them reporting a mean final turn of 1-2 against an
+    actual 6.8 (`research/metrics.md` 1.4.1).
+
+    A model of the wrong width is a checkpoint from a retired layout: legacy (4293) or v2.1
+    (3891) or v2.2 (3825). Those cannot be run and are not being converted -- they predate the
+    starred-card fix, so they were trained against a different game.
     """
     width = int(getattr(model, "TOTAL_OBS_SIZE", 0) or 0)
-    layout = LAYOUT_BY_OBS_SIZE.get(width)
-    if layout is None:
+    if width != obs_size():
         raise ValueError(
-            f"cannot determine the observation layout for a model of width {width}; "
-            f"known widths are {sorted(LAYOUT_BY_OBS_SIZE)}. Refusing to guess: a wrong "
-            f"layout does not raise, it silently feeds the model the wrong floats.")
-    return layout
+            f"this model reads {width} floats; the engine emits {obs_size()} (layout "
+            f"v2.3). A checkpoint from a retired layout cannot be run: it would load cleanly "
+            f"and misread every input.")
+    return width
 
 
 class TsEnv:
     """Gymnasium-like single-game environment wrapper for ts::Engine."""
 
-    OBSERVATION_SIZE = 4293
     ACTION_SPACE_SIZE = 212
+
+    @property
+    def OBSERVATION_SIZE(self) -> int:
+        return obs_size()
 
     def __init__(self, seed: Optional[int] = None, reward_calculator: Optional[RewardCalculator] = None):
         self.state = ts.GameState()
@@ -209,10 +190,11 @@ class TsEnv:
 class TsVectorizedEnv:
     """High-throughput C++ vectorized batch environment executing N parallel games."""
 
-    # The legacy width. An instance built with legacy_obs=False reports the v2 width instead,
-    # so callers should read `self.observation_size` rather than the class attribute.
-    OBSERVATION_SIZE = 4293
     ACTION_SPACE_SIZE = 212
+
+    @property
+    def OBSERVATION_SIZE(self) -> int:
+        return obs_size()
 
     def __init__(
         self,
@@ -221,17 +203,11 @@ class TsVectorizedEnv:
         auto_reset: bool = True,
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
-        layout: str = "legacy",
-        obs_flags: int = 0,
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
         self.auto_reset = auto_reset
-        # Fixed for the environment's lifetime: the model's input width is built from it, so an
-        # env that changed layout mid-run would simply be a way to feed a network garbage.
-        self.layout = str(layout)
-        self.obs_flags = int(obs_flags)
-        self.observation_size = obs_size_for_layout(self.layout)
+        self.observation_size = obs_size()
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:
@@ -244,7 +220,7 @@ class TsVectorizedEnv:
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
-        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed, self.layout, self.obs_flags)
+        self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
 
@@ -254,8 +230,7 @@ class TsVectorizedEnv:
             self.reward_calc.reset()
         if base_seed is not None:
             self.base_seed = base_seed
-            self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed,
-                                                   self.layout, self.obs_flags)
+            self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed)
         else:
             self.runner.refresh_all()
         for _i in range(self.num_envs):

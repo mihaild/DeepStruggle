@@ -386,43 +386,12 @@ struct alignas(64) GameState {
 static_assert(std::is_trivially_copyable_v<GameState>, "GameState must be trivially copyable");
 static_assert(sizeof(GameState) <= 4096, "GameState exceeds 4 KB L1/L2 footprint limit");
 
-// Neural Network / RL Observation Buffer -- the legacy layout, 4293 floats.
+// Neural Network / RL Observation Buffer -- layout v2.3, 3824 floats, and the only layout.
 //
-// Kept exactly as it was so checkpoints trained against it keep loading. Card slot 0 merges the
-// draw deck, cards not yet in the game, and the whole of the opponent's hand; nothing in it can
-// express what the opponent is known to hold. ObservationBufferV21 below is the layout that can.
-struct alignas(64) ObservationBuffer {
-    float board_features[84 * 28];     // 84 countries x 28 node features
-    float card_features[110 * 12];     // 110 cards x 12 status features
-    float global_features[76];         // Global tracks, turn, AR, flags
-    float history_sequence[16 * 32];   // 16-step action history projection
-    float turn_aggregates[32];         // Operational counts by region & turn
-    float active_player;               // +1.0 (US), -1.0 (USSR)
-};
-
-// Observation layout v2.1 -- 3891 floats. Identical to the legacy buffer except that each card
-// carries 13 status features instead of 12, splitting two things the old slot 0 could not:
-//
-//   slot 2  the opponent holds this card *and I know it* -- previously indistinguishable from
-//           a card sitting in the deck, though the engine has always known the difference;
-//   slot 7  the card is not in the game yet (a later era, or an unused optional), previously
-//           merged with the draw deck even though which one it is has never been a secret.
-//
-// Slot 0 still merges the draw deck with the *unknown* part of the opponent's hand, and that is
-// not an oversight: those two are exactly what the observer cannot tell apart, and separating
-// them would hand the network the hidden information the game is played to discover.
-struct alignas(64) ObservationBufferV21 {
-    float board_features[84 * 28];
-    float card_features[110 * 13];
-    float global_features[76];
-    // No history_sequence. ActionHistoryBuffer::record() is called nowhere, so in the legacy
-    // layout those 512 floats are a constant zero vector that the network still spends a Conv1d,
-    // a 512->128 projection and 128 of its 768 fusion inputs encoding -- 4.17% of its parameters
-    // learning a bias. The buffer stays in GameState for now; only the observation drops it.
-    float turn_aggregates[32];
-    float active_player;
-};
-
+// legacy (4293) and v2.1 (3891) are gone. Both existed only as the base of a chain this buffer
+// was built on top of, and a `layout` parameter that could name them is what let four separate
+// probes hand a v2.x network legacy floats and read a number back rather than an exception.
+// With one layout there is no parameter to get wrong.
 struct alignas(64) ObservationBufferV23 {
     // 26, not 28: can_my_realign and can_opp_realign are dropped. can_realign is exactly
     // can_coup_or_realign, and can_coup is that plus "The Reformer blocks USSR coups in Europe",
@@ -438,18 +407,17 @@ struct alignas(64) ObservationBufferV23 {
     // feature around it.
 };
 
-// Card status slots, shared by both layouts where they overlap. The v2.1 names are the authority;
-// the legacy layout uses 0..6 with the same meanings, lacks KNOWN_OPPONENT_HAND and UNAVAILABLE,
-// and starts its property block at 7 rather than 8.
+// Card status slots. Slots 0..7 say where the card is, from the observer's point of view;
+// the property block starts at PROPERTY_BASE.
 namespace card_slots {
     constexpr size_t DECK_OR_HIDDEN       = 0; // draw deck, or an opponent card I have not seen
     constexpr size_t MY_HAND              = 1;
-    constexpr size_t KNOWN_OPPONENT_HAND  = 2; // v2.1 only
+    constexpr size_t KNOWN_OPPONENT_HAND  = 2;
     constexpr size_t DISCARD              = 3;
     constexpr size_t REMOVED              = 4;
     constexpr size_t ONGOING              = 5;
     constexpr size_t PEEKED               = 6;
-    constexpr size_t NOT_IN_GAME          = 7; // v2.1 only
+    constexpr size_t NOT_IN_GAME          = 7;
     // v2.2 and later. Graded rather than a flag, so one slot answers three questions about the
     // chain a decision sits in: 1.0 is the card this decision is about, 0.6 a card suspended
     // below it while that one resolves, and 0.3 the card committed to resolve next -- the
@@ -460,19 +428,13 @@ namespace card_slots {
     constexpr float  ACTIVE_NOW           = 1.0f;
     constexpr float  ACTIVE_SUSPENDED     = 0.6f;
     constexpr float  ACTIVE_NEXT          = 0.3f;
-    constexpr size_t LEGACY_FEATURES      = 12;
-    constexpr size_t V21_FEATURES          = 13;
-    constexpr size_t V23_FEATURES          = 14;
-    constexpr size_t LEGACY_PROPERTY_BASE = 7;
-    constexpr size_t V21_PROPERTY_BASE     = 8;
+    constexpr size_t V23_FEATURES         = 14;
+    constexpr size_t PROPERTY_BASE        = 8;
 }
 
 // The number of floats a consumer reads, which is NOT sizeof(buffer)/sizeof(float): both
 // buffers are alignas(64) and so are padded past their last member. Everything that copies an
 // observation out copies exactly this many floats and must never use sizeof for it.
-constexpr size_t OBS_SIZE_LEGACY = 84 * 28 + 110 * card_slots::LEGACY_FEATURES + 76
-                                 + 16 * 32 + 32 + 1;
-constexpr size_t OBS_SIZE_V21 = 84 * 28 + 110 * card_slots::V21_FEATURES + 76 + 32 + 1;
 constexpr size_t OBS_SIZE_V23 = 84 * 26 + 110 * card_slots::V23_FEATURES + 100;
 constexpr size_t V23_BOARD_FEATURES = 26;
 
@@ -520,17 +482,8 @@ namespace ctx_slots {
     constexpr size_t CHERNOBYL_REGION     = BASE + 22; // 6 wide
     constexpr size_t COUNT                = 28;
 }
-static_assert(OBS_SIZE_LEGACY == 4293, "the legacy observation width is a checkpoint contract");
-static_assert(OBS_SIZE_V21 == 3891,
-              "v2.1 adds one card feature and drops the never-written history block");
-static_assert(sizeof(ObservationBuffer) >= OBS_SIZE_LEGACY * sizeof(float),
-              "the buffer must hold every float a reader will copy out of it");
-static_assert(sizeof(ObservationBufferV21) >= OBS_SIZE_V21 * sizeof(float),
-              "the buffer must hold every float a reader will copy out of it");
-// v2.2 is the only layout still being changed -- the staged-card flag landed against it, and
-// arms F and F2 were evaluated against a v2.2 that had gained a feature after they trained on
-// it -- and it was the one layout with neither guard. Add or remove a feature and the width
-// changes silently, every v2.2 checkpoint misreads its input, and the build stays green.
+// Add or remove a feature without meaning to and the width changes silently, every checkpoint
+// misreads its input, and the build stays green. These two are what stops that.
 static_assert(OBS_SIZE_V23 == 3824,
               "v2.3 is a checkpoint contract: 84*26 board + 110*14 card + 100 global");
 static_assert(sizeof(ObservationBufferV23) >= OBS_SIZE_V23 * sizeof(float),

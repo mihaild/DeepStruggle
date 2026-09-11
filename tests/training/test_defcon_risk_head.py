@@ -17,11 +17,15 @@ import pytest
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 from ai.models.coldwar_net_v4 import create_coldwar_net_v4
+import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
+
+#: The engine emits one observation width; nothing here should hardcode it.
+OBS_DIM = int(ts.OBS_SIZE)
 
 
 def _buffer(num_envs: int = 1, size: int = 8) -> RolloutBuffer:
-    return RolloutBuffer(buffer_size=size, num_envs=num_envs, obs_dim=4293,
+    return RolloutBuffer(buffer_size=size, num_envs=num_envs, obs_dim=OBS_DIM,
                          action_dim=212, device="cpu")
 
 
@@ -31,7 +35,7 @@ def _fill(buf: RolloutBuffer, blunder_at: int, blunderer: int) -> None:
         done = (t == blunder_at)
         player = 1 if t % 2 == 0 else -1
         buf.add(
-            obs=torch.zeros(buf.num_envs, 4293),
+            obs=torch.zeros(buf.num_envs, OBS_DIM),
             masks=torch.ones(buf.num_envs, 212, dtype=torch.uint8),
             actions=torch.zeros(buf.num_envs, dtype=torch.long),
             log_probs=torch.zeros(buf.num_envs),
@@ -82,7 +86,7 @@ def test_head_does_not_disturb_the_existing_forward_contract(factory) -> None:
     """forward() must still return exactly (logits, v_win, v_vp) for every other caller."""
     net = factory("cpu")
     net.eval()   # dropout is active in train mode, so the two passes would differ
-    obs = torch.zeros(2, 4293)
+    obs = torch.zeros(2, OBS_DIM)
     mask = torch.ones(2, 212, dtype=torch.uint8)
 
     out = net(obs, mask)

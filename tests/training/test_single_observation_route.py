@@ -1,7 +1,7 @@
 """One observation route: every path to the network must use Observation::extract.
 
 Three paths reach the policy -- the vectorized training env, the replay generator, and the
-web/bot client. The first two call the engine extractor. The third rebuilt the 4293-dim
+web/bot client. The first two call the engine extractor. The third rebuilt the
 observation in Python from a JSON state dict, and that duplicate drifted: replays made
 through it ended on turn 1 while the same checkpoint played to turn 10 through the engine
 extractor. A policy fed a different encoding than it was trained on plays close to
@@ -81,15 +81,17 @@ def test_transmitted_observation_is_bit_identical_to_the_engine_extractor() -> N
     sent = np.frombuffer(base64.b64decode(payload), dtype=np.float32)
     expected = np.asarray(ts.extract_observation(sess.state, decider), dtype=np.float32)
 
-    assert sent.shape == expected.shape == (4293,)
+    assert sent.shape == expected.shape == (int(ts.OBS_SIZE),)
     assert np.array_equal(sent, expected), "transmitted observation must be the engine's own"
 
 
-def test_neural_bot_local_reconstruction_differs_from_the_engine() -> None:
-    """Why the route matters: the Python duplicate does not reproduce the engine encoding.
+def test_the_neural_bot_refuses_to_play_without_the_engines_observation() -> None:
+    """The Python reconstruction is gone, and its absence has to be loud.
 
-    If this ever starts passing, the reconstruction has been brought into agreement and the
-    fallback could be retired -- but until then it must not be treated as equivalent.
+    It duplicated Observation::extract across ~4300 fields, never reproduced it exactly -- games
+    played through it ended on turn 1 where the same checkpoint reached turn 10 through the
+    engine extractor -- and reproduced a layout no model reads any more. A duplicate encoder that
+    can only be wrong is worse than no encoder, so the bot now says so instead of playing badly.
     """
     pytest.importorskip("torch")
     from bot.neural_bot import NeuralBot
@@ -97,7 +99,6 @@ def test_neural_bot_local_reconstruction_differs_from_the_engine() -> None:
     st = _mid_game_state()
     decider = _decider(st)
     role = "US" if decider == ts.Player.US else "USSR"
-    engine_obs = np.asarray(ts.extract_observation(st, decider), dtype=np.float32)
 
     bot = NeuralBot(role, model_path=None, device="cpu")
     mask = ActionEncoder.get_legal_mask(st)
@@ -107,14 +108,5 @@ def test_neural_bot_local_reconstruction_differs_from_the_engine() -> None:
         "allow_early_stop": False,
         "decision_player": role,
     }
-
-    state_dict = dict(ts.state_to_dict(st))
-    state_dict["observation_b64"] = base64.b64encode(engine_obs.tobytes()).decode("ascii")
-    with_engine = bot.select_action(state_dict, legal_actions)
-
-    state_dict.pop("observation_b64")
-    without = bot.select_action(state_dict, legal_actions)
-
-    # Both must produce a legal action; the point is that the inputs are not the same.
-    for chosen in (with_engine, without):
-        assert chosen is not None
+    with pytest.raises(ValueError, match="observation_b64"):
+        bot.select_action({"countries": {}}, legal_actions)

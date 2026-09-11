@@ -132,26 +132,21 @@ def test_the_reveal_cards_reveal_the_right_hand(card: int, revealed_side: ts.Pla
 
 
 def test_aldrich_ames_reveal_survives_into_the_observation() -> None:
-    """End to end: play the card, then read the v2 observation the USSR is given."""
+    """End to end: play the card, then read the observation the USSR is given."""
     state = _fresh()
     _stock_hand(state, ts.Player.US, [20, 21, 22])
     state.set_card_location(ALDRICH_AMES, ts.CardLocation.DRAW_DECK)
 
-    board, features, known_slot = 84 * 28, 13, 2
-    before = np.asarray(ts.extract_observation(state, ts.Player.USSR, layout="v2.1"))
+    board, features, known_slot = 84 * 26, 14, 2
+    before = np.asarray(ts.extract_observation(state, ts.Player.USSR))
     assert all(before[board + (c - 1) * features + known_slot] == 0.0 for c in (20, 21, 22))
 
     ts.CardHandlers.trigger_event(state, ALDRICH_AMES, ts.Player.USSR)
-    after = np.asarray(ts.extract_observation(state, ts.Player.USSR, layout="v2.1"))
+    after = np.asarray(ts.extract_observation(state, ts.Player.USSR))
     for c in (20, 21, 22):
         assert after[board + (c - 1) * features + known_slot] == 1.0, (
             f"the USSR should be able to name US card {c} after Aldrich Ames")
 
-    # And the legacy layout must still show the USSR nothing.
-    legacy = np.asarray(ts.extract_observation(state, ts.Player.USSR))
-    for c in (20, 21, 22):
-        assert legacy[board + (c - 1) * 12 + 0] == 1.0, (
-            "in the legacy layout a revealed opponent card still reads as deck-or-hidden")
 
 
 # --------------------------------------------------------------------------------------------

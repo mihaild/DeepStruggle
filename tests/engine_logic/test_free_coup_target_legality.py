@@ -38,7 +38,7 @@ NICARAGUA_NEIGHBOURS_WITH_CUBA = "Cuba is adjacent to Nicaragua and is a battleg
 
 # Observation board block: 84 countries x 28 features; column 21 is "can the observing player
 # coup this country" (engine/src/observation.cpp:120-122).
-STRIDE = 28
+STRIDE = 26
 CAN_MY_COUP = 21
 
 

@@ -11,7 +11,7 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
 from ai.eval.blunders import BlunderCounts, check_play
-from tools.lib.engine_config import mask_for_checkpoint
+from bindings.ts_env import check_obs_width
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
@@ -53,22 +53,11 @@ def generate_self_play_replay(
     if hasattr(active_model, "eval"):
         active_model.eval()
 
-    # The observation layout the model was trained for, read off the model. Left to the default
-    # this extracted the 4,293-wide legacy block for every model, and a network reads fixed slices
-    # -- so a v2.1 or v2.3 policy was silently handed the wrong regions and played accordingly,
-    # without raising. Every self-play replay generated for a non-legacy checkpoint before this
-    # was produced by a model reading scrambled input.
-    # Flags come from the checkpoint's run metadata when a path was given; a model object
-    # handed in directly carries no provenance, so none are applied.
-    obs_flag_mask = mask_for_checkpoint(model) if isinstance(model, str) else 0
-    _obs_width = int(getattr(active_model, "TOTAL_OBS_SIZE", ts.OBS_SIZE_LEGACY))
-    obs_layout = {int(ts.OBS_SIZE_LEGACY): "legacy",
-                  int(ts.OBS_SIZE_V21): "v2.1",
-                  int(ts.OBS_SIZE_V23): "v2.3"}.get(_obs_width)
-    if obs_layout is None:
-        raise ValueError(
-            f"model expects an observation of width {_obs_width}, which matches no known layout "
-            f"({ts.OBS_SIZE_LEGACY} legacy, {ts.OBS_SIZE_V21} v2.1, {ts.OBS_SIZE_V23} v2.3)")
+    # There is one observation layout, so nothing here selects one. What is still worth
+    # checking is that this model reads the width the engine emits: a mismatch means a
+    # checkpoint from a retired layout, and a network reads fixed slices, so it would be
+    # misread rather than rejected.
+    check_obs_width(active_model)
 
     gid = game_id
     if not gid:
@@ -111,9 +100,7 @@ def generate_self_play_replay(
         p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
         player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
 
-        obs = np.array(ts.extract_observation(state, p, layout=obs_layout,
-                                              flags=obs_flag_mask),
-                       copy=False).reshape(1, -1)
+        obs = np.array(ts.extract_observation(state, p), copy=False).reshape(1, -1)
         mask = np.array(ActionEncoder.get_legal_mask(state), copy=False).reshape(1, -1)
 
         obs_t = torch.from_numpy(obs).float().to(dev)

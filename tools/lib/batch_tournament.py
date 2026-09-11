@@ -41,34 +41,6 @@ def categorize_flat_action_detailed(action_idx: int) -> str:
         return "UNKNOWN"
 
 
-def _obs_for(
-    agent: NeuralAgent,
-    runner: ts.VectorizedBatchRunner,
-    obs_batch: npt.NDArray[np.float32],
-    indices: npt.NDArray[np.int64],
-    d_players: npt.NDArray[np.int64],
-    mixed: bool,
-) -> npt.NDArray[np.float32]:
-    """The observations `agent` should see for `indices`.
-
-    Same-layout matchups read the runner's batched buffer directly. Mixed ones re-extract from the
-    states at the agent's own layout, because a model reads fixed slices and would silently
-    misread a buffer of the wrong width rather than fail.
-    """
-    if not mixed:
-        return obs_batch[indices]
-    layout = str(getattr(agent, "layout", "legacy"))
-    flags = int(getattr(agent, "obs_flags", 0))
-    rows = []
-    for idx in indices:
-        st = runner.get_state(int(idx))
-        rows.append(np.asarray(
-            ts.extract_observation(st, ts.Player(int(d_players[idx])), layout=layout,
-                                   flags=flags),
-            dtype=np.float32))
-    return np.stack(rows) if rows else np.zeros((0, getattr(agent, "obs_size", 4293)),
-                                                dtype=np.float32)
-
 
 def _assert_width(agent: NeuralAgent, obs: npt.NDArray[np.float32]) -> None:
     """A model silently misreads an observation of the wrong width; say so instead."""
@@ -109,19 +81,6 @@ class BatchMatchRunner:
         """
         dev = resolve_device(device)
         greedy = (temperature <= 0.05) if deterministic is None else deterministic
-
-        # One runner emits one observation layout, so where the two agents disagree about which
-        # they want, at most one of them can be served from its batched buffer. Such a pairing is
-        # not a shape error the runner would raise on -- a model reads fixed slices, so it misreads
-        # a wrong-width observation silently and just plays badly -- so mixed matchups take the
-        # per-state path in _obs_for below, and the runner's own layout stops mattering.
-        # The engine flags count as part of the layout here: two agents at the same width but
-        # different flags see different observations, and one runner emits only one of them.
-        layouts = {(getattr(a, "layout", "legacy"), int(getattr(a, "obs_flags", 0)))
-                   for a in (agent_a, agent_b) if getattr(a, "model", None) is not None}
-        mixed_layouts = len(layouts) > 1
-        runner_layout, runner_flags = ("legacy", 0) if mixed_layouts else (
-            layouts.pop() if layouts else ("legacy", 0))
 
         # Resume from supplied positions instead of dealing fresh games. Each position is
         # played twice with the sides swapped, which is the same pairing the seeded path
@@ -186,8 +145,7 @@ class BatchMatchRunner:
             cur_games = cur_half * 2
             seed_start = base_seed + (chunk_idx * chunk_size)
 
-            runner = ts.VectorizedBatchRunner(cur_games, seed_start, runner_layout,
-                                              runner_flags)
+            runner = ts.VectorizedBatchRunner(cur_games, seed_start)
             # Paired deals: env i and env i + cur_half are the same matchup with the sides
             # swapped, so give them the same seed and therefore the same shuffle. Deal luck
             # then cancels between the halves rather than adding variance to the result.
@@ -291,8 +249,7 @@ class BatchMatchRunner:
                 if np.any(is_a_turn):
                     a_indices = np.where(is_a_turn)[0]
                     if isinstance(agent_a, NeuralAgent):
-                        a_obs = _obs_for(agent_a, runner, obs, a_indices, d_players,
-                                         mixed_layouts)
+                        a_obs = obs[a_indices]
                         _assert_width(agent_a, a_obs)
                         obs_t = torch.from_numpy(a_obs).float().to(dev)
                         mask_t = torch.from_numpy(masks[a_indices]).to(dev)
@@ -312,8 +269,7 @@ class BatchMatchRunner:
                 if np.any(is_b_turn):
                     b_indices = np.where(is_b_turn)[0]
                     if isinstance(agent_b, NeuralAgent):
-                        b_obs = _obs_for(agent_b, runner, obs, b_indices, d_players,
-                                         mixed_layouts)
+                        b_obs = obs[b_indices]
                         _assert_width(agent_b, b_obs)
                         obs_t = torch.from_numpy(b_obs).float().to(dev)
                         mask_t = torch.from_numpy(masks[b_indices]).to(dev)

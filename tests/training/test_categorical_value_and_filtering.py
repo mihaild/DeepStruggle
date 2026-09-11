@@ -11,12 +11,13 @@ probes and NashPG's advantage computation all read them.
 import pytest
 import torch
 
-import ai.models.coldwar_net_v2 as M
-from ai.models.coldwar_net_v2 import VALUE_ATOMS, VP_LIMIT, create_for_layout, create_like
+from ai.models.coldwar_net_v2 import (VALUE_ATOMS, VP_LIMIT, create_coldwar_net_v2,
+                                      create_like)
 
 
 def _net(categorical: bool):
-    net = create_for_layout("v2.3", "cpu", categorical_value=categorical)
+    # One layout now, so the factory defaults are it; only the head varies here.
+    net = create_coldwar_net_v2("cpu", categorical_value=categorical)
     net.eval()
     return net
 
@@ -172,7 +173,7 @@ def test_the_value_loss_is_the_cross_entropy_it_claims_to_be() -> None:
     from bindings.ts_env import TsVectorizedEnv
 
     net = _net(True)
-    env = TsVectorizedEnv(num_envs=4, base_seed=7, layout="v2.3")
+    env = TsVectorizedEnv(num_envs=4, base_seed=7)
     trainer = NashPGTrainer(active_net=net, env=env, num_envs=4, buffer_size=8, batch_size=8)
     # The trainer moves the net to its device; follow it rather than assuming CPU.
     device = next(net.parameters()).device

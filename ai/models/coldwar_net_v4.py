@@ -78,19 +78,22 @@ class ResBlock(nn.Module):
 class ColdWarNetV4(nn.Module):
     """ColdWarNetV4: Deep Card Transformer, Causal History, Opponent Belief Head & Oracle Critic."""
 
+    # Observation layout v2.3, the only layout the engine emits. Written against the legacy
+    # layout; retargeting it cost the constants below and the action-history branch, which had
+    # nothing to read even then -- ActionHistoryBuffer::record() is called nowhere.
     BOARD_OFFSET = 0
-    BOARD_SIZE = 84 * 28  # 2352
+    BOARD_FEATURES = 26
+    BOARD_SIZE = 84 * 26  # 2184
 
-    CARD_OFFSET = 2352
-    CARD_SIZE = 110 * 12  # 1320
+    CARD_OFFSET = 2184
+    CARD_FEATURES = 14
+    CARD_LOCATION_SLOTS = 8
+    CARD_SIZE = 110 * 14  # 1540
 
-    GLOBAL_OFFSET = 2352 + 1320  # 3672
-    GLOBAL_SIZE = 76
+    GLOBAL_OFFSET = 2184 + 1540  # 3724
+    GLOBAL_SIZE = 100
 
-    HIST_OFFSET = 3672 + 76  # 3748
-    HIST_SIZE = 16 * 32  # 512
-
-    TOTAL_OBS_SIZE = 4293
+    TOTAL_OBS_SIZE = 3824
     ACTION_SPACE_SIZE = 212
 
     CARD_ACTION_START = 0
@@ -103,7 +106,6 @@ class ColdWarNetV4(nn.Module):
         hidden_dim: int = 512,
         card_dim: int = 128,
         node_dim: int = 64,
-        hist_dim: int = 64,
         num_card_layers: int = 4,
         num_res_blocks: int = 4,
         num_attn_heads: int = 4,
@@ -115,10 +117,9 @@ class ColdWarNetV4(nn.Module):
         self.hidden_dim = hidden_dim
         self.card_dim = card_dim
         self.node_dim = node_dim
-        self.hist_dim = hist_dim
 
         # 1. Country Spatial Graph Encoder (GCN + Region Embeddings + Self-Attention)
-        self.gconv1 = GraphConvLayer(28, node_dim)
+        self.gconv1 = GraphConvLayer(self.BOARD_FEATURES, node_dim)
         self.gconv2 = GraphConvLayer(node_dim, node_dim)
         self.region_emb = nn.Embedding(6, node_dim)
 
@@ -137,11 +138,11 @@ class ColdWarNetV4(nn.Module):
 
         # 2. Deep Card Transformer (Self-Attention over 110 Cards)
         self.card_feat_in = nn.Sequential(
-            nn.Linear(12, card_dim),
+            nn.Linear(self.CARD_FEATURES, card_dim),
             nn.LayerNorm(card_dim),
             nn.GELU(),
         )
-        self.card_loc_emb = nn.Embedding(7, card_dim)
+        self.card_loc_emb = nn.Embedding(self.CARD_LOCATION_SLOTS, card_dim)
 
         card_layer = nn.TransformerEncoderLayer(
             d_model=card_dim,
@@ -159,39 +160,14 @@ class ColdWarNetV4(nn.Module):
             nn.GELU(),
         )
 
-        # 3. Action History Sequence Encoder (Transformer over 16 MicroActions with Positional Encoding)
-        self.hist_in = nn.Sequential(
-            nn.Linear(32, hist_dim),
-            nn.LayerNorm(hist_dim),
-            nn.GELU(),
-        )
-        self.hist_pos_emb = nn.Parameter(torch.zeros(1, 16, hist_dim))
-        nn.init.trunc_normal_(self.hist_pos_emb, std=0.02)
-
-        hist_layer = nn.TransformerEncoderLayer(
-            d_model=hist_dim,
-            nhead=2,
-            dim_feedforward=hist_dim * 2,
-            dropout=0.05,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.hist_transformer = nn.TransformerEncoder(hist_layer, num_layers=2, enable_nested_tensor=False)
-        self.hist_proj = nn.Sequential(
-            nn.Linear(hist_dim, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-        )
-
-        # 4. Global Scalars & Cross-Attention Fusion
+        # 3. Global Scalars & Cross-Attention Fusion
         self.global_fc = nn.Sequential(
             nn.Linear(self.GLOBAL_SIZE, 128),
             nn.LayerNorm(128),
             nn.GELU(),
         )
 
-        fusion_in_dim = 256 + 256 + 128 + 128  # board(256) + cards(256) + hist(128) + global(128) = 768
+        fusion_in_dim = 256 + 256 + 128  # board(256) + cards(256) + global(128)
         self.fusion_in = nn.Sequential(
             nn.Linear(fusion_in_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -238,20 +214,24 @@ class ColdWarNetV4(nn.Module):
             nn.Tanh(),
         )
 
-    def _extract_inputs(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _extract_inputs(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if obs.shape[-1] != self.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"observation is {obs.shape[-1]} floats wide; this model reads "
+                f"{self.TOTAL_OBS_SIZE}. Every slice below is taken at a fixed offset, so a "
+                f"mismatched vector is misread rather than rejected.")
         b_raw = obs[:, self.BOARD_OFFSET : self.BOARD_OFFSET + self.BOARD_SIZE]
         c_raw = obs[:, self.CARD_OFFSET : self.CARD_OFFSET + self.CARD_SIZE]
         g_raw = obs[:, self.GLOBAL_OFFSET : self.GLOBAL_OFFSET + self.GLOBAL_SIZE]
-        h_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
-        return b_raw, c_raw, g_raw, h_raw
+        return b_raw, c_raw, g_raw
 
     def _forward_backbone(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Shared backbone extracting fused latent representation, country node representations, and card representations."""
-        b_raw, c_raw, g_raw, h_raw = self._extract_inputs(obs)
+        b_raw, c_raw, g_raw = self._extract_inputs(obs)
         B = obs.size(0)
 
         # 1. Country Graph Encoding
-        b_nodes = b_raw.view(B, 84, 28)
+        b_nodes = b_raw.view(B, 84, self.BOARD_FEATURES)
         norm_adj = self.norm_adj.to(obs.device)
         h_gcn1 = self.gconv1(b_nodes, norm_adj)
         h_gcn2 = self.gconv2(h_gcn1, norm_adj)
@@ -266,8 +246,8 @@ class ColdWarNetV4(nn.Module):
         b_rep = self.board_proj(torch.cat([b_mean, b_max], dim=-1))
 
         # 2. Deep Card Transformer Encoding with 1-hot Location Extraction and Removed Padding Mask
-        c_nodes = c_raw.view(B, 110, 12)
-        card_loc_indices = torch.argmax(c_nodes[:, :, 0:7], dim=-1)
+        c_nodes = c_raw.view(B, 110, self.CARD_FEATURES)
+        card_loc_indices = torch.argmax(c_nodes[:, :, 0:self.CARD_LOCATION_SLOTS], dim=-1)
         c_feat = self.card_feat_in(c_nodes) + self.card_loc_emb(card_loc_indices)
 
         # Key padding mask: mask cards removed from the game (index 4)
@@ -279,17 +259,11 @@ class ColdWarNetV4(nn.Module):
         c_mean = h_cards.mean(dim=1)
         c_rep = self.card_proj(c_mean)
 
-        # 3. Action History Encoding with Positional Embedding
-        h_steps = h_raw.view(B, 16, 32)
-        h_seq = self.hist_in(h_steps) + self.hist_pos_emb
-        h_trans = self.hist_transformer(h_seq)
-        h_rep = self.hist_proj(h_trans[:, -1, :])
-
-        # 4. Global Scalars
+        # 3. Global Scalars
         g_rep = self.global_fc(g_raw)
 
-        # 5. Fusion & ResNet Trunk
-        fused = torch.cat([b_rep, c_rep, h_rep, g_rep], dim=-1)
+        # 4. Fusion & ResNet Trunk
+        fused = torch.cat([b_rep, c_rep, g_rep], dim=-1)
         latent = self.fusion_in(fused)
         for block in self.res_blocks:
             latent = block(latent)
@@ -413,5 +387,5 @@ class ColdWarNetV4(nn.Module):
 def create_coldwar_net_v4(device: torch.device | str = "cuda") -> ColdWarNetV4:
     """Factory function for initializing ColdWarNetV4 on the target device."""
     dev = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
-    net = ColdWarNetV4(hidden_dim=512, card_dim=128, node_dim=64, hist_dim=64, num_card_layers=4, num_res_blocks=4)
+    net = ColdWarNetV4(hidden_dim=512, card_dim=128, node_dim=64, num_card_layers=4, num_res_blocks=4)
     return net.to(dev)

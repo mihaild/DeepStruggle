@@ -1,24 +1,33 @@
-"""Every layout can actually run the network, end to end from the engine.
+"""The layout can actually run the network, end to end from the engine.
 
 Checking that a model's TOTAL_OBS_SIZE equals the engine's width is not the same as checking the
-model runs: v2.3 matched on width and still could not do a forward pass, because the board reshape
-was hardcoded to 84x28 while its board block is 84x26. Widths agreed, `layout_of` round-tripped,
-629 tests passed, and the layout could not have trained a single step.
+model runs: v2.3 once matched on width and still could not do a forward pass, because the board
+reshape was hardcoded to 84x28 while its board block is 84x26. Widths agreed, 629 tests passed,
+and the layout could not have trained a single step.
 
-So this drives a real observation out of the engine, through the real model, to an action.
+So this drives a real observation out of the engine, through the real model, to an action -- for
+every architecture, since all four read the same one layout now.
 """
 
-from typing import List
+from typing import Callable, List
 
 import numpy as np
 import pytest
 import torch
 
 import ts_engine as ts
-from ai.models.coldwar_net_v2 import LAYOUTS, create_for_layout
+from ai.models import (create_coldwar_net, create_coldwar_net_v2, create_coldwar_net_v3,
+                       create_coldwar_net_v4)
 from bindings.action_encoder import ActionEncoder
 
-LAYOUT_NAMES: List[str] = sorted(LAYOUTS)
+#: Every architecture, by the name --arch takes. They all read observation layout v2.3.
+#: Built on the CPU explicitly -- create_coldwar_net_v4 defaults to cuda, which is not where a
+#: test should land.
+ARCHITECTURES: List[Callable[[], object]] = [
+    lambda: create_coldwar_net("cpu"), lambda: create_coldwar_net_v2("cpu"),
+    lambda: create_coldwar_net_v3("cpu"), lambda: create_coldwar_net_v4("cpu"),
+]
+ARCH_IDS = ["v1", "v2", "v3", "v4"]
 
 
 def _state() -> ts.GameState:
@@ -27,21 +36,20 @@ def _state() -> ts.GameState:
     return s
 
 
-@pytest.mark.parametrize("layout", LAYOUT_NAMES)
-def test_the_engine_width_and_the_model_width_agree(layout: str) -> None:
-    want = {"legacy": ts.OBS_SIZE_LEGACY, "v2.1": ts.OBS_SIZE_V21, "v2.3": ts.OBS_SIZE_V23}[layout]
-    assert create_for_layout(layout).TOTAL_OBS_SIZE == int(want)
-    obs = np.asarray(ts.extract_observation(_state(), ts.Player.USSR, layout=layout))
-    assert obs.shape[0] == int(want)
+@pytest.mark.parametrize("factory", ARCHITECTURES, ids=ARCH_IDS)
+def test_the_engine_width_and_the_model_width_agree(factory) -> None:
+    assert factory().TOTAL_OBS_SIZE == int(ts.OBS_SIZE)
+    obs = np.asarray(ts.extract_observation(_state(), ts.Player.USSR))
+    assert obs.shape[0] == int(ts.OBS_SIZE)
 
 
-@pytest.mark.parametrize("layout", LAYOUT_NAMES)
-def test_a_real_observation_reaches_an_action(layout: str) -> None:
+@pytest.mark.parametrize("factory", ARCHITECTURES, ids=ARCH_IDS)
+def test_a_real_observation_reaches_an_action(factory) -> None:
     """The check the width comparison does not make."""
     state = _state()
-    model = create_for_layout(layout)
+    model = factory()
     model.eval()
-    obs = np.asarray(ts.extract_observation(state, ts.Player.USSR, layout=layout), dtype=np.float32)
+    obs = np.asarray(ts.extract_observation(state, ts.Player.USSR), dtype=np.float32)
     mask = np.asarray(ActionEncoder.get_legal_mask(state))
     with torch.no_grad():
         action, logp, entropy, value, _ = model.sample_action(
@@ -52,35 +60,50 @@ def test_a_real_observation_reaches_an_action(layout: str) -> None:
     assert np.isfinite(float(value.reshape(-1)[0].item()))
 
 
-@pytest.mark.parametrize("layout", LAYOUT_NAMES)
-def test_a_batch_trains_one_step(layout: str) -> None:
+@pytest.mark.parametrize("factory", ARCHITECTURES, ids=ARCH_IDS)
+def test_a_batch_trains_one_step(factory) -> None:
     """A backward pass too: a shape that only breaks under gradient is still broken."""
-    model = create_for_layout(layout)
+    model = factory()
     width = model.TOTAL_OBS_SIZE
     obs = torch.zeros((4, width), dtype=torch.float32)
     mask = torch.ones((4, 212), dtype=torch.uint8)
-    out = model.extract_features(obs)
+    # V4's backbone is named differently and returns three tensors; the rest expose
+    # extract_features.
+    extract = getattr(model, "extract_features", None) or model._forward_backbone
+    out = extract(obs)
     latent = out[0] if isinstance(out, tuple) else out
     loss = latent.square().mean()
     loss.backward()
     assert any(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
 
 
-@pytest.mark.parametrize("layout", LAYOUT_NAMES)
-def test_the_batch_runner_agrees_with_the_single_extractor(layout: str) -> None:
-    runner = ts.VectorizedBatchRunner(3, 555, layout)
+def test_the_batch_runner_agrees_with_the_single_extractor() -> None:
+    runner = ts.VectorizedBatchRunner(3, 555)
     rows = np.asarray(runner.get_observations())
-    assert rows.shape[1] == create_for_layout(layout).TOTAL_OBS_SIZE
+    assert rows.shape[1] == int(ts.OBS_SIZE)
     for i in range(3):
         st = runner.get_state(i)
         ctx = st.ctx()
         side = ctx.decision_player if ctx.decision_player != ts.Player.NONE else st.phasing_player
-        direct = np.asarray(ts.extract_observation(st, side, layout=layout))
+        direct = np.asarray(ts.extract_observation(st, side))
         assert np.array_equal(rows[i], direct)
 
 
-@pytest.mark.parametrize("layout", LAYOUT_NAMES)
-def test_a_frozen_copy_matches_the_model_it_was_cloned_from(layout: str) -> None:
+@pytest.mark.parametrize("factory", ARCHITECTURES, ids=ARCH_IDS)
+def test_an_observation_of_the_wrong_width_raises(factory) -> None:
+    """The half that used to be missing.
+
+    Widths were checked at extraction and never at the network, so a model handed a vector from
+    a retired layout read the wrong floats and returned an ordinary-looking number. Four probes
+    did exactly that. A checkpoint from a retired layout now fails here instead.
+    """
+    model = factory()
+    with pytest.raises(ValueError, match="floats wide"):
+        model(torch.zeros((2, 4293), dtype=torch.float32),
+              torch.ones((2, 212), dtype=torch.uint8))
+
+
+def test_a_frozen_copy_matches_the_model_it_was_cloned_from() -> None:
     """The snapshot evaluator freezes a copy of the live net and loads its weights into it.
 
     Built by listing constructor arguments, that has broken twice -- arm E on card_features and
@@ -89,7 +112,7 @@ def test_a_frozen_copy_matches_the_model_it_was_cloned_from(layout: str) -> None
     """
     from ai.models.coldwar_net_v2 import create_like
 
-    model = create_for_layout(layout)
+    model = create_coldwar_net_v2()
     frozen = create_like(model)
     frozen.load_state_dict(model.state_dict())          # the call that failed in arm F
     assert frozen.TOTAL_OBS_SIZE == model.TOTAL_OBS_SIZE

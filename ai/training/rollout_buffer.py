@@ -2,6 +2,8 @@
 
 from typing import Dict, Generator, Tuple, Optional
 import torch
+
+from bindings.ts_env import obs_size
 import numpy as np
 
 # Advantages below this magnitude (post-normalisation) carry effectively no learning
@@ -33,18 +35,21 @@ class RolloutBuffer:
         self,
         buffer_size: int,
         num_envs: int,
-        obs_dim: int = 4293,
+        obs_dim: Optional[int] = None,
         action_dim: int = 212,
         device: torch.device | str = "cuda",
     ):
         self.buffer_size = buffer_size
         self.num_envs = num_envs
-        self.obs_dim = obs_dim
+        # Resolved here, not in the signature: a default evaluated at import time reads an
+        # engine constant while the module is loading, which is how an older build once took
+        # down `import bindings` for every consumer.
+        self.obs_dim = int(obs_size() if obs_dim is None else obs_dim)
         self.action_dim = action_dim
         self.device = torch.device(device)
 
         # Storage buffers allocated on device for fast GPU tensor operations
-        self.obs = torch.zeros((buffer_size, num_envs, obs_dim), dtype=torch.float32, device=self.device)
+        self.obs = torch.zeros((buffer_size, num_envs, self.obs_dim), dtype=torch.float32, device=self.device)
         self.masks = torch.zeros((buffer_size, num_envs, action_dim), dtype=torch.uint8, device=self.device)
         self.actions = torch.zeros((buffer_size, num_envs), dtype=torch.long, device=self.device)
         self.log_probs = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)

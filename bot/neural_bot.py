@@ -100,116 +100,28 @@ class NeuralBot(BaseBot):
         if allow_early_stop:
             mask[ActionEncoder.CONFIRM_DONE_INDEX] = 1
 
-        # Prefer the engine's own observation when the server supplies it. The Python
-        # reconstruction below duplicates Observation::extract across ~4300 fields, and a
-        # policy fed even a slightly different encoding than it was trained on plays close
-        # to randomly -- replays generated through this path once ended on turn 1 while the
-        # same checkpoint played to turn 10 through the engine extractor. The fallback is
-        # kept only so an older server still works.
+        # The engine's own observation, or nothing. There used to be a fallback here that
+        # rebuilt the observation in Python across ~4300 fields when an older server sent none.
+        # It reproduced the retired legacy layout, which no model reads any more, and it never
+        # reproduced it exactly even then -- replays generated through that path ended on turn 1
+        # while the same checkpoint played to turn 10 through the engine extractor. A duplicate
+        # encoder that can only be wrong is worse than no encoder.
         engine_obs = state.get("observation_b64")
-        if isinstance(engine_obs, str) and engine_obs:
-            try:
-                decoded = np.frombuffer(base64.b64decode(engine_obs), dtype=np.float32)
-                if decoded.size == 4293:
-                    return self._select_from_observation(decoded, mask, d_type, valid_ids,
-                                                         allow_early_stop)
-                logger.warning("observation_b64 had %d floats, expected 4293; "
-                               "falling back to local reconstruction", decoded.size)
-            except Exception as exc:
-                logger.warning("could not decode observation_b64 (%s); "
-                               "falling back to local reconstruction", exc)
-        else:
-            logger.debug("server sent no observation_b64; using local reconstruction, "
-                         "which may drift from the engine")
+        if not isinstance(engine_obs, str) or not engine_obs:
+            raise ValueError(
+                "the server sent no observation_b64. A neural bot needs the engine's own "
+                "observation: it is the only thing that produces the layout the policy was "
+                "trained on.")
+        decoded = np.frombuffer(base64.b64decode(engine_obs), dtype=np.float32)
+        want = int(ts.OBS_SIZE)
+        if decoded.size != want:
+            raise ValueError(
+                f"observation_b64 carried {decoded.size} floats, not {want}. A policy reads "
+                f"fixed slices, so the wrong width is misread rather than rejected -- most "
+                f"likely the server is running a different engine.")
+        return self._select_from_observation(decoded, mask, d_type, valid_ids,
+                                             allow_early_stop)
 
-        # Fallback: rebuild the observation from the state dict.
-        obs = np.zeros(4293, dtype=np.float32)
-        my_is_us = (self.role == "US")
-        side_sign = 1.0 if my_is_us else -1.0
-
-        opp_role = "USSR" if my_is_us else "US"
-        countries = state.get("countries", {})
-        c_list = countries.values() if isinstance(countries, dict) else countries
-        for c_data in c_list:
-            cid = c_data.get("id", 0)
-            if 0 <= cid < 84:
-                offset = cid * 28
-                us_inf = float(c_data.get("us_influence", 0))
-                ussr_inf = float(c_data.get("ussr_influence", 0))
-                my_inf = us_inf if my_is_us else ussr_inf
-                opp_inf = ussr_inf if my_is_us else us_inf
-                stab = max(1.0, float(c_data.get("stability", 1)))
-
-                obs[offset + 0] = my_inf / 10.0
-                obs[offset + 1] = opp_inf / 10.0
-                obs[offset + 2] = (my_inf - opp_inf) / 10.0
-                obs[offset + 3] = stab / 5.0
-                obs[offset + 4] = 1.0 if c_data.get("battleground", False) else 0.0
-
-                controlled_by = c_data.get("controlled_by", "NONE")
-                obs[offset + 5] = 1.0 if (controlled_by == self.role) else 0.0
-                obs[offset + 6] = 1.0 if (controlled_by not in (self.role, "NONE")) else 0.0
-                obs[offset + 7] = 1.0 if (controlled_by == "NONE") else 0.0
-
-                # 26 & 27: Influence deficits to control
-                my_def = max(0.0, stab - my_inf, opp_inf + stab - my_inf)
-                opp_def = max(0.0, stab - opp_inf, my_inf + stab - opp_inf)
-                obs[offset + 26] = min(my_def / 5.0, 2.0)
-                obs[offset + 27] = min(opp_def / 5.0, 2.0)
-
-        # Populate Card features: offset 2352..3671 (110 * 12 features)
-        hands = state.get("hands", {})
-        my_hand = set(hands.get(self.role, []))
-        opp_hand = set(hands.get(opp_role, []))
-        discard_pile = set(state.get("discard_pile", []))
-        removed_cards = set(state.get("removed_cards", []))
-        card_locs = state.get("card_locations", {})
-
-        for cid in range(1, 111):
-            c_offset = 2352 + (cid - 1) * 12
-            c_info = ts.CardData.get_card_info(cid)
-
-            if cid in my_hand or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == ("HAND_US" if my_is_us else "HAND_USSR")):
-                canon_loc = 1
-            elif cid in discard_pile or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "DISCARD_PILE"):
-                canon_loc = 3
-            elif cid in removed_cards or (isinstance(card_locs, dict) and card_locs.get(str(cid)) == "REMOVED_FROM_GAME"):
-                canon_loc = 4
-            else:
-                canon_loc = 0
-
-            obs[c_offset + canon_loc] = 1.0
-            ops = float(c_info.get("ops", 0))
-            side_str = c_info.get("side", "NEUTRAL")
-            rel_side = 1.0 if side_str == self.role else (-1.0 if side_str == opp_role else 0.0)
-            era_val = 0.0 if c_info.get("era") == "EARLY" else (0.5 if c_info.get("era") == "MID" else 1.0)
-
-            obs[c_offset + 7] = ops / 4.0
-            obs[c_offset + 8] = rel_side
-            obs[c_offset + 9] = era_val
-            obs[c_offset + 10] = 1.0 if c_info.get("one_time", False) else 0.0
-            obs[c_offset + 11] = 1.0 if c_info.get("is_scoring", False) else 0.0
-
-        raw_vp = float(state.get("victory_points", 0))
-        my_vp = raw_vp if my_is_us else -raw_vp
-        obs[3672 + 0] = my_vp / 20.0
-        obs[3672 + 1] = float(state.get("defcon", 5)) / 5.0
-
-        my_mil = float(state.get("mil_ops", {}).get(self.role, 0))
-        opp_mil = float(state.get("mil_ops", {}).get("USSR" if my_is_us else "US", 0))
-        obs[3672 + 2] = my_mil / 5.0
-        obs[3672 + 3] = opp_mil / 5.0
-
-        obs[3672 + 6] = float(state.get("turn", 1)) / 10.0
-        obs[3672 + 7] = float(state.get("action_round", 0)) / 8.0
-
-        obs[3672 + 61] = 1.0 if my_is_us else 0.0
-        obs[3672 + 62] = 1.0 if not my_is_us else 0.0
-        obs[3672 + 63] = side_sign
-        obs[3672 + 70] = float(len(opp_hand)) / 10.0
-        obs[4292] = side_sign
-
-        return self._select_from_observation(obs, mask, d_type, valid_ids, allow_early_stop)
 
     def _select_from_observation(
         self,
