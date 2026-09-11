@@ -247,8 +247,8 @@ class ColdWarNetV2(nn.Module):
         # Categorical (P1): one distribution over final VP on integer atoms spanning [-20, +20],
         # trained by cross-entropy. Outcomes here are multimodal -- a coup hits or misses, the
         # scoring card is or is not in hand -- and MSE on a scalar regresses to the mean of the
-        # modes, a value that is never observed. The two scalars are still exposed, derived from
-        # the distribution, so nash_pg, the tournament code and every probe run unchanged:
+        # modes, a value that is never observed. Both scalars are still exposed, so nash_pg, the
+        # tournament code and every probe run unchanged -- but only one of them is derived:
         #   v_vp  = E[VP] / VP_LIMIT, from the distribution
         #   v_win = its own regressed scalar head, unchanged from the scalar variant
         # The support is exact rather than a modelling choice: the engine normalises every abrupt

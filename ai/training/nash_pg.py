@@ -383,11 +383,11 @@ class NashPGTrainer(BaseNashPGTrainer):
         two_hot = getattr(self.active_net, "two_hot")
         # b_ret_vp is *normalised* VP in [-1, 1] -- rollout_buffer divides the final score by 20
         # -- while the atom support is real VP across [-20, +20]. Rescaling here is not cosmetic:
-        # without it every target lands on the three middle atoms, the distribution never learns
-        # its tails, and v_win = P(VP>0) - P(VP<0) is computed over a near-degenerate
-        # distribution. That baseline feeds the advantage, and the arm that ran without this
-        # oscillated between the two sides instead of learning both (80M, 40% against the anchor
-        # with 14% as the US, where the scalar control reached 83%).
+        # without it every target lands on the three middle atoms and the distribution never
+        # learns its tails. The arm that ran without the rescale oscillated between the two sides
+        # instead of learning both (80M, 40% against the anchor with 14% as the US, where the
+        # scalar control reached 84%). v_win no longer reads this distribution, so that arm's
+        # second failure mode is gone, but a degenerate distribution still makes v_vp useless.
         target = two_hot(b_ret_vp.detach() * float(VP_LIMIT))
         log_p = F.log_softmax(value_logits, dim=-1)
         cross_entropy = -(target * log_p).sum(dim=-1).mean()
