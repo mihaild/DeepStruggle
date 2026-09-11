@@ -24,8 +24,7 @@ A complete AI, simulation engine, web workbench, and reinforcement learning trai
 ├── web/            # Full-stack Web Workbench (FastAPI server + SVG map UI)
 ├── tools/          # Unified CLI suite for training, tournaments, matches, and replays
 ├── rules/          # Formal specifications (cards, map topology, effect flags)
-├── tests/          # Python test suite across bindings, engine rules, and training
-└── docs/           # Strategic encyclopedias and engine design documentation
+└── tests/          # Python test suite across bindings, engine rules, and training
 ```
 
 For in-depth architectural and developer documentation, see [`AGENTS.md`](AGENTS.md) and [`tools/README.md`](tools/README.md).
@@ -44,8 +43,11 @@ cd ts_ai
 # Set up Python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt  # or install nanobind fastapi uvicorn websockets pytest torch numpy
+pip install -r requirements.txt
 ```
+
+For a CUDA build of PyTorch, install it from [pytorch.org](https://pytorch.org) first; the rest
+of `requirements.txt` installs on top of whatever `torch` is already present.
 
 ### 2. Build C++ Engine
 
@@ -70,11 +72,30 @@ Open `http://localhost:8000` in your browser to launch the Web Workbench.
 
 ## Running Tests
 
-Run the test suite:
+The engine has to be built first — `pytest` refuses to run against an extension it cannot
+identify, so a missing or stale `build/release` is an error rather than a silent wrong answer.
 
 ```bash
-PYTHONPATH=.:build/release pytest
+# Engine rules, the nanobind surface, and the training stack. ~1 min with -n auto.
+PYTHONPATH=.:build/release pytest -n auto tests/bindings tests/engine_logic tests/training
 ```
+
+Two suites need something extra and are worth knowing about before you run a bare `pytest`:
+
+```bash
+# tests/replayer converts a corpus of real human games. Downloaded once per machine, cached
+# outside the repository, ~5 MB.
+PYTHONPATH=. python tools/download_ts_replayer.py
+PYTHONPATH=.:build/release pytest -n auto tests/replayer
+
+# tests/web needs the built frontend and a browser, neither of which is in the repository.
+cd web/ui && npm install && npm run build && cd ../..
+python -m playwright install chromium
+PYTHONPATH=.:build/release pytest tests/web
+```
+
+`tests/differential/` cross-checks against an external reference engine. It is work in progress,
+is excluded from collection, and is not part of the check a change is expected to pass.
 
 ---
 

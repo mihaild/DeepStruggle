@@ -8,6 +8,7 @@ and records standardized .tslog.json replays for the Web Workbench.
 """
 
 import argparse
+import base64
 import os
 import sys
 import time
@@ -19,6 +20,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+import numpy as np
 import ts_engine as ts
 from bot import (
     BaseBot,
@@ -34,7 +36,7 @@ try:
 except ImportError:
     NeuralBot = None
 
-from web.server.replay import ReplayLogger, ReplayManager, REPLAYS_DIR
+from web.server.replay import ReplayLogger, ReplayManager, replays_dir
 from web.server.replay_types import ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 from tools.lib.scoring_formatter import format_regional_scoring_breakdown
@@ -166,6 +168,14 @@ def run_match(
 
         d = state.to_dict()
         legal = d.get("legal_actions", {})
+        # The engine's own observation, exactly as web/server/session.py hands it to a bot over
+        # the wire. A neural bot needs it and has no other source: the Python reconstruction it
+        # used to fall back on rebuilt the observation field by field, drifted from the engine,
+        # and produced replays that did not reproduce the games training plays. It is gone, so
+        # this is where the observation comes from.
+        d["observation_b64"] = base64.b64encode(
+            np.asarray(ts.extract_observation(state, p_enum), dtype=np.float32).tobytes()
+        ).decode("ascii")
 
         action_dict = active_bot.select_action(d, legal)
         if action_dict is None:
@@ -238,11 +248,15 @@ def run_match(
     logger.set_result(winner=winner, margin=vp, end_turn=state.turn, reason=reason)
     replay_data = logger.to_dict()
 
-    # Determine save path
+    # Determine save path. Through the server's own resolver, never a second guess at it: this
+    # used to prefer data/replays "if it exists" and fall back to replays/, which in the main
+    # checkout are the same directory -- replays/ is a symlink -- so the two could not disagree.
+    # In a fresh copy without that symlink they do, and a match wrote its replay where the
+    # viewer does not look. One resolver, and it honours TS_REPLAYS_DIR.
     if output_path is None:
-        replays_dir = os.path.join(_root, "data", "replays") if os.path.exists(os.path.join(_root, "data", "replays")) else os.path.join(_root, "replays")
-        os.makedirs(replays_dir, exist_ok=True)
-        final_output_path = os.path.join(replays_dir, f"{game_id}.tslog.json")
+        target_dir = replays_dir()
+        os.makedirs(target_dir, exist_ok=True)
+        final_output_path = os.path.join(target_dir, f"{game_id}.tslog.json")
     else:
         final_output_path = output_path
         os.makedirs(os.path.dirname(os.path.abspath(final_output_path)), exist_ok=True)
@@ -280,11 +294,10 @@ def main():
     ussr_agent = args.agent if args.agent is not None else args.ussr
     match_seed = args.seed if args.seed is not None else random.randint(1, 1000000)
 
-    # Neural self-play goes through the canonical generator, which reads observations from
-    # Observation::extract and resolves chance nodes exactly as the training env does. The
-    # bot loop below reaches the network through NeuralBot, which rebuilds the 4293-dim
-    # observation in Python; that duplicate has drifted from the engine, and replays made
-    # with it do not reproduce the games training actually plays.
+    # Neural self-play goes through the canonical generator, which resolves chance nodes exactly
+    # as the training env does and writes the replay through the one schema. The mixed path below
+    # (a network against a rule-based bot) drives NeuralBot instead, and hands it the engine's own
+    # observation rather than a reconstruction -- see the loop.
     if args.agent is not None and os.path.exists(args.agent):
         from tools.lib.self_play import generate_self_play_replay
         generate_self_play_replay(

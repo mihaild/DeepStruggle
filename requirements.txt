@@ -22,6 +22,8 @@ pydantic>=2.13.0
 pytest>=9.1.0
 pytest-xdist>=3.8.0        # -n auto takes the backend suite from ~7 min to ~1 min
 httpx>=0.28.0              # starlette's TestClient, used by tests/web
+pyrefly>=1.2.0             # the static type check, which tests/bindings runs as a subprocess --
+                           # so it is a test dependency even though nothing imports it
 
 # --- optional, and what they cost if absent ----------------------------------------------------
 # z3-solver reconstructs the hands behind a ts-replayer log. Without it the converter falls back
