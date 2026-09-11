@@ -168,7 +168,7 @@ class ColdWarNetV2(nn.Module):
         hist_width = self.HIST_SIZE if self.use_history else 0
         self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + (33 if self.has_tail else 0)
 
-        # 1. Board Graph Encoder (84 nodes x 28 features -> 64)
+        # 1. Board Graph Encoder (84 nodes x 26 features -> 64)
         self.gconv1 = GraphConvLayer(self.board_features, 64)
         self.gconv2 = GraphConvLayer(64, 64)
         self.board_proj = nn.Sequential(
@@ -177,7 +177,7 @@ class ColdWarNetV2(nn.Module):
             nn.GELU(),
         )
 
-        # 2. Card Registry Encoder (110 cards x 12 features -> 64)
+        # 2. Card Registry Encoder (110 cards x 14 features -> 64)
         self.card_fc = nn.Sequential(
             nn.Linear(self.card_features, 64),
             nn.LayerNorm(64),
