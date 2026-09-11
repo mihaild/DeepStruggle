@@ -18,6 +18,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ai.models.coldwar_net_v2 import VP_LIMIT
+
 from bindings.ts_env import TsVectorizedEnv
 from .rollout_buffer import RolloutBuffer
 
@@ -374,7 +376,14 @@ class NashPGTrainer(BaseNashPGTrainer):
         # getattr for the same reason forward_with_risk uses it: active_net is typed
         # nn.Module, and these live on ColdWarNetV2.
         two_hot = getattr(self.active_net, "two_hot")
-        target = two_hot(b_ret_vp.detach())
+        # b_ret_vp is *normalised* VP in [-1, 1] -- rollout_buffer divides the final score by 20
+        # -- while the atom support is real VP across [-20, +20]. Rescaling here is not cosmetic:
+        # without it every target lands on the three middle atoms, the distribution never learns
+        # its tails, and v_win = P(VP>0) - P(VP<0) is computed over a near-degenerate
+        # distribution. That baseline feeds the advantage, and the arm that ran without this
+        # oscillated between the two sides instead of learning both (80M, 40% against the anchor
+        # with 14% as the US, where the scalar control reached 83%).
+        target = two_hot(b_ret_vp.detach() * float(VP_LIMIT))
         log_p = F.log_softmax(value_logits, dim=-1)
         return -(target * log_p).sum(dim=-1).mean()
 

@@ -180,13 +180,15 @@ def test_the_value_loss_is_the_cross_entropy_it_claims_to_be() -> None:
 
     obs, mask = _batch(net, 16)
     obs, mask = obs.to(device), mask.to(device)
-    ret_vp = torch.empty(16, device=device).uniform_(-20.0, 20.0)
+    ret_vp = torch.empty(16, device=device).uniform_(-1.0, 1.0)   # as the buffer stores it
     with torch.no_grad():
         _, v_win, v_vp, logits = net.forward_with_value_logits(obs, mask)
         assert logits is not None
         got = trainer._value_loss(v_win.squeeze(-1), v_vp.squeeze(-1),
                                   torch.zeros(16, device=device), ret_vp, logits)
-        want = -(net.two_hot(ret_vp) * F.log_softmax(logits, dim=-1)).sum(-1).mean()
+        # ret_vp is normalised; the loss rescales it to VP units before projecting.
+        want = -(net.two_hot(ret_vp * VP_LIMIT)
+                 * F.log_softmax(logits, dim=-1)).sum(-1).mean()
     assert float(got) == pytest.approx(float(want), abs=1e-6)
 
 
@@ -206,3 +208,50 @@ def test_a_confident_wrong_prediction_costs_more_than_a_confident_right_one() ->
     ce_right = -(target * F.log_softmax(right, dim=-1)).sum()
     ce_wrong = -(target * F.log_softmax(wrong, dim=-1)).sum()
     assert float(ce_right) < float(ce_wrong)
+
+
+def test_the_target_uses_the_whole_support_not_just_its_middle() -> None:
+    """The units bug, pinned.
+
+    `rollout_buffer` stores returns_vp *normalised* to [-1, 1] -- it divides the final score by
+    20 -- while the atom support is real VP across [-20, +20]. Projecting the normalised value
+    without rescaling puts every target on the three middle atoms: the distribution never learns
+    its tails, and v_win = P(VP>0) - P(VP<0) is then computed over a near-degenerate
+    distribution. The arm that trained that way reached 40% against the anchor with 14% as the
+    US, against 83% for the scalar control, and oscillated between the two sides all run.
+
+    Every test above exercised two_hot on hand-written VP values, so none of them saw it. This
+    one starts from what the buffer actually holds.
+    """
+    net = _net(True)
+
+    # A terminal return: the buffer stores +/-1.0 for a won/lost game, being +/-20 VP over 20.
+    normalised_win, normalised_loss = torch.tensor([1.0]), torch.tensor([-1.0])
+    assert float((net.two_hot(normalised_win * VP_LIMIT)[0] * net.value_support).sum()) == (
+        pytest.approx(20.0)), "a won game must land on the +20 atom"
+    assert float((net.two_hot(normalised_loss * VP_LIMIT)[0] * net.value_support).sum()) == (
+        pytest.approx(-20.0)), "a lost game must land on the -20 atom"
+
+    # Unrescaled, both collapse to the middle -- which is what the broken arm was fitting.
+    assert float((net.two_hot(normalised_win)[0] * net.value_support).sum()) == pytest.approx(1.0)
+
+    # And a spread of returns must occupy far more than the middle of the support.
+    spread = torch.linspace(-1.0, 1.0, 41) * VP_LIMIT
+    occupied = int((net.two_hot(spread).sum(0) > 0).sum())
+    assert occupied >= 30, f"only {occupied} of {VALUE_ATOMS} atoms ever receive mass"
+
+
+def test_v_win_spans_its_range_once_the_target_is_scaled() -> None:
+    """A distribution fit to rescaled returns must be able to express near-certain outcomes."""
+    net = _net(True)
+    support = net.value_support
+
+    certain_win = net.two_hot(torch.tensor([1.0]) * VP_LIMIT)[0]
+    v_win = float((certain_win * (support > 0)).sum() - (certain_win * (support < 0)).sum())
+    assert v_win == pytest.approx(1.0), "a distribution on +20 must read as a certain win"
+
+    # Unrescaled it reads as a coin flip, which is the defect.
+    middling = net.two_hot(torch.tensor([1.0]))[0]
+    v_win_bad = float((middling * (support > 0)).sum() - (middling * (support < 0)).sum())
+    assert v_win_bad == pytest.approx(1.0), "mass on +1 VP is still 'winning', but only just"
+    assert float((middling * support).sum()) == pytest.approx(1.0)
