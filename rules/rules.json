@@ -7,8 +7,7 @@
     "interfaces": {
       "state_definition": "game_state.txt",
       "action_interface": "action_interface.txt",
-      "persistent_flags": "flags.json",
-      "card_primitives": "card_primitives.json"
+      "persistent_flags": "flags.json"
     }
   },
   "superpowers": {

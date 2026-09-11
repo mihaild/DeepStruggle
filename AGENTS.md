@@ -211,7 +211,7 @@ graph TD
 ├── rules/                      # Formal spec the engine implements (tracked, except the PDF)
 │   ├── Rules_Final.pdf         # [GIT IGNORED] Official rulebook -- GMT Games copyright, not ours to commit
 │   ├── rules.md / rules.json   # Formal mathematical rules specification
-│   ├── cards.json / primitives # 110 cards metadata and state machine primitives
+│   ├── cards.json              # 110-card metadata, served to the web UI at /api/metadata/cards
 │   ├── flags.json              # 47 persistent continuous effect & state bits
 │   └── map.json / map.md       # 84-country graph topology & coordinates
 │
