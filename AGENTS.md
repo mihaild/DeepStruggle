@@ -29,7 +29,7 @@ graph TD
 
     subgraph Bot ["Bot Clients & Heuristic Agents (bot/)"]
         BaseBot["Generic BaseBot Class (bot/base_bot.py)"]
-        NeuralBotClient["NeuralBot (PyTorch V1/V2/V3)"]
+        NeuralBotClient["NeuralBot (PyTorch V1/V2)"]
         Heuristic["HeuristicBot Baseline"]
         Random["RandomBot Baseline"]
         Exploratory["ExploratoryBot Baseline"]
@@ -126,7 +126,7 @@ graph TD
 │   ├── base_bot.py             # Generic BaseBot abstract class defining bot interface
 │   ├── random_bot.py           # RandomBot baseline
 │   ├── heuristic_bot.py        # HeuristicBot rule-based baseline
-│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints (V1/V2/V3)
+│   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints (V1/V2)
 │   ├── exploratory_bot.py      # ExploratoryBot diverse exploration agent
 │   ├── strategic_bot.py        # StrategicBot DEFCON-2 containment & commentary agent
 │   ├── event_heavy_bot.py      # EventHeavyBot event-prioritizing agent
@@ -169,7 +169,7 @@ graph TD
 │       └── run_asan.sh         # AddressSanitizer execution script
 │
 ├── data/                       # Datasets, Checkpoints & Recorded Replays
-│   ├── checkpoints/            # Model weights (run_v3_*, coldwar_net_v3_warmup.pt)
+│   ├── checkpoints/            # Model weights (arm_*/, coldwar_net_v2_warmup.pt)
 │   ├── replays/                # Saved game logs (*.tslog.json)
 │   └── datasets/               # Demonstration datasets; archive/ holds superseded ones
 │
@@ -266,7 +266,7 @@ graph TD
     subgraph Phase0 ["Phase 0: Supervised BC Warmup"]
         Demonstrations["Demonstration Dataset (regenerate per engine; see data/datasets/archive/README.md)"]
         Streamer["WarmupDataset.stream_batches (B=1024, Reservoir Buffer, RAM < 70MB)"]
-        WarmupModel["Warmup Checkpoint: data/checkpoints/coldwar_net_v3_warmup.pt (90% vs Heuristic)"]
+        WarmupModel["Warmup Checkpoint: data/checkpoints/coldwar_net_v2_warmup.pt"]
         Demonstrations --> Streamer --> WarmupModel
     end
 
@@ -308,19 +308,19 @@ graph TD
 # 1. Phase 0: Bounded Streaming BC Warmup (Full 5,000 games in ~3 minutes, <70 MB RAM)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --mode warmup \
-  --arch v3 \
+  --arch v2 \
   --warmup-dataset <regenerated-dataset.jsonl.gz> \
   --bc-epochs 2 \
   --batch-size 1024 \
-  --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
+  --output-dir data/checkpoints/coldwar_net_v2_warmup.pt
 
 # 2. Phase 1 & 2 & 3: Unified RL Training + Live Snapshots + Post-Training Tournament
-# (or simply use ./tools/scripts/train_and_tournament.sh v3 7200 1200 data/checkpoints/coldwar_net_v3_warmup.pt)
+# (or simply use ./tools/scripts/train_and_tournament.sh v2 7200 1200 data/checkpoints/coldwar_net_v2_warmup.pt)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v3 \
+  --arch v2 \
   --duration-seconds 7200 \
   --snapshot-interval-seconds 1200 \
-  --warmup-checkpoint data/checkpoints/coldwar_net_v3_warmup.pt \
+  --warmup-checkpoint data/checkpoints/coldwar_net_v2_warmup.pt \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
   --eval-games-per-side 50 \
@@ -339,15 +339,15 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 
 # 2b. Watch a live (or finished) run: every training_metrics.jsonl metric is mirrored to
 #     <output-dir>/tb/ as TensorBoard event files. Pass --no-tensorboard to write JSONL only.
-.venv/bin/python -m tensorboard.main --logdir data/checkpoints/run_v3_<timestamp>/tb
+.venv/bin/python -m tensorboard.main --logdir data/checkpoints/run_v2_<timestamp>/tb
 
 # 3. Standalone Post-Tournament & Elo Evaluation Across Any Checkpoint Directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --checkpoint-dir data/checkpoints/run_v3_20260827_205207 \
+  --checkpoint-dir data/checkpoints/run_v2_20260827_205207 \
   --games-per-side 500 \
   --anchor-model HeuristicBot \
   --anchor-elo 1500.0 \
-  --output-report data/checkpoints/run_v3_20260827_205207/massive_tournament_report.md
+  --output-report data/checkpoints/run_v2_20260827_205207/massive_tournament_report.md
 ```
 
 ### 3.4 Launch Web Workbench & Play Against NeuralBot
@@ -356,7 +356,7 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v3_20260827_205207/snapshot_3602s.pt
+PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v2_20260827_205207/snapshot_3602s.pt
 
 # 3. Open browser at:
 # http://localhost:8000/?game_id=game-1&role=US
@@ -374,7 +374,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 4. **Vectorized Demonstration Generator (`tools/generate_dataset.py`)**:
    Charns out thousands of games in parallel using 500 C++ environments and multi-temperature schedules, dumping compressed `.jsonl.gz` datasets for supervised BC warmup.
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
-   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and detected architectures (V1/V2/V3).
+   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and the architecture detected from the weights.
 6. **Human Game Corpus (`tools/download_ts_replayer.py` + `tools/lib/ts_replayer_*.py`)**:
    Downloads community-uploaded human games from ts-replayer.fly.dev and converts them into
    engine decisions. The conversion is verified rather than parsed: each entry is rebuilt from
@@ -402,7 +402,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 7. **Mandatory Checkpoint Directory Naming Convention**:
    All model checkpoint directories MUST follow the standard pattern:
    `data/checkpoints/run_[version]_[start date]_[start time]`
-   (e.g., `data/checkpoints/run_v3_20260826_231500` or `data/checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v3_2h`) are strictly forbidden.
+   (e.g., `data/checkpoints/run_v2_20260826_231500` or `data/checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v2_2h`) are strictly forbidden.
 8. **Bounded Dataset Streaming & OOM Prevention**:
    Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.
 9. **Mandatory Unified CLI Invariant — No Ad-Hoc Scripts**:
