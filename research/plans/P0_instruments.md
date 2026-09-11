@@ -6,8 +6,8 @@
 
 ## Goal
 
-Five measurements that the later steps are judged by, taken once per checkpoint so every later
-arm has a before/after. Three are new probes, two are existing instruments pointed at new states.
+Four measurements that the later steps are judged by, taken once per checkpoint so every later
+arm has a before/after. Two are new probes, two are existing instruments pointed at new states.
 
 The baseline is **not** one checkpoint. A probe number is only comparable inside a
 (layout, engine, step-budget) cell, so the baseline is a table (*Procedure*).
@@ -18,11 +18,14 @@ The goal is "no simple mistakes", and the mistakes §25 actually names are not m
 anything in `ai/eval/`:
 
 - setup that ignores Poland / West Germany;
-- footholds left exposed to Voice of America;
-- **and, new in §25, the one the owner calls the gap to a mediocre human: H2 @160M can play a
-  tactic when the card is in front of it and cannot choose which card to spend it on.** It spent
-  UN Intervention on Tear Down this Wall at AR3 and then played Grain Sales raw at AR7 and lost
-  the game to the DEFCON that followed.
+- **the one the owner calls the gap to a mediocre human: H2 @160M can play a tactic when the card
+  is in front of it and cannot choose which card to spend it on.** Holding two cards it must not
+  play, it spent UN Intervention on the one that could have spaced itself, and was left having to
+  play the other.
+
+Voice of America exposure was a fifth probe here and has been **moved to `reserve.md`**: it is an
+accurate description of a real mistake, but the model does not yet contest battlegrounds at all,
+and a probe measuring how it defends a foothold it never takes measures nothing.
 
 Elo does not move for any of these (`experiments.md` §4.4: a behaviour can be worth two points of
 win rate and still be the thing a human notices first). And P2 spends an arm on chance-aware
@@ -42,7 +45,7 @@ This file was written against v2.2 and arm G. Both are gone. The reset:
 - **The current arms are H (80M), H2 (80/160/240M) and I (80M).** H2 @240M is the strongest at
   93.0% against the anchor (§25.1).
 - `temp_cards` is gone (`49ed564`); the chance node is named (`ctx().pending_roll_type`,
-  `ctx().roll_actor`) (`712bce4`). Probe 4 below used `temp_cards[1]` and no longer can.
+  `ctx().roll_actor`) (`712bce4`). Probe 3 below used `temp_cards[1]` and no longer can.
 - Europe Control is its own recorded ending (`430ba9b`), and game length is measured in **plies**,
   not turns (`53f9c1c`).
 - `metrics.md` §1.5.3 retires the claim that the corrected engine lengthens games — H2 does not
@@ -53,7 +56,7 @@ built on:
 
 1. The batch runner still drains chance inside C++ *whether or not* `auto_advance` is set — now
    documented in `metrics.md` §"The Python chance-drain loop is not worth moving into C++" — so
-   the pre-deal node is still not reachable through it, and probe 4 still needs its own driver.
+   the pre-deal node is still not reachable through it, and probe 3 still needs its own driver.
 2. The nested variance decomposition still needs no engine or bindings change: `rng_state` is
    still read/write, `set_card_location` is still there, and `get_state` still returns a mutable
    `reference_internal`.
@@ -84,7 +87,7 @@ retired layout by its own weights. `tests/training/test_probe_observation_layout
   carries only `(model, device, name, steps, base_commit)`, because layout and flags are no
   longer per-checkpoint facts. It is a convenience for the probe suite's row labelling, not a
   correctness measure. Build it in step 7 with the CLI, not ahead of everything else.
-* `ai/eval/rollout.py` (below, §1.5) — unchanged and still required for probes 2 and 4.
+* `ai/eval/rollout.py` (below) — unchanged, and still required for probe 3.
 
 ### 2. The probes
 
@@ -112,23 +115,7 @@ fresh runner — no rollout at all.
   Poland and West Germany figures are inflated relative to a no-bid game; split the yardstick by
   bid = 0 vs bid > 0.
 
-**Probe 2 — VOA exposure.** `ai/eval/voa_exposure.py`. VOA is `cid 74` (`constants.hpp:189`).
-
-- 500 self-play games per checkpoint on the C++ runner, plus the same statistic over the corpus.
-- *Exposure*, at each USSR end-of-turn: VOA unplayed —
-  `get_card_location(74) in {DRAW_DECK, HAND_US_UNKNOWN, HAND_US_KNOWN}` — **and** at least one
-  country with `region != EUROPE`, `ussr_influence in (1, 2)`, and no USSR control. Report the
-  mean count per USSR turn, P(≥ 1) as a band, and the breakdown by region.
-- *Punished*: when VOA is later played as an event, the drop in USSR non-Europe influence across
-  it, and the share falling on countries flagged at the preceding turn end. Read before and after
-  via `observe_node`.
-- The probe reads the **true** card location from the state, not the observation's `CardLocation`
-  bit. The observation shows the USSR only what it is entitled to know; an evaluator is not bound
-  by that, and "was it in fact still live" is what makes the exposure a mistake.
-- **If fewer than 30 corpus games reach a played VOA, report the exposure rate alone and say so.**
-  VOA is one card in 266 games; this is likely to bind.
-
-**Probe 3 — chance-variance decomposition.** `ai/eval/chance_decomposition.py`.
+**Probe 2 — chance-variance decomposition.** `ai/eval/chance_decomposition.py`.
 
 The original design replayed forced dice through the batch runner. The runner drains chance in
 C++ unconditionally and takes no forced rolls, so that route needs a bindings change and an
@@ -169,7 +156,7 @@ a bootstrap CI over states.
   beside every share. Below ~90% fidelity the deal share is a lower bound and must be reported
   as one.
 
-**Probe 4 — pre-deal calibration.** Extend `ai/eval/critic_calibration.py`.
+**Probe 3 — pre-deal calibration.** Extend `ai/eval/critic_calibration.py`.
 
 - New parameter `sample_nodes: Literal["decision", "pre_deal", "both"] = "decision"`, and the
   measurement moves onto `ai.eval.rollout`, without which the node is invisible.
@@ -182,29 +169,68 @@ a bootstrap CI over states.
   per game — 500 games gives ~1,800 nodes, ~3,600 rows.
 - **`classify_ending` must be replaced, not extended.** It predates the corrected engine and
   cannot see Europe Control, wargames, held scoring, or self-inflicted versus provoked DEFCON-1 —
-  the taxonomy the trainer already emits as `ending_frac_*`. Reuse that taxonomy so probe 4 and
+  the taxonomy the trainer already emits as `ending_frac_*`. Reuse that taxonomy so probe 3 and
   the training logs name the same endings.
 - Report the calibration buckets, Brier and `corr(v_win, realised)` **split by node kind**, so
   P2's "the critic prices the board before it sees the deal" claim has a curve to move.
 
-**Probe 5 — spending the tactic on the right card.** `ai/eval/sequencing.py`. New, and the reason
-this step now has five probes: §25 names turn sequencing as *the* gap to a mediocre human, says
-"it is what the P0 probes and P4 exist to measure", and none of probes 1–4 measure it.
+**Probe 4 — disposing of a card you must not play.** `ai/eval/sequencing.py`. The reason this
+step has a fourth probe: §25 names turn sequencing as *the* gap to a mediocre human, says "it is
+what the P0 probes and P4 exist to measure", and none of probes 1–3 measure it.
 
-Two halves, cheap and independent:
+**The position it comes from** (`h2_160M_selfplay_20260405`, turn 10, USSR to play), read
+correctly this time. The USSR held UN Intervention, Tear Down this Wall and Grain Sales to
+Soviets. **Both US cards are DEFCON-suicide here** — that is not the distinction. The distinction
+is the *exit* each one has:
 
-- **Constructed positions**, added to `ai/eval/claims.py` so they run inside the existing
-  behavioural suite: USSR holds UN Intervention (`cid 32`) and two US-associated cards of
-  different severity — the §25 position is Tear Down this Wall (`cid 96`) and Grain Sales
-  (`cid 67`) — and the claim is that UN Intervention is spent on the card whose event is worse to
-  hand over. Score it on the masked policy distribution, as the suite already does.
-- **A self-play rate**: over 500 games, how often a DEFCON-suicide-class opponent card
-  (`ai/eval/blunders.py`'s list) is played raw while UN Intervention is in hand and legal. This
-  needs no constructed position and no judgement about which line is best — the card was in hand,
-  the tool was in hand, and the tool was not used. Report as a Wilson band, with the count of
-  opportunities.
+| card | ops | at this space box (3+ required) |
+|:---|---:|:---|
+| Tear Down this Wall (`cid 96`) | 3 | **spaceable** — can be spent on the space track, event never fires |
+| Grain Sales to Soviets (`cid 67`) | 2 | **not spaceable** — too few Ops for the next box |
 
-Both are baselines here, not gates. The rate is the number a later strategy arm has to move.
+A card you must not play has exactly three exits: space it, run it through UN Intervention, or
+hold it at end of turn. Tear Down this Wall has all three; Grain Sales has two. So UN Intervention
+— the scarce one — belongs on the card with fewer exits. The model spent it on Tear Down this
+Wall, which could have spaced itself, and was then left holding Grain Sales with the hand to
+empty. Correct play: **space Tear Down this Wall**, then either run UN Intervention on Grain
+Sales, or play UN Intervention for its own Ops and hold Grain Sales at end of turn.
+
+**And UN Intervention costs a card you may not know you are spending.** Its event plays an
+opponent card for Operations *in the same action round*, so it consumes two cards in one AR —
+which is exactly the one card you would otherwise have held back at end of turn. Using it does
+not just spend the card; it removes the "hold it" exit for everything else in the hand. That is
+what turned a recoverable position into a forced Grain Sales.
+
+Three measures, in order of how little judgement they need:
+
+1. **UN Intervention spent on a card that was not the suicide card.** The hand contains a
+   DEFCON-suicide card (`ai/eval/blunders.py`'s `defcon_suicide_cards(state, player)`, which is
+   already position-aware — Nuclear Subs, coupable influence, Star Wars, Five Year Plan), UN
+   Intervention (`cid 32`) is in hand and legal, and it is spent on some other card. No judgement
+   about the best line: the problem was in hand, the tool was in hand, the tool went elsewhere.
+2. **UN Intervention spent on the spaceable one of two.** The hand holds two DEFCON-suicide
+   cards, one spaceable and one not, and UN Intervention goes to the spaceable one — the §25
+   error exactly. Strictly a subset of (1) and the sharpest single number, because the
+   alternative is not a matter of taste.
+3. **The suicide card is played raw anyway**, with UN Intervention still in hand — the outcome
+   the first two are upstream of. Already counted by
+   `blunders.py`'s `defcon_suicide_with_alternative`; report it here beside them so the chain is
+   visible in one place.
+
+All three as Wilson bands with their opportunity counts, over 500 self-play games.
+
+**Spaceability is read from the engine, not reimplemented.** `SpaceRace::can_attempt_space` is
+not exposed to Python, and it should not be added just for this: step the state to the card's
+`SELECT_PLAY_MODE` node (`ai/eval/positions.py:step_to_play_mode`) and read whether flat action
+112 (`PLAY_MODE_START + PlayMode.SPACE`) is legal. That is the engine's own rule, including the
+Ops modifiers `can_attempt_space` folds in — printed Ops is not the test.
+
+**Constructed positions**, added to `ai/eval/claims.py` so they run inside the behavioural suite:
+the §25 hand at a space box requiring 3, asserting the policy does not put UN Intervention on
+Tear Down this Wall; and a control where both suicide cards are unspaceable, where spending UN
+Intervention on either is fine and the claim is only that it is spent on one of them.
+
+Baselines here, not gates. These are the numbers a later strategy arm has to move.
 
 ### 3. Existing instruments, on the same checkpoints
 
@@ -216,8 +242,8 @@ those two changes is void.
 
 ### 4. One CLI
 
-`tools/probe_suite.py --models <paths and baselines> --probes setup voa chance calibration
-sequencing existing --output-json <path> --device cpu`, one row per model. One entry point, so a
+`tools/probe_suite.py --models <paths and baselines> --probes setup disposal chance
+calibration existing --output-json <path> --device cpu`, one row per model. One entry point, so a
 later arm reports the same numbers by running the same command.
 
 ## Implementation order
@@ -243,33 +269,36 @@ every architecture, and `check_obs_width` / `check_checkpoint_layout` refusing a
 checkpoint by width rather than letting it misread. The probes are correct by construction rather
 than by conversion. What remains of `EvalHandle` is row labelling and belongs to step 7.
 
-**3. `ai/eval/rollout.py`**, with `tests/training/test_rollout_driver.py`.
+**3. `ai/eval/rollout.py`**, with `tests/training/test_rollout_driver.py`. It now gates one
+probe rather than two, so it can equally follow step 4 — take it whenever probe 3 comes up.
 
 *Accept when:* driven greedily from the same seeds with chance drained the default way, the
 driver's terminal utilities and action streams are **identical** to `VectorizedBatchRunner`'s over
-64 games. That equivalence is the whole warrant for using it in probes 2 and 4, so it is the test
+64 games. That equivalence is the whole warrant for using it in probe 3, so it is the test
 that matters; a driver that merely "looks right" reintroduces the 25-point disagreement
 `metrics.md` records from the last time a single-state path diverged from the batched one. ~2 h.
 
-**4. Probes 1 and 5** — setup and sequencing. `ai/eval/setup_probe.py`, `ai/eval/sequencing.py`,
-additions to `ai/eval/claims.py`, and the corpus setup reader. These two come first among the
-probes because they are the cheapest to run (15 batched forwards, and 500 games), they need only
-the C++ runner, and they produce the two numbers that gate P4 — the step most likely to jump the
-queue.
+**4. Probes 1 and 4** — setup and card disposal. `ai/eval/setup_probe.py`,
+`ai/eval/sequencing.py`, additions to `ai/eval/claims.py`, and the corpus setup reader. These two
+come first among the probes because they are the cheapest to run (15 batched forwards, and 500
+games), they need only the C++ runner, and they produce the numbers that gate P4 — the step most
+likely to jump the queue.
 
 *Accept when:* `random` places roughly uniformly over the legal setup countries and `heuristic`
-does not, which is the sanity check that the probe reads placements rather than noise; and the
-human yardstick is stable across a re-run of the corpus reader. ~3 h.
+does not, which is the sanity check that the probe reads placements rather than noise; the human
+yardstick is stable across a re-run of the corpus reader; and the disposal probe reproduces the
+§25 position as a positive — replay `h2_160M_selfplay_20260405` to turn 10 and confirm it is
+flagged, since a probe that does not catch the case it was written from catches nothing. ~4 h.
 
-**5. Probes 2 and 4** — VOA exposure and pre-deal calibration. Both need step 3's `observe_node`.
-Includes replacing `classify_ending` with the trainer's `ending_frac_*` taxonomy.
+**5. Probe 3** — pre-deal calibration. Needs step 3's `observe_node`. Includes replacing
+`classify_ending` with the trainer's `ending_frac_*` taxonomy.
 
 *Accept when:* the ending distribution the probe reports on H2 @240M self-play reproduces §25.1's
 table (mean ply ~105, DEFCON 1 ~34%, Europe Control 0.0%) — an independent path onto numbers that
 are already published is the cheapest available check that the new taxonomy is wired correctly.
 ~3 h.
 
-**6. Probe 3** — chance decomposition, including the draw-fidelity metric. Heaviest to write and
+**6. Probe 2** — chance decomposition, including the draw-fidelity metric. Heaviest to write and
 the only one with a real runtime.
 
 *Accept when:* condition A returns **exactly zero** variance. If it does not, the replay is not
@@ -330,10 +359,10 @@ directory's maintenance rule, and add the numbers to the standard eval row in `m
 
 ## Measure
 
-Per row: `P(Poland ≥ 3 | USSR)`, `P(West Germany ≥ 4 | US)`, setup entropy; VOA exposure rate and
-punished share; dice / deal / policy shares of return variance with the draw fidelity; pre-deal
-vs decision Brier and correlation; the sequencing claim pass rate and the raw-play rate; plus the
-existing instruments. Rates as Wilson bands. No Elo.
+Per row: `P(Poland ≥ 3 | USSR)`, `P(West Germany ≥ 4 | US)`, setup entropy; dice / deal / policy
+shares of return variance with the draw fidelity; pre-deal vs decision Brier and correlation; the
+three card-disposal rates and the constructed-position pass rate; plus the existing instruments.
+Rates as Wilson bands. No Elo.
 
 ## Decision rule
 
@@ -341,17 +370,14 @@ existing instruments. Rates as Wilson bands. No Elo.
   P2.
 - **Dice + deal share = 1 − policy share.** `≥ ~40%`: P2 runs. `≤ ~20%`: P2 is demoted to reserve
   and its arm goes to P4/P5. Between: P2 keeps its place but behind P4.
-- VOA exposure: baseline only; the acceptance number for the belief-head weighting decision in
-  P5's follow-ups.
-- Sequencing: baseline only. If the raw-play rate is high **and** the constructed positions pass,
-  the model knows the tactic and cannot time it, which argues for P4's macro-action credit over
-  P6's capacity.
+- Card disposal: baseline only. If the constructed positions pass **and** the self-play rates are
+  high, the model knows the tactic and cannot time it, which argues for P4's macro-action credit
+  over P6's capacity. If the constructed positions also fail, it does not know the tactic, and
+  that is a different problem — closer to P1's value head than to P4.
 
 ## Follow-ups
 
 - Every later step reports these numbers. Add them to the standard eval row in `metrics.md`.
-- If the corpus is too small for a stable VOA yardstick, say so in the log and use the exposure
-  rate alone.
 - ~~Queue the BC warmup layout fix~~ — **fixed by the single-layout refactor.** `WarmupDataset`
   and `tools/generate_dataset.py` re-extracted at the legacy default and passed no layout down;
   with one layout there is no default to be wrong. Arms H, H2 and I were cold starts and were

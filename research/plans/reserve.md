@@ -20,6 +20,26 @@ disappears when the opponent changes. `ideas_and_plans.md` §4. Not before, beca
 on the v2.2 recipe is still gaining with budget (`experiments.md` §24) and nothing has shown
 cycling.
 
+## Voice of America exposure probe
+**Trigger:** the agent contests battlegrounds — empty battlegrounds at turn 8 down from 6.2 of 29
+toward the human rate, and Saudi Arabia / India / Algeria no longer conceded in almost every game
+(`experiments.md` §25). Until then a probe measuring how it *defends* a foothold measures a
+foothold it never takes.
+
+Was probe 2 of P0 and is a correct description of a real mistake, so it is kept in full rather
+than rewritten later. VOA (`cid 74`) is a US event removing **4 USSR Influence from non-European
+countries, at most 2 per country** (`mid_war.cpp:475`), so a USSR position of exactly 1–2 there
+can be erased outright and one of 3+ cannot. Measure over self-play games at each `TURN_CLEANUP`
+node — the same node P0's pre-deal calibration samples, so the two share a pass: is VOA still
+unplayed (`get_card_location(74)` in the deck or either US hand slot, read from the true state,
+not from the observation), and how many non-European countries does the USSR hold at 1–2
+influence. Report `min(count, 2)` alongside the raw count, because 4 points at 2 per country can
+clear at most two of them, and split controlled from uncontrolled rather than excluding
+controlled: 48 of the 63 non-European countries have stability ≤ 2, so 1–2 influence there is
+frequently *control*, and losing it is the worse case, not the excluded one. Yardstick from the
+human corpus, with the caveat that VOA reaches play in a fraction of 266 games — under 30 and the
+punished-rate half is not reportable.
+
 ## Layout attribution: which v2.2 change did it, and are the card slots worth anything
 **Trigger:** a future observation decision depends on knowing — e.g. before proposing any v2.3
 to the owner. Two open questions from the log: which of v2.2's changes carried the ~+92 Elo
