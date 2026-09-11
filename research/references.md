@@ -217,6 +217,46 @@ Acceptance is a probe, not Elo: the rate of Poland ≥ 3 (USSR) and West Germany
 
 ## 7. Budgeting note
 
+### What an 80M screen does and does not measure
+
+A screen at 80M measures **how fast an approach learns the basics**, not what it converges to.
+Those are different quantities and the literature is clear that they can disagree.
+
+**Scaling Scaling Laws with Board Games** — Jones, arXiv:2104.03113, and the closest published
+setting to ours. Training AlphaZero on Hex, **Elo is linear in the log of training compute**,
+with a slope that stays constant across board sizes, so the compute needed for a target strength
+can be read off in advance. Train-time and test-time compute trade off against each other on a
+simple relationship. The practical consequence for this repo: under a log-linear law an
+intervention can move the **intercept** (reaches a given strength sooner, same slope) or the
+**slope** (changes the rate, so the gap grows or inverts with budget). Every number we have is an
+intercept measurement at one budget. We have never measured a slope, and the two have completely
+different implications for whether a change is worth adopting. See also *AlphaZero Neural Scaling
+and Zipf's Law* (arXiv:2412.11979) for power laws in the same family of agents.
+
+**How often does the small-scale winner win at scale?** *DataDecide* (arXiv:2504.11393) measures
+this directly for pretraining-data choices: experiments at **100-200x less compute pick the
+large-scale winner about 92% of the time**. That is reassuring for screening as a method and is
+also a real 8% failure rate, concentrated where behaviour is non-smooth or emergent rather than
+where it is gradual.
+
+**Curve crossing is a named, documented phenomenon**, not a hypothetical: *The Shape of Learning
+Curves: a Review* (arXiv:2103.10948) catalogues curves where one method has the lower error early
+and another the lower error asymptotically, and notes crossings are likelier to be found over
+small windows than large ones — which is what a screen is.
+
+**In RL the tradeoff is a standard shape.** Model-based methods are more sample-efficient and
+reach a lower asymptote than model-free ones, and algorithm families exist specifically to get
+both at once (e.g. Aggressive Q-Learning with Ensembles, arXiv:2111.09159). "Better early, no
+better at the ceiling" is the expected pattern for a class of changes, not an exotic risk.
+
+**So: read a screen as a rate, and say so.** An arm that wins at 80M has demonstrated that it
+learns the basics faster. Claiming it is *better* requires either a second budget or an argument
+that the mechanism does not saturate. Entropy is the cheapest early warning — a cell running at
+materially lower entropy has committed sooner, which is what fast early learning looks like and
+also what an earlier plateau looks like.
+
+
+
 An 80M-step arm is ~1.5 h on the 4090 and gains on the current recipe are still measurable at
 320M (`experiments.md` §24). Screen every factor at 2 seeds × 80M (3 h); confirm only the winner
 of a screen at 2 seeds × 240M (9 h); rate the last four snapshots and pool all sixteen
