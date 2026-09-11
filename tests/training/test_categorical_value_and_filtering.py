@@ -8,6 +8,7 @@ the same shapes and ranges, and still mean the same thing — because the tourna
 probes and NashPG's advantage computation all read them.
 """
 
+import numpy as np
 import pytest
 import torch
 
@@ -76,7 +77,8 @@ def test_the_scalars_are_derived_from_the_distribution() -> None:
         assert logits is not None
         probs = torch.softmax(logits, dim=-1)
         support = net.value_support
-        expect_vp = (probs * support).sum(dim=-1, keepdim=True)
+        # v_vp leaves the model normalised; the support itself is real VP.
+        expect_vp = (probs * support).sum(dim=-1, keepdim=True) / VP_LIMIT
         expect_win = ((probs * (support > 0)).sum(dim=-1, keepdim=True)
                       - (probs * (support < 0)).sum(dim=-1, keepdim=True))
     assert torch.allclose(v_vp, expect_vp, atol=1e-5)
@@ -255,3 +257,47 @@ def test_v_win_spans_its_range_once_the_target_is_scaled() -> None:
     v_win_bad = float((middling * (support > 0)).sum() - (middling * (support < 0)).sum())
     assert v_win_bad == pytest.approx(1.0), "mass on +1 VP is still 'winning', but only just"
     assert float((middling * support).sum()) == pytest.approx(1.0)
+
+
+def test_v_vp_is_normalised_for_both_heads() -> None:
+    """The scale contract, which two separate bugs violated in opposite directions.
+
+    `rollout_buffer` stores returns_vp normalised to [-1, 1] and bootstraps the buffer boundary
+    with `last_ret_vp = last_v_vp.clone()`. So `v_vp` is a *normalised* quantity by contract, and
+    a head returning real VP injects a value twenty times too large into the next iteration's
+    targets. The categorical arm that did so stalled: clip fraction fell to 3%, the policy stopped
+    moving, and it finished at 3% against HeuristicBot where the scalar control reached 84%.
+
+    The first bug was the mirror image -- the *target* was normalised VP projected onto a VP-unit
+    support. Internally the support is real VP, which is what makes +/-20 land on the end atoms;
+    only what crosses this boundary is normalised.
+    """
+    import ts_engine
+
+    from bindings.ts_env import TsVectorizedEnv
+
+    env = TsVectorizedEnv(num_envs=16, base_seed=31337)
+    obs_np, mask_np, _ = env.reset_all()
+    obs = torch.from_numpy(np.asarray(obs_np, dtype=np.float32))
+    mask = torch.from_numpy(np.asarray(mask_np))
+
+    for categorical in (False, True):
+        net = _net(categorical)
+        with torch.no_grad():
+            _, v_win, v_vp = net(obs, mask)
+        assert bool((v_vp.abs() <= 1.0).all()), (
+            f"categorical={categorical}: v_vp reaches {float(v_vp.abs().max()):.2f}; it must be "
+            f"normalised to [-1, 1] like returns_vp, not in real VP units")
+        assert bool((v_win.abs() <= 1.0).all())
+
+
+def test_a_certain_win_reads_as_one_on_both_scales() -> None:
+    """Ties the two ends together: the +20 atom is a certain win and a normalised v_vp of 1."""
+    net = _net(True)
+    support = net.value_support
+    certain = net.two_hot(torch.tensor([1.0]) * VP_LIMIT)[0]
+
+    v_vp = float((certain * support).sum()) / VP_LIMIT
+    v_win = float((certain * (support > 0)).sum() - (certain * (support < 0)).sum())
+    assert v_vp == pytest.approx(1.0)
+    assert v_win == pytest.approx(1.0)

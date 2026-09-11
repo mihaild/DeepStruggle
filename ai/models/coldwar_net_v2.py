@@ -306,7 +306,13 @@ class ColdWarNetV2(nn.Module):
         assert self.value_dist_head is not None
         probs = torch.softmax(self.value_dist_head(h), dim=-1)
         support = self.value_support.to(probs.dtype)
-        v_vp = (probs * support).sum(dim=-1, keepdim=True)
+        # E[VP] divided by VP_LIMIT, because `v_vp` is a *normalised* quantity by contract --
+        # rollout_buffer stores returns_vp in [-1, 1] and bootstraps with
+        # `last_ret_vp = last_v_vp.clone()`, so a v_vp in real VP units injects a value twenty
+        # times too large at the buffer boundary. The support stays in real VP: that is what
+        # makes +/-20 land on the end atoms and the multimodality meaningful. Only what leaves
+        # this method is rescaled, so the scalar and categorical heads present one contract.
+        v_vp = (probs * support).sum(dim=-1, keepdim=True) / float(VP_LIMIT)
         # A win is VP > 0; a draw is the single atom at 0 and counts for neither side.
         v_win = ((probs * (support > 0).to(probs.dtype)).sum(dim=-1, keepdim=True)
                  - (probs * (support < 0).to(probs.dtype)).sum(dim=-1, keepdim=True))
