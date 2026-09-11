@@ -2744,3 +2744,46 @@ what it just was, and not getting better against anything outside itself, while 
 drift 22 points apart. Doubling again is not the next experiment. The side imbalance is, because
 a self-play equilibrium this lopsided is training both policies on a board neither would face
 against a balanced opponent.
+
+### 27.1 The DEFCON-1 endings are mostly one specific mistake, and it has a name
+
+34.1% of 220 self-play games from the 480M snapshot end at DEFCON 1. Reading three of them by
+hand suggested two different things were wearing one label, so the cause was counted.
+
+**82.7% are *provoked*** — the loser was pushed into it rather than walking into it. The
+mechanism is a single move: the model plays an **opponent-associated card for Operations while
+DEFCON is 2**. An opponent's card fires its event when played for Ops; the event lowers DEFCON;
+DEFCON reaches 1; and `resolve_defcon_one_loss` makes the *phasing* player the loser — which is
+the player who just played it.
+
+The card in play when DEFCON crossed 2 → 1:
+
+| card | share of DEFCON-1 endings |
+|:---|---:|
+| Grain Sales to Soviets | **25.3%** |
+| "Lone Gunman" | 14.7% |
+| Duck and Cover | 12.0% |
+| Olympic Games | 9.3% |
+| Summit | 8.0% |
+| CIA Created | 6.7% |
+| Tear Down this Wall | 5.3% |
+| Five Year Plan | 5.3% |
+
+Every one of those except Summit and Tear Down this Wall is already on the DEFCON-suicide list in
+`ai/eval/blunders.py`. So the blunder tracker is naming the right cards — the puzzle was why its
+*rate* looks small while the endings look common.
+
+**The rate is per opportunity, and opportunities are frequent.** Across six logged games the
+tracker reported 1/32, 1/21, 0/15, 1/7, no chances, 1/13 — about 4 blunders in 88 opportunities,
+or 3-8%. But that is 7 to 32 opportunities *per game*, so the absolute incidence is roughly one
+every two games, and each one is frequently fatal. A low rate against a large denominator is
+still a game-ending mistake most of the time it happens.
+
+**Summit is the opposite case and should not be counted with them.** At 8% of these endings the
+model is not dying, it is killing: the non-phasing player wins the Summit roll and chooses to
+lower DEFCON, ending the game while the *opponent* is phasing. In `h2_480M_selfplay_20260503`
+the US does exactly this at turn 9 AR7 and wins +20. That is a correct tactic, not a blunder,
+and it means the 34.1% figure mixes a real error with a real skill.
+
+Compare the human 11.7%. The gap is not that humans never play an opponent's card for Ops at
+DEFCON 2 — it is that they check the card first.
