@@ -7,18 +7,26 @@ not catch the case it was written from catches nothing, so that position is the 
 
 It is constructed rather than replayed: `data/replays/` is git-ignored, so a test that read the
 original self-play log would pass on one machine and fail everywhere else.
+
+§25 says "both US cards are DEFCON-suicide here", and with the revised taxonomy that is now
+true: Tear Down This Wall grants its coup *in Europe*, overriding the DEFCON 2 rule that closes
+the region, so USSR influence in a European battleground exposes it. Before the revision only
+Grain Sales was banned, and this position could fire only the blunter of the two rules.
 """
 
 import numpy as np
 
 import ts_engine as ts
 
+from ai.eval.blunders import defcon_suicide_cards
 from ai.eval.positions import (PLAY_MODE_ACTION, PositionBuilder, card_action, legal_mask,
                                legal_play_modes, step_to_play_mode)
 from ai.eval.sequencing import classify, is_companion_node, legal_companions, new_counts
 
 UN_INTERVENTION, TEAR_DOWN_THIS_WALL, GRAIN_SALES = 32, 96, 67
-MOROCCO = 46      # Africa, so coupable while DEFCON is 2
+MARSHALL_PLAN, US_JAPAN_PACT = 23, 27
+ALGERIA = 47          # an African battleground -- only a battleground coup degrades DEFCON
+EUROPE_REGION = 0
 # Next box requires 3 Ops here. Read off the engine, not off the box table: at 3 both cards are
 # spaceable and at 7 neither is, so this is the one position that reproduces §25's asymmetry.
 SPACE_BOX = 4
@@ -32,11 +40,11 @@ def section_25_position() -> ts.GameState:
         turn=10,
         action_round=1,
         ussr_space=SPACE_BOX,
-        # Grain Sales is a card the USSR must not play only while it has influence somewhere
-        # the US can coup at DEFCON 2 -- see blunders.defcon_suicide_cards. Morocco is in
-        # Africa; the opening setup puts USSR influence only in Europe and the Middle East,
-        # which are closed at DEFCON 2, so this has to be placed explicitly.
-        influence=((MOROCCO, ts.Player.USSR, 2),),
+        # Grain Sales hands the US the Operations to coup with, and only a *battleground* coup
+        # degrades DEFCON -- so it takes influence in an African battleground, not merely
+        # somewhere in Africa. Tear Down This Wall needs no help here: the opening setup leaves
+        # the USSR with 3 in East Germany, a European battleground.
+        influence=((ALGERIA, ts.Player.USSR, 2),),
     ).build()
 
 
@@ -54,6 +62,13 @@ def test_the_position_splits_the_two_cards_on_spaceability() -> None:
     assert "space" not in legal_play_modes(step_to_play_mode(st, GRAIN_SALES))
 
 
+def test_both_cards_are_ones_the_ussr_must_not_play() -> None:
+    """What makes this §25's position rather than a generic one."""
+    banned = defcon_suicide_cards(section_25_position(), ts.Player.USSR)
+    assert TEAR_DOWN_THIS_WALL in banned, "exposed by USSR influence in East Germany"
+    assert GRAIN_SALES in banned, "exposed by USSR influence in Algeria"
+
+
 def test_un_intervention_reaches_a_companion_node_here() -> None:
     node = companion_node(section_25_position())
     assert is_companion_node(node), "playing UN Intervention must ask for a companion"
@@ -62,17 +77,16 @@ def test_un_intervention_reaches_a_companion_node_here() -> None:
 
 
 def test_spending_it_on_the_card_that_could_space_itself_is_flagged() -> None:
-    """The §25 error exactly."""
+    """The §25 error exactly: the scarce exit goes to the card that had its own."""
     st = section_25_position()
     node = companion_node(st)
     counts = new_counts()
     classify(node, st, legal_mask(node), card_action(TEAR_DOWN_THIS_WALL), counts)
 
-    assert counts.committed.get("un_intervention_off_target", 0) == 1, (
-        "Tear Down this Wall is not a card the USSR must not play, so spending the scarce "
-        "exit on it left the card that needed it in hand"
-    )
-    assert counts.opportunities.get("un_intervention_off_target", 0) == 1
+    assert counts.committed.get("un_intervention_on_spaceable", 0) == 1
+    assert counts.opportunities.get("un_intervention_on_spaceable", 0) == 1
+    # Both cards are ones it must not play, so the blunter rule sees a correct choice here.
+    assert counts.committed.get("un_intervention_off_target", 0) == 0
 
 
 def test_spending_it_on_the_card_that_needs_it_is_not_flagged() -> None:
@@ -81,24 +95,29 @@ def test_spending_it_on_the_card_that_needs_it_is_not_flagged() -> None:
     counts = new_counts()
     classify(node, st, legal_mask(node), card_action(GRAIN_SALES), counts)
 
-    assert counts.opportunities.get("un_intervention_off_target", 0) == 1, \
+    assert counts.opportunities.get("un_intervention_on_spaceable", 0) == 1, \
         "the chance was still there -- it was taken correctly"
+    assert counts.committed.get("un_intervention_on_spaceable", 0) == 0
     assert counts.committed.get("un_intervention_off_target", 0) == 0
 
 
 def test_a_hand_with_nothing_it_must_not_play_is_not_an_opportunity() -> None:
     """No problem in hand means no mistake available, so it must not enter the denominator."""
     st = PositionBuilder(
-        hand=(UN_INTERVENTION, TEAR_DOWN_THIS_WALL, 23),   # Marshall Plan, not a banned card
+        hand=(UN_INTERVENTION, MARSHALL_PLAN, US_JAPAN_PACT),
         side=ts.Player.USSR,
         defcon=2, turn=10, action_round=1, ussr_space=SPACE_BOX,
-        # No coupable influence, so Grain Sales is not a card it must not play -- and the hand
-        # holds none of the ones that are banned unconditionally.
+        # Clearing Europe removes the East Germany influence that would otherwise expose Tear
+        # Down This Wall; the opening leaves nothing in Africa or the Americas to begin with.
+        clear_influence=tuple(
+            (cid, ts.Player.USSR) for cid in range(84)
+            if int(ts.MapData.get_country_info(cid)["region"]) == EUROPE_REGION),
     ).build()
     node = companion_node(st)
     counts = new_counts()
-    classify(node, st, legal_mask(node), card_action(TEAR_DOWN_THIS_WALL), counts)
+    classify(node, st, legal_mask(node), card_action(MARSHALL_PLAN), counts)
     assert counts.opportunities.get("un_intervention_off_target", 0) == 0
+    assert counts.opportunities.get("un_intervention_on_spaceable", 0) == 0
 
 
 def test_an_ordinary_card_selection_is_not_a_companion_node() -> None:

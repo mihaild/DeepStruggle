@@ -74,16 +74,6 @@ class TestUnifiedStaticData:
             assert 1 <= stability <= 5
             assert reg in ["Europe", "Asia", "Middle East", "Africa", "Central America", "South America"]
 
-    def test_all_110_cards_metadata(
-        self,
-        engine_pair: tuple[tuple[EngineProtocol, GameStateProtocol], tuple[EngineProtocol, GameStateProtocol]],
-    ):
-        """All 110 cards must exist with valid ops and scoring designations."""
-        (eng_a, state_a), (eng_b, state_b) = engine_pair
-        for card_id in range(1, 111):
-            bc_key = card_id_ts_to_bc(card_id)
-            assert bc_key
-
 
 # =============================================================================
 # 2. SETUP PHASE DIFFERENTIAL

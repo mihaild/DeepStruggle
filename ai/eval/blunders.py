@@ -50,6 +50,12 @@ LONE_GUNMAN = 62
 GRAIN_SALES = 67
 STAR_WARS = 85
 KAL_007 = 89
+ORTEGA_ELECTED = 91
+TEAR_DOWN_THIS_WALL = 96
+
+#: Country ids, likewise. Ortega's free coup reaches Cuba, the one battleground adjacent to
+#: Nicaragua, so US influence there is what makes the card dangerous to hold.
+CUBA = 71
 
 #: effect_bits::NUCLEAR_SUBS_ACTIVE. The bit values are not bound to Python, so this mirrors
 #: engine/include/ts/constants.hpp:304 and is asserted against the engine in the tests.
@@ -62,8 +68,16 @@ EUROPE, ASIA, MIDDLE_EAST, AFRICA, CENTRAL_AMERICA, SOUTH_AMERICA = 0, 1, 2, 3, 
 COUPABLE_AT_DEFCON_2 = (AFRICA, CENTRAL_AMERICA, SOUTH_AMERICA)
 AMERICAS = (CENTRAL_AMERICA, SOUTH_AMERICA)
 
-#: Cards the opponent could pull out of the discard pile and use to degrade DEFCON.
-DEGRADERS_IN_DISCARD = (DUCK_AND_COVER, KAL_007, WE_WILL_BURY_YOU, HOW_I_LEARNED, JUNTA)
+#: What Star Wars can pull out of the discard pile and play immediately. The pick is mandatory
+#: and fizzles only on an empty pile (`late_war.cpp`), so a discard holding one of these is a
+#: risk the US takes by playing the card at all.
+#:
+#: Not every DEFCON-degrading card belongs here. Lone Gunman and Ortega hand the *USSR* the
+#: Operations, and Five Year Plan makes the USSR discard, so the action that would reach DEFCON 1
+#: is the opponent's, not the player's. How I Learned is here and nowhere else: it sets DEFCON
+#: outright rather than by way of a coup.
+STAR_WARS_DISCARD_DANGERS = (OLYMPIC_GAMES, DUCK_AND_COVER, KAL_007, CIA_CREATED, GRAIN_SALES,
+                             TEAR_DOWN_THIS_WALL, WE_WILL_BURY_YOU, HOW_I_LEARNED)
 
 RULES = ("spaced_own_or_neutral", "olympic_games_at_defcon2", "defcon_suicide_with_alternative")
 
@@ -176,15 +190,24 @@ def in_action_round_at_defcon_2(state: ts.GameState) -> bool:
     return int(state.defcon) == 2 and state.current_phase == ts.Phase.ACTION_ROUND
 
 
-def has_influence_in(state: ts.GameState, player: ts.Player, regions: Sequence[int]) -> bool:
+def has_influence_in(state: ts.GameState, player: ts.Player, regions: Sequence[int],
+                    battleground_only: bool = False) -> bool:
     """Does `player` hold influence anywhere in these regions?
 
     This is what makes a gift of Operations dangerous: a coup needs a country the opponent has
     influence in, so with none in the regions still open at DEFCON 2 there is nothing to coup.
+
+    `battleground_only` is what the DEFCON rules actually need. Only a coup in a *battleground*
+    degrades DEFCON, so influence in a non-battleground is a country the opponent can take
+    without the game ending. Counting those made every one of these cards look dangerous in
+    positions where it was not.
     """
     want = set(int(r) for r in regions)
     for cid in range(84):
-        if int(ts.MapData.get_country_info(cid)["region"]) not in want:
+        info = ts.MapData.get_country_info(cid)
+        if int(info["region"]) not in want:
+            continue
+        if battleground_only and not bool(info["battleground"]):
             continue
         c = state.get_country(cid)
         inf = c.ussr_influence if player == ts.Player.USSR else c.us_influence
@@ -203,29 +226,55 @@ def discard_pile(state: ts.GameState) -> List[int]:
 
 
 def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
-    """Which cards this player must not play here, in this position."""
+    """Which cards this player must not play here, in this position.
+
+    "Must not" means the *opponent's* event fires whether the player likes it or not, and takes
+    DEFCON to 1 by the player's own action. A card whose own event the player chooses -- Olympic
+    Games, or We Will Bury You in the USSR's own hand -- is not here: declining the event is
+    free, so playing it for Operations is safe and only the Event is the mistake. Olympic Games
+    has its own rule for exactly that reason.
+
+    Only a coup in a **battleground** degrades DEFCON, so every "handed the opponent Operations"
+    card below is conditioned on battleground influence, not on influence anywhere.
+
+    Nuclear Subs exempts *US* battleground coups from degrading DEFCON, so it disarms the cards
+    that hand the US Operations -- and only those. The USSR's coups still degrade DEFCON with it
+    in play, so the cards in the US's own hand stay dangerous.
+    """
     out: Set[int] = set()
-    # Nuclear Subs stops US battleground coups degrading DEFCON, so the cards whose danger is
-    # "the opponent gets Operations and coups" stop being dangerous while it is active.
     subs = bool(state.has_flag(NUCLEAR_SUBS_ACTIVE))
 
     if player == ts.Player.USSR:
-        out.update({DUCK_AND_COVER, KAL_007, WE_WILL_BURY_YOU, HOW_I_LEARNED})
-        if not subs and has_influence_in(state, ts.Player.USSR, COUPABLE_AT_DEFCON_2):
-            out.update({CIA_CREATED, GRAIN_SALES})
-        if has_influence_in(state, ts.Player.USSR, AMERICAS):
-            out.add(JUNTA)
-        # Star Wars lets whoever leads the space race take a card out of the discard pile.
-        if int(state.ussr_space_track) < int(state.us_space_track) and \
-                any(c in DEGRADERS_IN_DISCARD for c in discard_pile(state)):
-            out.add(STAR_WARS)
-        # Five Year Plan discards a random USSR card; only a risk with one of these to hit.
+        # Both degrade DEFCON from their own text, with nothing for the USSR to avoid.
+        out.update({DUCK_AND_COVER, KAL_007})
+        if not subs:
+            # Each hands the US the Operations to coup with.
+            if has_influence_in(state, ts.Player.USSR, COUPABLE_AT_DEFCON_2,
+                                battleground_only=True):
+                out.update({CIA_CREATED, GRAIN_SALES})
+            # Tear Down This Wall grants its coup *in Europe*, overriding the DEFCON 2 rule that
+            # closes the region -- so European battlegrounds are exposed by this card alone.
+            if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
+                out.add(TEAR_DOWN_THIS_WALL)
+        # Five Year Plan discards a random USSR card and fires it if it is a US event, so it is
+        # dangerous exactly when one of the above is already in hand to be hit.
         if any(c in out for c in hand_of(state, ts.Player.USSR)):
             out.add(FIVE_YEAR_PLAN)
     else:
-        out.update({WE_WILL_BURY_YOU, HOW_I_LEARNED})
-        if not subs and has_influence_in(state, ts.Player.US, COUPABLE_AT_DEFCON_2):
+        # A USSR event that degrades DEFCON outright; the US cannot decline it.
+        out.add(WE_WILL_BURY_YOU)
+        # Hands the USSR the Operations to coup with.
+        if has_influence_in(state, ts.Player.US, COUPABLE_AT_DEFCON_2, battleground_only=True):
             out.add(LONE_GUNMAN)
+        # Ortega's free coup reaches a country adjacent to Nicaragua; Cuba is the battleground
+        # among them, so US influence there is what makes DEFCON reachable.
+        if int(state.get_country(CUBA).us_influence) > 0:
+            out.add(ORTEGA_ELECTED)
+        # Star Wars' pick is mandatory and fizzles only on an empty pile, so a discard holding
+        # anything that degrades DEFCON by the US's own hand is a risk taken by playing it.
+        if int(state.us_space_track) > int(state.ussr_space_track) and \
+                any(c in STAR_WARS_DISCARD_DANGERS for c in discard_pile(state)):
+            out.add(STAR_WARS)
     return out
 
 
