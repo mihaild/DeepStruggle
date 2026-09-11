@@ -53,11 +53,49 @@ def _classify_ending(state: ts.GameState, held_scoring: bool) -> str:
 
 #: Observation width -> layout name. The width is the one thing a trained model always carries
 #: with it, so it is what a probe can recover its layout from without being told.
-LAYOUT_BY_OBS_SIZE: Dict[int, str] = {
-    int(ts.OBS_SIZE_LEGACY): "legacy",
-    int(ts.OBS_SIZE_V21): "v2.1",
-    int(ts.OBS_SIZE_V23): "v2.3",
+#: Layout name -> the ts_engine constant that carries its width.
+_OBS_SIZE_ATTRS: Dict[str, str] = {
+    "legacy": "OBS_SIZE_LEGACY",
+    "v2.1": "OBS_SIZE_V21",
+    "v2.3": "OBS_SIZE_V23",
 }
+
+
+def _known_obs_sizes() -> Dict[int, str]:
+    """The widths *this* ts_engine build exposes.
+
+    Read with getattr, and missing constants are skipped rather than raised on. This runs at
+    import time, and reaching straight for `ts.OBS_SIZE_V23` meant an older build raised
+    AttributeError from inside `import bindings` -- which took down every consumer of the
+    package, the web server included, over a layout it never uses. A stale build is a real
+    problem and still gets a loud error, but from whatever actually needs the missing layout.
+    """
+    sizes: Dict[int, str] = {}
+    for name, attr in _OBS_SIZE_ATTRS.items():
+        width = getattr(ts, attr, None)
+        if width is not None:
+            sizes[int(width)] = name
+    return sizes
+
+
+LAYOUT_BY_OBS_SIZE: Dict[int, str] = _known_obs_sizes()
+
+
+def obs_size_for_layout(layout: str) -> int:
+    """Observation width for a layout name, or a rebuild instruction if this build lacks it."""
+    attr = _OBS_SIZE_ATTRS.get(layout)
+    if attr is None:
+        raise ValueError(f"unknown observation layout {layout!r}; "
+                         f"known layouts are {sorted(_OBS_SIZE_ATTRS)}")
+    width = getattr(ts, attr, None)
+    if width is None:
+        raise RuntimeError(
+            f"this ts_engine build does not define {attr}, so layout {layout!r} is "
+            f"unavailable. The build predates it -- rebuild the engine:\n"
+            f"    tools/scripts/check_engine_fresh.sh\n"
+            f"Widths this build does expose: "
+            f"{ {n: int(getattr(ts, a)) for n, a in _OBS_SIZE_ATTRS.items() if hasattr(ts, a)} }")
+    return int(width)
 
 
 def layout_for_model(model: Any) -> str:
@@ -193,9 +231,7 @@ class TsVectorizedEnv:
         # env that changed layout mid-run would simply be a way to feed a network garbage.
         self.layout = str(layout)
         self.obs_flags = int(obs_flags)
-        self.observation_size = int({"legacy": ts.OBS_SIZE_LEGACY,
-                                     "v2.1": ts.OBS_SIZE_V21,
-                                     "v2.3": ts.OBS_SIZE_V23}[self.layout])
+        self.observation_size = obs_size_for_layout(self.layout)
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:
