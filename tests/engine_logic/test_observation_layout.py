@@ -1,9 +1,8 @@
-"""The v2 observation layout: what it splits, and what it must keep merged.
+"""The observation layout: what it splits, and what it must keep merged.
 
-v2.1 widens the card block from 12 features to 13 to separate two things the legacy slot 0 could
-not: a card the opponent is *known* to hold, and a card that is not in the game yet. The second
-is public information the network was simply never given. The first is the point of the whole
-`CardLocation` split.
+The card block carries eight location slots, and two of them exist to separate what an observer
+can legitimately tell apart: a card the opponent is *known* to hold, and a card that is not in
+the game yet. Both were once merged into slot 0 along with the deck.
 
 The test that matters most here is the negative one. Slot 0 must go on merging the draw deck
 with the *unknown* part of the opponent's hand, because that is exactly the pair an observer
@@ -18,14 +17,12 @@ import pytest
 
 import ts_engine as ts
 
-BOARD = 84 * 28
-V21_FEATURES = 13
-LEGACY_FEATURES = 12
+BOARD = 84 * 26
+CARD_FEATURES = 14
 
 DECK_OR_HIDDEN, MY_HAND, KNOWN_OPPONENT_HAND = 0, 1, 2
 DISCARD, REMOVED, ONGOING, PEEKED, NOT_IN_GAME = 3, 4, 5, 6, 7
-V21_PROPERTY_BASE = 8
-LEGACY_PROPERTY_BASE = 7
+PROPERTY_BASE = 8
 
 
 def _fresh() -> ts.GameState:
@@ -35,67 +32,18 @@ def _fresh() -> ts.GameState:
 
 
 def _v2(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.1"), dtype=np.float32)
+    return np.asarray(ts.extract_observation(state, side), dtype=np.float32)
 
 
-def _legacy(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="legacy"), dtype=np.float32)
-
-
-def _card_slot(obs: np.ndarray, card: int, slot: int, features: int = V21_FEATURES) -> float:
+def _card_slot(obs: np.ndarray, card: int, slot: int, features: int = CARD_FEATURES) -> float:
     return float(obs[BOARD + (card - 1) * features + slot])
 
 
-def test_widths() -> None:
+def test_width() -> None:
+    """The width is a checkpoint contract: 84x26 board + 110x14 card + 100 global."""
     state = _fresh()
-    assert _legacy(state, ts.Player.US).shape == (ts.OBS_SIZE_LEGACY,) == (4293,)
-    assert _v2(state, ts.Player.US).shape == (ts.OBS_SIZE_V21,) == (3891,)
-
-
-def test_legacy_is_the_default() -> None:
-    """Existing callers pass no flag and must keep the layout their checkpoints were trained on."""
-    state = _fresh()
-    assert np.array_equal(np.asarray(ts.extract_observation(state, ts.Player.US)),
-                          _legacy(state, ts.Player.US))
-
-
-def test_v21_changes_only_the_card_block_and_drops_history() -> None:
-    """Two differences from legacy, and nothing else.
-
-    The card block widens by one feature, and the 512-float history block is gone -- it was never
-    written by anything, so it carried no information to lose. Every other section has to survive
-    untouched, and the tails cannot simply be compared end to end any more because they are now
-    different lengths.
-    """
-    state = _fresh()
-    for side in (ts.Player.US, ts.Player.USSR):
-        legacy, v21 = _legacy(state, side), _v2(state, side)
-        assert np.array_equal(legacy[:BOARD], v21[:BOARD]), "board features drifted"
-
-        l_glob = BOARD + 110 * LEGACY_FEATURES
-        v_glob = BOARD + 110 * V21_FEATURES
-        assert np.array_equal(legacy[l_glob:l_glob + 76], v21[v_glob:v_glob + 76]), (
-            "global features drifted")
-
-        # Legacy: globals, then 512 of history, then turn aggregates and active player.
-        # v2.1: globals, then straight to turn aggregates and active player.
-        assert np.array_equal(legacy[l_glob + 76 + 512:], v21[v_glob + 76:]), (
-            "turn aggregates or active player drifted")
-
-        # And the block that was dropped really was all zeros, so nothing was thrown away.
-        assert not legacy[l_glob + 76: l_glob + 76 + 512].any(), (
-            "the history block was non-zero, so dropping it discarded real information")
-
-
-def test_card_properties_survive_the_shift() -> None:
-    """The five property features move from 7..11 to 8..12 and must carry the same values."""
-    state = _fresh()
-    legacy, v2 = _legacy(state, ts.Player.US), _v2(state, ts.Player.US)
-    for card in (1, 30, 33, 110):
-        for k in range(5):
-            assert _card_slot(v2, card, V21_PROPERTY_BASE + k) == pytest.approx(
-                _card_slot(legacy, card, LEGACY_PROPERTY_BASE + k, LEGACY_FEATURES)), (
-                f"property {k} of card {card} changed value across layouts")
+    assert _v2(state, ts.Player.US).shape == (ts.OBS_SIZE,) == (3824,)
+    assert ts.OBS_SIZE == ts.OBS_SIZE_V23 == 84 * 26 + 110 * 14 + 100
 
 
 def test_unavailable_is_split_out_of_the_deck() -> None:
@@ -116,10 +64,6 @@ def test_unavailable_is_split_out_of_the_deck() -> None:
         assert _card_slot(obs, card, DECK_OR_HIDDEN) == 1.0
         assert _card_slot(obs, card, NOT_IN_GAME) == 0.0
 
-    # In the legacy layout both of those were the same slot, which is what v2 is fixing.
-    legacy = _legacy(state, ts.Player.US)
-    assert _card_slot(legacy, unavailable[0], DECK_OR_HIDDEN, LEGACY_FEATURES) == 1.0
-    assert _card_slot(legacy, deck[0], DECK_OR_HIDDEN, LEGACY_FEATURES) == 1.0
 
 
 def test_a_known_opponent_card_becomes_visible_and_an_unknown_one_does_not() -> None:
@@ -146,7 +90,7 @@ def test_a_known_opponent_card_becomes_visible_and_an_unknown_one_does_not() -> 
 
 
 #: global_features indices for the two public counts, from observation.cpp:230 and :240.
-GLOBAL_BASE = BOARD + 110 * V21_FEATURES
+GLOBAL_BASE = BOARD + 110 * CARD_FEATURES
 DRAW_PILE_COUNT = GLOBAL_BASE + 62
 OPPONENT_HAND_COUNT = GLOBAL_BASE + 70
 
@@ -169,7 +113,7 @@ def test_hidden_opponent_cards_are_indistinguishable_from_deck_cards() -> None:
     after = _v2(probe, ts.Player.US)
     moved = set(np.flatnonzero(before != after).tolist())
 
-    card_block = set(range(BOARD, BOARD + 110 * V21_FEATURES))
+    card_block = set(range(BOARD, BOARD + 110 * CARD_FEATURES))
     leaked = moved & card_block
     assert not leaked, (
         f"the card block changed at {sorted(leaked)[:8]} when a card moved into the opponent's "
@@ -192,7 +136,7 @@ def test_revealing_a_card_already_in_the_opponents_hand_changes_only_that_card()
 
     before, after = _v2(hidden, ts.Player.US), _v2(known, ts.Player.US)
     moved = set(np.flatnonzero(before != after).tolist())
-    base = BOARD + (held - 1) * V21_FEATURES
+    base = BOARD + (held - 1) * CARD_FEATURES
     assert moved == {base + DECK_OR_HIDDEN, base + KNOWN_OPPONENT_HAND}, (
         f"revealing one card should move exactly its two location slots, got {sorted(moved)}")
     assert after[base + KNOWN_OPPONENT_HAND] == 1.0
@@ -200,33 +144,24 @@ def test_revealing_a_card_already_in_the_opponents_hand_changes_only_that_card()
 
 
 def test_the_batch_runner_reports_its_own_width() -> None:
-    legacy_runner = ts.VectorizedBatchRunner(4, 7, "legacy")
-    v2_runner = ts.VectorizedBatchRunner(4, 7, "v2.1")
-    assert legacy_runner.obs_width == 4293 and legacy_runner.layout == "legacy"
-    assert v2_runner.obs_width == 3891 and v2_runner.layout == "v2.1"
-    assert np.asarray(legacy_runner.get_observations()).shape == (4, 4293)
-    assert np.asarray(v2_runner.get_observations()).shape == (4, 3891)
-
-
-def test_the_batch_runner_defaults_to_legacy() -> None:
-    """Every existing call site constructs a runner without the flag."""
-    runner = ts.VectorizedBatchRunner(2, 99)
-    assert runner.layout == "legacy" and runner.obs_width == 4293
+    runner = ts.VectorizedBatchRunner(4, 7)
+    assert runner.obs_width == ts.OBS_SIZE == 3824
+    assert np.asarray(runner.get_observations()).shape == (4, 3824)
 
 
 def test_runner_rows_match_the_single_state_extractor() -> None:
-    """The batched path and the one-off path must agree, in every layout."""
-    for layout in ("legacy", "v2.1", "v2.3"):
-        runner = ts.VectorizedBatchRunner(3, 555, layout)
+    """The batched path and the one-off path must agree."""
+    if True:
+        runner = ts.VectorizedBatchRunner(3, 555)
         rows = np.asarray(runner.get_observations())
         for i in range(3):
             state = runner.get_state(i)
             ctx = state.ctx()
             side = ctx.decision_player if ctx.decision_player != ts.Player.NONE \
                 else state.phasing_player
-            direct = np.asarray(ts.extract_observation(state, side, layout=layout))
+            direct = np.asarray(ts.extract_observation(state, side))
             assert np.array_equal(rows[i], direct), (
-                f"batched and direct observations disagree at env {i}, layout={layout}")
+                f"batched and direct observations disagree at env {i}")
 
 
 # --- The China Card ---------------------------------------------------------------------------
@@ -271,15 +206,6 @@ def test_the_engine_still_holds_the_china_card_out_of_play() -> None:
     assert state.get_card_location(CHINA) == ts.CardLocation.ONGOING_EVENT
 
 
-def test_the_legacy_layout_is_untouched_by_the_china_fix() -> None:
-    """Legacy has to keep reproducing the observation its checkpoints were trained against."""
-    state = _fresh()
-    holder = state.china_card_holder
-    obs = _legacy(state, holder)
-    assert _card_slot(obs, CHINA, ONGOING, LEGACY_FEATURES) == 1.0
-    assert _card_slot(obs, CHINA, MY_HAND, LEGACY_FEATURES) == 0.0
-
-
 # --- v2.3: Europe, the headline, and Chernobyl -------------------------------------------------
 
 V23_BOARD = 84 * 26
@@ -293,7 +219,7 @@ CHERNOBYL_REGION = CTX + 22
 
 
 def _v22(state: ts.GameState, side: ts.Player) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.3"), dtype=np.float32)
+    return np.asarray(ts.extract_observation(state, side), dtype=np.float32)
 
 
 def _v22_card(obs: np.ndarray, card: int, slot: int) -> float:
@@ -408,34 +334,13 @@ def _staged_decisions(max_games: int = 150):
     return out
 
 
-STAGED_CARDS = 1  # ts.OBS_FLAG_STAGED_CARDS
-
-
-def _v22f(state: ts.GameState, side: ts.Player, flags: int) -> np.ndarray:
-    return np.asarray(ts.extract_observation(state, side, layout="v2.3", flags=flags),
-                      dtype=np.float32)
-
-
-def test_without_the_flag_a_staged_card_stays_hidden() -> None:
-    """What arms F and F2 trained on. The width is the same either way, so a checkpoint
-    evaluated under the wrong setting would misread in silence -- which is the whole reason
-    this is a recorded flag and not a new layout."""
-    found = _staged_decisions()
-    assert found, "no staged-card decision reached; widen the search before trusting this"
-    for state, decider, card in found:
-        if state.get_card_location(card) == ts.CardLocation.PEEKED_TEMP:
-            continue
-        if ts.in_hand_of(state.get_card_location(card), decider):
-            continue
-        assert _v22_card(_v22f(state, decider, 0), card, DECK_OR_HIDDEN) == 1.0
-
-
 def test_a_card_being_decided_about_is_visible_to_the_decider() -> None:
-    """No flag: the card is at PEEKED_TEMP, which the card block already reads.
+    """The card is at PEEKED_TEMP, which the card block already reads.
 
     obs_flags::STAGED_CARDS existed only because Grain Sales showed a card without moving it,
     leaving the US choosing about a card that read as deck-or-hidden. Moving it makes the
-    visibility structural, and the flag has nothing left to do.
+    visibility structural, and the flag had nothing left to do -- it is retired, along with the
+    layout it was added to.
     """
     found = _staged_decisions()
     assert found, "no position reached where a card is being shown to a decider"

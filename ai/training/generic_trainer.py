@@ -20,12 +20,11 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.models.coldwar_net_v2 import (LAYOUTS, ColdWarNetV2, create_coldwar_net_v2,
-                                      create_for_layout, create_like)
+from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2, create_like
 from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
 from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
-from bindings.ts_env import TsVectorizedEnv
+from bindings.ts_env import OBS_LAYOUT_NAME, TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
@@ -37,7 +36,6 @@ from ai.eval.blunders import RULES as BLUNDER_RULES
 from ai.itsc_reference import ITSC_GAMES, ITSC_REFERENCE, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.batch_tournament import BatchMatchRunner
-from tools.lib.engine_config import to_mask as engine_config_to_mask
 from tools.lib.tournament_evaluator import TournamentEvaluator
 
 # TensorBoard is optional: a missing (or broken) install must never take down a
@@ -751,7 +749,6 @@ def evaluate_and_log_snapshot(
     blunder_games: int = 32,
     num_baselines: int = 0,
     max_snapshot_opponents: int = 4,
-    obs_flags: int = 0,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
@@ -765,8 +762,7 @@ def evaluate_and_log_snapshot(
         from ai.eval.decisive_probe import measure_decisive_batched
         # Batched: the single-state loop spends 96.9% of its time in the policy forward,
         # so handing the GPU one state at a time was the whole cost.
-        stats = measure_decisive_batched(model, num_envs=decisive_games,
-                                         obs_flags=obs_flags)
+        stats = measure_decisive_batched(model, num_envs=decisive_games)
         decisive_metrics = stats.as_metrics()
         print(f"  decisive: takes {stats.win_take_rate * 100:.0f}% of {stats.win_available} forced wins | "
               f"avoids {stats.loss_avoid_rate * 100:.0f}% of {stats.loss_avoidable} avoidable losses",
@@ -798,8 +794,7 @@ def evaluate_and_log_snapshot(
         from ai.eval.position_diagnostics import format_report, profile_self_play_batched
         # Batched: ~106k decisions/sec against ~890 for the one-state-at-a-time loop, so
         # this costs seconds rather than minutes of every snapshot evaluation.
-        profile = profile_self_play_batched(model, num_envs=position_games,
-                                            obs_flags=obs_flags)
+        profile = profile_self_play_batched(model, num_envs=position_games)
         position_metrics = profile["scalars"]
         print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty / "
               f"{profile['scalars']['diag/uncontrolled_battlegrounds_turn8']:.1f} uncontrolled "
@@ -1049,8 +1044,6 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 
 def train_pipeline(
     arch: str = "v2",
-    obs_layout: str = "legacy",
-    engine_config: Optional[Dict[str, bool]] = None,
     seed: Optional[int] = None,
     resume: Optional[str] = None,
     resume_every_snapshot: bool = True,
@@ -1106,22 +1099,6 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    if obs_layout not in ("legacy", "v2.1", "v2.3"):
-        raise ValueError(
-            f"obs_layout must be 'legacy', 'v2.1' or 'v2.3', got {obs_layout!r}")
-    # One decision, read by both the network's input width and the environment's output width.
-    # Deriving them separately is how they would come to disagree.
-    engine_config = dict(engine_config or {})
-    obs_flag_mask = engine_config_to_mask(engine_config)
-    legacy_obs = obs_layout == "legacy"
-    card_features = int(LAYOUTS[obs_layout]["card_features"])
-    # v2 also drops the history block, which is a constant zero vector in every layout, so the
-    # network loses the branch that encodes it rather than learning a bias from nothing.
-    use_history = bool(LAYOUTS[obs_layout]["use_history"])
-    if not legacy_obs and arch != "v2":
-        raise ValueError(
-            f"obs_layout={obs_layout} is only wired for arch=v2, got arch={arch!r}")
-
     out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -1145,10 +1122,9 @@ def train_pipeline(
     metadata_info = {
         "run_id": os.path.basename(out_dir),
         "arch": arch,
-        "obs_layout": obs_layout,
-        # Which engine features this run trained under. Anything absent is false, so a
-        # checkpoint from before a flag existed keeps the behaviour it learned.
-        "engine_config": dict(engine_config or {}),
+        # Recorded, not chosen. There is one observation layout; the field stays so a run's
+        # metadata still says which, and so older runs stay readable beside newer ones.
+        "obs_layout": OBS_LAYOUT_NAME,
         "seed": seed,
         "resumed_from": resume,
         "base_commit": git_commit,
@@ -1181,9 +1157,7 @@ def train_pipeline(
     elif arch == "v3":
         model = create_coldwar_net_v3(dev)
     elif arch == "v2":
-        # Shaped from the layout table rather than from card_features and use_history passed
-        # separately, so the two cannot be set to a combination no real layout has.
-        model = create_for_layout(obs_layout, dev)
+        model = create_coldwar_net_v2(dev)
     else:
         model = create_coldwar_net(dev)
 
@@ -1234,11 +1208,10 @@ def train_pipeline(
 
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
                               reward_calculator=reward_calc,
-                              start_provider=_start_provider,
-                              layout=obs_layout, obs_flags=obs_flag_mask)
+                              start_provider=_start_provider)
     else:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
-                              reward_calculator=reward_calc, layout=obs_layout, obs_flags=obs_flag_mask)
+                              reward_calculator=reward_calc)
 
     # Curriculum timing configuration
     if is_curriculum:
@@ -1371,7 +1344,6 @@ def train_pipeline(
         arch=arch,
         num_baselines=num_baselines,
         max_snapshot_opponents=max_snapshot_opponents,
-        obs_flags=obs_flag_mask,
     )
 
     def _refresh_start_pool(tag: str) -> Dict[str, float]:
@@ -1554,7 +1526,6 @@ def train_pipeline(
                 arch=arch,
                 num_baselines=num_baselines,
                 max_snapshot_opponents=max_snapshot_opponents,
-                obs_flags=obs_flag_mask,
             )
             pool_metrics = _refresh_start_pool(f"@{int(elapsed)}s")
             if pool_metrics:
@@ -1590,7 +1561,6 @@ def train_pipeline(
         arch=arch,
         num_baselines=num_baselines,
         max_snapshot_opponents=max_snapshot_opponents,
-        obs_flags=obs_flag_mask,
     )
 
     tb.flush()

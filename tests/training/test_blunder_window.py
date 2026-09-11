@@ -21,7 +21,11 @@ from typing import List
 
 import torch
 
+import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
+
+#: The engine emits one observation width; nothing here should hardcode it.
+OBS_DIM = int(ts.OBS_SIZE)
 
 TURNS: List[int] = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]
 PLAYERS: List[int] = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1]  # 1=US, -1=USSR; USSR last
@@ -34,7 +38,7 @@ def _build(term_reward: float, held_us: bool = False, held_ussr: bool = False,
     b = RolloutBuffer(buffer_size=len(TURNS), num_envs=1, device="cpu")
     for t in range(len(TURNS)):
         done = (t == len(TURNS) - 1)
-        b.add(obs=torch.zeros(1, 4293), masks=torch.zeros(1, 212, dtype=torch.uint8),
+        b.add(obs=torch.zeros(1, OBS_DIM), masks=torch.zeros(1, 212, dtype=torch.uint8),
               actions=torch.zeros(1, dtype=torch.long), log_probs=torch.zeros(1),
               rewards=torch.tensor([term_reward if done else 0.0]),
               dones=torch.tensor([float(done)]),

@@ -65,7 +65,7 @@ graph TD
         Core["ts::Engine (C++20 Zero-Allocation, 2.45M step/s)"]
         State["ts::GameState (4 KB Trivially Copyable)"]
         Mask["ts::ActionMask (212-dim Flat Action Space)"]
-        Obs["ts::Observation (4293-dim Float Tensor)"]
+        Obs["ts::Observation (3824-dim Float Tensor)"]
         Map["ts::MapData (84 Countries Graph)"]
         Cards["ts::CardData (110 Cards Event Logic)"]
     end

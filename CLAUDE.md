@@ -250,7 +250,10 @@ refactor:
 * A network reads fixed slices, so a changed observation does not fail — a checkpoint keeps
   loading and simply misreads. A change of *content* at the same width is quieter still: even the
   width assertions that guard the extraction call sites pass it. Arms F and F2 were briefly in
-  this state, evaluated against a v2.2 that had gained a feature after they trained on it.
+  this state, evaluated against a v2.2 that had gained a feature after they trained on it. The
+  *width* half of this is now caught: every model checks its input width in `extract_features`,
+  and `bindings.ts_env.check_obs_width` checks a model against the engine before a probe runs.
+  Content at the same width is still invisible to everything.
 * It invalidates every checkpoint and every `(seed, actions)` dataset (invariant 10), and resets
   the Elo ladder, so the cost is paid by every measurement that came before.
 
@@ -260,21 +263,27 @@ per-country or per-card bit for one card is not worth 84 or 110 floats — and *
 of a feature is worse than none**, which is why the turn-history block was dropped rather than
 completed.
 
-**Baseline (as of 2026-09-09):** observation layout **v2.1** (3,891 floats, 13 card features), which
-adds the two card-tracking slots — the opponent is known to hold this card, this card is not in the
-game yet — and drops the 512-float history block that was never written to. `--obs-layout` defaults
-to it for `--arch v2` (`legacy` elsewhere, since v2.1 is only wired for v2). The baseline checkpoint
-is `data/checkpoints/arm_E_cont_240to320/snapshot_final.pt` at 320,012,288 steps. It is not stronger
-than legacy — three budgets say the two are tied — but is the same strength for 134,496 fewer
-parameters, and carries the card signal. See `research/experiments.md` §23.
+**There is one observation layout: v2.3, 3,824 floats** — 84x26 board, 110x14 card, 100 global.
+`legacy` (4,293), `v2.1` (3,891) and `v2.2` (3,825) are **gone**, along with every way of asking
+for one: `ts.extract_observation(state, perspective)` and `ts.VectorizedBatchRunner(n, seed)` take
+no `layout` argument, `TsVectorizedEnv` takes no `layout` or `obs_flags`, and `tools/train.py` has
+no `--obs-layout` or `--engine-flag`. `ts.OBS_SIZE` is the width.
 
-**Layouts available:** `legacy` (4,293), `v2.1` (3,891), `v2.3` (3,824). **`v2.2` is retired and
-asking for it raises.** Its `ctx/temp_card_count` slot counted an array of staged card ids that no
-longer exists — every event that kept one now derives the same set from where the cards are — so
-the layout is one float narrower and cannot be reproduced. A v2.2 checkpoint has to be retired with
-it: run against v2.3 it would load cleanly and misread every input, which is the failure the
-refusal exists to prevent. `obs_flags::STAGED_CARDS` is retired with it and does nothing; the bit
-and its `engine_config` name stay reserved so runs that recorded them still read back.
+That is not tidying. A defaulted `layout` parameter was the mechanism behind **five** instances of
+one bug: a model reads fixed slices, so handing it the wrong layout returns a number instead of
+raising. On arm F, `v_win` from a legacy observation correlated **+0.05** with the truth and
+disagreed on sign 60% of the time; `position_diagnostics` reported a mean final turn of 1-2 against
+an actual 6.8 for the whole of arm H2. With one layout there is no argument to get wrong.
+
+Checkpoints from the retired layouts cannot be loaded and are not being converted — they all
+predate the starred-card fix, so they were trained against a different game. `check_obs_width`
+and `check_checkpoint_layout` refuse them by width rather than letting them misread.
+`obs_flags::STAGED_CARDS` stays in `constants.hpp` as a reserved bit so it is never reused with a
+different meaning, but nothing threads it anywhere and `tools/lib/engine_config.py` is gone.
+
+**Baseline:** arms H and H2 on v2.3 and the corrected engine. The strongest checkpoint is
+`data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt` at 240,058,368 steps, 93.0% against
+HeuristicBot. See `research/experiments.md` §25.
 
 **AI (`ai/`):** `models/coldwar_net.py` (ColdWarNet: GNN GraphConv + card + global ResNet with masked action heads, V1/V2/V3 variants auto-detected from checkpoints). `training/nash_pg.py` implements NashPG — PPO-style loss with KL regularization against a frozen reference policy snapshot (`π_ref`), refreshed periodically, to converge toward Nash equilibrium without cycling. `training/rollout_buffer.py` does trajectory storage + GAE (zero-sum, alternating between players). `rewards/reward_calculator.py` holds the reward strategies (`BlunderAwareRewardCalculator`, `ZeroSumTerminalReward`, `ShapedZeroSumReward`, `UsefulActionsReward`) — perspective-aligned and zero-sum across US/USSR.
 

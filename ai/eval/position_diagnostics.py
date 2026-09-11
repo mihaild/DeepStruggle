@@ -250,7 +250,6 @@ def profile_self_play_batched(
     base_seed: int = 820_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
-    obs_flags: int = 0,
 ) -> Dict[str, Any]:
     """Same profile, driven through the vectorized runner instead of one state at a time.
 
@@ -276,17 +275,17 @@ def profile_self_play_batched(
     import numpy as np
     import torch
 
-    from bindings.ts_env import TsVectorizedEnv, layout_for_model
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
 
     device = next(model.parameters()).device
     was_training = model.training
     model.eval()
 
-    # The layout comes from the model, never from the constructor's default: feeding a
-    # v2.1/v2.3 network legacy observations does not raise, it just makes it play at
-    # random, which is what every number this probe reported before this line existed.
-    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed,
-                          layout=layout_for_model(model), obs_flags=obs_flags)
+    # There is one layout now, so this probe cannot be handed the wrong one -- which is what
+    # every number it reported before that was true. What is still checked is the model's own
+    # width, because a mismatch means a checkpoint from a retired layout.
+    check_obs_width(model)
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
     obs, masks, _ = env.reset_all()
 
     reach: collections.Counter = collections.Counter()

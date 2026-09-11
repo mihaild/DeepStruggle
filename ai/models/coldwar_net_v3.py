@@ -72,7 +72,7 @@ class ColdWarNetV3(nn.Module):
 
     Key Architectural Innovations:
     1. Country Graph Transformer:
-       - 2-layer local GCN (28 -> 64 -> 64) augmented with learned Region ID embeddings (6 regions)
+       - 2-layer local GCN (26 -> 64 -> 64) augmented with learned Region ID embeddings (6 regions)
        - Multi-Head Country Self-Attention over all 84 countries for full-theatre regional coordination
     2. Card Registry & Location Masking:
        - Card feature encoder (12 -> 64) + learned card location embeddings (7 locations)
@@ -89,19 +89,22 @@ class ColdWarNetV3(nn.Module):
        - Auxiliary VP differential in [-20, 20]
     """
 
+    # Observation layout v2.3, the only layout the engine emits. Written against the legacy
+    # layout; retargeting it cost the constants below and the history branch, which had nothing
+    # to read even then -- ActionHistoryBuffer::record() is called nowhere.
     BOARD_OFFSET = 0
-    BOARD_SIZE = 84 * 28  # 2352
+    BOARD_FEATURES = 26
+    BOARD_SIZE = 84 * 26  # 2184
 
-    CARD_OFFSET = 2352
-    CARD_SIZE = 110 * 12  # 1320
+    CARD_OFFSET = 2184
+    CARD_FEATURES = 14
+    CARD_LOCATION_SLOTS = 8
+    CARD_SIZE = 110 * 14  # 1540
 
-    GLOBAL_OFFSET = 2352 + 1320  # 3672
-    GLOBAL_SIZE = 76
+    GLOBAL_OFFSET = 2184 + 1540  # 3724
+    GLOBAL_SIZE = 100
 
-    HIST_OFFSET = 3672 + 76  # 3748
-    HIST_SIZE = 16 * 32  # 512
-
-    TOTAL_OBS_SIZE = 4293
+    TOTAL_OBS_SIZE = 3824
     ACTION_SPACE_SIZE = 212
 
     # Flat Action Offsets
@@ -119,7 +122,7 @@ class ColdWarNetV3(nn.Module):
         self.node_dim = node_dim
 
         # 1. Country Representation: GCN + Region Positional Embedding + Graph Self-Attention
-        self.gconv1 = GraphConvLayer(28, node_dim)
+        self.gconv1 = GraphConvLayer(self.BOARD_FEATURES, node_dim)
         self.gconv2 = GraphConvLayer(node_dim, node_dim)
         self.region_emb = nn.Embedding(6, node_dim)
 
@@ -138,11 +141,11 @@ class ColdWarNetV3(nn.Module):
 
         # 2. Card Representation: Feature Projection + Location Embedding
         self.card_fc = nn.Sequential(
-            nn.Linear(12, node_dim),
+            nn.Linear(self.CARD_FEATURES, node_dim),
             nn.LayerNorm(node_dim),
             nn.GELU(),
         )
-        self.card_loc_emb = nn.Embedding(7, node_dim)
+        self.card_loc_emb = nn.Embedding(self.CARD_LOCATION_SLOTS, node_dim)
         self.card_proj = nn.Sequential(
             nn.Linear(node_dim * 2, 256),
             nn.LayerNorm(256),
@@ -168,26 +171,16 @@ class ColdWarNetV3(nn.Module):
         )
         self.cross_b2c_ln = nn.LayerNorm(node_dim)
 
-        # 4. Global Scalars & Flags Encoder (76 features -> 128)
+        # 4. Global Scalars & Flags Encoder (100 features -> 128)
         self.global_proj = nn.Sequential(
-            nn.Linear(76, 128),
+            nn.Linear(self.GLOBAL_SIZE, 128),
             nn.LayerNorm(128),
             nn.GELU(),
         )
 
-        # 5. History Sequence Encoder (16 tokens x 32 features -> 128)
-        self.hist_conv = nn.Sequential(
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, padding=1),
-            nn.GELU(),
-            nn.Flatten(),
-            nn.Linear(16 * 32, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-        )
-
-        # 6. Fusion Trunk: 256 (board) + 256 (card) + 128 (global) + 128 (hist) = 768 -> hidden_dim
+        # 5. Fusion Trunk: 256 (board) + 256 (card) + 128 (global) = 640 -> hidden_dim
         self.fusion_in = nn.Sequential(
-            nn.Linear(768, hidden_dim),
+            nn.Linear(640, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
         )
@@ -241,11 +234,16 @@ class ColdWarNetV3(nn.Module):
             h_board: (B, 84, node_dim)
             h_cards: (B, 110, node_dim)
         """
+        if obs.shape[-1] != self.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"observation is {obs.shape[-1]} floats wide; this model reads "
+                f"{self.TOTAL_OBS_SIZE}. Every slice below is taken at a fixed offset, so a "
+                f"mismatched vector is misread rather than rejected.")
         batch_size = obs.shape[0]
 
-        # 1. Board Graph Features: (B, 84, 28)
+        # 1. Board Graph Features: (B, 84, 26)
         board_raw = obs[:, self.BOARD_OFFSET : self.BOARD_OFFSET + self.BOARD_SIZE]
-        board_nodes = board_raw.view(batch_size, 84, 28)
+        board_nodes = board_raw.view(batch_size, 84, self.BOARD_FEATURES)
 
         # Local graph convolutions
         h_board = self.gconv1(board_nodes, self.norm_adj)
@@ -259,13 +257,13 @@ class ColdWarNetV3(nn.Module):
         attn_board_self, _ = self.board_self_attn(h_board, h_board, h_board)
         h_board = self.board_self_ln(h_board + attn_board_self)
 
-        # 2. Card Features: (B, 110, 12)
+        # 2. Card Features: (B, 110, 14)
         card_raw = obs[:, self.CARD_OFFSET : self.CARD_OFFSET + self.CARD_SIZE]
-        card_nodes = card_raw.view(batch_size, 110, 12)
+        card_nodes = card_raw.view(batch_size, 110, self.CARD_FEATURES)
         h_cards = self.card_fc(card_nodes)  # (B, 110, 64)
 
-        # Add card location embeddings (features 0..6 represent 1-hot location)
-        card_loc_indices = torch.argmax(card_nodes[:, :, 0:7], dim=-1)  # (B, 110)
+        # Add card location embeddings (features 0..7 are the 1-hot location)
+        card_loc_indices = torch.argmax(card_nodes[:, :, 0:self.CARD_LOCATION_SLOTS], dim=-1)
         h_cards = h_cards + self.card_loc_emb(card_loc_indices)
 
         # Location-based key padding mask: mask cards removed from the game (index 4)
@@ -292,17 +290,12 @@ class ColdWarNetV3(nn.Module):
         card_max, _ = torch.max(h_cards, dim=1)
         e_card = self.card_proj(torch.cat([card_mean, card_max], dim=-1))  # (B, 256)
 
-        # 5. Global Scalar Features: (B, 76) -> (B, 128)
+        # 5. Global Scalar Features: (B, 100) -> (B, 128)
         global_raw = obs[:, self.GLOBAL_OFFSET : self.GLOBAL_OFFSET + self.GLOBAL_SIZE]
         e_global = self.global_proj(global_raw)
 
-        # 6. History ConvNet Features: (B, 16, 32) -> (B, 128)
-        hist_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
-        hist_tokens = hist_raw.view(batch_size, 16, 32).transpose(1, 2)
-        e_hist = self.hist_conv(hist_tokens)
-
-        # 7. ResNet Fusion Trunk
-        fused = torch.cat([e_board, e_card, e_global, e_hist], dim=-1)  # (B, 768)
+        # 6. ResNet Fusion Trunk
+        fused = torch.cat([e_board, e_card, e_global], dim=-1)  # (B, 640)
         h_trunk = self.fusion_in(fused)
         for block in self.res_blocks:
             h_trunk = block(h_trunk)

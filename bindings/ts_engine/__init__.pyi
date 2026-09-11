@@ -754,15 +754,13 @@ def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction: ...
 
 def encode_micro_action(arg0: GameState, arg1: MicroAction, /) -> int: ...
 
-def extract_observation(state: GameState, perspective: Player, layout: str = 'legacy', flags: int = 0) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
+def extract_observation(state: GameState, perspective: Player) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]: ...
 
 OBS_FLAG_STAGED_CARDS: int = 1
 
-OBS_SIZE_LEGACY: int = 4293
-
-OBS_SIZE_V21: int = 3891
-
 OBS_SIZE_V23: int = 3824
+
+OBS_SIZE: int = 3824
 
 class ActionMask:
     @staticmethod
@@ -775,16 +773,10 @@ class ActionMask:
     def encode_micro_action(arg0: GameState, arg1: MicroAction, /) -> int: ...
 
 class VectorizedBatchRunner:
-    def __init__(self, num_envs: int, base_seed: int = 12345, layout: str = 'legacy', flags: int = 0) -> None: ...
+    def __init__(self, num_envs: int, base_seed: int = 12345) -> None: ...
 
     @property
     def obs_width(self) -> int: ...
-
-    @property
-    def layout(self) -> str: ...
-
-    @property
-    def obs_flags(self) -> int: ...
 
     def reset_game(self, arg0: int, arg1: int, /) -> None: ...
 

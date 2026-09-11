@@ -62,27 +62,29 @@ class ResBlock(nn.Module):
 class ColdWarNet(nn.Module):
     """ColdWarNet: Multi-modal Policy-Value network for Twilight Struggle."""
 
+    # Observation layout v2.3, the only layout the engine emits. This architecture was written
+    # against the legacy layout; retargeting it cost four constants and the history branch,
+    # which had nothing to read even then -- ActionHistoryBuffer::record() is called nowhere.
     BOARD_OFFSET = 0
-    BOARD_SIZE = 84 * 28 # 2352
+    BOARD_FEATURES = 26
+    BOARD_SIZE = 84 * 26 # 2184
 
-    CARD_OFFSET = 2352
-    CARD_SIZE = 110 * 12 # 1320
+    CARD_OFFSET = 2184
+    CARD_FEATURES = 14
+    CARD_SIZE = 110 * 14 # 1540
 
-    GLOBAL_OFFSET = 2352 + 1320 # 3672
-    GLOBAL_SIZE = 76
+    GLOBAL_OFFSET = 2184 + 1540 # 3724
+    GLOBAL_SIZE = 100
 
-    HIST_OFFSET = 3672 + 76 # 3748
-    HIST_SIZE = 16 * 32 # 512
-
-    TOTAL_OBS_SIZE = 4293
+    TOTAL_OBS_SIZE = 3824
     ACTION_SPACE_SIZE = 212
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
-        # 1. Board Graph Encoder (84 nodes x 28 features)
-        self.gconv1 = GraphConvLayer(28, 64)
+        # 1. Board Graph Encoder (84 nodes x 26 features)
+        self.gconv1 = GraphConvLayer(self.BOARD_FEATURES, 64)
         self.gconv2 = GraphConvLayer(64, 64)
         self.board_proj = nn.Sequential(
             nn.Linear(64 * 2, 256), # Mean + Max pooling over 84 nodes
@@ -90,9 +92,9 @@ class ColdWarNet(nn.Module):
             nn.GELU(),
         )
 
-        # 2. Card Registry Encoder (110 cards x 12 features)
+        # 2. Card Registry Encoder (110 cards x 14 features)
         self.card_fc = nn.Sequential(
-            nn.Linear(12, 32),
+            nn.Linear(self.CARD_FEATURES, 32),
             nn.GELU(),
         )
         self.card_proj = nn.Sequential(
@@ -101,26 +103,16 @@ class ColdWarNet(nn.Module):
             nn.GELU(),
         )
 
-        # 3. Global Scalars & Flags Encoder (76 features)
+        # 3. Global Scalars & Flags Encoder (100 features)
         self.global_proj = nn.Sequential(
-            nn.Linear(76, 128),
+            nn.Linear(self.GLOBAL_SIZE, 128),
             nn.LayerNorm(128),
             nn.GELU(),
         )
 
-        # 4. History Sequence Encoder (16 tokens x 32 features)
-        self.hist_conv = nn.Sequential(
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, padding=1),
-            nn.GELU(),
-            nn.Flatten(),
-            nn.Linear(16 * 32, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-        )
-
-        # 5. Fusion Trunk (256 + 256 + 128 + 128 = 768 -> hidden_dim)
+        # 4. Fusion Trunk (256 board + 256 cards + 128 global = 640 -> hidden_dim)
         self.fusion_in = nn.Sequential(
-            nn.Linear(768, hidden_dim),
+            nn.Linear(640, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
         )
@@ -167,36 +159,36 @@ class ColdWarNet(nn.Module):
 
     def extract_features(self, obs: torch.Tensor) -> torch.Tensor:
         """Extracts fused latent state representation."""
+        if obs.shape[-1] != self.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"observation is {obs.shape[-1]} floats wide; this model reads "
+                f"{self.TOTAL_OBS_SIZE}. Every slice below is taken at a fixed offset, so a "
+                f"mismatched vector is misread rather than rejected.")
         batch_size = obs.shape[0]
 
-        # 1. Board Graph Features: (B, 84, 28)
+        # 1. Board Graph Features: (B, 84, 26)
         board_raw = obs[:, self.BOARD_OFFSET : self.BOARD_OFFSET + self.BOARD_SIZE]
-        board_nodes = board_raw.view(batch_size, 84, 28)
+        board_nodes = board_raw.view(batch_size, 84, self.BOARD_FEATURES)
         h_board = self.gconv1(board_nodes, self.norm_adj)
         h_board = self.gconv2(h_board, self.norm_adj) # (B, 84, 64)
         board_mean = torch.mean(h_board, dim=1) # (B, 64)
         board_max, _ = torch.max(h_board, dim=1) # (B, 64)
         e_board = self.board_proj(torch.cat([board_mean, board_max], dim=-1)) # (B, 256)
 
-        # 2. Card Features: (B, 110, 12)
+        # 2. Card Features: (B, 110, 14)
         card_raw = obs[:, self.CARD_OFFSET : self.CARD_OFFSET + self.CARD_SIZE]
-        card_nodes = card_raw.view(batch_size, 110, 12)
+        card_nodes = card_raw.view(batch_size, 110, self.CARD_FEATURES)
         h_cards = self.card_fc(card_nodes) # (B, 110, 32)
         card_mean = torch.mean(h_cards, dim=1) # (B, 32)
         card_max, _ = torch.max(h_cards, dim=1) # (B, 32)
         e_card = self.card_proj(torch.cat([card_mean, card_max], dim=-1)) # (B, 256)
 
-        # 3. Global Features: (B, 76)
+        # 3. Global Features: (B, 100)
         global_raw = obs[:, self.GLOBAL_OFFSET : self.GLOBAL_OFFSET + self.GLOBAL_SIZE]
         e_global = self.global_proj(global_raw) # (B, 128)
 
-        # 4. History Features: (B, 16, 32) -> transpose to (B, 32, 16) for Conv1D
-        hist_raw = obs[:, self.HIST_OFFSET : self.HIST_OFFSET + self.HIST_SIZE]
-        hist_tokens = hist_raw.view(batch_size, 16, 32).transpose(1, 2)
-        e_hist = self.hist_conv(hist_tokens) # (B, 128)
-
-        # 5. Fusion Trunk
-        fused = torch.cat([e_board, e_card, e_global, e_hist], dim=-1) # (B, 768)
+        # 4. Fusion Trunk
+        fused = torch.cat([e_board, e_card, e_global], dim=-1) # (B, 640)
         h = self.fusion_in(fused)
         for block in self.res_blocks:
             h = block(h)

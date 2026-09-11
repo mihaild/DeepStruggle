@@ -197,13 +197,12 @@ def test_batched_profile_mean_turn_matches_an_independent_drain() -> None:
     class FirstLegal(torch.nn.Module):
         """Deterministic: always take the lowest-indexed legal action.
 
-        It ignores the observation entirely, but must still declare a width: the profiler now
-        derives the env's layout from the model rather than defaulting to legacy, and refuses
-        to guess for a model that does not say. Legacy here so it matches the reference env
-        built below, which takes the constructor default.
+        It ignores the observation entirely, but must still declare a width: the profiler
+        checks the model against the engine's own and refuses one that does not match, because
+        a mismatched vector is misread rather than rejected.
         """
 
-        TOTAL_OBS_SIZE = int(ts.OBS_SIZE_LEGACY)
+        TOTAL_OBS_SIZE = int(ts.OBS_SIZE)
 
         def __init__(self) -> None:
             super().__init__()

@@ -2,6 +2,8 @@
 
 from typing import Dict, Generator, Tuple, Optional
 import torch
+
+import ts_engine as ts
 import numpy as np
 
 # Advantages below this magnitude (post-normalisation) carry effectively no learning
@@ -33,7 +35,7 @@ class RolloutBuffer:
         self,
         buffer_size: int,
         num_envs: int,
-        obs_dim: int = 4293,
+        obs_dim: int = int(ts.OBS_SIZE),
         action_dim: int = 212,
         device: torch.device | str = "cuda",
     ):

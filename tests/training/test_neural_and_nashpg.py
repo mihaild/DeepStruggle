@@ -82,7 +82,7 @@ class TestObservationExtraction:
 
         for p in [ts.Player.US, ts.Player.USSR]:
             obs = ts.extract_observation(state, p)
-            assert obs.shape == (4293,)
+            assert obs.shape == (int(ts.OBS_SIZE),)
             assert obs.dtype == np.float32
             assert not np.isnan(obs).any(), "Observation must not contain NaNs"
             assert not np.isinf(obs).any(), "Observation must not contain Infs"
@@ -98,12 +98,13 @@ class TestObservationExtraction:
 
         # US perspective
         obs_us = ts.extract_observation(state, ts.Player.US)
-        off_10 = 2352 + (10 - 1) * 12
-        off_5 = 2352 + (5 - 1) * 12
+        board, features = 84 * 26, 14
+        off_10 = board + (10 - 1) * features
+        off_5 = board + (5 - 1) * features
         assert obs_us[off_10 + 1] == 1.0  # MY_HAND
         assert obs_us[off_5 + 0] == 1.0   # Hidden: folded into DRAW_DECK/UNKNOWN (slot 0)
         assert obs_us[off_5 + 2] == 0.0   # Slot 2 must be 0
-        assert obs_us[3672 + 70] > 0.0    # Public opponent hand count
+        assert obs_us[board + 110 * features + 70] > 0.0  # Public opponent hand count
 
         # USSR perspective
         obs_ussr = ts.extract_observation(state, ts.Player.USSR)
@@ -120,7 +121,7 @@ class TestColdWarNet:
     def test_forward_pass_and_masking(self, device):
         model = create_coldwar_net(device)
         B = 4
-        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
         dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
         dummy_mask[:, [0, 10, 110, 119, 211]] = 1
 
@@ -139,7 +140,7 @@ class TestColdWarNet:
         model = create_coldwar_net(device)
         model.eval()
         B = 8
-        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
         dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
         dummy_mask[:, [5, 12, 110, 211]] = 1
 
@@ -164,13 +165,13 @@ class TestVectorizedEnvironment:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=42)
         obs, masks, _ = env.reset_all()
 
-        assert obs.shape == (num_envs, 4293)
+        assert obs.shape == (num_envs, int(ts.OBS_SIZE))
         assert masks.shape == (num_envs, 212)
 
         for _ in range(20):
             actions = [int(np.random.choice(np.where(masks[i] > 0)[0])) for i in range(num_envs)]
             obs, masks, rewards, dones, info = env.step(actions)
-            assert obs.shape == (num_envs, 4293)
+            assert obs.shape == (num_envs, int(ts.OBS_SIZE))
             assert masks.shape == (num_envs, 212)
             assert rewards.shape == (num_envs,)
             assert dones.shape == (num_envs,)
@@ -253,6 +254,13 @@ class TestTrainingPipelines:
 
 class TestNeuralBotAndArena:
     def test_neural_bot_selection(self):
+        # The bot plays from the engine's own observation and nothing else: the Python
+        # reconstruction it used to fall back on reproduced a retired layout, and never
+        # reproduced even that exactly.
+        import base64
+        st = ts.GameState()
+        ts.Engine.init_game(st, 4242)
+        engine_obs = np.asarray(ts.extract_observation(st, ts.Player.USSR), dtype=np.float32)
         state_dict = {
             "turn": 1,
             "action_round": 0,
@@ -260,6 +268,7 @@ class TestNeuralBotAndArena:
             "defcon": 5,
             "victory_points": 0,
             "countries": [{"id": 14, "us_influence": 0, "ussr_influence": 3}],
+            "observation_b64": base64.b64encode(engine_obs.tobytes()).decode("ascii"),
         }
         legal_actions = {
             "decision_type": int(ts.DecisionType.POINT_NODE),
@@ -288,7 +297,7 @@ class TestColdWarNetV3:
     def test_v3_forward_pass_and_dual_pointers(self, device):
         model = create_coldwar_net_v3(device)
         B = 4
-        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
         dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
         dummy_mask[:, [0, 50, 110, 119, 150, 211]] = 1
 
@@ -322,7 +331,7 @@ class TestColdWarNetV4:
     def test_v4_forward_pass_belief_and_oracle(self, device):
         model = create_coldwar_net_v4(device)
         B = 4
-        dummy_obs = torch.randn(B, 4293, device=device)
+        dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
         dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
         dummy_mask[:, [0, 50, 110, 119, 150, 211]] = 1
 
@@ -369,9 +378,10 @@ class TestColdWarNetV4:
             assert f_oracle is not None
             assert torch.allclose(eo_oracle, f_oracle, atol=1e-6), "evaluate_oracle must match forward_all oracle"
 
-        # Verify positional embeddings exist for history transformer
-        assert hasattr(model, "hist_pos_emb")
-        assert model.hist_pos_emb.shape == (1, 16, 64)
+        # No action-history branch: the observation has never carried one --
+        # ActionHistoryBuffer::record() is called nowhere -- so the transformer that read it,
+        # and its positional embeddings, went with the retired layouts.
+        assert not hasattr(model, "hist_pos_emb")
 
 
     def test_oracle_guided_nash_pg_trainer_step(self, device):
