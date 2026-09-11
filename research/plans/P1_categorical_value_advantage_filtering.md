@@ -202,6 +202,53 @@ One caveat on scope: this measures the head trained on `returns_vp`, which is
 construction. A head on `returns_win` (option C below) could differ, and should be measured the
 same way rather than assumed.
 
+### Result: advantage filtering is worth about +25 Elo, and costs ~8% throughput
+
+Two seeds at quantile 0.5, 80M steps, against the reused control. **Judged by the pooled
+head-to-head over four late snapshots per arm** (`metrics.md` §20.7), every pairing at 100 games
+per side:
+
+| | vs control, pooled | Elo |
+|:---|---:|---:|
+| filter seed 20260921 | 1,688/3,200 = 52.8% [51.0, 54.5] | **+19** |
+| filter seed 20260922 | 1,746/3,200 = 54.6% [52.8, 56.3] | **+32** |
+| both seeds pooled | 3,434/6,400 = **53.7%** [52.4, 54.9] | **+25** |
+
+Both seeds agree in sign and magnitude and both intervals exclude 50%, so the effect is real —
+but small, and nowhere near what the anchor win rate suggested. (The pooled interval is
+optimistic: snapshots within an arm are correlated, so the effective n is below 6,400. The
+agreement between two independent seeds is the stronger evidence, not the width of that band.)
+
+**The anchor win rate was actively misleading here, and this is the reusable finding.** The two
+filtering seeds came in at **90.0%** and **78.2%** against HeuristicBot — 11.8 points apart, with
+the control's 80.6% sitting between them. Played against *each other* those same two arms score
+**50.4%** [48.7, 52.2], a gap of **+3 Elo**. So an 11.8-point spread on the anchor metric
+corresponded to no strength difference at all.
+
+Seed 20260921 alone, read on the anchor, gave +9.4 points over the control with non-overlapping
+Wilson intervals and a two-proportion z of 4.20. That statistic was wrong in kind, not degree: it
+treats the 500 evaluation games as the only source of variance and is blind to seed variance,
+which dominates. `metrics.md` §20.6's "a continuation seed is worth ~15 Elo" does not bound this —
+that was measured for continuations within a lineage, and these are cold starts.
+
+**Wall-clock: filtering is ~8% *slower*, not 2.5× faster.** 14,264 steps/s against the 15,580 a
+matched arm gets alone on the same GPU. The implementation masks the surrogate *after* computing
+it (`nash_pg.py:443-451`), so every forward pass, the reference-net forward, the value loss and
+the backward still run on the full minibatch, and it adds a `torch.quantile` per minibatch.
+Ataraxos's 2.5× must come from keeping fewer samples, which is a different change.
+
+**Decision rule, and why it cannot be applied as written.** It asks for "Elo-neutral-or-better at
+matched steps **and** faster in wall-clock". The first clause passes (+25) and the second cannot
+be met by this implementation at all. Trading the two: 8% fewer steps per unit wall-clock costs
+roughly 7 Elo, taking the H2 lineage's ~65 Elo per doubling as the rate (§27, and it carries
+±16), so the net at matched wall-clock is about **+18 Elo**. That is a modest adopt, not a
+headline.
+
+**Recommendation: adopt at quantile 0.5**, and rewrite the rule's wall-clock clause to describe
+what this implementation can actually do. Worth queueing separately: a version that drops the
+filtered samples *before* the forward pass, which is where Ataraxos's speedup would have to come
+from — that is the change the 2.5× claim was about, and it has not been tested.
+
 **Lesson for the next loss-function change.** Three of the four arms died to a units or scale
 mismatch that no test caught, because every P1 test exercised `two_hot` in isolation. Tests that
 start from what the buffer actually holds, and a startup check that the value and policy terms
