@@ -15,8 +15,8 @@ import ts_engine as ts
 from ai.eval.blunders import (CIA_CREATED, DUCK_AND_COVER, FIVE_YEAR_PLAN, GRAIN_SALES,
                               HOW_I_LEARNED, JUNTA, KAL_007, LONE_GUNMAN, NUCLEAR_SUBS_ACTIVE,
                               OLYMPIC_GAMES, ORTEGA_ELECTED, STAR_WARS, TEAR_DOWN_THIS_WALL,
-                              STAR_WARS_USSR_DANGERS, WE_WILL_BURY_YOU,
-                              defcon_suicide_cards)
+                              WE_WILL_BURY_YOU, defcon_suicide_cards,
+                              us_played_degraders)
 from ai.eval.positions import PositionBuilder
 
 ALGERIA, CUBA, NICARAGUA, MOROCCO = 47, 71, 69, 46
@@ -120,23 +120,62 @@ def test_the_ussr_may_play_its_own_defcon_cards_for_operations() -> None:
                                                         ts.Player.USSR)
 
 
-def test_star_wars_is_deadly_for_the_ussr_whatever_the_degrader_is() -> None:
-    """The USSR plays it for Operations, the US event fires, and the US picks the card.
+def test_the_unconditional_degraders_reach_the_ussr_anywhere() -> None:
+    """Seed 7107 of h2_480M_provoked_* is this game.
 
-    Any degrader the USSR gets no say over is enough -- there is no influence condition, because
-    the ones that degrade from their own text reach the USSR wherever it stands. Seed 7107 of
-    h2_480M_provoked_* is that game: the US took Duck and Cover out of a pile that also held
-    Junta, and the USSR lost from a hand that held two safe alternatives.
+    The US took Duck and Cover out of a pile that also held Junta, and the USSR lost from a hand
+    holding two safe alternatives. These three degrade from their own text, so where the USSR
+    stands is irrelevant -- the position below has no influence anywhere couppable.
     """
-    for degrader in STAR_WARS_USSR_DANGERS:
+    for degrader in (DUCK_AND_COVER, KAL_007, HOW_I_LEARNED):
         pos = ussr(discard=(degrader,), us_space=3, ussr_space=1)
         assert STAR_WARS in defcon_suicide_cards(pos, ts.Player.USSR), degrader
 
 
-def test_the_ussr_star_wars_clause_needs_no_influence_anywhere() -> None:
-    """Duck and Cover degrades from its own text; where the USSR stands is irrelevant."""
-    bare = ussr(discard=(DUCK_AND_COVER,), us_space=3, ussr_space=1)
-    assert STAR_WARS in defcon_suicide_cards(bare, ts.Player.USSR)
+def test_the_coup_degraders_each_need_a_battleground_in_their_own_region() -> None:
+    """Junta reaches the Americas, Tear Down This Wall Europe, the Ops cards either."""
+    # Junta: exposed by Cuba (Americas battleground), not by Algeria (African one).
+    assert STAR_WARS in defcon_suicide_cards(
+        ussr(discard=(JUNTA,), influence=((CUBA, ts.Player.USSR, 2),),
+             us_space=3, ussr_space=1), ts.Player.USSR)
+    assert STAR_WARS not in defcon_suicide_cards(
+        ussr(discard=(JUNTA,), influence=((ALGERIA, ts.Player.USSR, 2),),
+             us_space=3, ussr_space=1), ts.Player.USSR)
+    # Grain Sales / CIA Created hand the US Operations, so either region exposes them.
+    for region_country in (CUBA, ALGERIA):
+        assert STAR_WARS in defcon_suicide_cards(
+            ussr(discard=(GRAIN_SALES,), influence=((region_country, ts.Player.USSR, 2),),
+                 us_space=3, ussr_space=1), ts.Player.USSR), region_country
+    # Tear Down This Wall is Europe-locked: the opening's East Germany influence exposes it.
+    assert STAR_WARS in defcon_suicide_cards(
+        ussr(discard=(TEAR_DOWN_THIS_WALL,), clear_europe=False,
+             us_space=3, ussr_space=1), ts.Player.USSR)
+    assert STAR_WARS not in defcon_suicide_cards(
+        ussr(discard=(TEAR_DOWN_THIS_WALL,), influence=((CUBA, ts.Player.USSR, 2),),
+             us_space=3, ussr_space=1), ts.Player.USSR)
+
+
+def test_a_coup_degrader_with_nothing_to_coup_is_not_a_danger() -> None:
+    """No battleground exposed anywhere means the pick cannot reach DEFCON."""
+    for degrader in (JUNTA, GRAIN_SALES, CIA_CREATED, TEAR_DOWN_THIS_WALL):
+        pos = ussr(discard=(degrader,), us_space=3, ussr_space=1)
+        assert STAR_WARS not in defcon_suicide_cards(pos, ts.Player.USSR), degrader
+
+
+def test_five_year_plan_in_the_discard_needs_a_degrader_in_hand() -> None:
+    bare = ussr(hand=(23, 27), discard=(FIVE_YEAR_PLAN,), us_space=3, ussr_space=1)
+    assert STAR_WARS not in defcon_suicide_cards(bare, ts.Player.USSR)
+    loaded = ussr(hand=(DUCK_AND_COVER, 23), discard=(FIVE_YEAR_PLAN,),
+                  us_space=3, ussr_space=1)
+    assert STAR_WARS in defcon_suicide_cards(loaded, ts.Player.USSR)
+
+
+def test_nuclear_subs_leaves_the_direct_degraders_alone() -> None:
+    """It exempts US *coups*, so the coup-based degraders go and the direct ones stay."""
+    pos = ussr(discard=(JUNTA,), influence=((CUBA, ts.Player.USSR, 2),),
+               us_space=3, ussr_space=1, flags=(NUCLEAR_SUBS_ACTIVE,))
+    assert JUNTA not in us_played_degraders(pos, subs=True)
+    assert DUCK_AND_COVER in us_played_degraders(pos, subs=True)
 
 
 def test_the_ussr_star_wars_clause_still_needs_the_space_lead_and_a_degrader() -> None:
@@ -162,9 +201,10 @@ def test_cards_the_ussr_can_decline_are_not_star_wars_dangers() -> None:
         assert STAR_WARS not in defcon_suicide_cards(pos, ts.Player.USSR), safe
 
 
-def test_nuclear_subs_disarms_the_ussr_star_wars_clause_too() -> None:
-    """The coup at the end of that chain is the US's, which is what Nuclear Subs exempts."""
-    pos = ussr(discard=(JUNTA,), us_space=3, ussr_space=1, flags=(NUCLEAR_SUBS_ACTIVE,))
+def test_nuclear_subs_disarms_a_coup_only_discard() -> None:
+    """With only Junta in the pile and its coup exempted, there is nothing left to fear."""
+    pos = ussr(discard=(JUNTA,), influence=((CUBA, ts.Player.USSR, 2),),
+               us_space=3, ussr_space=1, flags=(NUCLEAR_SUBS_ACTIVE,))
     assert STAR_WARS not in defcon_suicide_cards(pos, ts.Player.USSR)
 
 

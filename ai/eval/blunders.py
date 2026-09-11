@@ -81,21 +81,11 @@ AMERICAS = (CENTRAL_AMERICA, SOUTH_AMERICA)
 #: can steer it off a battleground -- avoidable, and not a suicide. Taken by the US after the
 #: *USSR* played Star Wars for Operations, the USSR has no such say, which is why Junta appears
 #: in the USSR's list below instead.
-
-#: What makes Star Wars fatal for the *USSR*: the US picks from the discard and plays it at once,
-#: so the question is only whether the pile holds something that degrades DEFCON **without the
-#: USSR getting a say**. Where the card hands the *USSR* the Operations or the choice, the USSR
-#: simply declines and nothing happens -- which is why Lone Gunman, Ortega and Olympic Games are
-#: not here. We Will Bury You is not here either: the US playing it degrades DEFCON by the US's
-#: own action, so the US would be picking its own loss.
-#:
-#: No influence condition. Duck and Cover and KAL-007 degrade from their own text and reach the
-#: USSR wherever it stands; seed 7107 of `h2_480M_provoked_*` is that game, with Duck and Cover
-#: taken out of a pile that also held Junta.
-STAR_WARS_USSR_DANGERS = (DUCK_AND_COVER, KAL_007, HOW_I_LEARNED, JUNTA, TEAR_DOWN_THIS_WALL,
-                          CIA_CREATED, GRAIN_SALES, FIVE_YEAR_PLAN)
 STAR_WARS_DISCARD_DANGERS = (OLYMPIC_GAMES, DUCK_AND_COVER, KAL_007, CIA_CREATED, GRAIN_SALES,
                              TEAR_DOWN_THIS_WALL, WE_WILL_BURY_YOU, HOW_I_LEARNED)
+
+#: Star Wars against the *USSR* is position-dependent -- each degrader carries its own condition
+#: -- so it is computed by `us_played_degraders` rather than listed as a constant.
 
 RULES = ("spaced_own_or_neutral", "olympic_games_at_defcon2", "defcon_suicide_with_alternative")
 
@@ -243,6 +233,46 @@ def discard_pile(state: ts.GameState) -> List[int]:
             if state.get_card_location(c) == ts.CardLocation.DISCARD_PILE]
 
 
+def us_played_degraders(state: ts.GameState, subs: bool) -> Set[int]:
+    """Cards that take DEFCON to 1 if the *US* plays them now, with no USSR decision in between.
+
+    This is what makes Star Wars fatal for the USSR: the USSR plays it for Operations, the US
+    event fires, and the US takes a card out of the discard and plays it at once. The USSR gets
+    no say in the pick, so the question is only whether the pile holds something that degrades
+    without asking it anything.
+
+    Which is not the same as "degrades DEFCON". Three shapes:
+
+    * **Unconditional** -- Duck and Cover, KAL-007 degrade from their own text, and How I
+      Learned sets the level outright with the US choosing it. These reach the USSR wherever it
+      stands, which is why there is no blanket influence condition on this set.
+    * **Conditional on a coup having somewhere to land** -- CIA Created and Grain Sales hand the
+      US Operations (Africa or the Americas); Junta grants a free coup in the Americas only;
+      Tear Down This Wall grants one in Europe, overriding the DEFCON 2 closure. Each needs USSR
+      influence in a battleground of *its own* region, and each is a US coup, so Nuclear Subs
+      exempts them.
+    * **Conditional on the hand** -- Five Year Plan fires a random USSR card, so it is dangerous
+      exactly when one of the above is already in hand to be hit.
+
+    Cards that hand the *USSR* the Operations or the choice are absent: it simply declines. That
+    is Lone Gunman, Ortega and Olympic Games. We Will Bury You is absent for a different reason --
+    the US playing it degrades DEFCON by the US's own action, so the US would be picking its own
+    loss.
+    """
+    out: Set[int] = {DUCK_AND_COVER, KAL_007, HOW_I_LEARNED}
+    if not subs:
+        if has_influence_in(state, ts.Player.USSR, COUPABLE_AT_DEFCON_2,
+                            battleground_only=True):
+            out.update({CIA_CREATED, GRAIN_SALES})
+        if has_influence_in(state, ts.Player.USSR, AMERICAS, battleground_only=True):
+            out.add(JUNTA)
+        if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
+            out.add(TEAR_DOWN_THIS_WALL)
+    if any(c in out for c in hand_of(state, ts.Player.USSR)):
+        out.add(FIVE_YEAR_PLAN)
+    return out
+
+
 def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
     """Which cards this player must not play here, in this position.
 
@@ -274,13 +304,13 @@ def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
             # closes the region -- so European battlegrounds are exposed by this card alone.
             if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
                 out.add(TEAR_DOWN_THIS_WALL)
-            # Star Wars is a US event, so the USSR playing it for Operations fires it: with
-            # the US ahead on the track the US takes a card from the discard and plays it at
-            # once. Any degrader the USSR gets no say over is enough -- see the note on
-            # STAR_WARS_USSR_DANGERS.
-            if (int(state.us_space_track) > int(state.ussr_space_track)
-                    and any(c in STAR_WARS_USSR_DANGERS for c in discard_pile(state))):
-                out.add(STAR_WARS)
+        # Star Wars is a US event, so the USSR playing it for Operations fires it: with the US
+        # ahead on the track the US takes a card out of the discard and plays it at once. Outside
+        # the Nuclear Subs guard, because the unconditional degraders in that set are not coups
+        # and Nuclear Subs does not touch them.
+        if (int(state.us_space_track) > int(state.ussr_space_track)
+                and any(c in us_played_degraders(state, subs) for c in discard_pile(state))):
+            out.add(STAR_WARS)
         # Five Year Plan discards a random USSR card and fires it if it is a US event, so it is
         # dangerous exactly when one of the above is already in hand to be hit.
         if any(c in out for c in hand_of(state, ts.Player.USSR)):
