@@ -114,6 +114,44 @@ against the control.
 | categorical #2 | 3% vs anchor, clip collapsed to 3% | `v_vp` returned real VP where the buffer's contract is normalised (`last_ret_vp = last_v_vp.clone()`), poisoning the bootstrap 20× |
 | categorical #3 (`--vf-coef` sweep) | not run to completion | diagnosed the CE/MSE scale gap: `vf_coef=0.5` weighted a ~1.5 cross-entropy against a ~0.04 MSE, a 102× imbalance |
 | categorical #4 (`--vf-coef 0.0125`) | **18%** vs anchor at 80M | trained stably but weak — the real defect, below |
+| categorical #5 (b3809aa, additive) | **80.0%** vs anchor at 80M | healthy; indistinguishable from the control |
+
+### Result: the categorical VP head is a null
+
+Both arms ran 80M steps on seed 20260921, differing only in the auxiliary VP head.
+
+| | scalar control | categorical |
+|:---|---:|---:|
+| anchor win rate (last 5 evals, 500 games) | 80.6% [76.9, 83.8] | **80.0%** [76.3, 83.3] |
+| as US / as USSR | 73.6% / 87.6% | 74.0% / 86.0% |
+| entropy · clip · EV · adv_std_raw | 1.105 · 18.6% · +0.841 · 0.200 | 1.109 · 18.8% · +0.843 · 0.199 |
+| mean ply · USSR win rate | 93.4 · 47.0% | 93.7 · 46.5% |
+
+The Wilson intervals overlap almost entirely and every internal metric matches to the third
+decimal. That is the expected outcome of the fix rather than a surprise: once the win objective
+is bit-for-bit the control's, the distribution only shapes the trunk, and on this evidence the
+trunk did not need the help.
+
+Calibration, which is what the decision rule actually turns on, is **mixed** (8,235 and 7,691
+predictions, `ai/eval/critic_calibration.py`, same seed):
+
+| | control | categorical |
+|:---|---:|---:|
+| Brier (lower better) | **0.1790** | 0.1888 |
+| corr(prediction, win) | **+0.538** | +0.492 |
+| bucket gap at [+0.6, +1.0) | +0.103 | **+0.045** |
+| bucket gap at [−1.0, −0.6) | −0.113 | **−0.087** |
+
+Both critics are *under-confident* — the realised outcome is more extreme than predicted at both
+ends. The categorical head is noticeably less so, so its **reliability** is better. But it hedges:
+it made 1,809 extreme predictions against the control's 2,262 and put 2,575 in the middle bucket
+against 2,156. That costs **resolution**, and Brier, which nets reliability against resolution,
+comes out worse. So calibration did not improve on the summary metric the plan named; one
+component of it did.
+
+**Recommendation: do not adopt on this evidence.** Elo-neutral was permitted only if calibration
+improved, and it did not on balance. One seed per cell, so this rules out a large effect, not a
+small one — the plan's own design calls for 2 seeds.
 
 Attempt #4 is the informative one: it ran clean for 80M steps with a balanced loss and still lost
 to the control by 66 points. Its internal metrics were out of the control's range in a consistent
