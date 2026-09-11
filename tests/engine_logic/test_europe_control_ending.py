@@ -101,3 +101,30 @@ def test_the_human_reference_splits_europe_control_out_of_twenty_vp() -> None:
     total = sum(v for k, v in ITSC_REFERENCE.items()
                 if k.startswith("ending_frac_") and "_won_" not in k)
     assert total == pytest.approx(1.0, abs=2e-3)
+
+
+def test_final_scoring_also_records_a_europe_control_win() -> None:
+    """The instant-win check runs twice, and both places must set the flag.
+
+    execute_final_scoring has its own Europe check ahead of the region totals: reaching turn 10
+    still controlling Europe wins there rather than scoring out. It leaves the same +/-20 and
+    GAME_OVER as any other 20 VP win, so without the flag that path reported "20 VP" while the
+    mid-game path reported "Europe Control" -- the same ending classified two ways depending on
+    when it happened.
+    """
+    state = _state_with_europe_controlled_by(ts_engine.Player.USSR)
+    assert not state.has_flag(ts_engine.EffectBits.EUROPE_CONTROL_WIN)
+
+    ts_engine.Scoring.execute_final_scoring(state)
+
+    assert state.current_phase == ts_engine.Phase.GAME_OVER
+    assert int(state.victory_points) == -20
+    assert state.has_flag(ts_engine.EffectBits.EUROPE_CONTROL_WIN)
+    assert classify_game_ending_reason(state) == "Europe Control"
+
+
+def test_final_scoring_without_europe_control_is_not_flagged() -> None:
+    state = ts_engine.GameState()
+    ts_engine.Engine.init_game(state, 42)
+    ts_engine.Scoring.execute_final_scoring(state)
+    assert not state.has_flag(ts_engine.EffectBits.EUROPE_CONTROL_WIN)

@@ -2617,3 +2617,173 @@ other 20 VP win, so every such game was counted as `20vp`. `effect_bits::EUROPE_
 makes it visible, and what it shows is that the models never win this way. Winning Europe
 outright is a strategic plan the policy has no representation of, which is consistent with §25's
 finding that it plays tactics and not strategy.
+
+---
+
+## 26. The NashPG KL penalty: there is no intransitivity to prevent, and removing it still costs 169 Elo
+
+NashPG regularises the active policy toward a frozen reference with weight `eta`
+(`policy_loss = ppo_loss + eta * kl_div - ent_coef * entropy`). The justification is anti-cycling
+— stopping the policy beating what it just beat and losing to what came before. Nothing here had
+ever checked that this game *has* cycles, and the term is a standing tax on exploration either
+way.
+
+**Arm I**: `--eta 0`, cold start, 80M steps, otherwise arm H2's recipe and its seed (20260921).
+One variable.
+
+### The penalty is not buying anti-cycling
+
+Every pair on each run's own snapshot ladder, 7 snapshots from 20M to 80M, 21 pairs x 200 games:
+
+| | 3-cycles among triples | later snapshot losing to an earlier one |
+|:---|---:|---:|
+| arm H2 (KL on) | **0** | **0 of 21** |
+| arm I (KL off) | **0** | **5 of 21** |
+
+**No intransitivity in either arm.** The hypothesis that motivated the term is not supported at
+this budget: no triple anywhere cycles, with or without the regulariser.
+
+### What it *is* buying is monotonicity
+
+H2's ladder is perfectly ordered — every later snapshot beats every earlier one, all 21 pairs.
+Arm I's is not. It peaks around 60M and then goes backwards: 80M scores **41% against its own
+60M** and **38% against its own 70M**, and 70M scores 40% against 60M. (Two of the five
+regressions, at 49%, are inside the ±3.5% noise of a 200-game cell; those three are not.)
+
+So the failure mode without the penalty is not a cycle. It is a run that stops improving and
+drifts, while still being totally ordered — it goes *down* a ladder rather than around a loop.
+
+### And it costs
+
+- **arm I vs arm H2, pooled over four late snapshots a side, 3,200 games: 27.5%, -169 Elo.**
+- against the anchor: 86.1% (H2) against **79.4%** (arm I).
+
+### No sign of the exploration it was supposed to be taxing
+
+The premise was that the penalty suppresses exploration. It does not show up:
+
+| self-play, 1,000 games | mean ply | 20 VP | Europe Control | final scoring | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| H2 @80M (KL on) | 97.1 | 50.8% | 0.0% | 8.1% | 41.0% | 0.1% |
+| arm I @80M (KL off) | 91.7 | **62.0%** | 0.0% | 7.3% | 30.7% | 0.0% |
+| humans (ITS) | ~119.9 | 41.5% | 1.6% | 29.0% | 11.7% | 14.9% |
+
+Entropy ran 1.00-1.11 without the penalty against H2's 1.09-1.18 *with* it — no higher. Wargames
+stayed at 0% and Europe Control at 0%, so none of the rare lines opened up. What did change is
+that arm I plays a narrower game: 62% of its endings are VP-track wins against H2's 51%, and its
+games are shorter. Unpenalised, the policy specialised rather than explored.
+
+`kl_div` is still computed at `eta = 0`, and it ran 0.08-0.18 against H2's 0.02-0.06 — so the
+policy did drift several times further from `pi_ref` when nothing pulled it back. The drift is
+real; it simply did not buy anything.
+
+**Keep `eta = 0.1`.** Not for the reason it was introduced — there are no cycles here to
+prevent — but because it is worth 169 Elo as a stabiliser, and the exploration it was suspected
+of costing is not visible.
+
+---
+
+## 27. 240M -> 480M: it beats its own past and stops beating anything else
+
+Arm H2 resumed from 240M and ran a full doubling to 480,051,200 steps (31,886s). Same recipe and
+seed throughout. The leg was meant to test whether returns were flattening — 80M→160M was worth
++55 Elo, 160M→240M only +16.
+
+**They are not flattening.** Pooled over four late snapshots a side, 3,200 games:
+**H2 @480M beats H2 @240M 59.2%, +65 Elo** — more than the earlier doubling. The +16 at 240M
+was a plateau, not the start of a curve.
+
+### But nothing else agrees that it got better
+
+| | vs its own 240M | vs HeuristicBot |
+|:---|---:|---:|
+| H2 @240M | — | **92.2%** |
+| H2 @480M | **59.2% (+65 Elo)** | **90.6%** |
+
+Against a fixed external opponent it went *down* 1.6 points over 240M steps of training. That is
+the signature of a policy improving against its own lineage rather than improving.
+
+The internal ladder says the same thing. Seven snapshots spanning the leg, 21 pairs × 200 games,
+and almost every cell sits between 42% and 56% — a 240M-step spread that barely separates. The
+250M snapshot beats 290M, 330M, 410M and 450M, and holds 480M to 49%. Six of 21 pairs have a
+later snapshot losing to an earlier one.
+
+One 3-cycle appears (250M > 450M > 370M > 250M) — the first ever observed here. It should not be
+read as intransitivity: with 21 cells clustered near 50% and 200 games each (±3.5%), one cycle
+among 35 triples is what chance produces. §26 found none across two arms; this is not evidence
+against that.
+
+### The real damage: the sides came apart
+
+Binned by 20M, the USSR win rate climbs monotonically and does not come back:
+
+| window | 240-260 | 280-300 | 320-340 | 360-380 | 400-420 | 440-460 | 460-480 |
+|:---|---:|---:|---:|---:|---:|---:|---:|
+| USSR win % | 57.3 | 58.1 | 61.4 | 62.1 | 65.8 | 71.3 | **72.2** |
+
+Against a human 49.9%. This is not the oscillation that fooled the monitor at 160M — it is
+monotone across twelve consecutive windows. `experiments.md` §4.5 recorded a standing 60–65%
+USSR imbalance historically; at 480M it is worse than it has ever been. Self-play against a
+partner that is 22 points worse as the US is training both sides on a distorted distribution.
+
+### Game shape barely moved
+
+| self-play, 1,000 games | ply | 20 VP | Europe Ctl | final | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| H2 @240M | 104.2 | 47.1% | 0.0% | 11.8% | 36.4% | 4.7% |
+| H2 @480M | 109.5 | 47.0% | 0.0% | 11.5% | 35.4% | **6.1%** |
+| humans (ITS) | ~119.9 | 41.5% | 1.6% | 29.0% | 11.7% | 14.9% |
+
+240M steps bought ~5 plies and 1.4 points of Wargames. DEFCON 1 is still three times the human
+rate, final scoring still a third of it, Europe Control still never.
+
+### Reading
+
+Budget is no longer the binding constraint. The run is churning — moving in policy space, beating
+what it just was, and not getting better against anything outside itself, while the two sides
+drift 22 points apart. Doubling again is not the next experiment. The side imbalance is, because
+a self-play equilibrium this lopsided is training both policies on a board neither would face
+against a balanced opponent.
+
+### 27.1 The DEFCON-1 endings are mostly one specific mistake, and it has a name
+
+34.1% of 220 self-play games from the 480M snapshot end at DEFCON 1. Reading three of them by
+hand suggested two different things were wearing one label, so the cause was counted.
+
+**82.7% are *provoked*** — the loser was pushed into it rather than walking into it. The
+mechanism is a single move: the model plays an **opponent-associated card for Operations while
+DEFCON is 2**. An opponent's card fires its event when played for Ops; the event lowers DEFCON;
+DEFCON reaches 1; and `resolve_defcon_one_loss` makes the *phasing* player the loser — which is
+the player who just played it.
+
+The card in play when DEFCON crossed 2 → 1:
+
+| card | share of DEFCON-1 endings |
+|:---|---:|
+| Grain Sales to Soviets | **25.3%** |
+| "Lone Gunman" | 14.7% |
+| Duck and Cover | 12.0% |
+| Olympic Games | 9.3% |
+| Summit | 8.0% |
+| CIA Created | 6.7% |
+| Tear Down this Wall | 5.3% |
+| Five Year Plan | 5.3% |
+
+Every one of those except Summit and Tear Down this Wall is already on the DEFCON-suicide list in
+`ai/eval/blunders.py`. So the blunder tracker is naming the right cards — the puzzle was why its
+*rate* looks small while the endings look common.
+
+**The rate is per opportunity, and opportunities are frequent.** Across six logged games the
+tracker reported 1/32, 1/21, 0/15, 1/7, no chances, 1/13 — about 4 blunders in 88 opportunities,
+or 3-8%. But that is 7 to 32 opportunities *per game*, so the absolute incidence is roughly one
+every two games, and each one is frequently fatal. A low rate against a large denominator is
+still a game-ending mistake most of the time it happens.
+
+**Summit is the opposite case and should not be counted with them.** At 8% of these endings the
+model is not dying, it is killing: the non-phasing player wins the Summit roll and chooses to
+lower DEFCON, ending the game while the *opponent* is phasing. In `h2_480M_selfplay_20260503`
+the US does exactly this at turn 9 AR7 and wins +20. That is a correct tactic, not a blunder,
+and it means the 34.1% figure mixes a real error with a real skill.
+
+Compare the human 11.7%. The gap is not that humans never play an opponent's card for Ops at
+DEFCON 2 — it is that they check the card first.

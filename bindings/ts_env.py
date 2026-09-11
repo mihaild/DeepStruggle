@@ -51,10 +51,27 @@ def _classify_ending(state: ts.GameState, held_scoring: bool) -> str:
     return key
 
 
-#: The engine's one observation layout, by the name runs record in their metadata. There is
-#: nothing to select -- this exists so a run still says which layout it trained on, and so runs
-#: from either side of the retirement stay readable beside each other.
+#: The engine's one observation layout, by the name runs record in their metadata. A plain
+#: string, deliberately: nothing here reads an engine constant at import time -- see obs_size().
 OBS_LAYOUT_NAME: str = "v2.3"
+
+
+def obs_size() -> int:
+    """The observation width this ts_engine build emits, or a rebuild instruction.
+
+    Read through getattr at *call* time, never at import time. Reaching straight for a constant
+    at module scope meant a build that predated it raised AttributeError from inside
+    `import bindings`, which took down every consumer of the package -- a web server included,
+    over a layout it never used. A stale build is a real problem and still gets a loud error,
+    but from whatever actually needs the engine rather than from the import.
+    """
+    width = getattr(ts, "OBS_SIZE", None)
+    if width is None:
+        raise RuntimeError(
+            "this ts_engine build does not define OBS_SIZE, so it predates the single-layout "
+            "refactor. Rebuild the engine:\n"
+            "    tools/scripts/check_engine_fresh.sh")
+    return int(width)
 
 
 def check_obs_width(model: Any) -> int:
@@ -73,9 +90,9 @@ def check_obs_width(model: Any) -> int:
     starred-card fix, so they were trained against a different game.
     """
     width = int(getattr(model, "TOTAL_OBS_SIZE", 0) or 0)
-    if width != int(ts.OBS_SIZE):
+    if width != obs_size():
         raise ValueError(
-            f"this model reads {width} floats; the engine emits {int(ts.OBS_SIZE)} (layout "
+            f"this model reads {width} floats; the engine emits {obs_size()} (layout "
             f"v2.3). A checkpoint from a retired layout cannot be run: it would load cleanly "
             f"and misread every input.")
     return width
@@ -84,8 +101,11 @@ def check_obs_width(model: Any) -> int:
 class TsEnv:
     """Gymnasium-like single-game environment wrapper for ts::Engine."""
 
-    OBSERVATION_SIZE = int(ts.OBS_SIZE)
     ACTION_SPACE_SIZE = 212
+
+    @property
+    def OBSERVATION_SIZE(self) -> int:
+        return obs_size()
 
     def __init__(self, seed: Optional[int] = None, reward_calculator: Optional[RewardCalculator] = None):
         self.state = ts.GameState()
@@ -170,10 +190,11 @@ class TsEnv:
 class TsVectorizedEnv:
     """High-throughput C++ vectorized batch environment executing N parallel games."""
 
-    # The legacy width. An instance built with legacy_obs=False reports the v2 width instead,
-    # so callers should read `self.observation_size` rather than the class attribute.
-    OBSERVATION_SIZE = int(ts.OBS_SIZE)
     ACTION_SPACE_SIZE = 212
+
+    @property
+    def OBSERVATION_SIZE(self) -> int:
+        return obs_size()
 
     def __init__(
         self,
@@ -186,7 +207,7 @@ class TsVectorizedEnv:
         self.num_envs = num_envs
         self.base_seed = base_seed
         self.auto_reset = auto_reset
-        self.observation_size = int(ts.OBS_SIZE)
+        self.observation_size = obs_size()
         # Optional source of mid-game start positions. Called with an env index after that
         # env resets; returning a GameState starts it there instead of from a fresh deal,
         # returning None leaves the real opening. The provider owns cloning and reseeding:
