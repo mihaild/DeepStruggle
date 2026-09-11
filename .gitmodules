@@ -1,6 +1,3 @@
 [submodule "external/struggler"]
 	path = external/struggler
 	url = https://github.com/mihaild/struggler
-[submodule "external/ts-blockchain"]
-	path = external/ts-blockchain
-	url = https://github.com/trevelyan/ts-blockchain

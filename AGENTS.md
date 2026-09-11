@@ -175,8 +175,7 @@ graph TD
 │
 ├── external/                   # External integrations & differential engines
 │   ├── README.md               # Integration guide
-│   ├── struggler/              # External reference engine (Python)
-│   └── ts-blockchain/          # External reference engine (headless Node.js)
+│   └── struggler/              # External reference engine (Python)
 │
 ├── tests/                      # Python pytest suite (1360 tests with external/struggler on
 │                                # PYTHONPATH per the invocation below; 969 without it, since the
@@ -204,10 +203,10 @@ graph TD
 │   │   └── test_e2e_space_race.py  # Playwright E2E browser tests
 │   └── differential/             # Cross-engine fuzzing -- WIP/unstable, gated behind the
 │       │                         # differential_fuzz marker / --run-fuzz flag, not run by default
-│       ├── test_differential_fuzzing.py # 3-way fuzz: native/struggler/ts-blockchain
+│       ├── test_differential_fuzzing.py # cross-engine fuzz: native vs struggler
 │       ├── test_unified_differential.py # Parameterized differential runs vs each external engine
-│       └── engine_interface.py, native_adapter.py, struggler_adapter.py, blockchain_adapter.py,
-│           blockchain_bridge.js # Shared EngineProtocol adapters for the three engines
+│       └── engine_interface.py, native_adapter.py, struggler_adapter.py
+│                                # Shared EngineProtocol adapters
 │
 ├── rules/                      # Formal spec the engine implements (tracked, except the PDF)
 │   ├── Rules_Final.pdf         # [GIT IGNORED] Official rulebook -- GMT Games copyright, not ours to commit

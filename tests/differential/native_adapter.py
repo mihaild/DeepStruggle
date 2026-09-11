@@ -363,18 +363,6 @@ def assert_board_equal(ts_state: ts_engine.GameState, external: Any) -> None:
             )
         return
 
-    # If external is BlockchainClient or raw state dict
-    state_dict = external.get_state() if hasattr(external, "get_state") else external
-    if isinstance(state_dict, dict) and "countries" in state_dict:
-        from tests.differential.blockchain_adapter import country_id_to_bc
-        for cid in range(84):
-            c_ts = ts_state.get_country(cid)
-            bc_key = country_id_to_bc(cid)
-            c_bc = state_dict["countries"][bc_key]
-            assert (c_ts.us_influence, c_ts.ussr_influence) == (c_bc["us"], c_bc["ussr"]), (
-                f"{ts_engine.MapData.get_country_name(cid)} ({bc_key}): ts=({c_ts.us_influence}/{c_ts.ussr_influence}) vs bc=({c_bc['us']}/{c_bc['ussr']})"
-            )
-        return
 
     # If external is Struggler SEngine
     if hasattr(external, "board") and hasattr(external.board, "influence"):

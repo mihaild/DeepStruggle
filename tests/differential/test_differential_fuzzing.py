@@ -1,7 +1,7 @@
 """
 Twilight Struggle AI: Unified Differential Fuzzing Suite
 ========================================================
-Comprehensive multi-engine differential fuzzing across Native C++, Struggler, and ts-blockchain:
+Comprehensive differential fuzzing between the native C++ engine and Struggler:
 - Full coverage of all 110 cards/events across Early War, Mid War, and Late War eras.
 - Random hand distribution to US and USSR players.
 - Random card play adhering to exact game/event probabilities:
@@ -35,11 +35,6 @@ from tests.differential.engine_interface import (
 )
 from tests.differential.native_adapter import NativeEngine, NativeGameState
 from tests.differential.struggler_adapter import StrugglerEngine, StrugglerGameState
-from tests.differential.blockchain_adapter import (
-    BlockchainEngineAdapter,
-    BlockchainGameState,
-    BlockchainClient,
-)
 
 # Load full 110-card database
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -73,32 +68,22 @@ class DiscrepancyRecord:
 RECORDED_DISCREPANCIES: list[DiscrepancyRecord] = []
 
 
-@pytest.fixture(scope="module")
-def shared_bc_client() -> Generator[BlockchainClient, None, None]:
-    """Module-scoped background Node.js RPC daemon for ts-blockchain."""
-    client = BlockchainClient()
-    yield client
-    client.close()
-
-
-def create_implementation(name: str, shared_client: BlockchainClient | None = None) -> tuple[EngineProtocol, GameStateProtocol]:
+def create_implementation(name: str) -> tuple[EngineProtocol, GameStateProtocol]:
     """Factory creating an (engine, state) implementation pair."""
     if name == "native":
         return NativeEngine(), NativeGameState()
     elif name == "struggler":
         return StrugglerEngine(), StrugglerGameState()
-    elif name == "blockchain":
-        return BlockchainEngineAdapter(), BlockchainGameState(client=shared_client)
     raise ValueError(f"Unknown engine implementation: {name}")
 
 
-@pytest.fixture(params=["struggler", "blockchain"])
+@pytest.fixture(params=["struggler"])
 def engine_pair(
-    request: pytest.FixtureRequest, shared_bc_client: BlockchainClient
+    request: pytest.FixtureRequest,
 ) -> tuple[tuple[EngineProtocol, GameStateProtocol], tuple[EngineProtocol, GameStateProtocol]]:
     """Yields ((native_engine, native_state), (external_engine, external_state))."""
     pair_a = create_implementation("native")
-    pair_b = create_implementation(request.param, shared_bc_client)
+    pair_b = create_implementation(request.param)
     return pair_a, pair_b
 
 
@@ -434,7 +419,7 @@ def _execute_fuzzed_card_game_rollout(
                 # Influence placement
                 lp_a = eng_a.get_legal_placements(st_a, acting_p)
                 lp_b = eng_b.get_legal_placements(st_b, acting_p)
-                if lp_a != lp_b and not (other_engine_name == "blockchain" and (lp_a - lp_b) <= {"Czechoslovakia"}):
+                if lp_a != lp_b:
                     raise AssertionError(
                         f"Legal operations placement options mismatch:\n"
                         f"  Scenario: {scenario} [placing influence]\n"
@@ -517,7 +502,7 @@ def _execute_fuzzed_card_game_rollout(
 # =============================================================================
 
 class TestUnifiedFuzzingDifferential:
-    """Parameterized multi-action differential fuzzing across Native, Struggler, and Blockchain engines."""
+    """Parameterized multi-action differential fuzzing between the native engine and Struggler."""
 
     @pytest.mark.parametrize("fuzz_seed", list(range(1001, 1016)))
     def test_fuzz_multi_step_placement_walk(
@@ -547,12 +532,7 @@ class TestUnifiedFuzzingDifferential:
             lp_a = eng_a.get_legal_placements(state_a, player)
             lp_b = eng_b.get_legal_placements(state_b, player)
 
-            if isinstance(state_b, BlockchainGameState):
-                diff_a_b = lp_a - lp_b
-                assert diff_a_b <= {"Czechoslovakia"}
-                assert lp_b - lp_a == set()
-            else:
-                assert lp_a == lp_b, f"Step {step} legal placements mismatch: {lp_a ^ lp_b}"
+            assert lp_a == lp_b, f"Step {step} legal placements mismatch: {lp_a ^ lp_b}"
 
             common_choices = sorted(lp_a & lp_b)
             assert len(common_choices) > 0
@@ -743,7 +723,7 @@ class TestUnifiedFuzzingDifferential:
           - Opponent: Ops with 1/2 Event first / after.
         """
         (eng_a, state_a), (eng_b, state_b) = engine_pair
-        other_name = "blockchain" if isinstance(state_b, BlockchainGameState) else "struggler"
+        other_name = "struggler"
         eng_a.init_game(state_a, fuzz_seed)
         eng_b.init_game(state_b, fuzz_seed)
 
@@ -767,7 +747,7 @@ class TestUnifiedFuzzingDifferential:
           - Opponent: Ops with 1/2 Event first / after.
         """
         (eng_a, state_a), (eng_b, state_b) = engine_pair
-        other_name = "blockchain" if isinstance(state_b, BlockchainGameState) else "struggler"
+        other_name = "struggler"
         eng_a.init_game(state_a, fuzz_seed)
         eng_b.init_game(state_b, fuzz_seed)
 
@@ -791,7 +771,7 @@ class TestUnifiedFuzzingDifferential:
           - Opponent: Ops with 1/2 Event first / after.
         """
         (eng_a, state_a), (eng_b, state_b) = engine_pair
-        other_name = "blockchain" if isinstance(state_b, BlockchainGameState) else "struggler"
+        other_name = "struggler"
         eng_a.init_game(state_a, fuzz_seed)
         eng_b.init_game(state_b, fuzz_seed)
 
@@ -812,7 +792,7 @@ class TestUnifiedFuzzingDifferential:
     ):
         """Full 110-card deck multi-round rollout fuzzing across both engine pairs."""
         (eng_a, state_a), (eng_b, state_b) = engine_pair
-        other_name = "blockchain" if isinstance(state_b, BlockchainGameState) else "struggler"
+        other_name = "struggler"
         eng_a.init_game(state_a, fuzz_seed)
         eng_b.init_game(state_b, fuzz_seed)
 

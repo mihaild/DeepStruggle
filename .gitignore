@@ -1,3 +1,10 @@
+# Third-party text, kept locally and never committed. The card strategy guides are scraped and
+# synthesised from twilightstrategy.com (Chirag Asnani) and quote the cards' own flavour text,
+# which is GMT Games copyright -- neither is ours to redistribute under this repository's MIT
+# licence. tools/scrape_card_strategies.py regenerates them locally.
+docs/card_strategies.md
+docs/strategy/
+
 # Official rulebook PDF is copyrighted material (GMT Games) -- not ours to redistribute.
 # Everything else in rules/ (cards.json, map.json, rules.json/.md, flags.json, etc.) is this
 # project's own derived data/spec and is committed.
@@ -45,6 +52,7 @@ scratch/
 # IDE & OS
 .vscode/
 .idea/
+.obsidian/
 *.swp
 *.swo
 .DS_Store

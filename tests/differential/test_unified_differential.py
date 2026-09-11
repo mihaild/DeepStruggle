@@ -2,7 +2,7 @@
 Twilight Struggle AI: Unified Multi-Engine Differential Validation Suite
 =======================================================================
 Validates behavioral, state, and rules parity between Native C++ (ts_engine)
-and external reference engines (Struggler, ts-blockchain) using the unified
+and the Struggler reference engine using the unified
 EngineProtocol and GameStateProtocol abstractions.
 
 The test code is identical for all engines; the engine_pair fixture parameterizes
@@ -29,41 +29,24 @@ from tests.differential.engine_interface import (
 )
 from tests.differential.native_adapter import NativeEngine, NativeGameState
 from tests.differential.struggler_adapter import StrugglerEngine, StrugglerGameState
-from tests.differential.blockchain_adapter import (
-    BlockchainEngineAdapter,
-    BlockchainGameState,
-    BlockchainClient,
-    country_id_to_bc,
-    card_id_ts_to_bc,
-)
 
 
-@pytest.fixture(scope="module")
-def shared_bc_client() -> Generator[BlockchainClient, None, None]:
-    """Module-scoped background Node.js RPC daemon for ts-blockchain."""
-    client = BlockchainClient()
-    yield client
-    client.close()
-
-
-def create_implementation(name: str, shared_client: BlockchainClient | None = None) -> tuple[EngineProtocol, GameStateProtocol]:
+def create_implementation(name: str) -> tuple[EngineProtocol, GameStateProtocol]:
     """Factory creating an (engine, state) implementation pair."""
     if name == "native":
         return NativeEngine(), NativeGameState()
     elif name == "struggler":
         return StrugglerEngine(), StrugglerGameState()
-    elif name == "blockchain":
-        return BlockchainEngineAdapter(), BlockchainGameState(client=shared_client)
     raise ValueError(f"Unknown engine implementation: {name}")
 
 
-@pytest.fixture(params=["struggler", "blockchain"])
+@pytest.fixture(params=["struggler"])
 def engine_pair(
-    request: pytest.FixtureRequest, shared_bc_client: BlockchainClient
+    request: pytest.FixtureRequest,
 ) -> tuple[tuple[EngineProtocol, GameStateProtocol], tuple[EngineProtocol, GameStateProtocol]]:
     """Yields ((native_engine, native_state), (external_engine, external_state))."""
     pair_a = create_implementation("native")
-    pair_b = create_implementation(request.param, shared_bc_client)
+    pair_b = create_implementation(request.param)
     return pair_a, pair_b
 
 
@@ -215,7 +198,6 @@ class TestUnifiedInfluencePlacement:
 
         lp_ussr_a = eng_a.get_legal_placements(state_a, Player.USSR)
         lp_ussr_b = eng_b.get_legal_placements(state_b, Player.USSR)
-        # Note: In ts-blockchain, East Germany definition omits Czechoslovakia in its neighbours list.
         assert lp_ussr_a - lp_ussr_b <= {"Czechoslovakia"}
         assert lp_ussr_b - lp_ussr_a == set()
 
@@ -754,11 +736,10 @@ class TestUnifiedCardEvents:
 
         assert state_a.ussr_mil_ops == state_b.ussr_mil_ops
 
-    @pytest.mark.parametrize("tested_engine", ["native", "struggler", "blockchain"])
+    @pytest.mark.parametrize("tested_engine", ["native", "struggler"])
     def test_suez_crisis_exhaustion_from_trigger_to_next_round(
         self,
         tested_engine: str,
-        shared_bc_client: BlockchainClient,
     ):
         """Tests Card 28 (Suez Crisis) in the position where total eligible removable
         influence is 3 (< 4 requested):
@@ -767,10 +748,10 @@ class TestUnifiedCardEvents:
           - France: US 0 (0 removable)
         Tests from triggering event until the next round:
           - If the tested engine allows only 1 action, take it automatically.
-          - Asserts that all 3 engines remove 2 from UK and 1 from Israel (leaving UK=3, Israel=0, France=0).
+          - Asserts that both engines remove 2 from UK and 1 from Israel (leaving UK=3, Israel=0, France=0).
           - Asserts that the event terminates cleanly and advances to the next round / card play.
         """
-        eng, st = create_implementation(tested_engine, shared_bc_client)
+        eng, st = create_implementation(tested_engine)
         eng.init_game(st, 6001)
         st.phase = "action_round"
 
