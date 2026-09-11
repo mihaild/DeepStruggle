@@ -232,6 +232,41 @@ Intervention on either is fine and the claim is only that it is spent on one of 
 
 Baselines here, not gates. These are the numbers a later strategy arm has to move.
 
+**Built, and two things came out of building it.**
+
+*`blunders.defcon_suicide_cards` does not list Tear Down this Wall*, though the §25 position turns
+on it: the US free coup in Europe at DEFCON 2 drops DEFCON, and the USSR, as the phasing player
+that spent it for Ops, loses. The probe uses that function as the single definition of "a card
+you must not play here" rather than keeping a second list, so it does not currently count that
+card. Whether the list should gain it is a question about `blunders.py` and its published rate,
+so it is left to the owner. `tests/training/test_sequencing_probe.py` reconstructs the §25
+*structure* with Duck and Cover (3 Ops, US, on the list) standing in for Tear Down this Wall.
+
+*Spaceability has to be asked one decision earlier than it is used.* At the companion node a card
+action means "UN Intervention takes this one", so stepping it there answers a different question
+and reports every card as unspaceable. The probe takes the answer at the decision where UN
+Intervention is chosen, where playing the card is still the live question, and carries it
+forward.
+
+**First numbers, 300 games a checkpoint:**
+
+| | H2 @240M | H2 @480M |
+|:---|---:|---:|
+| UN Intervention spent elsewhere | 12.5% (9/72) | 14.1% (11/78) |
+| spent on the spaceable one of two | 10.0% (1/10) | 20.0% (1/5) |
+| suicide card played raw anyway | 38.7% (12/31) | 77.8% (14/18) |
+
+**The middle measure is not readable and should not be quoted.** It is the sharpest of the three
+and the §25 error exactly, and it arose ten times in 300 games at 240M and five at 480M -- bands
+of [1.8, 40.4] and [3.6, 62.4]. Either it needs thousands of games or the configuration is simply
+rare in self-play; that is a question for whoever runs the baseline row.
+
+The third is the informative one, and it is the measure that joins up with `dcedb8a`: a card that
+must not be played was played for Operations anyway, with the tool to avoid it still in hand,
+38.7% of the time at 240M and 77.8% at 480M. The bands touch at one point, so the doubling is
+suggestive rather than established -- and the denominators are small enough (31, 18) that the
+baseline row should widen the sample before anyone builds on it.
+
 ### 3. Existing instruments, on the same checkpoints
 
 `battleground_value.py` (§12.1 perturbation probe), `position_diagnostics.py` (empty
@@ -278,7 +313,7 @@ driver's terminal utilities and action streams are **identical** to `VectorizedB
 that matters; a driver that merely "looks right" reintroduces the 25-point disagreement
 `metrics.md` records from the last time a single-state path diverged from the batched one. ~2 h.
 
-**4. Probes 1 and 4** — setup and card disposal. `ai/eval/setup_probe.py`,
+**4. Probes 1 and 4 — landed.** setup and card disposal. `ai/eval/setup_probe.py`,
 `ai/eval/sequencing.py`, additions to `ai/eval/claims.py`, and the corpus setup reader. These two
 come first among the probes because they are the cheapest to run (15 batched forwards, and 500
 games), they need only the C++ runner, and they produce the numbers that gate P4 — the step most
