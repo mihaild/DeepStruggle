@@ -2680,3 +2680,67 @@ real; it simply did not buy anything.
 **Keep `eta = 0.1`.** Not for the reason it was introduced — there are no cycles here to
 prevent — but because it is worth 169 Elo as a stabiliser, and the exploration it was suspected
 of costing is not visible.
+
+---
+
+## 27. 240M -> 480M: it beats its own past and stops beating anything else
+
+Arm H2 resumed from 240M and ran a full doubling to 480,051,200 steps (31,886s). Same recipe and
+seed throughout. The leg was meant to test whether returns were flattening — 80M→160M was worth
++55 Elo, 160M→240M only +16.
+
+**They are not flattening.** Pooled over four late snapshots a side, 3,200 games:
+**H2 @480M beats H2 @240M 59.2%, +65 Elo** — more than the earlier doubling. The +16 at 240M
+was a plateau, not the start of a curve.
+
+### But nothing else agrees that it got better
+
+| | vs its own 240M | vs HeuristicBot |
+|:---|---:|---:|
+| H2 @240M | — | **92.2%** |
+| H2 @480M | **59.2% (+65 Elo)** | **90.6%** |
+
+Against a fixed external opponent it went *down* 1.6 points over 240M steps of training. That is
+the signature of a policy improving against its own lineage rather than improving.
+
+The internal ladder says the same thing. Seven snapshots spanning the leg, 21 pairs × 200 games,
+and almost every cell sits between 42% and 56% — a 240M-step spread that barely separates. The
+250M snapshot beats 290M, 330M, 410M and 450M, and holds 480M to 49%. Six of 21 pairs have a
+later snapshot losing to an earlier one.
+
+One 3-cycle appears (250M > 450M > 370M > 250M) — the first ever observed here. It should not be
+read as intransitivity: with 21 cells clustered near 50% and 200 games each (±3.5%), one cycle
+among 35 triples is what chance produces. §26 found none across two arms; this is not evidence
+against that.
+
+### The real damage: the sides came apart
+
+Binned by 20M, the USSR win rate climbs monotonically and does not come back:
+
+| window | 240-260 | 280-300 | 320-340 | 360-380 | 400-420 | 440-460 | 460-480 |
+|:---|---:|---:|---:|---:|---:|---:|---:|
+| USSR win % | 57.3 | 58.1 | 61.4 | 62.1 | 65.8 | 71.3 | **72.2** |
+
+Against a human 49.9%. This is not the oscillation that fooled the monitor at 160M — it is
+monotone across twelve consecutive windows. `experiments.md` §4.5 recorded a standing 60–65%
+USSR imbalance historically; at 480M it is worse than it has ever been. Self-play against a
+partner that is 22 points worse as the US is training both sides on a distorted distribution.
+
+### Game shape barely moved
+
+| self-play, 1,000 games | ply | 20 VP | Europe Ctl | final | DEFCON 1 | wargames |
+|:---|---:|---:|---:|---:|---:|---:|
+| H2 @240M | 104.2 | 47.1% | 0.0% | 11.8% | 36.4% | 4.7% |
+| H2 @480M | 109.5 | 47.0% | 0.0% | 11.5% | 35.4% | **6.1%** |
+| humans (ITS) | ~119.9 | 41.5% | 1.6% | 29.0% | 11.7% | 14.9% |
+
+240M steps bought ~5 plies and 1.4 points of Wargames. DEFCON 1 is still three times the human
+rate, final scoring still a third of it, Europe Control still never.
+
+### Reading
+
+Budget is no longer the binding constraint. The run is churning — moving in policy space, beating
+what it just was, and not getting better against anything outside itself, while the two sides
+drift 22 points apart. Doubling again is not the next experiment. The side imbalance is, because
+a self-play equilibrium this lopsided is training both policies on a board neither would face
+against a balanced opponent.
