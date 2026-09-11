@@ -5,11 +5,14 @@ is the **record** of what was run. A step lives in exactly one of the two places
 
 > **Stale baseline throughout this directory.** Every plan here was written when observation
 > layout **v2.2** was the adopted baseline and arm G's 320M snapshot the strongest checkpoint.
-> Both are gone. v2.2 is retired — its `ctx/temp_card_count` slot counted an array of staged card
-> ids that no longer exists, so the layout cannot be reproduced and **arms F, F2 and G cannot be
-> loaded at all**; a v2.2 checkpoint run against v2.3 would read every input wrong. The current
-> baseline is layout **v2.3** on the corrected engine (the starred-card fix), arms H and H2. Read
-> "v2.2 / arm F recipe / arm G's 320M snapshot" in the plans below as "the current baseline
+> Both are gone, and the situation has since gone further than "v2.2 is retired": **there is now
+> exactly one observation layout.** legacy, v2.1 and v2.2 are deleted, and so is every argument
+> that could name one — `extract_observation` and `VectorizedBatchRunner` take no layout,
+> `TsVectorizedEnv` takes no layout or `obs_flags`, and `tools/train.py` has no `--obs-layout` or
+> `--engine-flag`. A checkpoint from a retired layout is refused by `check_checkpoint_layout`
+> rather than silently misread, so **arms F, F2 and G cannot be run at all**. The current
+> baseline is that one layout on the corrected engine (the starred-card fix), arms H, H2 and I.
+> Read "v2.2 / arm F recipe / arm G's 320M snapshot" in the plans below as "the current baseline
 > recipe", and re-derive any control number: everything measured on a v2.2 checkpoint is void.
 > `research/metrics.md` §1.5.3 also retires the claim that the corrected engine lengthens games,
 > which two of these plans lean on. See `CLAUDE.md` for the layout table.

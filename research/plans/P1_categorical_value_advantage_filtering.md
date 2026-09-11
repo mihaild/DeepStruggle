@@ -1,7 +1,8 @@
 # P1 — Categorical value head + advantage filtering
 
-**Status:** queued
-**Gate:** P0 probes exist (so the arms can be read by something other than Elo).
+**Status:** implemented, not yet run. `--categorical-value` and `--adv-filter-quantile`.
+**Gate:** P0 probes exist (so the arms can be read by something other than Elo). The gate is
+on *reading* the arms, not on running them — the four cells can train while P0 lands.
 **Needs approval:** none (model and trainer only).
 
 ## Goal
@@ -41,18 +42,32 @@ Advantage filtering: drop samples with |A| below a quantile threshold (*decide b
 Ataraxos's setting, or the bottom 50% as a first guess) from the policy loss only; value loss
 sees all samples. One flag, default off.
 
-Everything else fixed at the arm F recipe (`experiments.md` §24): v2.2 layout, `staged_cards`
-off, `blunder_aware`, K = 40, cold start, no human data.
+Everything else fixed at the current baseline recipe: the engine's one observation layout,
+`blunder_aware`, K = 40, `eta` 0.1, cold start, no human data. (Written as "the arm F recipe:
+v2.2 layout, `staged_cards` off" — both are gone. There is one layout and no engine flags, and
+arm F cannot be loaded, so **the (scalar, no filter) cell has to be run fresh as the control**
+rather than reused from F/F2 as this document originally assumed.)
+
+`eta` stays at 0.1. Arm I removed it entirely and cost 169 Elo — not because the game is
+intransitive, which it measurably is not, but because the penalty is doing stability work
+(`experiments.md` §26). It is not a factor to vary here.
 
 ## Procedure
 
 2×2: {scalar, categorical} × {no filter, filter}, 2 seeds each, 80M steps — 8 runs, ~12 h.
-The (scalar, no filter) cell is the arm F control: arms F and F2 are exactly this recipe and
-budget, so their 80M snapshots can be reused if the pooled-pairings comparison is run fresh in
-one tournament with the new arms — never quote their Elo from the old pool (`metrics.md` §20.6).
+All four cells run fresh. The original plan reused arms F and F2 as the (scalar, no filter)
+control; they are v2.2 checkpoints and cannot be loaded, so that shortcut is gone. Arm H2's 80M
+snapshot is the nearest existing point of reference but was trained on a different recipe line,
+so it is context and not the control.
 Confirm the winning cell at 2 × 240M (~9 h).
 
 ## Measure
+
+Report for every cell, alongside the list below: Elo against the **anchor** as well as
+head-to-head against the control, and the per-side split (`game_won_us/`, `game_won_ussr/`). The
+480M leg beat its own past by +65 Elo while *losing* ground to HeuristicBot, and its USSR win
+rate climbed to 72% against a human 49.9% (`experiments.md` §27) — a cell can look like progress
+on one of those and not the others.
 
 In this order: calibration curve (decision states and pre-deal states); §12.1 perturbation probe —
 does the value respond monotonically to influence short of control; empty battlegrounds at turn 8;

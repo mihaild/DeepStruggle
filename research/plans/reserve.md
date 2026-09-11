@@ -41,13 +41,17 @@ human corpus, with the caveat that VOA reaches play in a fraction of 266 games �
 punished-rate half is not reportable.
 
 ## Layout attribution: which v2.2 change did it, and are the card slots worth anything
-**Trigger:** a future observation decision depends on knowing — e.g. before proposing any v2.3
-to the owner. Two open questions from the log: which of v2.2's changes carried the ~+92 Elo
-(§24 — the decision context is the suspect, the China Card fix is ruled out; isolating it is
-3–4 arms × 2 seeds), and whether v2.1's card-tracking slots do anything at all (§23.2 — three
-budgets showed no benefit; isolating them is a third arm at 2–3 seeds, several GPU-days).
-Attribution, not strength: nothing here changes the recipe, so it stays behind every step that
-might.
+**Status: dead, and not merely deprioritised.** It asked which of v2.2's changes carried the
+~+92 Elo (§24) and whether v2.1's card-tracking slots do anything (§23.2). Both questions are
+now unanswerable by the means proposed: v2.2 and v2.1 are deleted along with every argument that
+could select one, and the checkpoints trained on them are refused by `check_checkpoint_layout`
+rather than misread. Re-running the arms would mean reintroducing the layouts, which is the bug
+class the single-layout refactor removed — five silent wrong-layout failures in this repository,
+the last costing a published diagnostic.
+
+What survives is the *question*, if a future observation decision ever depends on it: it would
+have to be asked forward, as an ablation against the current single layout, not backward against
+retired ones. Nothing currently depends on the answer.
 
 ## AIVAT-style evaluation
 **Trigger:** two arms land within ~20 Elo of each other and the decision matters. Value-based
