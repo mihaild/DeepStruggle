@@ -50,11 +50,17 @@ bool trigger_star_wars(GameState& state, Player p) noexcept {
             discard_cards[cnt++] = i;
         }
     }
+    // Fizzles on an empty discard pile, and only then: the pick is otherwise mandatory. Because
+    // that case returns here, the decision below always has at least one legal card, so unlike
+    // Aldrich Ames it needs no pass fallback -- it needs early stop *off*, which it was not
+    // setting at all. It inherited the previous decision's value instead, and an inherited 1
+    // let the US decline a pick the rules require.
     if (cnt == 0) return true;
 
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;   // the pick is mandatory; see trigger_war
     state.ctx().resolving_card = card_ids::STAR_WARS;
     return false;
 }
