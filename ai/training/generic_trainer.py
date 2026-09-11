@@ -779,11 +779,9 @@ def evaluate_and_log_snapshot(
     # policy can gain Elo while learning the mistakes better rather than fewer.
     blunder_metrics: Dict[str, float] = {}
     try:
-        from ai.eval.blunders import measure_blunders
+        from ai.eval.blunders import measure_blunders_batched
 
-        counts = measure_blunders(
-            lambda st, pl: current_agent.select_action(st, pl, temperature=0.1),
-            num_games=blunder_games)
+        counts = measure_blunders_batched(model, num_games=blunder_games)
         blunder_metrics = counts.metrics()
         print("  blunders:\n" + counts.summary(), flush=True)
     except Exception as e:

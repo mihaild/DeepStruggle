@@ -314,7 +314,9 @@ def measure_blunders(
     counts = BlunderCounts()
     for i in range(num_games):
         state = ts.GameState()
-        ts.Engine.init_game(state, base_seed + i)
+        # The same games VectorizedBatchRunner deals for this base_seed, so this probe and
+        # measure_blunders_batched sample one population and can be checked against each other.
+        ts.Engine.init_game(state, base_seed + i * 10007 + 1)
         last_card: Dict[str, int] = {}
         for _ in range(max_steps):
             _drain(state)
@@ -340,4 +342,83 @@ def measure_blunders(
                               and getattr(state, "forced_card_player", None) == player)
                     check_play(state, player, card, mode, forced=forced, counts=counts)
             ts.Engine.step_flat(state, int(action))
+    return counts
+
+
+def measure_blunders_batched(
+    model: Any,
+    num_games: int = 32,
+    base_seed: int = 830_000,
+    temperature: float = 0.1,
+    max_iters: int = 20_000,
+) -> BlunderCounts:
+    """`measure_blunders` over parallel environments, with one forward pass per batch.
+
+    Same counting rule, same detection point. The difference is only where the policy is asked:
+    the single-state version hands the network one state at a time, which measured **90 of the
+    122 seconds** of a snapshot evaluation -- 74% of it, for a probe that is a rounding error in
+    the batched version. Everything else in a snapshot was already batched (the decisive and
+    position probes run 128 environments at ~106,000 decisions/sec against ~890 one at a time).
+
+    The rule still needs per-decision state -- which card, what it is being spent on, and the
+    hand at that moment -- so the loop still walks the environments that are at a SELECT_PLAY_MODE
+    node. That inspection is cheap; it was the forward pass that was not.
+    """
+    import numpy as np
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
+
+    check_obs_width(model)
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_games, base_seed=base_seed)
+    obs, masks, _ = env.reset_all()
+
+    counts = BlunderCounts()
+    last_card: List[Dict[str, int]] = [{} for _ in range(num_games)]
+    done = [False] * num_games
+
+    try:
+        for _ in range(max_iters):
+            if all(done):
+                break
+            obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+            mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+            with torch.no_grad():
+                actions, *_ = model.sample_action(obs_t, mask_t, temperature=temperature)
+            acts = actions.cpu().numpy().astype(np.int64)
+
+            for i in range(num_games):
+                if done[i]:
+                    continue
+                state = env.runner.get_state(i)
+                if ts.Engine.is_terminal(state):
+                    done[i] = True
+                    continue
+                ma = ts.ActionMask.decode_flat_action(state, int(acts[i]))
+                player = state.ctx().decision_player
+                if player == ts.Player.NONE:
+                    player = state.phasing_player
+                side = "US" if player == ts.Player.US else "USSR"
+                dt = int(ma.decision_type)
+                if dt == 1:
+                    last_card[i][side] = int(ma.primary_id)
+                elif dt == 2:
+                    mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                    card = last_card[i].get(side, 0)
+                    if mode and 1 <= card <= 110:
+                        forced = (int(getattr(state, "forced_card_id", 0)) == card
+                                  and getattr(state, "forced_card_player", None) == player)
+                        check_play(state, player, card, mode, forced=forced, counts=counts)
+
+            obs, masks, _, dones, _ = env.step(acts)
+            for i, d in enumerate(dones):
+                if d:
+                    done[i] = True
+    finally:
+        if was_training:
+            model.train()
     return counts
