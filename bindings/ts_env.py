@@ -266,7 +266,6 @@ class TsVectorizedEnv:
         """Steps all N environments in parallel with exact acting player attribution."""
         # 1. Capture exact acting players & privileged opponent hands BEFORE stepping simulation
         acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
-        opp_hands = np.array(self.runner.get_opponent_hands(acting_players.tolist()), dtype=np.float32).reshape(self.num_envs, 110)
         acting_turns = np.array(self.runner.get_turns(), dtype=np.int8)
         prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
@@ -380,7 +379,6 @@ class TsVectorizedEnv:
         info["victory_points"] = curr_vp
         info["completed_episodes"] = completed_episodes
         info["acting_players"] = acting_players
-        info["opponent_hands"] = opp_hands
         info["turns"] = acting_turns
         info["held_scoring_us"] = held_scoring_us
         info["held_scoring_ussr"] = held_scoring_ussr

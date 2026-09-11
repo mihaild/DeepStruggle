@@ -8,7 +8,7 @@ set -euo pipefail
 ARCH="${1:-v3}"
 DURATION="${2:-7200}"                 # Default: 2 hours (7200s)
 SNAPSHOT_INTERVAL="${3:-1200}"        # Default: 20 minutes (1200s)
-WARMUP_CHECKPOINT="${4:-data/checkpoints/coldwar_net_v3_warmup.pt}"
+WARMUP_CHECKPOINT="${4:-data/checkpoints/coldwar_net_v2_warmup.pt}"
 
 EXTRA_ARGS=()
 if [ -n "$WARMUP_CHECKPOINT" ] && [ -f "$WARMUP_CHECKPOINT" ]; then

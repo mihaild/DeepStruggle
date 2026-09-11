@@ -13,10 +13,35 @@ from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import (ColdWarNetV2, check_checkpoint_layout,
                                      create_coldwar_net_v2)
 from bindings.ts_env import check_obs_width
-from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
-from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 
-ColdWarModel = Union[ColdWarNet, ColdWarNetV2, ColdWarNetV3, ColdWarNetV4]
+ColdWarModel = Union[ColdWarNet, ColdWarNetV2]
+
+
+#: Weight names that identify a retired architecture. A checkpoint carrying one of these must be
+#: refused rather than fall through to the V1 branch, which would load *some* of it and run.
+_RETIRED_ARCH_KEYS = {
+    "belief_head": "V4 (card transformer + oracle critic + belief head)",
+    "card_transformer": "V4 (card transformer + oracle critic + belief head)",
+    "node_pointer_proj": "V3 (dual pointer co-attention)",
+    "cross_b2c": "V3 (dual pointer co-attention)",
+}
+
+
+def reject_retired_architecture(state_dict: Dict[str, Any]) -> None:
+    """Raises if this checkpoint was trained on an architecture that no longer exists.
+
+    V3 and V4 were removed: neither ever produced a logged result, and both predate the
+    starred-card engine fix and the single observation layout, so their checkpoints could not be
+    run even if the classes were still here. The oracle critic and belief head that rode with V4
+    are queued for P5, which will rebuild them against the current critic -- `research/plans/
+    P5_oracle_critic.md` names the commit to read the old implementation out of.
+    """
+    for key, what in _RETIRED_ARCH_KEYS.items():
+        if any(key in name for name in state_dict):
+            raise ValueError(
+                f"this checkpoint was trained on {what}, which has been removed. It also "
+                f"predates both the starred-card engine fix and the single observation layout, "
+                f"so it cannot be run. See research/plans/P5_oracle_critic.md.")
 
 
 def load_checkpoint_into(model: nn.Module, state_dict: Dict[str, Any]) -> None:
@@ -187,17 +212,13 @@ class NeuralAgent:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
         state_dict = torch.load(checkpoint_path, map_location=dev, weights_only=True)
-        # Architecture detection: V4 contains belief_head/card_transformer, V3 contains node_pointer_proj, V2 contains cross_attn
-        is_v4 = any("belief_head" in k or "card_transformer" in k for k in state_dict.keys())
-        is_v3 = any("node_pointer_proj" in k or "cross_b2c" in k for k in state_dict.keys())
+        # Architecture detection by weight name: V2 carries the cross-attention block, V1 does
+        # not. A retired architecture is refused rather than allowed to fall through to V1.
+        reject_retired_architecture(state_dict)
         is_v2 = any("cross_attn" in k or "cross_card_proj" in k for k in state_dict.keys())
 
         model: ColdWarModel
-        if is_v4:
-            model = create_coldwar_net_v4(dev)
-        elif is_v3:
-            model = create_coldwar_net_v3(dev)
-        elif is_v2:
+        if is_v2:
             # Refuses a checkpoint from a retired layout by its own weights. A checkpoint is a
             # bare state dict and names no layout, and a model handed the wrong width does not
             # fail -- it reads fixed slices, so the observation is misread and the network merely

@@ -4,7 +4,10 @@ Implements:
 1. BaseNashPGTrainer: Unified base class managing vectorized C++ rollouts, temperature scheduling,
    zero-sum GAE credit slicing, and outer-loop reference policy anchoring π_ref^(k).
 2. NashPGTrainer: Standard Nash Policy Gradient trainer for ColdWarNet V1, V2, and V3.
-3. OracleGuidedNashPGTrainer: Extended multi-task trainer for ColdWarNetV4 incorporating:
+3. The privileged oracle critic and opponent-belief head lived here, as
+   OracleGuidedNashPGTrainer against ColdWarNetV4. Both are removed; P5 is queued to
+   measure the idea and will rebuild it against the current critic (see the plan file for
+   the commit to read the old implementation out of). What it did:
    - Suphx-style Oracle Critic supervision and Knowledge Distillation.
    - Auxiliary Opponent Hand Belief Head multi-label BCE loss.
 """
@@ -262,8 +265,6 @@ class BaseNashPGTrainer:
             actions_np = actions_t.cpu().numpy()
             next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
 
-            opp_hands = self._info.get("opponent_hands", None)
-
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -279,7 +280,6 @@ class BaseNashPGTrainer:
                 held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device) if "held_scoring_us" in self._info else None,
                 held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device) if "held_scoring_ussr" in self._info else None,
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
-                opp_hands=opp_hands,
             )
 
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
@@ -482,127 +482,4 @@ class NashPGTrainer(BaseNashPGTrainer):
             "kl_div": kl_accum / max(1, num_updates),
             "entropy": entropy_accum / max(1, num_updates),
             "clip_frac": clip_frac_accum / max(1, num_updates),
-        }
-
-
-class OracleGuidedNashPGTrainer(BaseNashPGTrainer):
-    """Oracle-Guided Multi-Task NashPG Trainer for ColdWarNetV4.
-
-    Adds:
-    1. Opponent Belief Head Loss: Binary Cross-Entropy against true hidden opponent cards.
-    2. Privileged Oracle Critic Head Loss: MSE against terminal returns.
-    3. Public Critic Distillation Loss: MSE against Oracle Critic evaluation.
-    """
-
-    def __init__(
-        self,
-        active_net: nn.Module,
-        reference_net: Optional[nn.Module] = None,
-        env: Optional[TsVectorizedEnv] = None,
-        belief_loss_coef: float = 0.10,    # Weight for auxiliary belief BCE loss
-        oracle_loss_coef: float = 0.25,    # Weight for privileged oracle critic MSE
-        distill_loss_coef: float = 0.25,   # Weight for public critic distillation MSE
-        **kwargs: Any,
-    ):
-        if "batch_size" in kwargs and kwargs["batch_size"] > 1024:
-            kwargs["batch_size"] = 1024
-        super().__init__(active_net=active_net, reference_net=reference_net, env=env, **kwargs)
-        self.batch_size = min(self.batch_size, 1024)
-        self.belief_loss_coef = belief_loss_coef
-        self.oracle_loss_coef = oracle_loss_coef
-        self.distill_loss_coef = distill_loss_coef
-
-    def train_step(self) -> Dict[str, float]:
-        self.active_net.train()
-
-        total_loss_accum = 0.0
-        policy_loss_accum = 0.0
-        val_loss_accum = 0.0
-        kl_accum = 0.0
-        entropy_accum = 0.0
-        clip_frac_accum = 0.0
-        belief_loss_accum = 0.0
-        oracle_loss_accum = 0.0
-        distill_loss_accum = 0.0
-        num_updates = 0
-
-        for _ in range(self.num_epochs):
-            for b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp, b_opp_hands in self.buffer.get_batches_with_oracle(self.batch_size):
-                if hasattr(self.active_net, "forward_all"):
-                    forward_all_fn = getattr(self.active_net, "forward_all")
-                    cur_logits, cur_v_win, cur_v_vp, b_pred_belief, b_oracle_val = forward_all_fn(b_obs, b_mask, b_opp_hands)
-                    cur_v_win = cur_v_win.squeeze(-1)
-                    cur_v_vp = cur_v_vp.squeeze(-1)
-                    b_oracle_val = b_oracle_val.squeeze(-1)
-                else:
-                    cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
-                    cur_v_win = cur_v_win.squeeze(-1)
-                    cur_v_vp = cur_v_vp.squeeze(-1)
-                    b_pred_belief = getattr(self.active_net, "predict_belief")(b_obs)
-                    b_oracle_val = getattr(self.active_net, "evaluate_oracle")(b_obs, b_opp_hands).squeeze(-1)
-
-                cur_dist = torch.distributions.Categorical(logits=cur_logits)
-                cur_lp = cur_dist.log_prob(b_act)
-                cur_entropy = cur_dist.entropy()
-
-                ratio = torch.exp(cur_lp - b_old_lp)
-                surr1 = ratio * b_adv
-                surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
-                ppo_loss = -torch.min(surr1, surr2).mean()
-
-                clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean().item()
-
-                with torch.no_grad():
-                    ref_logits, _, _ = self.reference_net(b_obs, b_mask)
-                    ref_log_p = F.log_softmax(ref_logits, dim=-1)
-
-                cur_p = F.softmax(cur_logits, dim=-1)
-                cur_log_p = F.log_softmax(cur_logits, dim=-1)
-                kl_div = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1).mean()
-
-                policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * cur_entropy.mean()
-                val_loss = F.mse_loss(cur_v_win, b_ret_win) + self.vp_coef * F.mse_loss(cur_v_vp, b_ret_vp)
-
-                # 1. Opponent Belief Head Loss (BCE against ground truth hidden cards)
-                belief_loss = F.binary_cross_entropy(b_pred_belief, b_opp_hands.float())
-
-                # 2. Privileged Oracle Critic Loss & Public Value Distillation
-                oracle_loss = F.mse_loss(b_oracle_val, b_ret_win)
-                distill_loss = F.mse_loss(cur_v_win, b_oracle_val.detach())
-
-                # Multi-Task Combined Loss
-                loss = (
-                    policy_loss
-                    + self.vf_coef * val_loss
-                    + self.belief_loss_coef * belief_loss
-                    + self.oracle_loss_coef * oracle_loss
-                    + self.distill_loss_coef * distill_loss
-                )
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
-                self.optimizer.step()
-
-                total_loss_accum += loss.item()
-                policy_loss_accum += ppo_loss.item()
-                val_loss_accum += val_loss.item()
-                kl_accum += kl_div.item()
-                entropy_accum += cur_entropy.mean().item()
-                clip_frac_accum += clip_frac
-                belief_loss_accum += belief_loss.item()
-                oracle_loss_accum += oracle_loss.item()
-                distill_loss_accum += distill_loss.item()
-                num_updates += 1
-
-        return {
-            "loss": total_loss_accum / max(1, num_updates),
-            "policy_loss": policy_loss_accum / max(1, num_updates),
-            "val_loss": val_loss_accum / max(1, num_updates),
-            "kl_div": kl_accum / max(1, num_updates),
-            "entropy": entropy_accum / max(1, num_updates),
-            "clip_frac": clip_frac_accum / max(1, num_updates),
-            "belief_loss": belief_loss_accum / max(1, num_updates),
-            "oracle_loss": oracle_loss_accum / max(1, num_updates),
-            "distill_loss": distill_loss_accum / max(1, num_updates),
         }

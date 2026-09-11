@@ -10,8 +10,8 @@ Launches neural network reinforcement learning (NashPG) or supervised demonstrat
 ```bash
 # RL training run with blunder-aware rewards and 20-minute snapshot evaluations
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v3 \
-  --warmup-checkpoint data/checkpoints/coldwar_net_v3_warmup.pt \
+  --arch v2 \
+  --warmup-checkpoint data/checkpoints/coldwar_net_v2_warmup.pt \
   --duration-seconds 7200 \
   --snapshot-interval-seconds 1200 \
   --reward-scheme blunder_aware \

@@ -16,9 +16,9 @@ def inspect_checkpoint(path: str) -> Dict[str, Any]:
     try:
         sd = torch.load(path, map_location="cpu", weights_only=True)
         if any("belief_head" in k or "card_transformer" in k for k in sd.keys()):
-            arch = "ColdWarNetV4 (Deep Card-Transformer + Belief Head)"
+            arch = "retired (V4: card transformer + belief head)"
         elif any("node_pointer_proj" in k or "cross_b2c" in k for k in sd.keys()):
-            arch = "ColdWarNetV3 (Dual Pointer Co-Attn)"
+            arch = "retired (V3: dual pointer co-attention)"
         elif any("cross_attn" in k or "cross_card_proj" in k for k in sd.keys()):
             arch = "ColdWarNetV2 (Cross-Attention)"
         elif any("fusion_in" in k for k in sd.keys()):

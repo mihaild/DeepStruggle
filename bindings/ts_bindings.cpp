@@ -957,6 +957,11 @@ NB_MODULE(ts_engine, m) {
             return res;
         }
 
+        // The opponent's hand as a 110-wide indicator, per env. Nothing in the tree calls this:
+        // its consumer was the privileged oracle critic, which was removed with ColdWarNetV4.
+        // Kept deliberately -- it is read-only, costs nothing unless called, and is the one part
+        // of that feature that never needs migrating when the observation changes. P5 will want
+        // it back (research/plans/P5_oracle_critic.md).
         std::vector<float> get_opponent_hands(const std::vector<int8_t>& acting_players) const {
             std::vector<float> res(num_envs * 110, 0.0f);
             for (size_t i = 0; i < num_envs; ++i) {

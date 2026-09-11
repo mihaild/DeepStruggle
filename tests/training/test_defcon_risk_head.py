@@ -16,7 +16,6 @@ import pytest
 
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
-from ai.models.coldwar_net_v4 import create_coldwar_net_v4
 import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
 
@@ -113,16 +112,6 @@ def test_batches_carry_the_target() -> None:
     batch = next(buf.get_batches(batch_size=8))
     assert len(batch) == 8, "expected the DEFCON-risk target as the eighth tensor"
     assert batch[7].shape == (8,)
-
-
-def test_requesting_the_head_on_an_architecture_without_it_fails_loudly() -> None:
-    """A silent no-op would look like "the experiment ran and did nothing"."""
-    from ai.training.nash_pg import NashPGTrainer  # noqa: F401  (import cost is the point)
-
-    net = create_coldwar_net_v4("cpu")
-    assert not hasattr(net, "forward_with_risk"), (
-        "v4 grew a risk head; extend this test and drop it from the unsupported list"
-    )
 
 
 def test_checkpoints_without_the_head_still_load() -> None:

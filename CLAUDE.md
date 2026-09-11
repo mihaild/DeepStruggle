@@ -197,24 +197,24 @@ recording stops. See `data/datasets/archive/README.md` for why the previous set 
 ```bash
 # Phase 0: BC warmup from a demonstration dataset
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --mode warmup --arch v3 --warmup-dataset <regenerated-dataset.jsonl.gz> \
-  --bc-epochs 2 --batch-size 1024 --output-dir data/checkpoints/coldwar_net_v3_warmup.pt
+  --mode warmup --arch v2 --warmup-dataset <regenerated-dataset.jsonl.gz> \
+  --bc-epochs 2 --batch-size 1024 --output-dir data/checkpoints/coldwar_net_v2_warmup.pt
 
 # Phase 1-3: RL self-play + live snapshot evals + post-training tournament
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v3 --duration-seconds 7200 --snapshot-interval-seconds 1200 \
-  --warmup-checkpoint data/checkpoints/coldwar_net_v3_warmup.pt \
+  --arch v2 --duration-seconds 7200 --snapshot-interval-seconds 1200 \
+  --warmup-checkpoint data/checkpoints/coldwar_net_v2_warmup.pt \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random <checkpoint.pt> --eval-games-per-side 50 \
   --post-tournament --post-tournament-models heuristic random <checkpoint.pt> \
   --post-tournament-games 500
-# or: ./tools/scripts/train_and_tournament.sh v3 7200 1200 data/checkpoints/coldwar_net_v3_warmup.pt
+# or: ./tools/scripts/train_and_tournament.sh v2 7200 1200 data/checkpoints/coldwar_net_v2_warmup.pt
 
 # Standalone tournament / Elo evaluation over a checkpoint directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --checkpoint-dir data/checkpoints/run_v3_<ts> --games-per-side 500 \
+  --checkpoint-dir data/checkpoints/run_v2_<ts> --games-per-side 500 \
   --anchor-model HeuristicBot --anchor-elo 1500.0 \
-  --output-report data/checkpoints/run_v3_<ts>/massive_tournament_report.md
+  --output-report data/checkpoints/run_v2_<ts>/massive_tournament_report.md
 
 # Single match / replay generation (also supports --us human for interactive CLI play)
 PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategic
@@ -225,7 +225,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 # then open http://localhost:8000/?game_id=game-1&role=US
 ```
 
-Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset generation), `inspect_checkpoints.py` (scans `data/checkpoints/`, detects V1/V2/V3 architecture), `download_ts_replayer.py` (one-time cached fetch of the human game corpus into `data/datasets/ts_replayer/`). Full flag reference in `tools/README.md`.
+Other `tools/` CLIs: `generate_dataset.py` (vectorized demonstration dataset generation), `inspect_checkpoints.py` (scans `data/checkpoints/`, detects the architecture from the weights), `download_ts_replayer.py` (one-time cached fetch of the human game corpus into `data/datasets/ts_replayer/`). Full flag reference in `tools/README.md`.
 
 **Human replay conversion (`tools/lib/ts_replayer_*.py`):** the corpus of human games is converted to engine decisions by rebuilding each log entry's position, driving it through the engine, and checking the result against the log's own next board; the hands, which the log never states in full, are solved for a whole game at once as a z3 constraint problem. Nothing is guessed — a decision the log does not determine is a bug to diagnose, not a gap to fill (see `AGENTS.md` §4 invariant 11, and `tools/README.md` §6).
 
@@ -285,7 +285,7 @@ different meaning, but nothing threads it anywhere and `tools/lib/engine_config.
 `data/checkpoints/arm_H2_cont_160to240/snapshot_final.pt` at 240,058,368 steps, 93.0% against
 HeuristicBot. See `research/experiments.md` §25.
 
-**AI (`ai/`):** `models/coldwar_net.py` (ColdWarNet: GNN GraphConv + card + global ResNet with masked action heads, V1/V2/V3 variants auto-detected from checkpoints). `training/nash_pg.py` implements NashPG — PPO-style loss with KL regularization against a frozen reference policy snapshot (`π_ref`), refreshed periodically, to converge toward Nash equilibrium without cycling. `training/rollout_buffer.py` does trajectory storage + GAE (zero-sum, alternating between players). `rewards/reward_calculator.py` holds the reward strategies (`BlunderAwareRewardCalculator`, `ZeroSumTerminalReward`, `ShapedZeroSumReward`, `UsefulActionsReward`) — perspective-aligned and zero-sum across US/USSR.
+**AI (`ai/`):** `models/coldwar_net_v2.py` (ColdWarNetV2, the baseline: GNN GraphConv + card/country cross-attention + global ResNet with masked action heads). `models/coldwar_net.py` holds V1, the original network, kept because checkpoints predating V2 name it; the architecture is detected from a checkpoint's own weights. **V3 and V4 were removed** -- neither ever produced a logged result, and both predate the corrected engine and the single observation layout. V4's oracle critic and belief head are P5's subject and are recovered from history there, not maintained here. `training/nash_pg.py` implements NashPG — PPO-style loss with KL regularization against a frozen reference policy snapshot (`π_ref`), refreshed periodically, to converge toward Nash equilibrium without cycling. `training/rollout_buffer.py` does trajectory storage + GAE (zero-sum, alternating between players). `rewards/reward_calculator.py` holds the reward strategies (`BlunderAwareRewardCalculator`, `ZeroSumTerminalReward`, `ShapedZeroSumReward`, `UsefulActionsReward`) — perspective-aligned and zero-sum across US/USSR.
 
 **Bots (`bot/`):** all inherit `BaseBot` (`select_action` for dict/JSON-based servers, `select_flat_action` for the fast 212-dim vectorized path, `reset`). Baselines: `random_bot`, `heuristic_bot`, `exploratory_bot`, `strategic_bot` (DEFCON-2 containment focus), `event_heavy_bot`, `human_bot` (interactive CLI); `neural_bot` loads ColdWarNet checkpoints.
 

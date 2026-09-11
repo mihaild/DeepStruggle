@@ -3,7 +3,29 @@
 **Status:** queued
 **Gate:** after P2, so a deal-side variance reducer is not confounded with the deal-side
 bootstrapping change. If P2 is demoted, run this in its slot.
-**Needs approval:** none — the code exists.
+**Needs approval:** none.
+
+> **The code no longer exists in the tree, and that is deliberate.** The oracle critic and
+> belief head lived on `ColdWarNetV4`, which was removed along with `ColdWarNetV3`. Read the
+> old implementation out of the history when this step runs:
+>
+> ```bash
+> git show 574e04a:ai/models/coldwar_net_v4.py     # belief_head, oracle head, forward_all,
+> git show 574e04a:ai/training/nash_pg.py          #   predict_belief, evaluate_oracle
+> git show 574e04a:ai/training/rollout_buffer.py   # OracleGuidedNashPGTrainer, the losses
+> git show 574e04a:bindings/ts_env.py              # opp_hands columns, get_batches_with_oracle
+> ```                                              # info["opponent_hands"] plumbing
+>
+> `VectorizedBatchRunner::get_opponent_hands` was **kept** in the bindings: it is a read-only
+> accessor, it costs nothing unless called, and it is the one piece of this that never needs
+> migrating when the observation changes.
+>
+> Treat what comes back as a reference for the idea, not as a port. It was written against the
+> legacy observation, the pre-starred-card engine, and *scalar* value heads — and P1 replaces
+> those with a categorical VP distribution, so `mse(oracle_val, ret_win)` and the distillation
+> `mse(v_win, oracle_val.detach())` both need redesigning against a distribution anyway. Keeping
+> it in the tree would not have saved that work; it would only have kept a stale design in view,
+> and made every observation change migrate three architectures instead of one.
 
 ## Goal
 
@@ -22,9 +44,21 @@ experiment log: `oracle_loss_coef = 0.25` and `belief_loss_coef = 0.10` in
   and it is the mechanism that fits here.
 - The belief head is the cheap version of what the VOA-awareness goal needs: P(VOA in the
   opponent's hand) is one of its 110 outputs. Whether it is any good has never been measured.
-- It is the only arm in the queue that costs zero implementation time.
+- It is no longer the free arm it was described as. Running it on V4 would have compared a v4
+  backbone *plus* an oracle critic against a v2 baseline, which confounds the two and cannot
+  attribute the result — so the heads have to be rebuilt on the v2 backbone as optional heads
+  either way. That is the implementation cost of this step, and it buys a one-factor arm.
 
 ## Change
+
+Rebuild the oracle critic and belief head as **optional heads on the v2 backbone**, off by
+default, so the arm differs from its control in one thing. The old implementation is the
+reference (see the header). What has to be decided when it runs is how the oracle target and
+the distillation work against a categorical critic, which is a question the scalar version did
+not have to answer.
+
+The paragraph below is what the step said when V4 still existed, kept because the mechanism
+description is still right:
 
 None to code, if the paths still run on the current layout (the observation has changed twice
 since these heads were written — v2.1 and then v2.2, `experiments.md` §24; the oracle path

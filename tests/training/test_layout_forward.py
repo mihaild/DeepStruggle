@@ -6,7 +6,7 @@ reshape was hardcoded to 84x28 while its board block is 84x26. Widths agreed, 62
 and the layout could not have trained a single step.
 
 So this drives a real observation out of the engine, through the real model, to an action -- for
-every architecture, since all four read the same one layout now.
+every architecture, since both read the same one layout.
 """
 
 from typing import Callable, List
@@ -16,18 +16,16 @@ import pytest
 import torch
 
 import ts_engine as ts
-from ai.models import (create_coldwar_net, create_coldwar_net_v2, create_coldwar_net_v3,
-                       create_coldwar_net_v4)
+from ai.models import create_coldwar_net, create_coldwar_net_v2
 from bindings.action_encoder import ActionEncoder
 
 #: Every architecture, by the name --arch takes. They all read observation layout v2.3.
-#: Built on the CPU explicitly -- create_coldwar_net_v4 defaults to cuda, which is not where a
-#: test should land.
+#: Every architecture, on the CPU explicitly. V3 and V4 were removed -- neither produced a
+#: logged result and both predate the corrected engine.
 ARCHITECTURES: List[Callable[[], object]] = [
     lambda: create_coldwar_net("cpu"), lambda: create_coldwar_net_v2("cpu"),
-    lambda: create_coldwar_net_v3("cpu"), lambda: create_coldwar_net_v4("cpu"),
 ]
-ARCH_IDS = ["v1", "v2", "v3", "v4"]
+ARCH_IDS = ["v1", "v2"]
 
 
 def _state() -> ts.GameState:
@@ -67,10 +65,7 @@ def test_a_batch_trains_one_step(factory) -> None:
     width = model.TOTAL_OBS_SIZE
     obs = torch.zeros((4, width), dtype=torch.float32)
     mask = torch.ones((4, 212), dtype=torch.uint8)
-    # V4's backbone is named differently and returns three tensors; the rest expose
-    # extract_features.
-    extract = getattr(model, "extract_features", None) or model._forward_backbone
-    out = extract(obs)
+    out = model.extract_features(obs)
     latent = out[0] if isinstance(out, tuple) else out
     loss = latent.square().mean()
     loss.backward()

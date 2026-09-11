@@ -21,12 +21,10 @@ import torch.nn.functional as F
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2, create_like
-from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
-from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
 from bindings.ts_env import OBS_LAYOUT_NAME, TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
-from ai.training.nash_pg import NashPGTrainer, OracleGuidedNashPGTrainer
+from ai.training.nash_pg import NashPGTrainer
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
@@ -853,11 +851,7 @@ def evaluate_and_log_snapshot(
         f.write("".join(report_entry))
 
     if add_to_opponents_after:
-        if arch == "v4":
-            frozen_net = create_coldwar_net_v4(dev)
-        elif arch == "v3":
-            frozen_net = create_coldwar_net_v3(dev)
-        elif arch == "v2":
+        if arch == "v2":
             # Shaped from the model being evaluated, not from the factory defaults. The card
             # block width and whether the history branch exists are both configurable now, and a
             # frozen copy built at defaults simply fails to load a v2.1 policy -- which is how
@@ -1156,11 +1150,7 @@ def train_pipeline(
     tb.log_text("run/metadata", "```json\n" + json.dumps(metadata_info, indent=2) + "\n```", 0)
 
     # 1. Initialize Model
-    if arch == "v4":
-        model = create_coldwar_net_v4(dev)
-    elif arch == "v3":
-        model = create_coldwar_net_v3(dev)
-    elif arch == "v2":
+    if arch == "v2":
         model = create_coldwar_net_v2(dev, categorical_value=categorical_value)
     else:
         model = create_coldwar_net(dev)
@@ -1229,9 +1219,8 @@ def train_pipeline(
         curriculum_switch_at = float("inf")
         curriculum_switched = False
 
-    # 4. Instantiate Unified NashPG Trainer (OracleGuided for V4, standard for V1/V2/V3)
-    TrainerCls = OracleGuidedNashPGTrainer if arch == "v4" else NashPGTrainer
-    trainer = TrainerCls(
+    # 4. Instantiate the NashPG trainer
+    trainer = NashPGTrainer(
         active_net=model,
         env=env,
         num_envs=num_envs,
@@ -1385,8 +1374,6 @@ def train_pipeline(
     # Which auxiliary loss terms this configuration actually trains. Everything else would be a
     # constant zero series.
     active_aux_losses: List[str] = []
-    if arch == "v4":
-        active_aux_losses += ["belief_loss", "oracle_loss", "distill_loss"]
     if defcon_coef > 0.0:
         active_aux_losses.append("defcon_risk_loss")
     if injector is not None:

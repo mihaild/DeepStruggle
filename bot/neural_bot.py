@@ -18,9 +18,8 @@ except ImportError:
 
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
-from ai.models.coldwar_net_v3 import ColdWarNetV3, create_coldwar_net_v3
-from ai.models.coldwar_net_v4 import ColdWarNetV4, create_coldwar_net_v4
 from bindings.action_encoder import ActionEncoder
+from tools.lib.player_agent import reject_retired_architecture
 from bot.base_bot import BaseBot
 
 logger = logging.getLogger(__name__)
@@ -43,11 +42,8 @@ class NeuralBot(BaseBot):
 
         if model_path and os.path.exists(model_path):
             weights_dict = torch.load(model_path, map_location=self.device, weights_only=True)
-            if any("belief_head" in k or "card_transformer" in k for k in weights_dict.keys()):
-                self.model = create_coldwar_net_v4(self.device)
-            elif any("node_pointer_proj" in k or "cross_b2c" in k for k in weights_dict.keys()):
-                self.model = create_coldwar_net_v3(self.device)
-            elif any("cross_attn" in k or "cross_card_proj" in k for k in weights_dict.keys()):
+            reject_retired_architecture(weights_dict)
+            if any("cross_attn" in k or "cross_card_proj" in k for k in weights_dict.keys()):
                 self.model = create_coldwar_net_v2(self.device)
             else:
                 self.model = create_coldwar_net(self.device)

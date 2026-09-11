@@ -14,12 +14,14 @@ from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
-from ai.models.coldwar_net_v3 import create_coldwar_net_v3
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
-    parser.add_argument("--arch", type=str, default="v4", choices=["v1", "v2", "v3", "v4"], help="Model architecture: v1, v2, v3, or v4 (ColdWarNetV4 Deep Card-Transformer + Belief Head)")
+    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2"],
+                        help="Model architecture. v2 is the baseline and what every arm in the\n"
+                             "experiment log uses; v1 is the original network, kept because\n"
+                             "checkpoints that predate v2 still name it.")
     parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval", "curriculum"], help="Execution mode")
 
     # Warm-up / Checkpoint options
@@ -221,9 +223,7 @@ def main():
             print("Error: --warmup-dataset required for mode=warmup")
             sys.exit(1)
         dev = torch.device(args.device if (torch.cuda.is_available() and args.device == "cuda") else "cpu")
-        if args.arch == "v3":
-            model = create_coldwar_net_v3(dev)
-        elif args.arch == "v2":
+        if args.arch == "v2":
             model = create_coldwar_net_v2(dev)
         else:
             model = create_coldwar_net(dev)

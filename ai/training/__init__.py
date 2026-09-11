@@ -2,7 +2,7 @@
 
 from .rollout_buffer import RolloutBuffer
 from .behavioral_cloning import BehavioralCloningTrainer
-from .nash_pg import BaseNashPGTrainer, NashPGTrainer, OracleGuidedNashPGTrainer
+from .nash_pg import BaseNashPGTrainer, NashPGTrainer
 from .warmup_dataset_loader import WarmupDataset
 
 __all__ = [
@@ -10,6 +10,5 @@ __all__ = [
     "BehavioralCloningTrainer",
     "BaseNashPGTrainer",
     "NashPGTrainer",
-    "OracleGuidedNashPGTrainer",
     "WarmupDataset",
 ]
