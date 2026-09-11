@@ -132,6 +132,38 @@ What it actually was: the derived `v_win` is *saturated*, not mis-scaled — see
 0.02 by matching the control's entropy, clip fraction and raw advantage spread over a 20-iteration
 sweep (0.005 / 0.02 / 0.08 all land in range; 0.02 is closest).
 
+### Measured: the learned distribution is not multimodal
+
+The premise in **Why** — "outcomes are multimodal, MSE regresses to the mean of the modes, a
+value that is never observed" — was tested directly on the 75M snapshot by reading the learned
+41-atom distribution on 1,920 states sampled across whole games (every 10th ply, 128 envs):
+
+| | |
+|:---|:---|
+| single-mode states | **1,916 of 1,920 (99.79%)** |
+| two-mode states | 4 (0.21%) |
+| effective atoms carrying mass (1/Σp²) | mean **3.2**, against a two-hot target's 2.0 |
+| predicted spread | mean **1.28 VP** (max ~7) |
+| states where E[VP] sits off the distribution's own peak | **11%** |
+
+So the head does learn *some* genuine uncertainty — 3.2 effective atoms is wider than the 2.0 it
+was trained on, and the spread varies a lot by state, so it is not just memorising point targets.
+But it is a unimodal blob essentially everywhere. The 11% where the mean sits off the peak comes
+from **skew, not bimodality**: with 99.79% single-mode states there is no trough for the mean to
+fall into. (Tail statistics move between identical runs because the rollout samples actions —
+the 99.79% is stable, the maxima are not.)
+
+That does not kill the change, but it retires the *stated reason* for it. What a categorical head
+can still be defended on is calibration, better-conditioned gradients (CE through a softmax has a
+bounded gradient where MSE's grows linearly in the error), and having the distribution as an
+object for the DEFCON-risk and end-type work. Multimodality is not among them, and any follow-up
+that assumes it should be rewritten first.
+
+One caveat on scope: this measures the head trained on `returns_vp`, which is
+`0.1·curr_vp + 0.9·next_ret_vp` — a heavily smoothed blend whose conditional spread is small by
+construction. A head on `returns_win` (option C below) could differ, and should be measured the
+same way rather than assumed.
+
 **Lesson for the next loss-function change.** Three of the four arms died to a units or scale
 mismatch that no test caught, because every P1 test exercised `two_hot` in isolation. Tests that
 start from what the buffer actually holds, and a startup check that the value and policy terms
