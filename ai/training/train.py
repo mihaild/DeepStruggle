@@ -128,8 +128,9 @@ def main():
                              "policy loss near 0.04. Cross-entropy over 41 atoms sits near 1.5,\n"
                              "so the same coefficient makes the value objective outweigh the\n"
                              "policy one by ~100x, and the policy stops moving -- high explained\n"
-                             "variance, collapsed entropy, a 3% clip fraction and play far below\n"
-                             "the scalar control. Set it ~40x lower with --categorical-value.")
+                             "variance, collapsed entropy, a 3%% clip fraction and play far\n"
+                             "below the scalar control. Set it ~40x lower with\n"
+                             "--categorical-value; 0.0125 was measured to match the balance.")
     parser.add_argument("--categorical-value", action="store_true", default=False,
                         help="P1: replace the two scalar value heads with one categorical\n"
                              "distribution over final VP (41 atoms across [-20, +20]), trained\n"
