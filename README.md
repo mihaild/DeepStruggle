@@ -1,6 +1,10 @@
 # Twilight Struggle AI
 
-A complete AI, simulation engine, web workbench, and reinforcement learning training infrastructure for the Deluxe Edition of **Twilight Struggle** (110 Cards).
+A complete AI, simulation engine, web workbench, and reinforcement learning training infrastructure for the Deluxe Edition of **Twilight Struggle** (GMT Games, 2005).
+
+## AI Slop warning
+
+This repository is developed with heavy usage of AI. I have reviewed parts of code, but not all of it, neither documentation. Be even more skeptical code quality here than usually.
 
 ---
 
