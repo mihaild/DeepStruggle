@@ -39,6 +39,66 @@ Costs under ~1% of the step budget, so it can be logged continuously and read as
 |:---|:---|:---|
 | **DEFCON-1 ending class** — headline vs action round, own goal, bad bet, forced vs unforced trap | 0.76% | everything needed is available on the environments that *terminated*, and there are only ~5.7 of those per vectorized step. The phase, the victory-point sign and the coup flag are scalar reads; `defcon_suicide_cards` is called once per terminal, not once per decision |
 
+### How the live classification is computed
+
+On each vectorized step, for every environment that reported an ending this step:
+
+1. `phase_at[i]` -- the phase recorded *before* the step that ended the game. If it is
+   `Phase::HEADLINE` the ending is counted as **headline** and classification stops. The two
+   headline cards are simultaneous and neither player saw the other's, so a scheme built for
+   sequential decisions does not apply.
+2. the **loser** is read from the sign of `victory_points`, not from `phasing_player`.
+   `phasing_player` is right at *resolution* time -- during a headline it is whoever's card is
+   resolving -- but the last thing the loop observes is the card *selection*, before either
+   resolves, and there it is still the turn's player.
+3. if the engine's `DEFCON_SUICIDE_PROVOKED` flag is clear, the ending is the loser's own:
+   **own goal** if the action was a coup in a battleground at DEFCON 2, or its own mandatory
+   degrader or Olympic Games played for the Event; **bad bet** for Summit, Missile Envy or
+   Five Year Plan.
+4. if the flag is set, the loser played an opponent card whose event reached DEFCON 1:
+   **unforced trap** if a safe alternative was in hand at that play, **forced trap** if not.
+
+The safe-alternative test is `defcon_suicide_cards` evaluated at the play-mode node and carried
+forward per environment, which is the 6.2%. **On by default.** It is the category that accounts
+for 19-24% of all games; it should stay on until that number falls far enough that the split
+stops being informative, at which point retire it rather than pay for it.
+
+### Live and per-snapshot are different measurements and carry different names
+
+The live classification is over the training rollout: on-policy, whatever states the policy
+reached this iteration, a denominator that shifts as the policy does. The snapshot version plays
+a **fixed 400-game sample at temperature 0.1** from a frozen checkpoint, so it is comparable
+across arms and across time.
+
+They will disagree, and a headline result was nearly lost this session to two versions of one
+metric being read against each other. So they never share a name:
+
+| | prefix | denominator | comparable across arms |
+|:---|:---|:---|:---|
+| live, in-loop | `live/defcon1_*` | episodes completed this iteration | **no** |
+| snapshot probe | `probe/defcon1_*` | a fixed 400-game sample at T=0.1 | yes |
+
+A number from one is never quoted against the other.
+
+### Retired
+
+`ending_frac_defcon1_self` and `ending_frac_defcon1_provoked` are **replaced**, not kept
+alongside. `self` merged an own goal that loses for nothing with Summit, which is a deliberate
+gamble; `provoked` said nothing about whether the loser had an alternative, which is the whole
+question. Carrying both doubles the series and invites cross-definition comparison. The date of
+the switch is recorded here so a step change in an old chart can be read as the definition
+moving.
+
+### The anchor is a sanity check, not a ranking
+
+`eval_win_rate_HeuristicBot` has inverted three arm orderings in one session, always overrating
+the weaker arm -- a fixed script can be exploited without being beaten in general. It is kept and
+renamed to `sanity/beats_heuristic`: **every model should win, and a value that stops being high
+means something broke.** It is not read as a comparison between arms.
+
+For comparison, the anchor is an **E3-01 checkpoint** at the budget being compared -- same engine,
+same recipe, no cross-engine asterisk. `E3-01-21-80M`, `-160M` and `-240M` all exist.
+
 **Play-mode counts per (card, side) do not belong here, despite costing 0.1%.** Compute-cheap is
 not log-cheap: 110 cards x 2 sides x 4 modes is 880 series, which bloats the event file and is
 unreadable as curves. It is tier 3.
@@ -57,9 +117,11 @@ their own self-play games because they ask about states the training rollout doe
 | probe | cost | note |
 |:---|:---|:---|
 | blunder rates (`measure_blunders_batched`) | ~1 s | already here |
+| **trunk read-out, cut down** (`state_readout.py`) | ~10 s | tracks plus a 20-country subset on ~2,000 positions. The full version is tier 3; this one exists so a representation collapse shows up mid-run rather than in the post-mortem |
 | four-way DEFCON classification on a fixed 400-game sample | ~30 s | the tier-1 version is a curve over the live rollout; this one is a like-for-like sample across arms |
 | setup probe | ~5 s | 15 batched forwards, no rollout |
-| position diagnostics, decisive probe | ~10 s | already here |
+| position diagnostics (`position_diagnostics.py`) | ~10 s | empty and uncontrolled battlegrounds at turns 5 and 8, ply distribution. Measures the board self-play produces rather than the result |
+| decisive probe (`decisive_probe.py`) | ~10 s | forced-win take rate and avoidable-forced-loss rate. Decisive choices are ~0.6% of decisions, so win rate barely registers them |
 
 **Every one of these must be run at temperature 0.1.** A probe at 1.0 reported the same
 checkpoint ending 60.3% of games at DEFCON 1 against the 31.4% its training logged, inflating
@@ -87,8 +149,9 @@ hours for a pool whose 1,431 pairings included ~1,400 nobody read.
 | probe | tier | cost |
 |:---|:---|---:|
 | DEFCON-1 ending class, coarse | training | 0.76% |
-| DEFCON-1 forced/unforced split | training, behind a flag | 6.2% |
-| blunder rates, setup, diagnostics | snapshot | seconds |
+| DEFCON-1 forced/unforced split | training, on by default | 6.2% |
+| blunder rates, setup, position diagnostics, decisive probe | snapshot | seconds |
+| trunk read-out, cut down | snapshot | ~10 s |
 | four-way classification, fixed sample | snapshot | ~30 s |
 | trunk recoverability, battleground detail | final | ~3 min |
 | play-mode distribution per (card, side) | final | ~1 min |
