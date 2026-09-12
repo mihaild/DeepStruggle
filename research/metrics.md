@@ -987,6 +987,37 @@ fixed script, and a differently-trained policy can exploit its habits without be
 This is systematic, not noise, and it means no live training metric can rank arms. Rate against
 H2 @480M, pooled over snapshots.
 
+### 21.6 Identity embeddings are worth ~115 Elo
+
+`--identity-dim 16` adds a learned embedding indexed by position to each card and country token.
+5,152 parameters, model-side, observation untouched. Two seeds, 80M steps, pooled over sixteen
+snapshot pairings:
+
+| | vs E3-01 control 80M | vs E2-01 H2 80M |
+|:---|---:|---:|
+| **E3-13** (seed 20260921) | 65.3% [63.6, 66.9] → **+110** | 59.7% → +68 |
+| **E3-14** (seed 20260922) | 66.6% [65.0, 68.2] → **+120** | 61.2% → +79 |
+| E3-01 control | — | 42.0% → −56 |
+
+Five times the effect of advantage filtering, the largest single change measured in this project,
+and the two seeds agree to 10 Elo. It also turns the control's deficit against the E2 baseline at
+matched budget into a substantial lead.
+
+The size is what the diagnosis predicted rather than a surprise (§21.4): 86% of cards share a
+feature vector, so most of what a player knows about its own hand was unavailable, and the MLP
+control (§21.5) had already priced the backbone at ~110 Elo. Behaviour moves with it -- DEFCON-1
+endings 49.4% → 32.9-37.3%, provoked 36.2% → 20.9-22.7%, final scoring 6.9% → 13.3-16.7%,
+explained variance +0.841 → +0.862/+0.889.
+
+**One thing goes the wrong way in both seeds.** The USSR win rate rises 47.0% → 51.7% and 57.6%,
+against a human 49.9%; the control was the most balanced arm measured. Windowing pushed the same
+direction. Not disqualifying at this size of gain, but it should be tracked at longer budgets
+rather than assumed to wash out.
+
+**Adopt, and re-baseline.** Every E3 comparison to date used a control without identity
+embeddings, so the recipe line moves and the control has to be re-run with them before the next
+factor is screened.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
