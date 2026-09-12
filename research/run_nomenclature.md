@@ -106,8 +106,26 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 09 | **mlp** | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` |
 | 10 | v2 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` |
 | 11 | **mlp** | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` |
+| 12 | v2 + identity | `--self-transform` | 21, 22 | 80M | `E3-12-2*_<ts>` |
+| 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
 
 Seed `21` is 20260921 and `22` is 20260922.
+
+**E3-12 and E3-13 carry `--identity-dim 16`, and their control is E3-10, not E3-01.** Identity
+is part of the recipe as of §21.8, so an arm that omitted it would be measuring identity again.
+
+Both target what `research/metrics.md` §21.12 localised: a country's exact influence is
+recoverable from its own raw observation slots 97% of the time, from its post-GraphConv token
+63%, and from the pooled 512-float trunk essentially never. E3-12 gives each graph layer a second
+weight matrix applied to the node itself, so a country need not be averaged with its neighbours;
+E3-13 adds an attention read-out at the end of the trunk, where the state vector queries the 84
+country and 110 card tokens -- each concatenated with its raw slots, because the token is itself
+already damaged -- and folds the result back into the trunk.
+
+Predictions were recorded before the runs, so the result cannot be read backwards: E3-12 should
+lift the `gconv` rungs and leave the trunk near zero; E3-13 should lift the trunk toward the
+token's 63%. Elo may not move at all, and that would itself be the finding -- it would say
+per-country influence is not what limits play.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional

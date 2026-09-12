@@ -36,11 +36,29 @@ def build_normalized_adjacency_matrix() -> torch.Tensor:
 
 
 class GraphConvLayer(nn.Module):
-    """Batched Graph Convolution layer."""
+    """Batched Graph Convolution layer.
 
-    def __init__(self, in_features: int, out_features: int):
+    With `self_transform=False` this is textbook GCN, `D^-1/2 (A+I) D^-1/2 @ (W x)`: **one weight
+    matrix for a country and for its neighbours alike**, and the only thing preserving a
+    country's own value is the self-loop, whose weight is `1/(deg+1)`. That is a low-pass filter,
+    and exact per-country influence is the high-frequency part of the signal.
+
+    `research/metrics.md` 21.12 measured the consequence. A linear probe recovers a country's
+    exact influence from its own raw observation slots 97% of the time and from its post-GCN
+    token 63% of the time, and the loss tracks degree: Australia and Canada (one neighbour) pass
+    through untouched, while France, West Germany and Italy (five) keep 60%, 50% and 34%.
+
+    `self_transform=True` adds a second weight matrix applied to the node itself, so the layer
+    can hold a country at full strength instead of being forced to average it with its
+    neighbours. Adjacency matters in this game -- placement legality, realignment, superpower
+    adjacency -- so the relation is kept; only the forced averaging goes.
+    """
+
+    def __init__(self, in_features: int, out_features: int, self_transform: bool = False):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias=False)
+        self.self_linear = (nn.Linear(in_features, out_features, bias=False)
+                            if self_transform else None)
         self.bias = nn.Parameter(torch.zeros(out_features))
 
     def forward(self, x: torch.Tensor, norm_adj: torch.Tensor) -> torch.Tensor:
@@ -48,6 +66,8 @@ class GraphConvLayer(nn.Module):
         # norm_adj: (84, 84)
         support = self.linear(x)  # (B, 84, out_features)
         out = torch.matmul(norm_adj, support) + self.bias
+        if self.self_linear is not None:
+            out = out + self.self_linear(x)
         return F.gelu(out)
 
 
@@ -143,7 +163,8 @@ class ColdWarNetV2(nn.Module):
                  global_features: int = GLOBAL_SIZE, has_tail: bool = False,
                  board_features: int = BOARD_FEATURES,
                  categorical_value: bool = False, value_atoms: int = VALUE_ATOMS,
-                 identity_dim: int = 0):
+                 identity_dim: int = 0, self_transform: bool = False,
+                 attn_readout: int = 0):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -191,8 +212,10 @@ class ColdWarNetV2(nn.Module):
             self.country_identity = None
 
         # 1. Board Graph Encoder (84 nodes x 26 features -> 64)
-        self.gconv1 = GraphConvLayer(self.board_features + self.identity_dim, 64)
-        self.gconv2 = GraphConvLayer(64, 64)
+        self.self_transform = bool(self_transform)
+        self.gconv1 = GraphConvLayer(self.board_features + self.identity_dim, 64,
+                                    self_transform=self.self_transform)
+        self.gconv2 = GraphConvLayer(64, 64, self_transform=self.self_transform)
         self.board_proj = nn.Sequential(
             nn.Linear(64 * 2, 256),  # Mean + Max pooling over 84 nodes
             nn.LayerNorm(256),
@@ -252,6 +275,26 @@ class ColdWarNetV2(nn.Module):
             nn.GELU(),
         )
         self.res_blocks = nn.ModuleList([ResBlock(hidden_dim) for _ in range(num_res_blocks)])
+
+        # End-of-trunk attention read-out. The board branch pools across all 84 countries before
+        # the trunk is formed, and `research/metrics.md` 21.12 measures what that costs: a linear
+        # probe recovers a country's exact influence from its pre-pooling token 66% of the time
+        # and from the 512-float trunk essentially never. Every head reads only the trunk, so the
+        # board is gone by the time anything decides where to place.
+        #
+        # This lets the trunk, once it has an estimate of the situation, go back and look at
+        # specific countries and cards. The keys and values carry each entity's **raw**
+        # observation slots alongside its encoded token, because the token is itself already
+        # damaged -- the graph convolution costs a third before pooling costs the rest -- so
+        # attending only over tokens would inherit that loss.
+        self.attn_readout = int(attn_readout)
+        if self.attn_readout > 0:
+            d = self.attn_readout
+            self.ro_query = nn.Linear(hidden_dim, d)
+            self.ro_country_kv = nn.Linear(64 + self.board_features + self.identity_dim, 2 * d)
+            self.ro_card_kv = nn.Linear(64 + self.card_features + self.identity_dim, 2 * d)
+            self.ro_out = nn.Sequential(
+                nn.Linear(hidden_dim + 2 * d, hidden_dim), nn.LayerNorm(hidden_dim), nn.GELU())
 
         # 7. Masked Policy Head (212 Actions)
         self.policy_head = nn.Sequential(
@@ -458,6 +501,18 @@ class ColdWarNetV2(nn.Module):
         for block in self.res_blocks:
             h = block(h)
 
+        if self.attn_readout > 0:
+            d = self.attn_readout
+            q = self.ro_query(h).unsqueeze(1)                       # (B, 1, d)
+            reads = []
+            for kv_proj, tokens, raw in ((self.ro_country_kv, h_board, board_nodes),
+                                         (self.ro_card_kv, h_cards, card_nodes)):
+                kv = kv_proj(torch.cat([tokens, raw], dim=-1))      # (B, N, 2d)
+                k, v = kv[..., :d], kv[..., d:]
+                w = torch.softmax(torch.matmul(q, k.transpose(1, 2)) / (d ** 0.5), dim=-1)
+                reads.append(torch.matmul(w, v).squeeze(1))         # (B, d)
+            h = self.ro_out(torch.cat([h, *reads], dim=-1))
+
         if return_attn_weights:
             return h, attn_weights
         return h
@@ -555,7 +610,9 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           has_tail: bool = False,
                           board_features: int = ColdWarNetV2.BOARD_FEATURES,
                           categorical_value: bool = False,
-                          identity_dim: int = 0) -> ColdWarNetV2:
+                          identity_dim: int = 0,
+                          self_transform: bool = False,
+                          attn_readout: int = 0) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device.
 
     The defaults are observation layout v2.3, which is the only layout the engine emits.
@@ -564,6 +621,7 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     """
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
                          identity_dim=identity_dim,
+                         self_transform=self_transform, attn_readout=attn_readout,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
                          board_features=board_features,
@@ -710,7 +768,9 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         # The P1 head must be carried too: a frozen evaluation copy built without it would have
         # a different state dict from the model it is copying, which is how arms E and F died.
         categorical_value=bool(getattr(model, "categorical_value", False)),
-        identity_dim=int(getattr(model, "identity_dim", 0)))
+        identity_dim=int(getattr(model, "identity_dim", 0)),
+        self_transform=bool(getattr(model, "self_transform", False)),
+        attn_readout=int(getattr(model, "attn_readout", 0)))
 
 
 def check_checkpoint_layout(state_dict: dict) -> None:

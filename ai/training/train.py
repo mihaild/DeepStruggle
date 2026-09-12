@@ -208,6 +208,10 @@ def main():
     parser.add_argument("--priority-alpha", type=float, default=0.0,
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
+    parser.add_argument("--self-transform", action="store_true",
+                        help="Give each GraphConv layer a second weight matrix applied to the node itself, so a country can be held at full strength instead of averaged with its neighbours. metrics.md 21.12: a country's exact influence is recoverable from its raw observation slots 97%% of the time and from its post-GraphConv token 63%%, and the loss tracks neighbour count.")
+    parser.add_argument("--attn-readout", type=int, default=0,
+                        help="Width of an end-of-trunk attention read-out (0 = off; try 64). After the residual trunk, the state vector queries the 84 country and 110 card tokens -- each concatenated with its raw observation slots -- and the result is folded back in. Targets the other half of the same finding: the pre-pooling token holds two thirds of the recoverable per-country influence and the pooled trunk holds none.")
     parser.add_argument("--run-name", type=str, default=None,
                         help="Short name from research/run_nomenclature.md as <engine>-<attempt>-<seed>, e.g. E3-12-21. Becomes the checkpoint directory prefix (data/checkpoints/E3-12-21_[date]_[time]) and is recorded in metadata.json. Omit the steps field: one directory holds every budget of a lineage and each snapshot's filename already carries its own.")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
@@ -258,6 +262,8 @@ def main():
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,
             run_name=args.run_name,
+            self_transform=args.self_transform,
+            attn_readout=args.attn_readout,
             description=args.description,
             device=args.device,
             post_tournament=args.post_tournament,

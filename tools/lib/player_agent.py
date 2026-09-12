@@ -245,8 +245,17 @@ class NeuralAgent:
                 model = create_coldwar_net_mlp(dev, categorical_value=categorical,
                                                drop_static=bool(drop_static))
             else:
+                # Both architecture variants are detected by weight name, like everything else
+                # here. A model built without them loads the checkpoint's other tensors fine and
+                # silently drops these, so the probe would rate a different network than the one
+                # that trained -- the failure mode that killed arms E and F.
+                self_transform = any(k.endswith("self_linear.weight") for k in state_dict)
+                ro_q = state_dict.get("ro_query.weight")
+                attn_readout = int(ro_q.shape[0]) if ro_q is not None else 0
                 model = create_coldwar_net_v2(dev, categorical_value=categorical,
-                                              identity_dim=identity_dim)
+                                              identity_dim=identity_dim,
+                                              self_transform=self_transform,
+                                              attn_readout=attn_readout)
         else:
             model = create_coldwar_net(dev)
 
