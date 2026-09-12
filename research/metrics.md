@@ -825,6 +825,21 @@ arm taught it the conjunction. It also makes the auxiliary DEFCON-risk head the 
 rather than a narrower window alone -- the head is the only piece on the table that would make
 the network *represent* the danger instead of avoiding a region of the game.
 
+**The opening got better, so that is not where the Elo went.** The setup probe on the same two
+checkpoints, 1,500 games each:
+
+| target | control | window |
+|:---|---:|---:|
+| USSR Poland ≥ 3 | 84.8% | **97.9%** |
+| US Italy ≥ 2 | 54.6% | **82.3%** |
+| US Iran ≥ 2 | 1.2% | **46.0%** |
+| US West Germany ≥ 4 | 0.0% | 0.0% |
+
+Three of the four targets improve substantially and none regresses, which localises the loss to
+mid and late play -- exactly where a DEFCON-2 turn lives, and so consistent with the over-reach.
+(Both arms place West Germany ≥ 4 in 0.0% of games. That is a property of this 80M lineage, not
+of the window: H2 at 240M manages 73.2%. Do not read it across lineages or budgets.)
+
 **Verdict: do not adopt as it stands.** The behavioural target is reachable -- 13.7% against the
 human 11.7% is the closest this project has come -- but not at this price, and the next attempt
 should narrow the window before anything else.
