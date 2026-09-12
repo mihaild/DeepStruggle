@@ -233,6 +233,11 @@ def discard_pile(state: ts.GameState) -> List[int]:
             if state.get_card_location(c) == ts.CardLocation.DISCARD_PILE]
 
 
+def is_us_event(card_id: int) -> bool:
+    """Is this card's event the US's? Read from the engine, not from a list kept here."""
+    return str(ts.CardData.get_card_info(int(card_id)).get("side")) == "US"
+
+
 def us_played_degraders(state: ts.GameState, subs: bool) -> Set[int]:
     """Cards that take DEFCON to 1 if the *US* plays them now, with no USSR decision in between.
 
@@ -251,8 +256,10 @@ def us_played_degraders(state: ts.GameState, subs: bool) -> Set[int]:
       Tear Down This Wall grants one in Europe, overriding the DEFCON 2 closure. Each needs USSR
       influence in a battleground of *its own* region, and each is a US coup, so Nuclear Subs
       exempts them.
-    * **Conditional on the hand** -- Five Year Plan fires a random USSR card, so it is dangerous
-      exactly when one of the above is already in hand to be hit.
+    * **Conditional on the hand** -- Five Year Plan fires a random USSR card only if that card is
+      a *US event*, so it is dangerous exactly when one of the above is in hand **and US-side**.
+      Junta and How I Learned are neutral, so Five Year Plan cannot fire them and a hand holding
+      only those is safe from it.
 
     Cards that hand the *USSR* the Operations or the choice are absent: it simply declines. That
     is Lone Gunman, Ortega and Olympic Games. We Will Bury You is absent for a different reason --
@@ -268,7 +275,7 @@ def us_played_degraders(state: ts.GameState, subs: bool) -> Set[int]:
             out.add(JUNTA)
         if has_influence_in(state, ts.Player.USSR, (EUROPE,), battleground_only=True):
             out.add(TEAR_DOWN_THIS_WALL)
-    if any(c in out for c in hand_of(state, ts.Player.USSR)):
+    if any(c in out and is_us_event(c) for c in hand_of(state, ts.Player.USSR)):
         out.add(FIVE_YEAR_PLAN)
     return out
 
@@ -311,9 +318,11 @@ def defcon_suicide_cards(state: ts.GameState, player: ts.Player) -> Set[int]:
         if (int(state.us_space_track) > int(state.ussr_space_track)
                 and any(c in us_played_degraders(state, subs) for c in discard_pile(state))):
             out.add(STAR_WARS)
-        # Five Year Plan discards a random USSR card and fires it if it is a US event, so it is
-        # dangerous exactly when one of the above is already in hand to be hit.
-        if any(c in out for c in hand_of(state, ts.Player.USSR)):
+        # Five Year Plan discards a random USSR card and fires it only if it is a *US* event,
+        # so it is dangerous exactly when one of the above is in hand and US-side. Everything in
+        # `out` here is US-side already; the check is explicit so a neutral card added to this
+        # set later cannot arm it by accident.
+        if any(c in out and is_us_event(c) for c in hand_of(state, ts.Player.USSR)):
             out.add(FIVE_YEAR_PLAN)
     else:
         # A USSR event that degrades DEFCON outright; the US cannot decline it.

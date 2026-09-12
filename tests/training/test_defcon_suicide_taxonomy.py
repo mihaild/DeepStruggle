@@ -15,7 +15,7 @@ import ts_engine as ts
 from ai.eval.blunders import (CIA_CREATED, DUCK_AND_COVER, FIVE_YEAR_PLAN, GRAIN_SALES,
                               HOW_I_LEARNED, JUNTA, KAL_007, LONE_GUNMAN, NUCLEAR_SUBS_ACTIVE,
                               OLYMPIC_GAMES, ORTEGA_ELECTED, STAR_WARS, TEAR_DOWN_THIS_WALL,
-                              WE_WILL_BURY_YOU, defcon_suicide_cards,
+                              WE_WILL_BURY_YOU, defcon_suicide_cards, is_us_event,
                               us_played_degraders)
 from ai.eval.positions import PositionBuilder
 
@@ -160,6 +160,21 @@ def test_a_coup_degrader_with_nothing_to_coup_is_not_a_danger() -> None:
     for degrader in (JUNTA, GRAIN_SALES, CIA_CREATED, TEAR_DOWN_THIS_WALL):
         pos = ussr(discard=(degrader,), us_space=3, ussr_space=1)
         assert STAR_WARS not in defcon_suicide_cards(pos, ts.Player.USSR), degrader
+
+
+def test_five_year_plan_only_fires_us_events() -> None:
+    """It discards a random USSR card and fires it *only if it is a US event*.
+
+    Junta and How I Learned are neutral, so a hand holding only those is safe from it even
+    though both are degraders in the Star Wars sense.
+    """
+    assert not is_us_event(JUNTA) and not is_us_event(HOW_I_LEARNED)
+    assert is_us_event(DUCK_AND_COVER) and is_us_event(GRAIN_SALES)
+    for neutral in (JUNTA, HOW_I_LEARNED):
+        pos = ussr(hand=(neutral, 23), influence=((CUBA, ts.Player.USSR, 2),))
+        assert FIVE_YEAR_PLAN not in us_played_degraders(pos, subs=False), neutral
+    pos = ussr(hand=(DUCK_AND_COVER, 23))
+    assert FIVE_YEAR_PLAN in us_played_degraders(pos, subs=False)
 
 
 def test_five_year_plan_in_the_discard_needs_a_degrader_in_hand() -> None:
