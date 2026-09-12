@@ -708,6 +708,44 @@ warm start cannot save re-learning something nothing learns in the first place.
 > the series is **not continuous across that boundary** — a step change there is the definition
 > moving, not the policy. Re-measure before comparing across it.
 
+### 21.1 The critic does not see a provoked DEFCON-1 coming, at any node
+
+Traced through the five `h2_480M_provoked_*` replays by replaying their recorded flat actions
+through a fresh engine on the replay's own seed and reading `v_win` from the **losing** side's
+perspective at every node. (Perspective checked: the two sides sum to +0.05 at a sampled node,
+so the readings are the loser's own value, not a sign error.)
+
+The games split into two shapes, and both were tested at the node where the loss becomes certain:
+in 7107, 7115 and 7118 the card was played **Ops first, event later**, so `PlayMode: OPS` on an
+opponent card is the point of no return; in 7119 Grain Sales was **unspaceable**, so the card
+selection itself is.
+
+| game | at the card | at `PlayMode: OPS` | last node before the loss |
+|:---|---:|---:|---:|
+| 7107 Star Wars | −0.770 | −0.765 | **−0.754** |
+| 7115 Lone Gunman | −0.052 | −0.055 | −0.396 |
+| 7118 Grain Sales | −0.691 | −0.698 | −0.719 |
+| 7119 Grain Sales (unspaceable) | −0.711 | −0.718 | **−0.655** |
+| 7122 Missile Envy | −0.731 | −0.728 | **−0.701** |
+
+**It never reacts.** Choosing the fatal mode moves `v_win` by at most 0.007 in any of them, and
+choosing the fatal card in 7119 moves it by 0.007. At the last decision before DEFCON 1 the
+critic is still reporting −0.40 to −0.75 rather than anything near −1, and in **three of the five
+it has become more optimistic** on the way into the loss. In 7115 the losing side sits at −0.05,
+essentially even, and is dead four micro-actions later.
+
+Two consequences.
+
+**This is not only a credit-assignment problem.** The critic cannot represent the conjunction, so
+sharpening the policy's credit will not by itself teach it -- but that is also the argument *for*
+windowing the provoked case rather than against it. Inside a blunder window the advantage is
+`-1 - v_t`, which does not consult the critic at all, so the window is precisely the mechanism
+that works when the critic is blind.
+
+**And it raises the value of the auxiliary DEFCON-risk head**, which is a direct supervised signal
+for the thing `v_win` demonstrably does not encode. Its label is the same `defcon_blunder` flag
+that excludes provoked endings, so the one-line label fix is a prerequisite for either.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
