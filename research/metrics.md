@@ -1343,8 +1343,35 @@ Pakistan at 36%, Egypt at 34%. Western Europe, the Middle East and South Asia --
 that decide three regions -- sit at or below 20% of gap closed in the control at every budget.
 
 Against that, Japan at 89% and South Africa at 69% show the representation is capable of holding a
-country precisely. So this is not a width limit or a pooling limit in general; it is specific, and
-whatever distinguishes Japan from France is the thing to find.
+country precisely. So this is not a width limit or a pooling limit in general; it is specific.
+
+#### The lead: it tracks stability
+
+Correlating gap-closed against country properties over the 29 battlegrounds, **stability is the
+one that lines up** -- r = +0.54, and monotone in every step:
+
+| stability | mean gap closed | battlegrounds |
+|---:|---:|:---|
+| 1 | **4.2%** | Angola, Nigeria, Zaire |
+| 2 | **8.3%** | Algeria, Argentina, Brazil, Egypt, Iran, Italy, Libya, Mexico, Pakistan, Panama, Thailand, Venezuela |
+| 3 | **24.8%** | Chile, Cuba, East Germany, France, India, Iraq, North Korea, Poland, Saudi Arabia, South Africa, South Korea |
+| 4 | **41.0%** | Israel, Japan, West Germany |
+
+By region the same thing appears as South America last (4.4%) and Asia first (28.1%), with Europe
+19.3%, Africa 16.9%, Central America 16.2% and the Middle East 15.5%.
+
+**A ten-fold difference between stability 1 and stability 4.** The obvious reading -- low-stability
+countries change hands more, so they are simply harder to track -- is contradicted by the other
+correlation in the same fit: gap-closed rises with *headroom* (r = +0.70), so the countries whose
+influence varies most are read **better**, not worse, as a share of what is there to recover.
+Volatility alone does not explain it.
+
+**Treat this as a lead, not a conclusion.** n is 29, and stability is confounded with region and
+with how often a country is contested at all -- the stability-2 row is most of Latin America and
+North Africa, which §21.11 shows are barely played. Adjacency could not be tested: the country
+info exposed to Python carries no adjacency field, so that hypothesis is untested rather than
+rejected. What the table does establish is that the failure has *structure*, and the next
+measurement should separate stability from region rather than add another aggregate.
 
 ## Agreement with human play
 
