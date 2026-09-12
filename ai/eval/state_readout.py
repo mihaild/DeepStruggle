@@ -509,7 +509,8 @@ def stage_gap_closed(data: Dict[str, Any], stage: str,
 
     lev = np.clip(y, 0, MAX_LEVEL).astype(int)
     base = _mode_baseline(y[tr], y[te])
-    acc = multinomial_accuracy(data[stage].astype(np.float64), lev, tr, te)
+    acc = tuned_multinomial_accuracy(data[stage].astype(np.float64), lev,
+                                     data["env_id"], tr, te)
 
     gap = np.full(84, np.nan)
     for c in range(84):
@@ -531,6 +532,37 @@ def weighted_gap_closed(res: Dict[str, np.ndarray],
     num = float(sum(res["acc"][c] - res["base"][c] for c in idx))
     den = float(sum(1.0 - res["base"][c] for c in idx))
     return num / den if den > 1e-9 else float("nan")
+
+
+L2_GRID: Tuple[float, ...] = (1e-3, 1e-4, 1e-5, 1e-6, 1e-7)
+
+
+def tuned_multinomial_accuracy(x: np.ndarray, lev: np.ndarray, env_ids: np.ndarray,
+                               tr: np.ndarray, te: np.ndarray,
+                               grid: Sequence[float] = L2_GRID) -> np.ndarray:
+    """Per-country accuracy with the penalty chosen on a validation split, not fixed.
+
+    A single `l2` cannot serve every rung of the ladder, and using one is how the `raw` rung came
+    to read 85% when the answer is in the input. The penalty was tuned on a synthetic *one
+    feature* problem; applied to 26, 64 and 512 features it is far too strong for the small ones.
+    At 1e-7 the raw rung recovers 98% of the gap instead of 85%.
+
+    Loosening it globally is not the fix either: the same sweep moved the 512-float trunk between
+    8.9% and 28.0%, because a wide feature space with a weak penalty overfits the probe's own
+    training split. One number per stage, each at its own best penalty, is the comparison that
+    means "what a linear read-out can get out of this representation".
+
+    The penalty is picked per country on a validation split carved out of the training games --
+    never from the test games -- and the returned accuracy is always on the untouched test split.
+    """
+    inner_tr, val = split_by_env(env_ids[tr], frac=0.75, seed=1)
+    tr_fit, tr_val = tr[inner_tr], tr[val]
+
+    val_acc = np.stack([multinomial_accuracy(x, lev, tr_fit, tr_val, l2=g) for g in grid])
+    best = np.argmax(val_acc, axis=0)
+
+    test_acc = np.stack([multinomial_accuracy(x, lev, tr, te, l2=g) for g in grid])
+    return test_acc[best, np.arange(test_acc.shape[1])]
 
 
 def influence_control_detail(model: Any, hold_out_envs: bool = True,
@@ -561,8 +593,8 @@ def influence_control_detail(model: Any, hold_out_envs: bool = True,
     own_base = _mode_baseline(targets["board"][tr], targets["board"][te])
     lev_own = np.clip(targets["board"], 0, MAX_LEVEL).astype(int)
     lev_opp = np.clip(targets["board_opp"], 0, MAX_LEVEL).astype(int)
-    own_clf = multinomial_accuracy(x, lev_own, tr, te)
-    opp_clf = multinomial_accuracy(x, lev_opp, tr, te)
+    own_clf = tuned_multinomial_accuracy(x, lev_own, env_ids, tr, te)
+    opp_clf = tuned_multinomial_accuracy(x, lev_opp, env_ids, tr, te)
     opp_exact = _exact_accuracy(preds["board_opp"], targets["board_opp"][te])
     opp_base = _mode_baseline(targets["board_opp"][tr], targets["board_opp"][te])
 

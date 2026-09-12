@@ -1324,22 +1324,40 @@ The numbers above say the trunk does not have it; they do not say where it went.
 rollout at four points localises it. `raw` is country i's own 26 observation floats -- slot 0 is
 literally `my_influence / 10`, so it is also the check that the probe works at all.
 
-Battlegrounds, share of the influence gap closed, whole games held out:
+Battlegrounds, share of the influence gap closed, whole games held out, **penalty selected per
+stage on a validation split**:
 
 | stage | ctrl 240M | id 160M |
 |:---|---:|---:|
-| `raw` -- country i's 26 observation floats | **85.5%** | 83.6% |
-| `gconv1` -- after one graph convolution | 56.7% | 56.7% |
-| `gconv2` -- after the second, still pre-pooling | **60.8%** | 56.6% |
-| `trunk` -- the 512 floats every head reads | **12.1%** | 13.1% |
+| `raw` -- country i's 26 observation floats | **96.8%** | 98.5% |
+| `gconv1` -- after one graph convolution | 62.9% | 64.5% |
+| `gconv2` -- after the second, still pre-pooling | **65.8%** | 65.1% |
+| `trunk` -- the 512 floats every head reads | **−0.5%** | 6.9% |
 
-**Pooling is the single largest loss: 61% → 12%, about 49 points in one step.** Mean- and
-max-pooling over 84 countries is where the board goes. The pre-pooling token still holds **five
-times** what the trunk holds.
+*Tuning the penalty per stage is not a detail.* A single `l2`, fitted to a synthetic one-feature
+problem, held the `raw` rung to 85% -- with the answer in slot 0. The same constant is far too
+weak for 512 features and far too strong for one, and a sweep moved the trunk rung between 8.9%
+and 28.0% depending only on that choice. Each rung now gets its own penalty, chosen on games held
+out of training and never on the test games. `raw` lands at 96.8%, and at exactly 100% for most
+individual countries, which is what makes the rest of the column readable.
 
-**The graph convolution costs a quarter before that**, 85.5% → 56.7%, and the second layer adds
-nothing back. Neighbour-mixing smears each country with its neighbours, so even a perfect
-attention read-out over `gconv2` tokens caps near 61%, not 85%.
+**The trunk holds essentially nothing about exact influence.** Not "about a fifth", which was the
+broken probe, and not 12%, which was the under-tuned one: **−0.5% and 6.9%**, at or below what a
+constant gives.
+
+**Pooling is where it goes: 66% → 0%.** The pre-pooling token holds two thirds of the recoverable
+gap and the 512 floats hold none of it. Mean- and max-pooling over 84 countries is the step that
+destroys the board.
+
+**The graph convolution costs a third before that**, 96.8% → 62.9%, and the second layer adds
+nothing back, so an attention read-out over `gconv2` tokens caps near 66% rather than 97%.
+
+*Two controls, because "the trunk holds nothing" is the kind of claim a broken probe also makes.*
+On the same checkpoint and the same pipeline the trunk gives **tracks R^2 0.847** and **hand AUC
+0.874** -- so the representation and the probe are both working, and it is specifically
+per-country influence that is absent. And the graph loss tracks node **degree**: correlation
++0.38 with the raw-to-`gconv1` loss, and +0.43 between `gconv1` recovery and the self-loop weight
+`1/(deg+1)`.
 
 Per country, the same ladder (control 240M, headroom in brackets):
 
@@ -1360,6 +1378,43 @@ Per country, the same ladder (control 240M, headroom in brackets):
 
 Only Japan and South Africa survive pooling intact. France, Pakistan, Egypt and Italy are
 recoverable from their own token at 45-63% and are **worse than a constant** in the trunk.
+
+#### The graph convolution is the wrong operator for this quantity
+
+`GraphConvLayer` is `A_norm @ (W x) + b`, with `A_norm = D^-1/2 (A + I) D^-1/2` -- textbook GCN.
+**One weight matrix is applied to a country and to its neighbours alike**, and the only thing
+keeping a country's own value is the self-loop, whose weight is `1/(deg+1)`. So a country's own
+influence is attenuated in proportion to how many neighbours it has, and mixed with theirs
+through a transform that cannot tell the two apart. That is a low-pass filter, and exact
+per-country influence is the high-frequency part of the signal.
+
+The prediction that follows is that survival through `gconv1` should track degree, and it does:
+
+| country | neighbours | self-loop weight | `raw` | `gconv1` |
+|:---|---:|---:|---:|---:|
+| Australia | 1 | 0.50 | 100% | **100%** |
+| Canada | 1 | 0.50 | 99% | **99%** |
+| Cuba | 2 | 0.33 | 95% | 95% |
+| Panama | 2 | 0.33 | 94% | 96% |
+| South Africa | 2 | 0.33 | 100% | 98% |
+| Egypt | 3 | 0.25 | 99% | 81% |
+| East Germany | 4 | 0.20 | 100% | 66% |
+| Israel | 4 | 0.20 | 98% | 60% |
+| France | 5 | 0.17 | 98% | **60%** |
+| West Germany | 5 | 0.17 | 96% | **50%** |
+| Italy | 5 | 0.17 | 100% | **34%** |
+
+Degree-1 countries pass through untouched; the five-neighbour countries of Western Europe lose
+half to two thirds. The correlation is +0.38 over the 33 countries with real headroom and is not
+the whole story -- Austria (degree 4) loses 86% and Vietnam (degree 2) loses 70%, so traffic
+matters too -- but the mechanism is visible and it is the one the operator implies.
+
+**This is fixable without abandoning the map.** The defect is not that adjacency is modelled, it
+is that self and neighbour share a transform. `h_i = W_self x_i + W_neigh * mean_j(x_j)`
+(GraphSAGE-style), or simply a residual `h = GCN(x) + W x`, gives the network the option of
+keeping a country's own value at full strength and costs one more weight matrix per layer.
+Adjacency is genuinely part of this game -- placement legality, realignment, superpower adjacency
+-- so the relation is worth keeping; what is wrong is being forced to average across it.
 
 #### It tracks stability
 
@@ -1382,9 +1437,12 @@ is contradicted by the other correlation in the same fit: gap-closed rises with 
 share of what is there. Volatility alone does not explain it.
 
 **A lead, not a conclusion.** n is 23 after the headroom filter, and stability is confounded with
-region and with how often a country is contested at all. Adjacency could not be tested: the
-country info exposed to Python carries no adjacency field, so that hypothesis is untested rather
-than rejected.
+region and with how often a country is contested at all -- and now also with **degree**, which
+has a mechanism behind it where stability does not. Western Europe is both high-stability and
+high-degree, so the two hypotheses are not separated by this data.
+
+(An earlier version of this note said adjacency could not be tested because the country info
+exposed no adjacency field. It does: the key is `neighbors`, not `adjacent`.)
 
 #### What this licenses
 
