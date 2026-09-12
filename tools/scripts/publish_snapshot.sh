@@ -60,6 +60,7 @@ EXCLUDED_PATHS=(
     replays
     .claude
     docs
+    .agents
     "$SCRIPT_REL_PATH"
 )
 
