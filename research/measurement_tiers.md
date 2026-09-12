@@ -103,12 +103,6 @@ same recipe, no cross-engine asterisk. `E3-01-21-80M`, `-160M` and `-240M` all e
 not log-cheap: 110 cards x 2 sides x 4 modes is 880 series, which bloats the event file and is
 unreadable as curves. It is tier 3.
 
-The forced/unforced split needs the safe-alternative test at the *card play*, not at the
-terminal. Carrying a per-environment record of the last play, as `defcon_endings.py` already
-does, keeps that at terminal cost -- but the record must be written at the play-mode node, and
-computing `defcon_suicide_cards` there costs the 6.2%. **Log the coarse split (phase, own goal,
-bad bet) at 0.76%, and gate the forced/unforced split behind a flag** for runs that want it.
-
 ## Tier 2 — per snapshot
 
 Snapshots are every 900 s, so a probe may cost tens of seconds without mattering. These need
