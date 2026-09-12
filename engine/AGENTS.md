@@ -407,3 +407,61 @@ up influence in those two and additionally asserts that an adjacent country with
 utility, and so does every reward. A policy trained against this learns that an opponent's Ortega
 is a free win whenever a battleground sits next to Nicaragua — a move the rules do not permit.
 
+
+## 9. UN Intervention offers companions the rules forbid — DIAGNOSED, NOT FIXED
+
+**Status: awaiting the owner's decision.** The fix changes the decision stream, which is an
+engine-revision bump (§`research/run_nomenclature.md`), so it is not applied unasked.
+
+UN Intervention (#32) reads "play this card simultaneously with a card containing your
+opponent's associated Event". The companion must be an opponent-associated, non-scoring card.
+**The action mask offers every card in the hand**, including scoring cards and the player's own.
+
+The gate is right and the mask is wrong, which is why this survived. `trigger_un_intervention`
+(`engine/src/events/early_war.cpp:462`) only raises the decision when the player actually holds
+an opponent non-scoring card. It then sets `ctx().resolving_card = UN_INTERVENTION`, and that is
+the defect:
+
+| site | what happens |
+|:---|:---|
+| `action_mask.cpp:44` | `if (ctx.resolving_card != 0)` fires first and delegates to `get_event_action_mask`, then returns |
+| `action_mask.cpp:57` | the *correct* companion filter, `pending_op_card == UN_INTERVENTION && is_opponent_card(i, p)` — **unreachable**, shadowed by the branch above |
+| `card_dispatcher.cpp:1840` | `get_event_action_mask`'s `SELECT_CARD` switch has no `UN_INTERVENTION` case, so it takes `default:` — every card in hand |
+
+`pending_op_card` *is* set to 32 at that node; shadowing is what kills the branch, not a missing
+assignment. Two copies of one rule, and the reachable one is the wrong one.
+
+**The illegal choice is absorbed silently, and that is the second half of the bug.** The resolver
+(`card_dispatcher.cpp:757`) re-checks `side == opp && !is_scoring_card` and on failure falls
+through to `resolving_card = 0; return true;`. So nothing is corrupted -- the scoring card stays
+in hand, it is *not* discarded -- but UN Intervention goes to the discard pile, no event fires,
+no Ops are granted, and the action round ends. **The player silently loses a whole action round.**
+A safety net absorbing an illegal action instead of rejecting it is exactly why nothing announced
+this for as long as it has existed.
+
+**Seen in the wild**: `E3-10-21-160M-selfplay-404`, turn 8 AR1. Step #428 selects UN Intervention,
+#429 EVENT, #430 names **Europe Scoring**. The USSR gets nothing for the action round, and Europe
+Scoring -- still in hand -- is played again at step #444, T8 AR3, confirming it was never
+discarded.
+
+**How often**, 400 games per checkpoint at temperature 0.1:
+
+| checkpoint | companion nodes | illegal chosen | offered/node | of which illegal |
+|:---|---:|---:|---:|---:|
+| `E3-10-21-160M` | 784 | 32 (**4.1%**) | 5.8 | 52.4% |
+| `E3-01-21-160M` | 655 | 9 (**1.4%**) | 4.4 | 44.5% |
+| `E3-01-21-240M` | 684 | 17 (**2.5%**) | 4.7 | 47.3% |
+
+About half of every offered companion list is illegal by rule, and the policies take one 1.4-4.1%
+of the time. The identity arm does it most, which may connect to its `spaced_own_or_neutral`
+regression (`research/metrics.md` §21.11).
+
+**The fix, when approved**: add a `case card_ids::UN_INTERVENTION:` to the `SELECT_CARD` switch in
+`get_event_action_mask` mirroring the resolver's own test, and **delete** the dead branch at
+`action_mask.cpp:57` rather than leave a second copy of a rule nothing reaches. A regression test
+must pin the companion mask to opponent non-scoring cards only, since the bug is that a correct
+filter existed and was never consulted.
+
+**What it costs**: the decision stream changes, so this is a new engine letter. `(seed, actions)`
+datasets truncate (invariant 10) and the E3 Elo ladder in `research/metrics.md` §21.10 becomes a
+cross-engine comparison. Checkpoints still load -- the observation is untouched.
