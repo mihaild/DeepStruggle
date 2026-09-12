@@ -1018,6 +1018,41 @@ rather than assumed to wash out.
 embeddings, so the recipe line moves and the control has to be re-run with them before the next
 factor is screened.
 
+### 21.7 What the trunk actually encodes, read off linearly
+
+`ai/eval/state_readout.py` fits a **linear** probe from the frozen 512-float trunk to facts about
+the position. Linear on purpose: if a fact is not linearly available, no head can condition on it
+either, and a deeper probe would only show it is recoverable in principle.
+
+| arm | board R² | hand AUC | **which twin** (chance 0.36) | tracks R² |
+|:---|---:|---:|---:|---:|
+| E3-01-21-80M control | 0.234 | 0.861 | **0.512** | 0.781 |
+| E3-09-21-80M mlp | **0.396** | 0.884 | **0.717** | 0.630 |
+| E3-10-21-80M identity | 0.230 | 0.864 | **0.628** | 0.739 |
+| E2-02-21-480M | 0.259 | 0.883 | **0.546** | 0.856 |
+
+**The aggregate hand AUC answers nothing.** Every arm scores ~0.86, including ones that provably
+cannot identify a card, because most cards *are* separable by properties: "a 3-Ops US early-war
+card" narrows 110 to about six and lifts AUC far above chance without identity.
+
+**The within-collision-group test is the real one.** Restricted to positions where exactly one
+member of a same-feature group is in hand, the question is which -- and properties cannot help.
+Identity embeddings take it from 0.512 to 0.628 and the positional MLP to 0.717, against a chance
+rate of 0.36. That is the mechanism behind §21.6's +110 Elo, measured directly rather than
+inferred. (Caveat: the non-identity arms sit above chance because the group's other members are
+visibly in the discard or deck in a real position, which is a cue that is not identity. It is
+shared by every arm, so the ordering holds.)
+
+**And the unexpected result: the trunk barely encodes per-country influence.** Board R² is
+0.23-0.40 everywhere. The board branch pools mean+max over 84 country tokens, so which country
+holds what is largely gone by the time any head sees it -- the same destruction as for cards, and
+the MLP scores highest (0.396) for the same reason it wins the twin test, by reading positionally.
+This bears directly on the empty-battleground failure, and it is untouched by identity embeddings,
+which address the card side only.
+
+Tracks read well everywhere (DEFCON 0.85-0.92, victory points 0.93-0.97), so nothing is wrong
+with the trunk in general -- it is specifically per-entity information that pooling removes.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a

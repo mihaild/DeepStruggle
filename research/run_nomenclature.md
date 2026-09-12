@@ -17,18 +17,22 @@ comparison. That should have been legible from the name.
 
 A run is named
 
-    <engine><attempt>-<steps>
+    <engine>-<attempt>-<seed>-<steps>
 
-for example **`E3-07-80M`**: engine revision E3, its seventh configuration, 80 million steps. A
-continuation keeps the attempt number and changes the budget: `E3-07-160M`.
+for example **`E3-10-21-80M`**: engine revision E3, its tenth configuration, seed 21, 80 million
+steps. A continuation keeps everything and changes the budget: `E3-10-21-160M`.
 
 - **engine letter** — bumped whenever `engine/` or `bindings/` changes the decision stream.
   Checkpoints from different engine letters may be *evaluated* together, but the result is a
   cross-engine comparison and must be labelled as one.
 - **attempt number** — one row in the table below, fixing observation, architecture,
-  intervention, recipe **and seed**. Numbered **from 01 within each engine letter**, so both
-  halves of the prefix carry information. Two runs differing only by seed get two numbers,
-  because the seed has repeatedly mattered more than the intervention.
+  intervention and recipe. Numbered **from 01 within each engine letter**, so both halves of the
+  prefix carry information. It does **not** include the seed.
+- **seed** — its own field, the last two digits of the sampling seed (`21` is 20260921). Two
+  runs of one configuration differ only here, so `E3-10-21` beside `E3-10-22` is visibly a seed
+  pair while `E3-09-21` beside `E3-10-21` is visibly an intervention difference. The seed has
+  repeatedly mattered more than the intervention, so it is worth being able to see at a glance
+  which kind of difference a comparison is.
 - **steps** — the budget the checkpoint was taken at, never omitted. Nothing is comparable
   across budgets.
 
@@ -54,49 +58,48 @@ implies E3. Restarting per engine keeps both halves of the name carrying informa
 
 ### E2
 
-| # | architecture | intervention | seed | directory | budgets |
-|---:|:---|:---|---:|:---|:---|
-| 01 | v2 | baseline (arm H) | — | `arm_H_v23_corrected` | 80M |
-| 02 | v2 | baseline, second seed (arm H2) | 20260921 | `arm_H2_v23_seedB`, `arm_H2_cont_160to240`, `arm_H2_cont_240to480` | 80M, 160M, 240M, 480M |
-| 03 | v2 | `eta` 0, no KL to the reference (arm I) | — | `arm_I_no_kl` | 80M |
+| # | architecture | intervention | seeds | directory |
+|---:|:---|:---|:---|:---|
+| 01 | v2 | baseline (arm H) | — | `arm_H_v23_corrected` |
+| 02 | v2 | baseline (arm H2) | 21 | `arm_H2_v23_seedB`, `arm_H2_cont_160to240`, `arm_H2_cont_240to480` |
+| 03 | v2 | `eta` 0, no KL to the reference (arm I) | — | `arm_I_no_kl` |
 
-E2-02 is one lineage across four budgets: a continuation keeps its attempt number and changes
-only the step suffix, so `E2-02-480M` is the strongest checkpoint in the project.
+`E2-02-21` is one lineage across four budgets, so the strongest checkpoint in the project is
+**`E2-02-21-480M`**.
 
 ### E3
 
 Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless noted.
 "Intervention" is what distinguishes the row from the control, E3-01.
 
-| # | architecture | intervention | seed | directory | budgets |
-|---:|:---|:---|---:|:---|:---|
-| 01 | v2 | — (control) | 20260921 | `p1_scalar_nofilter` | 80M, 160M, 240M* |
-| 02 | v2 | categorical head, target in normalised units | 20260921 | `p1_categorical_nofilter_VOID_unscaled_target` | **VOID** |
-| 03 | v2 | categorical head, `v_vp` in real VP | 20260921 | `p1_categorical_nofilter_VOID_vp_scale` | **VOID** |
-| 04 | v2 | categorical head, `--vf-coef` sweep | 20260921 | `p1_categorical_nofilter_VOID_vf_coef` | **VOID** |
-| 05 | v2 | categorical head, derived `v_win` | 20260921 | `p1_categorical_nofilter_VOID_derived_baseline` | **VOID** |
-| 06 | v2 | categorical head, `--value-dist-coef 0.02` | 20260921 | `p1_categorical_nofilter` | 80M |
-| 07 | v2 | `--adv-filter-quantile 0.5` | 20260921 | `p1_scalar_filter_seed20260921` | 80M, 160M |
-| 08 | v2 | `--adv-filter-quantile 0.5` | 20260922 | `p1_scalar_filter_seed20260922` | 80M, 160M |
-| 09 | v2 | `--window-provoked-defcon` | 20260921 | `p1_window_provoked_seed20260921` | 80M |
-| 10 | v2 | `--window-provoked-defcon` | 20260922 | `p1_window_provoked_seed20260922` | 80M |
-| 11 | **mlp** | `--arch mlp`, backbone control | 20260921 | `p1_mlp_backbone_seed20260921` | 80M |
-| 12 | **mlp** | `--arch mlp`, backbone control | 20260922 | `p1_mlp_backbone_seed20260922` | 80M |
-| 13 | v2 | `--identity-dim 16` | 20260921 | `p1_identity_seed20260921` | 80M |
-| 14 | v2 | `--identity-dim 16` | 20260922 | `p1_identity_seed20260922` | 80M |
+| # | architecture | intervention | seeds | budgets | directory |
+|---:|:---|:---|:---|:---|:---|
+| 01 | v2 | — (control) | 21 | 80M, 160M, 240M* | `p1_scalar_nofilter` |
+| 02 | v2 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` |
+| 03 | v2 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` |
+| 04 | v2 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` |
+| 05 | v2 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` |
+| 06 | v2 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` |
+| 07 | v2 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` |
+| 08 | v2 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` |
+| 09 | **mlp** | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` |
+| 10 | v2 | `--identity-dim 16` | 21, 22 | 80M, 160M* | `p1_identity_seed2026092*` |
 
-\* E3-01-240M is training as this is written; its legs used fresh sampling seeds 20260931 and
-20260941, which the table records rather than the name.
+Seed `21` is 20260921 and `22` is 20260922. \* marks a budget in progress.
 
-The four VOID rows are numbered rather than omitted. They exist on disk, they consumed 6.1 of
-the session's 22 GPU-hours, and a table whose purpose is to identify a directory unambiguously
-cannot leave four directories out of it. Each died to a units or scale bug; see the P1 log.
+Continuation legs use a fresh sampling seed so they diverge rather than replay: E3-01-21's legs
+used 20260931 and 20260941, and E3-10's use 20260951 and 20260952. Those are properties of a leg
+rather than of the configuration, so the table records them and the name does not.
+
+The four VOID rows are numbered rather than omitted. They exist on disk, they consumed 6.1 of the
+session's 22 GPU-hours, and a table whose purpose is to identify a directory unambiguously cannot
+leave four directories out of it. Each died to a units or scale bug; see the P1 log.
 
 ## What the naming buys
 
 The session that produced this table rated nine E3 configurations against **E2-02-480M** and
 called it "the strongest arm we have". That is still the right reference — it is the strongest —
-but `E3-07-80M vs E2-02-480M` says on its face that the engine differs, where
+but `E3-07-21-80M vs E2-02-21-480M` says on its face that the engine differs, where
 `p1_scalar_filter_seed20260921 vs arm_H2_cont_240to480` did not.
 
 Three rules follow, and all three were broken at least once before the table existed:
@@ -105,5 +108,6 @@ Three rules follow, and all three were broken at least once before the table exi
 2. **Label cross-engine comparisons.** An E2 checkpoint evaluated on an E3 engine is playing a
    game it never trained on; the handicap is small for the two mandatory-choice cards but it is
    not zero, and it biases in favour of the E3 arm.
-3. **A seed is a configuration, not a detail.** E3-07 and E3-08 differ only by seed and landed
-   11.8 points apart on anchor win rate while being +3 Elo apart head to head.
+3. **A seed is a field, not a detail.** `E3-07-21` and `E3-07-22` differ only there and landed
+   11.8 points apart on anchor win rate while being +3 Elo apart head to head. Giving it its own
+   field is what makes that visible without opening the table.
