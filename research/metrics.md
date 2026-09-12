@@ -753,6 +753,37 @@ prices the position at -0.7 and rising, and is absorbed rather than attributed.
 what `v_win` demonstrably does not encode. Its label is the same `defcon_blunder` flag that
 excludes provoked endings, so the one-line label fix is a prerequisite for either.
 
+### 21.2 Windowing a provoked DEFCON-1 moves exactly the class it targets
+
+`--window-provoked-defcon` credits a provoked DEFCON-1 to the player who played the card, using
+the existing turn-scoped blunder window, instead of letting the -1 propagate back as an ordinary
+loss. One seed, 80M steps, against `p1_scalar_nofilter` at 80M -- same recipe, filtering off in
+both, the window the only difference.
+
+| ending | control | window | delta |
+|:---|---:|---:|---:|
+| DEFCON-1 total | 49.4% | **27.0%** | −22.4 |
+| — provoked | 36.2% | **13.7%** | **−22.5** |
+| — self-inflicted | 13.1% | 13.3% | **+0.1** |
+| final scoring | 6.9% | **16.7%** | +9.8 |
+| 20 VP | 39.6% | 53.9% | +14.3 |
+
+**The self-inflicted share does not move.** That is the result: the intervention targets provoked
+endings alone, and provoked endings alone changed, by 62% of their own value, while the
+neighbouring class in the same metric family stayed put to a tenth of a point. It is as close to
+a placebo control as a training change gets here, and it rules out the reading that the arm just
+made every DEFCON-1 rarer by playing more timidly.
+
+Games also got longer -- mean ply 93.4 to 103.1, final scoring 6.9% to 16.7% -- moving toward the
+human distribution, where about 30% of games go the distance against this control's 7%.
+
+**Two things went the wrong way, and neither is settled by this run.** The anchor win rate fell
+80.6% to 71.4%, and the USSR share rose 47.0% to 63.7%. The anchor number cannot carry a
+conclusion at one seed: two seeds of one recipe differed by 11.8 points on it in the filtering
+arm while being +3 Elo apart head-to-head (§20.7 and the P1 log). The side imbalance is the more
+troubling of the two, because 63.7% is a real move away from the human 49.9% and it is measured
+over the whole run rather than over 500 eval games.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
