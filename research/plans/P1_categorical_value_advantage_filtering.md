@@ -249,6 +249,33 @@ what this implementation can actually do. Worth queueing separately: a version t
 filtered samples *before* the forward pass, which is where Ataraxos's speedup would have to come
 from — that is the change the 2.5× claim was about, and it has not been tested.
 
+### Second leg: filtering is an intercept shift, not a slope change
+
+All three runs continued 80M → 160M, the control included so the comparison stays at matched
+budget. Pooled head-to-head over four late snapshots a side:
+
+| | vs control at 80M | vs control at 160M |
+|:---|---:|---:|
+| filter seed 20260921 | +19 Elo | **+25 Elo** |
+| filter seed 20260922 | +32 Elo | **+23 Elo** |
+| pooled | **+25 Elo** | **+24 Elo** |
+
+The two seeds also converge at the longer budget — 53.7% and 53.4%, against 52.8% and 54.6% at
+80M — so the second leg is the tighter measurement as well as the longer one.
+
+**The gap is flat across a doubling.** Under the log-linear law Jones reports for board games
+(`references.md` §7), that is an intercept shift: filtering reaches a given strength sooner and
+does not change the rate, so it is worth about the same +24 Elo at any budget rather than
+compounding. Against its ~8% throughput cost — roughly 7 Elo at the H2 lineage's ~65 Elo per
+doubling — it nets about **+17 Elo at matched wall-clock, at any budget**.
+
+That also retires the worry logged against this arm: the 80M screen was not measuring a
+transient. It is the first time this project has measured the *same* factor at two budgets and
+found the effect stable.
+
+The anchor win rate disagreed with all of this, again: at 160M it reads control 90.2%, filter
+87.6% and 85.2% — the control ahead, where at 80M it was behind. Both orderings are noise.
+
 **Lesson for the next loss-function change.** Three of the four arms died to a units or scale
 mismatch that no test caught, because every P1 test exercised `two_hot` in isolation. Tests that
 start from what the buffer actually holds, and a startup check that the value and policy terms
