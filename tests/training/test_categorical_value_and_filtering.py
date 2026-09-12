@@ -330,3 +330,22 @@ def test_a_certain_win_reads_as_one_on_both_scales() -> None:
     v_win = float((certain * (support > 0)).sum() - (certain * (support < 0)).sum())
     assert v_vp == pytest.approx(1.0)
     assert v_win == pytest.approx(1.0)
+
+
+def test_a_categorical_checkpoint_loads_through_the_standard_agent_path(tmp_path) -> None:
+    """The tournament and every probe go through NeuralAgent.from_checkpoint.
+
+    It built a scalar net unconditionally, so a categorical arm could not be rated at all --
+    the load failed on `value_dist_head` being unexpected and `val_vp_head` missing. The head is
+    now detected by weight name, the same way the architecture already was.
+    """
+    import torch
+
+    from tools.lib.player_agent import NeuralAgent
+
+    for categorical in (False, True):
+        net = create_coldwar_net_v2("cpu", categorical_value=categorical)
+        path = tmp_path / f"cat{categorical}.pt"
+        torch.save(net.state_dict(), path)
+        agent = NeuralAgent.from_checkpoint(str(path), device="cpu")
+        assert getattr(agent.model, "categorical_value") is categorical

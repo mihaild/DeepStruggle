@@ -871,6 +871,40 @@ of the window: H2 at 240M manages 73.2%. Do not read it across lineages or budge
 human 11.7% is the closest this project has come -- but not at this price, and the next attempt
 should narrow the window before anything else.
 
+### 21.3 Rate arms against H2 @480M, not against HeuristicBot
+
+Every P1 and windowing arm was re-rated in **one pool** with H2 @480M, four late snapshots each,
+50 games a side. Elo is not comparable across tournaments, so a common scale requires a common
+pool.
+
+| arm | vs H2 @480M | Elo gap | vs the 80M control | Elo |
+|:---|---:|---:|---:|---:|
+| control 80M | 26.6% | −176 | — | — |
+| control 160M | 39.8% | −72 | 63.7% | +98 |
+| categorical 80M | 21.4% | −226 | **46.0%** [43.6, 48.4] | **−28** |
+| filter 921 / 922 80M | 26.0% / 31.1% | −182 / −138 | 52.9% / 53.6% | +20 / +25 |
+| filter 921 / 922 160M | 41.9% / 41.3% | −57 / −61 | 65.4% / 67.2% | +111 / +125 |
+| window 921 / 922 80M | 19.7% / 21.3% | −244 / −227 | 41.8% / 36.1% | −58 / −99 |
+| H2 @480M | — | — | 73.1% | +174 |
+
+**The weak anchor inverts orderings that the strong one gets right.** Against HeuristicBot,
+windowing seed ...922 scored **81.8%** against the control's 80.6% — above it. Against H2 @480M
+it scores 21.3% against 26.6% — correctly below. The head-to-head against the control always knew
+(−99 Elo); the point is that the *anchor rate*, which is what a training run logs live and what a
+monitor shows, is not merely noisy but can rank a materially weaker arm first. Rate against
+H2 @480M.
+
+**And it changed a verdict.** The categorical head was recorded as a null on 80.0% against
+HeuristicBot versus the control's 80.6%. Head-to-head in this pool it is **−28 Elo** with the
+interval excluding 50%: mildly harmful, not neutral. One seed, so the magnitude is soft, but the
+sign is no longer in doubt.
+
+That arm had never been rated at all, and could not have been: `NeuralAgent.from_checkpoint`
+built a scalar `ColdWarNetV2` unconditionally, so a categorical checkpoint failed to load with
+`value_dist_head` unexpected and `val_vp_head` missing. Every number previously reported for it
+came from the training loop's own evaluation, which builds the model itself and so never hit the
+path the tournament and every probe use. The head is now detected by weight name.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a

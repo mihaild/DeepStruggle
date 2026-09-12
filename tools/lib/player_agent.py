@@ -224,7 +224,12 @@ class NeuralAgent:
             # fail -- it reads fixed slices, so the observation is misread and the network merely
             # plays badly.
             check_checkpoint_layout(state_dict)
-            model = create_coldwar_net_v2(dev)
+            # The value head is detected the same way the architecture is: by weight name. A
+            # categorical checkpoint carries `value_dist_head` and no `val_vp_head`, and a model
+            # built the other way round refuses it outright -- which is right, but it meant the
+            # tournament and every probe could not read a P1 categorical arm at all.
+            categorical = any(k.startswith("value_dist_head") for k in state_dict)
+            model = create_coldwar_net_v2(dev, categorical_value=categorical)
         else:
             model = create_coldwar_net(dev)
 
