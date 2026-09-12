@@ -1165,6 +1165,93 @@ specific comparison, re-anchor and measure that pair.
 80 Elo. Every effect in the table except identity's is smaller than the largest of those spreads,
 so a single-snapshot version of this table would have been noise dressed as a result.
 
+### 21.11 What the 160M arms actually do, and where identity's Elo does *not* show up
+
+Three probes at temperature 0.1 over **all four** late snapshots of each arm-budget -- the
+denominator that matters is the run's own oscillation, and the numbers below show why. Spreads
+are max − min over the four snapshots.
+
+| share of all games | ctrl 160M | ctrl 240M | id·21 160M | id·22 160M |
+|:---|---:|---:|---:|---:|
+| **DEFCON-1 total** | 35.3% ±5.7 | 28.5% ±0.7 | 28.2% ±8.5 | 22.6% ±6.5 |
+| own goal | 3.9 ±3.3 | 2.8 ±2.5 | 3.3 ±2.0 | 3.5 ±3.0 |
+| bad bet | 0.6 ±0.5 | 0.6 ±1.3 | 0.6 ±0.5 | 0.3 ±1.0 |
+| forced trap | 10.6 ±5.0 | 7.4 ±3.3 | 6.8 ±7.0 | 6.6 ±4.2 |
+| **unforced trap** | 15.0 ±2.8 | 12.4 ±4.5 | 12.7 ±3.0 | 8.2 ±3.0 |
+| unclassified | 1.8 ±0.5 | 2.2 ±2.0 | 1.1 ±1.7 | 1.8 ±1.7 |
+| in headline | 3.5 ±0.5 | 3.1 ±2.2 | 3.8 ±3.3 | 2.2 ±1.7 |
+
+| | ctrl 160M | ctrl 240M | id·21 160M | id·22 160M |
+|:---|---:|---:|---:|---:|
+| empty battlegrounds, turn 5 (of 29) | 11.45 ±0.67 | 11.16 ±0.71 | 10.85 ±0.78 | 10.65 ±0.41 |
+| empty battlegrounds, turn 8 | 7.26 ±0.63 | 6.94 ±0.70 | 6.67 ±1.21 | 6.46 ±0.90 |
+| uncontrolled battlegrounds, turn 8 | 15.58 ±0.98 | 15.61 ±1.37 | 15.35 ±1.46 | 14.84 ±1.02 |
+| mean final turn | 7.13 ±0.77 | 6.94 ±0.64 | 7.30 ±0.72 | 7.22 ±0.46 |
+| **blunder rate, pooled** | 2.0% ±0.4 | 1.9% ±1.1 | **3.0% ±1.0** | **2.5% ±1.2** |
+| · spaced own or neutral | 9.7% ±3.7 | 7.9% ±4.6 | **15.9% ±8.3** | **15.7% ±13.1** |
+| · DEFCON suicide with an alternative | 1.8% ±0.8 | 1.9% ±1.2 | 2.3% ±1.1 | 1.4% ±0.7 |
+| · Olympic Games at DEFCON 2 | 0.3% ±0.5 | 0.3% ±0.5 | 0.2% ±0.3 | 0.2% ±0.2 |
+
+**Most of this is not resolvable, and saying so is the finding.** Both identity seeds end fewer
+games at DEFCON 1 than the control at the same budget, but by 7.1 and 12.7 points against
+snapshot spreads of 5.7 to 8.5, and the two identity seeds differ from each other by 5.6. The
+direction is consistent; the magnitude is not established. `E3-01` has only one seed at 160M, so
+there is no control seed pair to compare that spread against -- a gap worth closing before any of
+these behavioural numbers carries an argument.
+
+**The 240M control matches identity@160M on almost every behavioural line** -- 28.5% against
+28.2% DEFCON-1, 6.94 against 6.67 empty battlegrounds. §21.8 warned that part of what was
+credited to interventions is what longer training does anyway; at matched *behaviour* rather than
+matched steps, that is exactly what this shows. Identity's 92-109 Elo over the 160M control is
+real (§21.10) and is not visible in these aggregates.
+
+**Identity blunders more, not less.** Pooled rate 3.0% and 2.5% against the control's 2.0%,
+driven almost entirely by `spaced_own_or_neutral` -- 15.9% and 15.7% against 9.7%, the same
+direction in both seeds and roughly a doubling. The other three rules are level. So the arm that
+gained ~100 Elo also spends its own and neutral cards on the space race considerably more often.
+Either the rule is mis-specified for a policy that can now tell its cards apart -- spacing a
+*specific* low-value own card may be correct where the rule reads only "own or neutral" -- or
+identity bought its Elo somewhere else and paid here. This is worth resolving before the rule is
+used to judge another arm, and it is the one place in this table where the spread does not
+swallow the effect.
+
+#### Which battlegrounds, not how many
+
+The per-country table is where identity is legible, because "8 of 29 empty" is a claim about
+*which* eight. Late-game empty rate, mean of four snapshots:
+
+| battleground | ctrl 160M | ctrl 240M | id·21 160M | id·22 160M |
+|:---|---:|---:|---:|---:|
+| **India** | **98.3%** | 87.7% | **54.4%** | **55.2%** |
+| Algeria | 88.3% | 91.4% | 85.5% | 83.9% |
+| Saudi Arabia | 82.1% | 69.7% | 93.9% | 78.6% |
+| Libya | 79.2% | 42.7% | 59.7% | 56.7% |
+| Argentina | 68.7% | 70.8% | 41.0% | 67.9% |
+| Nigeria | 51.5% | 30.0% | 35.9% | 35.6% |
+| Brazil | 43.6% | 49.5% | 30.9% | 15.7% |
+| Cuba | 31.0% | 27.5% | 53.0% | 42.9% |
+| **Pakistan** | **23.6%** | 14.1% | **2.6%** | **7.6%** |
+| **West Germany** | **15.2%** | 29.3% | **36.8%** | **35.3%** |
+| France | 4.5% | 15.4% | 13.2% | 15.6% |
+| Italy | 4.5% | 2.5% | 12.1% | 14.2% |
+
+**India stops being invisible.** 98.3% empty in the control -- effectively never touched, the
+finding `position_diagnostics` has reported since it was written -- against 54.4% and 55.2% in
+both identity seeds. Pakistan moves with it, 23.6% to 2.6% and 7.6%. Two seeds agreeing on a
+40-point move is not snapshot noise, and the 240M control only reaches 87.7%, so this is not
+simply what more training does.
+
+**It is a reallocation, not an improvement.** West Germany goes the other way, 15.2% to ~36%, and
+France and Italy roughly triple. Identity did not learn to contest more of the board; it learned
+to contest a *different* part of it. Whether trading Western Europe for South Asia is right is a
+question about the game, not about the probe -- but a 5-point battleground region where three
+countries are now emptier deserves an answer before this is called a win.
+
+**Four battlegrounds are still untouched in every arm**: Algeria (84-91%), Saudi Arabia (70-94%),
+Libya (43-79%) and, in three of four arms, Argentina. Identity did not help there. §21.7's trunk
+read-out found per-country influence is the thing the representation destroys (R² 0.23-0.40,
+unchanged by identity), and this is the behavioural face of the same gap.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
