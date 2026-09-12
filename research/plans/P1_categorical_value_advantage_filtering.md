@@ -116,7 +116,18 @@ against the control.
 | categorical #4 (`--vf-coef 0.0125`) | **18%** vs anchor at 80M | trained stably but weak — the real defect, below |
 | categorical #5 (b3809aa, additive) | **80.0%** vs anchor at 80M | healthy; indistinguishable from the control |
 
-### Result: the categorical VP head is a null
+### Result: the categorical VP head is mildly harmful, not a null
+
+> **Revised after re-rating.** This section originally read "a null", on 80.0% against
+> HeuristicBot versus the control's 80.6%. Head-to-head in a common pool with H2 @480M the
+> categorical arm scores **46.0%** [43.6, 48.4] against the control — **−28 Elo**, interval
+> excluding 50% (`metrics.md` §21.3). One seed, so the magnitude is soft; the sign is not.
+>
+> It had never been rated at all. `NeuralAgent.from_checkpoint` built a scalar net
+> unconditionally, so a categorical checkpoint could not be loaded by the tournament or any
+> probe, and every number below came from the training loop's own evaluation. Fixed in 6b32a84.
+
+
 
 Both arms ran 80M steps on seed 20260921, differing only in the auxiliary VP head.
 
