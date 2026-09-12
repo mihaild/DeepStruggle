@@ -1062,6 +1062,7 @@ def train_pipeline(
     value_dist_coef: float = 0.02,
     categorical_value: bool = False,
     adv_filter_quantile: float = 0.0,
+    window_provoked_defcon: bool = False,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
@@ -1143,6 +1144,7 @@ def train_pipeline(
         "value_dist_coef": value_dist_coef,
         "categorical_value": bool(categorical_value),
         "adv_filter_quantile": adv_filter_quantile,
+        "window_provoked_defcon": bool(window_provoked_defcon),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
@@ -1204,10 +1206,12 @@ def train_pipeline(
 
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
                               reward_calculator=reward_calc,
-                              start_provider=_start_provider)
+                              start_provider=_start_provider,
+                              window_provoked_defcon=window_provoked_defcon)
     else:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed,
-                              reward_calculator=reward_calc)
+                              reward_calculator=reward_calc,
+                              window_provoked_defcon=window_provoked_defcon)
 
     # Curriculum timing configuration
     if is_curriculum:

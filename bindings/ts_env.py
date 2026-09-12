@@ -187,6 +187,18 @@ class TsEnv:
         }
 
 
+def credits_defcon_blunder(state: "ts.GameState", window_provoked: bool) -> bool:
+    """Should this DEFCON-1 terminal be credited to the phasing player as a blunder?
+
+    Split out of the step loop so it can be tested on a constructed state: a provoked ending is
+    rare enough that random play never produces one, and the only policies that do reliably are
+    checkpoints, which are git-ignored.
+    """
+    if int(state.defcon) > 1:
+        return False
+    return window_provoked or not state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
+
+
 class TsVectorizedEnv:
     """High-throughput C++ vectorized batch environment executing N parallel games."""
 
@@ -203,6 +215,7 @@ class TsVectorizedEnv:
         auto_reset: bool = True,
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
+        window_provoked_defcon: bool = False,
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
@@ -219,6 +232,13 @@ class TsVectorizedEnv:
         # be split by start turn: with half the envs resuming mid-game, a pooled mean turn
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
+        # Credit a *provoked* DEFCON-1 to the player who played the card, the same way an
+        # unprovoked one is credited. Off by default, because it changes the returns and so
+        # every arm's numbers with it on are on a different footing from those without.
+        # See metrics.md 21.1 for why it is worth trying: the critic registers at most 0.014
+        # when the fatal card is chosen, so the -1 has nothing to attach to unless it is
+        # windowed, and the window's advantage (-1 - v_t) never consults the critic.
+        self.window_provoked_defcon = bool(window_provoked_defcon)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
@@ -284,9 +304,12 @@ class TsVectorizedEnv:
         held_scoring_us = np.zeros(self.num_envs, dtype=bool)
         held_scoring_ussr = np.zeros(self.num_envs, dtype=bool)
         # Unprovoked DEFCON-1 suicide: the player who chose the losing action, else 0.
-        # A provoked suicide stays 0 on purpose. There the phasing player was forced to fire
-        # an opponent-associated event, so the mistake lies in the earlier card management
-        # rather than the final move, and its credit must keep propagating backwards.
+        # A provoked suicide stays 0 unless `window_provoked_defcon` is set. The argument for
+        # leaving it at 0 was that the mistake lies in earlier card management rather than the
+        # final move, so its credit should keep propagating backwards. Measured, that premise
+        # does not hold: the fatal card play sits 3-9 micro-actions from the loss and inside the
+        # same turn, which the turn-scoped window already covers, and the critic it would have
+        # to propagate through moves by at most 0.014 at the deciding choice (metrics.md 21.1).
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
         # Terminal length in plies. The turn alone cannot express it: a game abandoned at
@@ -303,7 +326,9 @@ class TsVectorizedEnv:
                 if ts.Engine.is_held_scoring_game_over(st):
                     held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
                     held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
-                elif st.defcon <= 1 and not st.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED):
+                elif credits_defcon_blunder(st, self.window_provoked_defcon):
+                    # phasing_player is the side that played the card even when the opponent
+                    # is the one acting -- verified on all five h2_480M_provoked_* replays.
                     defcon_blunder[i] = int(st.phasing_player)
                 elif st.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
                     # Couping under Cuban Missile Crisis. The engine ends the game without

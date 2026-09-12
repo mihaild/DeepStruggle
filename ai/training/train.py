@@ -156,6 +156,18 @@ def main():
                              "every sample. 0 disables it. Reported at 2.5x wall-clock in\n"
                              "Ataraxos. It changes the effective batch size, so screen it as its\n"
                              "own factor rather than folding it in with --categorical-value.")
+    parser.add_argument("--window-provoked-defcon", action="store_true", default=False,
+                        help="Credit a *provoked* DEFCON-1 loss to the player who played the\n"
+                             "card, the same way an unprovoked one is credited, instead of\n"
+                             "letting it propagate back as an ordinary loss.\n"
+                             "The case for it is measured (metrics.md 21.1): the fatal card\n"
+                             "play sits 3-9 micro-actions from the loss and inside the same\n"
+                             "turn, which the turn-scoped window already covers, and the critic\n"
+                             "the -1 would otherwise propagate through moves by at most 0.014\n"
+                             "at the deciding choice -- so there is nothing for it to attach\n"
+                             "to. A window's advantage is -1 - v_t and never consults it.\n"
+                             "Changes the returns, so an arm with it on is not comparable to\n"
+                             "one without except as its own A/B.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
@@ -206,6 +218,7 @@ def main():
             value_dist_coef=args.value_dist_coef,
             categorical_value=args.categorical_value,
             adv_filter_quantile=args.adv_filter_quantile,
+            window_provoked_defcon=args.window_provoked_defcon,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             seed=args.seed,
