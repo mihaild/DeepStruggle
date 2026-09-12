@@ -77,9 +77,16 @@ def _auc(score: np.ndarray, label: np.ndarray) -> float:
     return float(np.mean(out)) if out else float("nan")
 
 
-def collect(model: Any, num_envs: int = 128, steps: int = 900,
-            every: int = 6, temperature: float = 0.1) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """Trunk features and ground truth from real decision positions."""
+def collect(model: Any, num_envs: int = 128, steps: int = 900, every: int = 6,
+            temperature: float = 0.1
+            ) -> Tuple[np.ndarray, Dict[str, np.ndarray], np.ndarray]:
+    """Trunk features, ground truth, and the env each position came from.
+
+    The env index is returned so a split can hold out whole *games*. Positions from one
+    environment are a single game sampled every `every` steps, so they are heavily correlated --
+    a random split over positions puts step t in train and step t+6 of the same game in test,
+    and the probe scores partly on having seen the position already.
+    """
     import torch
 
     from bindings.ts_env import TsVectorizedEnv, check_obs_width
@@ -91,6 +98,7 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
     obs, masks, _ = env.reset_all()
 
     feats: List[np.ndarray] = []
+    env_ids: List[int] = []
     board: List[np.ndarray] = []
     board_opp: List[np.ndarray] = []
     control: List[np.ndarray] = []
@@ -118,6 +126,7 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
                     continue
                 mine = p == ts.Player.US
                 feats.append(tr[i].copy())
+                env_ids.append(i)
                 cs = [st.get_country(c) for c in range(84)]
                 board.append(np.array(
                     [float(c.us_influence if mine else c.ussr_influence) for c in cs],
@@ -153,7 +162,7 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
         "control": np.asarray(control, dtype=np.float64),
         "hand": np.asarray(hand, dtype=np.float64),
         "tracks": np.asarray(tracks, dtype=np.float64),
-    }
+    }, np.asarray(env_ids, dtype=np.int64)
 
 
 def collision_groups() -> List[List[int]]:
@@ -211,7 +220,7 @@ def battleground_detail(model: Any, **kw) -> List[Tuple[str, bool, int, float, f
     Returns, per country: name, battleground flag, region, and the held-out R^2 for the viewer's
     influence, the opponent's influence, and the AUC for "the viewer controls it".
     """
-    x, targets = collect(model, **kw)
+    x, targets, _env = collect(model, **kw)
     x = (x - x.mean(0)) / (x.std(0) + 1e-6)
     x = np.hstack([x, np.ones((len(x), 1))])
     rng = np.random.default_rng(0)
@@ -245,7 +254,7 @@ def battleground_detail(model: Any, **kw) -> List[Tuple[str, bool, int, float, f
 
 
 def probe(model: Any, **kw) -> Readout:
-    x, targets = collect(model, **kw)
+    x, targets, _env = collect(model, **kw)
     out = Readout(samples=len(x))
     x = (x - x.mean(0)) / (x.std(0) + 1e-6)
     x = np.hstack([x, np.ones((len(x), 1))])          # bias column
@@ -276,3 +285,155 @@ def probe(model: Any, **kw) -> Readout:
         out.detail[label] = (float("nan") if var < 1e-9 else
                              1.0 - ((y[te][:, j] - pred[:, j]) ** 2).mean() / var)
     return out
+
+
+def split_by_env(env_ids: np.ndarray, frac: float = 0.7,
+                 seed: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+    """Train/test indices that keep every position of one game on the same side.
+
+    The alternative, permuting positions, leaks: successive samples from one environment are the
+    same game six steps apart, so a probe scored on them is partly scored on positions it has
+    already fitted. Holding out environments makes "can this be read off the trunk" a question
+    about the representation rather than about memorising a rollout.
+    """
+    envs = np.unique(env_ids)
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(len(envs))
+    cut = max(1, int(frac * len(envs)))
+    train_envs = set(envs[perm[:cut]].tolist())
+    is_train = np.array([e in train_envs for e in env_ids], dtype=bool)
+    return np.flatnonzero(is_train), np.flatnonzero(~is_train)
+
+
+def _exact_accuracy(pred: np.ndarray, true: np.ndarray) -> np.ndarray:
+    """Per-column share of positions where the rounded prediction is the exact influence.
+
+    Influence is a non-negative integer, so the natural question about a linear read-out is not
+    how much variance it explains but whether it names the number. R^2 0.4 on a country that is
+    usually 0-4 can still be wrong about the value nearly every time.
+    """
+    hat = np.clip(np.rint(pred), 0.0, None)
+    return (hat == true).mean(axis=0)
+
+
+def _mode_baseline(train: np.ndarray, test: np.ndarray) -> np.ndarray:
+    """Accuracy of always predicting each column's most common training value.
+
+    The floor the exact-match number has to clear. Most countries sit at 0 influence most of the
+    time, so a probe that has learned nothing still scores high here, and without this column the
+    raw accuracy reads far better than it is.
+    """
+    out = np.zeros(train.shape[1])
+    for j in range(train.shape[1]):
+        vals, counts = np.unique(train[:, j], return_counts=True)
+        out[j] = (test[:, j] == vals[np.argmax(counts)]).mean()
+    return out
+
+
+MAX_LEVEL = 6
+
+
+def _levelwise_accuracy(x_tr: np.ndarray, x_te: np.ndarray, y_tr: np.ndarray,
+                        y_te: np.ndarray, lam: float = 10.0) -> np.ndarray:
+    """Exact-influence accuracy from a *classifier* rather than a rounded regression.
+
+    Rounding a least-squares fit is not the right estimator for "name the exact number" and will
+    lose to a constant whatever the trunk contains: influence is 0 in most countries most of the
+    time with an occasional 3 or 4, so the MSE-optimal fit sits between the two and rounds to
+    neither. Scoring the representation on that measures the loss function, not the trunk.
+
+    So each level 0..MAX_LEVEL (top one absorbing) gets its own one-hot ridge column and the
+    prediction is the argmax. Still linear, still closed-form, still one solve -- but now fitted
+    to the question being asked.
+    """
+    n_country = y_tr.shape[1]
+    lev_tr = np.clip(y_tr, 0, MAX_LEVEL).astype(int)
+    lev_te = np.clip(y_te, 0, MAX_LEVEL).astype(int)
+    n_lev = MAX_LEVEL + 1
+
+    onehot = np.zeros((len(lev_tr), n_country * n_lev))
+    for c in range(n_country):
+        onehot[np.arange(len(lev_tr)), c * n_lev + lev_tr[:, c]] = 1.0
+
+    scores = x_te @ _ridge(x_tr, onehot, lam)
+    out = np.zeros(n_country)
+    for c in range(n_country):
+        pred = np.argmax(scores[:, c * n_lev:(c + 1) * n_lev], axis=1)
+        out[c] = float((pred == lev_te[:, c]).mean())
+    return out
+
+
+def influence_control_detail(model: Any, hold_out_envs: bool = True,
+                             **kw: Any) -> Dict[str, Any]:
+    """Per-country: can the exact influence, and control, be read off the trunk?
+
+    `battleground_detail` answers this in R^2 and AUC, which are the right scales for "is the
+    signal there at all" and the wrong ones for "does it know the position". This adds the two
+    numbers a person actually wants -- the share of positions where the rounded read-out is the
+    *exact* influence, and the share where control is called correctly -- each against the
+    best-constant baseline, since most countries are empty most of the time.
+    """
+    x, targets, env_ids = collect(model, **kw)
+    x = (x - x.mean(0)) / (x.std(0) + 1e-6)
+    x = np.hstack([x, np.ones((len(x), 1))])
+    if hold_out_envs:
+        tr, te = split_by_env(env_ids)
+    else:
+        rng = np.random.default_rng(0)
+        perm = rng.permutation(len(x))
+        cut = int(0.7 * len(x))
+        tr, te = perm[:cut], perm[cut:]
+
+    preds = {k: x[te] @ _ridge(x[tr], targets[k][tr])
+             for k in ("board", "board_opp", "control")}
+
+    own_exact = _exact_accuracy(preds["board"], targets["board"][te])
+    own_base = _mode_baseline(targets["board"][tr], targets["board"][te])
+    own_clf = _levelwise_accuracy(x[tr], x[te], targets["board"][tr], targets["board"][te])
+    opp_clf = _levelwise_accuracy(x[tr], x[te], targets["board_opp"][tr],
+                                  targets["board_opp"][te])
+    opp_exact = _exact_accuracy(preds["board_opp"], targets["board_opp"][te])
+    opp_base = _mode_baseline(targets["board_opp"][tr], targets["board_opp"][te])
+
+    ctrl_true = targets["control"][te]
+    ctrl_hat = (preds["control"] > 0.5).astype(float)
+    ctrl_acc = (ctrl_hat == ctrl_true).mean(axis=0)
+    ctrl_base = _mode_baseline(targets["control"][tr], ctrl_true)
+
+    rows: List[Dict[str, Any]] = []
+    for c in range(84):
+        info = ts.MapData.get_country_info(c)
+        y = targets["board"][te][:, c]
+        r2 = float("nan") if y.var() < 1e-9 else \
+            float(1.0 - ((y - preds["board"][:, c]) ** 2).mean() / y.var())
+        rows.append({
+            "name": str(info["name"]),
+            "battleground": bool(info["battleground"]),
+            "own_r2": r2,
+            "own_exact": float(own_exact[c]),
+            "own_clf": float(own_clf[c]),
+            "own_base": float(own_base[c]),
+            "opp_exact": float(opp_exact[c]),
+            "opp_clf": float(opp_clf[c]),
+            "opp_base": float(opp_base[c]),
+            "control_acc": float(ctrl_acc[c]),
+            "control_base": float(ctrl_base[c]),
+        })
+
+    bg = [r for r in rows if r["battleground"]]
+
+    def m(rs: List[Dict[str, Any]], k: str) -> float:
+        return float(np.mean([r[k] for r in rs]))
+
+    return {
+        "rows": rows,
+        "positions": int(len(x)),
+        "test_positions": int(len(te)),
+        "held_out_envs": bool(hold_out_envs),
+        "all_own_exact": m(rows, "own_exact"), "all_own_clf": m(rows, "own_clf"),
+        "all_own_base": m(rows, "own_base"),
+        "all_control_acc": m(rows, "control_acc"), "all_control_base": m(rows, "control_base"),
+        "bg_own_exact": m(bg, "own_exact"), "bg_own_clf": m(bg, "own_clf"),
+        "bg_own_base": m(bg, "own_base"), "bg_own_r2": m(bg, "own_r2"),
+        "bg_control_acc": m(bg, "control_acc"), "bg_control_base": m(bg, "control_base"),
+    }

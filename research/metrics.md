@@ -1252,6 +1252,100 @@ Libya (43-79%) and, in three of four arms, Argentina. Identity did not help ther
 read-out found per-country influence is the thing the representation destroys (R² 0.23-0.40,
 unchanged by identity), and this is the behavioural face of the same gap.
 
+### 21.12 Exact influence and control, read off the trunk per country
+
+§21.7 reported per-country influence at R^2 0.23-0.40 and called it the thing the representation
+destroys. R^2 is the wrong scale for the question actually being asked -- *does the trunk know
+the position* -- so this measures the two numbers that answer it: the share of held-out positions
+where a linear read-out names the **exact** influence, and the share where it calls **control**
+correctly, each against the best-constant baseline.
+
+**Two methodology notes, because both changed the answer more than any arm difference did.**
+
+*The estimator.* Rounding a least-squares fit scores **below** the constant baseline -- 61% against
+69% on battlegrounds. That is not a fact about the trunk. Influence is 0 in most countries most of
+the time with an occasional 3 or 4, so the MSE-optimal fit sits between the two and rounds to
+neither; scoring the representation that way measures the loss function. Fitting a **classifier**
+instead -- one ridge column per influence level 0-6, argmax, still linear and still closed-form --
+moves battleground exact-match from 61% to **77%**. Every number below uses the classifier.
+
+*The split.* The probe held out whole environments rather than permuting positions, since
+successive samples from one env are the same game six steps apart. It was worth doing and it
+barely mattered: battleground exact-match 62.0% held-out against 63.2% permuted, about a point.
+Kept because it is free, reported because the concern was real and the effect was not.
+
+#### What the trunk actually recovers
+
+Raw accuracy flatters a country that is empty in 97% of positions, so the headline is the share of
+the **recoverable gap** that is closed, `(classifier − baseline) / (1 − baseline)`: 1.0 is a perfect
+read-out and 0.0 is a trunk adding nothing a constant did not already give. Countries with under
+2% headroom are excluded as undefined.
+
+| | ctrl 80M | ctrl 160M | ctrl 240M | id 80M | id 160M |
+|:---|---:|---:|---:|---:|---:|
+| **influence, gap closed (battlegrounds)** | 16.4% | 18.7% | 20.3% | 15.1% | **21.8%** |
+| influence, gap closed (all 84) | 15.2% | 15.2% | 16.4% | 14.7% | 16.7% |
+| **control, gap closed (battlegrounds)** | 12.5% | 24.3% | 26.0% | 25.6% | **32.7%** |
+| control, gap closed (all 84) | 13.7% | 16.7% | 17.9% | 21.3% | 21.1% |
+| influence R^2, battlegrounds | 0.158 | 0.228 | 0.199 | 0.195 | 0.214 |
+| exact influence, BG (raw) | 76.5% | 76.2% | 77.7% | 73.7% | 75.7% |
+| · best-constant baseline | 68.8% | 67.2% | 67.9% | 65.8% | 66.0% |
+| control correct, BG (raw) | 88.8% | 89.9% | 91.3% | 88.8% | 89.9% |
+| · best-constant baseline | 85.5% | 83.8% | 84.7% | 82.3% | 82.4% |
+
+**The trunk closes about a fifth of the influence gap and a quarter to a third of the control
+gap.** It is not blind -- both beat the constant everywhere -- but four fifths of what is
+recoverable about exact influence is not in the 512 floats every head reads.
+
+**Control is recovered better than influence, and improves with compute where influence does
+not.** The control gap closed doubles across the control's own run, 12.5% → 26.0%, while influence
+moves 16.4% → 20.3%. The trunk is learning *who holds what* faster than it learns *by how much* --
+which is the right priority for scoring, and the wrong one for knowing whether a coup or a
+placement flips a country.
+
+**Identity helps control, not influence.** At matched budget the identity arm closes more of the
+control gap (25.6% against 12.5% at 80M, 32.7% against 24.3% at 160M) and roughly the same share
+of the influence gap. Identity embeddings name the *country*; they do not carry its *number*.
+
+#### It is not a uniform blur — it is regional
+
+Share of the influence gap closed, per battleground, with the headroom each had:
+
+| battleground | headroom | ctrl 80M | ctrl 160M | ctrl 240M | id 80M | id 160M |
+|:---|---:|---:|---:|---:|---:|---:|
+| Japan | 55% | 56% | 81% | **89%** | 76% | 86% |
+| South Africa | 49% | 73% | 79% | 69% | 67% | 68% |
+| North Korea | 71% | 36% | 48% | 52% | 47% | 52% |
+| Iraq | 55% | 49% | 42% | 36% | 20% | 35% |
+| East Germany | 54% | 39% | 32% | 36% | 31% | 34% |
+| Poland | 52% | 23% | 42% | 49% | 17% | 23% |
+| South Korea | 71% | 36% | 19% | 30% | 20% | 27% |
+| **Iran** | 48% | 9% | 17% | 15% | 15% | 19% |
+| **Italy** | 51% | 6% | 3% | 10% | 15% | 31% |
+| **France** | 51% | −5% | −3% | 5% | 25% | 8% |
+| **Pakistan** | 36% | **−11%** | −5% | 3% | 1% | 11% |
+| **Egypt** | 34% | 0% | 5% | 14% | 8% | 19% |
+| Cuba | 22% | −2% | 16% | 11% | 12% | 13% |
+| Mexico | 20% | −2% | 7% | 1% | −3% | 10% |
+| Venezuela | 20% | −2% | 7% | 6% | 2% | 18% |
+| Angola | 17% | 1% | 1% | 1% | 0% | 8% |
+| Zaire | 16% | −1% | 4% | 10% | 2% | 1% |
+| Brazil | 12% | −4% | −5% | −2% | 2% | 15% |
+| Argentina | 10% | −1% | −2% | 0% | −2% | −1% |
+
+A negative entry is a probe fitting noise: worse than naming the country's usual value.
+
+**The failure is concentrated, and it is not the countries nobody plays.** Algeria, Saudi Arabia,
+Libya and India have 3-7% headroom -- nothing to recover, because they are empty in almost every
+position, which §21.11 shows from the behavioural side. The interesting failures are the
+**high-headroom countries the trunk still cannot read**: France and Italy at 51%, Iran at 48%,
+Pakistan at 36%, Egypt at 34%. Western Europe, the Middle East and South Asia -- five countries
+that decide three regions -- sit at or below 20% of gap closed in the control at every budget.
+
+Against that, Japan at 89% and South Africa at 69% show the representation is capable of holding a
+country precisely. So this is not a width limit or a pooling limit in general; it is specific, and
+whatever distinguishes Japan from France is the thing to find.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
