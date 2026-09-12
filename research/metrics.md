@@ -1114,6 +1114,57 @@ expect small noise, not a reason to expect a loss.
 by distinct values, not by standard deviation, which is what had previously mislabelled a slot
 that varies over a tiny range as constant.
 
+### 21.10 One Elo scale for E3, and identity is worth a doubling of compute
+
+Everything below is on **one scale, anchored at `E3-01-21-080M` = 0**, from 228,000 games in three
+pools of four late snapshots per arm-budget. Both of the first two pools contain the anchor, so
+nothing here is stitched across pools through a third model.
+
+| arm | vs anchor | 95% CI | **Elo** | BT | snapshot spread |
+|:---|---:|:---:|---:|---:|---:|
+| `E3-01-21-080M` control | — | — | **0** | 0 | 30 |
+| `E3-01-21-160M` control | 64.9% | [63.7, 66.0] | **+106** | +99 | 17 |
+| `E3-01-21-240M` control | 67.5% | [66.4, 68.7] | **+127** | +135 | 50 |
+| `E3-10-21-080M` identity | 65.4% | [64.2, 66.6] | **+111** | +118 | 67 |
+| `E3-10-22-080M` identity | 67.2% | [66.1, 68.4] | **+125** | +118 | 45 |
+| `E3-10-21-160M` identity | 75.2% | [74.1, 76.3] | **+193** | +194 | 54 |
+| `E3-10-22-160M` identity | 75.7% | [74.6, 76.7] | **+197** | +203 | 33 |
+| `E3-11-21-080M` mlp-static | 34.3% | [33.2, 35.5] | **−113** | −115 | 48 |
+| `E3-11-22-080M` mlp-static | 38.2% | [37.1, 39.4] | **−83** | −76 | 67 |
+
+`BT` is the Bradley-Terry fit over the whole pool, recentred on the anchor's four snapshots. It
+agrees with the pooled win rate within 8 Elo everywhere, so the pool is transitive and neither
+column is doing hidden work.
+
+**Identity at 80M is level with the control at 160M.** Measured directly rather than inferred
+through the anchor -- `E3-10-21-080M` scores **52.4% [51.2, 53.6]** and `E3-10-22-080M` **49.9%
+[48.7, 51.1]** against `E3-01-21-160M`. So 5,152 embedding parameters buy what doubling the
+budget buys, which is the sharpest form of the intercept-shift claim in §21.8 and the reason
+identity is in the recipe rather than on the list of things to try.
+
+It does not buy the *next* doubling as well: the same pool puts `E3-01-21-240M` at **+38** over
+the 160M control, above identity@80M.
+
+**The control's own returns are collapsing.** +106 for the first doubling, then +38 for the 1.5x
+from 160M to 240M -- 36 per doubling against 106. Two consequences: an arm measured only at 80M
+is measured on the steep part of the curve, and the 240M control is a much harder reference than
+its step count suggests.
+
+**Two cross-checks, both passed.** `E3-01-21-240M` vs `E3-01-21-160M` reads **+38 in two
+independent pools**. And identity-vs-control at matched budget reads **+92 / +109** at 160M here
+against **+93 / +114** measured separately in §21.8, and **+111 / +125** at 80M against
+**+110 / +120** -- four figures reproducing across a different pool composition.
+
+**Elo from a pooled win rate is not additive, and the matched pair is the number to quote.** The
+160M control is +106 on the anchor's scale and the 240M control +127, but played against each
+other directly the gap is +38, not +21. Nothing is wrong: converting each pooled win rate
+separately compresses differences between two arms that are both far from the anchor. For a
+specific comparison, re-anchor and measure that pair.
+
+**The snapshot spread column is why §20.7 exists.** Four snapshots of one arm-budget span 17 to
+80 Elo. Every effect in the table except identity's is smaller than the largest of those spreads,
+so a single-snapshot version of this table would have been noise dressed as a result.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
