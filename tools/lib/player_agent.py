@@ -215,7 +215,8 @@ class NeuralAgent:
         # Architecture detection by weight name: V2 carries the cross-attention block, V1 does
         # not. A retired architecture is refused rather than allowed to fall through to V1.
         reject_retired_architecture(state_dict)
-        is_v2 = any("cross_attn" in k or "cross_card_proj" in k for k in state_dict.keys())
+        is_mlp = any(k.startswith("mlp_in.") for k in state_dict)
+        is_v2 = is_mlp or any("cross_attn" in k or "cross_card_proj" in k for k in state_dict)
 
         model: ColdWarModel
         if is_v2:
@@ -229,7 +230,11 @@ class NeuralAgent:
             # built the other way round refuses it outright -- which is right, but it meant the
             # tournament and every probe could not read a P1 categorical arm at all.
             categorical = any(k.startswith("value_dist_head") for k in state_dict)
-            model = create_coldwar_net_v2(dev, categorical_value=categorical)
+            if is_mlp:
+                from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
+                model = create_coldwar_net_mlp(dev, categorical_value=categorical)
+            else:
+                model = create_coldwar_net_v2(dev, categorical_value=categorical)
         else:
             model = create_coldwar_net(dev)
 

@@ -849,7 +849,7 @@ def evaluate_and_log_snapshot(
         f.write("".join(report_entry))
 
     if add_to_opponents_after:
-        if arch == "v2":
+        if arch in ("v2", "mlp"):
             # Shaped from the model being evaluated, not from the factory defaults. The card
             # block width and whether the history branch exists are both configurable now, and a
             # frozen copy built at defaults simply fails to load a v2.1 policy -- which is how
@@ -1154,7 +1154,10 @@ def train_pipeline(
     tb.log_text("run/metadata", "```json\n" + json.dumps(metadata_info, indent=2) + "\n```", 0)
 
     # 1. Initialize Model
-    if arch == "v2":
+    if arch == "mlp":
+        from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
+        model = create_coldwar_net_mlp(dev, categorical_value=categorical_value)
+    elif arch == "v2":
         model = create_coldwar_net_v2(dev, categorical_value=categorical_value)
     else:
         model = create_coldwar_net(dev)

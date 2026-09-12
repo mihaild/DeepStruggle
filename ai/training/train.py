@@ -18,7 +18,7 @@ from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 
 def main():
     parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
-    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2"],
+    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp"],
                         help="Model architecture. v2 is the baseline and what every arm in the\n"
                              "experiment log uses; v1 is the original network, kept because\n"
                              "checkpoints that predate v2 still name it.")

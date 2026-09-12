@@ -541,6 +541,63 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     return model.to(device)
 
 
+class ColdWarNetMLP(ColdWarNetV2):
+    """The same heads and the same observation, on a plain MLP trunk.
+
+    A control for the backbone, not a candidate. Everything structured about v2 -- the graph
+    convolution over the map, the per-card encoder, the card-to-country cross-attention -- is
+    replaced by two dense layers over the flat 3,824 floats. The heads, the action space, the
+    value contract and the training recipe are untouched, so the difference between this and v2
+    at matched steps is what the structure is worth.
+
+    It is expected to be much faster per step and much weaker. If it is *not* much weaker, the
+    structure is not earning its cost and the comparison is worth more than the arm.
+    """
+
+    def __init__(self, hidden_dim: int = 512, mlp_width: int = 1024, **kwargs):
+        super().__init__(hidden_dim=hidden_dim, **kwargs)
+        # Replaced, not merely bypassed: leaving them registered would put a few hundred
+        # thousand never-updated parameters in the checkpoint and in any count of "how big is
+        # this network", which is the one number this control exists to make honest.
+        for name in ("gconv1", "gconv2", "board_proj", "card_fc", "card_proj",
+                     "cross_attn", "cross_attn_ln", "cross_card_proj", "global_proj",
+                     "hist_conv"):
+            setattr(self, name, None)
+        self.mlp_width = int(mlp_width)
+        self.mlp_in = nn.Sequential(
+            nn.Linear(self.TOTAL_OBS_SIZE, self.mlp_width),
+            nn.LayerNorm(self.mlp_width),
+            nn.GELU(),
+            nn.Linear(self.mlp_width, self.mlp_width),
+            nn.LayerNorm(self.mlp_width),
+            nn.GELU(),
+        )
+        self.fusion_in = nn.Sequential(
+            nn.Linear(self.mlp_width, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+        )
+
+    def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
+        if obs.shape[-1] != self.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"observation is {obs.shape[-1]} floats wide; this model reads "
+                f"{self.TOTAL_OBS_SIZE}.")
+        h = self.fusion_in(self.mlp_in(obs))
+        for block in self.res_blocks:
+            h = block(h)
+        if return_attn_weights:
+            return h, None
+        return h
+
+
+def create_coldwar_net_mlp(device: torch.device | str,
+                           categorical_value: bool = False) -> ColdWarNetMLP:
+    """The MLP backbone control. Same heads, same observation, no structure."""
+    dev = torch.device(device) if isinstance(device, str) else device
+    return ColdWarNetMLP(categorical_value=categorical_value).to(dev)
+
+
 def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWarNetV2:
     """A network shaped exactly like `model`.
 
@@ -550,6 +607,20 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
     same way on board_features after the other three had been fixed. Reading them from the source
     removes the class of error rather than the instance.
     """
+    # The backbone is a dimension too. An MLP-trunk model copied as a v2 has a different state
+    # dict and fails to load at the first snapshot -- the same failure the paragraph above is
+    # about, one level up.
+    if isinstance(model, ColdWarNetMLP):
+        return ColdWarNetMLP(
+            hidden_dim=int(getattr(model, "hidden_dim", 512)),
+            mlp_width=int(getattr(model, "mlp_width", 1024)),
+            card_features=int(getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES)),
+            use_history=bool(getattr(model, "use_history", False)),
+            global_features=int(getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE)),
+            has_tail=bool(getattr(model, "has_tail", False)),
+            board_features=int(getattr(model, "board_features", ColdWarNetV2.BOARD_FEATURES)),
+            categorical_value=bool(getattr(model, "categorical_value", False)),
+        ).to(torch.device(device) if isinstance(device, str) else device)
     return create_coldwar_net_v2(
         device,
         card_features=int(getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES)),
@@ -573,6 +644,18 @@ def check_checkpoint_layout(state_dict: dict) -> None:
     and v2.2 all predate the starred-card fix, so they were trained against a different game and
     are not comparable to anything measured now.
     """
+    # An MLP-trunk checkpoint has no per-card block to read the layout off. It has something
+    # better: the first dense layer takes the whole observation, so its input width *is* the
+    # layout, with nothing to infer.
+    mlp_w = state_dict.get("mlp_in.0.weight")
+    if mlp_w is not None:
+        width = int(mlp_w.shape[1])
+        if width != ColdWarNetV2.TOTAL_OBS_SIZE:
+            raise ValueError(
+                f"this checkpoint reads {width} floats; layout v2.3 is "
+                f"{ColdWarNetV2.TOTAL_OBS_SIZE}. Checkpoints from the retired layouts cannot "
+                f"be run.")
+        return
     cards = card_features_of(state_dict)
     g = state_dict.get("global_proj.0.weight")
     globals_ = int(g.shape[1]) if g is not None else ColdWarNetV2.GLOBAL_SIZE
@@ -598,3 +681,5 @@ def card_features_of(state_dict: dict) -> int:
         if key in state_dict:
             return int(state_dict[key].shape[1])
     raise KeyError("no card_fc.0.weight in the checkpoint; cannot tell the layout")
+
+
