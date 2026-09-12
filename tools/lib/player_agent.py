@@ -230,11 +230,14 @@ class NeuralAgent:
             # built the other way round refuses it outright -- which is right, but it meant the
             # tournament and every probe could not read a P1 categorical arm at all.
             categorical = any(k.startswith("value_dist_head") for k in state_dict)
+            ident = state_dict.get("card_identity.weight")
+            identity_dim = int(ident.shape[1]) if ident is not None else 0
             if is_mlp:
                 from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
                 model = create_coldwar_net_mlp(dev, categorical_value=categorical)
             else:
-                model = create_coldwar_net_v2(dev, categorical_value=categorical)
+                model = create_coldwar_net_v2(dev, categorical_value=categorical,
+                                              identity_dim=identity_dim)
         else:
             model = create_coldwar_net(dev)
 

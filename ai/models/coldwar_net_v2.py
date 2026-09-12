@@ -134,12 +134,15 @@ class ColdWarNetV2(nn.Module):
     val_win_head: nn.Module | None
     val_vp_head: nn.Module | None
     value_dist_head: nn.Module | None
+    card_identity: nn.Embedding | None
+    country_identity: nn.Embedding | None
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4, num_attn_heads: int = 4,
                  card_features: int = CARD_FEATURES, use_history: bool = False,
                  global_features: int = GLOBAL_SIZE, has_tail: bool = False,
                  board_features: int = BOARD_FEATURES,
-                 categorical_value: bool = False, value_atoms: int = VALUE_ATOMS):
+                 categorical_value: bool = False, value_atoms: int = VALUE_ATOMS,
+                 identity_dim: int = 0):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -168,8 +171,26 @@ class ColdWarNetV2(nn.Module):
         hist_width = self.HIST_SIZE if self.use_history else 0
         self.TOTAL_OBS_SIZE = self.HIST_OFFSET + hist_width + (33 if self.has_tail else 0)
 
+        # Identity embeddings. The card block encodes a card's *properties* -- side, Ops, a few
+        # flags -- and never which card it is; identity exists only as position in the 110x14
+        # block. The card branch applies one shared MLP per token and then mean+max pools, so
+        # position is discarded and two cards with equal properties are literally the same
+        # vector to everything downstream. Measured: 110 cards collapse to 46 signatures and 86%
+        # of them collide with another card, in groups of up to six -- Tear Down this Wall is
+        # indistinguishable from Chernobyl.
+        #
+        # A learned embedding indexed by position restores it, and is model-side only: the
+        # observation is untouched, so this is not an observation change.
+        self.identity_dim = int(identity_dim)
+        if self.identity_dim > 0:
+            self.card_identity = nn.Embedding(110, self.identity_dim)
+            self.country_identity = nn.Embedding(84, self.identity_dim)
+        else:
+            self.card_identity = None
+            self.country_identity = None
+
         # 1. Board Graph Encoder (84 nodes x 26 features -> 64)
-        self.gconv1 = GraphConvLayer(self.board_features, 64)
+        self.gconv1 = GraphConvLayer(self.board_features + self.identity_dim, 64)
         self.gconv2 = GraphConvLayer(64, 64)
         self.board_proj = nn.Sequential(
             nn.Linear(64 * 2, 256),  # Mean + Max pooling over 84 nodes
@@ -179,7 +200,7 @@ class ColdWarNetV2(nn.Module):
 
         # 2. Card Registry Encoder (110 cards x 14 features -> 64)
         self.card_fc = nn.Sequential(
-            nn.Linear(self.card_features, 64),
+            nn.Linear(self.card_features + self.identity_dim, 64),
             nn.LayerNorm(64),
             nn.GELU(),
         )
@@ -389,6 +410,9 @@ class ColdWarNetV2(nn.Module):
         # 1. Board Graph Features: (B, 84, 28)
         board_raw = obs[:, self.BOARD_OFFSET : self.BOARD_OFFSET + self.BOARD_SIZE]
         board_nodes = board_raw.view(batch_size, 84, self.board_features)
+        if self.country_identity is not None:
+            ids = self.country_identity.weight.unsqueeze(0).expand(batch_size, -1, -1)
+            board_nodes = torch.cat([board_nodes, ids], dim=-1)
         h_board = self.gconv1(board_nodes, self.norm_adj)
         h_board = self.gconv2(h_board, self.norm_adj)  # (B, 84, 64)
         board_mean = torch.mean(h_board, dim=1)  # (B, 64)
@@ -398,6 +422,9 @@ class ColdWarNetV2(nn.Module):
         # 2. Card Features: (B, 110, card_features)
         card_raw = obs[:, self.CARD_OFFSET : self.CARD_OFFSET + self.CARD_SIZE]
         card_nodes = card_raw.view(batch_size, 110, self.card_features)
+        if self.card_identity is not None:
+            ids = self.card_identity.weight.unsqueeze(0).expand(batch_size, -1, -1)
+            card_nodes = torch.cat([card_nodes, ids], dim=-1)
         h_cards = self.card_fc(card_nodes)  # (B, 110, 64)
         card_mean = torch.mean(h_cards, dim=1)  # (B, 64)
         card_max, _ = torch.max(h_cards, dim=1)  # (B, 64)
@@ -526,7 +553,8 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           global_features: int = ColdWarNetV2.GLOBAL_SIZE,
                           has_tail: bool = False,
                           board_features: int = ColdWarNetV2.BOARD_FEATURES,
-                          categorical_value: bool = False) -> ColdWarNetV2:
+                          categorical_value: bool = False,
+                          identity_dim: int = 0) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device.
 
     The defaults are observation layout v2.3, which is the only layout the engine emits.
@@ -534,6 +562,7 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     does change the checkpoint shape, so a run must be loaded with the setting it trained with.
     """
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
+                         identity_dim=identity_dim,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
                          board_features=board_features,
@@ -620,6 +649,7 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
             has_tail=bool(getattr(model, "has_tail", False)),
             board_features=int(getattr(model, "board_features", ColdWarNetV2.BOARD_FEATURES)),
             categorical_value=bool(getattr(model, "categorical_value", False)),
+            identity_dim=int(getattr(model, "identity_dim", 0)),
         ).to(torch.device(device) if isinstance(device, str) else device)
     return create_coldwar_net_v2(
         device,
@@ -630,7 +660,8 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         board_features=int(getattr(model, "board_features", ColdWarNetV2.BOARD_FEATURES)),
         # The P1 head must be carried too: a frozen evaluation copy built without it would have
         # a different state dict from the model it is copying, which is how arms E and F died.
-        categorical_value=bool(getattr(model, "categorical_value", False)))
+        categorical_value=bool(getattr(model, "categorical_value", False)),
+        identity_dim=int(getattr(model, "identity_dim", 0)))
 
 
 def check_checkpoint_layout(state_dict: dict) -> None:
@@ -677,9 +708,14 @@ def card_features_of(state_dict: dict) -> int:
     reinterpret every card feature by one position without any shape error to warn about --
     silently, and only after the numbers came out wrong.
     """
+    # Identity embeddings widen this layer by identity_dim, so subtract what they added --
+    # otherwise a 14-feature checkpoint with a 16-wide embedding reads as 30 and is refused as a
+    # retired layout.
+    ident = state_dict.get("card_identity.weight")
+    extra = int(ident.shape[1]) if ident is not None else 0
     for key in ("card_fc.0.weight", "module.card_fc.0.weight"):
         if key in state_dict:
-            return int(state_dict[key].shape[1])
+            return int(state_dict[key].shape[1]) - extra
     raise KeyError("no card_fc.0.weight in the checkpoint; cannot tell the layout")
 
 

@@ -168,6 +168,16 @@ def main():
                              "to. A window's advantage is -1 - v_t and never consults it.\n"
                              "Changes the returns, so an arm with it on is not comparable to\n"
                              "one without except as its own A/B.")
+    parser.add_argument("--identity-dim", type=int, default=0,
+                        help="Width of a learned identity embedding added to each card and\n"
+                             "country token (0 disables it).\n"
+                             "The card block encodes a card's properties and never which card\n"
+                             "it is; identity exists only as position, and v2's shared per-card\n"
+                             "MLP plus pooling discards position. Measured: 110 cards collapse\n"
+                             "to 46 signatures, 86%% of them colliding, in groups of up to six --\n"
+                             "Tear Down this Wall is the same vector as Chernobyl. Countries are\n"
+                             "better off, the graph convolution seeing real adjacency.\n"
+                             "Model-side only: the observation is untouched.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
@@ -219,6 +229,7 @@ def main():
             categorical_value=args.categorical_value,
             adv_filter_quantile=args.adv_filter_quantile,
             window_provoked_defcon=args.window_provoked_defcon,
+            identity_dim=args.identity_dim,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             seed=args.seed,

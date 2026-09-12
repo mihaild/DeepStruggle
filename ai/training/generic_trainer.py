@@ -1063,6 +1063,7 @@ def train_pipeline(
     categorical_value: bool = False,
     adv_filter_quantile: float = 0.0,
     window_provoked_defcon: bool = False,
+    identity_dim: int = 0,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
@@ -1145,6 +1146,7 @@ def train_pipeline(
         "categorical_value": bool(categorical_value),
         "adv_filter_quantile": adv_filter_quantile,
         "window_provoked_defcon": bool(window_provoked_defcon),
+        "identity_dim": int(identity_dim),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
@@ -1158,7 +1160,8 @@ def train_pipeline(
         from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
         model = create_coldwar_net_mlp(dev, categorical_value=categorical_value)
     elif arch == "v2":
-        model = create_coldwar_net_v2(dev, categorical_value=categorical_value)
+        model = create_coldwar_net_v2(dev, categorical_value=categorical_value,
+                                      identity_dim=identity_dim)
     else:
         model = create_coldwar_net(dev)
 
