@@ -799,6 +799,32 @@ nothing because the game ends immediately after. For the provoked case the game 
 immediately -- but the credited stretch reaches backwards over everything else the player did
 that turn.
 
+**The over-reach is 5.6x, counted.** On the five generated replays, the turn the game ended in
+holds **124** of the losing player's decisions, of which only **22** are at or after the fatal
+choice. Every one of the 124 gets `-1 - v_t`. So 82% of the credited decisions had nothing to do
+with the loss, and the worst case (7122) pins 30 decisions for a mistake two decisions deep.
+
+**And the critic still does not see it.** Both checkpoints were run over the *same* stored
+positions from those replays, so the comparison is paired and any difference is the critic rather
+than the games it happened to play. The delta from choosing to spend the card for Operations:
+
+| | control critic | windowing critic |
+|:---|---:|---:|
+| 7107 Star Wars | −0.023 | **−0.001** |
+| 7115 Lone Gunman | −0.026 | **+0.050** |
+| 7118 Grain Sales | +0.024 | **−0.002** |
+| 7119 Grain Sales | −0.036 | **+0.008** |
+
+No more reactive than the control, and in two of four less. That is not a surprise on reflection:
+a window's advantage is `-1 - v_t` *by construction*, so it teaches the policy while routing
+around the value function entirely. The behaviour moved and the understanding did not.
+
+Which is the best available explanation for the Elo: the policy learned a blunt avoidance over a
+whole turn's play rather than the one conjunction that is actually fatal, because nothing in this
+arm taught it the conjunction. It also makes the auxiliary DEFCON-risk head the natural next step
+rather than a narrower window alone -- the head is the only piece on the table that would make
+the network *represent* the danger instead of avoiding a region of the game.
+
 **Verdict: do not adopt as it stands.** The behavioural target is reachable -- 13.7% against the
 human 11.7% is the closest this project has come -- but not at this price, and the next attempt
 should narrow the window before anything else.
