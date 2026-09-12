@@ -905,6 +905,80 @@ built a scalar `ColdWarNetV2` unconditionally, so a categorical checkpoint faile
 came from the training loop's own evaluation, which builds the model itself and so never hit the
 path the tournament and every probe use. The head is now detected by weight name.
 
+### 21.4 The model cannot tell 86% of cards apart
+
+Every card is described to the network by 8 slots saying where it is, **5 properties -- Ops,
+side relative to the viewer, era, one-time, is-scoring** (`engine/src/observation.cpp:213-219`)
+-- and a flag saying this decision is about it. Nothing about what the card *does*: no target,
+no effect class, no "this hands the opponent Operations". Identity exists only as position in
+the 110x14 block, and v2's card branch applies one shared MLP per token then mean+max pools, so
+position is discarded.
+
+Put every card in one hand, so only its own properties can separate it:
+
+**110 cards collapse to 46 distinct signatures. 95 of them -- 86% -- share a vector with another
+card.** Groups run to six. The trunk difference between a hand holding Marshall Plan and the same
+hand holding US/Japan Pact is **5e-6**.
+
+Every card this project's failures turn on is ambiguous:
+
+| card | indistinguishable from |
+|:---|:---|
+| Grain Sales (hands the US your Operations) | Colonial Rear Guards, **The Voice of America** |
+| Tear Down this Wall (a free US coup in Europe) | Iron Lady, North Sea Oil, **Chernobyl**, An Evil Empire, AWACS |
+| Star Wars (takes a card out of the discard) | Reagan Bombs Libya, Solidarity |
+| Junta | **Missile Envy**, Latin American Death Squads, One Small Step |
+| Cuban Missile Crisis (a coup here loses the game) | **SALT Negotiations** |
+| Olympic Games (the boycott ends the game) | Indo-Pakistani War |
+| **Nasser** | **Blockade, Romanian Abdication** |
+| UN Intervention | *unique* |
+
+So the Nasser question -- can it know the card targets Egypt rather than some other 2-stability
+Middle Eastern battleground -- does not get as far as Egypt. It cannot tell Nasser from Blockade.
+
+**This is the common cause behind most of §21.** The DEFCON blunder rate that never moves in 80M
+steps, the UN Intervention misrouting, the Olympic Games rule, coups under Cuban Missile Crisis:
+each needs the model to know *which card* it holds, and it does not. Meanwhile the things it does
+competently -- spacing a card whose Ops clear the box, the setup probe's targets -- are decidable
+from **properties alone**. Property-level competence with identity-level blindness fits every
+measurement in this section.
+
+It also retires the reading of §21.1's linear probe. AUC 0.953 on "the card being committed is
+one I must not play" cannot have been reading card identity, because there is none; it was
+reading the board half of the conjunction -- DEFCON 2 plus an exposed battleground plus the
+card's side and Ops -- which gates most of the danger set and ranks well without ever separating
+Grain Sales from The Voice of America.
+
+`--identity-dim` adds a learned embedding indexed by position, 5,152 parameters at width 16, and
+is model-side: the observation is untouched. It makes the distinction *learnable*. It does not
+make it known -- there is still no card-to-effect or card-to-target encoding, so the association
+between a card and what it does must come from games in which it was played.
+
+### 21.5 The structured backbone is worth ~110 Elo, and the anchor said the opposite
+
+An MLP control -- the graph convolution, per-card encoder and cross-attention replaced by two
+dense layers over the flat observation, same heads, same recipe, 2.6x the parameters, 4.2x the
+throughput -- scores **34.5%** and **35.2%** against the v2 control over 3,200 games each:
+**−112 and −106 Elo**, two seeds agreeing.
+
+So structure is worth about 110 Elo, and it is not capacity: the control has *more* parameters
+and loses. Note the MLP keeps card identity for free, by position, and still loses -- identity is
+not what makes v2 good, and the two findings are complementary rather than competing.
+
+**The anchor read the MLP at 88.2% against the control's 80.6%** -- better, by a wide margin.
+That is the third inversion in this session:
+
+| arm | anchor | pooled head-to-head |
+|:---|---:|---:|
+| windowing seed ...922 | 81.8% (above control's 80.6%) | **−77 Elo** |
+| MLP backbone | 88.2% (above control's 80.6%) | **−110 Elo** |
+| filtering | ordering flips between 80M and 160M | +24 at both |
+
+The bias is one-directional: the anchor **overrates arms that are weaker**. HeuristicBot is a
+fixed script, and a differently-trained policy can exploit its habits without being stronger.
+This is systematic, not noise, and it means no live training metric can rank arms. Rate against
+H2 @480M, pooled over snapshots.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
