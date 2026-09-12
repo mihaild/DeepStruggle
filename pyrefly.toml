@@ -1,0 +1,12 @@
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+project-excludes = [
+    "tests/differential/**",
+    "external/**",
+]
+search-path = [
+    "external/struggler/src",
+    "bindings",
+]

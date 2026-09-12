@@ -1,0 +1,408 @@
+#include "ts/ops.hpp"
+#include "ts/scoring.hpp"
+#include "ts/map_data.hpp"
+#include "ts/constants.hpp"
+#include <algorithm>
+
+namespace ts {
+
+Player Scoring::get_country_control(const GameState& state, uint8_t country_id) noexcept {
+    if (country_id >= 84) return Player::NONE;
+    const auto& c_info = MapData::get_country(country_id);
+    uint8_t stab = c_info.stability;
+    uint8_t us_inf = state.countries[country_id].us_influence;
+    uint8_t ussr_inf = state.countries[country_id].ussr_influence;
+
+    if (us_inf >= stab && (us_inf - ussr_inf) >= stab) {
+        return Player::US;
+    }
+    if (ussr_inf >= stab && (ussr_inf - us_inf) >= stab) {
+        return Player::USSR;
+    }
+    return Player::NONE;
+}
+
+bool Scoring::is_controlled_by(const GameState& state, uint8_t country_id, Player p) noexcept {
+    return get_country_control(state, country_id) == p;
+}
+
+RegionScoreSummary Scoring::evaluate_region(const GameState& state, Region r, bool is_final_scoring) noexcept {
+    RegionScoreSummary summary{};
+    if (r == Region::NONE_REGION) return summary;
+
+    bool taiwan_is_bg = (r == Region::ASIA && state.has_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE) &&
+                         is_controlled_by(state, countries::TAIWAN, Player::US));
+
+    uint8_t total_bg = MapData::get_region_battleground_count(r) + (taiwan_is_bg ? 1 : 0);
+
+    for (uint8_t cid = 0; cid < 84; ++cid) {
+        const auto& c_info = MapData::get_country(cid);
+        if (c_info.region != r) continue;
+
+        Player ctrl = get_country_control(state, cid);
+        bool is_bg = c_info.battleground || (cid == countries::TAIWAN && taiwan_is_bg);
+
+        if (ctrl == Player::US) {
+            summary.us_countries++;
+            if (is_bg) summary.us_battlegrounds++;
+            if (c_info.superpower_adjacent == Player::USSR) {
+                summary.us_superpower_adjacent++;
+            }
+        } else if (ctrl == Player::USSR) {
+            summary.ussr_countries++;
+            if (is_bg) summary.ussr_battlegrounds++;
+            if (c_info.superpower_adjacent == Player::US) {
+                summary.ussr_superpower_adjacent++;
+            }
+        }
+    }
+
+    // Shuttle Diplomacy subtracts one battleground *country* from the USSR's total in Asia or
+    // the Middle East, so it comes off the country count as well as the battleground count.
+    // Both matter: Domination and Control are decided by who holds more countries, so taking
+    // only the battleground could never flip the status the card exists to flip. At turn 6 AR5
+    // of ts-replayer game 121 the two sides hold four countries and three battlegrounds each,
+    // and the card is what makes it 4 against 3 -- US Domination and a net 3 VP, where
+    // subtracting the battleground alone left both on Presence and a net of 1.
+    //
+    // In Asia the battleground it removes may be Japan, which borders the United States, so the
+    // USSR's bonus for holding a country adjacent to the enemy superpower goes with it.
+    uint8_t effective_ussr_bg = summary.ussr_battlegrounds;
+    uint8_t effective_ussr_countries = summary.ussr_countries;
+    uint8_t effective_ussr_adjacent = summary.ussr_superpower_adjacent;
+    if (!is_final_scoring && (r == Region::MIDDLE_EAST || r == Region::ASIA) &&
+        state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE) && effective_ussr_bg > 0) {
+        // All of it hangs on there being a battleground to remove. The country goes because
+        // that battleground *is* a country, not on its own -- so the USSR can be put out of
+        // Presence by losing their one battleground, and never by losing their one
+        // non-battleground country. At turn 10 AR1 of ts-replayer game 323 the USSR holds
+        // Lebanon in the Middle East and no battleground at all; taking Lebanon off their
+        // count dropped them out of Presence and handed the US the 3 VP that goes with it,
+        // where the log scores the region 5 to the US rather than 8.
+        effective_ussr_bg--;
+        if (effective_ussr_countries > 0) effective_ussr_countries--;
+        if (r == Region::ASIA && effective_ussr_adjacent > 0) effective_ussr_adjacent--;
+    }
+
+    uint8_t us_non_bg = (summary.us_countries >= summary.us_battlegrounds) ? (summary.us_countries - summary.us_battlegrounds) : 0;
+    uint8_t ussr_non_bg = (effective_ussr_countries >= effective_ussr_bg) ? (effective_ussr_countries - effective_ussr_bg) : 0;
+
+    // Evaluate US Status
+    if (summary.us_countries > effective_ussr_countries && summary.us_battlegrounds == total_bg) {
+        summary.us_status = RegionalStatus::CONTROL;
+    } else if (summary.us_countries > effective_ussr_countries &&
+               summary.us_battlegrounds > effective_ussr_bg &&
+               summary.us_battlegrounds >= 1 &&
+               us_non_bg >= 1) {
+        summary.us_status = RegionalStatus::DOMINATION;
+    } else if (summary.us_countries >= 1) {
+        summary.us_status = RegionalStatus::PRESENCE;
+    } else {
+        summary.us_status = RegionalStatus::NONE;
+    }
+
+    // Evaluate USSR Status
+    if (effective_ussr_countries > summary.us_countries && effective_ussr_bg == total_bg) {
+        summary.ussr_status = RegionalStatus::CONTROL;
+    } else if (effective_ussr_countries > summary.us_countries &&
+               effective_ussr_bg > summary.us_battlegrounds &&
+               effective_ussr_bg >= 1 &&
+               ussr_non_bg >= 1) {
+        summary.ussr_status = RegionalStatus::DOMINATION;
+    } else if (effective_ussr_countries >= 1) {
+        summary.ussr_status = RegionalStatus::PRESENCE;
+    } else {
+        summary.ussr_status = RegionalStatus::NONE;
+    }
+
+    // Base VP lookup per region
+    int16_t presence_vp = 0;
+    int16_t domination_vp = 0;
+    int16_t control_vp = 0;
+
+    switch (r) {
+        case Region::EUROPE:
+            presence_vp = 3; domination_vp = 7; control_vp = 0; // Control is instant victory!
+            break;
+        case Region::ASIA:
+            presence_vp = 3; domination_vp = 7; control_vp = 9;
+            break;
+        case Region::MIDDLE_EAST:
+            presence_vp = 3; domination_vp = 5; control_vp = 7;
+            break;
+        case Region::AFRICA:
+            presence_vp = 1; domination_vp = 4; control_vp = 6;
+            break;
+        case Region::CENTRAL_AMERICA:
+            presence_vp = 1; domination_vp = 3; control_vp = 5;
+            break;
+        case Region::SOUTH_AMERICA:
+            presence_vp = 2; domination_vp = 5; control_vp = 6;
+            break;
+        default:
+            break;
+    }
+
+    auto get_base_vp = [&](RegionalStatus st) -> int16_t {
+        switch (st) {
+            case RegionalStatus::PRESENCE: return presence_vp;
+            case RegionalStatus::DOMINATION: return domination_vp;
+            case RegionalStatus::CONTROL: return control_vp;
+            default: return 0;
+        }
+    };
+
+    summary.us_score = get_base_vp(summary.us_status) + summary.us_battlegrounds + summary.us_superpower_adjacent;
+    summary.ussr_score = get_base_vp(summary.ussr_status) + effective_ussr_bg + effective_ussr_adjacent;
+    summary.net_delta = summary.us_score - summary.ussr_score;
+
+    return summary;
+}
+
+void Scoring::score_region(GameState& state, Region r) noexcept {
+    if (r == Region::NONE_REGION) return;
+
+    auto summary = evaluate_region(state, r);
+
+    // Europe Control Instant Victory check. The flag records *why* the game ended: the score
+    // and phase it leaves behind are identical to any other 20 VP win, so without it the
+    // ending cannot be classified afterwards. Analytics only -- see effect_bits.
+    if (r == Region::EUROPE) {
+        if (summary.us_status == RegionalStatus::CONTROL) {
+            state.victory_points = 20;
+            state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
+            state.current_phase = Phase::GAME_OVER;
+            return;
+        }
+        if (summary.ussr_status == RegionalStatus::CONTROL) {
+            state.victory_points = -20;
+            state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
+            state.current_phase = Phase::GAME_OVER;
+            return;
+        }
+    }
+
+    // If Shuttle Diplomacy was active and this was ME or Asia, clear flag and move card to discard pile
+    if ((r == Region::MIDDLE_EAST || r == Region::ASIA) && state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+        state.clear_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+        state.card_locations[card_ids::SHUTTLE_DIPLOMACY] = CardLocation::DISCARD_PILE;
+    }
+
+    int32_t new_vp = static_cast<int32_t>(state.victory_points) + summary.net_delta;
+    new_vp = std::clamp(new_vp, -20, 20);
+    state.victory_points = static_cast<int8_t>(new_vp);
+
+    if (state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+    }
+}
+
+void Scoring::score_southeast_asia(GameState& state) noexcept {
+    // 1 VP each for Burma, Cambodia/Laos, Vietnam, Malaysia, Indonesia, Philippines. 2 VP for Thailand.
+    int16_t us_pts = 0;
+    int16_t ussr_pts = 0;
+
+    constexpr std::array<uint8_t, 6> SE_COUNTRIES = {
+        countries::BURMA, countries::LAOS_CAMBODIA, countries::VIETNAM,
+        countries::MALAYSIA, countries::INDONESIA, countries::PHILIPPINES
+    };
+
+    for (uint8_t cid : SE_COUNTRIES) {
+        Player ctrl = get_country_control(state, cid);
+        if (ctrl == Player::US) us_pts += 1;
+        else if (ctrl == Player::USSR) ussr_pts += 1;
+    }
+
+    Player thai_ctrl = get_country_control(state, countries::THAILAND);
+    if (thai_ctrl == Player::US) us_pts += 2;
+    else if (thai_ctrl == Player::USSR) ussr_pts += 2;
+
+    int32_t new_vp = static_cast<int32_t>(state.victory_points) + (us_pts - ussr_pts);
+    new_vp = std::clamp(new_vp, -20, 20);
+    state.victory_points = static_cast<int8_t>(new_vp);
+
+    if (state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+    }
+}
+
+void Scoring::evaluate_military_ops(GameState& state) noexcept {
+    // A decided game has no turn end. The required Military Operations comparison is part of
+    // the turn's cleanup, and cleanup never happens if the game finished during the action
+    // rounds -- reaching 20 VP ends it there and then. Awarding the deficit anyway moves the
+    // score back off 20 and un-wins a won game: at 20 VP with the USSR on 5 operations to the
+    // US's 0 at DEFCON 2, this returned +18 and is_terminal went from true to false.
+    if (state.current_phase == Phase::GAME_OVER ||
+        state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+
+    uint8_t req = state.defcon;
+    uint8_t us_def = (state.us_mil_ops >= req) ? 0 : (req - state.us_mil_ops);
+    uint8_t ussr_def = (state.ussr_mil_ops >= req) ? 0 : (req - state.ussr_mil_ops);
+
+    // US gains VP if USSR has deficit; USSR gains VP (negative VP delta) if US has deficit
+    int16_t delta = static_cast<int16_t>(ussr_def) - static_cast<int16_t>(us_def);
+    int32_t new_vp = static_cast<int32_t>(state.victory_points) + delta;
+    new_vp = std::clamp(new_vp, -20, 20);
+    state.victory_points = static_cast<int8_t>(new_vp);
+
+    state.us_mil_ops = 0;
+    state.ussr_mil_ops = 0;
+
+    if (state.victory_points >= 20 || state.victory_points <= -20) {
+        state.current_phase = Phase::GAME_OVER;
+    }
+}
+
+void Scoring::execute_final_scoring(GameState& state) noexcept {
+    if (state.current_phase == Phase::GAME_OVER) return;
+
+    // 1. Europe Control Instant Victory check. The flag matters here for the same reason it
+    // does in score_region: this leaves +/-20 and GAME_OVER, indistinguishable afterwards from
+    // a win on the VP track. Reaching final scoring while controlling Europe is a Europe
+    // Control win, not a 20 VP one.
+    auto europe_summary = evaluate_region(state, Region::EUROPE);
+    if (europe_summary.us_status == RegionalStatus::CONTROL) {
+        state.victory_points = 20;
+        state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+    if (europe_summary.ussr_status == RegionalStatus::CONTROL) {
+        state.victory_points = -20;
+        state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
+        state.current_phase = Phase::GAME_OVER;
+        return;
+    }
+
+    // 2. Accumulate all regions without intermediate clamping or early termination
+    // Final scoring allows intermediate VP to exceed +20 or drop below -20
+    int32_t total_vp = static_cast<int32_t>(state.victory_points);
+
+    // Europe
+    total_vp += europe_summary.net_delta;
+
+    // Asia (Shuttle Diplomacy does not affect final scoring)
+    auto asia_summary = evaluate_region(state, Region::ASIA, /*is_final_scoring=*/true);
+    total_vp += asia_summary.net_delta;
+
+    // Middle East (Shuttle Diplomacy does not affect final scoring)
+    auto me_summary = evaluate_region(state, Region::MIDDLE_EAST, /*is_final_scoring=*/true);
+    total_vp += me_summary.net_delta;
+
+    // Africa
+    auto africa_summary = evaluate_region(state, Region::AFRICA);
+    total_vp += africa_summary.net_delta;
+
+    // Central America
+    auto ca_summary = evaluate_region(state, Region::CENTRAL_AMERICA);
+    total_vp += ca_summary.net_delta;
+
+    // South America
+    auto sa_summary = evaluate_region(state, Region::SOUTH_AMERICA);
+    total_vp += sa_summary.net_delta;
+
+    if (state.has_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE)) {
+        state.clear_flag(effect_bits::SHUTTLE_DIPLOMACY_ACTIVE);
+        state.card_locations[card_ids::SHUTTLE_DIPLOMACY] = CardLocation::DISCARD_PILE;
+    }
+
+    // China card bonus (+1 VP to holder)
+    if (state.china_card_holder == Player::US) {
+        total_vp += 1;
+    } else if (state.china_card_holder == Player::USSR) {
+        total_vp -= 1;
+    }
+
+    // Final clamping to [-20, 20]
+    total_vp = std::clamp(total_vp, -20, 20);
+    state.victory_points = static_cast<int8_t>(total_vp);
+    state.current_phase = Phase::GAME_OVER;
+}
+
+
+float Scoring::compute_useful_actions_potential(const GameState& state, Player p) noexcept {
+    if (p == Player::NONE) return 0.0f;
+    Player opp = (p == Player::US) ? Player::USSR : Player::US;
+    float p_sign = (p == Player::US) ? 1.0f : -1.0f;
+
+    // 1. VP in favor of current player: (vp in favor) / 20.0, weight 0.5
+    float vp_favor = static_cast<float>(state.victory_points) * p_sign;
+    float term1 = std::clamp(vp_favor / 20.0f, -1.0f, 1.0f);
+
+    // 2. Battlegrounds: (bg controlled by player - bg controlled by opp) / total bg, weight 0.3
+    uint8_t total_bg = 0;
+    int16_t bg_diff = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        const auto& c_info = MapData::get_country(i);
+        if (c_info.battleground) {
+            total_bg++;
+            Player ctrl = get_country_control(state, i);
+            if (ctrl == p) bg_diff++;
+            else if (ctrl == opp) bg_diff--;
+        }
+    }
+    float term2 = (total_bg > 0) ? (static_cast<float>(bg_diff) / static_cast<float>(total_bg)) : 0.0f;
+
+    // 3. Unscored regions: (sum across all unscored regions of (vp region would give current player) / (control_vp + num_bg)) / 6, weight 0.1
+    constexpr std::array<std::pair<Region, uint8_t>, 6> REGIONS = {{
+        {Region::EUROPE, card_ids::EUROPE_SCORING},
+        {Region::ASIA, card_ids::ASIA_SCORING},
+        {Region::MIDDLE_EAST, card_ids::MIDDLE_EAST_SCORING},
+        {Region::AFRICA, card_ids::AFRICA_SCORING},
+        {Region::CENTRAL_AMERICA, card_ids::CENTRAL_AMERICA_SCORING},
+        {Region::SOUTH_AMERICA, card_ids::SOUTH_AMERICA_SCORING}
+    }};
+
+    float sum_unscored_ratio = 0.0f;
+    for (const auto& [r, card_id] : REGIONS) {
+        if (state.card_locations[card_id] == CardLocation::DISCARD_PILE) {
+            continue; // Region is already scored this cycle
+        }
+        auto summ = evaluate_region(state, r);
+        int16_t net_vp = 0;
+        if (r == Region::EUROPE) {
+            if (summ.us_status == RegionalStatus::CONTROL) {
+                net_vp = 20 + summ.us_battlegrounds;
+            } else if (summ.ussr_status == RegionalStatus::CONTROL) {
+                net_vp = -(20 + summ.ussr_battlegrounds);
+            } else {
+                net_vp = summ.net_delta;
+            }
+        } else {
+            net_vp = summ.net_delta;
+        }
+        int16_t vp_player = (p == Player::US) ? net_vp : -net_vp;
+
+        int16_t ctrl_vp = 0;
+        switch (r) {
+            case Region::EUROPE: ctrl_vp = 20; break;
+            case Region::ASIA: ctrl_vp = 9; break;
+            case Region::MIDDLE_EAST: ctrl_vp = 7; break;
+            case Region::AFRICA: ctrl_vp = 6; break;
+            case Region::CENTRAL_AMERICA: ctrl_vp = 5; break;
+            case Region::SOUTH_AMERICA: ctrl_vp = 6; break;
+            default: break;
+        }
+        uint8_t bg_cnt = MapData::get_region_battleground_count(r);
+        float denom = static_cast<float>(ctrl_vp + bg_cnt);
+        if (denom > 0.0f) {
+            sum_unscored_ratio += std::clamp(static_cast<float>(vp_player) / denom, -1.0f, 1.0f);
+        }
+    }
+    float term3 = sum_unscored_ratio / 6.0f;
+
+    // 4. Country access: (countries player has access to - countries opp has access to) / 84, weight 0.1
+    int16_t access_diff = 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (Operations::can_place_influence(state, p, i)) access_diff++;
+        if (Operations::can_place_influence(state, opp, i)) access_diff--;
+    }
+    float term4 = static_cast<float>(access_diff) / 84.0f;
+
+    return 0.5f * term1 + 0.3f * term2 + 0.1f * term3 + 0.1f * term4;
+}
+
+} // namespace ts

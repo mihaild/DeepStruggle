@@ -1,0 +1,197 @@
+Technical Specification: Action Interface & Decision State Machine (C++20)
+Deluxe Edition (110 Cards) - Zero-Allocation Headless Engine
+
+1. Overview & Action Decomposition Principles
+
+The simulation engine uses a decomposed micro-decision state machine. Monolithic composite actions (such as selecting a card and declaring an Op-mode simultaneously) are eliminated in favor of sequential primitive decision steps:
+
+Decision Pipeline:
+1. SELECT_CARD: Phasing player selects a card ID (1..110) from hand, or is forced to play a specific card (Missile Envy), or discards to escape Quagmire/Bear Trap, or searches discard (SALT/Star Wars).
+2. SELECT_PLAY_MODE: If card is not auto-resolved (like Scoring cards), player chooses mode: PLAY_EVENT (0), PLAY_OPS (1), or PLAY_SPACE (2).
+   * UN Intervention (#32) is played simply as PLAY_EVENT. Its event resolution triggers a subsequent SELECT_CARD step to choose the companion opponent card, cancels that card's event, and enters SELECT_OP_MODE.
+3. CHOOSE_TIMING_BRANCH: If playing an opponent-affiliated card for Operations, player chooses OPS_FIRST (0) vs EVENT_FIRST (1).
+4. SELECT_OP_MODE: Player declares Op mode: INFLUENCE (0), COUP (1), or REALIGN (2). When choosing EVENT_FIRST, this decision occurs *after* the opponent event finishes, letting the player observe the mutated board state.
+5. POINT_NODE: Player selects a single country node (0..83) for influence placement, coup, realignment, or card event targeting.
+6. CHOOSE_BRANCH: Discrete choice (0..7) or confirmation of completion (CONFIRM_DONE = 0x80) for binary choices (Grain Sales play vs return, Olympic boycott, Warsaw Pact, Wargames, Chernobyl region, early stop in multi-node placements).
+
+================================================================================
+2. MicroAction Representation & Memory Layout
+================================================================================
+
+#pragma once
+#include "game_state.hpp"
+
+namespace ts {
+
+// Compact 4-byte micro-action passed to Engine::step()
+struct alignas(4) MicroAction {
+    DecisionType decision_type; // Active decision type being answered
+    uint8_t      primary_id;    // Card ID (1..110), Country ID (0..83), or Branch (0..7)
+    uint8_t      secondary_id;  // Optional sub-index / mode (0 if unused)
+    uint8_t      flags;         // Bit 7 (0x80): CONFIRM_DONE / Early stop flag
+};
+static_assert(sizeof(MicroAction) == 4, "MicroAction must be exactly 4 bytes");
+
+// Action Mask Dimensions per DecisionType:
+// - SELECT_CARD:          112 bits (14 bytes) or 112 uint8 flags
+// - SELECT_PLAY_MODE:     4 uint8 flags (EVENT, OPS, SPACE, PASS)
+// - CHOOSE_TIMING_BRANCH: 2 uint8 flags (OPS_FIRST, EVENT_FIRST)
+// - SELECT_OP_MODE:       3 uint8 flags (INFLUENCE, COUP, REALIGN)
+// - POINT_NODE:           84 uint8 flags (84 country nodes)
+// - CHOOSE_BRANCH:        8 uint8 flags (branches 0..7) + 1 byte for CONFIRM_DONE
+
+// =============================================================================
+// 3. State Machine Decision Flow & Transitions
+// =============================================================================
+
+/*
+                                  [ Start of Action Round ]
+                                              │
+                                              ▼
+                                   [ Decision: SELECT_CARD ]
+                           (Mask: Legal cards in hand, or forced card)
+                                              │
+                      ┌───────────────────────┼────────────────────────┐
+                      ▼                       ▼                        ▼
+              [ Quagmire / Bear Trap ]   [ Scoring Card ]     [ Standard / Event Card ]
+              • Discards card            • Auto-triggers       • Transitions to:
+              • RNG rolls 1d6              scoring math          SELECT_PLAY_MODE
+              • If 1-4: clears flag      • Moves to discard            │
+              • AR ends immediately      • AR ends                     │
+                                                                       │
+                      ┌────────────────────────────────────────────────┤
+                      ▼                                                ▼
+              [ PLAY_SPACE ]                                    [ PLAY_EVENT ]
+              • Advance track                                   • UN Intervention (#32):
+              • Discard card                                      -> SELECT_CARD (opponent card)
+              • AR ends                                           -> SELECT_OP_MODE
+                                                                • Grain Sales (#67):
+                                                                  -> Draw random card to PEEKED_TEMP
+                                                                  -> CHOOSE_BRANCH (0: Play, 1: Return)
+                                                                • Standard Event:
+                                                                  -> Point nodes / execute event
+                                                                  -> AR ends
+                                                                       │
+                                                                       ▼
+                                                                [ PLAY_OPS ]
+                                                                       │
+                                              ┌────────────────────────┴────────────────────────┐
+                                              ▼                                                 ▼
+                                     [ Friendly / Neutral ]                              [ Opponent Card ]
+                                              │                                                 │
+                                              │                                                 ▼
+                                              │                                      [ CHOOSE_TIMING_BRANCH ]
+                                              │                                      • 0: OPS_FIRST
+                                              │                                      • 1: EVENT_FIRST
+                                              │                                                 │
+                                              │                                  ┌──────────────┴──────────────┐
+                                              │                                  ▼                             ▼
+                                              │                            [ 0: OPS_FIRST ]             [ 1: EVENT_FIRST ]
+                                              │                                  │                      • Executes opponent event
+                                              │                                  │                      • Checks DEFCON suicide
+                                              │                                  │                      • If alive:
+                                              └──────────────────────────────────┼─────────────────────────────┘
+                                                                                 ▼
+                                                                        [ SELECT_OP_MODE ]
+                                                                        • 0: INFLUENCE -> Loop POINT_NODE
+                                                                        • 1: COUP      -> Single POINT_NODE + Die Roll
+                                                                        • 2: REALIGN   -> Loop POINT_NODE + Die Roll
+                                                                                 │
+                                                                                 ▼
+                                                                   [ If OPS_FIRST on Opponent Card: ]
+                                                                   • Execute opponent event now
+                                                                   • Check DEFCON suicide
+                                                                                 │
+                                                                                 ▼
+                                                                           [ Complete AR ]
+*/
+
+// =============================================================================
+// 4. Detailed Event Decision Flow Patterns
+// =============================================================================
+
+// 4.1 UN Intervention (#32)
+// Play Mode: PLAY_EVENT on Card #32.
+// 1. Engine sets ctx().decision_type = DecisionType::SELECT_CARD.
+// 2. Legal Mask: Opponent-associated cards in phasing player's hand.
+// 3. Player chooses card C.
+// 4. Engine moves #32 and card C to DISCARD_PILE (or REMOVED_FROM_GAME if applicable).
+// 5. Engine sets ctx().pending_op_card = C, ctx().pending_ops_value = get_effective_ops(state, C, player).
+// 6. Engine transitions ctx().decision_type = DecisionType::SELECT_OP_MODE.
+// 7. Phasing player conducts Ops using card C's Ops value with NO opponent event triggering.
+
+// 4.2 Grain Sales to Soviets (#67)
+// Play Mode: PLAY_EVENT on Card #67.
+// 1. If USSR hand is empty:
+//    - Engine sets ctx().pending_op_card = 67, ctx().pending_ops_value = 2.
+//    - Engine transitions ctx().decision_type = DecisionType::SELECT_OP_MODE.
+// 2. If USSR hand is non-empty:
+//    - Engine randomly samples 1 card from the USSR hand and moves it to PEEKED_TEMP, which
+//      is what "being looked at" is; the US sees it in the observation's PEEKED slot.
+//    - Engine sets ctx().decision_player = Player::US.
+//    - Engine sets ctx().decision_type = DecisionType::CHOOSE_BRANCH.
+//    - Branch 0: PLAY_DRAWN_CARD
+//      - Card removed from USSR hand, becomes ctx().pending_op_card.
+//      - Transitions to SELECT_PLAY_MODE (or CHOOSE_TIMING_BRANCH if opponent card).
+//    - Branch 1: RETURN_AND_USE_OPS
+//      - Card returned to USSR hand.
+//      - Engine sets ctx().pending_op_card = 67, ctx().pending_ops_value = 2.
+//      - Transitions to SELECT_OP_MODE.
+
+// 4.3 Quagmire (#42) & Bear Trap (#44)
+// Phasing player under Quagmire/Bear Trap enters Action Round:
+// 1. Engine checks player hand:
+//    - If player holds cards with Ops >= 2:
+//      - ctx().decision_type = DecisionType::SELECT_CARD.
+//      - Legal Mask: Cards in hand with Ops >= 2.
+//      - Player selects card C -> Card C discarded to DISCARD_PILE.
+//      - Engine rolls 1d6:
+//        - On 1..4: Clear QUAGMIRE/BEAR_TRAP bit in persistent_effects. AR ends.
+//        - On 5..6: Quagmire/Bear Trap remains active. AR ends.
+//    - If player has NO cards with Ops >= 2, but has Scoring cards:
+//      - Player must play scoring cards: ctx().decision_type = DecisionType::SELECT_CARD (mask: scoring cards).
+//      - Once scoring cards resolved, all subsequent ARs for player this turn are skipped.
+//    - If player has neither 2+ Ops nor scoring cards:
+//      - AR is automatically skipped.
+
+// 4.4 Missile Envy (#49) Forced Play
+// Phasing player with state.forced_card_player == phasing_player and forced_card_id == 49:
+// 1. Engine sets ctx().decision_type = DecisionType::SELECT_CARD.
+// 2. Legal Mask: Bit 49 only.
+// 3. Player selects #49 -> Engine clears forced_card_player and forced_card_id.
+// 4. Player conducts Ops: transitions directly to DecisionType::SELECT_OP_MODE with pending_ops_value = 2.
+
+// 4.5 Re-entrant Card Events (Star Wars #85, Five Year Plan #5)
+// When an event triggers another event (e.g. Star Wars playing Marshall Plan from discard):
+// 1. Engine calls state.push_context().
+// 2. Nested context initializes with sub-event card ID and decision player.
+// 3. Sub-event completes all micro-actions.
+// 4. Engine calls state.pop_context(), restoring parent context state cleanly with zero heap allocations.
+
+// =============================================================================
+// 5. Programmatic C++ API Specification
+// =============================================================================
+
+class Engine {
+public:
+    // Initialize standard game state (shuffles Early War deck, deals hands, sets USSR China Card face up)
+    static void init_game(GameState& state, uint64_t seed) noexcept;
+
+    // Writes binary mask of valid actions into mask_out buffer.
+    // Max buffer required: 112 bytes for SELECT_CARD, 84 bytes for POINT_NODE.
+    static void get_legal_action_mask(const GameState& state, uint8_t* mask_out, size_t* out_size) noexcept;
+
+    // Advances game state by 1 validated micro-action. Returns true on success.
+    static bool step(GameState& state, const MicroAction& action) noexcept;
+
+    // Fast terminal state evaluation
+    static bool is_terminal(const GameState& state) noexcept;
+    static float get_terminal_utility(const GameState& state) noexcept; // +1.0 (US), -1.0 (USSR), 0.0 (Draw)
+
+    // Serialization & Inspection
+    static void serialize(const GameState& state, uint8_t* out_bytes, size_t max_bytes) noexcept;
+    static void deserialize(GameState& state, const uint8_t* in_bytes, size_t in_size) noexcept;
+    static std::string to_json(const GameState& state);
+};
+
+} // namespace ts

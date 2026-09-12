@@ -1,0 +1,3 @@
+[submodule "external/struggler"]
+	path = external/struggler
+	url = https://github.com/mihaild/struggler

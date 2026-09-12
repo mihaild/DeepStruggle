@@ -1,0 +1,1673 @@
+{
+  "metadata": {
+    "title": "Twilight Struggle Deluxe Edition Map Graph Topology",
+    "total_countries": 84,
+    "total_regions": 6,
+    "superpowers": [
+      "USA",
+      "USSR"
+    ],
+    "schema_version": "1.0"
+  },
+  "regions": {
+    "Europe": {
+      "region_id": 0,
+      "color": "#4A6FA5",
+      "subregions": {
+        "Western Europe": [
+          "Canada",
+          "United Kingdom",
+          "Norway",
+          "Sweden",
+          "Denmark",
+          "Benelux",
+          "West Germany",
+          "France",
+          "Spain/Portugal",
+          "Italy",
+          "Greece",
+          "Turkey",
+          "Austria",
+          "Finland"
+        ],
+        "Eastern Europe": [
+          "East Germany",
+          "Poland",
+          "Czechoslovakia",
+          "Hungary",
+          "Romania",
+          "Yugoslavia",
+          "Bulgaria",
+          "Austria",
+          "Finland"
+        ]
+      },
+      "battlegrounds": [
+        "West Germany",
+        "France",
+        "Italy",
+        "East Germany",
+        "Poland"
+      ],
+      "scoring_card": "Europe Scoring (#2)"
+    },
+    "Middle East": {
+      "region_id": 2,
+      "color": "#0284C7",
+      "subregions": {},
+      "battlegrounds": [
+        "Israel",
+        "Iraq",
+        "Iran",
+        "Saudi Arabia",
+        "Egypt",
+        "Libya"
+      ],
+      "scoring_card": "Middle East Scoring (#3)"
+    },
+    "Asia": {
+      "region_id": 1,
+      "color": "#EA580C",
+      "subregions": {
+        "Southeast Asia": [
+          "Burma",
+          "Laos/Cambodia",
+          "Thailand",
+          "Vietnam",
+          "Malaysia",
+          "Indonesia",
+          "Philippines"
+        ]
+      },
+      "battlegrounds": [
+        "Pakistan",
+        "India",
+        "Thailand",
+        "North Korea",
+        "South Korea",
+        "Japan"
+      ],
+      "scoring_card": "Asia Scoring (#1) & Southeast Asia Scoring (#38)"
+    },
+    "Africa": {
+      "region_id": 3,
+      "color": "#D97706",
+      "subregions": {},
+      "battlegrounds": [
+        "Algeria",
+        "Nigeria",
+        "Zaire",
+        "Angola",
+        "South Africa"
+      ],
+      "scoring_card": "Africa Scoring (#78)"
+    },
+    "Central America": {
+      "region_id": 4,
+      "color": "#16A34A",
+      "subregions": {},
+      "battlegrounds": [
+        "Mexico",
+        "Panama",
+        "Cuba"
+      ],
+      "scoring_card": "Central America Scoring (#37)"
+    },
+    "South America": {
+      "region_id": 5,
+      "color": "#059669",
+      "subregions": {},
+      "battlegrounds": [
+        "Venezuela",
+        "Brazil",
+        "Chile",
+        "Argentina"
+      ],
+      "scoring_card": "South America Scoring (#39)"
+    }
+  },
+  "countries": [
+    {
+      "id": 0,
+      "name": "Canada",
+      "stability": 4,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": "USA",
+      "neighbours": [
+        "United Kingdom"
+      ],
+      "pos": [
+        180,
+        145
+      ]
+    },
+    {
+      "id": 1,
+      "name": "United Kingdom",
+      "stability": 5,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Canada",
+        "Norway",
+        "Benelux",
+        "France"
+      ],
+      "pos": [
+        345,
+        115
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Norway",
+      "stability": 4,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "United Kingdom",
+        "Sweden"
+      ],
+      "pos": [
+        405,
+        52
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Sweden",
+      "stability": 4,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Norway",
+        "Denmark",
+        "Finland"
+      ],
+      "pos": [
+        460,
+        72
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Denmark",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Sweden",
+        "West Germany"
+      ],
+      "pos": [
+        410,
+        85
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Finland",
+      "stability": 4,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe",
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": "USSR",
+      "neighbours": [
+        "Sweden"
+      ],
+      "pos": [
+        515,
+        52
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Benelux",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "United Kingdom",
+        "West Germany"
+      ],
+      "pos": [
+        370,
+        148
+      ]
+    },
+    {
+      "id": 7,
+      "name": "West Germany",
+      "stability": 4,
+      "battleground": true,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Benelux",
+        "Denmark",
+        "France",
+        "Austria",
+        "East Germany"
+      ],
+      "pos": [
+        425,
+        148
+      ]
+    },
+    {
+      "id": 8,
+      "name": "France",
+      "stability": 3,
+      "battleground": true,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "United Kingdom",
+        "West Germany",
+        "Spain/Portugal",
+        "Italy",
+        "Algeria"
+      ],
+      "pos": [
+        375,
+        192
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Spain/Portugal",
+      "stability": 2,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "France",
+        "Italy",
+        "Morocco"
+      ],
+      "pos": [
+        345,
+        235
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Italy",
+      "stability": 2,
+      "battleground": true,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "France",
+        "Spain/Portugal",
+        "Austria",
+        "Yugoslavia",
+        "Greece"
+      ],
+      "pos": [
+        435,
+        210
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Greece",
+      "stability": 2,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Italy",
+        "Yugoslavia",
+        "Bulgaria",
+        "Turkey"
+      ],
+      "pos": [
+        490,
+        248
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Turkey",
+      "stability": 2,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Greece",
+        "Bulgaria",
+        "Romania",
+        "Syria"
+      ],
+      "pos": [
+        565,
+        218
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Austria",
+      "stability": 4,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Western Europe",
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "West Germany",
+        "East Germany",
+        "Italy",
+        "Hungary"
+      ],
+      "pos": [
+        445,
+        180
+      ]
+    },
+    {
+      "id": 14,
+      "name": "East Germany",
+      "stability": 3,
+      "battleground": true,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "West Germany",
+        "Austria",
+        "Poland",
+        "Czechoslovakia"
+      ],
+      "pos": [
+        445,
+        115
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Poland",
+      "stability": 3,
+      "battleground": true,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": "USSR",
+      "neighbours": [
+        "East Germany",
+        "Czechoslovakia"
+      ],
+      "pos": [
+        490,
+        115
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Czechoslovakia",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "East Germany",
+        "Poland",
+        "Hungary"
+      ],
+      "pos": [
+        485,
+        148
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Hungary",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Austria",
+        "Czechoslovakia",
+        "Yugoslavia",
+        "Romania"
+      ],
+      "pos": [
+        485,
+        180
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Yugoslavia",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Italy",
+        "Hungary",
+        "Romania",
+        "Greece"
+      ],
+      "pos": [
+        475,
+        210
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Romania",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": "USSR",
+      "neighbours": [
+        "Hungary",
+        "Yugoslavia",
+        "Turkey"
+      ],
+      "pos": [
+        530,
+        180
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Bulgaria",
+      "stability": 3,
+      "battleground": false,
+      "region": "Europe",
+      "subregions": [
+        "Eastern Europe"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Greece",
+        "Turkey"
+      ],
+      "pos": [
+        525,
+        210
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Lebanon",
+      "stability": 1,
+      "battleground": false,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Syria",
+        "Israel",
+        "Jordan"
+      ],
+      "pos": [
+        550,
+        252
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Syria",
+      "stability": 2,
+      "battleground": false,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Turkey",
+        "Lebanon",
+        "Israel"
+      ],
+      "pos": [
+        590,
+        252
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Israel",
+      "stability": 4,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Lebanon",
+        "Syria",
+        "Jordan",
+        "Egypt"
+      ],
+      "pos": [
+        542,
+        285
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Iraq",
+      "stability": 3,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Jordan",
+        "Saudi Arabia",
+        "Gulf States",
+        "Iran"
+      ],
+      "pos": [
+        590,
+        285
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Iran",
+      "stability": 2,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Iraq",
+        "Afghanistan",
+        "Pakistan"
+      ],
+      "pos": [
+        635,
+        285
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Jordan",
+      "stability": 2,
+      "battleground": false,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Israel",
+        "Lebanon",
+        "Iraq",
+        "Saudi Arabia"
+      ],
+      "pos": [
+        560,
+        318
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Gulf States",
+      "stability": 3,
+      "battleground": false,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Iraq",
+        "Saudi Arabia"
+      ],
+      "pos": [
+        605,
+        318
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Saudi Arabia",
+      "stability": 3,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Jordan",
+        "Iraq",
+        "Gulf States"
+      ],
+      "pos": [
+        600,
+        350
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Egypt",
+      "stability": 2,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Israel",
+        "Libya",
+        "Sudan"
+      ],
+      "pos": [
+        515,
+        318
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Libya",
+      "stability": 2,
+      "battleground": true,
+      "region": "Middle East",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Egypt",
+        "Tunisia"
+      ],
+      "pos": [
+        470,
+        318
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Afghanistan",
+      "stability": 2,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": "USSR",
+      "neighbours": [
+        "Iran",
+        "Pakistan"
+      ],
+      "pos": [
+        675,
+        262
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Pakistan",
+      "stability": 2,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Iran",
+        "Afghanistan",
+        "India"
+      ],
+      "pos": [
+        675,
+        305
+      ]
+    },
+    {
+      "id": 33,
+      "name": "India",
+      "stability": 3,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Pakistan",
+        "Burma"
+      ],
+      "pos": [
+        725,
+        325
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Burma",
+      "stability": 2,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "India",
+        "Laos/Cambodia"
+      ],
+      "pos": [
+        780,
+        335
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Laos/Cambodia",
+      "stability": 1,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Burma",
+        "Thailand",
+        "Vietnam"
+      ],
+      "pos": [
+        820,
+        338
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Thailand",
+      "stability": 2,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Laos/Cambodia",
+        "Vietnam",
+        "Malaysia"
+      ],
+      "pos": [
+        800,
+        380
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Vietnam",
+      "stability": 1,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Laos/Cambodia",
+        "Thailand"
+      ],
+      "pos": [
+        845,
+        380
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Malaysia",
+      "stability": 2,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Thailand",
+        "Indonesia",
+        "Australia"
+      ],
+      "pos": [
+        820,
+        430
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Indonesia",
+      "stability": 1,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Malaysia",
+        "Philippines"
+      ],
+      "pos": [
+        890,
+        465
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Philippines",
+      "stability": 2,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [
+        "Southeast Asia"
+      ],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Indonesia",
+        "Japan"
+      ],
+      "pos": [
+        910,
+        375
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Australia",
+      "stability": 4,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Malaysia"
+      ],
+      "pos": [
+        890,
+        520
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Taiwan",
+      "stability": 3,
+      "battleground": false,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Japan",
+        "South Korea"
+      ],
+      "pos": [
+        895,
+        328
+      ]
+    },
+    {
+      "id": 43,
+      "name": "North Korea",
+      "stability": 3,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": "USSR",
+      "neighbours": [
+        "South Korea"
+      ],
+      "pos": [
+        905,
+        218
+      ]
+    },
+    {
+      "id": 44,
+      "name": "South Korea",
+      "stability": 3,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "North Korea",
+        "Japan",
+        "Taiwan"
+      ],
+      "pos": [
+        905,
+        250
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Japan",
+      "stability": 4,
+      "battleground": true,
+      "region": "Asia",
+      "subregions": [],
+      "superpower_adjacent": "USA",
+      "neighbours": [
+        "South Korea",
+        "Taiwan",
+        "Philippines"
+      ],
+      "pos": [
+        945,
+        280
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Morocco",
+      "stability": 3,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Spain/Portugal",
+        "Algeria",
+        "West African States"
+      ],
+      "pos": [
+        355,
+        288
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Algeria",
+      "stability": 2,
+      "battleground": true,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "France",
+        "Morocco",
+        "Tunisia",
+        "Saharan States"
+      ],
+      "pos": [
+        405,
+        278
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Tunisia",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Libya",
+        "Algeria"
+      ],
+      "pos": [
+        445,
+        270
+      ]
+    },
+    {
+      "id": 49,
+      "name": "West African States",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Morocco",
+        "Ivory Coast"
+      ],
+      "pos": [
+        350,
+        340
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Saharan States",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Algeria",
+        "Nigeria"
+      ],
+      "pos": [
+        430,
+        340
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Sudan",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Egypt",
+        "Ethiopia"
+      ],
+      "pos": [
+        520,
+        355
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Ivory Coast",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "West African States",
+        "Nigeria"
+      ],
+      "pos": [
+        380,
+        390
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Nigeria",
+      "stability": 1,
+      "battleground": true,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Saharan States",
+        "Ivory Coast",
+        "Cameroon"
+      ],
+      "pos": [
+        435,
+        390
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Ethiopia",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Sudan",
+        "Somalia"
+      ],
+      "pos": [
+        550,
+        390
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Somalia",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Ethiopia",
+        "Kenya"
+      ],
+      "pos": [
+        600,
+        398
+      ]
+    },
+    {
+      "id": 56,
+      "name": "Cameroon",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Nigeria",
+        "Zaire"
+      ],
+      "pos": [
+        455,
+        428
+      ]
+    },
+    {
+      "id": 57,
+      "name": "Zaire",
+      "stability": 1,
+      "battleground": true,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Cameroon",
+        "Angola",
+        "Zimbabwe"
+      ],
+      "pos": [
+        505,
+        440
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Kenya",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Somalia",
+        "SE African States"
+      ],
+      "pos": [
+        555,
+        430
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Angola",
+      "stability": 1,
+      "battleground": true,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Zaire",
+        "Botswana",
+        "South Africa"
+      ],
+      "pos": [
+        465,
+        482
+      ]
+    },
+    {
+      "id": 60,
+      "name": "Zimbabwe",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Zaire",
+        "SE African States",
+        "Botswana"
+      ],
+      "pos": [
+        520,
+        492
+      ]
+    },
+    {
+      "id": 61,
+      "name": "SE African States",
+      "stability": 1,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Kenya",
+        "Zimbabwe"
+      ],
+      "pos": [
+        560,
+        468
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Botswana",
+      "stability": 2,
+      "battleground": false,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Angola",
+        "Zimbabwe",
+        "South Africa"
+      ],
+      "pos": [
+        505,
+        530
+      ]
+    },
+    {
+      "id": 63,
+      "name": "South Africa",
+      "stability": 3,
+      "battleground": true,
+      "region": "Africa",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Angola",
+        "Botswana"
+      ],
+      "pos": [
+        485,
+        570
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Mexico",
+      "stability": 2,
+      "battleground": true,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": "USA",
+      "neighbours": [
+        "Guatemala"
+      ],
+      "pos": [
+        55,
+        285
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Guatemala",
+      "stability": 1,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Mexico",
+        "El Salvador",
+        "Honduras"
+      ],
+      "pos": [
+        95,
+        322
+      ]
+    },
+    {
+      "id": 66,
+      "name": "El Salvador",
+      "stability": 1,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Guatemala",
+        "Honduras"
+      ],
+      "pos": [
+        75,
+        352
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Honduras",
+      "stability": 2,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Guatemala",
+        "El Salvador",
+        "Nicaragua",
+        "Costa Rica"
+      ],
+      "pos": [
+        125,
+        352
+      ]
+    },
+    {
+      "id": 68,
+      "name": "Costa Rica",
+      "stability": 3,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Honduras",
+        "Nicaragua",
+        "Panama"
+      ],
+      "pos": [
+        115,
+        385
+      ]
+    },
+    {
+      "id": 69,
+      "name": "Nicaragua",
+      "stability": 1,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Honduras",
+        "Costa Rica",
+        "Cuba"
+      ],
+      "pos": [
+        165,
+        352
+      ]
+    },
+    {
+      "id": 70,
+      "name": "Panama",
+      "stability": 2,
+      "battleground": true,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Costa Rica",
+        "Colombia"
+      ],
+      "pos": [
+        165,
+        385
+      ]
+    },
+    {
+      "id": 71,
+      "name": "Cuba",
+      "stability": 3,
+      "battleground": true,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": "USA",
+      "neighbours": [
+        "Nicaragua",
+        "Haiti"
+      ],
+      "pos": [
+        170,
+        308
+      ]
+    },
+    {
+      "id": 72,
+      "name": "Haiti",
+      "stability": 1,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Cuba",
+        "Dominican Rep"
+      ],
+      "pos": [
+        210,
+        340
+      ]
+    },
+    {
+      "id": 73,
+      "name": "Dominican Rep",
+      "stability": 1,
+      "battleground": false,
+      "region": "Central America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Haiti"
+      ],
+      "pos": [
+        250,
+        340
+      ]
+    },
+    {
+      "id": 74,
+      "name": "Colombia",
+      "stability": 1,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Panama",
+        "Ecuador",
+        "Venezuela"
+      ],
+      "pos": [
+        195,
+        428
+      ]
+    },
+    {
+      "id": 75,
+      "name": "Ecuador",
+      "stability": 2,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Colombia",
+        "Peru"
+      ],
+      "pos": [
+        145,
+        435
+      ]
+    },
+    {
+      "id": 76,
+      "name": "Peru",
+      "stability": 2,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Ecuador",
+        "Chile",
+        "Bolivia"
+      ],
+      "pos": [
+        168,
+        472
+      ]
+    },
+    {
+      "id": 77,
+      "name": "Venezuela",
+      "stability": 2,
+      "battleground": true,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Colombia",
+        "Brazil"
+      ],
+      "pos": [
+        215,
+        390
+      ]
+    },
+    {
+      "id": 78,
+      "name": "Bolivia",
+      "stability": 2,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Peru",
+        "Paraguay"
+      ],
+      "pos": [
+        218,
+        500
+      ]
+    },
+    {
+      "id": 79,
+      "name": "Brazil",
+      "stability": 2,
+      "battleground": true,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Venezuela",
+        "Uruguay"
+      ],
+      "pos": [
+        295,
+        472
+      ]
+    },
+    {
+      "id": 80,
+      "name": "Paraguay",
+      "stability": 2,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Bolivia",
+        "Argentina",
+        "Uruguay"
+      ],
+      "pos": [
+        242,
+        540
+      ]
+    },
+    {
+      "id": 81,
+      "name": "Chile",
+      "stability": 3,
+      "battleground": true,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Peru",
+        "Argentina"
+      ],
+      "pos": [
+        192,
+        540
+      ]
+    },
+    {
+      "id": 82,
+      "name": "Argentina",
+      "stability": 2,
+      "battleground": true,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Chile",
+        "Paraguay",
+        "Uruguay"
+      ],
+      "pos": [
+        208,
+        605
+      ]
+    },
+    {
+      "id": 83,
+      "name": "Uruguay",
+      "stability": 2,
+      "battleground": false,
+      "region": "South America",
+      "subregions": [],
+      "superpower_adjacent": null,
+      "neighbours": [
+        "Brazil",
+        "Paraguay",
+        "Argentina"
+      ],
+      "pos": [
+        255,
+        575
+      ]
+    }
+  ]
+}

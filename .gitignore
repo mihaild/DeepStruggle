@@ -1,0 +1,68 @@
+# Third-party text, kept locally and never committed. The card strategy guides are scraped and
+# synthesised from twilightstrategy.com (Chirag Asnani) and quote the cards' own flavour text,
+# which is GMT Games copyright -- neither is ours to redistribute under this repository's MIT
+# licence. tools/scrape_card_strategies.py regenerates them locally.
+docs/card_strategies.md
+docs/strategy/
+
+# Official rulebook PDF is copyrighted material (GMT Games) -- not ours to redistribute.
+# Everything else in rules/ (cards.json, map.json, rules.json/.md, flags.json, etc.) is this
+# project's own derived data/spec and is committed.
+rules/Rules_Final.pdf
+
+# Build & CMake
+build*/
+bin/
+CMakeUserPresets.json
+compile_commands.json
+
+# C++ compiled binaries and shared libraries
+*.so
+*.dylib
+*.dll
+*.a
+*.o
+
+# Python virtual environment, cache & test tools
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.hypothesis/
+
+# Node / Frontend
+web/ui/node_modules/
+node_modules/
+web/ui/dist/
+dist/
+frontend/.vite/
+
+# Replays & Logs
+/data
+replays/
+!data/replays/.gitkeep
+*.log
+.system_generated/
+scratch/
+
+# IDE & OS
+.vscode/
+.idea/
+.obsidian/
+*.swp
+*.swo
+.DS_Store
+.ts_local_session.json
+
+# Model checkpoints
+checkpoints/
+data/checkpoints/*
+*.pt
+!data/checkpoints/.gitkeep
+.triton_cache/
+
+.claude

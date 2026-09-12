@@ -1,0 +1,52 @@
+Technical Specification: Headless Twilight Struggle Simulation Engine (C++20)
+Deluxe Edition (110 Cards) - Zero-Allocation Headless Engine
+
+1. Overview & System Performance Requirements
+
+Build a deterministic, zero-allocation, headless C++20 simulation engine for the two-player board game Twilight Struggle (Deluxe Edition, 110 cards). The engine functions as a high-throughput backend environment for multi-agent reinforcement learning (RL), Monte Carlo Tree Search (MCTS), and self-play training pipelines.
+
+Primary Metrics:
+- Language Standard: ISO C++20.
+- Throughput: >= 100,000 simulation steps per second per physical CPU core.
+- Memory Footprint: <= 4 KB per GameState instance (fits within CPU L1/L2 data cache).
+- Memory Policy: Zero dynamic heap allocations (no malloc, new, or dynamic container resizing) during the active game step execution loop.
+- Determinism: Bit-exact reproducibility given the same 64-bit seed and action sequence.
+
+================================================================================
+2. Modular Specification Architecture
+================================================================================
+
+The technical specification is split into two specialized components:
+
+1. Game State Representation:
+   - File: game_state.txt
+   - Scope: Complete GameState struct layout, 64-byte alignment, 84-country graph topology, 111-card location tracking, 64-bit persistent effects bitfield, 3-deep zero-allocation DecisionContext stack for re-entrant sub-events, rolling 16-ply action history ring buffer, and neural observation buffer export.
+
+2. Action Interface & Decision State Machine:
+   - File: action_interface.txt
+   - Scope: Decomposed micro-decision pipeline (SELECT_CARD -> SELECT_PLAY_MODE -> CHOOSE_TIMING_BRANCH -> SELECT_OP_MODE -> POINT_NODE / CHOOSE_BRANCH), action masking dimensions, DEFCON suicide priority rules, special card handling (UN Intervention as PLAY_EVENT, Grain Sales discrete branch, Quagmire/Bear Trap escape discard, Missile Envy forced play), and programmatic ts::Engine C++ API.
+
+================================================================================
+3. Core System Invariants & DEFCON Suicide Priority
+================================================================================
+
+3.1 DEFCON Suicide Priority Exception:
+When executing an opponent's card event or Operations:
+- If executing Ops first causes DEFCON to reach 1 (e.g. couping a battleground at DEFCON 2), the phasing player loses immediately before the opponent's event can resolve.
+- If executing the opponent's event first drops DEFCON to 1 (e.g. Duck and Cover at DEFCON 2), the phasing player loses immediately, because DEFCON reached 1 on their active turn.
+
+3.2 Control & Scoring Formulas:
+For country v:
+  Control_i(v) = (I_i(v) - I_{-i}(v) >= stability(v)) AND (I_i(v) >= stability(v))
+
+Regional Scoring Deltas:
+  Delta_VP = Score_US - Score_USSR
+  - Presence: >= 1 controlled country in region.
+  - Domination: More controlled countries than opponent, more battlegrounds than opponent, and >= 1 non-battleground.
+  - Control: All battlegrounds in region and more total countries than opponent.
+  - Europe Control: Triggers immediate terminal victory for the controlling player.
+
+3.3 Verification & Acceptance Criteria:
+- Unit Test Coverage: Dedicated test suites for all 110 cards, DEFCON suicide timing, regional scoring math, and deferred Op-mode selection after opponent event resolution.
+- Invariant Fuzzing: 1,000,000 random game rollouts completing without assertions, memory leaks, illegal state transitions, or deadlocks.
+- Throughput Benchmark: Single-threaded execution exceeding 100,000 steps/second on standard x86_64 server CPUs.

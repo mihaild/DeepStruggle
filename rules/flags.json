@@ -1,0 +1,513 @@
+{
+  "turn_cleanup_summary": {
+    "total_flags": 43,
+    "cleaned_on_end_of_turn_count": 17,
+    "permanent_or_conditional_count": 26,
+    "turn_cleanup_mask_hex": "0x00000780A3CBE3C0"
+  },
+  "flags": [
+    {
+      "bit_index": 0,
+      "flag_name": "NATO_ACTIVE",
+      "card_id": 21,
+      "card_name": "NATO",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "USSR cannot make Coup Attempts or Realignment rolls against US-controlled countries in Europe. US-controlled Europe cannot be targeted by #36 Brush War."
+    },
+    {
+      "bit_index": 1,
+      "flag_name": "NATO_CANCELED_FRANCE",
+      "card_id": 17,
+      "card_name": "De Gaulle Leads France",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Exempts France from #21 NATO protection; USSR may coup/realign France even if NATO is active."
+    },
+    {
+      "bit_index": 2,
+      "flag_name": "NATO_CANCELED_WEST_GERMANY",
+      "card_id": 55,
+      "card_name": "Willy Brandt",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled when #96 Tear Down this Wall is played.",
+      "effect_description": "Exempts West Germany from #21 NATO protection; USSR may coup/realign West Germany even if NATO is active."
+    },
+    {
+      "bit_index": 3,
+      "flag_name": "MARSHALL_PLAN_PLAYED",
+      "card_id": 23,
+      "card_name": "Marshall Plan",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prerequisite flag enabling #21 NATO to be played as an Event."
+    },
+    {
+      "bit_index": 4,
+      "flag_name": "WARSAW_PACT_PLAYED",
+      "card_id": 16,
+      "card_name": "Warsaw Pact Formed",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prerequisite flag enabling #21 NATO to be played as an Event."
+    },
+    {
+      "bit_index": 5,
+      "flag_name": "US_JAPAN_PACT_ACTIVE",
+      "card_id": 27,
+      "card_name": "US/Japan Mutual Defense Pact",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "USSR cannot make Coup Attempts or Realignment rolls against Japan."
+    },
+    {
+      "bit_index": 6,
+      "flag_name": "CONTAINMENT_ACTIVE",
+      "card_id": 25,
+      "card_name": "Containment",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "All Operations cards played by US receive +1 to their Operations value (to a maximum of 4 Operations per card)."
+    },
+    {
+      "bit_index": 7,
+      "flag_name": "PURGE_US_ACTIVE",
+      "card_id": 31,
+      "card_name": "Red Scare/Purge",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "All Operations cards played by US receive -1 to their Operations value (to a minimum of 1 Operations point)."
+    },
+    {
+      "bit_index": 8,
+      "flag_name": "PURGE_USSR_ACTIVE",
+      "card_id": 31,
+      "card_name": "Red Scare/Purge",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "All Operations cards played by USSR receive -1 to their Operations value (to a minimum of 1 Operations point)."
+    },
+    {
+      "bit_index": 9,
+      "flag_name": "VIETNAM_REVOLTS_ACTIVE",
+      "card_id": 9,
+      "card_name": "Vietnam Revolts",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "USSR receives +1 Operations value to any Operations card whose points are spent entirely in Southeast Asia."
+    },
+    {
+      "bit_index": 10,
+      "flag_name": "FORMOSAN_RESOLUTION_ACTIVE",
+      "card_id": 35,
+      "card_name": "Formosan Resolution",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled immediately when US plays #6 The China Card.",
+      "effect_description": "Taiwan is treated as a Battleground country for scoring purposes if US-controlled when Asia Scoring is played."
+    },
+    {
+      "bit_index": 11,
+      "flag_name": "CMC_ACTIVE_US",
+      "card_id": 40,
+      "card_name": "Cuban Missile Crisis",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Cleared at Phase::END_TURN, or canceled early if USSR removes 2 Influence from Cuba.",
+      "effect_description": "Cuban Missile Crisis active against USSR. Any Coup Attempt by USSR results in immediate loss of the game unless canceled."
+    },
+    {
+      "bit_index": 12,
+      "flag_name": "CMC_ACTIVE_USSR",
+      "card_id": 40,
+      "card_name": "Cuban Missile Crisis",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Cleared at Phase::END_TURN, or canceled early if US removes 2 Influence from West Germany or Turkey.",
+      "effect_description": "Cuban Missile Crisis active against US. Any Coup Attempt by US results in immediate loss of the game unless canceled."
+    },
+    {
+      "bit_index": 13,
+      "flag_name": "NUCLEAR_SUBS_ACTIVE",
+      "card_id": 41,
+      "card_name": "Nuclear Subs",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "US Operations used for Coup Attempts in Battleground countries do not degrade the DEFCON level for remainder of turn."
+    },
+    {
+      "bit_index": 14,
+      "flag_name": "QUAGMIRE_ACTIVE",
+      "card_id": 42,
+      "card_name": "Quagmire",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled when US discards Ops >= 2 card and rolls 1..4 on escape die roll. Cancels #106 NORAD.",
+      "effect_description": "US trapped in Quagmire: must discard Ops >= 2 card each AR to roll 1..4 to escape, or play scoring cards and skip remaining ARs."
+    },
+    {
+      "bit_index": 15,
+      "flag_name": "BEAR_TRAP_ACTIVE",
+      "card_id": 44,
+      "card_name": "Bear Trap",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled when USSR discards Ops >= 2 card and rolls 1..4 on escape die roll.",
+      "effect_description": "USSR trapped in Bear Trap: must discard Ops >= 2 card each AR to roll 1..4 to escape, or play scoring cards and skip remaining ARs."
+    },
+    {
+      "bit_index": 16,
+      "flag_name": "SALT_ACTIVE",
+      "card_id": 43,
+      "card_name": "SALT Negotiations",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "Both players receive -1 to all Coup Attempt rolls for remainder of turn."
+    },
+    {
+      "bit_index": 17,
+      "flag_name": "WE_WILL_BURY_YOU_PENDING",
+      "card_id": 50,
+      "card_name": "“We Will Bury You”",
+      "category": "TRIGGER_NEXT_ACTION_ROUND",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Evaluated and cleared on US's next Action Round start.",
+      "effect_description": "USSR receives 3 VP unless US plays #32 UN Intervention as an Event on its next Action Round."
+    },
+    {
+      "bit_index": 18,
+      "flag_name": "BREZHNEV_DOCTRINE_ACTIVE",
+      "card_id": 51,
+      "card_name": "Brezhnev Doctrine",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "All Operations cards played by USSR receive +1 to their Operations value (to a maximum of 4 Operations per card)."
+    },
+    {
+      "bit_index": 19,
+      "flag_name": "FLOWER_POWER_ACTIVE",
+      "card_id": 59,
+      "card_name": "Flower Power",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled when #97 'An Evil Empire' is played.",
+      "effect_description": "USSR receives 2 VP for every US-played War card (Arab-Israeli, Korean, Brush, Indo-Pakistani, Iran-Iraq) used for Ops or Event."
+    },
+    {
+      "bit_index": 20,
+      "flag_name": "U2_INCIDENT_ACTIVE",
+      "card_id": 60,
+      "card_name": "U-2 Incident",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "If #32 UN Intervention is played later this turn by either player, USSR receives an additional 1 VP."
+    },
+    {
+      "bit_index": 21,
+      "flag_name": "SHUTTLE_DIPLOMACY_ACTIVE",
+      "card_id": 73,
+      "card_name": "Shuttle Diplomacy",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Discarded and cleared during the next Middle East or Asia scoring.",
+      "effect_description": "Subtracts 1 Battleground country from USSR total during next scoring of Middle East or Asia (whichever occurs first)."
+    },
+    {
+      "bit_index": 22,
+      "flag_name": "DEATH_SQUADS_US",
+      "card_id": 69,
+      "card_name": "Latin American Death Squads",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "US receives +1 to Coup Attempt die rolls in CA/SA; USSR receives -1 to Coup Attempt die rolls in CA/SA."
+    },
+    {
+      "bit_index": 23,
+      "flag_name": "DEATH_SQUADS_USSR",
+      "card_id": 69,
+      "card_name": "Latin American Death Squads",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "USSR receives +1 to Coup Attempt die rolls in CA/SA; US receives -1 to Coup Attempt die rolls in CA/SA."
+    },
+    {
+      "bit_index": 24,
+      "flag_name": "CAMP_DAVID_PLAYED",
+      "card_id": 65,
+      "card_name": "Camp David Accords",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents #13 Arab-Israeli War from being played as an Event."
+    },
+    {
+      "bit_index": 25,
+      "flag_name": "IRON_LADY_PLAYED",
+      "card_id": 83,
+      "card_name": "The Iron Lady",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents #7 Socialist Governments from being played as an Event."
+    },
+    {
+      "bit_index": 26,
+      "flag_name": "NORTH_SEA_OIL_PLAYED",
+      "card_id": 86,
+      "card_name": "North Sea Oil",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents #61 OPEC from being played as an Event."
+    },
+    {
+      "bit_index": 27,
+      "flag_name": "NORTH_SEA_OIL_ACTIVE",
+      "card_id": 86,
+      "card_name": "North Sea Oil",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "Grants US an 8th Action Round for the current turn only."
+    },
+    {
+      "bit_index": 28,
+      "flag_name": "THE_REFORMER_PLAYED",
+      "card_id": 87,
+      "card_name": "The Reformer",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "USSR can no longer make Coup Attempts in Europe. Enables #90 Glasnost to be used for Operations."
+    },
+    {
+      "bit_index": 29,
+      "flag_name": "IRAN_CONTRA_ACTIVE",
+      "card_id": 93,
+      "card_name": "Iran-Contra Scandal",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "All US Realignment rolls receive -1 to their die roll for remainder of turn."
+    },
+    {
+      "bit_index": 30,
+      "flag_name": "EVIL_EMPIRE_PLAYED",
+      "card_id": 97,
+      "card_name": "“An Evil Empire”",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents and cancels the effects of #59 Flower Power."
+    },
+    {
+      "bit_index": 31,
+      "flag_name": "ALDRICH_AMES_ACTIVE",
+      "card_id": 98,
+      "card_name": "Aldrich Ames Remix",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "US hand of cards remains revealed face-up for remainder of turn."
+    },
+    {
+      "bit_index": 32,
+      "flag_name": "JOHN_PAUL_II_PLAYED",
+      "card_id": 68,
+      "card_name": "John Paul II Elected Pope",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prerequisite flag enabling #101 Solidarity to be played as an Event."
+    },
+    {
+      "bit_index": 33,
+      "flag_name": "NORAD_ACTIVE",
+      "card_id": 106,
+      "card_name": "NORAD",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled when #42 Quagmire is played.",
+      "effect_description": "If Canada is US-controlled, US adds 1 Influence to country containing US inf at end of each AR where DEFCON dropped to 2."
+    },
+    {
+      "bit_index": 34,
+      "flag_name": "YURI_AND_SAMANTHA_ACTIVE",
+      "card_id": 109,
+      "card_name": "Yuri and Samantha",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "USSR receives 1 VP for each US Coup Attempt performed during remainder of turn."
+    },
+    {
+      "bit_index": 35,
+      "flag_name": "AWACS_PLAYED",
+      "card_id": 110,
+      "card_name": "AWACS Sale to Saudis",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents #56 Muslim Revolution from being played as an Event."
+    },
+    {
+      "bit_index": 36,
+      "flag_name": "IRANIAN_HOSTAGE_CRISIS_PLAY",
+      "card_id": 82,
+      "card_name": "Iranian Hostage Crisis",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Forces US to randomly discard 2 cards instead of 1 when #92 Terrorism is played."
+    },
+    {
+      "bit_index": 37,
+      "flag_name": "WILLY_BRANDT_PLAYED",
+      "card_id": 55,
+      "card_name": "Willy Brandt",
+      "category": "CONDITIONAL_CANCELABLE",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Canceled and prevented by #96 Tear Down this Wall.",
+      "effect_description": "Cancels NATO for West Germany only. Prevented / canceled by #96 Tear Down this Wall."
+    },
+    {
+      "bit_index": 38,
+      "flag_name": "TEAR_DOWN_THIS_WALL_PLAYED",
+      "card_id": 96,
+      "card_name": "Tear Down this Wall",
+      "category": "PERMANENT_GAME",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": null,
+      "effect_description": "Prevents and cancels the effects of #55 Willy Brandt."
+    },
+    {
+      "bit_index": 39,
+      "flag_name": "CHERNOBYL_ACTIVE",
+      "card_id": 94,
+      "card_name": "Chernobyl",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "USSR cannot add Influence using Operations points in the region specified by CHERNOBYL_REGION bits."
+    },
+    {
+      "bit_index": 40,
+      "flag_name": "CHERNOBYL_REGION_BIT_0",
+      "card_id": 94,
+      "card_name": "Chernobyl",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "Bit 0 of 3-bit Chernobyl forbidden region index (0: Europe, 1: Asia, 2: ME, 3: Africa, 4: CA, 5: SA)."
+    },
+    {
+      "bit_index": 41,
+      "flag_name": "CHERNOBYL_REGION_BIT_1",
+      "card_id": 94,
+      "card_name": "Chernobyl",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "Bit 1 of 3-bit Chernobyl forbidden region index."
+    },
+    {
+      "bit_index": 42,
+      "flag_name": "CHERNOBYL_REGION_BIT_2",
+      "card_id": 94,
+      "card_name": "Chernobyl",
+      "category": "TURN_PERSISTENT",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "cancellation_conditions": "Automatically cleared at Phase::END_TURN.",
+      "effect_description": "Bit 2 of 3-bit Chernobyl forbidden region index."
+    }
+  ],
+  "transient_state_variables": [
+    {
+      "variable_name": "defcon_dropped_to_2_in_ar",
+      "struct_location": "GameState::defcon_dropped_to_2_in_ar",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": true,
+      "description": "Tracks if DEFCON reached 2 during current AR; triggers #106 NORAD at AR end; reset to 0 at end of every AR."
+    },
+    {
+      "variable_name": "forced_card_player / forced_card_id",
+      "struct_location": "GameState::forced_card_player, GameState::forced_card_id",
+      "cleaned_on_end_of_turn": false,
+      "cleaned_on_end_of_ar": false,
+      "description": "Tracks player and card forced on next AR by #49 Missile Envy; cleared immediately upon playing the forced card."
+    },
+    {
+      "variable_name": "us_space_turns_used / ussr_space_turns_used",
+      "struct_location": "GameState::us_space_turns_used, GameState::ussr_space_turns_used",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "description": "Tracks space race attempts conducted in current turn (max 1, or 2 with Lunar Orbit); reset to 0 at Phase::END_TURN."
+    },
+    {
+      "variable_name": "turn_aggregates",
+      "struct_location": "GameState::turn_aggregates",
+      "cleaned_on_end_of_turn": true,
+      "cleaned_on_end_of_ar": false,
+      "description": "Accumulated regional ops, coups, realignments, and headlines spent during current turn; zeroed out at Phase::END_TURN."
+    }
+  ]
+}
