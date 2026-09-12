@@ -790,11 +790,23 @@ the behavioural result is solid. But the two seeds sit **10.4 anchor points apar
 the control -- the same pattern the filtering arm produced, and the reason the anchor cannot
 settle anything here.
 
-Seed ...921 pooled over all sixteen snapshot pairings scores 1,331/3,200 = **41.6%**
-[39.9, 43.3], or **−59 Elo**. An earlier draft of this section argued the anchor corroborated
-that, because 80.6% → 71.4% is about −51 Elo on the same scale. **That corroboration was one
-seed and it did not hold:** seed ...922's anchor is 81.8%, slightly *above* the control. The
-head-to-head for ...922 is what decides whether the 59 Elo is the intervention or the seed.
+**Both seeds lose, and by more than the first one suggested.** Pooled over sixteen snapshot
+pairings each:
+
+| | vs control | Elo |
+|:---|---:|---:|
+| window ...921 | 1,331/3,200 = 41.6% [39.9, 43.3] | **−59** |
+| window ...922 | 1,250/3,200 = 39.1% [37.4, 40.8] | **−77** |
+| pooled | 2,581/6,400 = **40.3%** [39.1, 41.5] | **−68** |
+
+So the strength cost is real and two-seed confirmed at about **−68 Elo**.
+
+**And the anchor was wrong about both seeds, in opposite directions.** Seed ...921 read 71.4%
+against the control's 80.6% and is 59 Elo weaker; seed ...922 read **81.8%**, slightly *above*
+the control, and is **77 Elo weaker** -- the largest single divergence this project has recorded
+between the anchor and a pooled head-to-head. An earlier draft of this section argued the anchor
+corroborated the 59 Elo to within 8; that was one seed, and it was luck. Take nothing from the
+anchor win rate that a head-to-head has not confirmed.
 
 The USSR share rose in both (63.7% and 58.3% against 47.0%), which is a move away from the human
 49.9% and is measured over the whole run rather than 500 eval games.
