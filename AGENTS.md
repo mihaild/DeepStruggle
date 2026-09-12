@@ -399,9 +399,17 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 6. **Unified Self-Play & Replay Generation**:
    All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.lib.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
 7. **Mandatory Checkpoint Directory Naming Convention**:
-   All model checkpoint directories MUST follow the standard pattern:
-   `data/checkpoints/run_[version]_[start date]_[start time]`
-   (e.g., `data/checkpoints/run_v2_20260826_231500` or `data/checkpoints/run_v2_20260825_093352`). Hardcoded, ad-hoc directory names (e.g. `run_v2_2h`) are strictly forbidden.
+   A checkpoint directory MUST carry the run's short name from `research/run_nomenclature.md`:
+   `data/checkpoints/[engine]-[attempt]-[seed]_[start date]_[start time]`
+   (e.g. `data/checkpoints/E3-12-21_20260912_181622`). Pass `tools/train.py --run-name E3-12-21`
+   and the directory is built for you; the name is validated and also recorded in
+   `metadata.json`. Omit the steps field — one directory holds every budget of a lineage, and
+   each snapshot's filename already carries its own.
+   Add the table row *before* launching, since the name is a claim about which row the run is.
+   `data/checkpoints/run_[version]_[start date]_[start time]` remains the fallback for smoke runs
+   that are not arms. Hardcoded, ad-hoc names (e.g. `run_v2_2h`, `p1_scalar_nofilter`) are
+   forbidden: they say nothing about engine or seed, and a set of cross-engine comparisons was
+   written up as same-engine ones because recovering that took a `git merge-base` on two hashes.
 8. **Bounded Dataset Streaming & OOM Prevention**:
    Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.
 9. **Mandatory Unified CLI Invariant — No Ad-Hoc Scripts**:

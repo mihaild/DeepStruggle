@@ -301,7 +301,7 @@ HeuristicBot. See `research/experiments.md` §25.
 4. All simulation randomness must go through `state.rng_state` (SplitMix64) for reproducibility.
 5. All Python must be fully type-annotated (`TypedDict`s in `web/server/replay_types.py` for serialized JSON); run `.venv/bin/pyrefly check` after any Python change and keep it at 0 errors.
 6. All self-play/replay generation must go through `tools.lib.self_play.generate_self_play_replay` to keep `.tslog.json` schema consistent — don't hand-roll replay writers.
-7. Checkpoint directories must follow `data/checkpoints/run_[version]_[YYYYMMDD]_[HHMMSS]` — no ad-hoc names.
+7. Checkpoint directories must carry the run's short name: `data/checkpoints/[engine]-[attempt]-[seed]_[YYYYMMDD]_[HHMMSS]` (e.g. `E3-12-21_20260912_181622`), via `tools/train.py --run-name E3-12-21`. Add the `research/run_nomenclature.md` row before launching. `run_[version]_[YYYYMMDD]_[HHMMSS]` stays the fallback for non-arm smoke runs — no ad-hoc names.
 8. Demonstration dataset loading must use bounded streaming (`WarmupDataset.stream_batches` / `stream_transitions`), never a monolithic in-memory load.
 9. Never write ad-hoc scripts for training/tournaments/matches — use `tools/train.py`, `tools/tournament.py`, `tools/play_match.py` respectively.
 10. Never measure against a stale engine — run `tools/scripts/check_engine_fresh.sh` before generating or consuming any checkpoint, dataset, or benchmark number, and re-take anything measured before a rebuild.

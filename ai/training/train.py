@@ -208,6 +208,8 @@ def main():
     parser.add_argument("--priority-alpha", type=float, default=0.0,
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
+    parser.add_argument("--run-name", type=str, default=None,
+                        help="Short name from research/run_nomenclature.md as <engine>-<attempt>-<seed>, e.g. E3-12-21. Becomes the checkpoint directory prefix (data/checkpoints/E3-12-21_[date]_[time]) and is recorded in metadata.json. Omit the steps field: one directory holds every budget of a lineage and each snapshot's filename already carries its own.")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True,
@@ -255,6 +257,7 @@ def main():
             entropy_coef=args.entropy_coef,
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,
+            run_name=args.run_name,
             description=args.description,
             device=args.device,
             post_tournament=args.post_tournament,

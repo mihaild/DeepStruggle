@@ -123,6 +123,39 @@ GAME_STEMS: Tuple[str, ...] = (
 ) + tuple(f"ending_frac_{k}" for k in tuple(ENDING_REASON_KEYS) + ("defcon1",))
 
 
+#: `<engine>-<attempt>-<seed>` from research/run_nomenclature.md, e.g. `E3-12-21`. The steps
+#: field of the full short name is deliberately absent: one directory holds every budget of a
+#: lineage, and the budget is already in each snapshot's filename.
+RUN_NAME_RE: Final = re.compile(r"^E\d+-\d{2}-\d{2}$")
+
+
+def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],
+                     arch: str, timestamp: str) -> str:
+    """Where a run writes, with the short name in the directory itself.
+
+    `run_name` is the contract with `research/run_nomenclature.md`. Giving it produces
+    `data/checkpoints/E3-12-21_<timestamp>`, so a directory listing is readable against the table
+    without opening ten `metadata.json` files.
+
+    Passing both is allowed only when they agree. They disagreeing is the failure this is for:
+    the short name would then say one thing and the path another, and the path is what every
+    later command quotes.
+    """
+    if run_name is not None and not RUN_NAME_RE.match(run_name):
+        raise ValueError(
+            f"run_name {run_name!r} is not <engine>-<attempt>-<seed> (e.g. 'E3-12-21'). "
+            "See research/run_nomenclature.md; add the row before launching the run.")
+    if output_dir is not None:
+        if run_name is not None and run_name not in os.path.basename(output_dir.rstrip("/")):
+            raise ValueError(
+                f"run_name {run_name!r} is not in output_dir {output_dir!r}. The directory name "
+                "is what later commands quote, so it is the copy that has to carry the name.")
+        return output_dir
+    if run_name is not None:
+        return os.path.join("data", "checkpoints", f"{run_name}_{timestamp}")
+    return os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
+
+
 def _game_chart(stem: str) -> str:
     """Chart name for an endgame stem: `ending_frac_20vp` reads better as `ending_20vp`."""
     if stem.startswith("ending_frac_"):
@@ -1068,6 +1101,7 @@ def train_pipeline(
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
+    run_name: Optional[str] = None,
     description: Optional[str] = None,
     device: Optional[Union[torch.device, str]] = None,
     post_tournament: bool = False,
@@ -1098,7 +1132,11 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    out_dir = output_dir or os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
+    # The short name from research/run_nomenclature.md goes in the directory name, not only in
+    # metadata. A directory called `p1_scalar_nofilter` does not say which engine it was trained
+    # on, which seed it used, or which row of the table it is -- and that is how a set of
+    # cross-engine comparisons came to be written up as same-engine ones.
+    out_dir = _resolve_run_dir(output_dir, run_name, arch, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
     log_path = os.path.join(out_dir, "training_metrics.jsonl")
@@ -1120,6 +1158,9 @@ def train_pipeline(
     metadata_path = os.path.join(out_dir, "metadata.json")
     metadata_info = {
         "run_id": os.path.basename(out_dir),
+        # The row of research/run_nomenclature.md this run is. None for a run launched before
+        # the field existed, or launched without it -- which is itself worth being able to see.
+        "run_name": run_name,
         "arch": arch,
         # Recorded, not chosen. There is one observation layout; the field stays so a run's
         # metadata still says which, and so older runs stay readable beside newer ones.

@@ -39,6 +39,27 @@ steps. A continuation keeps everything and changes the budget: `E3-10-21-160M`.
 The table is the contract. A short name is only meaningful with it, so it lives in the repository
 and is updated in the same commit as the run.
 
+## The directory carries the name
+
+A short name that lives only in this file is one someone has to look up. The directory is what
+every later command quotes, so it is where the name has to be:
+
+    data/checkpoints/E3-12-21_20260912_181622
+
+`tools/train.py --run-name E3-12-21` builds it, validates it against the scheme, and records it
+in `metadata.json` as `run_name`. **The steps field is deliberately absent from the directory**:
+one directory holds every budget of a lineage -- `p1_scalar_nofilter` holds 80M, 160M and 240M --
+so a steps field in the directory name is a claim that goes stale the first time the run is
+continued. Each snapshot's own filename carries its budget.
+
+Passing `--run-name` together with an `--output-dir` whose basename does not contain it is an
+error rather than a preference, because the quiet version of that writes one arm's weights into a
+directory named for another.
+
+The directories named in the tables below predate this and are left alone: renaming them would
+break every path in `research/` that cites one, which is a worse failure than an unhelpful name.
+The `directory` column is what maps them back.
+
 ## Engine revisions
 
 | letter | from | what changed in the decision stream |
@@ -83,9 +104,19 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 07 | v2 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` |
 | 08 | v2 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` |
 | 09 | **mlp** | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` |
-| 10 | v2 | `--identity-dim 16` | 21, 22 | 80M, 160M* | `p1_identity_seed2026092*` |
+| 10 | v2 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` |
+| 11 | **mlp** | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` |
 
-Seed `21` is 20260921 and `22` is 20260922. \* marks a budget in progress.
+Seed `21` is 20260921 and `22` is 20260922.
+
+E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
+that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional
+reader should not need because it recovers entity identity from the offset. It is the row most
+likely to be misread, so what it measured is written next to it: **-40 and -0 Elo** against E3-09
+across its two seeds, a mean inside a seed spread of 40, at identical throughput (64.4k vs
+65.5k steps/s). The static mask was verified independently -- 0 of the 1,364 claimed-constant
+dimensions take a second value across 16,800 states, counted by distinct values rather than by
+standard deviation. Not adopted.
 
 Continuation legs use a fresh sampling seed so they diverge rather than replay: E3-01-21's legs
 used 20260931 and 20260941, and E3-10's use 20260951 and 20260952. Those are properties of a leg
