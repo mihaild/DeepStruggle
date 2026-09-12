@@ -1053,6 +1053,36 @@ which address the card side only.
 Tracks read well everywhere (DEFCON 0.85-0.92, victory points 0.93-0.97), so nothing is wrong
 with the trunk in general -- it is specifically per-entity information that pooling removes.
 
+### 21.8 Identity embeddings hold ~110 Elo across a doubling
+
+Matched budget, same engine, two seeds, pooled over sixteen snapshot pairings against
+`E3-01-21-160M`. The first comparison in this work that needs no caveat about engine or budget.
+
+| arm | vs control at 160M | at 80M |
+|:---|---:|---:|
+| E3-10-21 identity | 63.1% [61.4, 64.7] → **+93** | +110 |
+| E3-10-22 identity | 65.8% [64.1, 67.4] → **+114** | +120 |
+| E3-07-21 filter | 54.6% [52.9, 56.3] → +32 | +20 |
+| identity vs filter, head to head | **58.8% [57.0, 60.4] → +61** | — |
+
+Mean +115 at 80M and +104 at 160M, inside the between-seed spread. Under the log-linear law
+(`references.md` §7) that is an **intercept shift**: identity reaches a given strength sooner and
+does not change the rate, so it is worth about 110 Elo at any budget rather than compounding.
+Filtering has the same shape at a fifth of the size (+20, +24, +32 across three measurements).
+
+**Adopt, and re-baseline.** Every E3 comparison to date used a control that could not identify
+its own cards, so `--identity-dim 16` becomes part of the recipe line and the control has to be
+re-run with it before the next factor is screened. Filtering's +32 was measured on top of a
+blind policy and is not established on top of identity.
+
+**A caution that applies to this section's behavioural numbers generally.** The control's own
+DEFCON-1 share falls 49.4% → 32.4% between 80M and 240M with no intervention at all, and its
+USSR share rises 47.0% → 65.4%. At 160M the identity arms' behavioural advantage is much smaller
+than it looked at 80M -- DEFCON-1 33.9% against 38.7%, final scoring level, USSR imbalance now
+*worse* than the control's. So part of what §21.2 and §21.6 credited to interventions is what
+longer training does anyway. The Elo comparisons were all at matched steps and stand; the
+behavioural ones need a matched-budget control before they mean what they appear to.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a

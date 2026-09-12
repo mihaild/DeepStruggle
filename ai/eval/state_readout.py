@@ -92,6 +92,8 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
 
     feats: List[np.ndarray] = []
     board: List[np.ndarray] = []
+    board_opp: List[np.ndarray] = []
+    control: List[np.ndarray] = []
     hand: List[np.ndarray] = []
     tracks: List[np.ndarray] = []
 
@@ -116,10 +118,20 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
                     continue
                 mine = p == ts.Player.US
                 feats.append(tr[i].copy())
+                cs = [st.get_country(c) for c in range(84)]
                 board.append(np.array(
-                    [float(st.get_country(c).us_influence if mine
-                           else st.get_country(c).ussr_influence) for c in range(84)],
+                    [float(c.us_influence if mine else c.ussr_influence) for c in cs],
                     dtype=np.float32))
+                board_opp.append(np.array(
+                    [float(c.ussr_influence if mine else c.us_influence) for c in cs],
+                    dtype=np.float32))
+                # CountryState exposes influence only, so control is derived: a side controls
+                # a country when its influence exceeds the opponent's by at least the stability.
+                control.append(np.array([
+                    1.0 if (float(c.us_influence if mine else c.ussr_influence)
+                            - float(c.ussr_influence if mine else c.us_influence))
+                    >= float(ts.MapData.get_country_info(i)["stability"]) else 0.0
+                    for i, c in enumerate(cs)], dtype=np.float32))
                 loc = ts.hand_of(p)
                 hand.append(np.array(
                     [1.0 if st.get_card_location(c) == loc else 0.0 for c in range(1, 111)],
@@ -137,6 +149,8 @@ def collect(model: Any, num_envs: int = 128, steps: int = 900,
 
     return np.asarray(feats, dtype=np.float64), {
         "board": np.asarray(board, dtype=np.float64),
+        "board_opp": np.asarray(board_opp, dtype=np.float64),
+        "control": np.asarray(control, dtype=np.float64),
         "hand": np.asarray(hand, dtype=np.float64),
         "tracks": np.asarray(tracks, dtype=np.float64),
     }
@@ -185,6 +199,49 @@ def within_group_accuracy(x: np.ndarray, hand: np.ndarray, tr: np.ndarray,
         chance_num += one.sum() / len(g)
     return (hits / trials if trials else float("nan"),
             chance_num / trials if trials else float("nan"), trials)
+
+
+def battleground_detail(model: Any, **kw) -> List[Tuple[str, bool, int, float, float, float]]:
+    """Per-country read-out, so the aggregate board R^2 can be split by what matters.
+
+    A battleground is where the game is decided -- it is what regional scoring counts and the
+    only place a coup moves DEFCON -- so a trunk that prices the board on average but loses the
+    battlegrounds specifically would be a different and worse problem than a uniform blur.
+
+    Returns, per country: name, battleground flag, region, and the held-out R^2 for the viewer's
+    influence, the opponent's influence, and the AUC for "the viewer controls it".
+    """
+    x, targets = collect(model, **kw)
+    x = (x - x.mean(0)) / (x.std(0) + 1e-6)
+    x = np.hstack([x, np.ones((len(x), 1))])
+    rng = np.random.default_rng(0)
+    perm = rng.permutation(len(x))
+    cut = int(0.7 * len(x))
+    tr, te = perm[:cut], perm[cut:]
+
+    rows: List[Tuple[str, bool, int, float, float, float]] = []
+    preds = {}
+    for key in ("board", "board_opp", "control"):
+        w = _ridge(x[tr], targets[key][tr])
+        preds[key] = x[te] @ w
+
+    for c in range(84):
+        info = ts.MapData.get_country_info(c)
+        def r2(key: str) -> float:
+            y = targets[key][te][:, c]
+            return float("nan") if y.var() < 1e-9 else 1.0 - ((y - preds[key][:, c]) ** 2).mean() / y.var()
+        y = targets["control"][te][:, c] > 0.5
+        if y.all() or not y.any():
+            auc = float("nan")
+        else:
+            order = np.argsort(preds["control"][:, c])
+            ranks = np.empty(len(order), dtype=float)
+            ranks[order] = np.arange(len(order))
+            n1, n0 = y.sum(), (~y).sum()
+            auc = float((ranks[y].sum() - n1 * (n1 - 1) / 2) / (n1 * n0))
+        rows.append((str(info["name"]), bool(info["battleground"]), int(info["region"]),
+                     r2("board"), r2("board_opp"), auc))
+    return rows
 
 
 def probe(model: Any, **kw) -> Readout:
