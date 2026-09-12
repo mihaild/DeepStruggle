@@ -278,11 +278,15 @@ def measure_defcon_endings(model: Any, num_games: int = 500, base_seed: int = 61
                 if not reason.startswith("defcon1"):
                     continue
                 out.defcon1 += 1
-                # Who lost, from the victory-point track rather than from phasing_player.
-                # During the headline phase phasing_player does not identify the side whose
-                # card caused the drop -- headlines resolve by Ops, not by turn order -- and
-                # using it attributed We Will Bury You deaths to the USSR when Ops ordering
-                # says the US is the one that dies to that pair.
+                # Who lost, from the victory-point track. `phasing_player` would also be
+                # right *at resolution time* -- during the headline it is whoever's card is
+                # being resolved, so it is exactly the side that caused the drop. The problem
+                # is when this probe can read it: the last thing it sees is the card
+                # *selection*, before either headline resolves, and there phasing_player is
+                # still the turn's, not the resolver's. Reading it there attributed We Will
+                # Bury You deaths to the USSR when Ops ordering says the US dies to that pair
+                # -- We Will Bury You is 4 Ops and resolves first, so Duck and Cover at 3
+                # lands second and kills its own player.
                 vp = int(np.asarray(info["victory_points"])[i])
                 loser = ts.Player.USSR if vp > 0 else (
                     ts.Player.US if vp < 0 else phasing[i])
