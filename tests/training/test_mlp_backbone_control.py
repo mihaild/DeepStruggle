@@ -68,3 +68,54 @@ def test_the_layout_check_reads_the_input_width(tmp_path) -> None:
         assert "4293" in str(e)
     else:
         raise AssertionError("a retired-layout width must be refused")
+
+
+def test_drop_static_narrows_the_input_and_survives_a_round_trip(tmp_path) -> None:
+    """--drop-static removes the per-entity slots that never change within a game.
+
+    A shared-weight encoder needs them: its tokens are permutation-equivalent, so stability and
+    Ops are what tell one from another. A positional reader gets identity from the offset, so
+    the same values only add a constant the bias already supplies while occupying input width.
+    """
+    import torch
+
+    from ai.models.coldwar_net_v2 import (ColdWarNetV2, create_coldwar_net_mlp,
+                                          static_input_mask)
+    from tools.lib.player_agent import NeuralAgent
+
+    mask = static_input_mask()
+    assert int(mask.sum()) == 11 * 84 + 4 * 110 == 1364
+
+    full = create_coldwar_net_mlp("cpu", drop_static=False)
+    thin = create_coldwar_net_mlp("cpu", drop_static=True)
+    assert len(full.keep_idx) == ColdWarNetV2.TOTAL_OBS_SIZE
+    assert len(thin.keep_idx) == ColdWarNetV2.TOTAL_OBS_SIZE - 1364
+
+    obs = torch.randn(2, ColdWarNetV2.TOTAL_OBS_SIZE)
+    m = torch.ones(2, 212, dtype=torch.uint8)
+    assert thin(obs, m)[0].shape == (2, 212)
+
+    # The narrowed width must still read as layout v2.3, not as a retired layout.
+    path = tmp_path / "thin.pt"
+    torch.save(thin.state_dict(), path)
+    agent = NeuralAgent.from_checkpoint(str(path), device="cpu")
+    assert getattr(agent.model, "drop_static") is True
+
+
+def test_dropping_static_slots_cannot_change_the_function_it_sees() -> None:
+    """Only constant dimensions are removed, so varying two of them must not move the output."""
+    import torch
+
+    from ai.models.coldwar_net_v2 import (ColdWarNetV2, create_coldwar_net_mlp,
+                                          static_input_mask)
+
+    net = create_coldwar_net_mlp("cpu", drop_static=True)
+    net.eval()
+    mask = static_input_mask()
+    obs = torch.randn(1, ColdWarNetV2.TOTAL_OBS_SIZE)
+    m = torch.ones(1, 212, dtype=torch.uint8)
+    with torch.no_grad():
+        before = net(obs, m)[0]
+        obs[0, mask] += 7.0
+        after = net(obs, m)[0]
+    assert torch.allclose(before, after)

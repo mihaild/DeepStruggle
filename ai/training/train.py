@@ -168,6 +168,13 @@ def main():
                              "to. A window's advantage is -1 - v_t and never consults it.\n"
                              "Changes the returns, so an arm with it on is not comparable to\n"
                              "one without except as its own A/B.")
+    parser.add_argument("--drop-static", action="store_true", default=False,
+                        help="With --arch mlp, drop the per-entity observation slots that never\n"
+                             "change: stability, battleground, region, Ops, era, one-time,\n"
+                             "is-scoring. 1,364 of 3,824 dims, 35.7%%.\n"
+                             "A shared-weight encoder needs them to tell its tokens apart; a\n"
+                             "positional reader gets identity from the offset, so those weights\n"
+                             "only add a constant the bias already supplies.")
     parser.add_argument("--identity-dim", type=int, default=0,
                         help="Width of a learned identity embedding added to each card and\n"
                              "country token (0 disables it).\n"
@@ -230,6 +237,7 @@ def main():
             adv_filter_quantile=args.adv_filter_quantile,
             window_provoked_defcon=args.window_provoked_defcon,
             identity_dim=args.identity_dim,
+            drop_static=args.drop_static,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             seed=args.seed,

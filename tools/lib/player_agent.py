@@ -233,8 +233,13 @@ class NeuralAgent:
             ident = state_dict.get("card_identity.weight")
             identity_dim = int(ident.shape[1]) if ident is not None else 0
             if is_mlp:
-                from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
-                model = create_coldwar_net_mlp(dev, categorical_value=categorical)
+                from ai.models.coldwar_net_v2 import (create_coldwar_net_mlp,
+                                                      static_input_mask)
+                w = state_dict.get("mlp_in.0.weight")
+                narrowed = int(w.shape[1]) if w is not None else 0
+                drop_static = narrowed and narrowed < int(static_input_mask().numel())
+                model = create_coldwar_net_mlp(dev, categorical_value=categorical,
+                                               drop_static=bool(drop_static))
             else:
                 model = create_coldwar_net_v2(dev, categorical_value=categorical,
                                               identity_dim=identity_dim)

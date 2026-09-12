@@ -131,6 +131,7 @@ class ColdWarNetV2(nn.Module):
     # Declared for the type checker: `value_support` is a registered buffer, and the two scalar
     # heads are None on a categorical instance (and the distribution head None on a scalar one).
     value_support: torch.Tensor
+    keep_idx: torch.Tensor
     val_win_head: nn.Module | None
     val_vp_head: nn.Module | None
     value_dist_head: nn.Module | None
@@ -570,6 +571,33 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     return model.to(device)
 
 
+#: Per-entity observation slots that never change during a game. A shared-weight encoder needs
+#: them -- its tokens are permutation-equivalent, so static properties are what tell Poland from
+#: Brazil. A positional reader does not: slot i*26+3 is Poland's stability every time, so the
+#: value adds a constant that the bias already supplies while occupying input width.
+#:
+#: Board: stability, battleground, the six region one-hots, and the Europe/SE-Asia sub-flags.
+#: Card: Ops, era, one-time, is-scoring. Card slot 9 is the card's side *relative to the viewer*
+#: and flips with perspective, so it is not static and stays.
+STATIC_BOARD_SLOTS: tuple[int, ...] = (3, 4, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+STATIC_CARD_SLOTS: tuple[int, ...] = (8, 10, 11, 12)
+
+
+def static_input_mask(board_features: int = ColdWarNetV2.BOARD_FEATURES,
+                      card_features: int = ColdWarNetV2.CARD_FEATURES,
+                      total: int = ColdWarNetV2.TOTAL_OBS_SIZE) -> torch.Tensor:
+    """True where the observation dimension never varies within a game."""
+    mask = torch.zeros(total, dtype=torch.bool)
+    for c in range(84):
+        for slot in STATIC_BOARD_SLOTS:
+            mask[c * board_features + slot] = True
+    off = 84 * board_features
+    for i in range(110):
+        for slot in STATIC_CARD_SLOTS:
+            mask[off + i * card_features + slot] = True
+    return mask
+
+
 class ColdWarNetMLP(ColdWarNetV2):
     """The same heads and the same observation, on a plain MLP trunk.
 
@@ -583,8 +611,13 @@ class ColdWarNetMLP(ColdWarNetV2):
     structure is not earning its cost and the comparison is worth more than the arm.
     """
 
-    def __init__(self, hidden_dim: int = 512, mlp_width: int = 1024, **kwargs):
+    def __init__(self, hidden_dim: int = 512, mlp_width: int = 1024,
+                 drop_static: bool = False, **kwargs):
         super().__init__(hidden_dim=hidden_dim, **kwargs)
+        # Optionally drop the static per-entity slots. They are the price a shared-weight
+        # encoder pays to tell its tokens apart; a positional reader gets identity from the
+        # offset and the same values only inflate the first layer.
+        self.drop_static = bool(drop_static)
         # Replaced, not merely bypassed: leaving them registered would put a few hundred
         # thousand never-updated parameters in the checkpoint and in any count of "how big is
         # this network", which is the one number this control exists to make honest.
@@ -593,8 +626,16 @@ class ColdWarNetMLP(ColdWarNetV2):
                      "hist_conv"):
             setattr(self, name, None)
         self.mlp_width = int(mlp_width)
+        if self.drop_static:
+            keep = ~static_input_mask(self.board_features, self.card_features,
+                                      self.TOTAL_OBS_SIZE)
+            self.register_buffer("keep_idx", torch.nonzero(keep).squeeze(-1))
+            in_width = int(keep.sum())
+        else:
+            self.register_buffer("keep_idx", torch.arange(self.TOTAL_OBS_SIZE))
+            in_width = self.TOTAL_OBS_SIZE
         self.mlp_in = nn.Sequential(
-            nn.Linear(self.TOTAL_OBS_SIZE, self.mlp_width),
+            nn.Linear(in_width, self.mlp_width),
             nn.LayerNorm(self.mlp_width),
             nn.GELU(),
             nn.Linear(self.mlp_width, self.mlp_width),
@@ -612,7 +653,7 @@ class ColdWarNetMLP(ColdWarNetV2):
             raise ValueError(
                 f"observation is {obs.shape[-1]} floats wide; this model reads "
                 f"{self.TOTAL_OBS_SIZE}.")
-        h = self.fusion_in(self.mlp_in(obs))
+        h = self.fusion_in(self.mlp_in(torch.index_select(obs, 1, self.keep_idx)))
         for block in self.res_blocks:
             h = block(h)
         if return_attn_weights:
@@ -621,10 +662,12 @@ class ColdWarNetMLP(ColdWarNetV2):
 
 
 def create_coldwar_net_mlp(device: torch.device | str,
-                           categorical_value: bool = False) -> ColdWarNetMLP:
+                           categorical_value: bool = False,
+                           drop_static: bool = False) -> ColdWarNetMLP:
     """The MLP backbone control. Same heads, same observation, no structure."""
     dev = torch.device(device) if isinstance(device, str) else device
-    return ColdWarNetMLP(categorical_value=categorical_value).to(dev)
+    return ColdWarNetMLP(categorical_value=categorical_value,
+                         drop_static=drop_static).to(dev)
 
 
 def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWarNetV2:
@@ -643,6 +686,7 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         return ColdWarNetMLP(
             hidden_dim=int(getattr(model, "hidden_dim", 512)),
             mlp_width=int(getattr(model, "mlp_width", 1024)),
+            drop_static=bool(getattr(model, "drop_static", False)),
             card_features=int(getattr(model, "card_features", ColdWarNetV2.CARD_FEATURES)),
             use_history=bool(getattr(model, "use_history", False)),
             global_features=int(getattr(model, "GLOBAL_SIZE", ColdWarNetV2.GLOBAL_SIZE)),
@@ -681,7 +725,10 @@ def check_checkpoint_layout(state_dict: dict) -> None:
     mlp_w = state_dict.get("mlp_in.0.weight")
     if mlp_w is not None:
         width = int(mlp_w.shape[1])
-        if width != ColdWarNetV2.TOTAL_OBS_SIZE:
+        # --drop-static narrows this layer by the static per-entity slots, so the narrowed
+        # width is as valid a v2.3 checkpoint as the full one.
+        narrowed = ColdWarNetV2.TOTAL_OBS_SIZE - int(static_input_mask().sum())
+        if width not in (ColdWarNetV2.TOTAL_OBS_SIZE, narrowed):
             raise ValueError(
                 f"this checkpoint reads {width} floats; layout v2.3 is "
                 f"{ColdWarNetV2.TOTAL_OBS_SIZE}. Checkpoints from the retired layouts cannot "
