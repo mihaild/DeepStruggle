@@ -710,41 +710,48 @@ warm start cannot save re-learning something nothing learns in the first place.
 
 ### 21.1 The critic does not see a provoked DEFCON-1 coming, at any node
 
-Traced through the five `h2_480M_provoked_*` replays by replaying their recorded flat actions
-through a fresh engine on the replay's own seed and reading `v_win` from the **losing** side's
-perspective at every node. (Perspective checked: the two sides sum to +0.05 at a sampled node,
-so the readings are the loser's own value, not a sign error.)
+Traced through the `h2_480M_provoked_*` replays by replaying their recorded flat actions through
+a fresh engine on the replay's own seed and reading `v_win` from the **losing** side's
+perspective. (Perspective checked: the two sides sum to +0.05 at a sampled node, so these are
+the loser's own values, not a sign error.)
 
-The games split into two shapes, and both were tested at the node where the loss becomes certain:
-in 7107, 7115 and 7118 the card was played **Ops first, event later**, so `PlayMode: OPS` on an
-opponent card is the point of no return; in 7119 Grain Sales was **unspaceable**, so the card
-selection itself is.
+Every value is read on the state *before* that node's action is applied, so the cost of a single
+choice is the difference between the node where it is made and the node after it. Quoting the
+value at a node against the value at the *previous* node measures the opponent's intervening
+moves as well, and is not attributable to the choice.
 
-| game | at the card | at `PlayMode: OPS` | last node before the loss |
+In 7107, 7115 and 7118 the card was played **Ops first, event later**, so `PlayMode: OPS` on an
+opponent card is the point of no return. In 7119 Grain Sales was **unspaceable**, so the card
+selection is. Both were tested:
+
+| game | v at the card node | delta from selecting the fatal card | delta from choosing OPS |
 |:---|---:|---:|---:|
-| 7107 Star Wars | −0.770 | −0.765 | **−0.754** |
-| 7115 Lone Gunman | −0.052 | −0.055 | −0.396 |
-| 7118 Grain Sales | −0.691 | −0.698 | −0.719 |
-| 7119 Grain Sales (unspaceable) | −0.711 | −0.718 | **−0.655** |
-| 7122 Missile Envy | −0.731 | −0.728 | **−0.701** |
+| 7107 Star Wars | −0.770 | **+0.004** | **+0.006** |
+| 7115 Lone Gunman | −0.052 | **−0.003** | **−0.004** |
+| 7118 Grain Sales | −0.691 | **−0.008** | **+0.007** |
+| 7119 Grain Sales (unspaceable) | −0.711 | **−0.007** | **−0.014** |
 
-**It never reacts.** Choosing the fatal mode moves `v_win` by at most 0.007 in any of them, and
-choosing the fatal card in 7119 moves it by 0.007. At the last decision before DEFCON 1 the
-critic is still reporting −0.40 to −0.75 rather than anything near −1, and in **three of the five
-it has become more optimistic** on the way into the loss. In 7115 the losing side sits at −0.05,
-essentially even, and is dead four micro-actions later.
+**It never reacts.** Selecting the fatal card is worth at most 0.008 to the critic and choosing
+to spend it for Operations at most 0.014; two of the eight deltas are positive. At the last
+decision before DEFCON 1 it still reports −0.40 to −0.75 rather than anything near −1, and in
+7115 the losing side sits at −0.05 -- essentially even -- four micro-actions from death.
+
+(7122 is excluded: Missile Envy is a different case. It is neutral, usually safe to play, and
+the information that would make it unsafe -- the opponent's highest-Ops card -- is hidden, so
+there is no comparable "point of no return" to test.)
 
 Two consequences.
 
 **This is not only a credit-assignment problem.** The critic cannot represent the conjunction, so
-sharpening the policy's credit will not by itself teach it -- but that is also the argument *for*
+sharpening the policy's credit will not by itself teach it -- but that is the argument *for*
 windowing the provoked case rather than against it. Inside a blunder window the advantage is
-`-1 - v_t`, which does not consult the critic at all, so the window is precisely the mechanism
-that works when the critic is blind.
+`-1 - v_t`, which never consults the critic, so the window is precisely the mechanism that works
+when the critic is blind. Outside one, the -1 has to flow back through a value function that
+prices the position at -0.7 and rising, and is absorbed rather than attributed.
 
-**And it raises the value of the auxiliary DEFCON-risk head**, which is a direct supervised signal
-for the thing `v_win` demonstrably does not encode. Its label is the same `defcon_blunder` flag
-that excludes provoked endings, so the one-line label fix is a prerequisite for either.
+**And it raises the value of the auxiliary DEFCON-risk head**, a direct supervised signal for
+what `v_win` demonstrably does not encode. Its label is the same `defcon_blunder` flag that
+excludes provoked endings, so the one-line label fix is a prerequisite for either.
 
 ## Agreement with human play
 
