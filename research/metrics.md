@@ -777,12 +777,27 @@ made every DEFCON-1 rarer by playing more timidly.
 Games also got longer -- mean ply 93.4 to 103.1, final scoring 6.9% to 16.7% -- moving toward the
 human distribution, where about 30% of games go the distance against this control's 7%.
 
-**And it costs 59 Elo.** Pooled over all sixteen snapshot pairings against the control,
-1,331/3,200 = **41.6%** [39.9, 43.3], or **−59 Elo**. The anchor agrees: 80.6% to 71.4% is about
-−51 Elo on the same scale. Unlike the filtering arm, where the anchor and the head-to-head
-disagreed and the anchor was wrong, here the two independent measures land within 8 Elo of each
-other, so this is a real strength loss rather than seed noise. The USSR share also rose 47.0% to
-63.7%, a move away from the human 49.9%.
+**The behaviour replicates on a second seed; the strength cost does not, yet.**
+
+| arm | provoked | self | final scoring | USSR | anchor |
+|:---|---:|---:|---:|---:|---:|
+| control | 36.2% | 13.1% | 6.9% | 47.0% | 80.6% |
+| window ...921 | 13.7% | 13.3% | 16.7% | 63.7% | 71.4% |
+| window ...922 | **10.7%** | 12.1% | 16.7% | 58.3% | **81.8%** |
+
+Both seeds cut provoked endings by about two thirds and leave the self-inflicted share alone, so
+the behavioural result is solid. But the two seeds sit **10.4 anchor points apart**, straddling
+the control -- the same pattern the filtering arm produced, and the reason the anchor cannot
+settle anything here.
+
+Seed ...921 pooled over all sixteen snapshot pairings scores 1,331/3,200 = **41.6%**
+[39.9, 43.3], or **−59 Elo**. An earlier draft of this section argued the anchor corroborated
+that, because 80.6% → 71.4% is about −51 Elo on the same scale. **That corroboration was one
+seed and it did not hold:** seed ...922's anchor is 81.8%, slightly *above* the control. The
+head-to-head for ...922 is what decides whether the 59 Elo is the intervention or the seed.
+
+The USSR share rose in both (63.7% and 58.3% against 47.0%), which is a move away from the human
+49.9% and is measured over the whole run rather than 500 eval games.
 
 **The likely cause is that the window is far wider than the mistake.** The blunder window is
 *turn-scoped* -- `rollout_buffer` pins the blunderer for the whole turn the blunder happened in.
