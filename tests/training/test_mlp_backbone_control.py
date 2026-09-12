@@ -119,3 +119,31 @@ def test_dropping_static_slots_cannot_change_the_function_it_sees() -> None:
         obs[0, mask] += 7.0
         after = net(obs, m)[0]
     assert torch.allclose(before, after)
+
+
+def test_keep_idx_is_not_persisted_and_both_eras_load(tmp_path) -> None:
+    """`keep_idx` is derived from drop_static, so it must not be in the state dict.
+
+    It briefly was, which broke every MLP checkpoint saved before it existed -- the loader
+    reported `missing ['keep_idx']` and refused. Checkpoints now exist from both eras, so the
+    loader has to accept a state dict with the key and one without.
+    """
+    import torch
+
+    from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
+    from tools.lib.player_agent import NeuralAgent
+
+    net = create_coldwar_net_mlp("cpu", drop_static=True)
+    assert "keep_idx" not in net.state_dict(), "a derived buffer must not be persisted"
+
+    clean = tmp_path / "clean.pt"
+    torch.save(net.state_dict(), clean)
+    assert NeuralAgent.from_checkpoint(str(clean), device="cpu") is not None
+
+    # A checkpoint from the era when it *was* persisted must still load.
+    legacy = dict(net.state_dict())
+    legacy["keep_idx"] = net.keep_idx.clone()
+    legacy_path = tmp_path / "legacy.pt"
+    torch.save(legacy, legacy_path)
+    agent = NeuralAgent.from_checkpoint(str(legacy_path), device="cpu")
+    assert getattr(agent.model, "drop_static") is True

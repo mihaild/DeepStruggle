@@ -5,6 +5,10 @@ magnitude. Putting each at the wrong tier either starves a run of signal or halv
 throughput, so the placement is derived from measured cost rather than from how interesting the
 probe is.
 
+> **Tier on the artifact as well as the compute.** A probe that costs 0.1% of a step but emits
+> 880 TensorBoard series is a tier-3 probe. The question is not only what it costs to compute but
+> what it costs to store and whether anyone can read the result.
+
 ## The budget
 
 512 environments at ~15,000 env-steps/s is **29.3 vectorized steps/s, so 34 ms per vectorized
@@ -34,7 +38,10 @@ Costs under ~1% of the step budget, so it can be logged continuously and read as
 | probe | what it costs | why it is affordable |
 |:---|:---|:---|
 | **DEFCON-1 ending class** — headline vs action round, own goal, bad bet, forced vs unforced trap | 0.76% | everything needed is available on the environments that *terminated*, and there are only ~5.7 of those per vectorized step. The phase, the victory-point sign and the coup flag are scalar reads; `defcon_suicide_cards` is called once per terminal, not once per decision |
-| **play-mode counts per (card, side, mode)** | 0.1% | a counter increment at a node the loop already decodes. The scalar worth logging is the divergence of the mode distribution *within a collision group*, which is zero for a model that cannot see card identity |
+
+**Play-mode counts per (card, side) do not belong here, despite costing 0.1%.** Compute-cheap is
+not log-cheap: 110 cards x 2 sides x 4 modes is 880 series, which bloats the event file and is
+unreadable as curves. It is tier 3.
 
 The forced/unforced split needs the safe-alternative test at the *card play*, not at the
 terminal. Carrying a per-environment record of the last play, as `defcon_endings.py` already
@@ -66,6 +73,7 @@ Minutes, and slow-moving, so per-snapshot would be waste.
 | probe | cost | why it belongs here |
 |:---|:---|:---|
 | **trunk recoverability** (`state_readout.py`) | ~2-3 min | 19,200 positions plus ridge solves against 84 + 110 + 6 targets. It measures a property of the representation that changes over a whole run, not between snapshots |
+| **play-mode distribution per (card, side)** (`play_modes.py`) | ~1 min | the computation is trivial but the artifact is an 880-cell table. It is read once, by a person, comparing two arms -- not watched as curves |
 | per-battleground detail | included above | same collection, extra solves |
 | pooled head-to-head rating | ~5 min batched | needs four late snapshots, so it cannot exist until the arm is over |
 
@@ -79,9 +87,9 @@ hours for a pool whose 1,431 pairings included ~1,400 nobody read.
 | probe | tier | cost |
 |:---|:---|---:|
 | DEFCON-1 ending class, coarse | training | 0.76% |
-| play-mode counts per (card, side) | training | 0.1% |
 | DEFCON-1 forced/unforced split | training, behind a flag | 6.2% |
 | blunder rates, setup, diagnostics | snapshot | seconds |
 | four-way classification, fixed sample | snapshot | ~30 s |
 | trunk recoverability, battleground detail | final | ~3 min |
+| play-mode distribution per (card, side) | final | ~1 min |
 | pooled rating | final | ~5 min |

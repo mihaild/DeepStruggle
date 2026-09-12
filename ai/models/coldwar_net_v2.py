@@ -629,10 +629,15 @@ class ColdWarNetMLP(ColdWarNetV2):
         if self.drop_static:
             keep = ~static_input_mask(self.board_features, self.card_features,
                                       self.TOTAL_OBS_SIZE)
-            self.register_buffer("keep_idx", torch.nonzero(keep).squeeze(-1))
+            # Not persistent: it is derived from drop_static, not learned, and putting it in
+            # the state dict breaks every checkpoint saved before it existed -- which is exactly
+            # what happened to the E3-09 MLP arms the moment this buffer was added.
+            self.register_buffer("keep_idx", torch.nonzero(keep).squeeze(-1),
+                                 persistent=False)
             in_width = int(keep.sum())
         else:
-            self.register_buffer("keep_idx", torch.arange(self.TOTAL_OBS_SIZE))
+            self.register_buffer("keep_idx", torch.arange(self.TOTAL_OBS_SIZE),
+                                 persistent=False)
             in_width = self.TOTAL_OBS_SIZE
         self.mlp_in = nn.Sequential(
             nn.Linear(in_width, self.mlp_width),

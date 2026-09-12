@@ -212,6 +212,10 @@ class NeuralAgent:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
         state_dict = torch.load(checkpoint_path, map_location=dev, weights_only=True)
+        # `keep_idx` is derived from drop_static, not learned. It was briefly a *persistent*
+        # buffer, so checkpoints exist both with and without it; dropping it here lets both eras
+        # load. Buffers that are a pure function of the configuration should never be persisted.
+        state_dict.pop("keep_idx", None)
         # Architecture detection by weight name: V2 carries the cross-attention block, V1 does
         # not. A retired architecture is refused rather than allowed to fall through to V1.
         reject_retired_architecture(state_dict)
