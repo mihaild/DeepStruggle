@@ -1083,6 +1083,37 @@ than it looked at 80M -- DEFCON-1 33.9% against 38.7%, final scoring level, USSR
 longer training does anyway. The Elo comparisons were all at matched steps and stand; the
 behavioural ones need a matched-budget control before they mean what they appear to.
 
+### 21.9 Dropping the 1,364 constant observation slots buys nothing, and could not have
+
+1,364 of the 3,824 observation floats never change value in any position -- per-country and
+per-card properties (stability, region membership, Ops value, era) that the structured encoders
+in §21.5 need, because a graph convolution and a per-card MLP see a *token* and have no other way
+to know which country or card it is. An MLP reading a flat vector does not: it recovers identity
+from the offset. So the question was whether those slots are dead weight for E3-09.
+
+E3-11 is E3-09 with them masked out: 2,460 inputs, 6.6M parameters against 8.0M, two seeds at 80M.
+
+| | vs E3-09-21-080M | vs E3-01-21-080M control |
+|:---|---:|---:|
+| E3-11-21-080M | 44.3% [42.6, 46.0] → **−40** | 35.1% [33.4, 36.7] → −107 |
+| E3-11-22-080M | 50.0% [48.3, 51.7] → **−0** | 39.0% [37.3, 40.7] → −78 |
+
+**Not adopted**, and the mean of −20 is inside a seed spread of 40. Throughput was unchanged
+(64.4k against 65.5k steps/s), which is the practical answer on its own: the saving was supposed
+to be speed and there was none.
+
+The stronger statement is that a difference here *cannot* be information. A constant input
+contributes `w·c` to every unit, which the bias already spans, so the two networks have the same
+function class and the masked one loses nothing it could have used. Any real residual would be
+optimisation-side: `nn.Linear` initialises `U(±1/√fan_in)`, and fan_in moving 3,824 → 2,460
+rescales the init of *every* first-layer weight, the varying ones included. That is a reason to
+expect small noise, not a reason to expect a loss.
+
+**The mask was verified rather than assumed**, because the first attempt at it was wrong. Across
+16,800 positions, **0 of the 1,364 claimed-constant dimensions takes a second value** -- counted
+by distinct values, not by standard deviation, which is what had previously mislabelled a slot
+that varies over a tiny range as constant.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
