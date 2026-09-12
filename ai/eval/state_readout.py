@@ -25,7 +25,7 @@ over the group, so 0 is chance and 1 is perfect.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -333,34 +333,204 @@ def _mode_baseline(train: np.ndarray, test: np.ndarray) -> np.ndarray:
 MAX_LEVEL = 6
 
 
-def _levelwise_accuracy(x_tr: np.ndarray, x_te: np.ndarray, y_tr: np.ndarray,
-                        y_te: np.ndarray, lam: float = 10.0) -> np.ndarray:
-    """Exact-influence accuracy from a *classifier* rather than a rounded regression.
+def multinomial_accuracy(x: np.ndarray, lev: np.ndarray, tr: np.ndarray, te: np.ndarray,
+                         l2: float = 1e-5, steps: int = 1500,
+                         lr: float = 0.3) -> np.ndarray:
+    """Per-country exact-level accuracy from a linear **multinomial logistic** probe.
 
-    Rounding a least-squares fit is not the right estimator for "name the exact number" and will
-    lose to a constant whatever the trunk contains: influence is 0 in most countries most of the
-    time with an occasional 3 or 4, so the MSE-optimal fit sits between the two and rounds to
-    neither. Scoring the representation on that measures the loss function, not the trunk.
+    This replaces a least-squares-onto-one-hot classifier that was wrong in a way worth writing
+    down, because its failure looked exactly like a result. Regressing indicators masks
+    intermediate classes once there are three or more (ESL 4.2) and shrinks rare ones out of the
+    argmax altogether. Handed a *noiseless* influence/10 column -- the exact thing the engine puts
+    in board slot 0 -- it scored 79% against a 72% constant baseline, closing 24% of the gap with
+    the answer sitting in front of it. That ceiling, not the network, was what an earlier version
+    of 21.12 reported as "the trunk recovers about a fifth".
 
-    So each level 0..MAX_LEVEL (top one absorbing) gets its own one-hot ridge column and the
-    prediction is the argmax. Still linear, still closed-form, still one solve -- but now fitted
-    to the question being asked.
+    Softmax regression has no such masking: the fit is a proper likelihood, so a rare level is
+    learned rather than suppressed. `x` is (N, D) for features shared across countries or
+    (N, 84, D) for per-country ones; every country is fitted in one batched problem.
+
+    Any probe used for this question must first clear `tests/training/test_state_readout_probe.py`,
+    which feeds it the noiseless column and requires near-perfect recovery.
+
+    The defaults are set by that test rather than by taste. `l2` has to be small -- a 7-way split
+    of one scalar needs sharp boundaries, and at 1e-3 the penalty caps recovery of the *known*
+    answer at 92% -- but the same test confirms pure noise still scores exactly the constant
+    baseline at 1e-5, so the loose penalty buys recovery without buying false signal.
     """
-    n_country = y_tr.shape[1]
-    lev_tr = np.clip(y_tr, 0, MAX_LEVEL).astype(int)
-    lev_te = np.clip(y_te, 0, MAX_LEVEL).astype(int)
-    n_lev = MAX_LEVEL + 1
+    import torch
 
-    onehot = np.zeros((len(lev_tr), n_country * n_lev))
-    for c in range(n_country):
-        onehot[np.arange(len(lev_tr)), c * n_lev + lev_tr[:, c]] = 1.0
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    per_country = x.ndim == 3
+    n_country = lev.shape[1]
 
-    scores = x_te @ _ridge(x_tr, onehot, lam)
-    out = np.zeros(n_country)
-    for c in range(n_country):
-        pred = np.argmax(scores[:, c * n_lev:(c + 1) * n_lev], axis=1)
-        out[c] = float((pred == lev_te[:, c]).mean())
+    xf = torch.tensor(x, dtype=torch.float32, device=dev)
+    mu, sd = xf.mean(0, keepdim=True), xf.std(0, keepdim=True) + 1e-6
+    xf = (xf - mu) / sd
+    ones = torch.ones(*xf.shape[:-1], 1, device=dev)
+    xf = torch.cat([xf, ones], dim=-1)
+    d = xf.shape[-1]
+
+    y = torch.tensor(lev, dtype=torch.long, device=dev)
+    tr_t = torch.tensor(tr, dtype=torch.long, device=dev)
+    te_t = torch.tensor(te, dtype=torch.long, device=dev)
+
+    w = torch.zeros(n_country, d, MAX_LEVEL + 1, device=dev, requires_grad=True)
+    opt = torch.optim.Adam([w], lr=lr)
+    eq = "ncd,cdk->nck" if per_country else "nd,cdk->nck"
+    x_tr, x_te = xf[tr_t], xf[te_t]
+    y_tr, y_te = y[tr_t], y[te_t]
+
+    for _ in range(steps):
+        opt.zero_grad()
+        logits = torch.einsum(eq, x_tr, w)
+        loss = torch.nn.functional.cross_entropy(
+            logits.reshape(-1, MAX_LEVEL + 1), y_tr.reshape(-1)) + l2 * (w ** 2).sum()
+        loss.backward()
+        opt.step()
+
+    with torch.no_grad():
+        pred = torch.einsum(eq, x_te, w).argmax(-1)
+        return (pred == y_te).float().mean(0).cpu().numpy()
+
+
+def collect_board_stages(model: Any, num_envs: int = 128, steps: int = 450, every: int = 6,
+                         temperature: float = 0.1) -> Dict[str, Any]:
+    """Per-country representations at four points, plus the influence to recover from each.
+
+    21.12 measured what the 512-float trunk holds about each country but not *where* the rest
+    went. This taps one rollout at four stages so the loss can be localised rather than inferred:
+
+    * ``raw``    -- country i's own 26 observation floats. Upper bound and sanity check: slot 0 is
+      literally ``my_influence / 10``, so anything well below 1.0 here means the probe is broken
+      and nothing else on the ladder can be read. That check has already caught one broken probe.
+    * ``gconv1`` -- after one graph convolution over the map adjacency, 64 floats for country i.
+    * ``gconv2`` -- after the second, still per-country and still pre-pooling. This is the token
+      an end-of-trunk attention block would attend over, so it decides whether such a block has
+      anything left to find.
+    * ``trunk``  -- the 512 floats every head actually reads.
+
+    Only v2-shaped models have the graph layers; anything else raises rather than quietly
+    returning a shorter ladder.
+    """
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
+
+    if not hasattr(model, "gconv1") or not hasattr(model, "gconv2"):
+        raise TypeError(f"{type(model).__name__} has no graph layers to tap")
+
+    check_obs_width(model)
+    device = next(model.parameters()).device
+    model.eval()
+
+    taps: Dict[str, Any] = {}
+
+    def hook(name: str) -> Any:
+        def fn(_m: Any, _i: Any, out: Any) -> None:
+            taps[name] = out.detach()
+        return fn
+
+    handles = [model.gconv1.register_forward_hook(hook("gconv1")),
+               model.gconv2.register_forward_hook(hook("gconv2"))]
+
+    env = TsVectorizedEnv(num_envs=num_envs, base_seed=525_252)
+    obs, masks, _ = env.reset_all()
+    keys = ("raw", "gconv1", "gconv2", "trunk", "own", "opp")
+    env_ids: List[int] = []
+    acc: Dict[str, List[np.ndarray]] = {k: [] for k in keys}
+    try:
+        for step in range(steps):
+            obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+            mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+            with torch.no_grad():
+                acts, *_ = model.sample_action(obs_t, mask_t, temperature=temperature)
+                trunk = model.extract_features(obs_t)
+                if isinstance(trunk, tuple):
+                    trunk = trunk[0]
+            if step % every == 0:
+                bf = int(model.board_features)
+                raw = obs_t[:, :84 * bf].view(-1, 84, bf).cpu().numpy()
+                g1 = taps["gconv1"].cpu().numpy()
+                g2 = taps["gconv2"].cpu().numpy()
+                tk = trunk.cpu().numpy()
+                for i in range(num_envs):
+                    st = env.runner.get_state(i)
+                    if ts.Engine.is_terminal(st):
+                        continue
+                    ctx = st.ctx()
+                    p = ctx.decision_player if ctx.decision_player != ts.Player.NONE \
+                        else st.phasing_player
+                    if p == ts.Player.NONE:
+                        continue
+                    mine = p == ts.Player.US
+                    cs = [st.get_country(c) for c in range(84)]
+                    env_ids.append(i)
+                    acc["raw"].append(raw[i])
+                    acc["gconv1"].append(g1[i])
+                    acc["gconv2"].append(g2[i])
+                    acc["trunk"].append(tk[i])
+                    acc["own"].append(np.array(
+                        [float(c.us_influence if mine else c.ussr_influence) for c in cs],
+                        dtype=np.float32))
+                    acc["opp"].append(np.array(
+                        [float(c.ussr_influence if mine else c.us_influence) for c in cs],
+                        dtype=np.float32))
+            obs, masks, *_ = env.step(acts.cpu().numpy().astype(np.int64))
+    finally:
+        for h in handles:
+            h.remove()
+
+    out: Dict[str, Any] = {k: np.asarray(v, dtype=np.float32)
+                           for k, v in acc.items()}
+    out["env_id"] = np.asarray(env_ids, dtype=np.int64)
     return out
+
+
+def stage_gap_closed(data: Dict[str, Any], stage: str,
+                     target: str = "own") -> Dict[str, np.ndarray]:
+    """Per-country accuracy, constant baseline and gap closed, read from one stage.
+
+    Same estimator as `influence_control_detail`, so the numbers are comparable across the ladder
+    and against 21.12. A per-country stage is fitted from country i's own vector alone: the
+    question is what *that token* carries about *that country*, not what the whole board carries.
+
+    Accuracy and baseline are returned alongside the ratio because the ratio alone cannot be
+    averaged. A country with 4% headroom divides by 0.04, so a couple of points of probe noise
+    becomes -400%, and a mean over countries is then decided by whichever near-constant country
+    happened to wobble. Aggregate with `weighted_gap_closed` instead.
+    """
+    y = data[target]
+    # Whole games held out, not permuted positions. With a probe strong enough to fit, the
+    # difference is not cosmetic: trunk battleground influence reads 25.8% under a permuted
+    # split and 10.3% held out. An earlier check called the leak negligible, but it was run
+    # with an estimator too weak to exploit it.
+    tr, te = split_by_env(data["env_id"])
+
+    lev = np.clip(y, 0, MAX_LEVEL).astype(int)
+    base = _mode_baseline(y[tr], y[te])
+    acc = multinomial_accuracy(data[stage].astype(np.float64), lev, tr, te)
+
+    gap = np.full(84, np.nan)
+    for c in range(84):
+        head = 1.0 - base[c]
+        if head >= 0.02:
+            gap[c] = (acc[c] - base[c]) / head
+    return {"acc": acc, "base": base, "gap": gap}
+
+
+def weighted_gap_closed(res: Dict[str, np.ndarray],
+                        countries: Sequence[int] | None = None) -> float:
+    """Total gap closed across countries: sum(acc - base) / sum(headroom).
+
+    The aggregate that survives a near-constant country. Averaging the per-country ratio does
+    not: it weights a country with 4% headroom the same as one with 71%, and the small one's
+    ratio is mostly noise divided by a small number.
+    """
+    idx = list(range(84)) if countries is None else list(countries)
+    num = float(sum(res["acc"][c] - res["base"][c] for c in idx))
+    den = float(sum(1.0 - res["base"][c] for c in idx))
+    return num / den if den > 1e-9 else float("nan")
 
 
 def influence_control_detail(model: Any, hold_out_envs: bool = True,
@@ -389,9 +559,10 @@ def influence_control_detail(model: Any, hold_out_envs: bool = True,
 
     own_exact = _exact_accuracy(preds["board"], targets["board"][te])
     own_base = _mode_baseline(targets["board"][tr], targets["board"][te])
-    own_clf = _levelwise_accuracy(x[tr], x[te], targets["board"][tr], targets["board"][te])
-    opp_clf = _levelwise_accuracy(x[tr], x[te], targets["board_opp"][tr],
-                                  targets["board_opp"][te])
+    lev_own = np.clip(targets["board"], 0, MAX_LEVEL).astype(int)
+    lev_opp = np.clip(targets["board_opp"], 0, MAX_LEVEL).astype(int)
+    own_clf = multinomial_accuracy(x, lev_own, tr, te)
+    opp_clf = multinomial_accuracy(x, lev_opp, tr, te)
     opp_exact = _exact_accuracy(preds["board_opp"], targets["board_opp"][te])
     opp_base = _mode_baseline(targets["board_opp"][tr], targets["board_opp"][te])
 
@@ -421,9 +592,15 @@ def influence_control_detail(model: Any, hold_out_envs: bool = True,
         })
 
     bg = [r for r in rows if r["battleground"]]
+    bg_idx = [c for c in range(84) if rows[c]["battleground"]]
 
     def m(rs: List[Dict[str, Any]], k: str) -> float:
         return float(np.mean([r[k] for r in rs]))
+
+    # Weighted, not a mean of per-country ratios: a country with 4% headroom divides by 0.04 and
+    # its ratio is mostly noise, which then decides the average. See `weighted_gap_closed`.
+    inf_res = {"acc": own_clf, "base": own_base}
+    ctl_res = {"acc": ctrl_acc, "base": ctrl_base}
 
     return {
         "rows": rows,
@@ -436,4 +613,9 @@ def influence_control_detail(model: Any, hold_out_envs: bool = True,
         "bg_own_exact": m(bg, "own_exact"), "bg_own_clf": m(bg, "own_clf"),
         "bg_own_base": m(bg, "own_base"), "bg_own_r2": m(bg, "own_r2"),
         "bg_control_acc": m(bg, "control_acc"), "bg_control_base": m(bg, "control_base"),
+        # The headline figures.
+        "all_influence_gap": weighted_gap_closed(inf_res),
+        "bg_influence_gap": weighted_gap_closed(inf_res, bg_idx),
+        "all_control_gap": weighted_gap_closed(ctl_res),
+        "bg_control_gap": weighted_gap_closed(ctl_res, bg_idx),
     }

@@ -1260,14 +1260,28 @@ the position* -- so this measures the two numbers that answer it: the share of h
 where a linear read-out names the **exact** influence, and the share where it calls **control**
 correctly, each against the best-constant baseline.
 
-**Two methodology notes, because both changed the answer more than any arm difference did.**
+**Three methodology notes. All of them changed the answer more than any arm difference did, and
+the first two were caught only after being written up as findings.**
 
-*The estimator.* Rounding a least-squares fit scores **below** the constant baseline -- 61% against
-69% on battlegrounds. That is not a fact about the trunk. Influence is 0 in most countries most of
-the time with an occasional 3 or 4, so the MSE-optimal fit sits between the two and rounds to
-neither; scoring the representation that way measures the loss function. Fitting a **classifier**
-instead -- one ridge column per influence level 0-6, argmax, still linear and still closed-form --
-moves battleground exact-match from 61% to **77%**. Every number below uses the classifier.
+*The estimator, twice.* Rounding a least-squares fit scores **below** the constant baseline -- 61%
+against 69% on battlegrounds -- because influence is 0 in most countries most of the time with an
+occasional 3 or 4, so the MSE-optimal fit sits between the two and rounds to neither. Replacing it
+with least-squares onto one-hot *class* columns looked like the fix and was not: that estimator
+**masks intermediate classes** once there are three or more (ESL 4.2) and shrinks rare ones out of
+the argmax. Handed a *noiseless* `influence / 10` column -- board slot 0, verbatim -- it recovered
+79% against a 72% baseline, closing **24% of the gap with the answer in front of it**. An earlier
+version of this section reported that ceiling as "the trunk closes about a fifth".
+
+The probe is now **multinomial logistic regression**, still linear, and it is gated: any estimator
+used for this question must first clear `tests/training/test_state_readout_probe.py`, which feeds
+it the noiseless column and requires near-perfect recovery *and* requires pure noise to score
+exactly the constant baseline. The current one gets 100%, 99.3% buried in 25 noise columns, and
+baseline on noise.
+
+*The aggregate.* A mean of per-country ratios is not a usable summary. India has 4% headroom, so
+`(acc - base) / 0.04` turns two points of probe noise into -431%, and the average over countries
+is then decided by whichever near-constant country wobbled. Every headline below is
+`sum(acc - base) / sum(headroom)`, which weights each country by what it had to give.
 
 *The split.* The probe held out whole environments rather than permuting positions, since
 successive samples from one env are the same game six steps apart. It was worth doing and it
@@ -1277,101 +1291,114 @@ Kept because it is free, reported because the concern was real and the effect wa
 #### What the trunk actually recovers
 
 Raw accuracy flatters a country that is empty in 97% of positions, so the headline is the share of
-the **recoverable gap** that is closed, `(classifier − baseline) / (1 − baseline)`: 1.0 is a perfect
-read-out and 0.0 is a trunk adding nothing a constant did not already give. Countries with under
-2% headroom are excluded as undefined.
+the **recoverable gap** closed: 1.0 is a perfect read-out and 0.0 is a representation adding
+nothing a constant already gave. Negative means the probe fits noise.
 
 | | ctrl 80M | ctrl 160M | ctrl 240M | id 80M | id 160M |
 |:---|---:|---:|---:|---:|---:|
-| **influence, gap closed (battlegrounds)** | 16.4% | 18.7% | 20.3% | 15.1% | **21.8%** |
-| influence, gap closed (all 84) | 15.2% | 15.2% | 16.4% | 14.7% | 16.7% |
-| **control, gap closed (battlegrounds)** | 12.5% | 24.3% | 26.0% | 25.6% | **32.7%** |
-| control, gap closed (all 84) | 13.7% | 16.7% | 17.9% | 21.3% | 21.1% |
-| influence R^2, battlegrounds | 0.158 | 0.228 | 0.199 | 0.195 | 0.214 |
-| exact influence, BG (raw) | 76.5% | 76.2% | 77.7% | 73.7% | 75.7% |
-| · best-constant baseline | 68.8% | 67.2% | 67.9% | 65.8% | 66.0% |
-| control correct, BG (raw) | 88.8% | 89.9% | 91.3% | 88.8% | 89.9% |
+| **influence, gap closed (battlegrounds)** | 4.7% | 7.7% | **10.3%** | 3.1% | 10.0% |
+| influence, gap closed (all 84) | 4.0% | 2.0% | 4.8% | 1.7% | 3.3% |
+| **control, gap closed (battlegrounds)** | 24.0% | 40.8% | **43.4%** | 37.2% | 43.0% |
+| control, gap closed (all 84) | 29.7% | 35.4% | 35.3% | 34.0% | 36.3% |
+| exact influence, BG (raw accuracy) | 70.3% | 69.5% | 71.3% | 67.9% | 69.9% |
+| · best-constant baseline | 68.8% | 66.9% | 68.0% | 66.8% | 66.5% |
+| control correct, BG (raw accuracy) | 88.5% | 90.5% | 91.1% | 89.4% | 90.0% |
 | · best-constant baseline | 85.5% | 83.8% | 84.7% | 82.3% | 82.4% |
 
-**The trunk closes about a fifth of the influence gap and a quarter to a third of the control
-gap.** It is not blind -- both beat the constant everywhere -- but four fifths of what is
-recoverable about exact influence is not in the 512 floats every head reads.
+**Exact influence is almost absent from the trunk.** Four to ten percent of the recoverable gap on
+battlegrounds. The raw accuracy column is what makes this concrete: 71.3% against a 68.0% constant
+-- three points for 512 floats of representation.
 
-**Control is recovered better than influence, and improves with compute where influence does
-not.** The control gap closed doubles across the control's own run, 12.5% → 26.0%, while influence
-moves 16.4% → 20.3%. The trunk is learning *who holds what* faster than it learns *by how much* --
-which is the right priority for scoring, and the wrong one for knowing whether a coup or a
-placement flips a country.
+**Control is a different story: a quarter to well over 40%, and it improves sharply with compute**
+where influence barely moves. 24.0% → 43.4% across the control's own run against 4.7% → 10.3%. The
+trunk is learning *who holds what* and not *by how much* -- the right priority for scoring, and
+the wrong one for knowing whether a coup or a placement flips a country.
 
-**Identity helps control, not influence.** At matched budget the identity arm closes more of the
-control gap (25.6% against 12.5% at 80M, 32.7% against 24.3% at 160M) and roughly the same share
-of the influence gap. Identity embeddings name the *country*; they do not carry its *number*.
+**Identity helps control, not influence, and most at low budget.** 37.2% against 24.0% at 80M, a
+13-point gain; by 160M the control has caught up (43.0 against 40.8). Influence is unmoved at both.
+Identity embeddings name the *country*; they do not carry its *number*.
 
-#### It is not a uniform blur — it is regional
+#### Where it is lost: pooling, measured
 
-Share of the influence gap closed, per battleground, with the headroom each had:
+The numbers above say the trunk does not have it; they do not say where it went. Tapping one
+rollout at four points localises it. `raw` is country i's own 26 observation floats -- slot 0 is
+literally `my_influence / 10`, so it is also the check that the probe works at all.
 
-| battleground | headroom | ctrl 80M | ctrl 160M | ctrl 240M | id 80M | id 160M |
-|:---|---:|---:|---:|---:|---:|---:|
-| Japan | 55% | 56% | 81% | **89%** | 76% | 86% |
-| South Africa | 49% | 73% | 79% | 69% | 67% | 68% |
-| North Korea | 71% | 36% | 48% | 52% | 47% | 52% |
-| Iraq | 55% | 49% | 42% | 36% | 20% | 35% |
-| East Germany | 54% | 39% | 32% | 36% | 31% | 34% |
-| Poland | 52% | 23% | 42% | 49% | 17% | 23% |
-| South Korea | 71% | 36% | 19% | 30% | 20% | 27% |
-| **Iran** | 48% | 9% | 17% | 15% | 15% | 19% |
-| **Italy** | 51% | 6% | 3% | 10% | 15% | 31% |
-| **France** | 51% | −5% | −3% | 5% | 25% | 8% |
-| **Pakistan** | 36% | **−11%** | −5% | 3% | 1% | 11% |
-| **Egypt** | 34% | 0% | 5% | 14% | 8% | 19% |
-| Cuba | 22% | −2% | 16% | 11% | 12% | 13% |
-| Mexico | 20% | −2% | 7% | 1% | −3% | 10% |
-| Venezuela | 20% | −2% | 7% | 6% | 2% | 18% |
-| Angola | 17% | 1% | 1% | 1% | 0% | 8% |
-| Zaire | 16% | −1% | 4% | 10% | 2% | 1% |
-| Brazil | 12% | −4% | −5% | −2% | 2% | 15% |
-| Argentina | 10% | −1% | −2% | 0% | −2% | −1% |
+Battlegrounds, share of the influence gap closed, whole games held out:
 
-A negative entry is a probe fitting noise: worse than naming the country's usual value.
+| stage | ctrl 240M | id 160M |
+|:---|---:|---:|
+| `raw` -- country i's 26 observation floats | **85.5%** | 83.6% |
+| `gconv1` -- after one graph convolution | 56.7% | 56.7% |
+| `gconv2` -- after the second, still pre-pooling | **60.8%** | 56.6% |
+| `trunk` -- the 512 floats every head reads | **12.1%** | 13.1% |
 
-**The failure is concentrated, and it is not the countries nobody plays.** Algeria, Saudi Arabia,
-Libya and India have 3-7% headroom -- nothing to recover, because they are empty in almost every
-position, which §21.11 shows from the behavioural side. The interesting failures are the
-**high-headroom countries the trunk still cannot read**: France and Italy at 51%, Iran at 48%,
-Pakistan at 36%, Egypt at 34%. Western Europe, the Middle East and South Asia -- five countries
-that decide three regions -- sit at or below 20% of gap closed in the control at every budget.
+**Pooling is the single largest loss: 61% → 12%, about 49 points in one step.** Mean- and
+max-pooling over 84 countries is where the board goes. The pre-pooling token still holds **five
+times** what the trunk holds.
 
-Against that, Japan at 89% and South Africa at 69% show the representation is capable of holding a
-country precisely. So this is not a width limit or a pooling limit in general; it is specific.
+**The graph convolution costs a quarter before that**, 85.5% → 56.7%, and the second layer adds
+nothing back. Neighbour-mixing smears each country with its neighbours, so even a perfect
+attention read-out over `gconv2` tokens caps near 61%, not 85%.
 
-#### The lead: it tracks stability
+Per country, the same ladder (control 240M, headroom in brackets):
 
-Correlating gap-closed against country properties over the 29 battlegrounds, **stability is the
-one that lines up** -- r = +0.54, and monotone in every step:
+| battleground | raw | gconv1 | gconv2 | trunk |
+|:---|---:|---:|---:|---:|
+| Japan (49%) | 99% | 92% | 97% | **79%** |
+| South Africa (52%) | 98% | 86% | 93% | **71%** |
+| North Korea (67%) | 76% | 65% | 64% | 42% |
+| Poland (47%) | 86% | 50% | 45% | 35% |
+| Iraq (55%) | 90% | 65% | 67% | 32% |
+| South Korea (66%) | 85% | 58% | 58% | 14% |
+| Iran (48%) | 80% | 41% | 45% | 8% |
+| Israel (38%) | 100% | 33% | 57% | 4% |
+| Italy (52%) | 83% | 40% | 45% | **−13%** |
+| Egypt (34%) | 82% | 64% | 63% | **−17%** |
+| Pakistan (38%) | 66% | 45% | 45% | **−22%** |
+| France (33%) | 81% | 63% | 46% | **−41%** |
+
+Only Japan and South Africa survive pooling intact. France, Pakistan, Egypt and Italy are
+recoverable from their own token at 45-63% and are **worse than a constant** in the trunk.
+
+#### It tracks stability
+
+Correlating gap-closed against country properties over the battlegrounds with at least 15%
+headroom, **stability is the one that lines up** -- r = **+0.63**, monotone at every step:
 
 | stability | mean gap closed | battlegrounds |
 |---:|---:|:---|
-| 1 | **4.2%** | Angola, Nigeria, Zaire |
-| 2 | **8.3%** | Algeria, Argentina, Brazil, Egypt, Iran, Italy, Libya, Mexico, Pakistan, Panama, Thailand, Venezuela |
-| 3 | **24.8%** | Chile, Cuba, East Germany, France, India, Iraq, North Korea, Poland, Saudi Arabia, South Africa, South Korea |
-| 4 | **41.0%** | Israel, Japan, West Germany |
+| 1 | **−30.7%** | Angola, Nigeria, Zaire |
+| 2 | **−11.9%** | Brazil, Egypt, Iran, Italy, Mexico, Pakistan, Panama, Thailand, Venezuela |
+| 3 | **+17.0%** | Cuba, East Germany, France, Iraq, North Korea, Poland, South Africa, South Korea |
+| 4 | **+23.3%** | Israel, Japan, West Germany |
 
-By region the same thing appears as South America last (4.4%) and Asia first (28.1%), with Europe
-19.3%, Africa 16.9%, Central America 16.2% and the Middle East 15.5%.
+By region: Asia +18.5%, Europe +1.1%, Middle East +0.6%, Africa −6.8%, Central America −7.9%,
+South America −21.3%.
 
-**A ten-fold difference between stability 1 and stability 4.** The obvious reading -- low-stability
-countries change hands more, so they are simply harder to track -- is contradicted by the other
-correlation in the same fit: gap-closed rises with *headroom* (r = +0.70), so the countries whose
-influence varies most are read **better**, not worse, as a share of what is there to recover.
-Volatility alone does not explain it.
+The obvious reading -- low-stability countries change hands more, so they are harder to track --
+is contradicted by the other correlation in the same fit: gap-closed rises with *headroom*
+(r = +0.72), so the countries whose influence varies most are read **better**, not worse, as a
+share of what is there. Volatility alone does not explain it.
 
-**Treat this as a lead, not a conclusion.** n is 29, and stability is confounded with region and
-with how often a country is contested at all -- the stability-2 row is most of Latin America and
-North Africa, which §21.11 shows are barely played. Adjacency could not be tested: the country
-info exposed to Python carries no adjacency field, so that hypothesis is untested rather than
-rejected. What the table does establish is that the failure has *structure*, and the next
-measurement should separate stability from region rather than add another aggregate.
+**A lead, not a conclusion.** n is 23 after the headroom filter, and stability is confounded with
+region and with how often a country is contested at all. Adjacency could not be tested: the
+country info exposed to Python carries no adjacency field, so that hypothesis is untested rather
+than rejected.
+
+#### What this licenses
+
+An attention block reading the pre-pooling tokens has something real to find -- five times what
+the trunk carries -- so the architecture proposal is aimed at the measured defect rather than a
+guessed one. Two things the ladder adds to it:
+
+1. **The tokens are already damaged.** Attention over `gconv2` caps near 61%. A skip from the raw
+   26 per-country floats into the attention keys and values, or a residual around the graph
+   layers, is what recovers the other quarter -- and it is cheap.
+2. **It predicts what should change.** If the block works, recoverability at the decision point
+   should move from ~12% toward 61%, and toward 85% with the skip. That makes the arm
+   falsifiable by something other than whether Elo happened to go up.
+
 
 ## Agreement with human play
 
