@@ -777,12 +777,31 @@ made every DEFCON-1 rarer by playing more timidly.
 Games also got longer -- mean ply 93.4 to 103.1, final scoring 6.9% to 16.7% -- moving toward the
 human distribution, where about 30% of games go the distance against this control's 7%.
 
-**Two things went the wrong way, and neither is settled by this run.** The anchor win rate fell
-80.6% to 71.4%, and the USSR share rose 47.0% to 63.7%. The anchor number cannot carry a
-conclusion at one seed: two seeds of one recipe differed by 11.8 points on it in the filtering
-arm while being +3 Elo apart head-to-head (§20.7 and the P1 log). The side imbalance is the more
-troubling of the two, because 63.7% is a real move away from the human 49.9% and it is measured
-over the whole run rather than over 500 eval games.
+**And it costs 59 Elo.** Pooled over all sixteen snapshot pairings against the control,
+1,331/3,200 = **41.6%** [39.9, 43.3], or **−59 Elo**. The anchor agrees: 80.6% to 71.4% is about
+−51 Elo on the same scale. Unlike the filtering arm, where the anchor and the head-to-head
+disagreed and the anchor was wrong, here the two independent measures land within 8 Elo of each
+other, so this is a real strength loss rather than seed noise. The USSR share also rose 47.0% to
+63.7%, a move away from the human 49.9%.
+
+**The likely cause is that the window is far wider than the mistake.** The blunder window is
+*turn-scoped* -- `rollout_buffer` pins the blunderer for the whole turn the blunder happened in.
+Measured (§21.1), the fatal card play sits **3-9 micro-actions** from the loss. A turn is up to
+seven action rounds. So the window sets the advantage to `-1 - v_t` across a long stretch of play
+that was mostly fine, and the policy learns to avoid far more than the one card choice that was
+wrong. The rising USSR share is consistent with that: the arm is not making one behaviour rarer,
+it is distorting a whole turn's worth of play.
+
+That reading is testable and the fix is narrow: scope the window to the action round, or to the
+segment from the card play to the terminal, instead of the turn. The turn-scoped form was built
+for *unprovoked* suicides, where the mistake is the final move and the window's width costs
+nothing because the game ends immediately after. For the provoked case the game also ends
+immediately -- but the credited stretch reaches backwards over everything else the player did
+that turn.
+
+**Verdict: do not adopt as it stands.** The behavioural target is reachable -- 13.7% against the
+human 11.7% is the closest this project has come -- but not at this price, and the next attempt
+should narrow the window before anything else.
 
 ## Agreement with human play
 
