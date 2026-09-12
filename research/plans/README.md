@@ -45,6 +45,7 @@ product. The literature behind the ordering is in [`../references.md`](../refere
 | P5 | [oracle critic](P5_oracle_critic.md) | the implemented-but-never-measured privileged critic as a deal-side variance reducer | 1 arm × 2 seeds × 80M | after P2, so it is not confounded |
 | P6 | [attention backbone](P6_attention_backbone.md) | global attention over country + card tokens | 1 arm × 2 seeds × 80M | perturbation probe still flat after P1–P2 |
 | P7 | [human data](P7_human_data.md) | ~3,000 strong one-perspective games: conversion + strength-split instruments; positions as a small start pool; critic-only targets; a §22 replication as the discriminator | conversion now; 3 arms × 2 seeds × 80M | conversion first; the arms slot in once positions exist |
+| P8 | [teach the DEFCON conjunction](P8_teach_the_defcon_conjunction.md) | auxiliary risk head on a label that sees provoked endings; a narrower blunder window | 2 arms × 2 seeds × 80M | none — instruments exist |
 | — | [reserve](reserve.md) | annealed shaping, league, AIVAT evaluation, human-policy anchors, the cloud consolidation run | — | triggered by specific measurements |
 
 Order is by expected information per GPU-hour, and P4 may move ahead of P2 if P0's setup probe
