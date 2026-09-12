@@ -871,6 +871,14 @@ of the window: H2 at 240M manages 73.2%. Do not read it across lineages or budge
 human 11.7% is the closest this project has come -- but not at this price, and the next attempt
 should narrow the window before anything else.
 
+> **Naming, and one thing the old names hid.** Runs are named `<engine><attempt>-<steps>` --
+> see [`run_nomenclature.md`](run_nomenclature.md). H2 is **E2**: it predates the Aldrich Ames
+> and Star Wars mandatory-choice fixes, so it was trained on a different game from every P1 arm,
+> which are **E3**. Every "against H2" figure below is therefore a *cross-engine* comparison,
+> with the reference playing a game it never trained on. The handicap is small -- two rare cards
+> -- but it runs against the reference, so it flatters the E3 arms slightly. In the new naming
+> the control at 80M is `E3-03-80M` and the reference is `E2-02-480M`.
+
 ### 21.3 Rate arms against H2 @480M, not against HeuristicBot
 
 Every P1 and windowing arm was re-rated in **one pool** with H2 @480M, four late snapshots each,
