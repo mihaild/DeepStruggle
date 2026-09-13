@@ -62,6 +62,8 @@ EXCLUDED_PATHS=(
     docs
     .agents
     "$SCRIPT_REL_PATH"
+    "tools/scripts/check_public_hygiene.sh"
+    "tests/training/test_public_hygiene.py"
 )
 
 echo "--> Stripping excluded paths..."
