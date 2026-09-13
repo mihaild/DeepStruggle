@@ -26,7 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 class NeuralBot(BaseBot):
-    """Neural network player driven by ColdWarNet (NashPG/BC weights, supporting V1, V2, and V3 architectures)."""
+    """Neural network player driven by ColdWarNet (NashPG/BC weights).
+
+    The architecture is detected from the checkpoint's own weights, so V1 and V2 both load.
+    Retired architectures are refused outright by `reject_retired_architecture` rather than
+    partially loaded, which would otherwise run a network that is not the one that trained.
+    """
 
     def __init__(
         self,
