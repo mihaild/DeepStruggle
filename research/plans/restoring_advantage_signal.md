@@ -93,3 +93,82 @@ something (79.2% outcome accuracy against a 53.9% base rate, correlation +0.654)
 2. If the signal still collapses, add option 2.
 3. Option 3 is worth doing regardless for the board-sensitivity problem, but it is a bigger change
    and should not be confounded with the first experiment.
+
+
+---
+
+## Revision after checking the history and the prior start-pool result
+
+### Is the runaway new? No -- but it is worse now, and it goes both ways
+
+Side balance read straight from every run's TensorBoard (`endgame_win_rate_us/ussr`, first 40%
+of steps against last 20%), which covers runs whose checkpoints are on retired observation
+layouts and can no longer be loaded. 29 runs had a readable split; **6 swung by 15pp or more**:
+
+| run | steps (M) | US early | US late | swing |
+|:---|---:|---:|---:|---:|
+| p1_categorical_nofilter_VOID_unscaled_target | 80 | 44.7% | 3.6% | **-41.0** |
+| E3-17-22 | 160 | 46.1% | 13.2% | **-32.9** |
+| E3-15-22 | 129 | 48.2% | 26.5% | **-21.7** |
+| E3-13-22 | 80 | 54.0% | 37.0% | -17.1 |
+| **E3-14-22** | 25 | 41.7% | 58.9% | **+17.2** |
+| **E3-14-21** | 80 | 29.1% | 63.4% | **+34.3** |
+
+Most other runs drift 3-14pp in the US's disfavour (`p1_scalar_nofilter` at 240M: -13.7). So mild
+drift is old and common; the severe form is not new either, but the two worst non-void cases are
+the two most recent long E3 arms.
+
+**The two positive rows are the important ones.** In E3-14-21 and E3-14-22 it is the *US* that
+runs away, from 29.1% to 63.4%. That rules out any account in which the game, the engine or the
+observation favours the USSR: the dynamic is "whichever side finds something the other has not
+answered", and which side that is varies by run.
+
+### The start-state pool: demoted
+
+`research/log/early_training_signal.md` §3.2-3.3 already settles the first-order question. The
+clean A/B makes the pool arm **worse**: Elo 1645.1 against the control's 1760.2. §3.3 then shows
+the mechanism itself works -- replayed on 1,000 turn-8 positions the pool arm wins 53.4% +/- 2.2%
+-- and that the *allocation* is what fails: +3.4 points in a regime that occurs in 5.6% of
+episodes, paid for with -17.3 points from the opening.
+
+There is a second problem specific to using it for *this*: `is_salvageable` filters on **board
+balance** (|VP| <= 10, |region net| <= 20), not on **outcome uncertainty**. Once one side has a
+strategy that wins from most boards, a position can be perfectly balanced on those two measures
+and still have a 90/10 outcome. The filter is on the wrong quantity for restoring advantage
+variance, and a filter on the right quantity means playing candidate positions out repeatedly and
+keeping the high-entropy ones, which is not cheap.
+
+And the honest answer to "how does it help the asymmetry": **it does not, directly.** It changes
+which positions are sampled, not the quality of the signal within a position. The US's problem is
+that in the positions it actually reaches, no US action is distinguishable from any other.
+
+### The filtering family cannot fix this either
+
+`--adv-filter-quantile` already exists (P1) and drops low-|advantage| samples from the policy
+update. It is the same family as option 4 above, and neither can work here, for one reason:
+**filtering selects relative magnitude within a batch; it cannot create absolute signal.** With
+`adv_std_raw` at 0.049 the surviving top quantile is mostly noise, so filtering concentrates the
+update on the largest noise. Option 4's own variant is undermined the same way -- the natural
+signal for "this position is decided" is |v_win|, and at 160M v_win sits near -0.8 almost
+everywhere, so it would flag everything.
+
+Option 4 is therefore withdrawn.
+
+### Revised order
+
+1. **VP margin in the advantage, centred and saturating.** The only option that creates gradient
+   where the terminal signal gives none: in a game already lost, losing by 8 rather than 20 is
+   distinguishable, so US actions become comparable to each other again. Centring on the critic's
+   own predicted VP is what stops it becoming "chase VP", and saturation caps what one large swing
+   is worth -- which also defuses the Europe-control `+20` spike that makes plain `vp_scale`
+   shaping dangerous.
+2. **Opponent diversity against older snapshots.** Distinct from opponent *prioritisation*, which
+   is pointless in pure self-play -- the US already faces the strongest USSR there is. Diversity is
+   a different claim: against an 80M opponent the trailing side has games it can win, so terminal
+   signal and advantage variance return. The standing risk is that it learns to beat weak opponents
+   rather than the current one.
+3. **Auxiliary per-country control head.** Keeps the trunk learning board structure while `v_win`
+   is flat. Does not itself restore policy gradient, so it is a complement, not a fix.
+4. ~~Downweighting decided positions~~ -- withdrawn, see above.
+5. ~~Start-state pool~~ -- demoted; measured harmful as configured, and filters on the wrong
+   quantity for this purpose.
