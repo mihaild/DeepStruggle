@@ -509,3 +509,83 @@ From *Accelerating Self-Play Learning in Go* (Wu, 2019):
   observation change, so it costs no checkpoint compatibility.
 * **Reduced visits in dominated positions** and downweighting resign-worthy positions: relevant to
   the same saturation problem, less directly applicable without search.
+
+## The critic collapses to the base rate, and that is the whole mechanism
+
+### `explained_variance` cannot be used to judge this critic
+
+`rollout_buffer` builds the GAE return as `returns_win[t] = last_gae + v_t`, so `G - V = A`
+**exactly** and therefore `EV = 1 - Var(A)/Var(G)`. A critic whose advantages collapse scores near
+1.0 *by construction*. The 0.996 recorded at 160M is the advantage collapse restated, not
+independent evidence of a good critic, and the two move together across the run because they are
+the same quantity. Pinned by `test_explained_variance_is_circular_by_construction`.
+
+### The non-circular test: does `v_win` predict who actually wins?
+
+Against two baselines that require no learning -- the base rate (always predict the more frequent
+winner) and the sign of the VP track.
+
+| | 80M | 160M |
+|:---|---:|---:|
+| US win rate in the sample | 53.9% | 12.7% |
+| base-rate accuracy | 53.9% | **87.3%** |
+| VP-sign accuracy | 66.8% | 66.0% |
+| **critic accuracy** | **79.2%** | **87.5%** |
+| critic correlation with outcome | **+0.654** | **+0.264** |
+
+At 80M the critic is genuinely good: 79.2% against a 53.9% base rate, and **66.2% at turn 1** --
+it calls the winner from the opening position well above chance. At 160M it beats the base rate by
+**0.2 percentage points**, and per turn it is 85.9 vs 85.8, 85.7 vs 85.8, 88.9 vs 88.9. It has
+degenerated into "predict the USSR" and its correlation with the outcome has fallen by more than
+half. **At 160M the critic has learned nothing the base rate does not already say.**
+
+### Why that makes advantages vanish
+
+With `V` near-constant at the base rate and the outcome 90/10, `delta_t = r_t + gamma*V' - V` is
+near zero at every non-terminal step, and at the terminal step it is `r_T - V ~ -1 - (-0.87)`.
+Small everywhere. So the collapse is self-consistent: a dominant strategy makes outcomes
+predictable, a critic minimising loss on predictable outcomes needs no discrimination, and a
+critic with no discrimination produces no advantage. Learning stops for **both** sides -- which is
+what the per-side figures show (US std 0.048, USSR 0.037 at 140M) -- and the side sitting on a
+winning strategy loses nothing by freezing, while the side that needs to change has nothing left
+pushing it anywhere.
+
+### Where it breaks
+
+`adv_std_raw` across the run (192 envs x 128 steps per checkpoint):
+
+| steps (M) | 5 | 20 | 35 | 50 | 65 | 80 | 95 | 110 | 125 | 140 | 155 | 160 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| adv_std_raw | 0.247 | 0.248 | 0.179 | 0.180 | 0.289 | 0.210 | 0.179 | 0.269 | **0.111** | **0.043** | **0.030** | 0.052 |
+| explained var | 0.65 | 0.65 | 0.87 | 0.74 | 0.82 | 0.77 | 0.90 | 0.84 | 0.98 | 0.997 | 0.999 | 0.996 |
+
+Noisy but level through 110M, then a hard break: it falls 6x between 110M and 155M. That is the
+same window as the Europe-control discovery and the USSR win-rate spike.
+
+## Does the critic read the hand? Yes -- more than it reads the board
+
+`ai/eval/card_sensitivity.py`. Each perturbation is applied to a clone and only the value head is
+read. The null control must be exactly 0 and the board perturbation supplies the scale, without
+which a `|dv|` is uninterpretable.
+
+| perturbation | 80M | 160M |
+|:---|---:|---:|
+| null (nothing changed) | 0.0000 | 0.0000 |
+| hand replaced with random draw-deck cards | 0.0977 | 0.0279 |
+| all 7 scoring cards forced into hand | 0.2473 | 0.0497 |
+| +4 influence in a European battleground | 0.0940 | 0.0198 |
+| **ratio hand / board** | **1.04** | **1.41** |
+
+So the answer to "does the critic look at cards" is an emphatic yes, and it distinguishes *which*
+cards -- forcing all seven scoring cards into hand moves the value 2.5x as far as a random hand.
+It is at least as sensitive to the hand as to a four-influence swing in West Germany, France or
+Italy, and at 160M half again more so. This supports reading part of the zero-sum residual as
+information rather than error, even though the residual itself was measured not to track hand size.
+
+It also sharpens the earlier finding rather than contradicting it: the critic's *board* sensitivity
+is genuinely the weaker of the two.
+
+And note the column-wise collapse. Every perturbation moves the 160M critic about **5x less** than
+the 80M one -- 0.098 to 0.028, 0.094 to 0.020. The value function has gone flat with respect to
+everything, which is the same fact as the base-rate degeneration and the advantage collapse, seen
+from a third direction.
