@@ -74,6 +74,9 @@ class RolloutBuffer:
 
         self.step = 0
         self.full = False
+        #: Pre-normalisation advantage statistics split by acting side (US = +1, USSR = -1),
+        #: filled by compute_gae. Empty until then.
+        self.side_advantage: Dict[str, Dict[str, float]] = {}
         # Standard deviation of the advantages before per-rollout normalisation, kept
         # for diagnostics (post-normalisation std is ~1.0 by construction).
         self.raw_advantage_std = 0.0
@@ -280,11 +283,29 @@ class RolloutBuffer:
                 curr_vp_norm * 0.1 + 0.9 * non_terminal * next_ret_vp
             )
 
-        # Normalize advantages per rollout batch
+        # Normalize advantages per rollout batch.
+        #
+        # This is ONE mean and ONE std over both sides' transitions together. In a game whose
+        # self-play win rate has gone lopsided that is the place to look first: if the value
+        # head is well calibrated per role the two sides are already centred and mixing them
+        # is harmless, but if one side's advantages carry a systematically different mean or a
+        # much smaller spread, the shared statistics bias its updates or shrink its signal
+        # relative to the other side's. Which of those is happening is an empirical question,
+        # so the per-side figures are recorded below rather than assumed either way.
         flat_adv = self.advantages.view(-1)
         mean_adv = flat_adv.mean()
         std_adv = flat_adv.std() + 1e-8
         self.raw_advantage_std = float(std_adv)
+
+        flat_players = self.players.view(-1)
+        for tag, code in (("us", 1), ("ussr", -1)):
+            sel = flat_adv[flat_players == code]
+            self.side_advantage[tag] = {
+                "n": int(sel.numel()),
+                "mean": float(sel.mean()) if sel.numel() else 0.0,
+                "std": float(sel.std()) if sel.numel() > 1 else 0.0,
+            }
+
         self.advantages = (self.advantages - mean_adv) / std_adv
 
     def diagnostics(self) -> Dict[str, float]:
@@ -295,12 +316,23 @@ class RolloutBuffer:
         """
         adv = self.advantages.detach().reshape(-1)
         near_zero = (adv.abs() < NEAR_ZERO_ADVANTAGE_EPS).float().mean() if adv.numel() > 0 else torch.zeros(())
-        return {
+        out = {
             "explained_variance": explained_variance(self.returns_win, self.values_win),
             "adv_std": float(adv.std()) if adv.numel() > 1 else 0.0,
             "adv_std_raw": self.raw_advantage_std,
             "adv_frac_near_zero": float(near_zero),
         }
+        # Per-side, pre-normalisation. `adv_mean_*` near zero means the value head has
+        # already centred that role and the shared mean is harmless; a gap between the two
+        # `adv_std_*` means the shared divisor is rescaling the two sides' signals unequally.
+        for tag in ("us", "ussr"):
+            side = self.side_advantage.get(tag)
+            if side is None:
+                continue
+            out[f"adv_mean_{tag}"] = side["mean"]
+            out[f"adv_std_{tag}"] = side["std"]
+            out[f"adv_n_{tag}"] = float(side["n"])
+        return out
 
     def priority_indices(self, alpha: float) -> torch.Tensor:
         """Sampling order weighted toward transitions whose outcome swung hardest.

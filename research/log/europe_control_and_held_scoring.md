@@ -373,3 +373,59 @@ by USSR-side trajectories, so US-side behaviour gets little useful gradient and 
 reframes the earlier recommendation -- the question is not whether the US has had *enough* steps
 to learn the counter, but whether a training signal in which it wins 10% of games can teach it
 anything at all.
+
+## The advantage signal collapses, and that is the actual pathology
+
+Two hypotheses for the US-side regression were tested against a real rollout
+(`RolloutBuffer.diagnostics`, now reporting per-side pre-normalisation statistics; 256 envs x
+128 steps, ~33k transitions per checkpoint).
+
+**Hypothesis 1, that the shared advantage normalisation biases the sides: refuted.**
+`rollout_buffer.compute_gae` normalises with one mean and one std over both sides' transitions
+together. Measured, the two sides are already centred and equally spread:
+
+| checkpoint | US mean | USSR mean | US std | USSR std | std ratio |
+|:---|---:|---:|---:|---:|---:|
+| 40M | +0.023 | +0.024 | 0.252 | 0.269 | 1.07 |
+| 80M | -0.009 | +0.020 | 0.192 | 0.213 | 1.11 |
+| 160M | +0.013 | -0.003 | 0.049 | 0.051 | 1.04 |
+
+So **Role-conditioned Advantage Estimation would fix nothing here.** RAE addresses a scalar EMA
+baseline that cannot represent two roles; this codebase has a learned critic reading a
+perspective-aligned observation, which already centres each role. The published result does not
+transfer, and the measurement is what says so.
+
+**Hypothesis 2, that the signal vanishes: confirmed, and it is severe.**
+
+| checkpoint | explained variance | advantage std (pre-norm) |
+|:---|---:|---:|
+| 40M | 0.740 | 0.257 |
+| 80M | 0.789 | 0.211 |
+| 160M | **0.996** | **0.049** |
+
+By 160M the critic explains **99.6%** of the return variance and the true advantage spread has
+collapsed **5x**. With the outcome 90/10 the winner is predictable from early in the game, so
+`A = R - V` goes to zero almost everywhere. The per-rollout normalisation then divides by that
+tiny std and rescales everything back to unit variance -- so whatever residual *noise* the GAE
+estimate carries is amplified to the magnitude the real signal had at 40M, and the policy update
+consumes mostly noise.
+
+This explains both halves of the behavioural finding. The USSR sits at a local optimum that keeps
+winning and needs no gradient to stay there; the US has no gradient holding it in place, so it
+drifts -- which is exactly the profile measured earlier (France 0.172 -> 0.177 -> 0.096).
+
+**The existing diagnostic cannot see this.** `adv_frac_near_zero` is computed *after*
+normalisation, so it reads 0.012, 0.012, 0.014 across the three checkpoints -- flat and healthy
+looking -- while the underlying signal falls by 5x. `adv_std_raw` was already recorded and is the
+number that shows it. Per-side means and stds are now recorded too.
+
+### What this implies for the remedy
+
+It reframes opponent-pool methods. Sampling opponents you lose to is pointless in pure self-play
+against the current policy -- the US already faces the strongest USSR there is. The reason a
+league or historical-snapshot pool would help is different: **opponent diversity makes the outcome
+less predictable, which restores advantage variance.** A US that sometimes faces a 40M USSR
+without the Europe attack has games it can win, and `A` becomes non-zero again.
+
+That also predicts the cheapest check: if `adv_std_raw` recovers when a fraction of games are
+played against older snapshots, the mechanism is right.
