@@ -429,3 +429,83 @@ without the Europe attack has games it can win, and `A` becomes non-zero again.
 
 That also predicts the cheapest check: if `adv_std_raw` recovers when a fraction of games are
 played against older snapshots, the mechanism is right.
+
+## Correction: the zero-sum residual is not "pure model error"
+
+An earlier section called `v(s, US) + v(s, USSR)` pure model error. That is wrong as stated.
+Twilight Struggle is an imperfect-information game: each perspective sees its own hand, so the
+two evaluations condition on **different information sets**, and a nonzero residual is expected.
+Holding a scoring card for a region you dominate genuinely raises your value without lowering the
+opponent's estimate, because they cannot see it.
+
+Whether that is what *this* residual is made of is measurable (`ai/eval/value_residual.py`,
+10,240 sampled states from 256 self-play games, E3-17-22 @160M). If the residual were
+information, it should grow with how much is hidden:
+
+| total cards in both hands | n | mean residual | mean abs residual |
+|---:|---:|---:|---:|
+| 0-2 | 373 | +0.016 | 0.056 |
+| 3-5 | 2043 | +0.014 | 0.059 |
+| 6-8 | 2018 | +0.019 | 0.060 |
+| 9-11 | 2037 | +0.019 | 0.060 |
+| 12-14 | 2203 | +0.009 | 0.044 |
+| 15+ | 1566 | +0.004 | 0.043 |
+
+It does not. `corr(|residual|, hand total) = -0.046` -- flat, and if anything slightly *negative*,
+the opposite of the prediction. Splitting by scoring-card asymmetry gives the same answer:
+`corr(residual, scoring gap) = +0.034`, and mean |residual| is 0.049-0.061 across every gap from
+-3 to +3. So the principle is right and the residual in this checkpoint does not appear to be
+made of it: it sits at a roughly constant 0.054 regardless of how much is hidden.
+
+This does not rescue the earlier over-claim, it only bounds it. The right statement is that the
+residual is *mostly* error here, and that any reading of a single state's residual has to clear a
+0.15 sd noise floor first.
+
+## The two sides' gradients do conflict, and the conflict is acquired
+
+Gradient surgery (PCGrad) is motivated only when task gradients genuinely oppose each other.
+Treating "win as US" and "win as USSR" as two tasks sharing one network makes that measurable
+(`ai/eval/side_gradient_conflict.py`): take the policy-gradient direction on each side's
+transitions separately and compare. The surrogate is `-(logp * A)`, which is what PPO's gradient
+reduces to on the first epoch while the importance ratio is still 1.
+
+| checkpoint | cosine(US, USSR) | sd | rollouts conflicting | \|g_USSR\| / \|g_US\| |
+|:---|---:|---:|---:|---:|
+| 40M | **+0.157** | 0.118 | 1 of 4 | 0.60-0.76 |
+| 160M | **-0.096** | 0.142 | **3 of 4** | 0.39-1.05 |
+
+Early in training the two sides mostly **reinforce** each other; by 160M they mostly **oppose**.
+The sign flips over the same window as the behavioural divergence and the advantage collapse.
+
+Note the norms: the US gradient is not small -- it is the *larger* of the two at 160M in three of
+four rollouts. So "the US has no gradient" is wrong; the US has a gradient that is being partly
+cancelled. That is a different problem with a different fix, and it is the one PCGrad addresses.
+
+**Caveat: 4 rollouts per checkpoint, sd ~0.13.** The two means are about two standard deviations
+apart at n=4, which makes this suggestive rather than settled. It is the first of the three
+hypotheses tested here to survive its own measurement, and firming it up is cheap -- more
+rollouts, and intermediate checkpoints to see where the sign crosses.
+
+## KataGo's mechanisms, and which of them transfer
+
+From *Accelerating Self-Play Learning in Go* (Wu, 2019):
+
+* **Adaptive outcome centering** is the score-utility re-centering: "at the start of each search,
+  the utility is re-centered by setting x_0 to the mean of the neural net's predicted score
+  distribution at the root node", with a utility that saturates far from 0 so the incentive stays
+  on realistic marginal gains. It is a *search* mechanism, and this codebase's evaluation path is
+  PIMCTS rather than search-in-training, so it does not transfer directly -- but the principle
+  does, and it is the same principle the advantage collapse needs: re-center the objective on the
+  currently-expected outcome so a decided game still produces gradient.
+* **Komi randomization** -- "komi is randomized by drawing from a normal distribution with mean 7
+  and standard deviation 1", and in handicap games komi is adjusted to compensate the weaker side.
+  This is the closest published analogue to the 90/10 problem: perturb the starting balance so
+  games stay near even and the value target stays informative. The Twilight Struggle analogue is a
+  randomized starting VP or a randomized opening, and it is cheap.
+* **Auxiliary ownership and score targets** -- extra heads predicting who ends up owning each
+  point on the board, used only to sharpen credit assignment. The direct analogue here is a
+  per-country *final control* head, which is exactly the signal the critic was measured to lack:
+  it cannot price control of a European battleground at all. This is an auxiliary loss, not an
+  observation change, so it costs no checkpoint compatibility.
+* **Reduced visits in dominated positions** and downweighting resign-worthy positions: relevant to
+  the same saturation problem, less directly applicable without search.
