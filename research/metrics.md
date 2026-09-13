@@ -1656,6 +1656,43 @@ The open question §21.13 raised is therefore still open. Nothing here shows tha
 information cannot help the policy; it shows that paying 448 floats of global context for it is a
 bad trade.
 
+### 21.16 The same idea built two ways spans 413 Elo
+
+E3-15 is E3-14's per-entity heads as a **residual** on the dense logit, with the correction's
+output layers zero-initialised so the network starts as the dense baseline exactly.
+
+| arm | vs `E3-12-21` | 95% CI | **Elo** | snapshot spread |
+|:---|---:|:---:|---:|---:|
+| `E3-12-21` self-transform | (anchor) | — | **0** | 57 |
+| `E3-12-22` self-transform | 55.2% | [54.0, 56.4] | +36 | 83 |
+| `E3-14-21` per-entity, replacing | 20.8% | [19.8, 21.8] | **−232** | 93 |
+| **`E3-15-21` per-entity, residual** | 73.9% | [72.8, 75.0] | **+181** | 53 |
+
++181 against a snapshot spread of 53, and against a seed gap of 36 in the arm it is anchored on.
+
+**The gap between the two builds is 413 Elo, and the only difference is whether the dense term
+survives.** Both compute a per-entity correction from the same tokens with the same 64-float
+context. E3-14 returned the correction alone, making that 64-float projection the sole path from
+the trunk to any logit; E3-15 adds it to the dense logit, which still reads all 512. The idea was
+never the problem.
+
+**The representation is unchanged, so the gain is in the heads.** Battlegrounds: `gconv1` 95.0,
+`gconv2` 90.8, `trunk` 14.8 -- E3-12-21's 94.3 / 89.2 / 14.3 to within noise. E3-15 reads the same
+trunk as its baseline and plays 181 Elo better, which is the direct confirmation of §21.13's
+claim: the information was present and stranded, and the fix was a path to it rather than more of
+it.
+
+**Both registered predictions held** -- it could not start worse than the dense baseline, and the
+floor was E3-12. Recorded before the run, as with E3-14, whose predictions both failed.
+
+A caution kept from §21.15: E3-14 moved the trunk ladder *up* while halving play, so the ladder is
+reported here and not used to argue the arm is good. The Elo is the argument.
+
+**One seed.** The effect is 3.4x the snapshot spread and the two preceding architecture changes
+were both legible from one seed, so this is reported rather than held -- but E3-15 now becomes the
+recipe everything downstream is measured against, and a baseline resting on one seed is the kind
+of thing §20.7 exists to warn about.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
