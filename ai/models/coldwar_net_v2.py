@@ -164,7 +164,8 @@ class ColdWarNetV2(nn.Module):
                  board_features: int = BOARD_FEATURES,
                  categorical_value: bool = False, value_atoms: int = VALUE_ATOMS,
                  identity_dim: int = 0, self_transform: bool = False,
-                 attn_readout: int = 0, per_entity_heads: int = 0):
+                 attn_readout: int = 0, per_entity_heads: int = 0,
+                 graph_layers: int = 2):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -213,9 +214,23 @@ class ColdWarNetV2(nn.Module):
 
         # 1. Board Graph Encoder (84 nodes x 26 features -> 64)
         self.self_transform = bool(self_transform)
-        self.gconv1 = GraphConvLayer(self.board_features + self.identity_dim, 64,
-                                    self_transform=self.self_transform)
-        self.gconv2 = GraphConvLayer(64, 64, self_transform=self.self_transform)
+        # How far information travels on the map. Adjacency's *mechanical* uses are already
+        # precomputed per country in the observation -- placement legality, coup legality and the
+        # realignment modifier are all slots -- so what the graph adds is strategic reasoning
+        # about neighbourhoods, and that is worth measuring rather than assuming. With a
+        # self-transform the second layer consistently loses per-country influence and has not
+        # been shown to buy anything, so 1 and 0 are the interesting settings. 0 keeps a
+        # per-country encoder and drops adjacency entirely, which isolates the relation itself.
+        self.graph_layers = int(graph_layers)
+        if not 0 <= self.graph_layers <= 2:
+            raise ValueError(f"graph_layers must be 0, 1 or 2; got {graph_layers}")
+        board_in = self.board_features + self.identity_dim
+        if self.graph_layers >= 1:
+            self.gconv1 = GraphConvLayer(board_in, 64, self_transform=self.self_transform)
+        if self.graph_layers >= 2:
+            self.gconv2 = GraphConvLayer(64, 64, self_transform=self.self_transform)
+        if self.graph_layers == 0:
+            self.board_fc = nn.Sequential(nn.Linear(board_in, 64), nn.GELU())
         self.board_proj = nn.Sequential(
             nn.Linear(64 * 2, 256),  # Mean + Max pooling over 84 nodes
             nn.LayerNorm(256),
@@ -489,8 +504,12 @@ class ColdWarNetV2(nn.Module):
         if self.country_identity is not None:
             ids = self.country_identity.weight.unsqueeze(0).expand(batch_size, -1, -1)
             board_nodes = torch.cat([board_nodes, ids], dim=-1)
-        h_board = self.gconv1(board_nodes, self.norm_adj)
-        h_board = self.gconv2(h_board, self.norm_adj)  # (B, 84, 64)
+        if self.graph_layers == 0:
+            h_board = self.board_fc(board_nodes)       # (B, 84, 64), no adjacency at all
+        else:
+            h_board = self.gconv1(board_nodes, self.norm_adj)
+            if self.graph_layers >= 2:
+                h_board = self.gconv2(h_board, self.norm_adj)  # (B, 84, 64)
         board_mean = torch.mean(h_board, dim=1)  # (B, 64)
         board_max, _ = torch.max(h_board, dim=1)  # (B, 64)
         e_board = self.board_proj(torch.cat([board_mean, board_max], dim=-1))  # (B, 256)
@@ -697,7 +716,8 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           identity_dim: int = 0,
                           self_transform: bool = False,
                           attn_readout: int = 0,
-                          per_entity_heads: int = 0) -> ColdWarNetV2:
+                          per_entity_heads: int = 0,
+                          graph_layers: int = 2) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device.
 
     The defaults are observation layout v2.3, which is the only layout the engine emits.
@@ -708,6 +728,7 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                          identity_dim=identity_dim,
                          self_transform=self_transform, attn_readout=attn_readout,
                          per_entity_heads=per_entity_heads,
+                         graph_layers=graph_layers,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
                          board_features=board_features,
@@ -872,7 +893,8 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         identity_dim=int(getattr(model, "identity_dim", 0)),
         self_transform=bool(getattr(model, "self_transform", False)),
         attn_readout=int(getattr(model, "attn_readout", 0)),
-        per_entity_heads=int(getattr(model, "per_entity_heads", 0)))
+        per_entity_heads=int(getattr(model, "per_entity_heads", 0)),
+        graph_layers=int(getattr(model, "graph_layers", 2)))
 
 
 def check_checkpoint_layout(state_dict: dict) -> None:

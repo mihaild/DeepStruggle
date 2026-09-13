@@ -206,6 +206,8 @@ def main():
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--self-transform", action="store_true",
                         help="Give each GraphConv layer a second weight matrix applied to the node itself, so a country can be held at full strength instead of averaged with its neighbours. A linear probe recovers a country's exact influence far more often from its raw observation slots than from its post-GraphConv token, and the loss tracks neighbour count.")
+    parser.add_argument("--graph-layers", type=int, default=2, choices=[0, 1, 2],
+                        help="How many graph convolutions over the map adjacency (default 2). Adjacency's mechanical uses -- placement legality, coup legality, the realignment modifier -- are already precomputed per country in the observation, so what the graph adds is strategic reasoning about neighbourhoods. With --self-transform the second layer consistently loses per-country influence without a measured gain, so 1 is worth testing; 0 keeps a per-country encoder and drops adjacency entirely, isolating the relation itself.")
     parser.add_argument("--per-entity-heads", type=int, default=0,
                         help="Width of per-entity policy heads (0 = off; try 64). A card's logit is computed from that card's own token and raw slots, and a country's from that country's, each conditioned on a projection of the trunk; the 18 actions that name no entity stay dense. A country's exact influence is almost entirely recoverable from its own token and almost entirely absent from the pooled trunk, and no read-out ending in one fixed-size summary closed that gap.")
     parser.add_argument("--attn-readout", type=int, default=0,
@@ -263,6 +265,7 @@ def main():
             self_transform=args.self_transform,
             attn_readout=args.attn_readout,
             per_entity_heads=args.per_entity_heads,
+            graph_layers=args.graph_layers,
             description=args.description,
             device=args.device,
             post_tournament=args.post_tournament,

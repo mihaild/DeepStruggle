@@ -1099,6 +1099,7 @@ def train_pipeline(
     self_transform: bool = False,
     attn_readout: int = 0,
     per_entity_heads: int = 0,
+    graph_layers: int = 2,
     drop_static: bool = False,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
@@ -1194,6 +1195,7 @@ def train_pipeline(
         "self_transform": bool(self_transform),
         "attn_readout": int(attn_readout),
         "per_entity_heads": int(per_entity_heads),
+        "graph_layers": int(graph_layers),
         "drop_static": bool(drop_static),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
@@ -1213,7 +1215,8 @@ def train_pipeline(
                                       identity_dim=identity_dim,
                                       self_transform=self_transform,
                                       attn_readout=attn_readout,
-                                      per_entity_heads=per_entity_heads)
+                                      per_entity_heads=per_entity_heads,
+                                      graph_layers=graph_layers)
     else:
         model = create_coldwar_net(dev)
 

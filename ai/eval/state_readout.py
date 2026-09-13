@@ -417,8 +417,12 @@ def collect_board_stages(model: Any, num_envs: int = 128, steps: int = 450, ever
 
     from bindings.ts_env import TsVectorizedEnv, check_obs_width
 
-    if not hasattr(model, "gconv1") or not hasattr(model, "gconv2"):
-        raise TypeError(f"{type(model).__name__} has no graph layers to tap")
+    # A model may carry two graph layers, one, or none (a per-country encoder with no
+    # adjacency). Tap whatever it has rather than assuming two: a depth ablation must still be
+    # measurable on the same ladder as the arms it is being compared against.
+    taps_wanted = [n for n in ("gconv1", "gconv2", "board_fc") if hasattr(model, n)]
+    if not taps_wanted:
+        raise TypeError(f"{type(model).__name__} has no board encoder to tap")
 
     check_obs_width(model)
     device = next(model.parameters()).device
@@ -431,8 +435,7 @@ def collect_board_stages(model: Any, num_envs: int = 128, steps: int = 450, ever
             taps[name] = out.detach()
         return fn
 
-    handles = [model.gconv1.register_forward_hook(hook("gconv1")),
-               model.gconv2.register_forward_hook(hook("gconv2"))]
+    handles = [getattr(model, n).register_forward_hook(hook(n)) for n in taps_wanted]
 
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=525_252)
     obs, masks, _ = env.reset_all()
@@ -451,8 +454,11 @@ def collect_board_stages(model: Any, num_envs: int = 128, steps: int = 450, ever
             if step % every == 0:
                 bf = int(model.board_features)
                 raw = obs_t[:, :84 * bf].view(-1, 84, bf).cpu().numpy()
-                g1 = taps["gconv1"].cpu().numpy()
-                g2 = taps["gconv2"].cpu().numpy()
+                # The last tap is the token the rest of the network actually pools; the first
+                # is one hop in. With a single layer or none they are the same tensor, and the
+                # ladder simply shows no step between them.
+                g1 = taps[taps_wanted[0]].cpu().numpy()
+                g2 = taps[taps_wanted[-1]].cpu().numpy()
                 tk = trunk.cpu().numpy()
                 for i in range(num_envs):
                     st = env.runner.get_state(i)

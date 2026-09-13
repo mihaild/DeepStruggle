@@ -8,6 +8,7 @@ silently be a different network, which has killed runs at their first snapshot.
 """
 from __future__ import annotations
 
+import pytest
 import torch
 
 from ai.models.coldwar_net_v2 import ColdWarNetV2, GraphConvLayer, create_coldwar_net_v2
@@ -159,8 +160,6 @@ def test_shared_actions_still_come_from_the_trunk() -> None:
 
 def test_the_mlp_backbone_refuses_per_entity_heads() -> None:
     """It reads the flat vector and forms no tokens, so the flag would be a silent no-op."""
-    import pytest
-
     from ai.models.coldwar_net_v2 import ColdWarNetMLP
 
     with pytest.raises(ValueError, match="cannot carry per-entity policy heads"):
@@ -233,3 +232,63 @@ def test_only_the_entity_actions_are_corrected() -> None:
             f"actions {lo}..{hi - 1} name no entity and must not be corrected"
     assert not torch.allclose(actual[:, 0:110], dense[:, 0:110], atol=1e-6)
     assert not torch.allclose(actual[:, 119:203], dense[:, 119:203], atol=1e-6)
+
+
+# --- graph depth ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("layers", [2, 1, 0])
+def test_graph_depth_builds_and_runs(layers: int) -> None:
+    """0 keeps a per-country encoder and drops adjacency; 1 and 2 propagate that many hops.
+
+    Adjacency's mechanical uses -- placement legality, coup legality, the realignment modifier --
+    are precomputed per country in the observation, so the graph's remaining job is strategic and
+    its depth is an empirical question rather than a given.
+    """
+    m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, graph_layers=layers)
+    assert hasattr(m, "gconv1") is (layers >= 1)
+    assert hasattr(m, "gconv2") is (layers >= 2)
+    assert hasattr(m, "board_fc") is (layers == 0)
+    m.eval()
+    with torch.no_grad():
+        h = m.extract_features(_obs(2))
+    assert isinstance(h, torch.Tensor) and h.shape == (2, 512)
+
+
+def test_zero_layers_makes_a_country_independent_of_its_neighbours() -> None:
+    """With no adjacency, perturbing a neighbour must not move this country's token at all."""
+    torch.manual_seed(0)
+    bf = ColdWarNetV2.BOARD_FEATURES
+    country, neighbour = 15, 14      # adjacent on the real map
+
+    def neighbour_effect(layers: int) -> float:
+        m = create_coldwar_net_v2("cpu", self_transform=True, graph_layers=layers)
+        m.eval()
+        x = torch.zeros(1, ColdWarNetV2.TOTAL_OBS_SIZE)
+        y = x.clone()
+        y[0, neighbour * bf] = 1.0
+        with torch.no_grad():
+            tok_a, tok_b = m._encode(x)[2], m._encode(y)[2]
+        assert tok_a is not None and tok_b is not None
+        return float((tok_b[0][0, country] - tok_a[0][0, country]).abs().max())
+
+    assert neighbour_effect(0) == 0.0, "a 0-layer board branch still mixes neighbours"
+    assert neighbour_effect(1) > 1e-6, "a 1-layer graph does not propagate from a neighbour"
+
+
+def test_graph_depth_is_detectable_from_a_checkpoint() -> None:
+    import tempfile
+
+    from tools.lib.player_agent import NeuralAgent
+
+    for layers in (0, 1, 2):
+        m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True,
+                                  graph_layers=layers)
+        with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
+            torch.save(m.state_dict(), f.name)
+            agent = NeuralAgent.from_checkpoint(f.name, device="cpu")
+        assert agent.model.graph_layers == layers, f"depth {layers} not recovered"
+
+
+def test_an_impossible_depth_is_refused() -> None:
+    with pytest.raises(ValueError, match="graph_layers must be 0, 1 or 2"):
+        create_coldwar_net_v2("cpu", graph_layers=3)

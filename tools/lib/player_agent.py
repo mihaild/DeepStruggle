@@ -251,13 +251,22 @@ class NeuralAgent:
                 self_transform = any(k.endswith("self_linear.weight") for k in state_dict)
                 ro_q = state_dict.get("ro_query.weight")
                 attn_readout = int(ro_q.shape[0]) if ro_q is not None else 0
+                # Graph depth by weight name: two conv layers, one, or a plain
+                # per-country encoder with no adjacency at all.
+                if any(k.startswith("board_fc.") for k in state_dict):
+                    graph_layers = 0
+                elif any(k.startswith("gconv2.") for k in state_dict):
+                    graph_layers = 2
+                else:
+                    graph_layers = 1
                 pe = state_dict.get("pe_trunk.weight")
                 per_entity_heads = int(pe.shape[0]) if pe is not None else 0
                 model = create_coldwar_net_v2(dev, categorical_value=categorical,
                                               identity_dim=identity_dim,
                                               self_transform=self_transform,
                                               attn_readout=attn_readout,
-                                              per_entity_heads=per_entity_heads)
+                                              per_entity_heads=per_entity_heads,
+                                              graph_layers=graph_layers)
         else:
             model = create_coldwar_net(dev)
 
