@@ -233,3 +233,74 @@ blind spot above.
 consistent with the Italy result; it is not on its own evidence of a systematic side asymmetry.
 Testing that needs the residual measured against European-control state across many games, which
 has not been done.
+
+## The policy wants Europe; the critic never prices it
+
+The critic section above says the value heads cannot resolve a European battleground. The policy
+is a separate head, and at the same decisions it is emphatic. From probe-208, each move's own
+probability under the acting side, and the one-ply critic delta it buys for the mover:
+
+| step | move | own p | rank | uniform | critic dv |
+|---:|:---|---:|:---|---:|---:|
+| 207 | USSR breaks Italy | 0.334 | 1 / 51 | 0.020 | -0.003 |
+| 217 | USSR breaks France | 0.058 | 1 / 51 | 0.020 | **-0.038** |
+| 219 | **US** recontrols France | 0.089 | **3 / 12** | **0.083** | -0.009 |
+| 264 | USSR takes France control | **0.919** | 1 / 47 | 0.021 | -0.045 |
+| 280 | USSR recovers East Germany | 0.104 | 1 / 49 | 0.020 | -0.105 |
+
+Two things at once.
+
+**The policy overrides the critic, and is right to.** Every USSR Europe move has a *negative*
+one-ply critic delta -- at step 217 the alternatives all sit at +0.002 while France is at -0.038 --
+and the policy plays France first anyway, at p=0.919 by step 264. This is not a contradiction:
+the policy is updated by advantage accumulated over episodes, and GAE transmits the terminal
+return whether or not V localises it. The policy learned from *outcomes* that taking Europe wins;
+the critic never learned to *price* the position. Note also that most of these deltas are far
+below the critic's own zero-sum residual (sd 0.153), so "the critic disagrees" is mostly the
+critic having no opinion.
+
+**The US at step 219 is the whole asymmetry in one row.** Recontrolling France ranks 3rd of 12
+legal actions at p=0.089 against a uniform 0.083 -- the US policy is indistinguishable from
+random about retaking a European battleground, while the USSR is at 0.919 about taking one.
+
+### Where the asymmetry comes from (`ai/eval/europe_attention.py`)
+
+Both sides are the same weights on a perspective-aligned observation, so this needs a mechanism.
+Over ~40,000 POINT_NODE decisions from 256 self-play games:
+
+**Not legality.** The US can legally place in West Germany in **58.1%** of its placement
+decisions -- *more* often than the USSR (45.7%). It is not locked out of its own battleground.
+
+**Not a late-game artifact.** Probability mass on re-contesting, when the opponent controls the
+country, bucketed by turn (n in brackets):
+
+| France | T1 | T2 | T3 | T4 | T5 | T7 |
+|:---|---:|---:|---:|---:|---:|---:|
+| US retaking | 0.021 (16) | 0.036 (85) | 0.033 (261) | 0.018 (259) | 0.017 (271) | 0.019 (208) |
+| USSR taking | 0.172 (1179) | 0.136 (1163) | 0.152 (1021) | 0.100 (694) | 0.083 (449) | 0.068 (157) |
+
+The gap is 4-8x at *every* turn, including turns 3-5 where the US has hundreds of such decisions
+and plenty of game left. It is a preference, not a position.
+
+**The country that decides these games is symmetric -- and symmetrically ignored.** West Germany,
+same conditional: US 0.015-0.047 across turns, USSR 0.018-0.041. **Neither side re-contests it.**
+Italy, by contrast, the US does fight for (0.151 at T1 against the USSR's 0.189).
+
+So the dynamic is not "the USSR is more aggressive". It is:
+
+1. Re-contesting an opponent-controlled battleground is uniformly unattractive to this policy --
+   consistent with the 2-Ops-per-point cost and with a critic that cannot price control at all.
+2. Therefore **whoever establishes control first keeps it**, and West Germany is decided early.
+3. France and Italy, which the US *does* start with, are where the remaining asymmetry lives.
+
+**A mechanism the observation makes available.** Board slots 8/9 (superpower adjacency) are
+perspective-relative -- `superpower_adjacent == my_player` / `== opp_player` -- but slots 16-18
+(`in_western_europe`, `in_eastern_europe`, `in_southeast_asia`) are **absolute**: Western Europe
+reads identically to both players. A policy keyed on the absolute flag -- "put influence into
+Western Europe" -- is aggression from the USSR and redundancy from the US, which usually already
+holds those countries. That is consistent with `p | legal` being nearly equal for France
+(US 0.131, USSR 0.126) while the *conditional on opponent control* diverges 6x.
+
+This is a mechanism the representation permits, shown consistent with the numbers. It is not
+established as the cause: that would need an intervention on those slots, which is an observation
+change and therefore not mine to make.
