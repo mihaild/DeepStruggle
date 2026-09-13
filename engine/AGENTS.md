@@ -31,7 +31,6 @@ This directory contains the zero-allocation, high-throughput simulation engine f
 engine/
 ├── CMakeLists.txt              // Builds ts_engine_core plus ts_tests, ts_fuzz, ts_fuzz_events, ts_benchmark
 ├── AGENTS.md                   // Developer and agent documentation (this file)
-├── progress.md                 // Progress report and future work items
 ├── include/ts/                 // Public and internal engine headers
 │   ├── types.hpp               // Enums: Player, Phase, WarEra, CardLocation, DecisionType, ActionType, Region, SubRegion, PlayMode, TimingBranch, OpMode
 │   ├── constants.hpp           // Country IDs, Card IDs (1..110), 64-bit Effect Flags, Bit Masks
