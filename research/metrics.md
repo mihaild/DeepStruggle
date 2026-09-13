@@ -1502,6 +1502,33 @@ That is the case for **per-entity output heads** -- `logit_i = f(token_i, trunk)
 110 card and 84 country actions -- which was deferred as the riskier change and is now the
 indicated one. The ladder gives it a sharp prior: the tokens it would read carry 89%.
 
+#### And it shows up in Elo
+
+Pooled over four late snapshots each, 200 games a side, anchored on the identity control:
+
+| arm | vs anchor | 95% CI | **Elo** | snapshot spread |
+|:---|---:|:---:|---:|---:|
+| `E3-10-21-080M` control | — | — | **0** | 60 |
+| `E3-10-22-080M` control, other seed | 48.2% | [47.0, 49.4] | −12 | 54 |
+| **`E3-12-21-080M` self-transform** | 56.7% | [55.5, 57.9] | **+47** | 47 |
+| `E3-13-21-080M` + attention read-out | 48.8% | [47.6, 50.1] | −8 | 77 |
+
+**The representation fix is worth about +47 Elo**, against a control seed pair 12 apart -- so it
+is outside seed noise, on one seed, with the second pending.
+
+**The read-out costs the entire gain**: −55 relative to E3-12, landing back at the control. It
+adds no information (above) and it ends the trunk in a non-residual `Linear → LayerNorm → GELU`
+after the residual blocks, which breaks the identity path the stack was built around. Both
+reasons point the same way, and the ladder rules out the charitable one.
+
+**This answers the question the arm was posed to answer.** The prediction registered before the
+runs allowed that Elo might not move at all, which would have said per-country influence is not
+what limits play. It moved. Exact per-country influence is worth roughly a doubling's worth of
+Elo -- §21.10 put a budget doubling at +106 -- for one extra weight matrix per graph layer and
+about 17% throughput.
+
+**Adopt `--self-transform`; do not adopt `--attn-readout` in this form.**
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
