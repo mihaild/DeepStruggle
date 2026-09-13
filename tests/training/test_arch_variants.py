@@ -112,10 +112,20 @@ def test_per_entity_heads_are_detectable_and_keep_the_action_space() -> None:
 
 def test_a_country_logit_moves_with_that_country_and_not_its_neighbour() -> None:
     """The whole point. Under dense heads every logit reads one pooled vector, so perturbing
-    country i and country j move logit i by similar amounts. A per-entity head must respond
-    far more to its own country's slots than to another country's."""
+    country i and country j move logit i by similar amounts. A per-entity head must respond far
+    more to its own country's slots than to another country's.
+
+    The correction is zero-initialised, so this is a property of the *trained* path rather than
+    of a fresh model -- at initialisation the network is deliberately the dense baseline exactly
+    (`test_per_entity_heads_start_as_the_dense_baseline`). The weights are given a value here to
+    ask whether the path, once live, is actually local.
+    """
     torch.manual_seed(0)
     m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    for head in (m.pe_country, m.pe_card):
+        out_layer = head[-1]
+        assert isinstance(out_layer, torch.nn.Linear)
+        torch.nn.init.normal_(out_layer.weight, std=0.5)
     m.eval()
     bf = ColdWarNetV2.BOARD_FEATURES
     own, other = 3, 40
@@ -168,3 +178,58 @@ def test_per_entity_checkpoint_round_trips_through_the_loader() -> None:
         agent = NeuralAgent.from_checkpoint(f.name, device="cpu")
     assert agent.model.per_entity_heads == 64
     assert agent.model.self_transform is True
+
+
+def test_per_entity_heads_start_as_the_dense_baseline() -> None:
+    """The residual form's whole point, and the failure the replacing form measured.
+
+    Computing a logit *only* from its entity plus a 64-float projection of the trunk made that
+    projection the sole path from the trunk to that logit, where the dense head reads all 512.
+    Each logit gained its own entity's detail and lost most of its view of the situation, and it
+    cost more than the blindness it fixed. Added instead, with the output layers zeroed, the
+    network begins as the dense baseline exactly and learns a refinement on top -- so it cannot
+    start worse, whatever it learns later.
+    """
+    torch.manual_seed(0)
+    m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    m.eval()
+    obs = _obs(3)
+    with torch.no_grad():
+        h, _attn, tokens = m._encode(obs)
+        dense = m.policy_head(h)
+        actual = m._policy_logits(h, tokens)
+    assert torch.allclose(actual, dense, atol=1e-6), \
+        "the per-entity correction is not zero at initialisation"
+
+
+def test_the_correction_becomes_live_once_trained() -> None:
+    """Zero at init must not mean zero forever -- the path has to carry gradient."""
+    torch.manual_seed(0)
+    m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    out_layer = m.pe_country[-1]
+    assert isinstance(out_layer, torch.nn.Linear)
+    torch.nn.init.normal_(out_layer.weight, std=0.1)
+    m.eval()
+    with torch.no_grad():
+        h, _attn, tokens = m._encode(_obs(2))
+        assert not torch.allclose(m._policy_logits(h, tokens), m.policy_head(h), atol=1e-6)
+
+
+def test_only_the_entity_actions_are_corrected() -> None:
+    """The 18 actions naming no entity must come from the dense head untouched."""
+    torch.manual_seed(0)
+    m = create_coldwar_net_v2("cpu", identity_dim=16, per_entity_heads=64)
+    for head in (m.pe_country, m.pe_card):
+        out_layer = head[-1]
+        assert isinstance(out_layer, torch.nn.Linear)
+        torch.nn.init.normal_(out_layer.weight, std=0.5)
+        torch.nn.init.normal_(out_layer.bias, std=0.5)
+    m.eval()
+    with torch.no_grad():
+        h, _attn, tokens = m._encode(_obs(2))
+        dense, actual = m.policy_head(h), m._policy_logits(h, tokens)
+    for lo, hi in ((110, 119), (203, 212)):
+        assert torch.allclose(actual[:, lo:hi], dense[:, lo:hi], atol=1e-6), \
+            f"actions {lo}..{hi - 1} name no entity and must not be corrected"
+    assert not torch.allclose(actual[:, 0:110], dense[:, 0:110], atol=1e-6)
+    assert not torch.allclose(actual[:, 119:203], dense[:, 119:203], atol=1e-6)

@@ -109,6 +109,7 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 12 | v2 + identity | `--self-transform` | 21, 22 | 80M | `E3-12-2*_<ts>` |
 | 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
 | 14 | v2 + identity | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` |
+| 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M | `E3-15-2*_<ts>` |
 
 Seed `21` is 20260921 and `22` is 20260922.
 
@@ -155,6 +156,22 @@ what the trunk holds -- and the Elo should, because the information now reaches 
 another path. If Elo does not move while a country's logit demonstrably tracks its own influence
 (`tests/training/test_arch_variants.py`), then exact per-country influence is not what the policy
 was missing, and §21.13's +53/+83 came from somewhere else in the representation.
+
+**E3-15** is E3-14 rebuilt as a residual: `logit = dense + per-entity correction`, with the
+correction's output layers zero-initialised so the network *starts* as the dense baseline exactly.
+E3-14 replaced the dense head, which made a 64-float projection the only path from the trunk to
+any logit and cost 219 Elo; here the full trunk still reaches every logit through `base`, and the
+narrow context limits only how much situation the correction itself can see.
+
+Predictions, recorded before the runs:
+
+* It cannot start worse than the dense baseline, so a repeat of E3-14's collapse would mean the
+  correction *learns* something harmful rather than that it begins from a bad place --
+  a different and more interesting failure.
+* The floor is E3-12, which it begins as. The question is only whether the correction adds.
+* No strong prediction on the trunk ladder. E3-14 moved it up while halving play, which was the
+  session's clearest demonstration that a representation probe moving the right way is not
+  evidence a change helped, so the ladder is recorded here and not used to judge the arm.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional

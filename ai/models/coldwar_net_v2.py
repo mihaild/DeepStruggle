@@ -304,6 +304,13 @@ class ColdWarNetV2(nn.Module):
             self.pe_card = nn.Sequential(
                 nn.Linear(64 + self.card_features + self.identity_dim + d, d), nn.GELU(),
                 nn.Linear(d, 1))
+            # Zero the output layers so the correction is exactly 0 at initialisation and the
+            # network begins as the dense baseline rather than as a perturbation of it.
+            for head in (self.pe_country, self.pe_card):
+                out_layer = head[-1]
+                assert isinstance(out_layer, nn.Linear)
+                nn.init.zeros_(out_layer.weight)
+                nn.init.zeros_(out_layer.bias)
 
         self.attn_readout = int(attn_readout)
         if self.attn_readout > 0:
@@ -572,13 +579,27 @@ class ColdWarNetV2(nn.Module):
         ctx = self.pe_trunk(h).unsqueeze(1)
         card_in = torch.cat([h_cards, card_nodes, ctx.expand(-1, 110, -1)], dim=-1)
         country_in = torch.cat([h_board, board_nodes, ctx.expand(-1, 84, -1)], dim=-1)
-        # Concatenated rather than assigned in place, so the shared columns keep their graph.
-        return torch.cat([
-            self.pe_card(card_in).squeeze(-1),        # 0..109
-            base[:, 110:119],                          # play mode, timing, op mode
-            self.pe_country(country_in).squeeze(-1),   # 119..202
-            base[:, 203:212],                          # branch, confirm
+        # A *correction* on the dense logit, not a replacement for it.
+        #
+        # The replacing form was measured and it cost 219 Elo. Routing a logit through
+        # `pe_trunk` alone made a 64-float projection the only path from the trunk to that logit,
+        # where the dense head reads all 512 -- so each logit gained its own entity's detail and
+        # lost seven eighths of its view of the situation. That trade is far worse than the
+        # per-country blindness it was meant to fix.
+        #
+        # Added instead, with the correction's last layer zero-initialised, the network *starts*
+        # as the dense baseline exactly and learns a per-entity refinement on top. The full trunk
+        # still reaches every logit through `base`; the narrow context now limits only how much
+        # situation the correction itself can see.
+        zeros_9 = base[:, 110:119] * 0.0
+        zeros_end = base[:, 203:212] * 0.0
+        correction = torch.cat([
+            self.pe_card(card_in).squeeze(-1),         # 0..109
+            zeros_9,                                    # play mode, timing, op mode: dense only
+            self.pe_country(country_in).squeeze(-1),    # 119..202
+            zeros_end,                                  # branch, confirm: dense only
         ], dim=-1)
+        return base + correction
 
     def forward(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
