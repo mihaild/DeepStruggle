@@ -26,7 +26,7 @@ something:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -67,6 +67,108 @@ def marginal_placement_value(state: ts.GameState, player: ts.Player) -> np.ndarr
         nxt = state.clone()
         nxt.set_country(c, us, ussr)
         out[c] = _net_delta_for(nxt, region, player) - base[region]
+    return out
+
+
+#: Regional status, worst to best, as the engine reports it.
+STATUS_ORDER = ("NONE", "PRESENCE", "DOMINATION", "CONTROL")
+
+COUNTRIES_IN = {r: [c for c in range(84) if ts.MapData.get_country_info(c)["region"] == r]
+                for r in {ts.MapData.get_country_info(c)["region"] for c in range(84)}}
+
+
+def _status(state: ts.GameState, region: Any, player: ts.Player) -> int:
+    s = ts.Scoring.evaluate_region(state, region)
+    raw = s.us_status if player == ts.Player.US else s.ussr_status
+    name = str(raw).rsplit(".", 1)[-1]
+    return STATUS_ORDER.index(name) if name in STATUS_ORDER else 0
+
+
+def _add_one(state: ts.GameState, country: int, player: ts.Player) -> ts.GameState:
+    cs = state.get_country(country)
+    us, ussr = int(cs.us_influence), int(cs.ussr_influence)
+    if player == ts.Player.US:
+        us += 1
+    else:
+        ussr += 1
+    nxt = state.clone()
+    nxt.set_country(country, us, ussr)
+    return nxt
+
+
+def region_investment(state: ts.GameState, player: ts.Player,
+                      max_points: int = 6) -> Dict[Any, Dict[str, float]]:
+    """What a region would pay for *sustained* investment, not for one point.
+
+    A one-step marginal is the wrong measure and says so loudly once you look at what regional
+    scoring is: Presence needs a controlled country, control needs to beat the opponent by the
+    country's stability. So a single influence into a region you are absent from changes nothing
+    and scores zero -- which makes every fresh investment look worthless and only rewards
+    finishing what is already started. Most real regional play takes several rounds to pay.
+
+    Two quantities instead, both from the engine's own scorer:
+
+    * ``vp_at_k`` -- VP gained by spending k points in the region, allocated greedily (each point
+      to whichever country raises the region's score most). This is what an Ops card buys.
+    * ``points_to_next_status`` -- how many points to move up one regional status. `max_points+1`
+      means "further away than this measures", which is itself the answer for a region needing a
+      campaign rather than a card.
+    """
+    out: Dict[Any, Dict[str, float]] = {}
+    for region, members in COUNTRIES_IN.items():
+        base_vp = _net_delta_for(state, region, player)
+        base_status = _status(state, region, player)
+        cur = state
+        gains: List[float] = []
+        to_status = max_points + 1
+        for k in range(1, max_points + 1):
+            best: Optional[ts.GameState] = None
+            best_vp = -1e9
+            for c in members:
+                cand = _add_one(cur, c, player)
+                v = _net_delta_for(cand, region, player)
+                if v > best_vp:
+                    best_vp, best = v, cand
+            if best is None:
+                break
+            cur = best
+            gains.append(best_vp - base_vp)
+            if to_status > max_points and _status(cur, region, player) > base_status:
+                to_status = k
+        out[region] = {
+            "base_vp": base_vp,
+            "base_status": float(base_status),
+            "points_to_next_status": float(to_status),
+            **{f"vp_at_{k}": (gains[k - 1] if k <= len(gains) else float("nan"))
+               for k in range(1, max_points + 1)},
+        }
+    return out
+
+
+def invested_states(state: ts.GameState, player: ts.Player,
+                    points: int = 4) -> Dict[Any, ts.GameState]:
+    """Per region, the board after spending `points` influence there greedily.
+
+    The same walk `region_investment` scores, but returning the resulting positions so the
+    *critic* can be asked what it thinks of them. That is the question the policy's choice
+    distribution cannot answer: whether the network values a region correctly and declines to act,
+    or does not value it at all.
+    """
+    out: Dict[Any, ts.GameState] = {}
+    for region, members in COUNTRIES_IN.items():
+        cur = state
+        for _ in range(points):
+            best: Optional[ts.GameState] = None
+            best_vp = -1e9
+            for c in members:
+                cand = _add_one(cur, c, player)
+                v = _net_delta_for(cand, region, player)
+                if v > best_vp:
+                    best_vp, best = v, cand
+            if best is None:
+                break
+            cur = best
+        out[region] = cur
     return out
 
 

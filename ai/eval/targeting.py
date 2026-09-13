@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 import ts_engine as ts
-from ai.eval.marginal_scoring import marginal_placement_value
+from ai.eval.marginal_scoring import marginal_placement_value, region_investment
 
 
 @dataclass
@@ -69,6 +69,132 @@ class OpStats:
                 "rank_percentile": m(self.percentile),
             })
         return out
+
+
+def region_appetite(model: Any, num_games: int = 192, temperature: float = 0.1,
+                    max_iters: int = 20_000,
+                    min_turn: int = 0,
+                    investment_every: int = 24) -> Dict[str, Dict[str, float]]:
+    """Per region at influence-placement nodes: can it place there, does it, and is it worth it?
+
+    Low placement into a region has three very different explanations, and they are separated
+    here rather than guessed at:
+
+    * **It cannot.** Placement needs adjacency to something the player controls, so a region with
+      no foothold offers no legal targets at all. `legal_share` is that.
+    * **It will not.** `chosen_share / legal_share` is the preference ratio: 1.0 is indifference
+      to the region, below 1.0 is avoidance *given the chance*.
+    * **There is nothing there.** `vp_available` is the engine's true marginal regional VP over
+      that region's legal targets. A region can be legal, ignored, and correctly ignored.
+
+    `min_turn` exists because `vp_available` is the VP a region would pay *now*, while three of
+    the six regions are scored by mid-war cards that are not in the deck early. Under-investing
+    in them on turn 3 may be correct rather than blind, so the comparison has to be repeatable on
+    later turns where those cards are live.
+
+    `vp_available` is the *one-step* marginal and understates a region badly, because Presence
+    needs a controlled country: a single point into a region you are absent from scores zero, so
+    every fresh investment looks worthless and only finishing counts. `vp_at_4` and
+    `points_to_next_status` come from `region_investment` and say what sustained play would buy.
+    They cost about 500 engine evaluations per position, so they are sampled every
+    `investment_every` nodes rather than computed at each.
+
+    The gap worth acting on is a region with legal targets, a preference ratio well under 1, and
+    real VP reachable within a few points.
+    """
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
+
+    check_obs_width(model)
+    device = next(model.parameters()).device
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_games, base_seed=616_000)
+    obs, masks, _ = env.reset_all()
+    finished = [False] * num_games
+    legal_n: Dict[Any, float] = {}
+    chosen_n: Dict[Any, float] = {}
+    vp_avail: Dict[Any, List[float]] = {}
+    vp_taken: Dict[Any, List[float]] = {}
+    turns: List[float] = []
+    inv_vp4: Dict[Any, List[float]] = {}
+    inv_next: Dict[Any, List[float]] = {}
+    nodes = 0
+
+    for _ in range(max_iters):
+        if all(finished):
+            break
+        with torch.no_grad():
+            acts, *_ = model.sample_action(
+                torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device),
+                torch.from_numpy(np.asarray(masks)).to(device), temperature=temperature)
+        a = acts.cpu().numpy().astype(np.int64)
+
+        for i in range(num_games):
+            if finished[i]:
+                continue
+            st = env.runner.get_state(i)
+            if ts.Engine.is_terminal(st):
+                continue
+            ctx = st.ctx()
+            if ctx.decision_type != ts.DecisionType.POINT_NODE:
+                continue
+            if int(ctx.resolving_card) != 0 or int(ctx.op_mode) != int(ts.OpMode.INFLUENCE):
+                continue
+            p = ctx.decision_player if ctx.decision_player != ts.Player.NONE \
+                else st.phasing_player
+            if p == ts.Player.NONE:
+                continue
+            if int(st.turn) < min_turn:
+                continue
+            legal = [c for c in range(84) if masks[i][119 + c]]
+            if len(legal) < 4:
+                continue
+            ma = ts.ActionMask.decode_flat_action(st, int(a[i]))
+            chosen = int(ma.primary_id)
+            if chosen not in legal:
+                continue
+
+            nodes += 1
+            turns.append(float(st.turn))
+            v = marginal_placement_value(st, p)
+            for c in legal:
+                r = ts.MapData.get_country_info(c)["region"]
+                legal_n[r] = legal_n.get(r, 0.0) + 1.0
+                vp_avail.setdefault(r, []).append(float(v[c]))
+            rc = ts.MapData.get_country_info(chosen)["region"]
+            chosen_n[rc] = chosen_n.get(rc, 0.0) + 1.0
+            vp_taken.setdefault(rc, []).append(float(v[chosen]))
+
+            if nodes % investment_every == 0:
+                for r, prof in region_investment(st, p).items():
+                    inv_vp4.setdefault(r, []).append(float(prof["vp_at_4"]))
+                    inv_next.setdefault(r, []).append(float(prof["points_to_next_status"]))
+
+        obs, masks, _, dones, info = env.step(a)
+        for i, r in enumerate(info["ending_reasons"]):
+            if r and not finished[i]:
+                finished[i] = True
+
+    total_legal = sum(legal_n.values()) or 1.0
+    out: Dict[str, Dict[str, float]] = {}
+    for r in legal_n:
+        ls = legal_n[r] / total_legal
+        cs = chosen_n.get(r, 0.0) / max(nodes, 1)
+        out[str(r)] = {
+            "legal_share": ls,
+            "chosen_share": cs,
+            "preference_ratio": cs / ls if ls > 1e-9 else float("nan"),
+            "vp_available": float(np.mean(vp_avail[r])) if vp_avail.get(r) else float("nan"),
+            "vp_taken": float(np.mean(vp_taken[r])) if vp_taken.get(r) else float("nan"),
+            "legal_targets_per_node": legal_n[r] / max(nodes, 1),
+            "vp_at_4": float(np.mean(inv_vp4[r])) if inv_vp4.get(r) else float("nan"),
+            "points_to_next_status": (float(np.mean(inv_next[r]))
+                                      if inv_next.get(r) else float("nan")),
+        }
+    out["_meta"] = {"nodes": float(nodes), "mean_turn": float(np.mean(turns)) if turns else 0.0}
+    return out
 
 
 def _op_label(state: ts.GameState) -> str:

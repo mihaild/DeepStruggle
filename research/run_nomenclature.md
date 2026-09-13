@@ -109,9 +109,9 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 12 | v2 + identity | `--self-transform` | 21, 22 | 80M | `E3-12-2*_<ts>` |
 | 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
 | 14 | v2 + identity | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` |
-| 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M | `E3-15-2*_<ts>` |
+| 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` |
 | 16 | v2 + identity | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` |
-| 17 | v2 + identity | E3-15 recipe, `--graph-layers 0` | 21 | 80M | `E3-17-21_<ts>` |
+| 17 | v2 + identity | E3-15 recipe, `--graph-layers 0` | 21, 22 | 80M, 160M | `E3-17-21_<ts>` |
 
 Seed `21` is 20260921 and `22` is 20260922.
 
@@ -197,6 +197,20 @@ Predictions, recorded before the runs:
   every later experiment cheaper.
 * The `gconv1`/`gconv2` rungs of the trunk ladder are not comparable across depths -- with one
   layer or none they tap the same tensor -- so only `raw` and `trunk` are read across arms.
+
+**Outcome of the depth ablation at 80M, seed 21.** Anchored on E3-17, which has no adjacency at
+all: two layers −59 Elo, one layer −84, and the no-graph arm is also the fastest at 13,863
+steps/s against 12,159. **Removing the map graph is not neutral but positive.** The ordering
+within {1, 2} is not resolved -- 25 Elo against a 100-Elo snapshot spread -- so only `0 > {1, 2}`
+is supported, and no U-shape should be read into it.
+
+E3-17 keeps a per-country encoder, so every country is still encoded from its own observation
+slots and identity embedding. What is gone is *only* the adjacency mixing.
+
+`E3-15-22-160M` and `E3-17-22-160M` re-ask the question at a fresh seed and a longer budget,
+paired so depth stays the only difference. Three things ride on it: whether the result replicates
+on a second seed, whether it survives past the steep part of the budget curve, and which arm
+deserves to be continued further.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional

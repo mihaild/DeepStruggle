@@ -198,3 +198,111 @@ def location_sensitivity(model: Any, states: Sequence[ts.GameState], player: ts.
         res["positions"] = float(n)
         out[str(ts.CardData.get_card_name(card))] = res
     return out
+
+
+def card_swap(model: Any, states: Sequence[ts.GameState], player: ts.Player,
+              cards: Sequence[Tuple[int, Any]] = SCORING_CARDS,
+              temperature: float = 0.1) -> Dict[str, Dict[str, float]]:
+    """Two copies of one position differing only in *which* scoring card is held.
+
+    The cleanest identity test available. Every copy holds exactly one scoring card, the rest in
+    the deck, so "a scoring card is in hand" is constant across the comparison and the only thing
+    that varies is which one it is. If the model places more into Europe when the card it holds is
+    Europe Scoring than when it is Asia Scoring, it has associated the card with the region -- and
+    only the identity embedding can carry that, since the two share a feature vector.
+
+    Reported per card as the mass it draws into its own region while held, minus the mass that
+    same region draws while a different scoring card is held instead.
+    """
+    hand_loc = ts.hand_of(player)
+    per_card: Dict[int, List[Dict[Any, float]]] = {c: [] for c, _ in cards}
+    kept = 0
+
+    for base in states:
+        masses: Dict[int, Dict[Any, float]] = {}
+        for card, _region in cards:
+            st = base.clone()
+            for other, _r in cards:
+                st.set_card_location(other, ts.CardLocation.DRAW_DECK)
+            st.set_card_location(card, hand_loc)
+            m = _region_mass(model, st, player, temperature)
+            if m is None:
+                break
+            masses[card] = m
+        if len(masses) != len(cards):
+            continue
+        for card in masses:
+            per_card[card].append(masses[card])
+        kept += 1
+
+    out: Dict[str, Dict[str, float]] = {}
+    if kept < 5:
+        return out
+    for card, region in cards:
+        held = float(np.mean([m.get(region, 0.0) for m in per_card[card]]))
+        others = [float(np.mean([per_card[o][k].get(region, 0.0) for k in range(kept)]))
+                  for o, _r in cards if o != card]
+        out[str(ts.CardData.get_card_name(card))] = {
+            "positions": float(kept),
+            "region_mass_when_held": held,
+            "region_mass_when_other_held": float(np.mean(others)),
+            "swap_effect": held - float(np.mean(others)),
+        }
+    return out
+
+
+def unknown_to_discard(model: Any, states: Sequence[ts.GameState], player: ts.Player,
+                       cards: Sequence[Tuple[int, Any]] = SCORING_CARDS,
+                       temperature: float = 0.1) -> Dict[str, Dict[str, float]]:
+    """Does a scoring card reaching the discard cool the model's interest in its region?
+
+    While a scoring card sits in the draw deck or the opponent's hand it is unresolved: it may
+    still be played, so the region may still be scored and is worth investing in. Once discarded
+    it cannot score again until the deck is reshuffled, so the same investment is less urgent.
+
+    "Unknown" pools the deck and the opponent's hand because they share exactly that property --
+    out of this player's control and still live. Reported as a difference in differences against
+    the other regions, so a general shift in placement cancels. **Negative is the competent
+    direction.**
+    """
+    opp_loc = ts.hand_of(ts.Player.USSR if player == ts.Player.US else ts.Player.US)
+    places = {"deck": ts.CardLocation.DRAW_DECK, "opp_hand": opp_loc,
+              "discard": ts.CardLocation.DISCARD_PILE}
+
+    out: Dict[str, Dict[str, float]] = {}
+    for card, region in cards:
+        own: Dict[str, List[float]] = {k: [] for k in places}
+        other: Dict[str, List[float]] = {k: [] for k in places}
+        for base in states:
+            got: Dict[str, Dict[Any, float]] = {}
+            for label, loc in places.items():
+                st = base.clone()
+                st.set_card_location(card, loc)
+                m = _region_mass(model, st, player, temperature)
+                if m is None:
+                    break
+                got[label] = m
+            if len(got) != len(places):
+                continue
+            for label, mass in got.items():
+                own[label].append(mass.get(region, 0.0))
+                rest = [v for r, v in mass.items() if r != region]
+                other[label].append(float(np.mean(rest)) if rest else 0.0)
+
+        n = len(own["discard"])
+        if n < 5:
+            continue
+
+        def mean(d: Dict[str, List[float]], k: str) -> float:
+            return float(np.mean(d[k])) if d[k] else float("nan")
+
+        unknown_own = 0.5 * (mean(own, "deck") + mean(own, "opp_hand"))
+        unknown_other = 0.5 * (mean(other, "deck") + mean(other, "opp_hand"))
+        out[str(ts.CardData.get_card_name(card))] = {
+            "positions": float(n),
+            "own_unknown": unknown_own,
+            "own_discard": mean(own, "discard"),
+            "cooling": (mean(own, "discard") - unknown_own)
+            - (mean(other, "discard") - unknown_other),
+        }
+    return out
