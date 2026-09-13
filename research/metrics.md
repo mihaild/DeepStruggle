@@ -1458,6 +1458,50 @@ guessed one. Two things the ladder adds to it:
    falsifiable by something other than whether Elo happened to go up.
 
 
+### 21.13 Fixing the graph layer works; attention-pooling into the trunk does not
+
+Two architecture changes, both aimed at §21.12, both with their predicted effect written down in
+`run_nomenclature.md` before the runs. One prediction held exactly and the other failed, which is
+the more useful of the two outcomes.
+
+* **E3-12** (`--self-transform`) gives each graph layer a second weight matrix applied to the node
+  itself, so a country need not be averaged with its neighbours.
+* **E3-13** (`--self-transform --attn-readout 64`) adds an attention read-out after the residual
+  trunk: the state vector queries the 84 country and 110 card tokens, each concatenated with its
+  raw observation slots, and the result is folded back into the trunk.
+
+Share of the recoverable exact-influence gap, battlegrounds, 80M, seed 21, games held out:
+
+| stage | E3-10 control | E3-12 self-transform | E3-13 + read-out |
+|:---|---:|---:|---:|
+| `raw` | 98.0% | 98.1% | 98.7% |
+| `gconv1` | 60.1% | **94.3%** | **93.8%** |
+| `gconv2` | 63.5% | **89.2%** | **88.5%** |
+| `trunk` | 2.8% | **14.3%** | **14.2%** |
+
+**The self-transform does what it was built to do.** The graph layer went from destroying 38
+points of per-country influence to destroying 4: `gconv1` recovery 60.1% → 94.3%, against a raw
+ceiling of 98%. The mechanism in §21.12 -- one weight matrix for a country and its neighbours,
+self-loop weight `1/(deg+1)` -- was the right diagnosis, and a second weight matrix is the whole
+fix. Per country the effect is uniform rather than concentrated: South Korea 97%, Iraq 100%,
+Italy 94%, Poland 95%, all of which sat between 40% and 67% in the control.
+
+**The attention read-out bought nothing.** E3-13's trunk is 14.2% and E3-12's, with no read-out
+at all, is 14.3%. The entire trunk improvement over the control comes from the tokens being less
+damaged before pooling; the attention block contributes zero.
+
+That is a design error worth naming precisely, because it was mine. **A single-query read-out is
+still a pooling operation.** One query vector over 84 countries returns one weighted average --
+attention pooling instead of mean/max pooling. It is a better average, which is presumably part
+of why 2.8% became 14%, but it cannot be more than an average, and the ladder now shows the
+information is *there*: the token holds 89% and the trunk holds 14%.
+
+**So the bottleneck is the single 512-float vector itself, not how it is filled.** No read-out
+that ends in one fixed-size summary can carry 84 countries' worth of exact influence to a head.
+That is the case for **per-entity output heads** -- `logit_i = f(token_i, trunk)` for each of the
+110 card and 84 country actions -- which was deferred as the riskier change and is now the
+indicated one. The ladder gives it a sharp prior: the tokens it would read carry 89%.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
