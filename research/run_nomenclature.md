@@ -143,6 +143,13 @@ single-query read-out is still a pooling operation: one query over 84 countries 
 weighted average. The token holds 89-91% of the recoverable exact influence and the pooled trunk
 holds 6-14%, so the remaining move is to stop routing the board through the trunk at all.
 
+**Outcome: both halves of the prediction were wrong.** The trunk moved *up* (battleground
+recovery 26.9% against E3-12's 14.3% and 6.1%) and Elo collapsed to **−219** against E3-12-21 --
+below even the E3-10 control. The cause is in the implementation: `pe_trunk` projects the trunk
+512 → 64 before the heads see it, so every action logit lost seven eighths of its view of the
+situation to gain its own country's detail. The idea is untested; this build of it is refuted.
+The residual form (`logit = dense + correction`) is what to try. See `research/metrics.md` §21.15.
+
 Prediction, recorded before the runs: **the trunk ladder should not move** -- nothing here changes
 what the trunk holds -- and the Elo should, because the information now reaches the decision by
 another path. If Elo does not move while a country's logit demonstrably tracks its own influence

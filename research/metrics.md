@@ -1590,6 +1590,72 @@ India result survives because both arms agree and the third disagrees; nothing e
 at turn 8 against the control's 7.05, and South America effectively abandoned (Brazil 99.6%,
 Argentina 94.3%). Its representation and its play agree with each other.
 
+### 21.15 Per-entity policy heads, built wrong: −219 Elo, and why
+
+§21.13 argued that no read-out ending in one fixed-size summary can carry 84 countries to a head,
+and that the remaining move was to stop routing the board through the trunk: compute a country's
+logit from that country's own token. E3-14 does that. Actions 0-109 (cards) and 119-202
+(countries) get a per-entity head; the 18 that name no entity stay dense.
+
+| | vs `E3-12-21` | 95% CI | **Elo** |
+|:---|---:|:---:|---:|
+| `E3-12-21` self-transform | (anchor) | — | **0** |
+| `E3-12-22` self-transform | 54.9% | [53.7, 56.1] | +34 |
+| `E3-10-21` control (no self-transform) | 43.0% | [41.8, 44.2] | −49 |
+| **`E3-14-21` per-entity heads** | 22.1% | [21.1, 23.1] | **−219** |
+
+Worse than the control it was built on top of, by a margin no snapshot spread explains.
+
+**The cause is in the implementation, not the idea.** The head was written as
+
+```python
+self.pe_trunk = nn.Linear(hidden_dim, d)      # 512 -> 64
+ctx = self.pe_trunk(h)
+country_in = cat([country_token, country_raw_slots, ctx])
+```
+
+so **the only path from the trunk to any action logit became 64 floats**, where the dense head
+read all 512. Each logit gained its own country's detail and lost seven eighths of its view of
+the situation. That trade is what −219 measures, and it is why the arm lands below a control that
+at least kept the full trunk.
+
+**The representation went the other way**, which is the tell. Battlegrounds, share of the
+recoverable exact-influence gap:
+
+| stage | `E3-10` control | `E3-12-21` | `E3-12-22` | `E3-14-21` |
+|:---|---:|---:|---:|---:|
+| `gconv1` | 60.1% | 94.3% | 93.4% | **95.4%** |
+| `gconv2` | 63.5% | 89.2% | 84.3% | 88.6% |
+| `trunk` | 2.8% | 14.3% | 6.1% | **26.9%** |
+
+The trunk holds *more* per-country influence than in either E3-12 seed, plausibly because it is
+now under pressure to make that information survive a 64-dim projection. So the arm improved the
+representation and halved the play. **A representation probe moving the right way is not evidence
+the change helped** -- which is worth having measured, since §21.12-13 leaned on those probes to
+choose what to build.
+
+**The prediction was wrong in both halves.** It said the trunk should not move and Elo should
+rise. The trunk moved and Elo collapsed. Registering predictions did its job anyway: it made the
+result legible instead of something to rationalise.
+
+#### What to build instead
+
+A **residual** form, which is strictly better than what was built:
+
+```python
+logit_i = dense_logit_i + per_entity_correction_i
+```
+
+At initialisation the correction is near zero, so the network starts *exactly* as the dense
+baseline and learns a per-entity refinement on top of it. It keeps the full 512-dim context, it
+cannot be worse than dense at initialisation, and it makes the per-entity path an addition rather
+than a replacement. E3-14 instead replaced the baseline outright and cold-started from a
+bottleneck.
+
+The open question §21.13 raised is therefore still open. Nothing here shows that per-country
+information cannot help the policy; it shows that paying 448 floats of global context for it is a
+bad trade.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
