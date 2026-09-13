@@ -304,3 +304,72 @@ holds those countries. That is consistent with `p | legal` being nearly equal fo
 This is a mechanism the representation permits, shown consistent with the numbers. It is not
 established as the cause: that would need an intervention on those slots, which is an observation
 change and therefore not mine to make.
+
+## Correction: the regime split, and where the asymmetry really is
+
+The section above conditioned on "the opponent **controls** the country". That is the wrong
+regime for the question being asked. `get_influence_cost` charges 2 Ops per point only in a
+country the opponent controls; once the USSR has *broken* Italy to 3/3 nobody controls it, and
+the US pays the normal **1 Op per point** to take it back. So "the USSR pays double to break
+while the US will not pay single to restore" is a comparison between two different regimes, and
+the earlier `opp_control` numbers do not measure the second half of it.
+
+The west/east Europe hypothesis is also withdrawn. `in_western_europe` / `in_eastern_europe` serve
+a handful of card events and nothing in scoring -- Europe is one region for scoring -- and the
+earlier data already argued against it: `p | legal` for France was 0.131 (US) against 0.126
+(USSR), which is not what a side-specific regional pull looks like.
+
+Re-measured with `measure_by_regime`, splitting contested into *empty* (opening a front) and
+*both present* (restoring a control the opponent just broke), which is the situation at issue:
+
+| country | side | I hold (1/pt) | empty (1/pt) | **both present (1/pt)** | opp holds (2/pt) |
+|:---|:---|---:|---:|---:|---:|
+| West Germany | US | 0.023 | 0.043 | **0.040** | 0.027 |
+| West Germany | USSR | 0.008 | 0.093 | **0.151** | 0.028 |
+| France | US | 0.093 | 0.194 | **0.099** | 0.021 |
+| France | USSR | 0.030 | 0.138 | **0.206** | 0.132 |
+| Italy | US | 0.046 | 0.193 | **0.240** | 0.098 |
+| Italy | USSR | 0.029 | 0.349 | **0.480** | 0.182 |
+
+In the **identical** regime -- both sides present, neither controls, 1 Op per point -- the USSR is
+**2.0x (Italy), 2.1x (France) and 3.8x (West Germany)** more willing to take the country than the
+US is. Same cost, same board condition, same weights.
+
+The literal form of the claim, "USSR paying 2 Ops beats US paying 1 Op", holds for **France**
+(0.132 breaking against 0.099 restoring) and not for Italy or West Germany. The same-regime
+comparison above is the stronger and cleaner statement.
+
+Note also the `I hold` column: the US consistently puts *more* mass on countries it already
+controls than the USSR does (France 0.093 vs 0.030, West Germany 0.023 vs 0.008). The behavioural
+signature is **the US consolidates, the USSR expands**.
+
+### It is acquired, not structural
+
+The same measurement across the run, as the ratio USSR/US in the both-present regime:
+
+| country | 40M | 80M | 160M |
+|:---|---:|---:|---:|
+| West Germany | **0.43** | 0.69 | **3.82** |
+| France | 0.70 | 0.74 | **2.14** |
+| Italy | 1.02 | 1.29 | **1.94** |
+
+At 40M the asymmetry runs the *other way* -- the US was 2.3x more willing than the USSR to take a
+contested West Germany. It inverts between 80M and 160M, exactly the window in which the
+Europe-control ending rate went from near-zero to 15%.
+
+And the US side does not merely fail to keep up; it **regresses in absolute terms**:
+
+| country | US mass, 40M | 80M | 160M |
+|:---|---:|---:|---:|
+| West Germany | 0.045 | 0.027 | 0.041 |
+| France | 0.172 | 0.177 | **0.096** |
+| Italy | 0.328 | 0.349 | **0.248** |
+
+while the USSR's rises (West Germany 0.019 -> 0.019 -> **0.156**).
+
+So this is not a representational blind spot and not a missing feature. It is a self-play
+co-adaptation failure: one network, and at a 90% USSR win rate the advantage signal is dominated
+by USSR-side trajectories, so US-side behaviour gets little useful gradient and drifts. That
+reframes the earlier recommendation -- the question is not whether the US has had *enough* steps
+to learn the counter, but whether a training signal in which it wins 10% of games can teach it
+anything at all.

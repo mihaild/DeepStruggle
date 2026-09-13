@@ -126,3 +126,86 @@ def measure(model: Any, num_games: int = 128, temperature: float = 1.0,
                             for t in sorted(s["by_turn_n"][c])},
             })
     return {"rows": rows, "decisions": {k: stats[k]["decisions"] for k in stats}}
+
+
+#: The three cost regimes a placement decision can be in, for a given country and mover.
+#: The distinction is the whole point: `get_influence_cost` charges 2 Ops per point only in a
+#: country the *opponent controls*. A country nobody controls costs the normal 1 per point.
+#:
+#:   i_control   -- I control it. Reinforcing, 1 Op/point.
+#:   contested   -- nobody controls it. Taking control costs 1 Op/point.
+#:   opp_control -- the opponent controls it. Breaking costs 2 Ops/point.
+#:
+#: The comparison that matters for "the USSR pays double to break, the US will not pay single to
+#: restore" is USSR mass in `opp_control` against US mass in `contested` -- not the two sides'
+#: `opp_control` numbers, which is a different question and the one measured first.
+#: `contested` is split further, because lumping the two together answers the wrong question:
+#: placing into an empty country is opening a front, while placing into one where both sides
+#: already sit is *restoring* a control the opponent just broke -- the second is what "the US
+#: will not pay the normal price to take it back" is about, and it is a small subset of the first.
+REGIMES = ("i_control", "contested_empty", "contested_both", "opp_control")
+
+
+def regime_of(state: ts.GameState, cid: int, me: Any, opp: Any) -> str:
+    if _controls(state, cid, me):
+        return "i_control"
+    if _controls(state, cid, opp):
+        return "opp_control"
+    c = state.get_country(cid)
+    both = int(c.us_influence) > 0 and int(c.ussr_influence) > 0
+    return "contested_both" if both else "contested_empty"
+
+
+def measure_by_regime(model: Any, num_games: int = 256, temperature: float = 1.0,
+                      sample_every: int = 5, max_iters: int = 4000) -> Dict[str, Any]:
+    """Probability mass on each European battleground, split by who controls it."""
+    import torch
+
+    from bindings.ts_env import TsVectorizedEnv, check_obs_width
+
+    check_obs_width(model)
+    device = next(model.parameters()).device
+    model.eval()
+
+    env = TsVectorizedEnv(num_envs=num_games, base_seed=515_000)
+    obs, masks, _ = env.reset_all()
+
+    n: Dict[Any, int] = {}
+    mass: Dict[Any, float] = {}
+
+    for it in range(max_iters):
+        obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).to(device)
+        mask_t = torch.from_numpy(np.asarray(masks)).to(device)
+        with torch.no_grad():
+            acts, *_ = model.sample_action(obs_t, mask_t, temperature=temperature)
+
+        if it % sample_every == 0:
+            with torch.no_grad():
+                logits, _, _ = model(obs_t, mask_t)
+                probs = torch.softmax(logits, dim=-1).cpu().numpy()
+            for i in range(num_games):
+                st = env.runner.get_state(i)
+                if ts.Engine.is_terminal(st):
+                    continue
+                ctx = st.ctx()
+                if ctx.decision_type != ts.DecisionType.POINT_NODE:
+                    continue
+                p = ctx.decision_player
+                if p == ts.Player.NONE:
+                    continue
+                side = "US" if p == ts.Player.US else "USSR"
+                opp = ts.Player.USSR if p == ts.Player.US else ts.Player.US
+                m = np.asarray(masks[i])
+                for c in EUROPE_BG:
+                    idx = NODE_OFFSET + c
+                    if not m[idx]:
+                        continue  # illegal: not a choice the policy declined
+                    key = (side, NAMES[c], regime_of(st, c, p, opp))
+                    n[key] = n.get(key, 0) + 1
+                    mass[key] = mass.get(key, 0.0) + float(probs[i][idx])
+
+        obs, masks, _, dones, _ = env.step(acts.cpu().numpy().astype(np.int64))
+        if it > 400 and all(bool(d) for d in dones):
+            break
+
+    return {"n": n, "mass": mass}
