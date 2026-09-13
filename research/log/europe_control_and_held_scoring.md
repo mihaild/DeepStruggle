@@ -589,3 +589,42 @@ And note the column-wise collapse. Every perturbation moves the 160M critic abou
 the 80M one -- 0.098 to 0.028, 0.094 to 0.020. The value function has gone flat with respect to
 everything, which is the same fact as the base-rate degeneration and the advantage collapse, seen
 from a third direction.
+
+## It reproduces on E3-15-22: different architecture, different exploit, same collapse
+
+E3-15-22 is the 2-graph-layer arm (E3-17 has 0), trained independently. Its side balance goes the
+same way at the same point:
+
+| steps (M) | US win% | USSR win% |
+|:---|---:|---:|
+| 0-21 | 45.8% | 54.2% |
+| 41-62 | 47.7% | 52.3% |
+| 82-103 | 52.3% | 47.7% |
+| **103-123** | **27.8%** | **72.2%** |
+
+**And it is not Europe control.** That ending is 0.0-0.2% across the whole run; the USSR runs away
+through the ordinary 20 VP route (61.0% of endings in the last band). So the winning strategy is a
+different one, found by a different architecture, and the collapse is identical:
+
+| steps (M) | adv_std_raw | expl var | base rate | critic acc | corr |
+|:---|---:|---:|---:|---:|---:|
+| 5 | 0.209 | 0.537 | 51.2% | 62.1% | +0.334 |
+| 30 | 0.190 | 0.705 | 56.7% | 73.1% | +0.524 |
+| **55** | **0.236** | 0.779 | 56.8% | **77.5%** | **+0.621** |
+| 80 | 0.202 | 0.770 | 70.1% | 80.3% | +0.556 |
+| 105 | 0.175 | 0.913 | 94.1% | 94.4% | +0.429 |
+| **120** | **0.073** | **0.990** | 84.6% | **84.3%** | **+0.102** |
+
+The critic peaks around 55M and then degenerates; by 120M it is **below** the base rate (84.3%
+against 84.6%) and its correlation with the outcome has fallen from +0.621 to +0.102, while
+`adv_std_raw` falls 3x and explained variance climbs to 0.990 exactly as the circularity predicts.
+
+This settles what the pathology is not. It is not the Europe-control exploit, not the graph depth,
+and not one unlucky seed. **It is the self-play dynamic**: whenever one side finds a strategy the
+other has not answered, outcomes become predictable, the critic has no reason to discriminate, the
+advantage vanishes and both policies freeze -- with the side that needed to adapt being the only
+one that loses by it.
+
+It also means the remedy should not be aimed at Europe control specifically, and that any fix can
+be validated on either arm. The instrument is `adv_std_raw` plus critic accuracy against the base
+rate, and both are now recorded.
