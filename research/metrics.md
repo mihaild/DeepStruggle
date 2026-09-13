@@ -1504,28 +1504,36 @@ indicated one. The ladder gives it a sharp prior: the tokens it would read carry
 
 #### And it shows up in Elo
 
-Pooled over four late snapshots each, 200 games a side, anchored on the identity control:
+Both seeds of both arms, pooled over four late snapshots each, 200 games a side, 24 models,
+anchored on the identity control:
 
 | arm | vs anchor | 95% CI | **Elo** | snapshot spread |
 |:---|---:|:---:|---:|---:|
-| `E3-10-21-080M` control | — | — | **0** | 60 |
-| `E3-10-22-080M` control, other seed | 48.2% | [47.0, 49.4] | −12 | 54 |
-| **`E3-12-21-080M` self-transform** | 56.7% | [55.5, 57.9] | **+47** | 47 |
-| `E3-13-21-080M` + attention read-out | 48.8% | [47.6, 50.1] | −8 | 77 |
+| `E3-10-21-080M` control | — | — | **0** | 61 |
+| `E3-10-22-080M` control, other seed | 47.4% | [46.2, 48.6] | −18 | 52 |
+| **`E3-12-21-080M` self-transform** | 57.5% | [56.3, 58.7] | **+53** | 37 |
+| **`E3-12-22-080M` self-transform** | 61.8% | [60.6, 63.0] | **+83** | 94 |
+| `E3-13-21-080M` + attention read-out | 48.0% | [46.8, 49.2] | −14 | 60 |
+| `E3-13-22-080M` + attention read-out | 46.8% | [45.5, 48.0] | −23 | 70 |
 
-**The representation fix is worth about +47 Elo**, against a control seed pair 12 apart -- so it
-is outside seed noise, on one seed, with the second pending.
+**The representation fix is worth +53 and +83 Elo**, both seeds positive against a control seed
+pair 18 apart. Against `E3-12-21` directly, the two controls sit at −56 and −61.
 
-**The read-out costs the entire gain**: −55 relative to E3-12, landing back at the control. It
-adds no information (above) and it ends the trunk in a non-residual `Linear → LayerNorm → GELU`
-after the residual blocks, which breaks the identity path the stack was built around. Both
-reasons point the same way, and the ladder rules out the charitable one.
+**The read-out costs the entire gain**, on both seeds: −14 and −23 against the control, and −67
+and −91 measured directly against `E3-12-21`. It adds no information (above) and it ends the
+trunk in a non-residual `Linear → LayerNorm → GELU` after the residual blocks, which breaks the
+identity path the stack was built around. Both reasons point the same way, and the ladder rules
+out the charitable one.
+
+The seed-22 ladder agrees with seed 21 throughout: `gconv1` 93.4% and 92.1% against the control's
+60.1%, and trunks of 6.1% and 8.0% -- low everywhere, and not systematically higher with the
+read-out than without it.
 
 **This answers the question the arm was posed to answer.** The prediction registered before the
 runs allowed that Elo might not move at all, which would have said per-country influence is not
-what limits play. It moved. Exact per-country influence is worth roughly a doubling's worth of
-Elo -- §21.10 put a budget doubling at +106 -- for one extra weight matrix per graph layer and
-about 17% throughput.
+what limits play. It moved, on both seeds. Exact per-country influence is worth most of a budget
+doubling -- §21.10 puts a doubling at +106 and this is +53 and +83 -- for one extra weight matrix
+per graph layer and about 17% throughput.
 
 **Adopt `--self-transform`; do not adopt `--attn-readout` in this form.**
 

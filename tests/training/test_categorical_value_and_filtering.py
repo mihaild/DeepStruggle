@@ -311,6 +311,13 @@ def test_v_vp_is_normalised_for_both_heads() -> None:
     mask = torch.from_numpy(np.asarray(mask_np))
 
     for categorical in (False, True):
+        # Seed before building. The scalar head's v_vp is a Tanh over random weights, so whether
+        # it happens to exceed 1.0 depends on the initialisation -- which, unseeded, depends on
+        # whatever ran earlier in the same worker. This passed for as long as nothing else in
+        # the file drew from the global RNG first, and started failing when an unrelated test
+        # file was added to the same xdist worker. The contract being asserted is real; the
+        # dependence on draw order was not.
+        torch.manual_seed(20260913)
         net = _net(categorical)
         with torch.no_grad():
             _, v_win, v_vp = net(obs, mask)

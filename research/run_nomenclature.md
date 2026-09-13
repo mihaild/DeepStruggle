@@ -122,10 +122,15 @@ E3-13 adds an attention read-out at the end of the trunk, where the state vector
 country and 110 card tokens -- each concatenated with its raw slots, because the token is itself
 already damaged -- and folds the result back into the trunk.
 
-Predictions were recorded before the runs, so the result cannot be read backwards: E3-12 should
-lift the `gconv` rungs and leave the trunk near zero; E3-13 should lift the trunk toward the
-token's 63%. Elo may not move at all, and that would itself be the finding -- it would say
-per-country influence is not what limits play.
+Predictions were recorded before the runs, so the result could not be read backwards: E3-12
+should lift the `gconv` rungs and leave the trunk near zero; E3-13 should lift the trunk toward
+the token's 63%. Elo may not move at all, and that would itself be the finding.
+
+**Outcome: the first held, the second failed, and Elo moved.** E3-12 lifted `gconv1` recovery from
+60% to 93-94% on both seeds and is worth **+53 and +83 Elo**. E3-13's read-out left the trunk
+where E3-12 already put it and cost the whole gain, **−14 and −23**. A single-query read-out is
+still a pooling operation, so it could not have done otherwise. `--self-transform` is adopted;
+`--attn-readout` is not. See `research/metrics.md` §21.13.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional

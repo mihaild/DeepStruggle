@@ -44,6 +44,8 @@ def test_attention_readout_keeps_the_trunk_width() -> None:
     m.eval()
     with torch.no_grad():
         h = m.extract_features(_obs())
+    # extract_features returns a tuple when asked for attention weights; it is not, here.
+    assert isinstance(h, torch.Tensor)
     assert h.shape == (3, 512)
 
 
@@ -63,7 +65,9 @@ def test_readout_actually_reads_the_board() -> None:
     y = x.clone()
     y[:, : ColdWarNetV2.BOARD_SIZE] += 1.0
     with torch.no_grad():
-        assert not torch.allclose(m.extract_features(x), m.extract_features(y))
+        hx, hy = m.extract_features(x), m.extract_features(y)
+    assert isinstance(hx, torch.Tensor) and isinstance(hy, torch.Tensor)
+    assert not torch.allclose(hx, hy)
 
 
 def test_both_variants_produce_a_usable_policy_and_value() -> None:
