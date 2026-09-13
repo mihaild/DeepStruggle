@@ -1,8 +1,8 @@
 """Any snapshot can be branched from, and asking for one that does not exist says so.
 
 A run used to keep a single resume state, overwritten at every snapshot, so its only branch point
-was its end. That is what stopped a seed replicate of arm E's 160M->240M stretch: the weights were
-there, the optimiser moments were not. The failure mode to guard against now is the opposite one --
+was its end. That is what stopped a seed replicate of a mid-run stretch: the weights were there,
+the optimiser moments were not. The failure mode to guard against now is the opposite one --
 asking to branch at a step count the directory does not hold and silently getting the newest state
 instead, which produces a run that looks entirely normal and answers a different question.
 """

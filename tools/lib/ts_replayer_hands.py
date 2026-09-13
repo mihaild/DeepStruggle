@@ -536,8 +536,8 @@ def _dominated_discard_ops(facts: "_HasTrapDiscards", turn: int, side: str) -> S
     recurring event is never worse than discarding their own or a neutral card of the same
     printed Ops: holding the opponent's means eventually firing it for them, and their own card
     could have been played for their benefit instead. Measured over the corpus, humans respect
-    this without exception -- 0 of 87 trap discards where the log records both cards took the
-    dominated side (research/experiments.md 9.5).
+    this without exception: no trap discard where the log records both cards took the dominated
+    side.
 
     So a discard of an own or neutral card is evidence about the rest of the hand: an opponent
     recurring event at that Ops was very probably not in it. Returned as a preference rather

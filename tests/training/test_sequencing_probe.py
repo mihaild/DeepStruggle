@@ -1,17 +1,17 @@
-"""P0 probe 4, against the position it was written from.
+"""The sequencing probe, against the position it was written from.
 
-`experiments.md` §25: the USSR held UN Intervention, Tear Down this Wall and Grain Sales to
-Soviets at a space box requiring 3 Ops, and spent UN Intervention on Tear Down this Wall — the
-card that could have spaced itself — leaving Grain Sales with one exit fewer. A probe that does
-not catch the case it was written from catches nothing, so that position is the test.
+The USSR held UN Intervention, Tear Down this Wall and Grain Sales to Soviets at a space box
+requiring 3 Ops, and spent UN Intervention on Tear Down this Wall — the card that could have
+spaced itself — leaving Grain Sales with one exit fewer. A probe that does not catch the case it
+was written from catches nothing, so that position is the test.
 
-It is constructed rather than replayed: `data/replays/` is git-ignored, so a test that read the
+It is constructed rather than replayed: saved game logs are git-ignored, so a test that read the
 original self-play log would pass on one machine and fail everywhere else.
 
-§25 says "both US cards are DEFCON-suicide here", and with the revised taxonomy that is now
-true: Tear Down This Wall grants its coup *in Europe*, overriding the DEFCON 2 rule that closes
-the region, so USSR influence in a European battleground exposes it. Before the revision only
-Grain Sales was banned, and this position could fire only the blunter of the two rules.
+Both US cards are DEFCON-suicide here: Tear Down This Wall grants its coup *in Europe*,
+overriding the DEFCON 2 rule that closes the region, so USSR influence in a European battleground
+exposes it. Under a narrower taxonomy only Grain Sales was banned, and this position could fire
+only the blunter of the two rules.
 """
 
 import numpy as np

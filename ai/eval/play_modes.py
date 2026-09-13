@@ -1,9 +1,9 @@
-"""How each card gets spent, per side. An arm-evaluation probe.
+"""How each card gets spent, per side.
 
 At a `SELECT_PLAY_MODE` node the actions are EVENT / OPS / SPACE / PASS, shared by every card.
 There is no per-card row in the output there and, without identity embeddings, no card identity
 in the input either -- so the mode distribution for two cards with the same feature vector is not
-merely similar, it is *the same function*, identical to six decimal places (`metrics.md` §21.4).
+merely similar, it is *the same function*, identical to six decimal places.
 
 That makes this the sharpest available test of what identity embeddings bought. The decision that
 matters is exactly the one that was blind: event-or-ops for a card of your own or a neutral, and
@@ -11,7 +11,7 @@ ops-or-space for an opponent's.
 
 Two readings:
 
-* **Per (card, side)** -- the table a person reads when comparing two arms. 110 x 2 x 4 cells,
+* **Per (card, side)** -- the table a person reads when comparing two models. 110 x 2 x 4 cells,
   which is why this is an arm-evaluation probe and not a training metric: cheap to compute,
   unreadable as 880 TensorBoard curves.
 * **Within-collision-group divergence** -- the scalar. Averaged Jensen-Shannon divergence between

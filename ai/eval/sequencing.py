@@ -1,10 +1,10 @@
-"""P0 probe 4 — disposing of a card you must not play.
+"""Disposing of a card you must not play.
 
-`experiments.md` §25 names turn sequencing as *the* gap to a mediocre human: the model can play
-a tactic when the card is in front of it, and cannot choose which card to spend it on. Nothing
-in `ai/eval/` measured that, which is why this probe exists.
+Turn sequencing is the gap between a trained model and a mediocre human: the model can play a
+tactic when the card is in front of it, and cannot choose which card to spend it on. Nothing
+else in `ai/eval/` measures that, which is why this probe exists.
 
-**The position it comes from** (`h2_160M_selfplay_20260405`, turn 10, USSR to play). The USSR
+**The position it comes from** (turn 10, USSR to play). The USSR
 held UN Intervention, Tear Down this Wall and Grain Sales to Soviets. Both US cards are
 DEFCON-suicide there — that is not the distinction. The distinction is the *exit* each one has:
 

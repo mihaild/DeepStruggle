@@ -77,8 +77,8 @@ def test_the_equivalence_check_is_not_vacuous() -> None:
 
     An equivalence assertion over games that never start, or that all end in the same trivial
     way, would pass no matter what auto-advance did. This repo has already been bitten by
-    diagnostics that reported confident numbers while measuring nothing (research/metrics.md
-    section 1), so the check needs its own check.
+    diagnostics that reported confident numbers while measuring nothing, so the check needs its
+    own check.
     """
     util, vp, turns = _play_out(auto_advance=True)
 

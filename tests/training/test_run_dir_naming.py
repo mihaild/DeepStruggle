@@ -1,10 +1,14 @@
-"""The short name from research/run_nomenclature.md belongs in the directory name.
+"""A run's short name belongs in the directory name.
 
-A directory called `p1_scalar_nofilter` does not say which engine trained it, which seed it used,
-or which row of the nomenclature table it is. Recovering that took a `git merge-base` against two
-commit hashes, and in the meantime a set of cross-engine comparisons was written up as
-same-engine ones. The name is the copy every later command quotes, so it is the copy that has to
-carry it.
+The convention is `<engine>-<attempt>-<seed>` -- an `E`, an engine number, a two-digit attempt
+and a two-digit seed, e.g. `E9-99-01`. A free-form directory name says nothing about which
+engine trained it or which seed it used, and recovering that after the fact takes a
+`git merge-base` against two commit hashes -- long enough that a set of cross-engine comparisons
+once got written up as same-engine ones. The directory name is the copy every later command
+quotes, so it is the copy that has to carry it.
+
+No step budget appears in the name: one directory holds every budget of a lineage, and each
+snapshot's own filename already carries the budget it was taken at.
 """
 from __future__ import annotations
 
@@ -16,8 +20,8 @@ TS = "20260912_181622"
 
 
 def test_run_name_becomes_the_directory_prefix() -> None:
-    assert _resolve_run_dir(None, "E3-12-21", "v2", TS) == \
-        "data/checkpoints/E3-12-21_20260912_181622"
+    assert _resolve_run_dir(None, "E9-99-01", "v2", TS) == \
+        "data/checkpoints/E9-99-01_20260912_181622"
 
 
 def test_without_a_run_name_the_old_default_still_applies() -> None:
@@ -26,20 +30,21 @@ def test_without_a_run_name_the_old_default_still_applies() -> None:
 
 
 def test_an_explicit_output_dir_is_honoured_when_it_carries_the_name() -> None:
-    out = "/workspace/data/checkpoints/E3-12-21_rerun"
-    assert _resolve_run_dir(out, "E3-12-21", "v2", TS) == out
-    assert _resolve_run_dir(out + "/", "E3-12-21", "v2", TS) == out + "/"
+    out = "/tmp/checkpoints/E9-99-01_rerun"
+    assert _resolve_run_dir(out, "E9-99-01", "v2", TS) == out
+    assert _resolve_run_dir(out + "/", "E9-99-01", "v2", TS) == out + "/"
 
 
 def test_a_run_name_the_output_dir_contradicts_is_an_error() -> None:
-    """The quiet version of this writes E3-12-21's weights into a directory named for E3-09."""
+    """The quiet version of this writes one run's weights into a directory named for another."""
     with pytest.raises(ValueError, match="is not in output_dir"):
-        _resolve_run_dir("data/checkpoints/p1_scalar_nofilter", "E3-12-21", "v2", TS)
+        _resolve_run_dir("/tmp/checkpoints/some_training_run", "E9-99-01", "v2", TS)
 
 
-@pytest.mark.parametrize("bad", ["E3-12", "p1_identity", "e3-12-21", "E3-12-21-80M", "3-12-21"])
+@pytest.mark.parametrize("bad", ["E9-99", "some_training_run", "e9-99-01", "E9-99-01-80M", "9-99-01"])
 def test_a_name_that_is_not_the_scheme_is_rejected(bad: str) -> None:
-    """`E3-12-21-80M` is rejected too: one directory holds every budget of a lineage, so a steps
-    field in the directory name is a claim that goes stale the moment the run is continued."""
+    """A trailing step budget is rejected along with the rest: one directory holds every budget
+    of a lineage, so a steps field in the directory name is a claim that goes stale the moment
+    the run is continued."""
     with pytest.raises(ValueError, match="is not <engine>-<attempt>-<seed>"):
         _resolve_run_dir(None, bad, "v2", TS)

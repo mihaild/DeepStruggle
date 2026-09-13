@@ -1,8 +1,8 @@
-"""Encoded behavioural claims from docs/behavioral_test_claims.md.
+"""Encoded behavioural claims: actions a competent player should almost never take.
 
 Only claims whose precondition is mechanically checkable and whose answer key survived
-review are encoded here. Each carries its claim id so a failure points straight back at
-the documented rationale.
+review are encoded here. Each carries its own claim id so a failure names the rationale
+it violates.
 
 Tiers separate two very different kinds of mistake:
 

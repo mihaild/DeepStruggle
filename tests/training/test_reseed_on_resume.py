@@ -73,8 +73,9 @@ class TestReseedOnResume:
             assert _draw_after_load(p, seed=None) == _draw_after_load(p, seed=None)
 
     def test_a_state_predating_the_recorded_seed_honours_an_explicit_one(self) -> None:
-        """Every resume file written before this change has no seed in it, including the 160M
-        checkpoints these experiments branch from. An explicit --seed must still take effect."""
+        """A resume file written before the seed was recorded has no seed in it, and those are
+        exactly the checkpoints a continuation branches from. An explicit --seed must still take
+        effect."""
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "resume_state.pt")
             _write(p, seed=None)

@@ -2,9 +2,8 @@
 
 `trigger_aldrich_ames` opened a SELECT_CARD decision without setting `allow_early_stop`, so it
 inherited whatever the previous decision left there. An inherited 1 makes `generate_flat_mask`
-offer CONFIRM_DONE alongside the cards, turning a required discard into an optional one -- and in
-`data/replays/h2_480M_selfplay_20260502.tslog.json` (step 631) the USSR was offered both US cards
-plus a pass, and took the pass.
+offer CONFIRM_DONE alongside the cards, turning a required discard into an optional one -- a
+self-play game was seen being offered both US cards plus a pass, and taking the pass.
 
 The one case where declining is correct is an empty US hand: there is nothing to discard, the
 event mask finds no legal card, and the mask falls back to pass on its own.

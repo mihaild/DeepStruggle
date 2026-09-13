@@ -2,8 +2,8 @@
 
 A player trapped by Quagmire or Bear Trap must discard, and discarding the opponent's recurring
 event is never worse than discarding their own or a neutral card of the same printed Ops. Over the
-corpus humans respect this without exception -- 0 of 87 trap discards where the log records both
-cards took the dominated side (research/experiments.md §9.5). So a discard of an own or neutral
+corpus humans respect this without exception: no trap discard where the log records both cards
+took the dominated side. So a discard of an own or neutral
 card is evidence that no opponent recurring event of that Ops was in the hand, and the hand solver
 takes it as a preference.
 

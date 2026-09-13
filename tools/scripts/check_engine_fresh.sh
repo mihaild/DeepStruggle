@@ -83,8 +83,8 @@ check_engine_fresh: the engine was rebuilt, so the command was not run.
 Rerun it. Before you trust anything you already have, note that a rebuilt engine may play a
 different game than the one your artifacts were produced under:
 
-  - datasets in the (seed, actions) format silently truncate at the first newly-illegal action
-    (see data/datasets/archive/README.md for what that cost the last one)
+  - datasets in the (seed, actions) format silently truncate at the first newly-illegal action,
+    and can lose most of their decisions without reporting anything
   - tournament results, Elo anchors and diagnostics predate the change and are not comparable
   - checkpoints still load, but were trained against the old decision stream
 

@@ -3,9 +3,9 @@
 Four times in this repository a probe fed a network the wrong observation and nobody noticed,
 because it does not raise: the width was checked at extraction and not at the network, so the
 model read the wrong floats and played near-randomly while returning ordinary-looking numbers.
-`ai/eval/position_diagnostics.py` reported a mean final turn of 1-2 against an actual 6.8 for the
-whole of arm H2, and 0.0 empty battlegrounds at turn 8 -- not because battlegrounds were
-contested but because no game survived to turn 8.
+`ai/eval/position_diagnostics.py` once reported a mean final turn several times below the truth,
+and no empty battlegrounds at all mid-game -- not because battlegrounds were contested but
+because no game in its mis-fed rollouts survived that long.
 
 Two things now stand between that and a repeat, and this file checks both:
 

@@ -5,9 +5,8 @@ A card played for Operations spends its points one at a time, and the engine ask
 which carries no decision: placing two Influence in Angola and one in Zaire is the same play in any
 order. Scoring each point against the exact index the human's sequence happened to hold marks the
 model wrong for reordering a play it agrees with. Roughly a third of human decisions sit in
-multi-point plays, though the correction turns out to be worth about half a point rather than
-several (research/metrics.md §9.11): teacher forcing means a disagreement is usually about
-which countries, not about their order.
+multi-point plays, though the correction turns out to be small: under teacher forcing a
+disagreement is usually about which countries, not about their order.
 
 The same holds for every event that distributes or removes several points across countries:
 Decolonization, De-Stalinization, Colonial Rear Guards, Ussuri River Skirmish, Puppet Governments,

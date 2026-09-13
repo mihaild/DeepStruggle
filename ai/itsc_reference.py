@@ -1,6 +1,6 @@
 """Human reference values from the ITS Junta results database, for plotting beside training.
 
-`/workspace/data/itsc-games` is a scrape of the public game-results table at
+The figures below come from a scrape of the public game-results table at
 twilight-struggle.com — 47,928 digital (Playdek, Deluxe) games, of which **44,136** carry a
 rules ending. Those are the games behind every number here. Excluded: 1,464 forfeits and
 timeouts, which are abandonment rather than a result, and 2,328 rows with neither field.
@@ -9,8 +9,8 @@ Why this corpus and not ts-replayer. The ts-replayer corpus has moves and so is 
 that can train anything, but only 119 of its 274 logs reach a terminal state, and that filter is
 not independent of how the game ended — a game that blows up at turn 6 leaves a log that stops
 mid-turn and lands in the fragment pile, while one that goes the distance is recorded to the end.
-It reports 67.2% of games going the distance against ITS's 29.7%, and DEFCON 1 at 1.7% against
-11.7%, which is not sampling noise at these sizes. See `research/metrics.md` §1.5.1.
+It reports far more games going the distance, and far fewer DEFCON 1 endings, than ITS does --
+gaps too large to be sampling noise at these sizes.
 
 Two cautions on reading a line drawn from these:
 

@@ -121,7 +121,7 @@ def test_the_ussr_may_play_its_own_defcon_cards_for_operations() -> None:
 
 
 def test_the_unconditional_degraders_reach_the_ussr_anywhere() -> None:
-    """Seed 7107 of h2_480M_provoked_* is this game.
+    """Taken from a self-play game that ended this way.
 
     The US took Duck and Cover out of a pile that also held Junta, and the USSR lost from a hand
     holding two safe alternatives. These three degrade from their own text, so where the USSR

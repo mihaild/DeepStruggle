@@ -1,19 +1,19 @@
 """Measures the human ts-replayer corpus on this engine: game arc, forced wins, critic calibration.
 
-Every other arc measurement in `research/experiments.md` (4.5-4.7) was taken on games our own
-agents generated, which leaves one question unanswerable: the missing US late-war recovery could
-be a property of the engine or a property of the agents. Human games are the control that
-separates them -- the same engine, driven by decisions no policy of ours produced.
+The agent-side arc measurements are all taken on games our own agents generated, which leaves
+one question unanswerable: an anomaly such as a missing US late-war recovery could be a property
+of the engine or a property of the agents. Human games are the control that separates them --
+the same engine, driven by decisions no policy of ours produced.
 
 Three measurements, each mirroring an existing agent-side one so the rows can be laid side by
 side:
 
-* **Arc** (against 4.6) -- mean `victory_points` at each turn boundary, US win rate, and win
+* **Arc** -- mean `victory_points` at each turn boundary, US win rate, and win
   rate split by how long the game ran.
-* **Forced wins** (against 4.2/4.4) -- at each human decision, whether the mask held an action
+* **Forced wins** -- at each human decision, whether the mask held an action
   that immediately ends the game in the mover's favour, whether the human took it, and, for
   declines, whether the decliner won anyway.
-* **Critic calibration** (against 4.2) -- the value head's `v_win` on human positions bucketed
+* **Critic calibration** -- the value head's `v_win` on human positions bucketed
   against the mover's actual result, which tests the "systematically optimistic" finding against
   ground truth on positions the agent never generates.
 
@@ -522,11 +522,11 @@ def render_report(m: CorpusMeasurement, checkpoint: Optional[str], model_name: O
     lines: List[str] = []
     add = lines.append
 
-    add("# E2 -- the human corpus on this engine")
+    add("# The human corpus on this engine")
     add("")
-    add("Measured by `ai/eval/human_corpus.py` over every game in "
-        "`data/datasets/ts_replayer/`. Read alongside `research/experiments.md` 4.2, 4.4, "
-        "4.5 and 4.6, whose definitions and table shapes these follow.")
+    add("Measured by `ai/eval/human_corpus.py` over every game in the ts-replayer corpus. "
+        "The definitions and table shapes follow the agent-side arc, forced-win and "
+        "calibration measurements, so the rows can be laid side by side.")
     add("")
 
     # -- corpus accounting ---------------------------------------------------------------

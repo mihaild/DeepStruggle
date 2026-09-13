@@ -123,9 +123,9 @@ GAME_STEMS: Tuple[str, ...] = (
 ) + tuple(f"ending_frac_{k}" for k in tuple(ENDING_REASON_KEYS) + ("defcon1",))
 
 
-#: `<engine>-<attempt>-<seed>` from research/run_nomenclature.md, e.g. `E3-12-21`. The steps
-#: field of the full short name is deliberately absent: one directory holds every budget of a
-#: lineage, and the budget is already in each snapshot's filename.
+#: A run's short name is `<engine>-<attempt>-<seed>`, e.g. `E9-99-01`. A step budget is
+#: deliberately not part of it: one directory holds every budget of a lineage, and the budget is
+#: already in each snapshot's filename.
 RUN_NAME_RE: Final = re.compile(r"^E\d+-\d{2}-\d{2}$")
 
 
@@ -133,9 +133,8 @@ def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],
                      arch: str, timestamp: str) -> str:
     """Where a run writes, with the short name in the directory itself.
 
-    `run_name` is the contract with `research/run_nomenclature.md`. Giving it produces
-    `data/checkpoints/E3-12-21_<timestamp>`, so a directory listing is readable against the table
-    without opening ten `metadata.json` files.
+    Giving `run_name` produces a directory called `<run_name>_<timestamp>`, so a listing of the
+    checkpoint directory identifies each run without opening ten `metadata.json` files.
 
     Passing both is allowed only when they agree. They disagreeing is the failure this is for:
     the short name would then say one thing and the path another, and the path is what every
@@ -143,8 +142,8 @@ def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],
     """
     if run_name is not None and not RUN_NAME_RE.match(run_name):
         raise ValueError(
-            f"run_name {run_name!r} is not <engine>-<attempt>-<seed> (e.g. 'E3-12-21'). "
-            "See research/run_nomenclature.md; add the row before launching the run.")
+            f"run_name {run_name!r} is not <engine>-<attempt>-<seed> (e.g. 'E9-99-01'). "
+            "Register the run under a conforming name before launching it.")
     if output_dir is not None:
         if run_name is not None and run_name not in os.path.basename(output_dir.rstrip("/")):
             raise ValueError(
@@ -511,11 +510,11 @@ def _episode_group_stats(episodes: List[Dict[str, Any]], suffix: str,
     stats[f"mean_ply{suffix}"] = float(np.mean(plies)) if plies else 0.0
     stats[f"median_ply{suffix}"] = float(np.median(plies)) if plies else 0.0
 
-    # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance and
-    # which nothing was tracking during a run. Free here: the episode records carry the winner.
+    # Which side won. Self-play carries a standing USSR imbalance that nothing was tracking
+    # during a run. Free here: the episode records carry the winner.
     if include_outcome:
-        # Which side won, which experiments.md 4.5 records as a standing 60-65% USSR imbalance
-        # and which nothing was tracking during a run. Free here: the episode records carry the
+        # Which side won. Self-play carries a standing USSR imbalance that nothing was tracking
+        # during a run. Free here: the episode records carry the
         # winner. Both sides are emitted rather than only the USSR: us_win_rate is derivable but
         # a dashboard should not make the reader do arithmetic to see the other half.
         winners = [str(ep.get("winner", "")) for ep in episodes]
@@ -595,11 +594,11 @@ _AGREEMENT_SAMPLE = 20_000
 class _HumanInjector:
     """Periodic supervised steps on human play, interleaved with RL.
 
-    A behaviour-cloning warmup is gone within about 2M steps (research/experiments.md §9.1): it is
-    an initialisation, and RL walks away from it. This keeps the signal applied instead of applied
-    once -- and applies it only on human positions, where the corpus actually has an opinion, which
-    a KL term against a human policy would not: that would be evaluated on the states the RL policy
-    visits, where a net trained on 280 games is extrapolating from nothing.
+    A behaviour-cloning warmup washes out early in RL: it is an initialisation, and RL walks away
+    from it. This keeps the signal applied instead of applied once -- and applies it only on human
+    positions, where the corpus actually has an opinion, which a KL term against a human policy
+    would not: that would be evaluated on the states the RL policy visits, where a net trained on
+    a few hundred games is extrapolating from nothing.
 
     `every` is in iterations. Small and often beats large and rare, because anything rarer than the
     washout it is fighting simply lets the policy drift back between doses.
@@ -885,8 +884,8 @@ def evaluate_and_log_snapshot(
         if arch in ("v2", "mlp"):
             # Shaped from the model being evaluated, not from the factory defaults. The card
             # block width and whether the history branch exists are both configurable now, and a
-            # frozen copy built at defaults simply fails to load a v2.1 policy -- which is how
-            # arm E died on its first snapshot rather than at startup.
+            # frozen copy built at defaults simply fails to load a configured policy -- and it
+            # fails at the first snapshot rather than at startup, hours in.
             # Every dimension read off the model. Listing them by hand has failed twice.
             frozen_net = create_like(model, dev)
         else:
@@ -1135,10 +1134,10 @@ def train_pipeline(
         np.random.seed(seed & 0xFFFFFFFF)
     env_base_seed = 12345 if seed is None else int(seed)
 
-    # The short name from research/run_nomenclature.md goes in the directory name, not only in
-    # metadata. A directory called `p1_scalar_nofilter` does not say which engine it was trained
-    # on, which seed it used, or which row of the table it is -- and that is how a set of
-    # cross-engine comparisons came to be written up as same-engine ones.
+    # The run's short name goes in the directory name, not only in metadata. A free-form
+    # directory name does not say which engine the run was trained on or which seed it used --
+    # and that is how a set of cross-engine comparisons came to be written up as same-engine
+    # ones.
     out_dir = _resolve_run_dir(output_dir, run_name, arch, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -1161,8 +1160,8 @@ def train_pipeline(
     metadata_path = os.path.join(out_dir, "metadata.json")
     metadata_info = {
         "run_id": os.path.basename(out_dir),
-        # The row of research/run_nomenclature.md this run is. None for a run launched before
-        # the field existed, or launched without it -- which is itself worth being able to see.
+        # The run's registered short name. None for a run launched before the field existed, or
+        # launched without it -- which is itself worth being able to see.
         "run_name": run_name,
         "arch": arch,
         # Recorded, not chosen. There is one observation layout; the field stays so a run's
@@ -1180,10 +1179,10 @@ def train_pipeline(
         "decisiveness_turns": decisiveness_turns,
         "snapshot_interval_seconds": snapshot_interval_seconds,
         "num_envs": num_envs,
-        # The hyperparameters that distinguish one arm from another. Without these an ablation
-        # is indistinguishable from its control in the record: arm I (--eta 0, the NashPG KL
-        # penalty off) wrote metadata identical to arm H2's apart from the description, and the
-        # description is prose nobody can filter on.
+        # The hyperparameters that distinguish one run from another. Without these an ablation is
+        # indistinguishable from its control in the record -- an `--eta 0` run once wrote metadata
+        # identical to its control's apart from the free-text description, and prose is not
+        # something a later query can filter on.
         "train_steps": train_steps,
         "eta": eta,
         "vf_coef": vf_coef,
@@ -1340,8 +1339,7 @@ def train_pipeline(
         if snapshot_every_steps > 0:
             # Said outright. The derived form below works out an interval from two *time* flags
             # even though the budget is in steps, which is indirect enough that landing a
-            # snapshot on a chosen step count means solving for it -- see the 78M snapshot in
-            # research/experiments.md.
+            # snapshot on a chosen step count means solving for it.
             eval_every_steps = int(snapshot_every_steps)
         else:
             evals_planned = max(1, duration_seconds // max(1, snapshot_interval_seconds))
@@ -1514,11 +1512,11 @@ def train_pipeline(
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(step_metrics) + "\n")
 
-        # Indexed by environment steps, not iteration. Every experiment here is budgeted and
-        # compared by --train-steps (metrics.md 6), and iteration count depends on --num-envs
-        # and rollout length, so two directly comparable arms would sit on different x-axes.
-        # The end-turn distribution, not just its mean: a mean of 6.8 is either most games
-        # ending near turn 7 or a mixture of turn-3 blowups and full-length games, and only the
+        # Indexed by environment steps, not iteration. Runs are budgeted and compared by
+        # --train-steps, and iteration count depends on --num-envs and rollout length, so two
+        # otherwise comparable runs would sit on different x-axes.
+        # The end-turn distribution, not just its mean: one mean end turn is either most games
+        # ending near it or a mixture of early blowups and full-length games, and only the
         # second is what the human corpus looks like.
         _finished = iteration_metrics.get("completed_episodes", [])
         if _finished:

@@ -6,12 +6,14 @@ A complete AI, simulation engine, web workbench, and reinforcement learning trai
 
 This repository is developed with heavy usage of AI. I have reviewed parts of code, but not all of it, neither documentation. Be even more skeptical code quality here than usually.
 
+Known, reproducible, unfixed defects are tracked in [`BUGS.md`](BUGS.md).
+
 ---
 
 ## Highlights
 
-* **C++20 Simulation Core (`engine/`)**: Zero-allocation, high-throughput simulation engine implementing the full rules of the Deluxe Edition—including all 110 cards, persistent board effects, simultaneous headline resolution, space race tracks, and regional scoring.
-* **Neural Policies & Reinforcement Learning (`ai/`)**: Graph Neural Network + ResNet architecture (`ColdWarNet`) regularized under Nash Policy Gradient (NashPG) self-play, paired with behavioral cloning from expert demonstrations and game-theoretic credit assignment.
+* **C++20 Simulation Core (`engine/`)**: Zero-allocation, high-throughput simulation engine covering the Deluxe Edition—all 110 cards, persistent board effects, simultaneous headline resolution, space race tracks, and regional scoring. Every card has an event handler, but that is not the same as every rule being right: known rules defects are tracked in [`BUGS.md`](BUGS.md).
+* **Neural Policies & Reinforcement Learning (`ai/`)**: Graph Neural Network + ResNet architecture (`ColdWarNet`) regularized under Nash Policy Gradient (NashPG) self-play, paired with behavioral cloning from demonstration datasets (self-play and a corpus of recorded human games) and a suite of evaluation probes in `ai/eval/`.
 * **Interactive Web Workbench (`web/`)**: Full-featured web interface powered by FastAPI, WebSockets, and a Vite + TypeScript SVG Deluxe Map supporting human-vs-bot matches, bot-vs-bot exhibitions, and complete replay timelines (`.tslog.json`).
 * **Evaluation & Tournament Suite (`tools/`)**: High-throughput tournament runner with Bradley-Terry Maximum Likelihood Elo estimation, automated loss-cause diagnostics, and match playback.
 
@@ -76,8 +78,10 @@ Open `http://localhost:8000` in your browser to launch the Web Workbench.
 
 ## Running Tests
 
-The engine has to be built first — `pytest` refuses to run against an extension it cannot
-identify, so a missing or stale `build/release` is an error rather than a silent wrong answer.
+Build the engine first. `pytest` compares the `ts_engine` it actually imported against the
+`engine/` and `bindings/` sources and aborts the run if it is stale, since a plausible answer
+from yesterday's rules is worse than a failure. With no extension built at all it says nothing —
+the tests that need one fail on their own import, with a clearer message.
 
 ```bash
 # Engine rules, the nanobind surface, and the training stack. ~1 min with -n auto.

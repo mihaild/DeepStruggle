@@ -191,25 +191,23 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=500, help="Parallel batch size")
     parser.add_argument("--output-path", type=str, default="data/datasets/warmup_regenerated.jsonl.gz",
                         help="Output .jsonl.gz path. Name it after the generating checkpoint and the "
-                             "engine it was built against -- a demonstration set is only valid for the "
-                             "engine that produced it (see data/datasets/archive/README.md).")
+                             "engine it was built against -- a demonstration set in the (seed, actions) "
+                             "format is only valid for the engine that produced it, and silently "
+                             "truncates against any other.")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
     
     args = parser.parse_args()
     
-    if args.models:
-        top_checkpoints = {os.path.splitext(os.path.basename(m))[0]: m for m in args.models}
-    else:
-        top_checkpoints = {
-            "v3_snapshot_12606s": "data/checkpoints/run_v3_20260828_093322/snapshot_12606s.pt",
-            "v3_snapshot_10810s": "data/checkpoints/run_v3_20260828_093322/snapshot_10810s.pt",
-            "v3_snapshot_14412s": "data/checkpoints/run_v3_20260828_093322/snapshot_14412s.pt",
-            "v2_snapshot_21601s": "data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt",
-        }
-        # Filter existing
-        top_checkpoints = {k: v for k, v in top_checkpoints.items() if os.path.exists(v)}
-        if not top_checkpoints:
-            top_checkpoints = {"v2_champ": "data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt"}
+    # Named outright, never guessed. A demonstration set carries the policy that generated it,
+    # so which checkpoints were used is part of what the dataset is -- falling back to whichever
+    # snapshot happens to be on disk would make two invocations of this command mean different
+    # things.
+    if not args.models:
+        parser.error("--models is required: give the checkpoint path(s) to generate from.")
+    top_checkpoints = {os.path.splitext(os.path.basename(m))[0]: m for m in args.models}
+    missing = [m for m in args.models if not os.path.exists(m)]
+    if missing:
+        parser.error("checkpoint(s) not found: " + ", ".join(missing))
     
     generate_warmup_dataset(
         checkpoints=top_checkpoints,

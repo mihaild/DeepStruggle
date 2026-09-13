@@ -82,8 +82,8 @@ def check_obs_width(model: Any) -> int:
     there is nothing left to select wrongly. What remains worth checking is the other half of the
     old failure: a model whose input width is not the engine's, which does not raise on its own
     because a network reads fixed slices and a mismatched vector simply gets misread. Four
-    separate probes did exactly that, one of them reporting a mean final turn of 1-2 against an
-    actual 6.8 (`research/metrics.md` 1.4.1).
+    separate probes did exactly that, one of them reporting a mean final turn several times off
+    the truth while looking entirely plausible.
 
     A model of the wrong width is a checkpoint from a retired layout: legacy (4293) or v2.1
     (3891) or v2.2 (3825). Those cannot be run and are not being converted -- they predate the
@@ -233,11 +233,11 @@ class TsVectorizedEnv:
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
         # Credit a *provoked* DEFCON-1 to the player who played the card, the same way an
-        # unprovoked one is credited. Off by default, because it changes the returns and so
-        # every arm's numbers with it on are on a different footing from those without.
-        # See metrics.md 21.1 for why it is worth trying: the critic registers at most 0.014
-        # when the fatal card is chosen, so the -1 has nothing to attach to unless it is
-        # windowed, and the window's advantage (-1 - v_t) never consults the critic.
+        # unprovoked one is credited. Off by default, because it changes the returns and so a
+        # run's numbers with it on are on a different footing from those without.
+        # Why it is worth trying: the critic barely moves when the fatal card is chosen, so the
+        # -1 has nothing to attach to unless it is windowed, and the window's advantage
+        # (-1 - v_t) never consults the critic.
         self.window_provoked_defcon = bool(window_provoked_defcon)
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
@@ -307,9 +307,9 @@ class TsVectorizedEnv:
         # A provoked suicide stays 0 unless `window_provoked_defcon` is set. The argument for
         # leaving it at 0 was that the mistake lies in earlier card management rather than the
         # final move, so its credit should keep propagating backwards. Measured, that premise
-        # does not hold: the fatal card play sits 3-9 micro-actions from the loss and inside the
-        # same turn, which the turn-scoped window already covers, and the critic it would have
-        # to propagate through moves by at most 0.014 at the deciding choice (metrics.md 21.1).
+        # does not hold: the fatal card play sits a handful of micro-actions from the loss and
+        # inside the same turn, which the turn-scoped window already covers, and the critic it
+        # would have to propagate through barely moves at the deciding choice.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
         # Terminal length in plies. The turn alone cannot express it: a game abandoned at
@@ -328,7 +328,7 @@ class TsVectorizedEnv:
                     held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
                 elif credits_defcon_blunder(st, self.window_provoked_defcon):
                     # phasing_player is the side that played the card even when the opponent
-                    # is the one acting -- verified on all five h2_480M_provoked_* replays.
+                    # is the one acting -- verified against self-play games that ended this way.
                     defcon_blunder[i] = int(st.phasing_player)
                 elif st.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
                     # Couping under Cuban Missile Crisis. The engine ends the game without

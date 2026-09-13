@@ -19,9 +19,8 @@ from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 def main():
     parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
     parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp"],
-                        help="Model architecture. v2 is the baseline and what every arm in the\n"
-                             "experiment log uses; v1 is the original network, kept because\n"
-                             "checkpoints that predate v2 still name it.")
+                        help="Model architecture. v2 is the baseline; v1 is the original\n"
+                             "network, kept because checkpoints that predate v2 still name it.")
     parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval", "curriculum"], help="Execution mode")
 
     # Warm-up / Checkpoint options
@@ -39,17 +38,14 @@ def main():
                              "worth 1 - T/K instead of 1 (0 = off). With gamma=1 and terminal-only "
                              "rewards the objective is indifferent to *when* you win: taking a forced "
                              "win now and winning three turns later both return +1, so nothing in the "
-                             "gradient prefers the former. The control takes only 80.3%% of "
-                             "engine-verified forced wins and stops improving after ~30M steps. The "
-                             "scale applies to losses too, so a self-inflicted defeat on turn 3 costs "
-                             "more than on turn 9, which is the intended 'prolong a lost game' "
-                             "incentive. K is a slope: at 40, turn 3 is worth 0.925 and turn 10 is "
-                             "0.75. Too steep biases against build-to-final-scoring play, so watch "
-                             "the ending mix.")
-    # 80M is the standard budget for a run. It is a round number and close enough to the 78M
-    # the earlier experiments used that the two are broadly comparable -- though only broadly:
-    # those runs trained against a different engine (free-coup legality, the turn's cleanup as
-    # its own step), so a matched step count does not make them a controlled comparison. The
+                             "gradient prefers the former, and trained policies duly leave "
+                             "engine-verified forced wins on the table. The scale applies to "
+                             "losses too, so a self-inflicted defeat on turn 3 costs more than on "
+                             "turn 9, which is the intended 'prolong a lost game' incentive. K is "
+                             "a slope: at 40, turn 3 is worth 0.925 and turn 10 is 0.75. Too steep "
+                             "biases against build-to-final-scoring play, so watch the ending mix.")
+    # A step budget is not a controlled comparison across engine versions: a rebuilt engine plays
+    # a different game, so two runs with matched step counts are only broadly comparable. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
     # need matched steps at all.
     parser.add_argument("--resume", type=str, default=None,
@@ -69,15 +65,15 @@ def main():
                              "be branched from later and not just the run's end. Costs 38 MB a\n"
                              "snapshot on top of the 13 MB snapshot itself. With this off, a\n"
                              "run keeps only its newest state, and a stretch of it can never\n"
-                             "be re-run from -- which is how arm E came to have no branch\n"
-                             "point at 160M.")
+                             "be re-run from -- so a run that turns out to need branching\n"
+                             "partway through has nowhere to branch.")
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed the environment stream and torch together. Left unset,\n"
                              "the environment seed is fixed at 12345 and the network is\n"
                              "unseeded, so two runs of one configuration differ only in\n"
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
-                             "seed to two arms that differ in one thing, to pair them.")
+                             "seed to two runs that differ in one thing, to pair them.")
     parser.add_argument("--snapshot-every-steps", type=int, default=0,
                         help="Take a snapshot every N env steps (0 = derive the "
                              "interval from --duration-seconds and "
@@ -86,8 +82,8 @@ def main():
                              "named by step count rather than by elapsed seconds.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
-                             "RL. A BC warmup washes out within about 2M steps (experiments.md "
-                             "9.1); this keeps the signal applied rather than applied once.")
+                             "RL. A BC warmup washes out early in training; this keeps the "
+                             "signal applied rather than applied once.")
     parser.add_argument("--inject-every", type=int, default=0,
                         help="Iterations between injected batches (0 = off). Small and often beats "
                              "large and rare: anything rarer than the washout lets the policy drift "
@@ -160,14 +156,14 @@ def main():
                         help="Credit a *provoked* DEFCON-1 loss to the player who played the\n"
                              "card, the same way an unprovoked one is credited, instead of\n"
                              "letting it propagate back as an ordinary loss.\n"
-                             "The case for it is measured (metrics.md 21.1): the fatal card\n"
-                             "play sits 3-9 micro-actions from the loss and inside the same\n"
-                             "turn, which the turn-scoped window already covers, and the critic\n"
-                             "the -1 would otherwise propagate through moves by at most 0.014\n"
-                             "at the deciding choice -- so there is nothing for it to attach\n"
-                             "to. A window's advantage is -1 - v_t and never consults it.\n"
-                             "Changes the returns, so an arm with it on is not comparable to\n"
-                             "one without except as its own A/B.")
+                             "The case for it: the fatal card play sits a handful of\n"
+                             "micro-actions from the loss and inside the same turn, which the\n"
+                             "turn-scoped window already covers, and the critic the -1 would\n"
+                             "otherwise propagate through barely moves at the deciding choice\n"
+                             "-- so there is nothing for it to attach to. A window's advantage\n"
+                             "is -1 - v_t and never consults it. Changes the returns, so a run\n"
+                             "with it on is not comparable to one without except as its own\n"
+                             "A/B.")
     parser.add_argument("--drop-static", action="store_true", default=False,
                         help="With --arch mlp, drop the per-entity observation slots that never\n"
                              "change: stability, battleground, region, Ops, era, one-time,\n"
@@ -209,13 +205,13 @@ def main():
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--self-transform", action="store_true",
-                        help="Give each GraphConv layer a second weight matrix applied to the node itself, so a country can be held at full strength instead of averaged with its neighbours. metrics.md 21.12: a country's exact influence is recoverable from its raw observation slots 97%% of the time and from its post-GraphConv token 63%%, and the loss tracks neighbour count.")
+                        help="Give each GraphConv layer a second weight matrix applied to the node itself, so a country can be held at full strength instead of averaged with its neighbours. A linear probe recovers a country's exact influence far more often from its raw observation slots than from its post-GraphConv token, and the loss tracks neighbour count.")
     parser.add_argument("--per-entity-heads", type=int, default=0,
-                        help="Width of per-entity policy heads (0 = off; try 64). A card's logit is computed from that card's own token and raw slots, and a country's from that country's, each conditioned on a projection of the trunk; the 18 actions that name no entity stay dense. metrics.md 21.13: the token holds 89-91%% of the recoverable exact per-country influence and the pooled trunk holds 6-14%%, and no read-out ending in one fixed-size summary closed that gap.")
+                        help="Width of per-entity policy heads (0 = off; try 64). A card's logit is computed from that card's own token and raw slots, and a country's from that country's, each conditioned on a projection of the trunk; the 18 actions that name no entity stay dense. A country's exact influence is almost entirely recoverable from its own token and almost entirely absent from the pooled trunk, and no read-out ending in one fixed-size summary closed that gap.")
     parser.add_argument("--attn-readout", type=int, default=0,
                         help="Width of an end-of-trunk attention read-out (0 = off; try 64). After the residual trunk, the state vector queries the 84 country and 110 card tokens -- each concatenated with its raw observation slots -- and the result is folded back in. Targets the other half of the same finding: the pre-pooling token holds two thirds of the recoverable per-country influence and the pooled trunk holds none.")
     parser.add_argument("--run-name", type=str, default=None,
-                        help="Short name from research/run_nomenclature.md as <engine>-<attempt>-<seed>, e.g. E3-12-21. Becomes the checkpoint directory prefix (data/checkpoints/E3-12-21_[date]_[time]) and is recorded in metadata.json. Omit the steps field: one directory holds every budget of a lineage and each snapshot's filename already carries its own.")
+                        help="Run short name as <engine>-<attempt>-<seed>, e.g. E9-99-01. Becomes the checkpoint directory prefix (<run-name>_[date]_[time]) and is recorded in metadata.json. Omit any step budget: one directory holds every budget of a lineage and each snapshot's filename already carries its own.")
     parser.add_argument("--description", type=str, default=None, help="Short description of what was changed and training objective to save in checkpoint metadata.json")
     parser.add_argument("--device", type=str, default="cuda", help="Compute device (cuda or cpu)")
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True,

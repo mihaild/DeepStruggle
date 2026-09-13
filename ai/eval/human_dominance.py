@@ -1,18 +1,17 @@
 """Do the humans in the ts-replayer corpus respect the dominance relations?
 
-`research/experiments.md` §4.8 measures our agents against pairs of options that are identical in
+The agent-side dominance measure scores a policy against pairs of options that are identical in
 printed Ops and differ only in a way that is weakly better in every position, so preferring the
-dominated one is wrong with no judgement to argue about. The control ranks Quagmire pairs **64.5%
-wrong -- worse than a coin flip** -- and §4.8's conclusion was that this is "the strongest argument
-yet for demonstrations, since one human game shows the reversal that RL needs thousands to notice".
+dominated one is wrong with no judgement to argue about. Trained agents do badly on it, and the
+usual response -- that demonstrations would fix it, because one human game shows a reversal that
+RL needs thousands to notice -- is a claim about the corpus. This checks that claim against the
+corpus.
 
-That is a claim about the corpus, and it has never been checked against the corpus. This checks it.
-
-The measure differs from §4.8's by necessity. For a policy you can ask how it *ranks* the two
-options, because you have a distribution. For a human you have only the move they made, so the
-question is whether the move they chose was the dominated one while a dominant alternative sat in
-the same hand at the same Ops. That is the stricter and more meaningful half of §4.8's pair anyway:
-"chose a dominated card", not "ranked the pair wrongly".
+The measure differs from the agent-side one by necessity. For a policy you can ask how it *ranks*
+the two options, because you have a distribution. For a human you have only the move they made, so
+the question is whether the move they chose was the dominated one while a dominant alternative sat
+in the same hand at the same Ops. That is the stricter half anyway: "chose a dominated card", not
+"ranked the pair wrongly".
 """
 
 from __future__ import annotations

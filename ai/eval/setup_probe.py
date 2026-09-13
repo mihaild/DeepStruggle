@@ -8,8 +8,8 @@ repertoire.
 
 It is also where the anecdotes are. A USSR that does not hold Poland, or a US that does not hold
 West Germany, has given up the two most contested countries on the board before the game starts,
-and `experiments.md` §12 records that the agent "fights where it was placed and never opens a new
-front" -- which makes the placement the whole front.
+and a trained agent tends to fight where it was placed and never open a new front -- which makes
+the placement the whole front.
 
 **Control is not the bar; control with a point to spare is.** A country held at exactly the
 control threshold is taken back by a single influence, and in Europe one card routinely supplies

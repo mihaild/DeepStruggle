@@ -1,10 +1,10 @@
 """The two architecture variants aimed at the per-country representation failure.
 
-`research/metrics.md` 21.12 localised the loss: a country's exact influence is recoverable from
-its own raw observation slots 97% of the time, from its post-GraphConv token 63%, and from the
+Probing localises the loss: a country's exact influence is recoverable from its own raw
+observation slots almost always, from its post-GraphConv token much less often, and from the
 pooled 512-float trunk essentially never. Two changes target the two steps, and both must be
 detectable from a checkpoint -- a model rebuilt without them would load the other tensors and
-silently be a different network, which is how arms E and F died.
+silently be a different network, which has killed runs at their first snapshot.
 """
 from __future__ import annotations
 

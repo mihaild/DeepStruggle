@@ -62,7 +62,7 @@ graph TD
     end
 
     subgraph CoreEngine ["C++ Simulation Core (engine/)"]
-        Core["ts::Engine (C++20 Zero-Allocation, 2.45M step/s)"]
+        Core["ts::Engine (C++20 Zero-Allocation, >2M step/s)"]
         State["ts::GameState (4 KB Trivially Copyable)"]
         Mask["ts::ActionMask (212-dim Flat Action Space)"]
         Obs["ts::Observation (3824-dim Float Tensor)"]
@@ -104,42 +104,44 @@ graph TD
 │   ├── CMakeLists.txt          # nanobind module build configuration
 │   ├── AGENTS.md               # Specific instructions for maintaining Python bindings
 │   ├── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
-│   ├── ts_engine.pyi           # Python type stubs for IDE and static typing
+│   ├── ts_engine/              # GENERATED stub package (__init__.pyi + one file per submodule)
+│   ├── ts_engine.pyi.pattern   # Hand-written overrides the stub generator cannot introspect
 │   ├── action_encoder.py       # 212-dim Flat Action <-> MicroAction bidirectional codec
 │   └── ts_env.py               # Single & Vectorized batched C++ simulation wrapper
 │
-├── ai/                         # Neural Network, Training & Reward Strategy (ai/AGENTS.md)
+├── ai/                         # Neural Network, Training, Rewards & Evaluation Probes
 │   ├── models/                 # Neural network architectures
-│   │   ├── coldwar_net.py      # ColdWarNet (GNN GraphConv + Card + Global ResNet + Masked Heads)
+│   │   ├── coldwar_net_v2.py   # ColdWarNetV2 -- the baseline (GNN GraphConv + card/country
+│   │   │                       # cross-attention + global ResNet + masked heads); also
+│   │   │                       # ColdWarNetMLP, selected by --arch mlp
+│   │   ├── coldwar_net.py      # V1, kept because checkpoints predating V2 name it
 │   │   └── coldwar_net_architecture.svg # Architecture diagram
 │   ├── rewards/                # Perspective-aligned reward strategies
 │   │   └── reward_calculator.py# BlunderAwareRewardCalculator, ZeroSumTerminalReward, ShapedZeroSumReward
+│   ├── eval/                   # Evaluation probes: calibration, input ablation, behavioral
+│   │                           # suite, human-corpus agreement, position diagnostics, ...
+│   ├── search/pimcts.py        # Perfect-information MCTS, used for evaluation
 │   └── training/               # Training pipelines & algorithms
 │       ├── rollout_buffer.py   # Trajectory storage, GAE advantage calculator & value/advantage diagnostics
 │       ├── behavioral_cloning.py # Phase 0 supervised pre-training
 │       ├── nash_pg.py          # NashPG (Nash Policy Gradient with iterative KL regularization) + FixedEntropyProbe
+│       ├── generic_trainer.py  # Shared supervised training loop
 │       ├── warmup_dataset_loader.py # Memory-bounded demonstration streaming
-│       └── train.py            # CLI training entry point
+│       ├── human_corpus_dataset.py  # Memory-mapped human-corpus sample loader
+│       ├── start_pool.py       # Start-state pool for non-opening rollouts
+│       └── train.py            # CLI training entry point (behind tools/train.py)
 │
 ├── bot/                        # Bot clients & baseline heuristics (see bot/AGENTS.md)
-│   ├── AGENTS.md               # Specific instructions for developing AI bots
-│   ├── base_bot.py             # Generic BaseBot abstract class defining bot interface
-│   ├── random_bot.py           # RandomBot baseline
-│   ├── heuristic_bot.py        # HeuristicBot rule-based baseline
+│   ├── base_bot.py             # Generic BaseBot abstract class defining the bot interface
 │   ├── neural_bot.py           # NeuralBot client using ColdWarNet checkpoints (V1/V2)
-│   ├── exploratory_bot.py      # ExploratoryBot diverse exploration agent
-│   ├── strategic_bot.py        # StrategicBot DEFCON-2 containment & commentary agent
-│   ├── event_heavy_bot.py      # EventHeavyBot event-prioritizing agent
-│   └── human_bot.py            # HumanBot interactive CLI terminal player
+│   └── ...                     # random, heuristic, exploratory, strategic (DEFCON-2 containment),
+│                               # event_heavy, and human (interactive CLI) baselines
 │
 ├── web/                        # Web Workbench (UI + Backend Server + Bot Client)
 │   ├── bot_client.py           # WebSocket network bot runner for browser matches
-│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map
-│   │   ├── index.html
-│   │   ├── package.json / vite.config.ts
-│   │   └── src/                # Map view, HUD, tracks, debug panel, replay controls
-│   └── server/                 # FastAPI Game Server and Replay Manager
-│       ├── AGENTS.md           # Instructions for server maintainers
+│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (map view, HUD, tracks,
+│   │                           # debug panel, replay controls)
+│   └── server/                 # FastAPI Game Server & Replay Manager (see web/server/AGENTS.md)
 │       ├── main.py             # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
 │       ├── session.py          # GameSession class, action router, state broadcasting
 │       ├── replay.py           # ReplayLogger and ReplayManager
@@ -151,12 +153,19 @@ graph TD
 │   ├── tournament.py           # Unified tournament & head-to-head evaluator
 │   ├── play_match.py           # Unified match runner & replay generator (.tslog.json)
 │   ├── generate_dataset.py     # High-throughput vectorized demonstration generator (.jsonl.gz)
+│   ├── build_human_dataset.py  # Human-corpus demonstration dataset builder
 │   ├── inspect_checkpoints.py  # Checkpoint discovery, architecture detection & inspector
 │   ├── download_ts_replayer.py # One-time fetch of the human game corpus (cached, throttled)
+│   ├── behavioral_test.py      # Scripted behavioral probes against a checkpoint
+│   ├── fetch_acts_corpus.py    # Fetch of the secondary (ACTS) game corpus
+│   ├── scrape_card_strategies.py # Regenerates the local card strategy notes
 │   ├── lib/                    # Reusable simulation, evaluation & analytics backend
 │   │   ├── ts_replayer_parse.py   # The human log's grammar (entries, moves, rolls, reveals)
 │   │   ├── ts_replayer_convert.py # Verified log -> engine decisions, entry by entry
 │   │   ├── ts_replayer_hands.py   # Both hands for a whole game, solved as a z3 constraint problem
+│   │   ├── corpus_paths.py     # Resolves where the human corpus is cached
+│   │   ├── card_mappings.py    # Card name <-> id mapping shared by the corpus tools
+│   │   ├── engine_fingerprint.py # Content hash of engine/ + bindings/, for staleness checks
 │   │   ├── player_agent.py     # Unified Agent loader (random, heuristic, neural)
 │   │   ├── tournament_evaluator.py # Matchup runner & loss cause classifier
 │   │   ├── self_play.py        # Self-play simulation & .tslog.json recorder
@@ -164,55 +173,39 @@ graph TD
 │   │   ├── scoring_formatter.py # Regional scoring audit calculation helper
 │   │   └── checkpoint_utils.py # Checkpoint scanning and architecture detection
 │   └── scripts/                # Shell automation scripts
+│       ├── check_engine_fresh.sh   # Refuses to proceed against a stale build (see 3.2)
 │       ├── train_and_tournament.sh # Unified training & tournament bash runner
 │       ├── train_direct_rl.sh  # Direct RL self-play runner
 │       └── run_asan.sh         # AddressSanitizer execution script
 │
-├── data/                       # Datasets, Checkpoints & Recorded Replays
-│   ├── checkpoints/            # Model weights (arm_*/, coldwar_net_v2_warmup.pt)
-│   ├── replays/                # Saved game logs (*.tslog.json)
-│   └── datasets/               # Demonstration datasets; archive/ holds superseded ones
+├── data/                       # [GIT IGNORED] Working artifacts: model checkpoints, saved
+│                               # .tslog.json game logs, and demonstration datasets
 │
 ├── external/                   # External integrations & differential engines
 │   ├── README.md               # Integration guide
 │   └── struggler/              # External reference engine (Python)
 │
-├── tests/                      # Python pytest suite (1360 tests with external/struggler on
-│                                # PYTHONPATH per the invocation below; 969 without it, since the
-│                                # 2 differential-fuzzing files then fail to import), split by what's under test
-│   ├── conftest.py             # --run-fuzz option; skips differential_fuzz tests by default
-│   ├── bindings/                # Binding-layer smoke tests only (the nanobind surface itself)
-│   │   ├── test_bindings.py       # Validates Python nanobind module
-│   │   ├── test_types_and_json_schemas.py # Validates replay JSON schema and pyrefly typing
-│   │   └── test_engine_build_is_current.py # Guards against a stale .so shadowing the real build
-│   ├── engine_logic/            # Game-rule tests driven through the bindings (110 cards, headline
-│   │   │                         # resolution, space race, coups, etc.) -- migration debt: new engine
-│   │   │                         # rule coverage belongs in engine/tests/*.cpp, not here (see AGENTS.md
-│   │   │                         # "keep documentation synchronized" and CLAUDE.md's own stated preference)
-│   │   ├── test_all_110_cards.py  # Comprehensive unit tests for all 110 cards
-│   │   └── test_card_fixes.py     # Dedicated verification suite for card rules fixes
-│   ├── replayer/                 # tools/lib/ts_replayer_*.py conversion pipeline (61 targeted
-│   │   │                         # edge-case files, one human-replay-corpus mismatch each, plus parsing)
-│   │   └── test_ts_replayer_parse.py # Grammar/arithmetic checks on the raw log parser
-│   ├── training/                 # RL/reward/eval stack: NashPG, credit assignment, GAE, PIMCTS, etc.
-│   │   ├── test_credit_assignment.py # Unit tests for reward propagation & Rule 4.3 headlines
-│   │   └── test_neural_and_nashpg.py # Unit & integration tests for ColdWarNet, ActionMask, NashPG
-│   ├── web/                     # Server, bot-client, and browser E2E tests
-│   │   ├── test_server_and_bot.py  # Validates REST APIs, bot-vs-bot WebSocket simulation
-│   │   ├── test_web_workbench.py   # FastAPI client and UI metadata endpoint tests
-│   │   └── test_e2e_space_race.py  # Playwright E2E browser tests
-│   └── differential/             # Cross-engine fuzzing -- WIP/unstable, gated behind the
-│       │                         # differential_fuzz marker / --run-fuzz flag, not run by default
-│       ├── test_differential_fuzzing.py # cross-engine fuzz: native vs struggler
-│       ├── test_unified_differential.py # Parameterized differential runs vs each external engine
-│       └── engine_interface.py, native_adapter.py, struggler_adapter.py
-│                                # Shared EngineProtocol adapters
+├── tests/                      # Python pytest suite, split by what's under test (see §5)
+│   ├── conftest.py             # --run-fuzz option; ignores tests/differential at collection;
+│   │                           # generated_replay_dir and corpus fixtures; stale-engine guard
+│   ├── bindings/               # Binding-layer smoke tests only (the nanobind surface itself),
+│   │                           # the replay JSON schema, the pyrefly run, the stale-.so guard
+│   ├── engine_logic/           # Game-rule tests driven through the bindings (110 cards, headline
+│   │                           # resolution, space race, coups, ...) -- migration debt: NEW engine
+│   │                           # rule coverage belongs in engine/tests/*.cpp, not here
+│   ├── replayer/               # tools/lib/ts_replayer_*.py conversion pipeline: one targeted file
+│   │                           # per human-replay-corpus mismatch, plus the log-grammar tests
+│   ├── training/               # RL/reward/eval stack: NashPG, credit assignment, GAE, PIMCTS, ...
+│   ├── web/                    # Server, bot-client, and Playwright browser E2E tests
+│   └── differential/           # Cross-engine fuzzing vs external/struggler -- WIP/unstable, gated
+│                               # behind the differential_fuzz marker / --run-fuzz, not run by
+│                               # default (BUGS.md TEST-1)
 │
 ├── rules/                      # Formal spec the engine implements (tracked, except the PDF)
 │   ├── Rules_Final.pdf         # [GIT IGNORED] Official rulebook -- GMT Games copyright, not ours to commit
 │   ├── rules.md / rules.json   # Formal mathematical rules specification
 │   ├── cards.json / primitives # 110 cards metadata and state machine primitives
-│   ├── flags.json              # 47 persistent continuous effect & state bits
+│   ├── flags.json              # 43 persistent continuous effect & state bits
 │   └── map.json / map.md       # 84-country graph topology & coordinates
 │
 └── build/                      # Build outputs (.gitignored)
@@ -226,14 +219,20 @@ graph TD
 
 ### 3.1 Initial Environment Setup
 ```bash
-# 1. Python virtual environment
+# 1. Python virtual environment -- requirements.txt is the source of truth for dependencies
 python3 -m venv .venv
 source .venv/bin/activate
-pip install nanobind fastapi "uvicorn[standard]" websockets pytest pytest-xdist numpy pydantic httpx torch torchvision
+pip install -r requirements.txt
 
 # 2. Web UI dependencies & production build
 cd web/ui && npm install && npm run build && cd ../..
 ```
+
+Three requirements are optional and degrade rather than break: `z3-solver` (without it the human-log
+converter falls back to per-turn heuristics and no longer reproduces the corpus), `tensorboard` (the
+trainer still writes `training_metrics.jsonl`), and `playwright` (needed only by the browser E2E
+tests, together with `python -m playwright install chromium`). For a CUDA build of PyTorch, install
+`torch` from pytorch.org first; the rest installs on top of it.
 
 ### 3.2 Build C++ Engine & Nanobind Extension
 ```bash
@@ -263,9 +262,9 @@ without changing anything, which would report staleness on every switch.
 ```mermaid
 graph TD
     subgraph Phase0 ["Phase 0: Supervised BC Warmup"]
-        Demonstrations["Demonstration Dataset (regenerate per engine; see data/datasets/archive/README.md)"]
+        Demonstrations["Demonstration Dataset (regenerate after every engine change)"]
         Streamer["WarmupDataset.stream_batches (B=1024, Reservoir Buffer, RAM < 70MB)"]
-        WarmupModel["Warmup Checkpoint: data/checkpoints/coldwar_net_v2_warmup.pt"]
+        WarmupModel["Warmup Checkpoint (&lt;warmup.pt&gt;)"]
         Demonstrations --> Streamer --> WarmupModel
     end
 
@@ -275,7 +274,7 @@ graph TD
         RefNet["Frozen Reference Policy π_ref (Outer-loop KL Anchor)"]
         Rollout["RolloutBuffer (512 envs × 128 steps = 65,536 transitions)"]
         BlunderCalc["BlunderAwareRewardCalculator (Event Traps +1.0, Unprovoked -1.0, Shielding 0.0)"]
-        GAE["Alternating Zero-Sum GAE (λ=0.98, γ=0.999)"]
+        GAE["Alternating Zero-Sum GAE (λ=0.98, γ=1.0 by default)"]
         NashLoss["PPO Loss + η·D_KL(π_θ || π_ref) - c_ent·H(π_θ)"]
 
         WarmupModel --> ActiveNet
@@ -285,7 +284,7 @@ graph TD
     end
 
     subgraph Phase2 ["Phase 2: Live Snapshot Evaluations"]
-        Snapshots["Snapshots Saved Every N Seconds (snapshot_1200s.pt, snapshot_2400s.pt...)"]
+        Snapshots["Snapshots Saved Every N Seconds Into The Run Directory"]
         LiveEval["Live Match Evaluator vs HeuristicBot, RandomBot, & Historical Champions"]
         ActiveNet --> Snapshots --> LiveEval
     end
@@ -303,50 +302,54 @@ graph TD
 ```
 
 #### Standard Execution Commands
+
+Checkpoints and datasets are working artifacts under the git-ignored `data/` tree; the
+placeholders stand for whichever ones you are using.
+
 ```bash
-# 1. Phase 0: Bounded Streaming BC Warmup (Full 5,000 games in ~3 minutes, <70 MB RAM)
+# 1. Phase 0: Bounded Streaming BC Warmup (5,000 games in ~3 minutes, <70 MB RAM)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --mode warmup \
   --arch v2 \
-  --warmup-dataset <regenerated-dataset.jsonl.gz> \
+  --warmup-dataset <dataset.jsonl.gz> \
   --bc-epochs 2 \
   --batch-size 1024 \
-  --output-dir data/checkpoints/coldwar_net_v2_warmup.pt
+  --output-dir <warmup.pt>
 
 # 2. Phase 1 & 2 & 3: Unified RL Training + Live Snapshots + Post-Training Tournament
-# (or simply use ./tools/scripts/train_and_tournament.sh v2 7200 1200 data/checkpoints/coldwar_net_v2_warmup.pt)
+# (or simply use ./tools/scripts/train_and_tournament.sh v2 7200 1200 <warmup.pt>)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 \
   --duration-seconds 7200 \
   --snapshot-interval-seconds 1200 \
-  --warmup-checkpoint data/checkpoints/coldwar_net_v2_warmup.pt \
+  --warmup-checkpoint <warmup.pt> \
   --reward-scheme blunder_aware \
-  --eval-opponents heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --eval-opponents heuristic random <checkpoint.pt> \
   --eval-games-per-side 50 \
   --post-tournament \
-  --post-tournament-models heuristic random data/checkpoints/run_v2_blunder_aware_9h/snapshot_21601s.pt \
+  --post-tournament-models heuristic random <checkpoint.pt> \
   --post-tournament-games 500
 
-# 2a. A/B experiments: budget by steps, not by wall clock. Evaluation cost scales with how
-#     long the policy's games run, so a time budget hands the two arms different amounts of
-#     training (one real 3-hour A/B finished 1024 vs 473 iterations on identical settings).
-#     --duration-seconds now counts training only; evaluation and pool refreshes are excluded.
-#     --eval-max-snapshot-opponents bounds evaluation, which is otherwise quadratic in run length.
+# 2a. A/B experiments: budget by steps, not by wall clock. Evaluation cost scales with how long
+#     the policy's games run, so a wall-clock budget hands the two arms different amounts of
+#     training. --duration-seconds counts training only; evaluation and pool refreshes are
+#     excluded. --eval-max-snapshot-opponents bounds evaluation, which is otherwise quadratic in
+#     run length.
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 --train-steps 60000000 --eval-max-snapshot-opponents 4 \
-  --output-dir data/checkpoints/ab_arm_on --start-pool-frac 1.0
+  --output-dir <run-dir> --start-pool-frac 1.0
 
 # 2b. Watch a live (or finished) run: every training_metrics.jsonl metric is mirrored to
-#     <output-dir>/tb/ as TensorBoard event files. Pass --no-tensorboard to write JSONL only.
-.venv/bin/python -m tensorboard.main --logdir data/checkpoints/run_v2_<timestamp>/tb
+#     <output-dir>/tb as TensorBoard event files. Pass --no-tensorboard to write JSONL only.
+.venv/bin/python -m tensorboard.main --logdir <run-dir>/tb
 
 # 3. Standalone Post-Tournament & Elo Evaluation Across Any Checkpoint Directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \
-  --checkpoint-dir data/checkpoints/run_v2_20260827_205207 \
+  --checkpoint-dir <run-dir> \
   --games-per-side 500 \
   --anchor-model HeuristicBot \
   --anchor-elo 1500.0 \
-  --output-report data/checkpoints/run_v2_20260827_205207/massive_tournament_report.md
+  --output-report <run-dir>/tournament_report.md
 ```
 
 ### 3.4 Launch Web Workbench & Play Against NeuralBot
@@ -355,7 +358,8 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/run_v2_20260827_205207/snapshot_3602s.pt
+PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR \
+  --type neural --model-path <checkpoint.pt>
 
 # 3. Open browser at:
 # http://localhost:8000/?game_id=game-1&role=US
@@ -370,17 +374,22 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    Runs ultra-fast parallel tournaments and matchups (300-800 games/sec). If passed 2 models, outputs a granular head-to-head report with loss causes; if passed multiple models or a directory, outputs the full round-robin leaderboard and Bradley-Terry Elo matrix.
 3. **Unified Match Runner & Replay Generator (`tools/play_match.py`)**:
    Runs matches between any pair of agents (supporting distinct checkpoints, heuristics, interactive human CLI play via `--us human`, and commentary), saving standardized `.tslog.json` replays with direct Web Workbench viewer URLs.
-4. **Vectorized Demonstration Generator (`tools/generate_dataset.py`)**:
-   Charns out thousands of games in parallel using 500 C++ environments and multi-temperature schedules, dumping compressed `.jsonl.gz` datasets for supervised BC warmup.
+4. **Demonstration Dataset Builders (`tools/generate_dataset.py`, `tools/build_human_dataset.py`)**:
+   The first runs thousands of games in parallel across hundreds of C++ environments on
+   multi-temperature schedules, dumping compressed `.jsonl.gz` for supervised BC warmup; the
+   second builds the same kind of dataset from the converted human corpus. Both must be rebuilt
+   after an engine change.
 5. **Checkpoint Registry Inspector (`tools/inspect_checkpoints.py`)**:
-   Scans `data/checkpoints/` and displays all saved models, sizes, timestamps, and the architecture detected from the weights.
+   Scans the checkpoint tree under `data/` and displays all saved models, sizes, timestamps, and the architecture detected from the weights.
 6. **Human Game Corpus (`tools/download_ts_replayer.py` + `tools/lib/ts_replayer_*.py`)**:
    Downloads community-uploaded human games from ts-replayer.fly.dev and converts them into
    engine decisions. The conversion is verified rather than parsed: each entry is rebuilt from
    the position the log states, driven through the engine, and its outcome compared against the
    log's own next board. The hands, which the log never states in full, are solved for a whole
-   game at once as a constraint problem (z3, MIT-licensed and optional). 300 of 300 games
-   convert in full — 29,820 of 30,620 entries, 144,844 decisions. See `tools/README.md` §6.
+   game at once as a constraint problem (z3, MIT-licensed and optional). Every game in the
+   corpus converts in full; `tools/README.md` §6 has the current entry and decision counts.
+7. **Behavioral Probes (`tools/behavioral_test.py`)**:
+   Runs scripted positions against a checkpoint and reports what it chose.
 
 ---
 
@@ -399,17 +408,13 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 6. **Unified Self-Play & Replay Generation**:
    All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.lib.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
 7. **Mandatory Checkpoint Directory Naming Convention**:
-   A checkpoint directory MUST carry the run's short name from `research/run_nomenclature.md`:
-   `data/checkpoints/[engine]-[attempt]-[seed]_[start date]_[start time]`
-   (e.g. `data/checkpoints/E3-12-21_20260912_181622`). Pass `tools/train.py --run-name E3-12-21`
-   and the directory is built for you; the name is validated and also recorded in
-   `metadata.json`. Omit the steps field — one directory holds every budget of a lineage, and
-   each snapshot's filename already carries its own.
-   Add the table row *before* launching, since the name is a claim about which row the run is.
-   `data/checkpoints/run_[version]_[start date]_[start time]` remains the fallback for smoke runs
-   that are not arms. Hardcoded, ad-hoc names (e.g. `run_v2_2h`, `p1_scalar_nofilter`) are
-   forbidden: they say nothing about engine or seed, and a set of cross-engine comparisons was
-   written up as same-engine ones because recovering that took a `git merge-base` on two hashes.
+   A run's checkpoint directory MUST be named from its short name — `<engine>-<attempt>-<seed>`
+   — plus the start date and time. Pass `tools/train.py --run-name <engine>-<attempt>-<seed>`
+   and the directory is built for you, with the name also recorded in `metadata.json`. Omit any
+   step count: one directory holds every budget of a lineage, and each snapshot's filename
+   already carries its own. A `run_<version>_<date>_<time>` form remains the fallback for smoke
+   runs that are not part of a lineage. Hardcoded, ad-hoc names are forbidden — they say nothing
+   about which engine or seed produced the run, which is exactly what a later comparison needs.
 8. **Bounded Dataset Streaming & OOM Prevention**:
    Any operation reading or training on demonstration datasets (`WarmupDataset`) MUST use bounded streaming (`stream_batches` / `stream_transitions`). Loading entire multi-million transition datasets into monolithic in-memory tensors without bounds is forbidden to prevent system Out-Of-Memory (OOM) failures.
 9. **Mandatory Unified CLI Invariant — No Ad-Hoc Scripts**:
@@ -421,7 +426,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 10. **Pre-Training Commit & Checkpoint Metadata Invariant**:
    Before launching any model training run:
    - A git commit MUST be created recording the current codebase state (commit locally on the active branch without pushing or advancing remote master).
-   - The commit hash, training mode, and a short description of what was changed and the training goal MUST be recorded in `metadata.json` within the checkpoint directory (`data/checkpoints/run_.../metadata.json`). The training CLI (`tools/train.py --description "..."`) automatically records these metadata fields at startup.
+   - The commit hash, training mode, and a short description of what was changed and the training goal MUST be recorded in the run directory's `metadata.json`. The training CLI (`tools/train.py --description "..."`) records these fields at startup.
 11. **Engine Change Restriction Invariant**:
    Agents must **NEVER make any changes to the C++ engine (`engine/`) without explicitly asking the user and obtaining prior confirmation**. Every engine modification requires prior user approval without exception.
 12. **Human Replay Conversion Is Never Approximated**:
@@ -432,8 +437,8 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    approximation. Two exceptions exist, both explicitly approved and both narrow: guessing the
    cards Our Man in Tehran looks at, and the individually diagnosed entries in
    `_KNOWN_SCORE` / `_LOG_MISCOUNTED` / `_INVALID_PLAYS` where the log itself is wrong. When
-   reporting a conversion mismatch, cite the exact replay, turn and action round — and per
-   invariant 11, propose engine fixes rather than making them.
+   reporting a conversion mismatch, cite the exact replay, turn and action round — and per the
+   engine-change invariant above, propose engine fixes rather than making them.
 
 13. **Never Measure Against A Stale Engine**:
    Every artifact in this repository — a checkpoint, a demonstration dataset, an Elo anchor, a
@@ -446,9 +451,7 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
    - Datasets in the `(seed, [flat_action, ...])` format do not fail when the engine moves under
      them. `WarmupDataset.stream_transitions` stops a game at the first newly-illegal action and
      continues to the next, so the set silently shrinks — and always by losing the *tail* of
-     each game, which biases what remains toward openings. The archived 5,000-game set retained
-     **27% of its decisions and 5% of its games intact**; see
-     `data/datasets/archive/README.md`.
+     each game, which biases what remains toward openings.
    - Checkpoints keep loading. Old weights still accept the current observation and run a
      forward pass, so nothing announces that they were trained against different rules. Loading
      cleanly is not evidence of comparability.
@@ -456,18 +459,18 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --t
 
 ### Test data that is not in the repository
 
-`data/replays/` and `data/checkpoints/` are git-ignored, so **no test may assume either holds
-anything**. Do not guard such a test with a skip: a check that skips when its input is missing
-passes on every machine while verifying nothing, which is this repository's most repeated bug
-(`research/metrics.md` §1, plus a `pyrefly` invocation found checking zero files and a
-stale-engine test disabled for two commits by a directory move).
+The replay and checkpoint trees under `data/` are git-ignored, so **no test may assume either
+holds anything**. Do not guard such a test with a skip: a check that skips when its input is
+missing passes on every machine while verifying nothing, which is this repository's most repeated
+bug — it has also taken the form of a `pyrefly` invocation checking zero files and a stale-engine
+test disabled for two commits by a directory move.
 
 Use the `generated_replay_dir` fixture in `tests/conftest.py` instead. It generates a replay with
 `generate_self_play_replay` into a temporary directory and points the server at it through
 `TS_REPLAYS_DIR`, so the test runs against real output of the current writer. It needs no
-checkpoint — the generator falls back to an untrained network — and costs about a second. Two
-reasons this beats committing a sample replay: one replay is ~3.7 MB, and a frozen file can drift
-from what the writer emits while the test keeps passing.
+checkpoint — the generator falls back to an untrained network — and costs about a second. That
+beats committing a sample replay, which is megabytes and can drift from what the writer emits
+while the test keeps passing.
 
 Generated data cannot catch a change to the schema itself, since the writer and the TypedDicts
 move together. That is what `tests/bindings/replay_schema.golden.json` is for — the schema pinned
@@ -504,44 +507,38 @@ in the repository. A red web suite on an engine change is noise that trains you 
 
 ### The ts-replayer corpus
 
-`tests/replayer` (and four tests in `tests/engine_logic`) run against the **real** human corpus,
-not synthetic data — that is the point of them, so it cannot be generated. It is ~5 MB, git-ignored,
-and downloaded once per **machine**:
+`tests/replayer` (and a few tests in `tests/engine_logic`) run against the **real** human corpus,
+not synthetic data — that is the point of them, so it cannot be generated. It is ~5 MB,
+git-ignored, and downloaded once per **machine**:
 
 ```bash
 PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py
 ```
 
 It is cached in `~/.cache/ts_ai/ts_replayer` (`$XDG_CACHE_HOME` honoured), **not** under `data/`,
-so every checkout and every git worktree shares one copy — a worktree has its own empty `data/`,
-and a corpus stored there would be re-fetched, 300 requests at one per second, for bytes already
-on the machine. `tools/lib/corpus_paths.py` resolves the location: `$TS_REPLAYER_CORPUS` first,
-then an existing `data/datasets/ts_replayer` for checkouts that predate this, then the shared cache.
-
-**A missing corpus fails these tests; it does not skip them.** They previously carried
-`skipif(corpus not downloaded)` against a hardcoded absolute path, so on any machine but the one
-that path was written for, 289 test functions skipped and the suite reported green.
+so every checkout and every git worktree shares one copy instead of re-fetching 300 throttled
+requests for bytes already on the machine. `tools/lib/corpus_paths.py` resolves the location:
+`$TS_REPLAYER_CORPUS` first, then an in-repo corpus directory for checkouts that predate the
+shared cache, then the cache. **A missing corpus fails these tests; it does not skip them** — a
+`skipif` would turn the whole group green on every machine that does not have it, which is the
+opposite of what these tests are for.
 
 ### Run the suite in parallel
 
-`pytest-xdist` is installed; `-n auto` uses every core and is worth it everywhere:
-
-| | serial | `-n auto` (24 cores) |
-|:---|---:|---:|
-| `tests/replayer` | 3m 19s | **21s** |
-| whole backend suite | ~7m | **61s** |
+`pytest-xdist` is installed; `-n auto` uses every core and takes the backend suite from minutes to
+about a minute. It is worth it everywhere.
 
 The single whole-corpus test, `test_every_game_in_the_corpus_converts`, is marked `corpus_full`
-and **deselected by default** — on its own it was 167s of the 364s that `tests/replayer` used to
-take. Run it before merging any change to `tools/lib/ts_replayer_*`:
+and **deselected by default** — on its own it dominated the runtime of `tests/replayer`. Run it
+before merging any change to `tools/lib/ts_replayer_*`:
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest -q -m corpus_full tests/replayer   # ~2m 48s
+PYTHONPATH=. .venv/bin/python -m pytest -q -m corpus_full tests/replayer
 ```
 
 A `converted_game` session fixture in `tests/conftest.py` memoizes `convert_game` by replay id
-for tests that want it. It is available rather than mandatory: with `-n auto` the suite already
-runs in 21s, so rewriting ~120 existing call sites to use it would buy little for the risk.
+for tests that want it — available rather than mandatory, since under `-n auto` it would buy
+little for the churn of rewriting existing call sites.
 
 ```bash
 # ---------------------------------------------------------------------------------------------
@@ -550,7 +547,7 @@ runs in 21s, so rewriting ~120 existing call sites to use it would buy little fo
 tools/scripts/check_engine_fresh.sh
 
 # ---------------------------------------------------------------------------------------------
-# 1. C++ ENGINE -- the fast inner loop for engine/ work (368 tests, seconds)
+# 1. C++ ENGINE -- the fast inner loop for engine/ work (seconds)
 # ---------------------------------------------------------------------------------------------
 ./build/release/engine/ts_tests
 ./build/release/engine/ts_benchmark
@@ -564,9 +561,9 @@ tools/scripts/check_engine_fresh.sh
 PYTHONPATH=. .venv/bin/python -m pytest -q -n auto tests/bindings tests/engine_logic tests/replayer tests/training
 
 #    Narrower loops while iterating (run the full backend suite before calling the work done):
-PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic   # 331 tests, ~10s
-PYTHONPATH=. .venv/bin/python -m pytest -q tests/replayer                      # 422 tests, ~6min
-PYTHONPATH=. .venv/bin/python -m pytest -q tests/training                      # 187 tests, ~34s
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/replayer
+PYTHONPATH=. .venv/bin/python -m pytest -q tests/training
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
 # ---------------------------------------------------------------------------------------------
@@ -582,19 +579,28 @@ PYTHONPATH=. .venv/bin/python -m pytest -q tests/web
 .venv/bin/pyrefly check ai tools tests web bindings
 ```
 
-> **Worktrees and the venv.** `.venv/` lives in the main checkout, not in a git worktree under
-> `.claude/worktrees/`, so use the main checkout's path from there (e.g. `/workspace/.venv/bin/python`).
-> Invoke pytest as `python -m pytest`, not via the `.venv/bin/pytest` console script: that script
-> carries an absolute shebang from wherever the venv was first created, which breaks if the venv or
-> the repository is ever moved or copied.
+> **Invoke pytest as `python -m pytest`**, not via the `.venv/bin/pytest` console script: that
+> script carries an absolute shebang from wherever the venv was first created, which breaks if the
+> venv or the repository is ever moved or copied. For the same reason, use the path of whichever
+> checkout actually holds `.venv/` — it is not necessarily the directory you are working in.
 
-**Pass pyrefly the source directories explicitly.** A bare `pyrefly check` silently checks ZERO
-files when the repo is a git worktree under `.claude/worktrees/`: pyrefly honours
-`.git/info/exclude`, which the harness fills with `**/.claude/worktrees/`, so everything is
-excluded and it exits 0 having examined nothing. `No Python files matched patterns` on the last
-line means the check measured nothing, not that the code is clean.
+**Pass pyrefly the source directories explicitly.** pyrefly honours `.git/info/exclude`, so in a
+checkout whose exclude file covers the working directory a bare `pyrefly check` matches ZERO files
+and exits 0 having examined nothing. `No Python files matched patterns` on the last line means the
+check measured nothing, not that the code is clean.
 
 **Do NOT run `tests/differential/`.** It is gated behind the `differential_fuzz` marker /
 `--run-fuzz` and is ignored at collection (`tests/conftest.py`), because those modules fail at
-*import* and would otherwise abort the whole run. It is WIP, not informative in its current state,
-and not part of the check a change is expected to pass. Do not spend time reviving it.
+*import* and would otherwise abort the whole run. It is WIP and not part of the check a change is
+expected to pass — tracked as TEST-1 in `BUGS.md`. Do not spend time reviving it.
+
+---
+
+## 6. Keep Documentation Synchronized
+
+`engine/AGENTS.md`, `bindings/AGENTS.md`, `bot/AGENTS.md` and `web/server/AGENTS.md` each require
+their own file **and this one** to be updated when behavior in that directory changes; this file
+carries the same duty in reverse. A change that alters an interface, an invariant, a CLI flag or a
+directory's contents is not finished until the documentation covering it says so in the same
+change — and `README.md` and `CLAUDE.md` are published, so what they claim must be true of the
+code as it stands, with experiment history and private artifacts left out.

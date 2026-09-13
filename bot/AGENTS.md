@@ -12,7 +12,7 @@ This directory contains pure bot client implementations, baseline heuristics, an
   - `reset()`: Resets internal memory or search state between games.
 - [`random_bot.py`](random_bot.py): `RandomBot` baseline stochastic player making uniform random choices over legal moves.
 - [`heuristic_bot.py`](heuristic_bot.py): `HeuristicBot` rule-based expert player prioritizing key battlegrounds, scoring card timing, and ops efficiency.
-- [`neural_bot.py`](neural_bot.py): `NeuralBot` deep reinforcement learning player driven by `ColdWarNet` PyTorch checkpoints (auto-detects V1, V2, and V3 architectures).
+- [`neural_bot.py`](neural_bot.py): `NeuralBot` deep reinforcement learning player driven by `ColdWarNet` PyTorch checkpoints. The architecture (V1 or V2) is detected from the weights; a checkpoint from a retired architecture is refused outright by `tools.lib.player_agent.reject_retired_architecture` rather than partially loaded.
 - [`exploratory_bot.py`](exploratory_bot.py): `ExploratoryBot` agent designed to explore diverse decision paths, Space Race, Realignments, and Coups.
 - [`strategic_bot.py`](strategic_bot.py): `StrategicBot` high-level strategic agent prioritizing DEFCON-2 containment, coups, realignments, and Space Race safety with rich strategy/commentary generation.
 - [`event_heavy_bot.py`](event_heavy_bot.py): `EventHeavyBot` agent maximizing card event play and event-first timing.
@@ -29,7 +29,7 @@ The WebSocket client is located in [`web/bot_client.py`](../web/bot_client.py):
 PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
 
 # 2. Launch NeuralBot for USSR
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path data/checkpoints/.../snapshot_3602s.pt
+PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path <checkpoint.pt>
 
 # 3. Open browser at http://localhost:8000/?game_id=game-1&role=US
 ```

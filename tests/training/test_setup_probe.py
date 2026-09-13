@@ -4,8 +4,7 @@ Every number this probe reports is a difference between the board before the set
 board after it, so the things that can silently break it are structural: the block being a
 different length than assumed, the difference being taken against the wrong baseline, or the
 policy never actually being consulted. A probe that got any of those wrong would still print a
-plausible table -- which is the failure mode `research/metrics.md` 1.4.1 records for the last
-probe that went unchecked.
+plausible table, which is exactly how the last unchecked probe went wrong.
 """
 
 from __future__ import annotations

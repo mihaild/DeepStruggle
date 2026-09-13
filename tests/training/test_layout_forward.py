@@ -101,15 +101,15 @@ def test_an_observation_of_the_wrong_width_raises(factory) -> None:
 def test_a_frozen_copy_matches_the_model_it_was_cloned_from() -> None:
     """The snapshot evaluator freezes a copy of the live net and loads its weights into it.
 
-    Built by listing constructor arguments, that has broken twice -- arm E on card_features and
-    use_history, arm F on board_features after the other three were fixed -- and both times only
+    Built by listing constructor arguments, that has broken twice -- once on card_features and
+    use_history, then on board_features after the other three were fixed -- and both times only
     at the first snapshot, minutes into a run. create_like reads every dimension off the model.
     """
     from ai.models.coldwar_net_v2 import create_like
 
     model = create_coldwar_net_v2()
     frozen = create_like(model)
-    frozen.load_state_dict(model.state_dict())          # the call that failed in arm F
+    frozen.load_state_dict(model.state_dict())          # the call that failed before create_like
     assert frozen.TOTAL_OBS_SIZE == model.TOTAL_OBS_SIZE
     assert frozen.board_features == model.board_features
     assert frozen.card_features == model.card_features

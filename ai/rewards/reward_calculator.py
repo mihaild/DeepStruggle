@@ -77,11 +77,10 @@ class BlunderAwareRewardCalculator:
     This exists because with gamma = 1 and a terminal-only reward the objective is
     *indifferent* to when you win. Taking a forced win now returns +1; declining it and
     winning three turns later also returns +1, so the policy gradient sees no difference
-    between them and only risk separates the two. Measured on the 78M-step control, that
-    shows up as 80.3% of engine-verified forced wins taken, a rate which stops improving
-    after ~30M steps, with the misses concentrated where the critic is already optimistic
-    (v_win +0.626 when missed against +0.419 when taken). Perfect-information search does not
-    fix it either, which is expected: search maximises the same indifferent objective.
+    between them and only risk separates the two. In practice a trained policy leaves a steady
+    fraction of engine-verified forced wins on the table, at a rate that stops improving, with
+    the misses concentrated where the critic is already optimistic. Perfect-information search
+    does not fix it either, which is expected: search maximises the same indifferent objective.
 
     The scale applies to losses as well, so a self-inflicted defeat on turn 3 costs more than
     the same defeat on turn 9. That is deliberate -- a losing player should prolong the game

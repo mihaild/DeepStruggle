@@ -8,7 +8,7 @@ This directory contains the zero-allocation, high-throughput simulation engine f
 
 1. **Zero Heap Allocation in Simulation Core**: The core data structures (`GameState`, `DecisionContext`, `MicroAction`) use fixed-size memory layouts. `GameState` is strictly trivially copyable and under 4 KB (`sizeof(GameState) <= 4096`).
 2. **Micro-Decision State Machine**: All multi-step actions (Ops, events with multiple target choices, headline selection, space races) are decomposed into fine-grained atomic steps (`DecisionType`).
-3. **High Simulation Throughput**: Single-core simulation speed exceeds **2,000,000 steps/second**, meeting reinforcement learning and MCTS training requirements.
+3. **High Simulation Throughput**: Over 2,000,000 steps/second on one core of a modern desktop CPU (`ts_benchmark` reports the figure for the machine at hand), which is what makes reinforcement-learning-scale self-play affordable.
 4. **Deterministic Bit-for-Bit State**: Built-in 64-bit SplitMix64 PRNG (`Prng`) ensures bit-for-bit replayability from integer seeds.
 5. **Unified Sub-Decision Processing**: State machine handles sub-decisions (e.g. `SELECT_OP_MODE`, `POINT_NODE`, `CHOOSE_TIMING_BRANCH`, `CHOOSE_BRANCH`) uniformly across both `Phase::HEADLINE` and `Phase::ACTION_ROUND`.
 
@@ -29,7 +29,7 @@ This directory contains the zero-allocation, high-throughput simulation engine f
 
 ```
 engine/
-├── CMakeLists.txt              // Build target for ts_engine library, ts_tests, ts_fuzz, ts_benchmark
+├── CMakeLists.txt              // Builds ts_engine_core plus ts_tests, ts_fuzz, ts_fuzz_events, ts_benchmark
 ├── AGENTS.md                   // Developer and agent documentation (this file)
 ├── progress.md                 // Progress report and future work items
 ├── include/ts/                 // Public and internal engine headers
@@ -45,6 +45,8 @@ engine/
 │   ├── defcon.hpp              // Shared DEFCON-1 game-end resolution and provoked/unprovoked classification
 │   ├── space_race.hpp          // Space race tracks, milestone rewards, and special abilities
 │   ├── card_handlers.hpp       // Card event handlers and sub-decision dispatch declarations
+│   ├── war_events.hpp          // Shared helpers for the five war cards (Korean, Arab-Israeli, Indo-Pakistani, Brush, Iran-Iraq)
+│   ├── invariant.hpp           // invariant_failed(): aborts naming what broke, rather than carrying on
 │   ├── action_mask.hpp         // Legal action mask generator (per DecisionType and unified 212-dim flat mask)
 │   ├── state_machine.hpp       // Turn and Action Round lifecycle, Headline resolution
 │   ├── observation.hpp         // Neural observation extractor (ObservationBufferV23, the one layout)
@@ -65,6 +67,7 @@ engine/
 │   ├── state_machine.cpp       // State machine turn loop, setup, headline, and AR transitions
 │   ├── observation.cpp         // Feature extractor implementation
 │   ├── serialization.cpp       // Serializer binary & JSON implementations
+│   ├── invariant.cpp           // Out-of-line invariant reporting
 │   └── engine.cpp              // ts::Engine API implementation
 └── tests/                      // Engine test suites
     ├── test_framework.hpp      // Lightweight assertion & test registry framework
@@ -84,8 +87,11 @@ engine/
     ├── test_states.cpp         // Continuous state effects and modifier tests
     ├── test_card_edge_cases.cpp// Complete edge-case tests across all cards
     ├── test_full_game.cpp      // 10-turn full game integration tests ending in final scoring
-    ├── test_fuzz.cpp           // Invariant fuzzer (--games <N>, --steps <N>, --seed <S>)
-    └── test_benchmark.cpp      // 500k-step throughput benchmark
+    ├── test_auto_advance.cpp   // Engine::auto_advance_step: forced/degenerate decisions taken without asking
+    ├── test_fuzz_influence_placement.cpp // Randomized influence placement against the mask
+    ├── test_fuzz.cpp           // ts_fuzz: invariant fuzzer (--games <N>, --steps <N>, --seed <S>)
+    ├── test_fuzz_events.cpp    // ts_fuzz_events: same, biased toward firing events (--event-bias)
+    └── test_benchmark.cpp      // ts_benchmark: throughput benchmark
 ```
 
 ---
@@ -108,9 +114,11 @@ struct alignas(4) MicroAction {
 ## 5. How to Build, Test, and Benchmark
 
 ### Standard Build:
+The root `CMakeLists.txt` orchestrates `engine/` and `bindings/` together, and the rest of the
+repository expects the result in `build/release`.
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake -B build/release -S . -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
+cmake --build build/release -j
 ```
 
 ### Build with Sanitizers (AddressSanitizer + UndefinedBehaviorSanitizer):
@@ -123,20 +131,21 @@ cmake -B build_san -S . \
 cmake --build build_san -j
 ```
 
-### Run Unit Tests (299 tests):
+### Run Unit Tests:
 ```bash
-./build/engine/ts_tests
+./build/release/engine/ts_tests
 # Or with sanitizers:
 ./build_san/engine/ts_tests
 ```
 
-### Run Invariant Fuzzer:
+### Run the Fuzzers:
 ```bash
-# Run 10,000 full games:
-./build/engine/ts_fuzz --games 10000
+# Invariant fuzzer: 10,000 full games, or a step budget from a fixed seed
+./build/release/engine/ts_fuzz --games 10000
+./build/release/engine/ts_fuzz --steps 5000000 --seed 42
 
-# Run 5,000,000 steps:
-./build/engine/ts_fuzz --steps 5000000 --seed 42
+# Event-biased fuzzer: same invariants, steering play toward card events
+./build/release/engine/ts_fuzz_events --steps 1000000 --event-bias 95
 
 # Under ASan + UBSan:
 ./build_san/engine/ts_fuzz --games 10000
@@ -144,7 +153,7 @@ cmake --build build_san -j
 
 ### Run Performance Benchmark:
 ```bash
-./build/engine/ts_benchmark
+./build/release/engine/ts_benchmark
 ```
 
 ---
@@ -262,14 +271,13 @@ invariant 10), which means the cost lands on every number measured before it.
 Two standing preferences: a large vector for a rare mechanism is not worth it (a per-country or
 per-card bit serving one card costs 84 or 110 floats), and a partial feature is worse than none.
 
+---
+
 ## 7. Why hand knowledge lives in `CardLocation`
 
 `card_locations` distinguishes `HAND_US_KNOWN` from `HAND_US_UNKNOWN` rather than carrying a
-parallel "known" bitset, and the bare `HAND_US` / `HAND_USSR` constants deliberately no longer
-exist. Both decisions are load-bearing, and re-adding either name would reintroduce roughly
-thirty silent rules bugs.
-
-**As built** (`engine/include/ts/types.hpp`), eleven values, of which four are hand variants:
+parallel "known" bitset, and the bare `HAND_US` / `HAND_USSR` names deliberately do not exist.
+Eleven values (`include/ts/types.hpp`), four of them hand variants:
 
 ```
 UNAVAILABLE=0  DRAW_DECK=1  HAND_US_UNKNOWN=2  HAND_US_KNOWN=3  HAND_USSR_UNKNOWN=4
@@ -277,191 +285,69 @@ HAND_USSR_KNOWN=5  DISCARD_PILE=6  REMOVED_FROM_GAME=7  ONGOING_EVENT=8  PEEKED_
 HEADLINE_COMMITTED=10
 ```
 
+One field is enough because a card's holder always knows their own hand, so the only fact that
+varies is whether the *other* player knows: the holder is in the value, and "known" can only mean
+known to the non-holder. `card_locations` is a `uint8_t[111]` with values to spare, so the two
+extra variants cost no bytes inside a `GameState` capped at 4 KB. They also make knowledge
+monotone for free -- every write that moves a card out of a hand overwrites its knownness, where a
+parallel bitset would have to be cleared by hand at each of the hundred-odd write sites, and a
+missed one would report the opponent holding a card visibly in the discard.
+
 Access goes through `is_in_any_hand`, `in_hand_of`, `known_to_opponent`, `hand_of`, `hand_holder`
-and `revealed`, never through a bare comparison.
+and `revealed`, never a bare comparison -- and that is the load-bearing part. The ~50 sites that
+once read `card_locations[c] == HAND_US` would all still compile if the bare names existed, and
+would silently treat a known card as not in hand: its holder could not play it, and it would
+vanish from hand counts and from discard selection. Removing the names turned every one of them
+into a compile error. **Do not reintroduce them**, and add new reads through the helpers.
 
-The argument that settled the design follows, kept as it was written in the experiment log
-(`research/experiments.md` §19.5). It proposes `HAND_US` / `HAND_USSR` for the unknown variants;
-those were named `HAND_US_UNKNOWN` / `HAND_USSR_UNKNOWN` when built, precisely so that no old bare
-name survives. Read it for the reasoning, not for the spelling.
-
-
-§19.3 proposed a `known` bitset alongside `card_locations`, and noted that knowledge is
-per-observer so it would need *two* bitsets. **Both of those were wrong.**
-
-**One field is enough.** A card's holder always knows their own hand, so the only fact that varies
-is whether the *other* player knows. `HAND_US_KNOWN` therefore reads unambiguously as "in the US
-hand, and the USSR knows it" — the holder is in the value, and "known" can only mean known to the
-non-holder. There is no second observer to track. The full space is the one proposed:
-
-```
-UNAVAILABLE, DRAW_DECK, HAND_US, HAND_US_KNOWN, HAND_USSR, HAND_USSR_KNOWN,
-DISCARD_PILE, REMOVED_FROM_GAME, ONGOING_EVENT, PEEKED_TEMP, HEADLINE_COMMITTED
-```
-
-`card_locations` is already `uint8_t[111]` using 9 of 256 values, so **two more cost zero bytes** —
-against 14 bytes for a bitset, inside a `GameState` capped at 4 KB.
-
-**And it puts the risk where the compiler can find it.** This is the real argument, and it is a
-counting argument:
-
-| | sites | what goes wrong if one is missed |
-|---|---:|---|
-| writes to `card_locations` | **105** | with a bitset: the card moves to the discard and the bit is not cleared, so the observation reports the opponent holding a card that is visibly in the discard. Silent, and it corrupts the new feature. |
-| reads comparing to a hand | **52** | with separate locations: a known card fails `== HAND_US`, so its holder cannot play it, it vanishes from hand counts and from discard selection. A rules bug — but one that can be made a *compile* error. |
-
-With separate locations the 105 writes are correct by construction: assigning any new location
-destroys the knownness, which is exactly the monotonicity rule — knowledge ends when the card
-leaves the hand, and it ends automatically. With a bitset every one of those 105 sites has to
-remember to clear it.
-
-So the proposal has fewer risky sites (52 against 105) *and* moves the risk from silent to
-detectable. It is the better design on both counts.
-
-**The one condition.** The 52 reads are all bare equality — `card_locations[c] == HAND_US`, or the
-`loc = (p == US) ? HAND_US : HAND_USSR` idiom that then compares. Adding values silently breaks
-every one. So the change must be made compiler-visible: **remove or rename the bare `HAND_US` /
-`HAND_USSR` constants** so that every existing site fails to compile, and reintroduce access through
-helpers:
-
-```cpp
-bool in_hand_of(CardLocation loc, Player p) noexcept;   // either variant
-bool known_to_opponent(CardLocation loc) noexcept;
-CardLocation hand_of(Player p, bool known) noexcept;
-```
-
-Done that way the compiler enumerates all 52 call sites and none can be forgotten. Done by *adding*
-values while leaving the old names in place, roughly thirty of them become silent rules bugs, and
-the engine has been bitten by exactly this before — the `keeps_own_card_location` comment in
-`game_state.hpp` documents Missile Envy being discarded out of a hand it had just been moved into,
-stranding `forced_card_id` on a card nobody held, "and the action mask, which only forces a card
-that is actually in hand, then drops the forced play without a trace."
-
-**A note on precedent.** `PEEKED_TEMP` and `HEADLINE_COMMITTED` are existing non-obvious location
-values, but neither is a *hand variant* — both mean "not in a hand right now", and the code treats
-them as out of play. `HAND_US_KNOWN` would be the first location that must behave **identically to
-an existing location in every rule** and differ **only in the observation**. That is what makes the
-read audit the whole job, and it is why the helper-plus-rename discipline is not optional.
-
-**Observation side.** `canon_loc` (`observation.cpp:160-185`) currently folds opponent-hand cards
-into slot 0 with the draw deck. It gains one case: a card in the opponent's hand that is *known*
-maps to a new slot rather than to 0, while an unknown one keeps folding into 0. From the holder's
-own perspective both variants map to `MY_HAND` unchanged. That is one extra card feature — 110
-floats — against the 512 being removed with the history.
-
-Recommendation unchanged from §19.4, with the mechanism settled: do it as separate locations, in the
-same breaking change as removing the history, behind helpers that force the compiler to walk the 52
-sites. And keep §19.4's caveat — this addresses the §14–§17 card-play cluster, not the game-length
-constraint that §18 identifies as binding.
+A known hand card must behave identically to an unknown one in **every rule** and differ **only in
+the observation**: the card block (`src/observation.cpp`) gives an opponent-held card the
+`KNOWN_OPPONENT_HAND` slot when it is known and folds it into `DECK_OR_HIDDEN` when it is not,
+since from the observer's side those two are the same thing and anything else would leak the hand.
+From the holder's own perspective both variants are `MY_HAND`.
 
 ---
 
 ## 8. Free-coup events must go through `Operations::can_coup`
 
-An event that grants a coup outside the ordinary Operations path does not get target
-validation for free. Two handlers once built their own target lists and offered coups the rules
-forbid; the account below is kept because the consequence reached the training signal, not just
-a metric. Fixed, with `tests/engine_logic/test_free_coup_target_legality.py` covering both.
+An event that grants a coup outside the ordinary Operations path does not get target validation
+for free. `can_coup_or_realign` (`src/ops.cpp`) is what refuses a country the opponent has no
+influence in, and it is also where the DEFCON regional restrictions, NATO and The Reformer live;
+`get_coup_target_mask` is built on it, so an ordinary Ops coup is filtered correctly.
 
+Ortega Elected in Nicaragua (#91) and Che (#107) each once built their own target list -- adjacency
+to Nicaragua for Ortega, region and battleground status for Che -- and never consulted `can_coup`.
+Both therefore offered coups the rules forbid, including a coup on a battleground the opponent held
+no influence in, which took DEFCON from 2 to 1 and ended the game against the phasing player: an
+illegal move that won. Both handlers now call `Operations::can_coup`, at the target mask in
+`get_event_action_mask` and again where the chosen target is applied, and
+`tests/engine_logic/test_free_coup_target_legality.py` covers them. Any new free-coup event must
+do the same.
 
-My first reading of these, that DEFCON-1 losses were attributed to the wrong player, was **wrong**.
-`resolve_defcon_one_loss` (`engine/include/ts/defcon.hpp:28`) makes the *phasing* player lose
-regardless of who drove DEFCON down, which is the rule. The engine is right about that.
+Unrelated and correct, since it is easy to misread as part of the same bug:
+`resolve_defcon_one_loss` (`include/ts/defcon.hpp`) makes the **phasing** player lose regardless of
+who drove DEFCON down. That is the rule.
 
-The actual defect is narrower and worse. **Two events run their own free-coup target lists and
-never consult `Operations::can_coup`:**
+---
 
-| card | site | what it validates |
-|:---|:---|:---|
-| #91 Ortega Elected in Nicaragua | `card_dispatcher.cpp:1431` | adjacency to Nicaragua only |
-| #107 Che | `card_dispatcher.cpp:1402` | region, non-battleground, not visited |
+## 9. Known issue: UN Intervention's companion mask is unfiltered
 
-`can_coup_or_realign` refuses a country the opponent has no influence in
-(`engine/src/ops.cpp:119`), and `get_coup_target_mask` is built on it, so an ordinary Ops coup is
-filtered correctly. These two bypass it, and so offer coups the rules forbid — along with,
-presumably, the DEFCON regional restrictions, NATO and The Reformer, which live in the same
-function.
+UN Intervention (#32) is played simultaneously with a card carrying the opponent's associated
+Event, so its companion must be an opponent-associated, non-scoring card. **The action mask offers
+every card in hand**, scoring cards and the player's own included.
 
-**Replay 139, turn 9, action round 2.** The US played Ortega — a USSR card — for Ops, so its event
-fired and handed the USSR a free coup. The engine offered **Cuba**. The log records Cuba as
-`inflUS 0 / inflUSSR 3` at *every* entry of turn 9, and the engine state agrees exactly, so the
-reconstruction is correct and the board is not in doubt. With no US influence there, the USSR
-cannot coup Cuba. But Cuba is a battleground, so the offered coup took DEFCON 2 → 1 and ended the
-game against the phasing player, the US. That is why it scored as a USSR "win".
+`trigger_un_intervention` (`src/events/early_war.cpp`) sets `ctx().resolving_card`, so
+`action_mask.cpp`'s `if (ctx.resolving_card != 0)` branch fires first and delegates to
+`get_event_action_mask`, whose `SELECT_CARD` switch has no `UN_INTERVENTION` case and falls
+through to `default:` -- every card in hand. The correct filter lives just below that branch
+(`pending_op_card == UN_INTERVENTION && is_opponent_card(i, p)`) and is shadowed, so it never runs.
 
-Same shape at **replay 16 T9 AR3**, **replay 165 T9 AR3**, **replay 245 T8 AR1** — all Ortega, all
-Cuba, all `US 0 / USSR 3`.
+The illegal choice is then absorbed silently: the resolver (`src/card_dispatcher.cpp`) re-checks
+the rule and on failure clears `resolving_card` and returns. Nothing is corrupted -- the companion
+stays in hand -- but UN Intervention goes to the discard pile with no event fired and no Ops
+granted, so the player loses a whole action round with no error reported.
 
-`tests/engine_logic/test_free_coup_target_legality.py` reproduces both synthetically: Ortega offers
-`[67, 68, 71]` including Cuba with zero US influence, and Che offers 26 countries without checking
-influence at all. A third test confirms the ordinary Ops path filters correctly, so the defect is
-in the two event handlers, not in the coup rule. **Fixed** (approved): both handlers now call `Operations::can_coup(state, Player::USSR, i)`, at
-the target mask in `get_event_action_mask` and again where the chosen target is applied. The
-forced win at replay 139 T9 AR2 is gone, all 368 C++ tests pass, the fuzzer is clean over 3,000
-games, and all 282 corpus games still convert with 0 failures. One existing C++ test,
-`OrtegaElected_CanCoupCuba_AndAdjacentCountries`, asserted the old behaviour -- it gave Cuba US
-influence but left Costa Rica and Honduras empty and expected them offered anyway -- and now sets
-up influence in those two and additionally asserts that an adjacent country with none is refused.
-
-**Why this matters beyond the metric.** `classify_legal_actions` reads the engine's terminal
-utility, and so does every reward. A policy trained against this learns that an opponent's Ortega
-is a free win whenever a battleground sits next to Nicaragua — a move the rules do not permit.
-
-
-## 9. UN Intervention offers companions the rules forbid — DIAGNOSED, NOT FIXED
-
-**Status: awaiting the owner's decision.** The fix changes the decision stream, which is an
-engine-revision bump (§`research/run_nomenclature.md`), so it is not applied unasked.
-
-UN Intervention (#32) reads "play this card simultaneously with a card containing your
-opponent's associated Event". The companion must be an opponent-associated, non-scoring card.
-**The action mask offers every card in the hand**, including scoring cards and the player's own.
-
-The gate is right and the mask is wrong, which is why this survived. `trigger_un_intervention`
-(`engine/src/events/early_war.cpp:462`) only raises the decision when the player actually holds
-an opponent non-scoring card. It then sets `ctx().resolving_card = UN_INTERVENTION`, and that is
-the defect:
-
-| site | what happens |
-|:---|:---|
-| `action_mask.cpp:44` | `if (ctx.resolving_card != 0)` fires first and delegates to `get_event_action_mask`, then returns |
-| `action_mask.cpp:57` | the *correct* companion filter, `pending_op_card == UN_INTERVENTION && is_opponent_card(i, p)` — **unreachable**, shadowed by the branch above |
-| `card_dispatcher.cpp:1840` | `get_event_action_mask`'s `SELECT_CARD` switch has no `UN_INTERVENTION` case, so it takes `default:` — every card in hand |
-
-`pending_op_card` *is* set to 32 at that node; shadowing is what kills the branch, not a missing
-assignment. Two copies of one rule, and the reachable one is the wrong one.
-
-**The illegal choice is absorbed silently, and that is the second half of the bug.** The resolver
-(`card_dispatcher.cpp:757`) re-checks `side == opp && !is_scoring_card` and on failure falls
-through to `resolving_card = 0; return true;`. So nothing is corrupted -- the scoring card stays
-in hand, it is *not* discarded -- but UN Intervention goes to the discard pile, no event fires,
-no Ops are granted, and the action round ends. **The player silently loses a whole action round.**
-A safety net absorbing an illegal action instead of rejecting it is exactly why nothing announced
-this for as long as it has existed.
-
-**Seen in the wild**: `E3-10-21-160M-selfplay-404`, turn 8 AR1. Step #428 selects UN Intervention,
-#429 EVENT, #430 names **Europe Scoring**. The USSR gets nothing for the action round, and Europe
-Scoring -- still in hand -- is played again at step #444, T8 AR3, confirming it was never
-discarded.
-
-**How often**, 400 games per checkpoint at temperature 0.1:
-
-| checkpoint | companion nodes | illegal chosen | offered/node | of which illegal |
-|:---|---:|---:|---:|---:|
-| `E3-10-21-160M` | 784 | 32 (**4.1%**) | 5.8 | 52.4% |
-| `E3-01-21-160M` | 655 | 9 (**1.4%**) | 4.4 | 44.5% |
-| `E3-01-21-240M` | 684 | 17 (**2.5%**) | 4.7 | 47.3% |
-
-About half of every offered companion list is illegal by rule, and the policies take one 1.4-4.1%
-of the time. The identity arm does it most, which may connect to its `spaced_own_or_neutral`
-regression (`research/metrics.md` §21.11).
-
-**The fix, when approved**: add a `case card_ids::UN_INTERVENTION:` to the `SELECT_CARD` switch in
-`get_event_action_mask` mirroring the resolver's own test, and **delete** the dead branch at
-`action_mask.cpp:57` rather than leave a second copy of a rule nothing reaches. A regression test
-must pin the companion mask to opponent non-scoring cards only, since the bug is that a correct
-filter existed and was never consulted.
-
-**What it costs**: the decision stream changes, so this is a new engine letter. `(seed, actions)`
-datasets truncate (invariant 10) and the E3 Elo ladder in `research/metrics.md` §21.10 becomes a
-cross-engine comparison. Checkpoints still load -- the observation is untouched.
+**Unfixed.** The fix is a `case card_ids::UN_INTERVENTION:` in `get_event_action_mask`'s
+`SELECT_CARD` switch mirroring the resolver's own test, deletion of the shadowed branch rather
+than a second copy of the rule, and a regression test pinning the companion mask to opponent
+non-scoring cards. It changes the decision stream, so it is an engine change under §2.

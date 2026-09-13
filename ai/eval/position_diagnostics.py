@@ -4,16 +4,15 @@ Win rate is a poor progress signal for this agent: it plateaus while the underly
 stays incoherent. These metrics look at the board instead, and they moved first when
 anything was actually wrong.
 
-Two findings motivate them, measured on checkpoints/dec_prio_off/snapshot_final:
+Two failure modes motivate them, both seen in trained agents:
 
-* Roughly eight of the 29 battlegrounds sit completely untouched from turn 8 onwards, and
-  the count stops falling -- the agent gives up contesting the board rather than slowly
-  getting to it. Crucially the *same* battlegrounds are always the empty ones: Algeria
-  97.9%, Saudi Arabia 95.4%, Libya 91.0%, India 78.0%, versus Iraq 2.2%, South Africa
-  2.5%, Poland 2.9%. The always-contested ones are exactly those seeded by the opening
-  setup. The agent fights where it was placed and never opens a new front.
+* A group of battlegrounds sits completely untouched from the mid-game onwards, and the
+  count stops falling -- the agent gives up contesting the board rather than slowly getting
+  to it. Crucially the *same* battlegrounds are always the empty ones, and the
+  always-contested ones are exactly those seeded by the opening setup: the agent fights
+  where it was placed and never opens a new front.
 
-* Only about a fifth of games reach turn 10, so the Late War deck is nearly unplayed.
+* Games end early, so the Late War deck is nearly unplayed.
 
 A "salvageable" position is one worth resuming from: neither side is far enough ahead that
 the game is decided, and there is something left to play for.

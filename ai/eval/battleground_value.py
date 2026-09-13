@@ -1,15 +1,13 @@
 """Does the critic price battlegrounds -- and access to them -- at all?
 
-`research/experiments.md` §4 records that battlegrounds sit empty in late positions and that the
-count plateaus from turn 8: the agent stops contesting the map once its early cards are spent. The
-loop that would explain it is that the agent never holds battlegrounds, so it never experiences a
-scoring card paying out on them, so the critic never learns they are worth anything, so the policy
-has no gradient toward taking them.
+Trained agents tend to stop contesting the map once their early cards are spent, leaving
+battlegrounds empty in late positions. The loop that would explain it is that the agent never
+holds battlegrounds, so it never experiences a scoring card paying out on them, so the critic
+never learns they are worth anything, so the policy has no gradient toward taking them.
 
 That story has two halves and they need different fixes -- a critic that cannot price the board, or
-a policy that can but never explores there. This measures the first half, the same way §4.8
-measured whether the policy conditions on the trap bit: perturb the board in one controlled way and
-see how far `v_win` moves.
+a policy that can but never explores there. This measures the first half: perturb the board in one
+controlled way and see how far `v_win` moves.
 
 **What counts as valuable is not only control.** Access matters and is cheaper to buy: influence in
 a battleground the opponent also stands in, or in a country adjacent to one, is what makes a later

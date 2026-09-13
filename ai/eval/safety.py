@@ -3,8 +3,7 @@
 Two implementations, for two different jobs:
 
 * :func:`classify_legal_actions` -- a **rule-based** detector, fast enough to run inside a
-  bot's move loop. Its rules are derived from, and verified against, the engine; the card
-  list lives in ``docs/instant_decisions.md`` with the observed terminal values.
+  bot's move loop. Its rules are derived from, and verified against, the engine.
 Coup targets are the one exception: `DecisionContext` does not expose `op_mode` to Python,
 so a coup cannot be told from an influence placement by inspection, and that case applies
 the action and checks for a terminal state instead -- exact, and one step deep.

@@ -1,10 +1,10 @@
 """Where the ts-replayer corpus lives, resolved in one place.
 
 The corpus is ~5 MB of downloaded human games and is git-ignored, so it is not repository
-content and must not be re-fetched per checkout. Every git worktree under `.claude/worktrees/`
-gets its own empty `data/`, so a corpus stored there would be downloaded again for each one --
-300 requests at one per second, every time, for bytes already on the machine. It therefore
-defaults to a shared per-user cache and is shared by every checkout and worktree.
+content and must not be re-fetched per checkout. Every checkout and every git worktree gets its
+own empty `data/`, so a corpus stored there would be downloaded again for each one -- 300
+requests at one per second, every time, for bytes already on the machine. It therefore defaults
+to a shared per-user cache.
 
 Resolution order:
 

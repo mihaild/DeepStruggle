@@ -9,7 +9,7 @@ Four groups, chosen because each is either obviously necessary or diagnostic:
 * **board** -- the viewer's influence in each of the 84 countries. Necessary for any positional
   play; if this fails, nothing else matters.
 * **hand** -- whether each of the 110 cards is in the viewer's hand. This is the diagnostic one.
-  The card block encodes a card's *properties* and not which card it is (`metrics.md` §21.4), and
+  The card block encodes a card's *properties* and not which card it is, and
   v2's card branch pools over shared per-card weights, so position -- the only carrier of
   identity -- is discarded. A v2 model without identity embeddings should fail here and pass
   everything else. An `--arch mlp` model reads the flat vector positionally and should pass. A v2

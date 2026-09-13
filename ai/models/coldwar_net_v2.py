@@ -43,10 +43,10 @@ class GraphConvLayer(nn.Module):
     country's own value is the self-loop, whose weight is `1/(deg+1)`. That is a low-pass filter,
     and exact per-country influence is the high-frequency part of the signal.
 
-    `research/metrics.md` 21.12 measured the consequence. A linear probe recovers a country's
-    exact influence from its own raw observation slots 97% of the time and from its post-GCN
-    token 63% of the time, and the loss tracks degree: Australia and Canada (one neighbour) pass
-    through untouched, while France, West Germany and Italy (five) keep 60%, 50% and 34%.
+    The consequence is measurable: a linear probe recovers a country's exact influence far more
+    often from its raw observation slots than from its post-GCN token, and the loss tracks degree
+    -- a country with one neighbour passes through almost untouched, one with five loses most of
+    it.
 
     `self_transform=True` adds a second weight matrix applied to the node itself, so the layer
     can hold a country at full strength instead of being forced to average it with its
@@ -122,8 +122,8 @@ class ColdWarNetV2(nn.Module):
     the trunk takes 1024 rather than 896. Nothing in the engine would fill them.
 
     Note the board branch pools across all 84 countries *before* the global block is seen, and
-    the policy head is dense off the fused vector -- there is no per-country output path. See
-    `research/metrics.md` 1.4.2 for what that costs.
+    the policy head is dense off the fused vector -- there is no per-country output path, which
+    costs the heads most of what they could know about individual countries.
     """
 
     # Observation layout v2.3, which is the only layout the engine emits. The offsets are still
@@ -277,22 +277,23 @@ class ColdWarNetV2(nn.Module):
         self.res_blocks = nn.ModuleList([ResBlock(hidden_dim) for _ in range(num_res_blocks)])
 
         # End-of-trunk attention read-out. The board branch pools across all 84 countries before
-        # the trunk is formed, and `research/metrics.md` 21.12 measures what that costs: a linear
-        # probe recovers a country's exact influence from its pre-pooling token 66% of the time
-        # and from the 512-float trunk essentially never. Every head reads only the trunk, so the
-        # board is gone by the time anything decides where to place.
+        # the trunk is formed, and that pooling is lossy: a linear probe recovers a country's
+        # exact influence from its pre-pooling token far more often than from the 512-float
+        # trunk, where it is essentially gone. Every head reads only the trunk, so the board is
+        # gone by the time anything decides where to place.
         #
         # This lets the trunk, once it has an estimate of the situation, go back and look at
         # specific countries and cards. The keys and values carry each entity's **raw**
         # observation slots alongside its encoded token, because the token is itself already
         # damaged -- the graph convolution costs a third before pooling costs the rest -- so
         # attending only over tokens would inherit that loss.
-        # Per-entity policy heads. §21.13 established that no read-out ending in one fixed-size
-        # summary can carry 84 countries to a head: the attention read-out moved the trunk not at
-        # all beyond what better tokens gave it, because a single query over 84 countries returns
-        # one weighted average. The token holds 89-91% of the recoverable exact influence and the
-        # trunk holds 6-14%, so the remaining way to get the board into a decision is to stop
-        # routing it through the trunk -- a country's logit is computed from that country's token.
+        # Per-entity policy heads. No read-out ending in one fixed-size summary can carry 84
+        # countries to a head: a single query over 84 countries returns one weighted average, so
+        # the attention read-out above adds nothing beyond what better tokens give it. A
+        # country's exact influence is almost entirely recoverable from its own token and almost
+        # entirely absent from the pooled trunk, so the remaining way to get the board into a
+        # decision is to stop routing it through the trunk -- a country's logit is computed from
+        # that country's token.
         self.per_entity_heads = int(per_entity_heads)
         if self.per_entity_heads > 0:
             d = self.per_entity_heads
@@ -462,9 +463,9 @@ class ColdWarNetV2(nn.Module):
 
         `extract_features` keeps its old contract and returns only the trunk, because every
         probe and every caller reads that. The tokens come back separately because the
-        per-entity policy heads need them: `research/metrics.md` 21.13 measured a country's
-        exact influence at 89-91% recoverable from its own token and 6-14% from the pooled
-        trunk, so a head that reads only the trunk cannot see the board however it is pooled.
+        per-entity policy heads need them: a country's exact influence is almost entirely
+        recoverable from its own token and almost entirely absent from the pooled trunk, so a
+        head that reads only the trunk cannot see the board however it is pooled.
         """
         if obs.shape[-1] != self.TOTAL_OBS_SIZE:
             raise ValueError(
@@ -816,10 +817,10 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
     """A network shaped exactly like `model`.
 
     Every dimension is read off the model rather than passed in. A frozen evaluation copy built by
-    listing arguments has to list *all* of them, and twice now it has not: arm E died on its first
-    snapshot when card_features and use_history were left at factory defaults, and arm F died the
-    same way on board_features after the other three had been fixed. Reading them from the source
-    removes the class of error rather than the instance.
+    listing arguments has to list *all* of them, and twice a run has died at its first snapshot
+    because one was left at a factory default -- the second time on a different argument, after
+    the first had been fixed. Reading them from the source removes the class of error rather than
+    the instance.
     """
     # The backbone is a dimension too. An MLP-trunk model copied as a v2 has a different state
     # dict and fails to load at the first snapshot -- the same failure the paragraph above is

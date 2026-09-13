@@ -33,15 +33,14 @@ def reject_retired_architecture(state_dict: Dict[str, Any]) -> None:
     V3 and V4 were removed: neither ever produced a logged result, and both predate the
     starred-card engine fix and the single observation layout, so their checkpoints could not be
     run even if the classes were still here. The oracle critic and belief head that rode with V4
-    are queued for P5, which will rebuild them against the current critic -- `research/plans/
-    P5_oracle_critic.md` names the commit to read the old implementation out of.
+    are not maintained here; the old implementation is recoverable from version control.
     """
     for key, what in _RETIRED_ARCH_KEYS.items():
         if any(key in name for name in state_dict):
             raise ValueError(
                 f"this checkpoint was trained on {what}, which has been removed. It also "
                 f"predates both the starred-card engine fix and the single observation layout, "
-                f"so it cannot be run. See research/plans/P5_oracle_critic.md.")
+                f"so it cannot be run.")
 
 
 def load_checkpoint_into(model: nn.Module, state_dict: Dict[str, Any]) -> None:

@@ -107,6 +107,13 @@ for required in README.md LICENSE requirements.txt CMakeLists.txt engine binding
 done
 echo "--> ${FILE_COUNT} files, no excluded path survived."
 
+# 3c. Absence of the excluded paths is only half of it. A file that survives can still point at
+# the research log, name a checkpoint nobody outside has, or recount an experiment by arm and
+# seed -- and the public reader follows that reference into nothing. This checks the contents of
+# what is about to be published, and is fatal for the same reason the path check is.
+echo "--> Checking public hygiene..."
+"$(dirname "${BASH_SOURCE[0]}")/check_public_hygiene.sh" "$TREE"
+
 # 4. Chain to previous main commit (if any)
 PARENT_ARGS=()
 PARENT=$(git rev-parse --verify --quiet "refs/heads/${TARGET_BRANCH}" || true)
