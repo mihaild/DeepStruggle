@@ -30,14 +30,12 @@ TREE="${1:-}"
 
 # Paths stripped by publish_snapshot.sh. Kept in sync by `test_public_hygiene.py`, which reads
 # both files and fails if they disagree -- the two lists drifting apart is how this stops working.
-EXCLUDED_PREFIXES='^(Dockerfile|data/|research/|checkpoints|replays|\.claude/|docs/|\.agents/|tools/scripts/(publish_snapshot|check_public_hygiene)\.sh)'
+EXCLUDED_PREFIXES='^(Dockerfile|data/|research/|checkpoints|replays|\.claude/|docs/|\.agents/|tools/scripts/publish_snapshot\.sh|tools/scripts/check_public_hygiene\.sh|tests/training/test_public_hygiene\.py)'
 
 # Files allowed to name the stripped layout, with the reason.
 #   .gitignore  -- must name data/ and .claude/ to ignore them; that is its job
 #   .gitmodules -- records the submodule path
-#   test_public_hygiene.py -- the test for this script; its fixtures are deliberate examples of
-#                             exactly what the rules catch, so scanning it is circular
-ALLOWLIST='^(\.gitignore|\.gitmodules|tests/training/test_public_hygiene\.py)$'
+ALLOWLIST='^(\.gitignore|\.gitmodules)$'
 
 # Strings that are legitimate in published code, exempted individually rather than by file, so a
 # *new* private reference in the same file is still caught.

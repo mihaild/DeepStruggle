@@ -49,18 +49,13 @@ def _excluded_in_hygiene() -> set[str]:
     inner = pattern.removeprefix("^(").removesuffix(")")
     out: set[str] = set()
     for alt in inner.split("|"):
-        if "publish_snapshot" in alt or "check_public_hygiene" in alt:
-            continue
         out.add(alt.replace("\\", "").rstrip("/"))
-    out.add("tools/scripts/publish_snapshot.sh")
     return out
 
 
 def test_both_scripts_agree_on_what_is_private() -> None:
     """A path published but unchecked is the hole this whole mechanism exists to close."""
     publish, hygiene = _excluded_in_publish(), _excluded_in_hygiene()
-    # The hygiene checker also skips itself, which publish_snapshot does not need to list.
-    hygiene.discard("tools/scripts/check_public_hygiene.sh")
     assert publish == hygiene, (
         f"exclude lists have drifted.\n"
         f"  only in publish_snapshot.sh: {sorted(publish - hygiene)}\n"
