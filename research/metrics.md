@@ -1736,6 +1736,75 @@ that chose the successes.
 
 **E3-15 rests on one seed**, and it is now the recipe. That is the standing caveat on this table.
 
+### 21.18 Does the network price a country for the operation it is performing?
+
+Elo says a policy is better; it never says what it understands. Three probes built against the
+engine's own answer key, so none of them needs a human judgement.
+
+#### The same card, the same board, Event or Operations
+
+The sharpest of the three, because the two branches differ in exactly one decision. Placement
+costs **2 Ops per point in a country the opponent controls** and 1 elsewhere
+(`Operations::get_influence_cost`), while event placement never consults cost at all
+(`Operations::place_influence`). So free-placement events should want the countries ordinary Ops
+should avoid, and a removal event should want them most.
+
+All four cards are held by their own side, so playing for Ops does not fire the event and the
+pairing is exact. Probability mass on opponent-controlled countries:
+
+| card | E3-15 Event | E3-15 Ops | **gap** | E3-01 Event | E3-01 Ops | **gap** |
+|:---|---:|---:|---:|---:|---:|---:|
+| The Voice of America (removal) | 80.1% | 13.4% | **+66.7** | 76.9% | 26.8% | +50.1 |
+| Ussuri River Skirmish | 40.3% | 16.0% | **+24.3** | 30.8% | 31.6% | **−0.8** |
+| Colonial Rear Guards | 28.9% | 17.3% | **+11.6** | 17.3% | 26.8% | **−9.5** |
+| Decolonization | 39.5% | 26.0% | **+13.5** | 11.7% | 20.5% | **−8.8** |
+
+**E3-15 has the gap positive on all four. The control has it backwards on all three
+free-placement events** -- it puts *less* weight on opponent-held countries when placement is free
+than when it costs double. Voice of America is the easy case for both, because its legal mask
+already restricts to countries holding Soviet influence (uniform baseline 60.1%); the
+discriminating cases are the placement events, where the uniform baseline is 6-18%.
+
+E3-15's Ops branch sits at 13-26% and its Event branch at 29-80% **on the same boards**. That is
+one network conditioning its country choice on the operation, which is what the per-entity heads
+were for, and it is invisible to Elo.
+
+#### Where it aims, by operation
+
+Opponent influence in the chosen country against the mean over that node's own legal set, so the
+mask cannot manufacture the result:
+
+| operation | legal | chosen | uniform | lift | battleground | unif |
+|:---|---:|---:|---:|---:|---:|---:|
+| event: Ussuri River Skirmish | 14.5 | 3.97 | 1.17 | **+2.80** | 0.81 | 0.38 |
+| event: Brush War | 51.8 | 2.79 | 0.62 | **+2.17** | 0.94 | 0.29 |
+| event: The Voice of America | 16.4 | 4.00 | 2.67 | **+1.33** | 0.91 | 0.64 |
+| ops: influence | 38.0 | 2.00 | 0.49 | +1.51 | 0.79 | 0.39 |
+| **ops: coup** | 9.0 | 2.09 | 2.11 | **−0.02** | **0.59** | **0.68** |
+| ops: realign | 6.7 | 2.32 | 2.21 | +0.10 | 0.89 | 0.78 |
+| event: Comecon | 7.5 | 0.10 | 0.07 | +0.03 | 0.15 | 0.21 |
+
+**Couping is undiscriminating**: no opponent-influence lift and a *below-uniform* battleground
+rate. Couping battlegrounds is what earns military operations and what moves regional scoring, so
+this is a specific, named weakness rather than a general one.
+
+#### Picking the best placement
+
+Scored against the engine's true marginal regional VP for every legal country: chosen **1.038**
+against 0.272 for a uniform legal pick and 3.162 for the best available -- **lift +0.767**, the
+single best target taken **31.7%** of the time, average **93rd percentile** of the legal set. It
+reliably finds a good country and often not the best one.
+
+#### What did not work, and why it is recorded
+
+The first version of this probe asked whether regional VP is recoverable from the trunk. It is
+not a test: `global_features[64..69]` already carry the live per-region differential, so it asks
+whether six floats can be copied. The counterfactual replacement was better and still weak --
+board slot 24 is `my_deficit`, "how many Ops to reach control", which is most of the threshold
+answer, so a linear probe on the raw input already scores 0.886 AUC and the encoder adds 0.010.
+The lesson generalises: **a probe is only a test of understanding if its answer key is absent
+from the observation**, and this observation is rich in precomputed per-country facts.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
