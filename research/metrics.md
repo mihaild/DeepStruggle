@@ -1537,6 +1537,59 @@ per graph layer and about 17% throughput.
 
 **Adopt `--self-transform`; do not adopt `--attn-readout` in this form.**
 
+### 21.14 Does a network that can see the board contest more of it?
+
+§21.13 gave the self-transform arm a representation that holds per-country influence where the
+control's lost it. The behavioural question that follows is whether it *uses* it: eight of 29
+battlegrounds sit empty from turn 8 in the control, always the same ones (§21.11). Position
+diagnostics, four late snapshots each, temperature 0.1:
+
+| | E3-10 control | E3-12-21 | E3-12-22 | E3-13-21 |
+|:---|---:|---:|---:|---:|
+| empty battlegrounds, turn 5 | 11.88 ±1.25 | 11.72 ±1.16 | **8.90 ±1.06** | 11.59 ±0.88 |
+| empty battlegrounds, turn 8 | 7.05 ±1.07 | 7.61 ±1.40 | **4.71 ±1.26** | 8.38 ±0.59 |
+| uncontrolled, turn 8 | 15.39 ±0.98 | 15.32 ±0.88 | 13.91 ±1.55 | 15.61 ±0.74 |
+| mean final turn | 7.38 ±0.62 | 7.52 ±0.29 | 7.61 ±0.68 | 6.91 ±0.62 |
+
+**The answer is "it can, not it does".** `E3-12-22` contests three more battlegrounds at turn 5 and
+two and a half more at turn 8 -- far outside the ±1.2 snapshot spread. `E3-12-21`, the same
+architecture with a different seed, is indistinguishable from the control. The architecture makes
+the board *available*; which policy is found is still down to the seed.
+
+It is suggestive that the seed which used it is the stronger one -- `E3-12-22` is the +83 Elo arm
+and `E3-12-21` the +53 -- but that is one pair, and it is exactly the shape of correlation that
+needs more seeds before it is a claim.
+
+| battleground | E3-10 control | E3-12-21 | E3-12-22 | E3-13-21 |
+|:---|---:|---:|---:|---:|
+| **India** | 97.8% | **37.0%** | **61.5%** | 97.6% |
+| Saudi Arabia | 92.9% | 77.3% | 94.2% | 95.2% |
+| Algeria | 71.7% | 98.1% | **24.5%** | 96.8% |
+| Libya | 68.0% | 97.2% | **14.2%** | 56.0% |
+| Brazil | 52.1% | 89.2% | 27.6% | 99.6% |
+| Argentina | 41.2% | 16.2% | 27.6% | 94.3% |
+| Mexico | 19.0% | 96.6% | 13.5% | 64.5% |
+| France | 6.7% | 20.6% | 4.3% | 22.8% |
+
+**India is the one country both self-transform seeds agree on**, 97.8% → 37.0% and 61.5%, and the
+attention arm leaves it at 97.6%. India was the flagship never-touched battleground in §21.11 and
+the one identity embeddings had already halved; the representation fix takes it further, and it is
+the one behavioural change that tracks the architecture rather than the seed.
+
+**Everything else is seed-divergent, and wildly.** Seed 21 *abandons* Africa and Central America
+-- Algeria 71.7% → 98.1%, Libya 68.0% → 97.2%, Mexico 19.0% → 96.6% -- while seed 22 takes them
+up: Algeria to 24.5%, Libya to 14.2%, Mexico to 13.5%. Two runs of one configuration, differing
+only in seed, found opposite policies about two whole regions.
+
+**A design limit worth stating.** Only `E3-10-21` was probed as the control, so the control's own
+seed variance on these numbers is unmeasured -- and given how far the two E3-12 seeds are apart,
+that variance is exactly what would be needed to attribute any of this to the architecture. The
+India result survives because both arms agree and the third disagrees; nothing else here does.
+
+`E3-13-21`, the arm whose read-out cost its Elo, is also the arm that contests least: 8.38 empty
+at turn 8 against the control's 7.05, and South America effectively abandoned (Brazil 99.6%,
+Argentina 94.3%). Its representation and its play agree with each other.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
