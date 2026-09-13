@@ -1805,6 +1805,60 @@ answer, so a linear probe on the raw input already scores 0.886 AUC and the enco
 The lesson generalises: **a probe is only a test of understanding if its answer key is absent
 from the observation**, and this observation is rich in precomputed per-country facts.
 
+### 21.19 Does it know which region a scoring card scores?
+
+The one association the observation cannot supply. The card block carries properties and
+location, never identity, and the six scoring cards collapse into **two feature groups** -- early
+war (Asia, Europe, Middle East) and mid war (Central America, Africa, South America). Era
+separates the groups; nothing separates within one. So this is a direct test of the identity
+embedding.
+
+Both arms are evaluated on **one shared set of boards**. An earlier run let each arm sample its
+own self-play positions and produced the opposite conclusion on one of the two measures; that is
+the same confound §21.18 records for the marginal-value probe, reintroduced and caught.
+
+#### Location: moving the card, holding the board fixed
+
+Placement mass into the card's own region, minus the mean shift into the other regions, so a
+generic "a scoring card is in hand" reflex cancels:
+
+| card | E3-15 | E3-01 control |
+|:---|---:|---:|
+| Asia Scoring | **+12.3%** | **−11.6%** |
+| Europe Scoring | **+12.2%** | +7.0% |
+| Middle East Scoring | **+30.3%** | +16.5% |
+| Central America Scoring | **+7.8%** | −0.2% |
+| Africa Scoring | **+2.7%** | +8.7% |
+| South America Scoring | **+4.6%** | +2.6% |
+
+**E3-15 responds in the right direction in all six regions; the control has Asia backwards and
+Central America flat.** Moving Europe Scoring into hand raises the model's appetite for Europe
+specifically -- the card-to-region association, visible in behaviour.
+
+#### Ordering: which scoring card to play
+
+| | E3-15 | E3-01 control |
+|:---|---:|---:|
+| took the best scoring card (US / USSR) | 27.4% / 34.4% | **59.7% / 55.7%** |
+| rank correlation with true VP | +0.39 / +0.47 | **+0.50 / +0.56** |
+| value captured | 74.2% / 71.8% | **89.3% / 88.7%** |
+
+Chance is 16.7% and group-level guessing 33%, so both beat both -- but **the control is markedly
+better**, on identical inputs. E3-15 knows *where* a scoring card points and is worse at deciding
+*which* to play. That is a negative worth carrying: the arm that wins by 304 Elo loses this
+comparison clearly.
+
+#### A blind spot both share
+
+Putting a scoring card in the **opponent's** hand moves neither model: the same difference in
+differences runs −1.3% to +1.1% across all six cards and both arms. An opponent holding Europe
+Scoring is a reason to defend Europe, and nothing in either policy reacts to it. Hand knowledge
+of the opponent is partial, but the card's location *is* in the observation, so this is not an
+information limit.
+
+**Caveats.** The shared boards come from E3-15's self-play, so the population is one arm's
+distribution even though both models see identical inputs. E3-15 is one seed.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
