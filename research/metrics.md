@@ -1533,7 +1533,9 @@ read-out than without it.
 runs allowed that Elo might not move at all, which would have said per-country influence is not
 what limits play. It moved, on both seeds. Exact per-country influence is worth most of a budget
 doubling -- §21.10 puts a doubling at +106 and this is +53 and +83 -- for one extra weight matrix
-per graph layer and about 17% throughput.
+per graph layer and **no measurable throughput cost**: median 15,125 steps/s against the control's
+15,097 over the runs themselves. An earlier figure of ~17% came from a 2M-step smoke run and was
+startup-dominated.
 
 **Adopt `--self-transform`; do not adopt `--attn-readout` in this form.**
 
@@ -1701,17 +1703,23 @@ pool anchored on the E3 control:
 | arm | vs anchor | 95% CI | **Elo** | snapshot spread |
 |:---|---:|:---:|---:|---:|
 | `E3-01-21-080M` control | — | — | **0** | 33 |
-| `E3-01-21-240M` control, **3x compute** | 66.9% | [65.7, 68.0] | **+122** | 55 |
+| `E3-01-21-240M` control, 3x the **steps** | 66.9% | [65.7, 68.0] | **+122** | 55 |
 | `E3-10-21-080M` identity | 64.9% | [63.8, 66.1] | +107 | 59 |
 | `E3-10-22-080M` identity | 66.0% | [64.9, 67.2] | +115 | 63 |
 | `E3-12-21-080M` + self-transform | 72.0% | [70.9, 73.1] | +164 | 51 |
 | `E3-12-22-080M` + self-transform | 73.8% | [72.7, 74.8] | +179 | 92 |
 | **`E3-15-21-080M` + per-entity residual** | 85.2% | [84.3, 86.0] | **+304** | 67 |
 
-**Identity embeddings alone, at 80M, are worth about what tripling the compute is worth** --
-+107 and +115 against the 240M control's +122. The full stack at 80M clears 3x compute by roughly
-180 Elo, for 5,152 embedding parameters, one extra weight matrix per graph layer, and a
-zero-initialised correction head.
+**Identity embeddings alone, at 80M, are worth about what tripling the step budget is worth** --
++107 and +115 against the 240M control's +122. The full stack at 80M clears it by roughly 180 Elo,
+for 5,152 embedding parameters, one extra weight matrix per graph layer, and a zero-initialised
+correction head.
+
+**In wall clock the comparison is 2.4x, not 3x**, and the difference matters when the claim is
+about compute rather than steps. Measured medians over the runs: control 15,097 steps/s, the
+self-transform 15,125 (free), the residual heads 12,159. So 240M of control is about 4.4 hours
+against 1.8 for 80M of E3-15. The architecture is still ahead on equal wall clock, by a smaller
+margin than the step counts suggest.
 
 **Quote the anchored column for the picture and the paired measurement for an increment.** Elo
 converted from pooled win rates is not additive: this pool puts E3-15-21 164 above E3-12-21 by
