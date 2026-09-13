@@ -1693,6 +1693,41 @@ were both legible from one seed, so this is reported rather than held -- but E3-
 recipe everything downstream is measured against, and a baseline resting on one seed is the kind
 of thing §20.7 exists to warn about.
 
+### 21.17 The architecture progression on one scale
+
+Every arm of the progression, all seeds that exist, four late snapshots each, 28 models in one
+pool anchored on the E3 control:
+
+| arm | vs anchor | 95% CI | **Elo** | snapshot spread |
+|:---|---:|:---:|---:|---:|
+| `E3-01-21-080M` control | — | — | **0** | 33 |
+| `E3-01-21-240M` control, **3x compute** | 66.9% | [65.7, 68.0] | **+122** | 55 |
+| `E3-10-21-080M` identity | 64.9% | [63.8, 66.1] | +107 | 59 |
+| `E3-10-22-080M` identity | 66.0% | [64.9, 67.2] | +115 | 63 |
+| `E3-12-21-080M` + self-transform | 72.0% | [70.9, 73.1] | +164 | 51 |
+| `E3-12-22-080M` + self-transform | 73.8% | [72.7, 74.8] | +179 | 92 |
+| **`E3-15-21-080M` + per-entity residual** | 85.2% | [84.3, 86.0] | **+304** | 67 |
+
+**Identity embeddings alone, at 80M, are worth about what tripling the compute is worth** --
++107 and +115 against the 240M control's +122. The full stack at 80M clears 3x compute by roughly
+180 Elo, for 5,152 embedding parameters, one extra weight matrix per graph layer, and a
+zero-initialised correction head.
+
+**Quote the anchored column for the picture and the paired measurement for an increment.** Elo
+converted from pooled win rates is not additive: this pool puts E3-15-21 164 above E3-12-21 by
+subtraction, while the two measured head to head give **+181** (§21.16). Both are right about
+what they measure; the subtraction compresses differences between two arms that are each far from
+the anchor (§21.10).
+
+**Each step came from a measurement, not a guess.** Identity followed from 86% of cards sharing a
+feature vector; the self-transform from a graph layer that attenuated a country's own influence in
+proportion to its degree; the residual heads from information that was present in the tokens at
+89-91% and stranded before the heads at 6-14%. The two failures in the sequence -- the attention
+read-out and the replacing form of the per-entity heads -- were diagnosed by the same instruments
+that chose the successes.
+
+**E3-15 rests on one seed**, and it is now the recipe. That is the standing caveat on this table.
+
 ## Agreement with human play
 
 The corpus is the only strategy prior available, so how closely a policy reproduces it is a
