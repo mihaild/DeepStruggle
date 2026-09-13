@@ -25,6 +25,7 @@ from ai.models.coldwar_net_v2 import VP_LIMIT
 
 from bindings.ts_env import TsVectorizedEnv
 from .rollout_buffer import RolloutBuffer
+from .critic_tracker import CriticTracker
 
 # Fixed-probe entropy: number of (observation, mask) pairs frozen at the start of
 # training, and how often (in iterations) the probe is re-evaluated.
@@ -183,6 +184,9 @@ class BaseNashPGTrainer:
         self.optimizer = torch.optim.AdamW(self.active_net.parameters(), lr=lr, weight_decay=1e-4)
 
         self.env = env if env is not None else TsVectorizedEnv(num_envs=self.num_envs, base_seed=int(time.time()))
+        # Tier-1 critic discrimination. Holds one sample per game per turn until that
+        # game's winner is known; costs an integer compare per env per step.
+        self.critic_tracker = CriticTracker(num_envs=self.num_envs)
         self.buffer = RolloutBuffer(
             buffer_size=self.buffer_size,
             num_envs=self.num_envs,
@@ -286,6 +290,22 @@ class BaseNashPGTrainer:
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
             )
 
+            # v_win is from the *acting* player's perspective; multiplying by the acting
+            # player (US = +1, USSR = -1) puts every sample on one fixed perspective, so the
+            # sign does not flip with whoever happens to be moving. `turns` is the pre-step
+            # acting turn, which is the state v_win was computed on.
+            acting = np.asarray(self._info["acting_players"])
+            self.critic_tracker.observe(
+                v_win_t.detach().cpu().numpy() * acting,
+                np.asarray(self._info["turns"]),
+                np.ones(self.num_envs, dtype=bool),
+            )
+            for _i, _reason in enumerate(self._info.get("ending_reasons", [])):
+                if not _reason:
+                    continue
+                _vp = float(self._info["victory_points"][_i])
+                self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
                 completed_episodes.extend(self._info["completed_episodes"])
 
@@ -330,6 +350,7 @@ class BaseNashPGTrainer:
             "completed_episodes": completed_episodes,
         }
         metrics.update(self.buffer.diagnostics())
+        metrics.update(self.critic_tracker.metrics())
         return metrics
 
     def train_step(self) -> Dict[str, float]:

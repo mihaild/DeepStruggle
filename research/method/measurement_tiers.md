@@ -103,6 +103,53 @@ same recipe, no cross-engine asterisk. `E3-01-21-80M`, `-160M` and `-240M` all e
 not log-cheap: 110 cards x 2 sides x 4 modes is 880 series, which bloats the event file and is
 unreadable as curves. It is tier 3.
 
+### Critic discrimination (`critic/auc`, `critic/brier_skill`) — tier 1
+
+**Why it is tier 1.** The per-step cost is an integer compare and an occasional append; the
+aggregate is one sort over at most 20,000 held samples, once per iteration. Well under the 1%
+bar, and it has to be a curve rather than a snapshot reading because what it detects is a
+*transition* — the point at which the critic stops discriminating.
+
+**What it catches.** Once one side finds a strategy the other has not answered, outcomes become
+predictable, the critic has no reason to discriminate, and it degenerates toward the base rate.
+Advantages then vanish and both policies freeze. This happened in E3-17-22 and, independently and
+via a different winning strategy, in E3-15-22.
+
+**Why not `explained_variance`, which we already log.** The GAE return is built as `G = A + V`, so
+`G - V = A` exactly and `EV = 1 - Var(A)/Var(G)`. A critic whose advantages collapse scores near
+1.0 *by construction*: EV rose to 0.996 across precisely the window in which the critic became
+useless. It is a restatement of the failure, not a detector of it.
+
+**Why AUC rather than accuracy or correlation.** The collapse is accompanied by a base-rate shift
+— the US win rate fell from 54% to 13% over the same window. Accuracy is dominated by the base
+rate, and point-biserial correlation against a binary outcome is itself bounded by how balanced
+that outcome is, so both move for reasons unrelated to the critic. Measured on E3-17-22 the two
+families disagree in *sign*:
+
+| checkpoint | base rate | accuracy | **AUC** | Brier skill |
+|:---|---:|---:|---:|---:|
+| 40M | 0.522 | — | **0.870** | 0.404 |
+| 80M | 0.528 | 79.2% | **0.865** | 0.387 |
+| 160M | 0.905 | **87.5%** | **0.728** | 0.156 |
+
+Accuracy *rises* from 79.2% to 87.5% while the critic is degrading. AUC falls, correctly, because
+it is invariant to the base rate and to any monotone rescaling of the value.
+
+The pair is worth keeping rather than AUC alone: AUC measures only *ranking*, and GAE subtracts
+`V` rather than ranking it. At 160M the critic still ranks above chance (0.728) while its
+calibrated usefulness has fallen 2.6x — so it is not that it knows nothing, it is that it no
+longer converts what it knows into values that separate actions. **`brier_skill <= 0` is the
+alarm**: at or below zero the critic is no better than a constant at the base rate.
+
+**Where it is sampled.** One state per game per turn, at the turn's first decision, from the fixed
+US perspective (`v_win * acting_player`), held until the game ends and the winner is known.
+Averaging over every step would mix turn-1 states with nearly-decided turn-9 states in a
+proportion that shifts as game length changes during training. `critic/auc_turn3` reports a single
+fixed turn for a number that is comparable across runs whose games differ in length.
+
+Read it smoothed. A single iteration resolves only the games that happened to finish, so the
+per-iteration value is noisy; the trend is what matters.
+
 ## Tier 2 — per snapshot
 
 Snapshots are every 900 s, so a probe may cost tens of seconds without mattering. These need
