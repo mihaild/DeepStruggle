@@ -131,3 +131,4 @@ instrument.
 ## Follow-ups (what to queue depending on the outcome)
 ## Runs (filled in while running)
 ```
+- [Restoring the advantage signal](restoring_advantage_signal.md) — why komi does not port, and the ranked options that do
