@@ -110,6 +110,8 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
 | 14 | v2 + identity | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` |
 | 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M | `E3-15-2*_<ts>` |
+| 16 | v2 + identity | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` |
+| 17 | v2 + identity | E3-15 recipe, `--graph-layers 0` | 21 | 80M | `E3-17-21_<ts>` |
 
 Seed `21` is 20260921 and `22` is 20260922.
 
@@ -172,6 +174,29 @@ Predictions, recorded before the runs:
 * No strong prediction on the trunk ladder. E3-14 moved it up while halving play, which was the
   session's clearest demonstration that a representation probe moving the right way is not
   evidence a change helped, so the ladder is recorded here and not used to judge the arm.
+
+**E3-16 and E3-17** vary only the depth of the map graph, on the E3-15 recipe, at seed 21 --
+the same seed as `E3-15-21`, so each is a paired comparison against it and depth is the only
+difference.
+
+The motivation is that adjacency's *mechanical* uses are already precomputed per country in the
+observation: placement legality and coup legality are board slots, and the realignment modifier is
+another. The graph does not derive them. What it adds is strategic reasoning about
+neighbourhoods, and the map's edges are plainly unequal -- Colombia bridges two regions, Benelux
+to West Germany rarely decides anything -- and some are live only while a particular event is in
+force. None of that is what a degree-normalised convolution computes.
+
+Predictions, recorded before the runs:
+
+* **1 layer matches 2.** The second convolution has lost 5-9 points of per-country influence in
+  five arms out of five and no measured gain offsets it.
+* **0 layers is the real test and has never been run.** The MLP arm removed every structured
+  encoder at once, so the graph alone has never been isolated. If 0 also matches, adjacency is
+  not earning its place in this architecture.
+* Both should be **faster** than 2 layers, which is the practical point: a cheaper backbone makes
+  every later experiment cheaper.
+* The `gconv1`/`gconv2` rungs of the trunk ladder are not comparable across depths -- with one
+  layer or none they tap the same tensor -- so only `raw` and `trunk` are read across arms.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional
