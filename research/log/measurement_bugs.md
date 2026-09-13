@@ -202,3 +202,38 @@ independently above -- two separate code paths agreeing is what says it is fixed
 Every `positions/` and `decisive/` number recorded before this is void.
 `tests/training/test_probe_observation_layout.py` pins the class: it captures the layout each
 probe constructs its env with, and fails if it is not the model's.
+
+## `runner.get_state(i)` returns a live view, not a snapshot
+
+`ai/eval/held_scoring.py` captured each env's pre-step state to read back what was in hand when a
+game ended, and every held-scoring ending came back reading **turn 1** with a hand that often held
+no scoring card at all. The handle is not a copy: it points at the batch runner's slot, so it
+follows the env through `step()` *and* through auto-reset. What was being read was the freshly
+dealt turn-1 game the slot had already been rewound to, not the game that had just ended.
+
+Confirmed directly -- hold a handle, step 40 times, and its `turn`/`action_round` track the live
+state exactly. `GameState.clone()` is the copy; there is no `__copy__`.
+
+It reads as a plausible result, which is what makes it dangerous: "held-scoring losses are a
+turn-1 phenomenon" is a claim someone would believe, and the card histogram built on top of it
+named **Asia Scoring at 1.76x its exposure**. With `.clone()` the turns spread across 1-10 and the
+Asia over-representation drops to 0.89-0.90 on the other two arms -- it was an artifact of reading
+reset hands.
+
+The codebase already knew: `ai/training/start_pool.py` clones for exactly this reason, with a
+comment. The other ~40 `get_state` call sites use the handle inside the same iteration, before any
+step, which is safe -- audited, and no other site holds one across a step.
+
+## `phasing_player` is not the player making a setup decision
+
+`ai/eval/forced_setup.py` scripts the fifteen opening placements, and keyed which side was placing
+off `state.phasing_player`. The USSR is the phasing player for the whole of setup, so all nine US
+placements were dispatched against the USSR script, which had already run out -- the US placed
+"first legal action in the mask" instead, in every game.
+
+Caught only because the probe counts substitutions: **4608 off-script = 2048 x 9 exactly**, one
+per US placement. A count that lands on an exact multiple of the games is an unambiguous signal;
+without it the run reported a forced opening that was half junk, and it reported it *plausibly*
+(US win rate down, Europe-control endings up -- the story one would expect). `get_decision_players()`
+is the correct, vectorized source. The probe now raises if any placement goes off-script, since a
+partly-forced setup measures neither opening.
