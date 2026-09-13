@@ -108,6 +108,7 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 11 | **mlp** | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` |
 | 12 | v2 + identity | `--self-transform` | 21, 22 | 80M | `E3-12-2*_<ts>` |
 | 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
+| 14 | v2 + identity | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` |
 
 Seed `21` is 20260921 and `22` is 20260922.
 
@@ -131,6 +132,22 @@ the token's 63%. Elo may not move at all, and that would itself be the finding.
 where E3-12 already put it and cost the whole gain, **−14 and −23**. A single-query read-out is
 still a pooling operation, so it could not have done otherwise. `--self-transform` is adopted;
 `--attn-readout` is not. See `research/metrics.md` §21.13.
+
+**E3-14** keeps E3-12's adopted self-transform and replaces the dense policy head for the actions
+that name an entity. A card's logit is computed from that card's own token and raw slots, and a
+country's from that country's, each conditioned on a projection of the trunk; the 18 actions that
+name no entity -- play mode, timing, op mode, branch, confirm -- stay dense.
+
+It follows directly from §21.13's negative result. The attention read-out failed because a
+single-query read-out is still a pooling operation: one query over 84 countries returns one
+weighted average. The token holds 89-91% of the recoverable exact influence and the pooled trunk
+holds 6-14%, so the remaining move is to stop routing the board through the trunk at all.
+
+Prediction, recorded before the runs: **the trunk ladder should not move** -- nothing here changes
+what the trunk holds -- and the Elo should, because the information now reaches the decision by
+another path. If Elo does not move while a country's logit demonstrably tracks its own influence
+(`tests/training/test_arch_variants.py`), then exact per-country influence is not what the policy
+was missing, and §21.13's +53/+83 came from somewhere else in the representation.
 
 E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
 that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional

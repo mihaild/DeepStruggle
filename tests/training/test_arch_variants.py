@@ -93,3 +93,78 @@ def test_a_variant_checkpoint_round_trips_through_the_loader() -> None:
         agent = NeuralAgent.from_checkpoint(f.name, device="cpu")
     assert agent.model.attn_readout == 64
     assert agent.model.self_transform is True
+
+
+# --- per-entity policy heads ---------------------------------------------------------------
+
+def test_per_entity_heads_are_detectable_and_keep_the_action_space() -> None:
+    a = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True)
+    b = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    assert "pe_trunk.weight" not in a.state_dict()
+    assert b.state_dict()["pe_trunk.weight"].shape[0] == 64
+    mask = torch.ones(2, ColdWarNetV2.ACTION_SPACE_SIZE, dtype=torch.uint8)
+    b.eval()
+    with torch.no_grad():
+        logits, v_win, v_vp = b(_obs(2), mask)
+    assert logits.shape == (2, ColdWarNetV2.ACTION_SPACE_SIZE)
+    assert v_win.shape == (2, 1) and v_vp.shape == (2, 1)
+
+
+def test_a_country_logit_moves_with_that_country_and_not_its_neighbour() -> None:
+    """The whole point. Under dense heads every logit reads one pooled vector, so perturbing
+    country i and country j move logit i by similar amounts. A per-entity head must respond
+    far more to its own country's slots than to another country's."""
+    torch.manual_seed(0)
+    m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    m.eval()
+    bf = ColdWarNetV2.BOARD_FEATURES
+    own, other = 3, 40
+    country_action = 119 + own
+
+    def logit_after(country: int) -> float:
+        x = torch.zeros(1, ColdWarNetV2.TOTAL_OBS_SIZE)
+        y = x.clone()
+        y[0, country * bf] = 1.0          # slot 0 is that country's own influence
+        with torch.no_grad():
+            a = m(x, None)[0][0, country_action]
+            b = m(y, None)[0][0, country_action]
+        return abs(float(b - a))
+
+    assert logit_after(own) > 5.0 * logit_after(other) + 1e-6, (
+        "the country's own logit is not tracking its own observation slots")
+
+
+def test_shared_actions_still_come_from_the_trunk() -> None:
+    """Play mode, timing, op mode, branch and confirm name no entity, so they stay dense --
+    and they must still be produced, or the action space silently loses 18 of its 212."""
+    torch.manual_seed(0)
+    m = create_coldwar_net_v2("cpu", identity_dim=16, per_entity_heads=64)
+    m.eval()
+    with torch.no_grad():
+        logits = m(_obs(4), None)[0]
+    shared = torch.cat([logits[:, 110:119], logits[:, 203:212]], dim=-1)
+    assert shared.shape == (4, 18)
+    assert bool(torch.isfinite(shared).all())
+
+
+def test_the_mlp_backbone_refuses_per_entity_heads() -> None:
+    """It reads the flat vector and forms no tokens, so the flag would be a silent no-op."""
+    import pytest
+
+    from ai.models.coldwar_net_v2 import ColdWarNetMLP
+
+    with pytest.raises(ValueError, match="cannot carry per-entity policy heads"):
+        ColdWarNetMLP(per_entity_heads=64)
+
+
+def test_per_entity_checkpoint_round_trips_through_the_loader() -> None:
+    import tempfile
+
+    from tools.lib.player_agent import NeuralAgent
+
+    m = create_coldwar_net_v2("cpu", identity_dim=16, self_transform=True, per_entity_heads=64)
+    with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
+        torch.save(m.state_dict(), f.name)
+        agent = NeuralAgent.from_checkpoint(f.name, device="cpu")
+    assert agent.model.per_entity_heads == 64
+    assert agent.model.self_transform is True

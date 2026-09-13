@@ -164,7 +164,7 @@ class ColdWarNetV2(nn.Module):
                  board_features: int = BOARD_FEATURES,
                  categorical_value: bool = False, value_atoms: int = VALUE_ATOMS,
                  identity_dim: int = 0, self_transform: bool = False,
-                 attn_readout: int = 0):
+                 attn_readout: int = 0, per_entity_heads: int = 0):
         super().__init__()
         self.register_buffer("norm_adj", build_normalized_adjacency_matrix())
 
@@ -287,6 +287,23 @@ class ColdWarNetV2(nn.Module):
         # observation slots alongside its encoded token, because the token is itself already
         # damaged -- the graph convolution costs a third before pooling costs the rest -- so
         # attending only over tokens would inherit that loss.
+        # Per-entity policy heads. §21.13 established that no read-out ending in one fixed-size
+        # summary can carry 84 countries to a head: the attention read-out moved the trunk not at
+        # all beyond what better tokens gave it, because a single query over 84 countries returns
+        # one weighted average. The token holds 89-91% of the recoverable exact influence and the
+        # trunk holds 6-14%, so the remaining way to get the board into a decision is to stop
+        # routing it through the trunk -- a country's logit is computed from that country's token.
+        self.per_entity_heads = int(per_entity_heads)
+        if self.per_entity_heads > 0:
+            d = self.per_entity_heads
+            self.pe_trunk = nn.Linear(hidden_dim, d)
+            self.pe_country = nn.Sequential(
+                nn.Linear(64 + self.board_features + self.identity_dim + d, d), nn.GELU(),
+                nn.Linear(d, 1))
+            self.pe_card = nn.Sequential(
+                nn.Linear(64 + self.card_features + self.identity_dim + d, d), nn.GELU(),
+                nn.Linear(d, 1))
+
         self.attn_readout = int(attn_readout)
         if self.attn_readout > 0:
             d = self.attn_readout
@@ -404,8 +421,8 @@ class ColdWarNetV2(nn.Module):
         The cross-entropy loss needs the logits, and re-running the trunk to get them would
         double the cost of every update. `None` on a scalar-headed model.
         """
-        h = cast(torch.Tensor, self.extract_features(obs))
-        raw_logits = self.policy_head(h)
+        h, _attn, tokens = self._encode(obs)
+        raw_logits = self._policy_logits(h, tokens)
         if mask is not None:
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
             masked_logits = torch.where(
@@ -440,8 +457,15 @@ class ColdWarNetV2(nn.Module):
         target.scatter_add_(1, upper.unsqueeze(1), upper_w.unsqueeze(1))
         return target
 
-    def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
-        """Extracts fused latent state representation and optional cross-attention maps."""
+    def _encode(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor, ...] | None]:
+        """The backbone, returning the trunk *and* the per-entity tokens it pooled away.
+
+        `extract_features` keeps its old contract and returns only the trunk, because every
+        probe and every caller reads that. The tokens come back separately because the
+        per-entity policy heads need them: `research/metrics.md` 21.13 measured a country's
+        exact influence at 89-91% recoverable from its own token and 6-14% from the pooled
+        trunk, so a head that reads only the trunk cannot see the board however it is pooled.
+        """
         if obs.shape[-1] != self.TOTAL_OBS_SIZE:
             raise ValueError(
                 f"observation is {obs.shape[-1]} floats wide; this model reads "
@@ -513,9 +537,47 @@ class ColdWarNetV2(nn.Module):
                 reads.append(torch.matmul(w, v).squeeze(1))         # (B, d)
             h = self.ro_out(torch.cat([h, *reads], dim=-1))
 
+        return h, attn_weights, (h_board, board_nodes, h_cards, card_nodes)
+
+    def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
+        """Extracts fused latent state representation and optional cross-attention maps."""
+        h, attn_weights, _tokens = self._encode(obs)
         if return_attn_weights:
             return h, attn_weights
         return h
+
+    def _policy_logits(self, h: torch.Tensor,
+                       tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
+        """The 212 action logits, per-entity where the action names an entity.
+
+        Actions 0..109 are cards and 119..202 are countries; the other 18 -- play mode, timing,
+        op mode, branch, confirm -- name no entity and stay dense off the trunk.
+
+        Without `per_entity_heads` every logit comes from the 512-float trunk. Each card and
+        country still has its own output row, so it can be *preferred*, but the only channel
+        carrying which country is in what state into that choice is a vector that 21.13 measured
+        as holding almost none of it. Here a country's logit is computed from that country's own
+        token and raw slots, conditioned on the trunk.
+        """
+        base = self.policy_head(h)
+        if not self.per_entity_heads:
+            return base
+        if tokens is None:
+            raise RuntimeError(
+                "per-entity heads need the entity tokens, and this backbone produced none. A "
+                "backbone that reads the flat observation has no tokens to read, which is why "
+                "the constructor refuses the combination rather than reaching here.")
+        h_board, board_nodes, h_cards, card_nodes = tokens
+        ctx = self.pe_trunk(h).unsqueeze(1)
+        card_in = torch.cat([h_cards, card_nodes, ctx.expand(-1, 110, -1)], dim=-1)
+        country_in = torch.cat([h_board, board_nodes, ctx.expand(-1, 84, -1)], dim=-1)
+        # Concatenated rather than assigned in place, so the shared columns keep their graph.
+        return torch.cat([
+            self.pe_card(card_in).squeeze(-1),        # 0..109
+            base[:, 110:119],                          # play mode, timing, op mode
+            self.pe_country(country_in).squeeze(-1),   # 119..202
+            base[:, 203:212],                          # branch, confirm
+        ], dim=-1)
 
     def forward(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
@@ -531,8 +593,8 @@ class ColdWarNetV2(nn.Module):
             v_win: (B, 1) float tensor in [-1, 1].
             v_vp: (B, 1) float tensor in [-20, 20].
         """
-        h = cast(torch.Tensor, self.extract_features(obs))
-        raw_logits = self.policy_head(h)
+        h, _attn, tokens = self._encode(obs)
+        raw_logits = self._policy_logits(h, tokens)
 
         if mask is not None:
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
@@ -553,8 +615,8 @@ class ColdWarNetV2(nn.Module):
         Kept separate from forward() so the existing three-value contract, which every
         other caller depends on, is untouched.
         """
-        h = cast(torch.Tensor, self.extract_features(obs))
-        raw_logits = self.policy_head(h)
+        h, _attn, tokens = self._encode(obs)
+        raw_logits = self._policy_logits(h, tokens)
         if mask is not None:
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
             masked_logits = torch.where(
@@ -612,7 +674,8 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
                           categorical_value: bool = False,
                           identity_dim: int = 0,
                           self_transform: bool = False,
-                          attn_readout: int = 0) -> ColdWarNetV2:
+                          attn_readout: int = 0,
+                          per_entity_heads: int = 0) -> ColdWarNetV2:
     """Factory helper to instantiate ColdWarNetV2 on specified device.
 
     The defaults are observation layout v2.3, which is the only layout the engine emits.
@@ -622,6 +685,7 @@ def create_coldwar_net_v2(device: torch.device | str = "cpu",
     model = ColdWarNetV2(hidden_dim=512, num_res_blocks=4, num_attn_heads=4,
                          identity_dim=identity_dim,
                          self_transform=self_transform, attn_readout=attn_readout,
+                         per_entity_heads=per_entity_heads,
                          card_features=card_features, use_history=use_history,
                          global_features=global_features, has_tail=has_tail,
                          board_features=board_features,
@@ -671,6 +735,12 @@ class ColdWarNetMLP(ColdWarNetV2):
 
     def __init__(self, hidden_dim: int = 512, mlp_width: int = 1024,
                  drop_static: bool = False, **kwargs):
+        if int(kwargs.get("per_entity_heads", 0)) > 0:
+            raise ValueError(
+                "ColdWarNetMLP cannot carry per-entity policy heads: it reads the flat "
+                "observation and never forms entity tokens for them to read. Refused here "
+                "rather than silently producing a model with dense heads under a flag that "
+                "says otherwise.")
         super().__init__(hidden_dim=hidden_dim, **kwargs)
         # Optionally drop the static per-entity slots. They are the price a shared-weight
         # encoder pays to tell its tokens apart; a positional reader gets identity from the
@@ -711,7 +781,12 @@ class ColdWarNetMLP(ColdWarNetV2):
             nn.GELU(),
         )
 
-    def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
+    def _encode(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor, ...] | None]:
+        """No entity tokens: this backbone reads the flat vector and never forms any.
+
+        It therefore cannot carry per-entity policy heads, and `per_entity_heads` is refused in
+        the constructor rather than silently ignored here.
+        """
         if obs.shape[-1] != self.TOTAL_OBS_SIZE:
             raise ValueError(
                 f"observation is {obs.shape[-1]} floats wide; this model reads "
@@ -719,8 +794,12 @@ class ColdWarNetMLP(ColdWarNetV2):
         h = self.fusion_in(self.mlp_in(torch.index_select(obs, 1, self.keep_idx)))
         for block in self.res_blocks:
             h = block(h)
+        return h, None, None
+
+    def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
+        h, attn, _tokens = self._encode(obs)
         if return_attn_weights:
-            return h, None
+            return h, attn
         return h
 
 
@@ -770,7 +849,8 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
         categorical_value=bool(getattr(model, "categorical_value", False)),
         identity_dim=int(getattr(model, "identity_dim", 0)),
         self_transform=bool(getattr(model, "self_transform", False)),
-        attn_readout=int(getattr(model, "attn_readout", 0)))
+        attn_readout=int(getattr(model, "attn_readout", 0)),
+        per_entity_heads=int(getattr(model, "per_entity_heads", 0)))
 
 
 def check_checkpoint_layout(state_dict: dict) -> None:

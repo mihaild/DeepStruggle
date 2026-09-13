@@ -210,6 +210,8 @@ def main():
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
     parser.add_argument("--self-transform", action="store_true",
                         help="Give each GraphConv layer a second weight matrix applied to the node itself, so a country can be held at full strength instead of averaged with its neighbours. metrics.md 21.12: a country's exact influence is recoverable from its raw observation slots 97%% of the time and from its post-GraphConv token 63%%, and the loss tracks neighbour count.")
+    parser.add_argument("--per-entity-heads", type=int, default=0,
+                        help="Width of per-entity policy heads (0 = off; try 64). A card's logit is computed from that card's own token and raw slots, and a country's from that country's, each conditioned on a projection of the trunk; the 18 actions that name no entity stay dense. metrics.md 21.13: the token holds 89-91%% of the recoverable exact per-country influence and the pooled trunk holds 6-14%%, and no read-out ending in one fixed-size summary closed that gap.")
     parser.add_argument("--attn-readout", type=int, default=0,
                         help="Width of an end-of-trunk attention read-out (0 = off; try 64). After the residual trunk, the state vector queries the 84 country and 110 card tokens -- each concatenated with its raw observation slots -- and the result is folded back in. Targets the other half of the same finding: the pre-pooling token holds two thirds of the recoverable per-country influence and the pooled trunk holds none.")
     parser.add_argument("--run-name", type=str, default=None,
@@ -264,6 +266,7 @@ def main():
             run_name=args.run_name,
             self_transform=args.self_transform,
             attn_readout=args.attn_readout,
+            per_entity_heads=args.per_entity_heads,
             description=args.description,
             device=args.device,
             post_tournament=args.post_tournament,
