@@ -70,6 +70,50 @@ is strictly more expressive, and the gap between them is reported to be
 — which is what option 1 would make this graph into. **If GAT, then GATv2**, and it pairs
 naturally with the multi-relational change rather than competing with it.
 
+## Putting the superpowers on the map
+
+Proposed: make US and USSR **nodes** in the graph rather than two bits per country, and drop the
+bits. Two halves, and they deserve opposite answers.
+
+**What superpower adjacency actually drives** — three distinct jobs, which is more than the two
+bits suggest:
+
+| site | job |
+|:---|:---|
+| `ops.cpp:87` | placement legality: influence may go into a country adjacent to your superpower |
+| `ops.cpp:366-367` | realignment modifier, +1 per adjacent superpower |
+| `scoring.cpp:48-55` | **regional scoring**: countries you control that are adjacent to the *opponent's* superpower are counted separately and change the region's VP |
+
+The third is the interesting one, and it is exactly the disconnection §1.4.2 recorded: a regional
+score depends on a *conjunction* — controlled **and** adjacent to the opponent's superpower —
+aggregated per region. Today the network must rebuild that from two per-country bits and a pooled
+trunk. With superpower nodes **and** the region relation above it becomes a two-hop path in the
+graph, which is the form a message-passing network can actually compute.
+
+**Add the nodes: yes, and it costs nothing to try.** The adjacency lives in `MapData`, and the
+matrix is built model-side in `build_normalized_adjacency_matrix`. An 86-node graph with nine
+extra edges — US to Canada, Japan, Mexico, Cuba; USSR to Finland, Poland, Romania, Afghanistan,
+North Korea — is a **pure architecture change**: no observation change, no checkpoint
+invalidated, comparable against E3-12 immediately.
+
+**Drop the bits: no.** We have already run that experiment. E3-11 dropped 1,364 observation slots,
+35.7% of the input, and measured **−40 and −0 Elo at identical throughput** (§21.9). These are 168
+floats, 4.4% of the input, and dropping them changes the observation — which invalidates every
+checkpoint including the +83 `E3-12-22` and the running E3-14, and resets the E3 Elo ladder. That
+is paying the ladder for a saving already measured at zero.
+
+Worse: unlike E3-11's slots, **these are not constant**. Slot 8 is `superpower_adjacent ==
+my_player`, so it flips with the viewer — Canada reads 1 to the US and 0 to the USSR. They carry
+real information, so removing them is strictly worse than the null E3-11 returned. Keeping them
+alongside the nodes is redundant, and §21.9 is the evidence that redundant input slots cost
+nothing.
+
+**One framing to keep straight.** Superpower nodes are the right model of *adjacency* and the
+wrong model of *global context*. They touch nine countries in one hop; Brazil never sees them. If
+the goal is "a country can know DEFCON is 2", that is option 2's virtual node connected to all 84,
+not these. Conflating the two would give a global-context mechanism that works for nine countries
+— and a partial version of a feature is worse than none.
+
 ## On graph transformers specifically
 
 Attractive, and I would not start here.
@@ -103,8 +147,10 @@ given a virtual node. Option 2 above is the cheap first instalment of exactly th
 ## Proposed order
 
 1. **E3-14 per-entity heads** — running; settles whether the trunk bottleneck was costing play.
-2. **Region relation** (option 1) — strongest evidence, smallest change, same shape as the change
-   that just worked.
+2. **Region relation + superpower nodes** (option 1 and above) — strongest evidence, smallest
+   change, same shape as the change that just worked, and the two combine: the regional-scoring
+   conjunction that `scoring.cpp:48-55` computes is a two-hop path only once *both* exist. Both
+   are architecture-only, so neither costs a checkpoint.
 3. **Global token into the nodes** (option 2) — cheap, and it would let us *remove* a hand-built
    observation flag rather than add one, which is the kind of change that pays twice.
 4. **GATv2 edge weights** (option 3) — only after 2, since it is most valuable once the graph is
