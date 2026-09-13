@@ -1,10 +1,16 @@
-# Twilight Struggle AI
+# Deep Struggle
 
-A complete AI, simulation engine, web workbench, and reinforcement learning training infrastructure for the Deluxe Edition of **Twilight Struggle** (GMT Games, 2005).
+Welcome to Deep Struggle! It is a project dedicated to build an AI that plays the Deluxe Edition of **Twilight Struggle** (GMT Games, 2005).
+
+Current status:
+
+* engine in C++ that mostly reproduces rules - some bugs are probably still there, but supposedly nothing major
+* interface to plumb different player implementations, record games between them, replay them in web viewer, and run tournamnets
+* some baseline network architecture and training scripts, that in few hours on 4090 can learn to almost never propose Olympic Games at Defcon 2
 
 ## AI Slop warning
 
-This repository is developed with heavy usage of AI. I have reviewed parts of code, but not all of it, neither documentation. Be even more skeptical code quality here than usually.
+This repository is developed with heavy usage of AI. Most code is reviewed, but not all of it, neither documentation. Be even more skeptical code quality here than usually.
 
 Known, reproducible, unfixed defects are tracked in [`BUGS.md`](BUGS.md).
 
@@ -43,8 +49,8 @@ For in-depth architectural and developer documentation, see [`AGENTS.md`](AGENTS
 
 ```bash
 # Clone repository
-git clone https://github.com/mihaild/ts_ai.git
-cd ts_ai
+git clone https://github.com/mihaild/DeepStruggle.git
+cd DeepStruggle
 
 # Set up Python virtual environment
 python3 -m venv .venv
