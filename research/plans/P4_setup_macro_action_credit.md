@@ -58,7 +58,7 @@ moves the setup probe — that separates the setup effect from the general effec
 
 Setup probe first (the placement histogram, and P(Poland ≥ 3), P(WG ≥ 4) against the human
 rate). Then empty battlegrounds at turn 8 (the all-blocks version should help ops plays too),
-agreement with human placements (`metrics.md` §9.11), then Elo.
+agreement with human placements (`../method/human_play.md`), then Elo.
 
 ## Decision rule
 

@@ -1,7 +1,7 @@
 # Replayer Conversion — the log, the engine, and the hands behind it
 
 How the human ts-replayer corpus is turned into engine decisions, and every discrepancy found
-between the two while doing it. Split out of [`experiments.md`](experiments.md), which is about
+between the two while doing it. Split out of the main experiment log, which is about
 how well the agents play; this file is about whether the data they are measured against is read
 correctly. The rule the pipeline is held to is in `AGENTS.md` §4 invariant 11 and
 `tools/README.md` §6: a decision the log does not determine is a bug to diagnose, not a gap to
@@ -15,7 +15,8 @@ numbering here is a section that stayed behind because it is about play rather t
 The maintenance rules are `experiments.md`'s: record what was compared, the numbers with their
 sample size, and what the measurement cannot tell you; revise rather than delete when a later
 finding invalidates an earlier one, and say what invalidated it. Instrument faults and what a
-measurement is reproducible to are in [`metrics.md`](metrics.md).
+measurement is reproducible to are in [`measurement_bugs.md`](measurement_bugs.md) and
+[`variance_and_noise.md`](variance_and_noise.md).
 
 ---
 

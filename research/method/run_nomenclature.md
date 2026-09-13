@@ -116,9 +116,10 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 Seed `21` is 20260921 and `22` is 20260922.
 
 **E3-12 and E3-13 carry `--identity-dim 16`, and their control is E3-10, not E3-01.** Identity
-is part of the recipe as of §21.8, so an arm that omitted it would be measuring identity again.
+is part of the recipe as of the identity arms (`research/log/P9_architecture.md`), so an arm that omitted it would be measuring identity again.
 
-Both target what `research/metrics.md` §21.12 localised: a country's exact influence is
+Both target what `research/log/P9_architecture.md` localised (*exact influence and control,
+read off the trunk per country*): a country's exact influence is
 recoverable from its own raw observation slots 97% of the time, from its post-GraphConv token
 63%, and from the pooled 512-float trunk essentially never. E3-12 gives each graph layer a second
 weight matrix applied to the node itself, so a country need not be averaged with its neighbours;
@@ -134,14 +135,14 @@ the token's 63%. Elo may not move at all, and that would itself be the finding.
 60% to 93-94% on both seeds and is worth **+53 and +83 Elo**. E3-13's read-out left the trunk
 where E3-12 already put it and cost the whole gain, **−14 and −23**. A single-query read-out is
 still a pooling operation, so it could not have done otherwise. `--self-transform` is adopted;
-`--attn-readout` is not. See `research/metrics.md` §21.13.
+`--attn-readout` is not. See `research/log/P9_architecture.md`, *fixing the graph layer works*.
 
 **E3-14** keeps E3-12's adopted self-transform and replaces the dense policy head for the actions
 that name an entity. A card's logit is computed from that card's own token and raw slots, and a
 country's from that country's, each conditioned on a projection of the trunk; the 18 actions that
 name no entity -- play mode, timing, op mode, branch, confirm -- stay dense.
 
-It follows directly from §21.13's negative result. The attention read-out failed because a
+It follows directly from the attention read-out's negative result (`research/log/P9_architecture.md`). The attention read-out failed because a
 single-query read-out is still a pooling operation: one query over 84 countries returns one
 weighted average. The token holds 89-91% of the recoverable exact influence and the pooled trunk
 holds 6-14%, so the remaining move is to stop routing the board through the trunk at all.
@@ -151,13 +152,13 @@ recovery 26.9% against E3-12's 14.3% and 6.1%) and Elo collapsed to **−219** a
 below even the E3-10 control. The cause is in the implementation: `pe_trunk` projects the trunk
 512 → 64 before the heads see it, so every action logit lost seven eighths of its view of the
 situation to gain its own country's detail. The idea is untested; this build of it is refuted.
-The residual form (`logit = dense + correction`) is what to try. See `research/metrics.md` §21.15.
+The residual form (`logit = dense + correction`) is what to try. See `research/log/P9_architecture.md`, *per-entity policy heads, built wrong*.
 
 Prediction, recorded before the runs: **the trunk ladder should not move** -- nothing here changes
 what the trunk holds -- and the Elo should, because the information now reaches the decision by
 another path. If Elo does not move while a country's logit demonstrably tracks its own influence
 (`tests/training/test_arch_variants.py`), then exact per-country influence is not what the policy
-was missing, and §21.13's +53/+83 came from somewhere else in the representation.
+was missing, and the self-transform's +53/+83 came from somewhere else in the representation.
 
 **E3-15** is E3-14 rebuilt as a residual: `logit = dense + per-entity correction`, with the
 correction's output layers zero-initialised so the network *starts* as the dense baseline exactly.

@@ -14,7 +14,7 @@ is the **record** of what was run. A step lives in exactly one of the two places
 > baseline is that one layout on the corrected engine (the starred-card fix), arms H, H2 and I.
 > Read "v2.2 / arm F recipe / arm G's 320M snapshot" in the plans below as "the current baseline
 > recipe", and re-derive any control number: everything measured on a v2.2 checkpoint is void.
-> `research/metrics.md` §1.5.3 also retires the claim that the corrected engine lengthens games,
+> `research/log/variance_and_noise.md` also retires the claim that the corrected engine lengthens games,
 > which two of these plans lean on. See `CLAUDE.md` for the layout table.
 >
 > **P0 has since been rewritten against v2.3 and arms H/H2/I and is current. The other six have
@@ -31,7 +31,7 @@ had its own. (Not leaving 1–2-influence footholds exposed to Voice of America 
 list, but it is behind contesting battlegrounds at all, so its probe sits in
 [`reserve.md`](reserve.md).) Elo against the heuristic bot is the secondary number; the probes
 are the acceptance test. Search is acceptable as a diagnostic and as a distillation source, not as the
-product. The literature behind the ordering is in [`../references.md`](../references.md).
+product. The literature behind the ordering is in [`../method/references.md`](../method/references.md).
 
 ## The queue
 
@@ -75,13 +75,13 @@ queue:
 
 An 80M-step arm is ~1.5 h on the 4090, and v2.2 still gains at 320M (`experiments.md` §24). So:
 **screen** every factor at 2 seeds × 80M (~3 h); **confirm** only the winner of a screen at
-2 seeds × 240M (~9 h); never compare across budgets. And read `metrics.md` §20.6–20.7 before
+2 seeds × 240M (~9 h); never compare across budgets. And read `../log/variance_and_noise.md` before
 quoting anything:
 
 - rate **four late snapshots** and compare arms by the **pooled head-to-head over all sixteen
   snapshot pairings**; a single-cell comparison cannot resolve below ~50 Elo, which is most
-  effects worth arguing about (§20.7, learned again on `staged_cards`);
-- a continuation seed is worth ~15 Elo and a leg's *gain* carries **±16 Elo** (§20.6) — quote a
+  effects worth arguing about (`../log/variance_and_noise.md`, learned again on `staged_cards`);
+- a continuation seed is worth ~15 Elo and a leg's *gain* carries **±16 Elo** (same file) — quote a
   within-lineage gain with that bar, or not as a trend;
 - never compare Elo across tournaments (~±15 between pools of the same files); within one
   tournament a direct head-to-head carries ~±12 Elo before any seed effect;
@@ -89,7 +89,7 @@ quoting anything:
   from one state are cheap — but they still differ by the seed floor, so branching does not
   substitute for two seeds.
 
-An arm inside these bars is *neutral*, not *better*. Read `metrics.md` §1 before adding a new
+An arm inside these bars is *neutral*, not *better*. Read `../method/measurement_pitfalls.md` before adding a new
 instrument.
 
 ## How to maintain this directory
@@ -111,7 +111,7 @@ instrument.
    directory, and final ones belong in `experiments.md`. A plan file that has accumulated
    results is a log entry that has not been written yet.
 6. **One step, one file.** If a step grows a second hypothesis, split it; arms that test two
-   things at once produce results that cannot be attributed (`metrics.md` §1.3).
+   things at once produce results that cannot be attributed (`../log/measurement_bugs.md`, *evaluation consumed most of a training run*).
 
 ## Step file template
 

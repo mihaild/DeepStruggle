@@ -50,7 +50,7 @@ before running:* whether it already does part 2, and if so, whether it was ever 
 
 Sign discipline: every value in the clone average is from the mover's perspective at the
 decision step; the mover can change between the decision and the roll. This is the bug class in
-`metrics.md` §1.2 and `ai/search/pimcts.py`'s docstring — write the test first.
+`../log/measurement_bugs.md` (*a policy was choosing its own dice*) and `ai/search/pimcts.py`'s docstring — write the test first.
 
 ## Procedure
 

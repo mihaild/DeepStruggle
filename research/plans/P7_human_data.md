@@ -52,7 +52,7 @@ crawler into `data/acts_games.sqlite`); the ts-replayer pipeline (`tools/lib/ts_
   round, rating, or a named-player list.
 
 Instruments, all existing, re-run on the new corpus with a **strength split**:
-`ai/eval/agreement.py` (agreement rate, `metrics.md` §9.11), `critic_calibration.py`,
+`ai/eval/agreement.py` (agreement rate, `../method/human_play.md`), `critic_calibration.py`,
 `battleground_value.py` on real contested positions, and the P0 setup and VOA yardsticks. The
 split is the point: if agreement with *strong* players tracks Elo across the existing
 checkpoint lineages and agreement with the old corpus does not, the instrument is validated

@@ -96,7 +96,7 @@ against the control.
   it if it costs more than 20 Elo at matched steps (it changes the effective batch).
 - If categorical is worse on the probes, do not tune the atom count — look at whether the
   two-hot target is being computed from the right perspective (the alternating-sign bug class
-  in `metrics.md` §1).
+  in `../log/measurement_bugs.md`).
 
 ## Follow-ups
 
@@ -121,7 +121,7 @@ against the control.
 > **Revised after re-rating.** This section originally read "a null", on 80.0% against
 > HeuristicBot versus the control's 80.6%. Head-to-head in a common pool with H2 @480M the
 > categorical arm scores **46.0%** [43.6, 48.4] against the control — **−28 Elo**, interval
-> excluding 50% (`metrics.md` §21.3). One seed, so the magnitude is soft; the sign is not.
+> excluding 50% (`../log/P9_architecture.md`, *rate arms against H2 @480M*). One seed, so the magnitude is soft; the sign is not.
 >
 > It had never been rated at all. `NeuralAgent.from_checkpoint` built a scalar net
 > unconditionally, so a categorical checkpoint could not be loaded by the tournament or any
@@ -216,7 +216,7 @@ same way rather than assumed.
 ### Result: advantage filtering is worth about +25 Elo, and costs ~8% throughput
 
 Two seeds at quantile 0.5, 80M steps, against the reused control. **Judged by the pooled
-head-to-head over four late snapshots per arm** (`metrics.md` §20.7), every pairing at 100 games
+head-to-head over four late snapshots per arm** (`../log/variance_and_noise.md`), every pairing at 100 games
 per side:
 
 | | vs control, pooled | Elo |
@@ -239,7 +239,7 @@ corresponded to no strength difference at all.
 Seed 20260921 alone, read on the anchor, gave +9.4 points over the control with non-overlapping
 Wilson intervals and a two-proportion z of 4.20. That statistic was wrong in kind, not degree: it
 treats the 500 evaluation games as the only source of variance and is blind to seed variance,
-which dominates. `metrics.md` §20.6's "a continuation seed is worth ~15 Elo" does not bound this —
+which dominates. `../log/variance_and_noise.md`'s "a continuation seed is worth ~15 Elo" does not bound this —
 that was measured for continuations within a lineage, and these are cold starts.
 
 **Wall-clock: filtering is ~8% *slower*, not 2.5× faster.** 14,264 steps/s against the 15,580 a

@@ -6,6 +6,11 @@ can show is broken.
 
 ## What is already known, and therefore not worth re-deriving
 
+Every `§21.x` in this file — the `where` column below and the body — names the section it was
+written under in the retired `metrics.md`. Those entries are now in
+[`../log/P9_architecture.md`](../log/P9_architecture.md), which keeps the old numbers in its
+provenance table.
+
 | finding | where |
 |:---|:---|
 | A country's exact influence is recoverable from its own raw observation slots at 97% | §21.12 |

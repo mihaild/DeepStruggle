@@ -132,7 +132,8 @@ the λ-return truncated and bootstrapped there rather than sampled through one r
 ### AIVAT — variance reduction for evaluation **[abs]**
 Burch, Schmid, Moravčík, Morrill, Bowling, AAAI 2018. Subtracts value-based control variates at
 chance nodes and at the opponent's decision nodes; unbiased, and cuts evaluation variance by an
-order of magnitude in poker. Our paired-die-stream tournaments are a crude version (`metrics.md`);
+order of magnitude in poker. Our paired-die-stream tournaments are a crude version
+(`../log/variance_and_noise.md`);
 the full form would let 1,000-game tournaments resolve ~5 Elo instead of ~20. Worth adopting once
 arms land within noise of each other.
 
@@ -175,7 +176,7 @@ is the one architectural change with a specific mechanism behind it.
 | games end turn ~6 with DEFCON-1 (§18.2) | chance-heavy (coups) | dice expectation in targets; categorical head | P1, P2 |
 | unknown: is strength in the value function but not the policy? | weak hidden info | determinized search (PIMC, Maven) as a diagnostic; expert iteration if the gap is large | P3 |
 | deal luck in value targets | chance-heavy, weak hidden info | oracle critic (Suphx) as a deal-side variance reducer — implemented, never measured | P5 |
-| tournament noise ~20 Elo (`metrics.md`) | chance-heavy | AIVAT-style baselines at deal and die nodes | reserve |
+| tournament noise ~20 Elo (`../log/variance_and_noise.md`) | chance-heavy | AIVAT-style baselines at deal and die nodes | reserve |
 
 **One-line summary.** The game is backgammon-shaped, not Stratego-shaped: the parts of the modern
 recipe that transfer are the value-centric ones (categorical value, advantage filtering, MC-return
@@ -261,5 +262,5 @@ An 80M-step arm is ~1.5 h on the 4090 and gains on the current recipe are still 
 320M (`experiments.md` §24). Screen every factor at 2 seeds × 80M (3 h); confirm only the winner
 of a screen at 2 seeds × 240M (9 h); rate the last four snapshots and pool all sixteen
 pairings; never compare across budgets or tournaments. A leg's gain carries ±16 Elo
-(`metrics.md` §20.6), so within-lineage trends need that bar. The current ordering and budget
-rule live in [`plans/README.md`](plans/README.md).
+(`../log/variance_and_noise.md`), so within-lineage trends need that bar. The current ordering and budget
+rule live in [`plans/README.md`](../plans/README.md).

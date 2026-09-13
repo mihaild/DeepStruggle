@@ -1,7 +1,7 @@
 # P8 — Teach the DEFCON conjunction, rather than avoid the region
 
 **Status:** queued. Written from the windowing result; nothing here has been run.
-**Gate:** none. The instruments exist (`metrics.md` §21.1–21.2) and the flags are implemented.
+**Gate:** none. The instruments exist (`../log/P9_architecture.md`) and the flags are implemented.
 **Needs approval:** none for the first two arms (trainer and reward only). The third proposes an
 observation change and must not be run without asking.
 
@@ -15,13 +15,13 @@ a DEFCON-dropping card at DEFCON 2 — instead of learning to avoid the region o
 Three measurements, in order:
 
 - **The mistake is frequent and never learned.** ~10.6 opportunities per game, error rate ~7%,
-  flat from 5M to 80M and still present at 480M (`metrics.md` §21). It is not data scarcity.
+  flat from 5M to 80M and still present at 480M (`../log/P9_architecture.md`). It is not data scarcity.
 - **The critic is blind to it.** Selecting the fatal card moves `v_win` by at most 0.008 and
-  committing it to Operations by at most 0.014; two of eight deltas point the wrong way (§21.1).
+  committing it to Operations by at most 0.014; two of eight deltas point the wrong way (`research/log/P9_architecture.md`).
 - **Windowing fixes the behaviour and not the understanding.** `--window-provoked-defcon` cut
   provoked DEFCON-1 endings 36.2% → 13.7%, against a human 11.7%, while the self-inflicted share
   moved +0.1 — as clean an attribution as this project has produced. It cost **59 Elo**, and the
-  critic came out *no more reactive than the control's* on the same stored positions (§21.2).
+  critic came out *no more reactive than the control's* on the same stored positions (`research/log/P9_architecture.md`).
 
 That last pair is the finding this step is built on. A blunder window sets the advantage to
 `-1 - v_t`, which routes around the value function by construction: it can teach a policy to stay
@@ -67,7 +67,7 @@ so all four cells sit on one scale. Rate four late snapshots and pool all sixtee
 
 In this order, because the point is the mechanism and not the ladder:
 
-1. **The paired critic trace** (`metrics.md` §21.1's method): both checkpoints over the same
+1. **The paired critic trace** (the paired-critic method in `../log/P9_architecture.md`): both checkpoints over the same
    stored positions, reading the delta at the deciding choice. This is the acceptance test — if
    the delta stays under 0.02, the arm did not teach the conjunction whatever else it did.
 2. Provoked and self-inflicted DEFCON-1 shares, and `defcon_suicide_with_alternative`.

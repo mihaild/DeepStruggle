@@ -54,7 +54,7 @@ whether the CE term is applied against π′ or against π′ mixed with the raw
 
 ## Procedure
 
-Diagnostic: 1,000-game paired-seed tournaments (`metrics.md` §7) of {policy, policy + search
+Diagnostic: 1,000-game paired-seed tournaments (`../log/variance_and_noise.md`) of {policy, policy + search
 at card/play-mode nodes} against the heuristic bot and against each other; vary N and D once
 each to see where the gain saturates. About a day of evaluation.
 

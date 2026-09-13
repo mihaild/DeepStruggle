@@ -48,14 +48,14 @@ This file was written against v2.2 and arm G. Both are gone. The reset:
   `ctx().roll_actor`) (`712bce4`). Probe 3 below used `temp_cards[1]` and no longer can.
 - Europe Control is its own recorded ending (`430ba9b`), and game length is measured in **plies**,
   not turns (`53f9c1c`).
-- `metrics.md` §1.5.3 retires the claim that the corrected engine lengthens games — H2 does not
+- `../log/variance_and_noise.md` retires the claim that the corrected engine lengthens games — H2 does not
   replicate H's game shape. Nothing here leans on it.
 
 **Two things in the previous revisions survive unchanged**, and they are what probes 3 and 4 are
 built on:
 
 1. The batch runner still drains chance inside C++ *whether or not* `auto_advance` is set — now
-   documented in `metrics.md` §"The Python chance-drain loop is not worth moving into C++" — so
+   documented in `../method/running_experiments.md` (*the Python chance-drain loop is not worth moving into C++*) — so
    the pre-deal node is still not reachable through it, and probe 3 still needs its own driver.
 2. The nested variance decomposition still needs no engine or bindings change: `rng_state` is
    still read/write, `set_card_location` is still there, and `get_state` still returns a mutable
@@ -165,7 +165,7 @@ a bootstrap CI over states.
   longer exists. `decision_player` is `NONE` there, and `critic_calibration.py:120`'s
   `if side == 0: continue` is exactly what drops it, so evaluate **both perspectives** and store
   both rows.
-- Sizing: chance nodes are 10.1 per game and TURN_CLEANUP is 36% of them (`metrics.md`), so ~3.6
+- Sizing: chance nodes are 10.1 per game and TURN_CLEANUP is 36% of them (`../method/running_experiments.md`), so ~3.6
   per game — 500 games gives ~1,800 nodes, ~3,600 rows.
 - **`classify_ending` must be replaced, not extended.** It predates the corrected engine and
   cannot see Europe Control, wargames, held scoring, or self-inflicted versus provoked DEFCON-1 —
@@ -322,7 +322,8 @@ probe rather than two, so it can equally follow step 4 — take it whenever prob
 driver's terminal utilities and action streams are **identical** to `VectorizedBatchRunner`'s over
 64 games. That equivalence is the whole warrant for using it in probe 3, so it is the test
 that matters; a driver that merely "looks right" reintroduces the 25-point disagreement
-`metrics.md` records from the last time a single-state path diverged from the batched one. ~2 h.
+`../log/measurement_bugs.md` records from the last time a single-state path diverged from the
+batched one. ~2 h.
 
 **4. Probes 1 and 4 — landed.** setup and card disposal. `ai/eval/setup_probe.py`,
 `ai/eval/sequencing.py`, additions to `ai/eval/claims.py`, and the corpus setup reader. These two
@@ -353,7 +354,7 @@ diagnostic. ~3 h to write, ~1.5 h to run on CPU.
 
 **7. `tools/probe_suite.py`, the baseline run, and the write-up.** One CLI over all five probes
 plus the existing instruments; run it over the *Procedure* table; write `experiments.md` §26 with
-the baseline rows; add the columns to the standard eval row in `metrics.md`; `git rm` this file
+the baseline rows; add the columns to the standard eval row in `../method/measurement_tiers.md`; `git rm` this file
 and drop its row from `plans/README.md`.
 
 Steps 1–2 have landed. Step 3 is the one left that has to be right; 4–6 are independent of each
@@ -364,7 +365,7 @@ it on the GPU.
 
 ### Which checkpoints
 
-Rate the last four snapshots of each run and report the median (`metrics.md` §20); all four arms
+Rate the last four snapshots of each run and report the median (`../log/variance_and_noise.md`); all four arms
 below have a full 5M-step snapshot series.
 
 | row | checkpoint | layout | steps | base commit |
@@ -400,7 +401,7 @@ Probes run on **CPU** and never write into a run directory; output goes to
 ### Recording
 
 Commit the probes with the baseline table in `experiments.md` in the same change, per this
-directory's maintenance rule, and add the numbers to the standard eval row in `metrics.md`. Then
+directory's maintenance rule, and add the numbers to the standard eval row in `../method/measurement_tiers.md`. Then
 `git rm` this file and delete its row from `plans/README.md`.
 
 ## Measure
@@ -423,7 +424,7 @@ Rates as Wilson bands. No Elo.
 
 ## Follow-ups
 
-- Every later step reports these numbers. Add them to the standard eval row in `metrics.md`.
+- Every later step reports these numbers. Add them to the standard eval row in `../method/measurement_tiers.md`.
 - ~~Queue the BC warmup layout fix~~ — **fixed by the single-layout refactor.** `WarmupDataset`
   and `tools/generate_dataset.py` re-extracted at the legacy default and passed no layout down;
   with one layout there is no default to be wrong. Arms H, H2 and I were cold starts and were

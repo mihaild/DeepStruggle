@@ -56,8 +56,8 @@ retired ones. Nothing currently depends on the answer.
 ## AIVAT-style evaluation
 **Trigger:** two arms land within ~20 Elo of each other and the decision matters. Value-based
 control variates at die nodes (P2's clone average is exactly the die-node baseline) and at deal
-nodes (the pre-deal critic). Would take a 1,000-game tournament from ~20 Elo to ~5. `metrics.md`
-§7 and `references.md` §3.
+nodes (the pre-deal critic). Would take a 1,000-game tournament from ~20 Elo to ~5. `../log/variance_and_noise.md`
+and `../method/references.md` §3.
 
 ## Q-boosting proper (action-value critic, Expected SARSA(λ))
 **Trigger:** P2 and P5 are adopted and the P0 decomposition attributes most remaining return
@@ -113,7 +113,7 @@ first (P0), prior only if learning it from the game fails.
 **Trigger:** the recipe is fixed — no queued step would change it. Then one long run (~400M+
 steps) of the winning configuration on rented GPUs: v2.2 was still gaining at 320M where earlier
 layouts had stopped (`experiments.md` §24), so budget keeps paying on the current recipe — though
-per-leg gains carry ±16 Elo (`metrics.md` §20.6), so the payoff is not extrapolatable to a
+per-leg gains carry ±16 Elo (`../log/variance_and_noise.md`), so the payoff is not extrapolatable to a
 number in advance. Spend the budget once, on a recipe that has been screened and confirmed on
 the 4090; never on a screen.
 

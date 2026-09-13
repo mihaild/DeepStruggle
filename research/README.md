@@ -1,46 +1,96 @@
-# Twilight Struggle AI: Research, Literature & Strategic Roadmap
+# research/
 
-This directory documents foundational literature, game-theoretic algorithms, and architectural designs aimed at building a **super-human artificial intelligence agent** for the Deluxe Edition of **Twilight Struggle**.
+The project's research record. **None of this is published** — `tools/scripts/publish_snapshot.sh`
+strips the whole directory, and `check_public_hygiene.sh` fails the publish if anything in the
+public tree so much as cites it. That is deliberate: the public repository is code, and this is
+the reasoning behind the code.
 
----
+## The one rule: file by update discipline
 
-## 1. Central Evolving Document
+Documents here differ in *when you may rewrite a line*, and that is what decides where a thing
+lives. Topic is a bad filing dimension — topics drift and a document ends up filed twice.
 
-- [**plans/**](plans/README.md): **The queue — what runs next, in what order, and the rule for keeping it honest**  
-  *One file per unrun step (goal, change, budget, decision rule written before the run); `reserve.md` for ideas with a trigger; `README.md` for the ordering, the budget rule, and the maintenance rule: when a step is done it leaves this directory, its result goes into `experiments.md`, and its follow-ups come back as new steps. A step is in exactly one of the two places at a time.*
+| directory | discipline | the question it answers |
+|:---|:---|:---|
+| [`log/`](log/) | **append-only** — never rewritten | what did we try, and why do we believe it? |
+| [`findings/`](findings/) | **rewritten in place** — always current | what is true now? |
+| [`method/`](method/) | **living reference** | how do we measure this? |
+| [`plans/`](plans/) | forward-looking; becomes a log once run | what should we try next? |
+| [`papers/`](papers/) | static | what does the literature say? |
+| [`archive/`](archive/) | frozen | superseded material, kept for history |
 
-- [**next_step_brief.md**](next_step_brief.md): **Self-contained briefing for an outside reviewer**  
-  *Where the agent is stuck, what has been tried, the measured diagnosis, and ten open questions. Written to be readable with no prior context — hand it to a fresh model or collaborator when asking for a plan. Regenerate rather than patch once the situation has moved on.*
+**The test, when you are unsure:** a statement in here turns out to be wrong. Do you *edit* it, or
+*correct it underneath*?
 
-- [**experiments.md**](experiments.md): **Experiment Log — what was actually run, and what came out**  
-  *Running record of experiments against this codebase: setup, numbers, verdict, caveats. Includes the measurement bugs that invalidated earlier results, and which older numbers should no longer be quoted. Read this before trusting any figure from a previous run, and add an entry whenever an experiment finishes — including negative and inconclusive ones.*
+* Correct it underneath → `log/`. Dead ends, abandoned arms, retracted claims and wrong
+  predictions all stay, permanently. That is the only thing a log is for: without them you cannot
+  answer "did we already try that, and why did we stop?"
+* Edit it → `findings/` or `method/`.
 
-- [**experiments_replayer_conversion.md**](experiments_replayer_conversion.md): **How the human corpus is read, and every place the log and the engine disagree**  
-  *Split out of experiments.md. Score reconciliation against the log's narration, the Shuttle Diplomacy/Japan log fault, hand reconstruction and what the solver may supply, and corpus composition. Read this when changing `tools/lib/ts_replayer_*`; read experiments.md when asking how well the agents play. Section numbers are the ones these entries were first written under, so cross-references still resolve.*
+Two rules keep the first two from collapsing into one another:
 
-- [**metrics.md**](metrics.md): **Measurement — what the numbers can bear**  
-  *The seven instruments that reported confident numbers while measuring nothing; how to run an arm so its result means something; what a tournament is reproducible to (~1.5 points, not the binomial SE); how much of a final rating is just where the run stopped (rate four snapshots, ~20 Elo between-run SD); and how agreement with human play is defined. Read this before quoting a figure from experiments.md.*
+1. **`findings/` states conclusions and links to the log. It never re-tells the experiment.** If a
+   findings file starts accumulating narrative, it is drifting into log territory and should be
+   cut back.
+2. **`log/` is never tidied.** Editing a log entry to match current belief destroys the only
+   property it has.
 
-- [**references.md**](references.md): **Literature for a game shaped like this one**  
-  *Twilight Struggle has weak hidden information, heavy chance, a long horizon and global coupling — the opposite profile from Stratego. Which parts of the modern self-play recipe (Ataraxos, Gumbel MuZero) transfer, and what the chance-heavy lineage (TD-Gammon, Stochastic MuZero, Q-boosting/VRPO, Suphx GRP, AIVAT) and the determinization literature (PIMC conditions, Maven) say about training targets and search. Ends with the failure → ingredient → plan-stage map and the setup analysis.*
+## log/ — one file per programme
 
-- [**ideas_and_plans.md**](ideas_and_plans.md): **Ideas, Strategic Insights & Technical Roadmap**  
-  *The single, evolving design document covering domain insights (hand scheduling, DEFCON trapping, asymmetric war phase access), tabula rasa learning without demonstrations, ColdWarNetV4 architecture with Oracle Guiding, Multi-Agent League training, and the two-level NashPG + $\pi\text{KL}$ Subgame Resolving duality.*
+Not per engine era, and not per arm. An era would give one enormous file again as soon as the
+engine settles; an arm is too granular, and every interesting comparison spans several. A
+*programme* — one investigated question over several arms — is naturally bounded and is what
+[`plans/`](plans/) already numbers. Where a programme has a plan, the log carries its `PN` prefix,
+so `plans/PN` proposes and `log/PN` records. The engine era lives inside each entry, in the run's
+short name (`E3-15-21-80M`), which means a programme that straddles an engine bump stays in one
+file.
 
----
+| file | programme |
+|:---|:---|
+| [`early_training_signal.md`](log/early_training_signal.md) | blunder window, decisive-transition priority, start-pool sampling |
+| [`agent_deficiencies_and_decisiveness.md`](log/agent_deficiencies_and_decisiveness.md) | what the control cannot do; length-scaled reward; forced wins |
+| [`engine_reanchor_and_human_control.md`](log/engine_reanchor_and_human_control.md) | re-establishing the ladder after the engine fixes; the human corpus as a strong-player control |
+| [`P7_human_bc_warmup.md`](log/P7_human_bc_warmup.md) | human data as initialisation |
+| [`P7_human_injection_and_its_cost.md`](log/P7_human_injection_and_its_cost.md) | human data as continuous injection, and the ablation that killed it |
+| [`P7_replayer_conversion.md`](log/P7_replayer_conversion.md) | converting the human game logs to engine decisions |
+| [`critic_positional_value.md`](log/critic_positional_value.md) | board and hand perturbation probes on the critic |
+| [`critic_vs_policy_160M.md`](log/critic_vs_policy_160M.md) | counterfactual rollouts; why the run will not invest positionally |
+| [`observation_layout.md`](log/observation_layout.md) | the observation layouts and what each was worth |
+| [`corrected_engine_arms_H_I.md`](log/corrected_engine_arms_H_I.md) | the corrected-engine ladder |
+| [`P9_architecture.md`](log/P9_architecture.md) | identity embeddings → self-transform → per-entity heads → removing the map graph |
+| [`measurement_bugs.md`](log/measurement_bugs.md) | every instrument that reported confident nonsense, in full |
+| [`variance_and_noise.md`](log/variance_and_noise.md) | run-to-run variance, and how much of a rating is just where you stopped |
 
-## 2. Literature Review: Reviewed Papers Index
+## findings/ — short, current, cited
 
-| Paper Review Document | Authors / Lab | Publication | Core Concept & Innovation | Relevance to Twilight Struggle |
-|:---|:---|:---:|:---|:---|
-| [**paper_nash_policy_gradient.md**](paper_nash_policy_gradient.md) | Recent MARL Research | *OpenReview / arXiv* (2024/2025) | **Nash Policy Gradient (NashPG)**: Iteratively refined reference regularization in objective space. | Direct successor to DeepNash; guarantees monotonic Bregman convergence to Nash equilibrium using fixed $\eta$. Core training engine in [`ai/training/nash_pg.py`](../ai/training/nash_pg.py). |
-| [**paper_kl_regularized_search.md**](paper_kl_regularized_search.md) | Austin, Bakhtin, Brown et al. (Meta AI) | *ICML* (2022) | **KL-Regularized Search ($\pi\text{KL}$-Hedge)**: Decision-time planning regularized toward an anchor policy prior. | Mathematical foundation for real-time subgame search anchored to the NashPG policy prior. |
-| [**paper_deepnash_rnad.md**](paper_deepnash_rnad.md) | Pérolat et al. (DeepMind) | *Science* (2022) | **Regularized Nash Dynamics (R-NaD)**: Model-free convergence to Nash equilibrium in imperfect-information board games without search. | Foundational ancestor of iterative reference regularization. |
-| [**paper_cicero_diplomacy.md**](paper_cicero_diplomacy.md) | Bakhtin et al. (Meta AI) | *Science* (2022) | **CICERO ($\pi\text{KL}$ Planning)**: Policy-regularized planning and iterative subgame solving in geopolitical strategy. | Proves that regularized iterative subgame planning produces unexploitable, robust decision-making. |
-| [**paper_suphx_mahjong.md**](paper_suphx_mahjong.md) | Li et al. (Microsoft Research Asia) | *arXiv* (2020) | **Suphx (Oracle Guiding & GRP)**: Asymmetric actor-critic training where privileged Oracle critic guides public actor. | Blueprint for using privileged full-information critic during C++ self-play training. |
-| [**paper_student_of_games.md**](paper_student_of_games.md) | Schmid et al. (DeepMind) | *Science Advances* (2023) | **Student of Games**: Unified sound search and learning for imperfect-information games. | Framework for turn-level (AR1–AR7) subgame resolving in Twilight Struggle. |
-| [**paper_rebel.md**](paper_rebel.md) | Brown et al. (Meta AI) | *NeurIPS* (2020) | **Public Belief States (PBS)**: Converts imperfect-information games into continuous MDPs over belief states. | Foundation for our auxiliary opponent hand card-counting head $\beta_{\text{opp}} \in [0, 1]^{110}$. |
-| [**paper_magnetic_mirror_descent.md**](paper_magnetic_mirror_descent.md) | Sokota et al. (ICML) | *ICML* (2023) | **Magnetic Mirror Descent (MMD)**: Proximal regularization to a magnetic anchor with MMD search. | Provides theoretical stability and online search algorithms for non-public information settings. |
-| [**paper_off_belief_learning.md**](paper_off_belief_learning.md) | Hu, Foerster et al. | *ICML / NeurIPS* (2021) | **Off-Belief Learning (OBL)**: Prevents brittle self-play conventions by grounding beliefs in base dynamics. | Ensures our bot does not develop fragile self-play artifacts against humans. |
-| [**paper_alphastar.md**](paper_alphastar.md) | Vinyals et al. (DeepMind) | *Nature* (2019) | **League Training**: Main Agent + Exploiters + Historical Pool. | Ecosystem for training dedicated DEFCON Trap Exploiters and preventing strategy cycling. |
-| [**paper_douzero_perfectdou.md**](paper_douzero_perfectdou.md) | Zha et al. / Guan et al. | *ICML / NeurIPS* (2021/2022) | **Card Set Encodings & Hand Planning**: Deep RL for complex multi-round trick-taking and card retention. | Paradigms for multi-action hand scheduling and card combination self-attention. |
+| file | |
+|:---|:---|
+| [`architecture.md`](findings/architecture.md) | what the network is now, and what each change was worth |
+
+## method/ — how to measure
+
+| file | |
+|:---|:---|
+| [`measurement_pitfalls.md`](method/measurement_pitfalls.md) | **read this before trusting a number.** The checklist, distilled from every measurement bug we have made |
+| [`running_experiments.md`](method/running_experiments.md) | how to run an arm and how to rate one |
+| [`measurement_tiers.md`](method/measurement_tiers.md) | which probe runs during training, per snapshot, and once per arm |
+| [`run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`, and the table of every arm |
+| [`human_play.md`](method/human_play.md) | the human corpus: game length, side asymmetry, the agreement measure |
+| [`references.md`](method/references.md) | the literature behind the plan ordering |
+
+## Two habits that this record exists to enforce
+
+**Register the prediction before the run.** Write down what the probes and the Elo should do, in
+`plans/` or `run_nomenclature.md`, *before* launching. It costs a minute and it is the difference
+between a result and a rationalisation. The most useful entries in `log/P9_architecture.md` are
+the two where the prediction failed.
+
+**A probe only tests understanding if its answer key is absent from the observation.** This
+observation is unusually rich in precomputed per-country facts, and more than one probe here has
+measured a copied input before anyone noticed. `method/measurement_pitfalls.md` lists the rest.
+
+## Size
+
+Split a file at about 400 lines. A document nobody can read in one sitting stops being read, and
+then the claims in it stop being checked — which is exactly how a 1,900-line file came to carry
+stale test counts, a stub package described as a single file, and a module that no longer existed.
