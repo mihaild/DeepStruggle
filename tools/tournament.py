@@ -278,6 +278,40 @@ def run_massive_tournament(
         report_lines.append(f"| **{model_names[i]}** | {' | '.join(row_vals)} |\n")
     report_lines.append("\n---\n\n")
 
+    # Per-side matrix. The pooled matrix above averages the two sides, which hides exactly the
+    # thing worth seeing in an asymmetric game: an arm can be at 50% overall while winning
+    # almost every game on one side and almost none on the other.
+    report_lines.append("## 3. Per-Side Win Rate Matrix (Row vs Column: as USSR / as US)\n\n")
+    report_lines.append(
+        "Each cell is the **row** model's win rate against the **column** model, "
+        f"playing USSR and playing US, over {games_per_side} games per side.\n\n")
+    report_lines.append(f"| Model | {header_cols} |\n")
+    report_lines.append(f"|:---|{'---:|' * M}\n")
+    for i in sorted_indices:
+        row_vals = []
+        for j in sorted_indices:
+            if i == j:
+                row_vals.append("—")
+            else:
+                row_vals.append(f"{ussr_wr_matrix[i, j]:.1f}% / {us_wr_matrix[i, j]:.1f}%")
+        report_lines.append(f"| **{model_names[i]}** | {' | '.join(row_vals)} |\n")
+    report_lines.append("\n")
+
+    # The side split each arm shows across the whole field, and the gap between the two.
+    report_lines.append("### Side balance per arm (across all opponents)\n\n")
+    report_lines.append("| Model | as USSR | as US | USSR - US |\n")
+    report_lines.append("|:---|---:|---:|---:|\n")
+    for i in sorted_indices:
+        opps = [j for j in range(M) if j != i]
+        if not opps:
+            continue
+        as_ussr = float(np.mean([ussr_wr_matrix[i, j] for j in opps]))
+        as_us = float(np.mean([us_wr_matrix[i, j] for j in opps]))
+        report_lines.append(
+            f"| **{model_names[i]}** | {as_ussr:.1f}% | {as_us:.1f}% | "
+            f"{as_ussr - as_us:+.1f} pp |\n")
+    report_lines.append("\n---\n\n")
+
     report_text = "".join(report_lines)
 
     if output_report:
