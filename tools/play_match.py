@@ -41,6 +41,7 @@ from web.server.replay_types import ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 from tools.lib.scoring_formatter import format_regional_scoring_breakdown
 from tools.lib.checkpoint_utils import discover_checkpoints
+from tools.lib.openings import OPENINGS, acting_side, scripted_setup_index
 
 
 def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: str = "cpu") -> Tuple[BaseBot, str]:
@@ -130,6 +131,26 @@ def format_action_description(action_dict: Dict[str, Any], state_dict: Dict[str,
     return f"Action (type={d_type}, id={p_id})"
 
 
+
+def forced_setup_action(state: "ts.GameState", opening: str,
+                        cursor: Dict[str, int]) -> Optional[Dict[str, Any]]:
+    """The next scripted placement as a bot-shaped action dict, or None to let the agent decide.
+
+    The flat index comes from the shared opening registry and is turned into a MicroAction by the
+    engine's own decoder, rather than assembled field by field here.
+    """
+    idx = scripted_setup_index(state, acting_side(state), opening, cursor)
+    if idx is None:
+        return None
+    micro = ts.decode_flat_action(state, idx)
+    return {
+        "decision_type": int(micro.decision_type),
+        "primary_id": int(micro.primary_id),
+        "secondary_id": int(micro.secondary_id),
+        "flags": int(micro.flags),
+    }
+
+
 def run_match(
     agent_us_spec: str,
     agent_ussr_spec: str,
@@ -141,6 +162,7 @@ def run_match(
     device: str = "cpu",
     max_steps: int = 4000,
     verbose: bool = True,
+    opening: Optional[str] = None,
 ) -> Tuple[ReplayLogDict, str]:
     """Runs a full Twilight Struggle game between two specified agents and saves standardized replay."""
     if game_id is None:
@@ -160,6 +182,8 @@ def run_match(
         print(f"★ Game ID: {game_id} | Seed: {seed} | Commentary: {commentary}")
         print("=" * 80)
 
+    setup_cursor: Dict[str, int] = {"US": 0, "USSR": 0}
+
     step_count = 0
     while not ts.Engine.is_terminal(state) and step_count < max_steps:
         p_enum = state.ctx().decision_player
@@ -177,7 +201,10 @@ def run_match(
             np.asarray(ts.extract_observation(state, p_enum), dtype=np.float32).tobytes()
         ).decode("ascii")
 
-        action_dict = active_bot.select_action(d, legal)
+        action_dict = (forced_setup_action(state, opening, setup_cursor)
+                       if opening else None)
+        if action_dict is None:
+            action_dict = active_bot.select_action(d, legal)
         if action_dict is None:
             if verbose:
                 print(f"[{p_str}] Forfeited or passed.")
@@ -287,6 +314,8 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.1, help="Neural sampling temperature")
     parser.add_argument("--commentary", action="store_true", help="Embed strategic commentary and scoring audits")
     parser.add_argument("--device", type=str, default="cpu", help="PyTorch inference device (cpu or cuda)")
+    parser.add_argument("--opening", type=str, default=None, choices=sorted(OPENINGS),
+                        help="Force a named setup on both sides instead of letting the agents place (e.g. 'human')")
 
     args = parser.parse_args()
 
@@ -308,6 +337,7 @@ def main():
             output_path=args.output,
             device=args.device,
             verbose=True,
+            opening=args.opening,
         )
         return
 
@@ -320,6 +350,7 @@ def main():
         temperature=args.temperature,
         commentary=args.commentary,
         device=args.device,
+        opening=args.opening,
     )
 
 

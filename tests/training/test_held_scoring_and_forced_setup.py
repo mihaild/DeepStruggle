@@ -12,6 +12,7 @@ import ts_engine as ts
 from ai.eval.forced_setup import (NODE_OFFSET, SETUP_DECISIONS, US_OPENING, USSR_OPENING,
                                   WEST_GERMANY, _expand)
 from ai.eval.held_scoring import ANY_HAND, HANDS, SCORING_CARDS
+from tools.lib.openings import OPENINGS, acting_side, expand, scripted_setup_index
 
 
 def test_scoring_card_set_is_the_seven() -> None:
@@ -113,3 +114,47 @@ def test_openings_place_only_in_their_own_half(side: str) -> None:
     us_side = {WEST_GERMANY, ITALY, IRAN}
     placed = set(_expand(USSR_OPENING if side == "USSR" else US_OPENING))
     assert placed == (ussr_side if side == "USSR" else us_side)
+
+
+def test_probe_and_replay_generators_share_one_opening() -> None:
+    """The probe's numbers and the replays must describe the same opening."""
+    assert OPENINGS["human"]["US"] == expand(US_OPENING)
+    assert OPENINGS["human"]["USSR"] == expand(USSR_OPENING)
+    assert _expand is expand
+
+
+def test_scripted_setup_index_drives_a_single_game_to_the_human_board() -> None:
+    """End to end through the engine, the way the replay generators call it."""
+    state = ts.GameState()
+    ts.Engine.init_game(state, 4242)
+    cursor = {"US": 0, "USSR": 0}
+
+    for _ in range(SETUP_DECISIONS):
+        assert state.current_phase == ts.Phase.SETUP
+        idx = scripted_setup_index(state, acting_side(state), "human", cursor)
+        assert idx is not None, "script ran out before setup ended"
+        ts.Engine.step(state, ts.decode_flat_action(state, idx))
+
+    assert state.current_phase != ts.Phase.SETUP
+    assert cursor == {"US": 9, "USSR": 6}
+    # The finished board, not the placements: two of these countries are not empty at the
+    # start, so the scripted points are added to what is already there. East Germany starts
+    # at 3 USSR and Iran at 1 US, which is why +1 and +2 read as 4 and 3.
+    assert int(state.get_country(WEST_GERMANY).us_influence) == 4
+    assert int(state.get_country(15).ussr_influence) == 4      # Poland, +4 from empty
+    assert int(state.get_country(14).ussr_influence) == 4      # East Germany, 3 + 1
+    assert int(state.get_country(18).ussr_influence) == 1      # Yugoslavia, +1 from empty
+    assert int(state.get_country(10).us_influence) == 3        # Italy, +3 from empty
+    assert int(state.get_country(25).us_influence) == 3        # Iran, 1 + 2
+
+
+def test_scripted_setup_index_returns_none_outside_setup() -> None:
+    """None means 'let the agent decide' -- it must never keep firing after setup."""
+    state = ts.GameState()
+    ts.Engine.init_game(state, 99)
+    cursor = {"US": 0, "USSR": 0}
+    for _ in range(SETUP_DECISIONS):
+        idx = scripted_setup_index(state, acting_side(state), "human", cursor)
+        assert idx is not None
+        ts.Engine.step(state, ts.decode_flat_action(state, idx))
+    assert scripted_setup_index(state, acting_side(state), "human", cursor) is None

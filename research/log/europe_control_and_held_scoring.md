@@ -92,3 +92,60 @@ Caveat on scope: one checkpoint, one arm, self-play against itself. A forced ope
 policy off its own training distribution, which is an argument for reading the West Germany
 columns (a direct behavioural question) rather than the win rate (a strength comparison between
 distributions it was not trained on).
+
+## How the US actually loses West Germany: Blockade, every time
+
+The forced-opening numbers say the US *can* hold West Germany but that holding it does not change
+the win rate. Watching the games it still loses says why. Four USSR Europe-control wins played
+from the forced human opening (`--opening human`, seeds 305/308/314/316, temperature 0.1,
+E3-17-22 @160M) -- `data/replays/E3-17-22-human-open-europe-*.tslog.json`.
+
+In all four the US starts with 4 in West Germany, builds it as high as 6, and then loses **all of
+it in a single step**. The step is always a US action, and the card is always the same one:
+
+| seed | collapse | US influence | card the US played | US hand at that moment |
+|:---|:---|---:|:---|:---|
+| 305 | T1 AR6 | 4 -> 0 | Blockade (#10) | Blockade (1), Nasser (1) |
+| 308 | T3 AR5 | 5 -> 0 | Blockade (#10) | Blockade (1), Independent Reds (2) |
+| 314 | T2 AR6 | 4 -> 0 | Blockade (#10) | Blockade (1), Romanian Abdication (1) |
+| 316 | T3 AR6 | 6 -> 0 | Blockade (#10) | Blockade (1), Olympic Games (2) |
+
+Blockade is a 1-Ops USSR card: *"Unless the US immediately discards a card with an Operations
+value of 3 or more, remove all US Influence from West Germany."* Playing an opponent's card for
+Ops fires its event regardless, so the US is triggering this itself -- and in every one of the four
+games its hand at that moment was two cards, neither of them 3+ Ops, so the ransom could not be
+paid.
+
+**The ransom was payable, repeatedly, and the policy waited until it was not.** Tracking every AR
+at which the US held Blockade alongside a 3+ Ops card:
+
+| seed | first held | ARs at which the discard was available | best discardable Ops |
+|:---|:---|---:|---:|
+| 305 | T1 AR0 | 6 | 4 |
+| 308 | T2 AR6 | 4 | 3 |
+| 314 | T1 AR6 | 7 | 4 |
+| 316 | T1 AR6 | 11 | 4 |
+
+So the policy treats Blockade as cheap end-of-turn filler -- a 1-Ops card to dump when nothing
+better is left -- and by the time it dumps it, the hand can no longer pay. It is not being
+outplayed for the country; it is handing it over, on its own action, with the counterplay in hand
+for four to eleven action rounds beforehand.
+
+**And it never comes back.** Across all four games, after the collapse the US takes exactly *one*
+action naming West Germany (seed 308, T4 AR5) and that one removes the USSR's influence rather
+than placing its own. US influence there is 0 for the remainder of every game, while the USSR
+walks it up to 4-5 unopposed. This is the "fights where it was placed, never opens a new front"
+behaviour in its sharpest form: the country is not merely unprioritised at setup, it is treated as
+gone once lost.
+
+Two things this points at, neither of them the opening:
+
+* **Card-level: the event cost of an opponent's card is not being priced.** Blockade is 1 Ops and
+  the policy plays it like 1 Ops. A card whose event costs a battleground is not a filler card,
+  and the discard that cancels it is a decision the policy never makes.
+* **Positional: influence already lost is not re-contested.** Zero rebuild attempts across four
+  games is not a tuning issue.
+
+Caveat: four games from one checkpoint, chosen *because* they ended in Europe control, so this
+says what goes wrong in those games, not how often. The Blockade unanimity across four
+independently sampled seeds is what makes it worth naming; the frequency is not measured here.

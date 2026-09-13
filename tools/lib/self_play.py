@@ -15,6 +15,7 @@ from bindings.ts_env import check_obs_width
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
+from tools.lib.openings import acting_side, scripted_setup_index
 
 
 def generate_self_play_replay(
@@ -29,8 +30,14 @@ def generate_self_play_replay(
     device: Union[torch.device, str] = "cuda",
     max_steps: int = 4000,
     verbose: bool = True,
+    opening: Optional[str] = None,
 ) -> Tuple[ReplayLogDict, str]:
-    """Simulates a complete self-play game between neural policies and saves standardized .tslog.json replay."""
+    """Simulates a complete self-play game between neural policies and saves standardized .tslog.json replay.
+
+    `opening` names a setup from `tools.lib.openings` to force on both sides in place of their own
+    placements (currently only "human"). The policy plays everything after setup, so the replay
+    shows what it does with a board it did not choose.
+    """
     dev: torch.device = torch.device(device if torch.cuda.is_available() and str(device) == "cuda" else "cpu")
 
     active_model: Any
@@ -88,6 +95,8 @@ def generate_self_play_replay(
         ussr_player=ussr_label,
     )
 
+    setup_cursor: Dict[str, int] = {"US": 0, "USSR": 0}
+
     step_index = 0
     blunders = BlunderCounts()
     last_card: dict[str, int] = {}
@@ -106,13 +115,18 @@ def generate_self_play_replay(
         obs_t = torch.from_numpy(obs).float().to(dev)
         mask_t = torch.from_numpy(mask).to(dev)
 
-        with torch.no_grad():
-            if hasattr(active_model, "sample_action"):
-                act_t, _, _, _, _ = active_model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=False)
-                action_idx = int(act_t.item())
-            else:
-                logits, _ = active_model(obs_t, mask_t)
-                action_idx = int(torch.argmax(logits, dim=-1).item())
+        forced_idx = (scripted_setup_index(state, acting_side(state), opening, setup_cursor)
+                      if opening else None)
+        if forced_idx is not None:
+            action_idx = forced_idx
+        else:
+            with torch.no_grad():
+                if hasattr(active_model, "sample_action"):
+                    act_t, _, _, _, _ = active_model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=False)
+                    action_idx = int(act_t.item())
+                else:
+                    logits, _ = active_model(obs_t, mask_t)
+                    action_idx = int(torch.argmax(logits, dim=-1).item())
 
         action_desc = ActionEncoder.get_action_name(state, action_idx)
         ma = ts.ActionMask.decode_flat_action(state, action_idx)

@@ -199,9 +199,21 @@ PYTHONPATH=. .venv/bin/python tools/play_match.py --us human --ussr heuristic
 PYTHONPATH=. .venv/bin/python tools/play_match.py \
   --us strategic --ussr event_heavy --commentary
 
+# 4. Force a named opening on both sides, then let the agents play from there:
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py \
+  --agent <checkpoint.pt> --opening human --seed 305 --commentary
+
 # View any generated replay in the Web Workbench at:
 # http://localhost:8000/?replay=<filename>.tslog.json
 ```
+
+**`--opening`** replaces the fifteen setup placements with a named opening from
+`tools/lib/openings.py` and hands control back to the agents once setup is over, so the replay
+shows what a policy does with a board it did not choose. Currently one opening is defined,
+`human`: USSR +1 East Germany, +4 Poland, +1 Yugoslavia; US +4 West Germany, +3 Italy, +2 Iran.
+A scripted placement that is not legal raises rather than falling through to the agent -- a
+partly-forced setup is neither opening, and would be reported as one. The same registry backs
+`ai/eval/forced_setup.py`, so the replays show the opening its numbers were measured on.
 
 ---
 

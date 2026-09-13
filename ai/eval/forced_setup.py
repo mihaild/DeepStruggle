@@ -25,21 +25,14 @@ import numpy as np
 
 import ts_engine as ts
 
-#: Flat action index of country `cid` at a POINT_NODE (`bindings/action_encoder.py`).
-NODE_OFFSET = 119
+# The opening itself lives in `tools.lib.openings` so that this probe and the replay
+# generators cannot drift apart -- a replay labelled "the human opening" has to be the opening
+# these numbers were measured on.
+from tools.lib.openings import (  # noqa: E402
+    NODE_OFFSET, SETUP_DECISIONS, US_OPENING, USSR_OPENING, WEST_GERMANY, acting_side, expand)
+from tools.lib.openings import EAST_GERMANY, IRAN, ITALY, POLAND, YUGOSLAVIA  # noqa: E402,F401
 
-#: 6 USSR placements, then 7 US in Western Europe, then 2 US bonus. Every env is in lockstep.
-SETUP_DECISIONS = 15
-
-WEST_GERMANY, ITALY, EAST_GERMANY, POLAND, YUGOSLAVIA, IRAN = 7, 10, 14, 15, 18, 25
-
-#: The standard human opening, as (country, points) in placement order.
-USSR_OPENING: Sequence[Tuple[int, int]] = ((EAST_GERMANY, 1), (POLAND, 4), (YUGOSLAVIA, 1))
-US_OPENING: Sequence[Tuple[int, int]] = ((WEST_GERMANY, 4), (ITALY, 3), (IRAN, 2))
-
-
-def _expand(opening: Sequence[Tuple[int, int]]) -> List[int]:
-    return [cid for cid, n in opening for _ in range(n)]
+_expand = expand
 
 
 def _influence(state: ts.GameState, cid: int) -> Tuple[int, int]:
@@ -77,7 +70,7 @@ def measure(model: Any, num_games: int = 512, forced: bool = True,
         # game, with the US silently placing whatever was first in the mask.
         players = env.runner.get_decision_players()
         for i in range(num_games):
-            side = "US" if int(players[i]) == int(ts.Player.US) else "USSR"
+            side = "US" if int(players[i]) == int(ts.Player.US) else "USSR"  # see acting_side
             script = us_script if side == "US" else ussr_script
             k = cursor[side][i]
             chosen = -1
