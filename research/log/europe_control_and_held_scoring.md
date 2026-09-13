@@ -149,3 +149,87 @@ Two things this points at, neither of them the opening:
 Caveat: four games from one checkpoint, chosen *because* they ended in Europe control, so this
 says what goes wrong in those games, not how often. The Blockade unanimity across four
 independently sampled seeds is what makes it worth naming; the frequency is not measured here.
+
+## What the critic says while Europe is being lost (probe-208)
+
+`E3-17-22-europe-208.tslog.json`, USSR Europe-control win at turn 8, read with
+`ai/eval/replay_critic.py`. The replay is re-driven through the engine from its seed and every
+reconstructed state is checked against the snapshot the replay recorded -- **0 mismatches across
+all 424 steps**, so the positions below are the positions that were played.
+
+Both value heads are perspective-aligned, so the same state evaluated from both sides is a
+consistency check with a known answer: a zero-sum critic must satisfy `v(US) = -v(USSR)`.
+
+Note on units: `v_vp` is **normalised to [-1, 1]**, not real VP. The `forward()` docstring in
+`ai/models/coldwar_net_v2.py` says `[-20, 20]`, which is stale -- `_value_scalars` divides by
+`VP_LIMIT` and `rollout_buffer` stores `returns_vp` in [-1, 1]. Multiply by 20 for VP.
+
+### The win head does not move while the game is decided
+
+| step | T/AR | VP | USSR-held European BGs | v_win US | v_win USSR | residual | v_vp US |
+|---:|:---|---:|:---|---:|---:|---:|---:|
+| 25 | T1/1 | -2 | E.Ger, Pol | -0.834 | +0.803 | -0.031 | -1.3 |
+| 125 | T2/6 | -9 | W.Ger, E.Ger, Pol | -0.846 | +0.865 | +0.019 | -9.7 |
+| 225 | T4/3 | -9 | W.Ger, Ita, E.Ger, Pol | -0.771 | +0.814 | +0.043 | -8.7 |
+| 300 | T5/4 | -9 | **all five** | -0.761 | +0.654 | **-0.108** | -9.6 |
+| 350 | T6/4 | -15 | all five | -0.791 | +0.777 | -0.014 | -15.6 |
+| 424 | T8/0 | -20 | all five | -0.772 | +0.802 | +0.030 | -19.4 |
+
+At step 25 -- turn 1, VP -2, the USSR holding nothing but its own starting countries -- the critic
+already reads -0.834. At step 424, with the USSR holding **every** European battleground and the
+game ending on exactly that, it reads -0.772: *less* negative than on turn 1. From step 300 onward
+the winning configuration is on the board for four turns and the win head never responds.
+
+The VP head, by contrast, tracks the VP track closely (-9.7 vs -9, -15.6 vs -15, -19.4 vs -20).
+It is a good readout of the score and not a forecast of the ending.
+
+### Italy: the critic cannot resolve a European battleground
+
+At step 209 the USSR has just broken Italy to 3/3 and the US holds Nixon Plays the China Card
+(2 Ops). Italy is stability 2, so two points retake control. The policy played the event
+(p = 0.516 EVENT, 0.224 OPS, 0.260 SPACE) -- and the China Card is in `ONGOING_EVENT`, held by
+neither player, so the event's transfer clause does nothing here.
+
+Holding the card and the play mode fixed and varying only where the two Ops go:
+
+| line | Italy after | v_win US | v_vp US |
+|:---|:---|---:|---:|
+| 2 into Panama | 3/3 -- | **-0.808** | -9.4 |
+| 2 into Thailand | 3/3 -- | -0.821 | -10.3 |
+| 2 into Greece | 3/3 -- | -0.823 | -10.3 |
+| 1 Italy + 1 France | 4/3 -- | -0.824 | -10.4 |
+| 2 into France | 3/3 -- | -0.824 | -10.4 |
+| **2 into Italy -> US control** | **5/3 US** | **-0.828** | -10.3 |
+
+Taking control of a European battleground ranks **last of six**, and dumping two influence into
+Panama ranks first. But the honest reading is not "the critic thinks Italy control is bad": the
+whole spread is **0.020 v_win**, and the critic's own zero-sum residual has **sd 0.153** over
+3,200 sampled self-play states. The spread is an order of magnitude below the model's own noise
+floor. **The critic cannot resolve the value of a European battleground at all**; the sign is not
+meaningful at this resolution.
+
+### Is the win head collapsed? No, but it is concentrated
+
+Over 3,200 states sampled from 256 self-play games:
+
+* `v_win` US-perspective: mean -0.732, **sd 0.225**, range [-0.918, +0.910]
+* **83.3%** of US-perspective values fall in [-0.9, -0.7]
+* correlation of `v_win` with current VP: **+0.342**
+* zero-sum residual `v(US) + v(USSR)`: mean +0.010, sd 0.153, max |1.676|
+
+So the head has learned the base rate -- the US does lose about 90% of these games -- and
+discriminates weakly within it. That is what makes the Italy result what it is: not a wrong
+preference, an absent one.
+
+### Asymmetry
+
+The residual is centred (mean +0.010) with sd 0.153. The largest excursions in this game are at
+steps 300 and 325 (-0.108, -0.102), exactly where the USSR completes all five European
+battlegrounds: the USSR-perspective value *drops* to +0.654 while the US-perspective value stays
+at -0.761. The winning side reading the winning configuration as worse is the right shape for the
+blind spot above.
+
+**But this is ~0.7 sd of the residual distribution, from one game.** It is suggestive and it is
+consistent with the Italy result; it is not on its own evidence of a systematic side asymmetry.
+Testing that needs the residual measured against European-control state across many games, which
+has not been done.
