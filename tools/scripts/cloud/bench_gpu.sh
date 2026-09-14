@@ -28,7 +28,11 @@ OUT="/workspace/data/tournaments/gpu_bench_${LABEL}.json"
 # instance stuck in `loading` with `manifest unknown` until something times out, and the
 # rental bills the whole time. 12.4.1-devel-ubuntu24.04 does not exist -- Ubuntu 24.04
 # images start at CUDA 12.6.
-IMAGE="${IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu24.04}"
+# Same image as provision.sh, deliberately. Benchmarking on a different torch than the training
+# hosts run measures something we never deploy -- and pip-installing torch onto a CUDA 12.6 base
+# produced a build with no sm_120 kernels, so every 5090 measurement failed outright. This image
+# carries 2.13.0+cu130, the exact torch in the local venv, whose arch list includes sm_120.
+IMAGE="${IMAGE:-pytorch/pytorch:2.13.0-cuda13.0-cudnn9-runtime}"
 
 INSTANCE=""
 cleanup() {
@@ -121,34 +125,46 @@ tar czf - -C "$ROOT" --exclude './.git' --exclude './.venv' --exclude './build' 
     --exclude './.triton_cache' --exclude './web/ui/node_modules' . \
     | "${SSH[@]}" "tar xzf - -C /workspace/ts"
 
+# Mirrors provision.sh exactly. In particular it does NOT install torch: the image's own build is
+# 2.13.0+cu130, the same as the local venv. The previous version pip-installed a cu124 wheel, which
+# has no sm_120 kernels, so every 5090 measurement failed with "no kernel image is available".
 "${SSH[@]}" bash -s <<'REMOTE'
 set -euo pipefail
 cd /workspace/ts
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq python3 python3-pip python3-venv cmake build-essential >/dev/null
-PY=python3
-$PY -c 'import sys; assert sys.version_info >= (3,12), sys.version' \
-    || { echo "python <3.12: the codebase uses PEP 701 f-strings" >&2; exit 1; }
-$PY -m venv /opt/venv
-/opt/venv/bin/pip install -q --upgrade pip
-/opt/venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cu124
-/opt/venv/bin/pip install -q nanobind 'numpy>=2.0' tensorboard
-cmake -B build/release -S . -DPython_EXECUTABLE=/opt/venv/bin/python >/dev/null
+python -c 'import sys; assert sys.version_info >= (3,12), f"python {sys.version} <3.12: this codebase uses PEP 701 f-strings"'
+# Both, not just cmake: the pytorch runtime image ships cmake through conda but has no compiler.
+if ! command -v cmake >/dev/null || ! command -v g++ >/dev/null; then
+    apt-get update -qq
+    apt-get install -y -qq cmake build-essential >/dev/null 2>&1
+fi
+# --break-system-packages: the image's python is PEP 668 externally-managed. Not suppressed --
+# a missing nanobind makes CMake skip the bindings target silently while still exiting 0.
+pip install --break-system-packages -q nanobind 'numpy>=2.0' tensorboard
+python -c "import nanobind" || { echo "nanobind still missing after install" >&2; exit 1; }
+cmake -B build/release -S . -DPython_EXECUTABLE="$(command -v python)" >/dev/null
 cmake --build build/release -j "$(nproc)" >/dev/null
-PYTHONPATH=.:build/release /opt/venv/bin/python -c "
+ls build/release/ts_engine*.so >/dev/null 2>&1 \
+    || { echo "no ts_engine*.so produced -- bindings target was skipped" >&2; exit 1; }
+PYTHONPATH=.:build/release python -c "
 import ts_engine, torch
 print('engine OK | torch', torch.__version__, '|', torch.cuda.get_device_name(0))
-import tools.lib  # the import that failed on 3.11
+print('arch list:', torch.cuda.get_arch_list()[-3:])
+import tools.lib
 print('tools.lib OK')"
 REMOTE
 
-echo "==> benchmarking"
-"${SSH[@]}" bash -s <<'REMOTE' | tee "/tmp/bench_${LABEL}.txt"
+# $BENCH_ENVS / $BENCH_ITERS so a card with more memory can be swept further than a 24 GB one.
+# Three iterations is a short sample at large batch: the 4080 reported *lower* throughput at 1024
+# than at 256, which is not a card property and is most likely one-off cost inside the window.
+BENCH_ENVS="${BENCH_ENVS:-256 512 1024}"
+BENCH_ITERS="${BENCH_ITERS:-3}"
+echo "==> benchmarking (envs: $BENCH_ENVS, iters: $BENCH_ITERS)"
+"${SSH[@]}" "BENCH_ENVS='$BENCH_ENVS' BENCH_ITERS='$BENCH_ITERS' bash -s" <<'REMOTE' | tee "/tmp/bench_${LABEL}.txt"
 set -euo pipefail
 cd /workspace/ts
-PYTHONPATH=.:build/release /opt/venv/bin/python tools/scripts/bench_throughput.py \
-    --num-envs 256 512 1024 --buffer-size 64 --iterations 3
+PYTHONPATH=.:build/release python tools/scripts/bench_throughput.py \
+    --num-envs $BENCH_ENVS --buffer-size 64 --iterations "$BENCH_ITERS"
 REMOTE
 
 cp "/tmp/bench_${LABEL}.txt" "${OUT%.json}.txt" 2>/dev/null || true
