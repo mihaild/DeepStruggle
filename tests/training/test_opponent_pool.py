@@ -300,3 +300,57 @@ def test_capacity_below_three_still_makes_progress() -> None:
 def test_rejects_bad_capacity() -> None:
     with pytest.raises(ValueError):
         OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=0)
+
+
+# --- game statistics must describe self-play only ---------------------------------------------
+
+def test_selfplay_mask_is_all_true_without_a_pool() -> None:
+    tr = _trainer(num_envs=8)
+    tr.collect_rollouts()
+    assert tr._selfplay_mask.all(), "no pool means every environment is self-play"
+
+
+def test_selfplay_mask_matches_the_pool() -> None:
+    tr = _trainer(num_envs=8)
+    tr.opponent_pool = OpponentPool([create_coldwar_net_v2()], num_envs=8, frac=0.5, seed=3)
+    tr.collect_rollouts()
+    assert np.array_equal(tr._selfplay_mask, ~tr.opponent_pool.is_mixed)
+    assert tr._selfplay_mask.sum() == 4
+
+
+def test_episode_stats_exclude_pool_games() -> None:
+    """Win rate and ending mix describe how the policy plays. Games against a frozen opponent
+    are a different question, and mixing them in makes a pooled run incomparable with one that
+    has no pool at all."""
+    tr = _trainer(num_envs=8)
+    tr.opponent_pool = OpponentPool([create_coldwar_net_v2()], num_envs=8, frac=0.5, seed=3)
+    metrics = tr.collect_rollouts()
+    mixed = set(np.flatnonzero(tr.opponent_pool.is_mixed).tolist())
+    reported = {int(e["env_idx"]) for e in metrics["completed_episodes"]}
+    assert not (reported & mixed), f"pool games leaked into episode stats: {reported & mixed}"
+
+
+def test_critic_tracker_only_resolves_selfplay_envs() -> None:
+    """Otherwise critic/base_rate reports the pool's difficulty rather than the policy's own
+    balance, and AUC is measured against the wrong baseline."""
+    from ai.training.critic_tracker import CriticTracker
+
+    tr = _trainer(num_envs=8)
+    tr.opponent_pool = OpponentPool([create_coldwar_net_v2()], num_envs=8, frac=0.5, seed=3)
+    seen = []
+    real_resolve = CriticTracker.resolve
+
+    def spy(self, env_index, us_won):
+        if us_won is not None:
+            seen.append(env_index)
+        return real_resolve(self, env_index, us_won)
+
+    CriticTracker.resolve = spy
+    try:
+        for _ in range(3):
+            tr.collect_rollouts()
+    finally:
+        CriticTracker.resolve = real_resolve
+
+    mixed = set(np.flatnonzero(tr.opponent_pool.is_mixed).tolist())
+    assert not (set(seen) & mixed), f"critic resolved pool games: {set(seen) & mixed}"

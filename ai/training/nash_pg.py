@@ -190,6 +190,9 @@ class BaseNashPGTrainer:
         #: Optional frozen-opponent pool. None means ordinary self-play, where the
         #: learner plays both sides and every transition receives policy gradient.
         self.opponent_pool: Any = None
+        #: Which environments are pure self-play. Game statistics are reported over
+        #: these only, so a pooled run stays comparable with an unpooled one.
+        self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
         self.buffer = RolloutBuffer(
             buffer_size=self.buffer_size,
             num_envs=self.num_envs,
@@ -243,6 +246,9 @@ class BaseNashPGTrainer:
         self.active_net.eval()
         if self.opponent_pool is not None:
             self.opponent_pool.start_iteration()
+            self._selfplay_mask = ~self.opponent_pool.is_mixed
+        else:
+            self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
         self.buffer.reset()
         completed_episodes: List[Dict[str, Any]] = []
 
@@ -335,21 +341,38 @@ class BaseNashPGTrainer:
             # sign does not flip with whoever happens to be moving. `turns` is the pre-step
             # acting turn, which is the state v_win was computed on.
             acting = np.asarray(self._info["acting_players"])
+            # Self-play environments only. A mixed environment's outcome is the learner against
+            # a frozen snapshot, which says nothing about how balanced the learner is against
+            # itself -- and the base rate, which AUC and Brier skill are measured against, would
+            # be the pool's difficulty rather than the policy's own. Keeping this to self-play
+            # is what makes the numbers comparable with runs that have no pool at all.
             self.critic_tracker.observe(
                 v_win_t.detach().cpu().numpy() * acting,
                 np.asarray(self._info["turns"]),
-                np.ones(self.num_envs, dtype=bool),
+                self._selfplay_mask,
             )
             for _i, _reason in enumerate(self._info.get("ending_reasons", [])):
                 if not _reason:
                     continue
-                _vp = float(self._info["victory_points"][_i])
-                self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+                if self._selfplay_mask[_i]:
+                    _vp = float(self._info["victory_points"][_i])
+                    self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+                else:
+                    # Clear the pending samples without recording an outcome, or they would be
+                    # attached to whatever the next episode in this slot produces.
+                    self.critic_tracker.reset_env(_i)
                 if self.opponent_pool is not None:
                     self.opponent_pool.on_episode_end(_i)
 
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
-                completed_episodes.extend(self._info["completed_episodes"])
+                # Win rate, ending mix and game length describe how the policy plays. Games
+                # against a frozen pool opponent are a different question and would make a
+                # pooled run incomparable with an unpooled one, so only self-play episodes are
+                # summarised. (The blunder and position probes already run their own separate
+                # self-play games, so they need no filtering.)
+                completed_episodes.extend(
+                    e for e in self._info["completed_episodes"]
+                    if self._selfplay_mask[int(e.get("env_idx", 0))])
 
             self._obs_np = next_obs_np
             self._masks_np = next_masks_np
