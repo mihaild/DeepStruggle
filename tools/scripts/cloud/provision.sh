@@ -117,12 +117,16 @@ print('engine OK | torch', torch.__version__, '|', torch.cuda.get_device_name(0)
       '| cores', os.cpu_count())"
 REMOTE
 
-cat > "$ROOT/../.vast_host" <<EOF
+# One file per host. The default keeps the single-host workflow unchanged; provisioning several
+# hosts in parallel must override it, or each overwrites the last and every run is launched onto
+# whichever host finished provisioning last.
+HOSTFILE="${HOSTFILE:-$ROOT/../.vast_host}"
+cat > "$HOSTFILE" <<EOF
 INSTANCE=$INSTANCE
 HOST=$HOST
 PORT=$PORT
 SSH="ssh -p $PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$HOST"
 EOF
-echo "==> READY. Details written to ../.vast_host"
+echo "==> READY. Details written to $HOSTFILE"
 echo "==> instance $INSTANCE is STILL RUNNING and billing. Destroy when done:"
 echo "==>   $VAST destroy instance $INSTANCE -y"

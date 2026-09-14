@@ -28,7 +28,15 @@ OUT="${REMOTE_DIR}/runs/${NAME}"
 
 printf -v ARGS ' %q' "$@"
 
-ssh "$TARGET" bash -s <<REMOTE
+# `user@host:port` -> ssh -p port user@host. Every Vast host is reached on a high port through
+# the proxy, and a bare `ssh "$TARGET"` silently tries 22. A bare user@host or an ssh-config
+# alias still works unchanged.
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+case "$TARGET" in
+    *:*) SSH_OPTS+=(-p "${TARGET##*:}"); TARGET="${TARGET%:*}" ;;
+esac
+
+ssh "${SSH_OPTS[@]}" "$TARGET" bash -s <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
 mkdir -p "$OUT"
