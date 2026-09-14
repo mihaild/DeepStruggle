@@ -4,11 +4,18 @@
 
 ## Summary
 
-The opponent-pool result does not survive a second seed. Two no-pool arms differing only in seed
-are **further apart than pooled is from no-pool**, so on current evidence pooling has no detectable
-effect on side imbalance. Separately, per-entity attention heads look associated with roughly
-seven times the seed spread, which — if it holds — matters more than any single ablation, because
-it is a multiplier on the cost of every future experiment.
+Three results, in descending order of how much weight they bear.
+
+1. **The US side decays from 80M to 160M, in both no-pool arms** — 49.3% → 13.0% and 50.0% →
+   20.6% self-play US win rate, from near-perfect balance at 80M. Two seeds, same direction,
+   ~30 pp. The most reproducible finding here, and more specific than "imbalance oscillates".
+2. **The opponent-pool result does not survive a second seed.** Two no-pool arms differing only
+   in seed are further apart than pooled is from no-pool, so pooling has no detectable effect on
+   side imbalance on current evidence.
+3. **Per-entity attention lifts both sides equally** (+21.3 pp as USSR and as US) and should not
+   be rolled back. Its apparent ~7× seed spread applies only to the side-imbalance endpoint; on
+   Elo the spread is comparable to `heads=None`, and the arms sit further from balance to begin
+   with, so the extra spread may be distance from the bound rather than a defect.
 
 ## The endpoint
 
