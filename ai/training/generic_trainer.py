@@ -1379,11 +1379,40 @@ def train_pipeline(
             _seed_nets = load_pool(opponent_checkpoints, dev)
             _src = f"{len(opponent_checkpoints)} fixed snapshot(s)"
         else:
-            # A self-growing pool has nothing to play against at step 0, so it is seeded with a
-            # frozen copy of the starting policy -- the run's own past self, which is exactly
-            # what the pool is made of thereafter.
-            _seed_nets = [_copy.deepcopy(model).to(dev)]
-            _src = "self (seeded from the initial policy)"
+            # On RESUME, rebuild the pool from the snapshots this run already wrote. The resume
+            # state carries the model, optimiser, pi_ref, step counts and RNG -- not the pool --
+            # so without this a resumed self-pool run restarts with one copy of its current self.
+            # That is nearly plain self-play, and it would take ~60M steps to return to capacity:
+            # an "extension" of a pooled run would spend its first third not really pooled, and
+            # nothing would report it. Spread the seeds across the run's history rather than
+            # taking the most recent, which is what the pool's eviction rule aims for too.
+            _seed_paths: List[str] = []
+            _seed_steps: List[int] = []
+            if resume:
+                _run_dir = os.path.dirname(os.path.abspath(resume))
+                _snaps = []
+                for _f in os.listdir(_run_dir):
+                    _m = re.match(r"snapshot_(\d+)steps\.pt$", _f)
+                    if _m:
+                        _snaps.append((int(_m.group(1)), os.path.join(_run_dir, _f)))
+                _snaps.sort()
+                if len(_snaps) > opponent_pool_size:
+                    _idx = np.linspace(0, len(_snaps) - 1, opponent_pool_size).round().astype(int)
+                    _snaps = [_snaps[int(i)] for i in sorted(set(_idx.tolist()))]
+                _seed_paths = [q for _, q in _snaps]
+                _seed_steps = [n for n, _ in _snaps]
+
+            if _seed_paths:
+                _seed_nets = load_pool(_seed_paths, dev)
+                _span = _seed_steps[-1] - _seed_steps[0]
+                _src = (f"{len(_seed_nets)} snapshot(s) of this run, spanning "
+                        f"{_span / 1e6:.0f}M steps (rebuilt on resume)")
+            else:
+                # A fresh self-growing pool has nothing to play against at step 0, so it is
+                # seeded with a frozen copy of the starting policy -- the run's own past self,
+                # which is exactly what the pool is made of thereafter.
+                _seed_nets = [_copy.deepcopy(model).to(dev)]
+                _src = "self (seeded from the initial policy)"
         trainer.opponent_pool = OpponentPool(
             _seed_nets,
             num_envs=num_envs,
