@@ -49,13 +49,22 @@ echo "==> instance $INSTANCE  (destroy with: $VAST destroy instance $INSTANCE -y
 HOST=""; PORT=""
 for _ in $(seq 1 $((MAX_MIN * 4))); do
     INFO=$("$VAST" show instance "$INSTANCE" --raw 2>/dev/null || echo '{}')
+    # With --direct the reachable endpoint is public_ipaddr:direct_port_start.
+    # ssh_host:ssh_port is the PROXY, and it timed out during banner exchange on a host that was
+    # plainly `running` -- which is why an otherwise healthy instance looked unreachable for
+    # seven minutes. Fall back to the proxy only when no direct port is published.
     read -r ST H P MSG <<< "$(echo "$INFO" | "$PY" -c '
 import json,sys
 try: d=json.load(sys.stdin)
 except Exception: print("? ? ? ?"); raise SystemExit
 d=d[0] if isinstance(d,list) and d else d
 m=str(d.get("status_msg") or "").strip().replace(chr(10)," ")[:70] or "-"
-print(d.get("actual_status","?"), d.get("ssh_host","?"), d.get("ssh_port","?"), m)')"
+port = d.get("direct_port_start")
+if port and port != -1:
+    host = d.get("public_ipaddr") or "?"
+else:
+    host, port = d.get("ssh_host","?"), d.get("ssh_port","?")
+print(d.get("actual_status","?"), host or "?", port or "?", m)')"
     echo "    [$(date +%H:%M:%S)] $ST  $MSG"
     if [ "$ST" = "running" ] && [ "$H" != "?" ] && [ "$H" != "None" ]; then
         if ssh -p "$P" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -81,10 +90,27 @@ set -euo pipefail
 cd /workspace/ts
 export DEBIAN_FRONTEND=noninteractive
 python -c 'import sys; assert sys.version_info >= (3,12), f"python {sys.version} <3.12: this codebase uses PEP 701 f-strings"'
-command -v cmake >/dev/null || { apt-get update -qq; apt-get install -y -qq cmake build-essential >/dev/null; }
-pip install -q nanobind 'numpy>=2.0' tensorboard 2>&1 | tail -1 || true
+# Both, not just cmake: the pytorch runtime image ships cmake through conda but has no
+# compiler, so guarding on cmake alone skipped build-essential and the configure step
+# failed with "CMAKE_CXX_COMPILER not set".
+if ! command -v cmake >/dev/null || ! command -v g++ >/dev/null; then
+    apt-get update -qq
+    apt-get install -y -qq cmake build-essential >/dev/null 2>&1
+fi
+pip install --break-system-packages -q nanobind 'numpy>=2.0' tensorboard
+# --break-system-packages because the image's python is PEP 668 externally-managed and pip
+# refuses otherwise. NOT suppressed and NOT `|| true`: the first attempt hid this failure, and a
+# missing nanobind makes CMake skip the bindings target *silently* -- the engine core, tests and
+# benchmark all build, `cmake --build` exits 0, and only the python module is absent. The import
+# error that follows names ts_engine, which points nowhere near the real cause.
+python -c "import nanobind" || { echo "nanobind still missing after install" >&2; exit 1; }
 cmake -B build/release -S . -DPython_EXECUTABLE="$(command -v python)" >/dev/null
-cmake --build build/release -j "$(nproc)" >/dev/null
+cmake --build build/release -j "$(nproc)" > /tmp/build.log 2>&1 \
+    || { tail -30 /tmp/build.log >&2; exit 1; }
+# Assert the artefact exists. `cmake --build` exits 0 when the bindings target was
+# never configured, so a zero exit code does not mean the module was produced.
+ls build/release/ts_engine*.so >/dev/null 2>&1 \
+    || { echo "no ts_engine*.so produced -- bindings target was skipped" >&2; exit 1; }
 PYTHONPATH=.:build/release python -c "
 import ts_engine, torch, tools.lib, os
 print('engine OK | torch', torch.__version__, '|', torch.cuda.get_device_name(0),

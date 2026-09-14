@@ -9,6 +9,11 @@
 #   leak_guard.sh [max-minutes]
 #
 # Emits one line per check only when something is wrong, so it is quiet in the normal case.
+#
+# **Set max-minutes to outlive the work, not to a generic default.** A host deliberately kept
+# alive for a training run is not a leak, and a guard that warns about it every five minutes
+# teaches you to ignore the one warning that matters. Size it to the expected run length plus a
+# margin: a 160M-step arm is roughly 3.5 hours, so 240 minutes rather than 40.
 set -euo pipefail
 MAX_MIN="${1:-40}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
