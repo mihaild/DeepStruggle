@@ -14,7 +14,14 @@ Answers two questions with one measurement:
 Reports the CPU cost too, because the engine is a C++ simulator that links no CUDA and the host
 can be the limit instead -- on a rented marketplace slice, often is.
 
-Nothing is trained: the model is discarded afterwards. This only drives rollouts.
+**Measures a full training iteration, not just rollout collection.** The first version called
+`collect_rollouts()` alone and reported 57,193 steps/s at num_envs=512 on a 4090, against the
+13,169 steps/s that arm actually trained at -- a 4.3x overstatement, because the four inner SGD
+epochs are roughly three quarters of the wall clock. A rollout-only number is the wrong basis
+both for "can we go faster" and for comparing cards, since a GPU can be good at batched inference
+and bad at the backward pass.
+
+The model is discarded afterwards; this trains nothing that is kept.
 """
 from __future__ import annotations
 
@@ -39,14 +46,14 @@ def measure(num_envs: int, buffer_size: int, iterations: int, device: str) -> Di
     trainer = NashPGTrainer(active_net=create_coldwar_net_v2(), env=env, num_envs=num_envs,
                             buffer_size=buffer_size, device=device)
 
-    trainer.collect_rollouts()  # warm up: allocator, autotune, CUDA context
+    trainer.train_iteration()  # warm up: allocator, autotune, CUDA context
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.synchronize()
 
     cpu0 = time.process_time()
     t0 = time.perf_counter()
     for _ in range(iterations):
-        trainer.collect_rollouts()
+        trainer.train_iteration()
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.synchronize()
     wall = time.perf_counter() - t0

@@ -55,10 +55,16 @@ def read_metrics(run_dir: str) -> Tuple[Optional[int], Optional[Dict[str, Any]],
                 if not line:
                     continue
                 try:
-                    last = json.loads(line)
-                    n += 1
+                    row = json.loads(line)
                 except json.JSONDecodeError:
                     continue  # a partially written final line is normal
+                n += 1
+                # Only rows that actually carry a step count. The run writes a summary row at
+                # shutdown (blunder statistics) with no `total_steps`; taking the last row
+                # unconditionally read it as 0 steps and reported CRASH on a run that had just
+                # finished successfully.
+                if "total_steps" in row:
+                    last = row
     except OSError:
         return None, None, 0
     if last is None:

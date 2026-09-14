@@ -19,17 +19,21 @@ echo "==> bootstrapping $TARGET into $REMOTE_DIR (from $LOCAL_ROOT)"
 # regenerable. .venv and build/ are excluded deliberately: a venv is not portable, and the
 # extension must be rebuilt against the image's Python anyway.
 ssh "$TARGET" "mkdir -p '$REMOTE_DIR'"
-rsync -az --delete \
-    --exclude '.git/' \
-    --exclude '.venv/' \
-    --exclude 'build*/' \
-    --exclude 'data/' \
-    --exclude 'web/ui/node_modules/' \
-    --exclude 'web/ui/dist/' \
-    --exclude '__pycache__/' \
-    --exclude '.triton_cache/' \
-    --exclude 'external/' \
-    "$LOCAL_ROOT/" "$TARGET:$REMOTE_DIR/"
+
+# rsync when it exists, tar-over-ssh when it does not. rsync is absent and not installable on
+# the workstation this was written on, so a hard dependency on it would fail at first use.
+EXCLUDES=(.git .venv build build_release data web/ui/node_modules web/ui/dist
+          __pycache__ .triton_cache external)
+if command -v rsync >/dev/null 2>&1; then
+    RS_EXC=()
+    for e in "${EXCLUDES[@]}"; do RS_EXC+=(--exclude "$e/"); done
+    rsync -az --delete "${RS_EXC[@]}" "$LOCAL_ROOT/" "$TARGET:$REMOTE_DIR/"
+else
+    TAR_EXC=()
+    for e in "${EXCLUDES[@]}"; do TAR_EXC+=(--exclude "./$e"); done
+    tar czf - -C "$LOCAL_ROOT" "${TAR_EXC[@]}" . \
+        | ssh "$TARGET" "tar xzf - -C '$REMOTE_DIR'"
+fi
 
 # --- 2. build ------------------------------------------------------------------------------
 ssh "$TARGET" bash -s <<REMOTE
