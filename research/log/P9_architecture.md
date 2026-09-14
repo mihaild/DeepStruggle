@@ -1269,3 +1269,58 @@ information limit.
 
 **Caveats.** The shared boards come from E3-15's self-play, so the population is one arm's
 distribution even though both models see identical inputs. E3-15 is one seed.
+
+
+---
+
+## Seed variance is ~95 Elo, and it invalidates the graph-depth comparison
+
+The E3-12/E3-15/E3-17 tournament (400 games per side, `data/tournaments/e3_12_15_17_report.md`)
+was the first time two seeds of the same architecture were rated in the same field. They are far
+apart:
+
+| arm @80M | Elo |
+|:---|---:|
+| E3-15-21 | 1964.8 |
+| E3-15-22 | **2059.8** |
+| E3-17-21 | **2058.7** |
+| E3-17-22 | 2003.6 |
+
+**Seed spread: 95.0 Elo for E3-15, 55.1 for E3-17.** That is not sampling error -- binomial se on
+an 800-game pairing is 1.8pp, and the spread across seed pairings below is 20.4pp, an order of
+magnitude larger. It also dwarfs the ~20 Elo run-oscillation SD that the pooled-four-snapshot
+method (§20.7) was built to handle: that method controls *within*-run wobble and says nothing
+about *between*-seed variation.
+
+### The E3-15 vs E3-17 comparison does not survive it
+
+Arm means are E3-15 2012.3 against E3-17 2031.1, a difference of **+18.9 Elo against a
+between-seed SE of 54.9 -- 0.34 standard errors**. Head to head, avoiding the Elo fit entirely
+(it compresses differences far from the anchor):
+
+| | win rate for E3-15 | n |
+|:---|---:|---:|
+| E3-15-21 vs E3-17-21 | **35.0%** | 800 |
+| E3-15-21 vs E3-17-22 | 44.6% | 800 |
+| E3-15-22 vs E3-17-21 | 50.7% | 800 |
+| E3-15-22 vs E3-17-22 | **55.4%** | 800 |
+| pooled | 46.4% | 3200 |
+
+Pooled, E3-17 is ahead by about 25 Elo. But **the sign reverses with the seed**: matched on seed,
+seed 21 says E3-17 is much better (E3-15 wins 35.0%) and seed 22 says E3-15 is better (55.4%).
+Binomial se is 1.8pp, so both are far outside sampling error -- they genuinely disagree.
+
+**So "0 graph layers beats 2" is withdrawn.** It was measured on seed 21, where this tournament
+reproduces it, and it does not hold on seed 22. The finding was never written into this log --
+it lived only in conversation -- which is part of why it was never seed-replicated. The graph
+depth question is open, and answering it needs more seeds per arm, not more games per pairing:
+at 3,200 games the binomial error is already 0.88pp while the seed spread is 20.4pp.
+
+### What this does not touch
+
+The advantage-collapse findings are unaffected. They are *within*-run comparisons of a single arm
+against its own earlier self (adv_std_raw, critic AUC, per-side win rate), and they reproduce on
+both E3-17-22 and E3-15-22 -- different architectures, different winning strategies, and now
+different seed families. The tournament's own headline is also within-arm: both 160M checkpoints
+rank below their own 80M versions, which is a comparison of a run to itself and carries no
+seed-variance problem.
