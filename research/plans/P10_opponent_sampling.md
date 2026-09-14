@@ -165,3 +165,25 @@ contend for compute; sequential is still the honest schedule while E3-15-22 fini
 
 Build the mechanism while 1 and 3 run, then 2, then 4 only if 2 says a response exists. Because
 the runs are this short, 2 is worth extending rather than cutting if its trend is ambiguous.
+
+
+---
+
+## Status 2026-09-14: the motivating result does not survive a second seed
+
+See [`../log/seed_variance_and_pooling.md`](../log/seed_variance_and_pooling.md).
+
+Two no-pool arms differing only in seed are **0.1183** apart on the endpoint (mean
+|ussr_win_rate − 0.5| over the final 40M). Pooled minus the mean of no-pool is **−0.0169** —
+seven times smaller, with the pooled arm sitting *between* the two no-pool arms. That is what a
+null effect looks like, and the original comparison was one arm per condition.
+
+Everything this plan concluded from single arms is therefore provisional: that pooling from a
+balanced checkpoint preserves balance, that pooling after a lock repairs nothing, and the Elo
+ordering across those arms. None of it is disproved; all of it rested on one draw of a quantity
+that varies more between seeds than between conditions.
+
+A 4 × 4 replication (E3-17-22/24/25/26 against E3-20-22/27/28/29) is running. The prediction,
+recorded before the arms land: **null**. If it is null, the recommendation is *not* more pooling
+seeds but a move to `eta` — it targets the oscillation directly, it is an existing flag, and
+unlike the pool it has a mechanism that plausibly damps variance rather than redirecting it.

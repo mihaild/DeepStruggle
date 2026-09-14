@@ -164,3 +164,68 @@ costs at most ten minutes — which is what makes spot pricing usable here. To r
 re-bootstrap the replacement host, push back the newest `resume_*.pt`, and relaunch with
 `--resume`. Remember the budget is cumulative: the target is the **total** step count, not the
 remaining increment.
+
+
+## Measured: cost per 160M-step arm
+
+`$/arm = (160e6 / steps_per_sec / 3600) * $/hr`. Throughput measured by `bench_gpu.sh` at the
+`num_envs` each card did best at; **the same 512 everywhere**, since batch size changes the
+gradient estimator and cannot be varied per arm.
+
+| GPU | steps/s | note |
+|:---|---:|:---|
+| RTX 4090 | 12,200 | local reference |
+| RTX 4080 | 9,348 | |
+| RTX 3090 | 5,072 – 7,336 | **same card, different hosts** |
+| RTX A4000 | 5,546 | saturated at 512; 1024 gains nothing |
+| RTX 5090 | — | needs CUDA 12.8+; see below |
+
+**Host CPU moves throughput by 45% on identical silicon.** A 3090 on a 13.7-core host ran 5,072
+steps/s while another on a 16+ core host ran 7,336. The engine is a C++ simulator on the host CPU,
+so `cpu_cores_effective` is a first-class filter, not a footnote — and `$/hr` alone ranks offers
+wrongly.
+
+**The cheapest offer is not the price of four.** Renting four concurrent hosts of one model means
+paying the *fourth*-cheapest price. The A4000 looked like $0.71/arm on its cheapest host and is
+$8.12/arm on its fourth. Always price the arm you will actually rent.
+
+**`dph_total` is the bill; the search price is not.** One arm advertised around $0.16/hr and bills
+$0.417 — storage for the 60 GB disk is not in the headline. Read `dph_total` back per instance.
+
+## Marketplace reliability, measured
+
+Provisioning four training hosts took **nine rentals**: roughly one clean provision in five. The
+four failures on one slot had four distinct causes, which is why no single filter fixes it:
+
+1. 35-minute image pull that never finished
+2. host stuck in `loading` with no status message at all
+3. image pulled, reached `running`, sshd accepted then immediately closed the connection
+4. `failed to register layer: write /usr/local/lib/python3.12/dist-packages` — host disk fault
+
+Consequences now built into the scripts:
+
+* **`inet_down >= 1000` matters more than it looks.** The 3 GB image pull is the single commonest
+  failure, and it is invisible in the price.
+* **Fail fast.** A working host reaches ssh in about 7 minutes. Waiting 30+ minutes to learn a host
+  is broken costs three times as much as giving up at 15 and re-renting.
+* **`ADOPT=<instance-id>`** picks up an instance that timed out but is still downloading. It bills
+  from creation either way, so abandoning one at the cap pays for a download and discards it.
+* **`KEEP=<id,...>` on `leak_guard.sh`.** Age cannot distinguish a leak from a deliberate six-hour
+  arm, and a guard that warns about the arms every five minutes is one whose warnings get ignored.
+
+For work with a deadline, a managed tier is worth pricing against this: at measured throughput a
+RunPod Secure 4090 is about $2.51/arm with a 99% SLA, against $2.53/arm actually paid on a
+marketplace 3090 that also takes 60% longer per arm. The marketplace is cheapest for throwaway
+benchmarks where a failure costs $0.05.
+
+## Benchmark on the training image, always
+
+`bench_gpu.sh` previously built its own venv and pip-installed `torch` from the **cu124** index.
+Every 5090 measurement failed with `CUDA error: no kernel image is available for execution`:
+Blackwell is sm_120 and needs CUDA 12.8+. Worse than the failure, it meant benchmarks ran on a
+torch no training host uses, so the numbers predicted something we never deploy.
+
+Both scripts now use `pytorch/pytorch:2.13.0-cuda13.0-cudnn9-runtime` and its bundled torch —
+2.13.0+cu130, the same build as the local venv, whose arch list ends `sm_100, sm_120`. The bench
+prints the arch list, so an unsupported card is obvious in the first line rather than five failed
+rows later.
