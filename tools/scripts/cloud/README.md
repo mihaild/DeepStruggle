@@ -127,6 +127,31 @@ dollar and settles it; guessing from TFLOPS tables does not.
 The same measurement answers the MPS question: run two instances with MPS enabled and see whether
 combined throughput exceeds the 13,143 steps/s that time-slicing gives.
 
+## What the GPU-selection attempt actually established
+
+Two rented hosts, $0.106 spent, **no throughput number obtained**. Both spent their whole life in
+environment setup: an A4000 in Japan never left `loading`, and a 3090 stalled in apt/pip for 40
+minutes. The setup cost -- a 3.7GB CUDA image plus a 2.5GB torch wheel before a two-minute
+measurement -- dominates everything on a short-lived instance.
+
+It was abandoned rather than pushed, because the corrected local measurements made the decision
+much less valuable than it first looked:
+
+* the workload is **96.4% GPU-bound** and needs only **2.7 CPU cores**, so the cheap low-core
+  listings are fine and the 4090 at $0.268/hr is already near the cheapest per step;
+* the only candidate with a real margin was the 3090, which had to be less than 2.38x slower --
+  a coin flip worth perhaps 10-20%;
+* `torch.compile` measured **1.37x on hardware already owned**, which is larger than the best
+  plausible GPU saving and costs nothing to rent.
+
+If this is revisited, bake the image first. A custom image with torch preinstalled turns 40
+minutes of setup into two, and that is the whole problem.
+
+**Teardown: trust the leak guard, not the trap.** `bench_gpu.sh` destroys its instance on `EXIT
+INT TERM`, and that works when the script exits or errors. It did **not** work under
+`pkill -TERM` while the script was blocked in `ssh` -- the instance kept billing and
+`leak_guard.sh` is what caught it. Run the guard whenever an instance exists.
+
 ## Interruption
 
 Spot instances get reclaimed. Runs snapshot every 600s and support `--resume`, so an interruption
