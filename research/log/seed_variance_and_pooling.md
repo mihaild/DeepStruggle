@@ -165,3 +165,69 @@ Two consequences worth acting on:
   monotonically better on this axis, so a run's budget should not be assumed benign.
 * **The endpoint should probably be read against 80M**, not only in absolute terms, since both
   arms pass through balance on the way to imbalance.
+
+
+---
+
+## Self-play win rate does not measure side competence
+
+The 80M-to-160M US decay was re-measured against **external** USSR opponents -- two arms from the
+`p1_*`/`arm_*` lineage, which never co-evolved with these runs -- instead of against the arm's own
+other seat. 250 games per pairing.
+
+| arm | US vs external @80M | @160M | change | self-play said |
+|:---|---:|---:|---:|---:|
+| E3-17-22 (no pool) | 69.0% | 32.0% | **−37.0 pp** | −36.3 pp |
+| E3-17-24 (no pool) | 49.2% | 38.2% | **−11.0 pp** | −29.4 pp |
+| E3-20-22 (pooled) | 51.6% | **76.4%** | **+24.8 pp** | +0.5 pp |
+
+Three different stories, and self-play told the right one only once.
+
+* **E3-17-22 genuinely regressed at playing US** — −37 pp against opponents it never trained
+  against, matching its self-play figure. Real, absolute skill loss.
+* **E3-17-24 lost 11 pp, not 29.** About two thirds of its apparent collapse was its *USSR side
+  improving*, which self-play cannot distinguish from its US side failing.
+* **E3-20-22 gained 24.8 pp and self-play reported +0.5.** Both seats advanced together, so the
+  relative measure saw nothing. Its US side ends as the strongest of all six checkpoints — 72.4%
+  against the strong reference, where E3-17-22's 160M manages 17.6%.
+
+**Consequence.** Self-play win rate is a *relative* quantity between two co-evolving seats. It
+measures balance, not competence, and the two come apart badly: it reported −29 for an arm that
+lost 11, and +0.5 for an arm that gained 25. Every conclusion in this file drawn from self-play
+imbalance — including the pre-registered endpoint — is about balance only, and must not be read
+as skill.
+
+This also puts the pooling null in a different light. Pooling was null *on the endpoint*, which is
+a self-play measure; on absolute US strength against external opponents the pooled arm is the only
+one that improved. That is n=1 and does not overturn the null, but it is mechanically plausible: a
+pool of past selves is a defence against co-evolutionary drift, and a self-play metric cannot see
+that defence working, by construction.
+
+## Analysis plan for the 4 x 4 (fixed before the arms land)
+
+**Primary endpoint, unchanged:** mean |ussr_win_rate − 0.5| over the final 40M, per arm, compared
+across conditions. This measures *balance*.
+
+**Added, and required for any claim about strength:** a fixed **external opponent panel** run once
+at the end over all eight final checkpoints plus the 80M snapshots:
+
+* `REF-strong` = `p1_identity_seed20260922/snapshot_final.pt`
+* `REF-weak` = `arm_H2_v23_seedB/snapshot_final.pt`
+* HeuristicBot and RandomBot as floor references only — the neural arms beat HeuristicBot 76–97%,
+  so it does not resolve differences between them.
+
+Reported per arm: absolute **US win rate** and **USSR win rate** against the panel, and the 80M →
+160M change in each. One tournament, no extra training.
+
+**Reading rules, agreed in advance:**
+
+1. A condition effect on balance is credible only if it exceeds the spread between same-condition
+   arms. On current data that spread is 0.1183 and the pooled-vs-no-pool difference was 0.0169.
+2. Strength claims come from the external panel only, never from self-play.
+3. Report the distribution across the four arms per condition, not the mean alone — IQM with
+   stratified bootstrap intervals where four arms allow it.
+4. 160M is not a converged state. Entropy (1.2–1.3), clip_frac (0.11–0.20) and KL (0.026–0.035)
+   are all healthy at the budget end, and two of three arms were still recovering when it ran out
+   — E3-17-24 at +0.045 US win rate per 10M over its final 20M. So any endpoint is a snapshot of
+   an oscillation, and if the four-arm results disagree with each other at the end, the tie-break
+   is *fraction of training spent within X of balance*, which is not anchored to the final steps.
