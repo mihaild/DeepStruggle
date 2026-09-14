@@ -132,3 +132,4 @@ instrument.
 ## Runs (filled in while running)
 ```
 - [Restoring the advantage signal](restoring_advantage_signal.md) — why komi does not port, and the ranked options that do
+- [P10 — Breaking the advantage collapse](P10_opponent_sampling.md) — the four experiments, awaiting approval
