@@ -25,6 +25,18 @@
 set -euo pipefail
 
 TARGET="${1:?usage: remote_sync.sh <ssh-target> <run-name> [--once] [--all-resume]}"
+
+# `user@host:port` -> ssh -p port user@host. Every Vast host is reached on a high port, and a bare
+# `ssh "$TARGET"` silently tries 22. A bare user@host or an ssh-config alias is unchanged.
+SSH_PORT=""
+case "$TARGET" in
+    *:*) SSH_PORT="${TARGET##*:}"; TARGET="${TARGET%:*}" ;;
+esac
+SSH_BASE=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+[ -n "$SSH_PORT" ] && SSH_BASE+=(-p "$SSH_PORT")
+# rsync takes the port through -e, not on the ssh argv it builds itself.
+RSYNC_RSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+[ -n "$SSH_PORT" ] && RSYNC_RSH="$RSYNC_RSH -p $SSH_PORT"
 NAME="${2:?missing run name}"
 shift 2
 
@@ -81,7 +93,7 @@ select_resumes() {
 }
 
 remote_resumes() {
-    ssh "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 resume_*steps.pt 2>/dev/null || true"
+    "${SSH_BASE[@]}" "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 resume_*steps.pt 2>/dev/null || true"
 }
 
 sync_rsync() {
@@ -95,7 +107,7 @@ sync_rsync() {
         [ -n "$f" ] && filters+=(--include "$f")
     done < <(remote_resumes | select_resumes)
     filters+=(--exclude '*')
-    rsync -az --partial "${filters[@]}" "$TARGET:$RSRC/" "$DST/"
+    rsync -az --partial -e "$RSYNC_RSH" "${filters[@]}" "$TARGET:$RSRC/" "$DST/"
 }
 
 sync_tar() {
@@ -105,7 +117,7 @@ sync_tar() {
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         [ -f "$DST/$f" ] || want+=("$f")
-    done < <(ssh "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 snapshot_*.pt 2>/dev/null || true")
+    done < <("${SSH_BASE[@]}" "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 snapshot_*.pt 2>/dev/null || true")
 
     while IFS= read -r f; do
         [ -n "$f" ] || continue
@@ -116,7 +128,7 @@ sync_tar() {
 
     # --ignore-failed-read: a run that has not written train.log or hardware.json yet must not
     # abort the whole sync.
-    ssh "$TARGET" "cd '$RSRC' && tar czf - --ignore-failed-read $(printf '%q ' "${want[@]}") 2>/dev/null" \
+    "${SSH_BASE[@]}" "$TARGET" "cd '$RSRC' && tar czf - --ignore-failed-read $(printf '%q ' "${want[@]}") 2>/dev/null" \
         | tar xzf - -C "$DST" 2>/dev/null || return 1
 }
 
