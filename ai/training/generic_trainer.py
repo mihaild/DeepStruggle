@@ -68,6 +68,16 @@ TB_TAGS: Dict[str, str] = {
     "explained_variance": "internal/explained_variance",
     "adv_std": "internal/adv_std",
     "adv_std_raw": "internal/adv_std_raw",
+
+    # --- critic discrimination: does the value head still separate winners from losers? -----
+    # Kept out of internal/ because these say something about the agent, not the optimiser:
+    # when they fall, the advantage signal is going with them. See
+    # research/method/measurement_tiers.md for why AUC rather than accuracy.
+    "critic_auc": "critic/auc",
+    "critic_auc_turn3": "critic/auc_turn3",
+    "critic_brier_skill": "critic/brier_skill",
+    "critic_base_rate": "critic/base_rate",
+    "critic_samples": "critic/samples",
     "adv_frac_near_zero": "internal/adv_frac_near_zero",
     # Auxiliary heads. Emitted only when the corresponding option is on, so an absent series
     # here means "not enabled for this run", not "broken".
@@ -1502,6 +1512,12 @@ def train_pipeline(
             "adv_std_raw": float(iteration_metrics.get("adv_std_raw", 0.0)),
             "adv_frac_near_zero": float(iteration_metrics.get("adv_frac_near_zero", 0.0)),
         }
+        # Only once enough games have finished for the tracker to report; logging a
+        # placeholder 0.0 before then would draw a line that looks like a collapse.
+        for _ck in ("critic_auc", "critic_auc_turn3", "critic_brier_skill",
+                    "critic_base_rate", "critic_samples"):
+            if _ck in iteration_metrics:
+                step_metrics[_ck] = float(iteration_metrics[_ck])
         # Auxiliary losses only where the term that produces them is switched on. Logged
         # unconditionally they are a flat zero line for the whole run -- five of them on an
         # ordinary v2 run -- which reads as "trained and converged" rather than "not present".

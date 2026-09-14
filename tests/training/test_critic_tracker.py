@@ -76,8 +76,8 @@ def test_tracker_samples_once_per_turn_and_resolves_on_outcome() -> None:
     tr.resolve(0, us_won=True)
     tr.resolve(1, us_won=False)
     m = tr.metrics(min_samples=1)
-    assert m["critic/samples"] == 4, "two turns x two envs"
-    assert m["critic/auc"] == pytest.approx(1.0)
+    assert m["critic_samples"] == 4, "two turns x two envs"
+    assert m["critic_auc"] == pytest.approx(1.0)
 
 
 def test_tracker_drops_samples_when_the_outcome_is_unknown() -> None:
@@ -95,8 +95,8 @@ def test_tracker_reset_clears_pending_between_episodes() -> None:
     tr.observe(np.array([-0.9]), np.array([1]), np.array([True]))
     tr.resolve(0, us_won=False)
     m = tr.metrics(min_samples=1)
-    assert m["critic/samples"] == 2
-    assert m["critic/auc"] == pytest.approx(1.0)
+    assert m["critic_samples"] == 2
+    assert m["critic_auc"] == pytest.approx(1.0)
 
 
 def test_tracker_turn_resets_are_not_treated_as_the_same_turn() -> None:
@@ -108,7 +108,7 @@ def test_tracker_turn_resets_are_not_treated_as_the_same_turn() -> None:
     tr.resolve(0, us_won=True)
     tr.observe(np.array([-0.5]), np.array([1]), alive)
     tr.resolve(0, us_won=False)
-    assert tr.metrics(min_samples=1)["critic/samples"] == 3
+    assert tr.metrics(min_samples=1)["critic_samples"] == 3
 
 
 def test_dead_envs_contribute_nothing() -> None:
@@ -116,4 +116,4 @@ def test_dead_envs_contribute_nothing() -> None:
     tr.observe(np.array([0.5, 0.5]), np.array([1, 1]), np.array([True, False]))
     tr.resolve(0, us_won=True)
     tr.resolve(1, us_won=True)
-    assert tr.metrics(min_samples=1)["critic/samples"] == 1
+    assert tr.metrics(min_samples=1)["critic_samples"] == 1

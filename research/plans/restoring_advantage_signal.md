@@ -172,3 +172,73 @@ Option 4 is therefore withdrawn.
 4. ~~Downweighting decided positions~~ -- withdrawn, see above.
 5. ~~Start-state pool~~ -- demoted; measured harmful as configured, and filters on the wrong
    quantity for this purpose.
+
+
+---
+
+## Second revision: the VP-margin proposal is mostly dead
+
+The objection was that making the win/loss signal depend on VP will not help against Europe
+control, because that ending is an instant win regardless of the score. Measured, it is worse than
+that. Terminal VP over 512 games from E3-17-22 @160M:
+
+| ending | share | terminal \|VP\| = 20 | VP sd |
+|:---|---:|---:|---:|
+| 20vp | 40.4% | 100.0% | 6.14 |
+| defcon1_self | 23.2% | 100.0% | 18.23 |
+| defcon1_provoked | 16.4% | 100.0% | 17.04 |
+| europe_control | 11.5% | 100.0% | 0.00 |
+| held_scoring | 3.9% | 100.0% | 17.32 |
+| final_scoring | 3.9% | **0.0%** | 8.35 |
+| wargames | 0.6% | 0.0% | 2.87 |
+
+**95.5% of games end at exactly |VP| = 20.** The engine normalises every abrupt ending to the cap
+— 20 VP by definition, DEFCON-1, held scoring and Europe control by fiat — so the terminal margin
+is a *constant* across all but the 4.5% that reach final scoring. It carries no information beyond
+its sign, which is what win/loss already is.
+
+So the version of the proposal that blends terminal VP margin into the advantage is dead, and not
+only for Europe control: it dies on DEFCON-1 and held-scoring endings too.
+
+**What survives, and how much.** Only the *per-step* form: shaping on VP deltas along the way
+(`ShapedZeroSumReward`, or potential-based shaping with `phi = VP`), which reads the VP trajectory
+before termination rather than the terminal margin. That does vary and does produce gradient in
+every game. Two limits keep it from being the answer:
+
+* It says nothing about the thing that actually decides these games. Contesting West Germany earns
+  no VP until a scoring card fires, so the shaping does not differentiate the action that matters.
+* Europe control writes `victory_points = 20` in a single step, so a naive potential term hands a
+  large spike to precisely the strategy in question. The usual `phi(terminal) = 0` convention
+  avoids that, at the cost of removing terminal shaping altogether.
+
+It is worth having as a cheap secondary, not as the fix.
+
+## The actual next proposal: historical opponent sampling
+
+The root condition is that **the outcome is forced regardless of what the trailing side does**.
+Nothing that re-weights, filters or rescales an existing signal escapes that, because there is no
+signal to rescale. The outcome has to genuinely depend on the trailing side's actions again, and
+the cheapest way to arrange that is to let it sometimes play someone it can beat.
+
+**Change.** A fraction of rollout environments (~25-30%, the figure Tablut used) play the current
+policy against a snapshot sampled from the run's own history, with sides alternated so both roles
+get the varied opponent. Only the current policy's transitions enter the buffer; the opponent's
+are not trained on.
+
+**Why this and not opponent *prioritisation*.** Prioritisation — sampling opponents you lose to —
+is pointless in pure self-play, because the current policy already faces the strongest opponent
+there is. Diversity is a different claim: against an 80M snapshot the trailing side has games it
+can actually win, so the terminal signal separates its actions again and `adv_std_raw` has
+something to be non-zero about.
+
+**Cost.** Moderate. The rollout loop currently runs one network for both sides; this needs a
+second forward pass and a per-environment assignment of which network acts. No engine change, no
+observation change, no checkpoint invalidation.
+
+**Risk.** The policy may learn to beat old snapshots rather than the current one. Mitigated by
+keeping the majority of games pure self-play, and visible in the head-to-head tournament.
+
+**How it is judged.** `critic_auc` and `critic_brier_skill` staying up, and `adv_std_raw` not
+collapsing — all three now logged live. The success criterion is *not* "the US recovers": the
+runaway is bidirectional (E3-14-21 ran away in the US's favour), so the target is that neither
+side's advantage signal dies.

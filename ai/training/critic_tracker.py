@@ -135,13 +135,13 @@ class CriticTracker:
         # v_win is in [-1, 1] from the US perspective; map to a probability for the Brier term.
         probs = np.clip((v + 1.0) / 2.0, 0.0, 1.0)
         out = {
-            "critic/auc": roc_auc(v, y),
-            "critic/brier_skill": brier_skill(probs, y),
-            "critic/base_rate": float(max((y > 0).mean(), 1.0 - (y > 0).mean())),
-            "critic/samples": float(len(self._resolved)),
+            "critic_auc": roc_auc(v, y),
+            "critic_brier_skill": brier_skill(probs, y),
+            "critic_base_rate": float(max((y > 0).mean(), 1.0 - (y > 0).mean())),
+            "critic_samples": float(len(self._resolved)),
         }
         m = t == self.headline_turn
         if m.sum() >= min_samples // 4:
             # A fixed turn, so the number is comparable across runs whose games differ in length.
-            out[f"critic/auc_turn{self.headline_turn}"] = roc_auc(v[m], y[m])
+            out[f"critic_auc_turn{self.headline_turn}"] = roc_auc(v[m], y[m])
         return out
