@@ -231,3 +231,71 @@ Reported per arm: absolute **US win rate** and **USSR win rate** against the pan
    — E3-17-24 at +0.045 US win rate per 10M over its final 20M. So any endpoint is a snapshot of
    an oscillation, and if the four-arm results disagree with each other at the end, the tie-break
    is *fraction of training spent within X of balance*, which is not anchored to the final steps.
+
+
+---
+
+## Planned: extend the pooled arm to 320M
+
+The motivating observation is specific, and it is not the self-play trace. **E3-20-22's US side
+gained 24.8 pp against external opponents** between 80M and 160M — 51.6% to 76.4% — ending as the
+strongest US of all six checkpoints measured, while its self-play US rate moved +0.5 pp and said
+nothing. Its in-training US win rate also climbed from 0.10 to 0.33 over the final 40M, and the
+optimiser was plainly alive at the budget end (entropy 1.2-1.3, clip_frac 0.11-0.20, KL
+0.026-0.035).
+
+So the question is not "does the oscillation settle" in general. It is: **does the pooled arm's US
+side keep getting stronger, or was 80M-160M one upswing of a cycle?**
+
+Three outcomes, each implying something different about everything above:
+
+* **Continued gain** — the US side keeps improving against fixed opponents. Pooling is doing
+  something real that the self-play endpoint cannot see, and the pooling "null" is a measurement
+  failure rather than an absence.
+* **Plateau or reversal** — the gain was one upswing. The imbalance is a limit cycle, and any
+  endpoint must be a time-average over whole periods rather than anchored to the end.
+* **Decay** — the US side falls as E3-17-22's did. The pooled arm was merely out of phase.
+
+### Extend E3-20-22 itself
+
+It is the arm that showed the effect and it already has `resume_state.pt`, so the extension tests
+the observation directly rather than hoping a sibling reproduces it first.
+
+### The selection problem
+
+Choosing an arm because it looked best selects on a noisy quantity, and such an arm tends to look
+worse next time **by regression to the mean alone** — which would imitate a reversal whether or not
+one exists. Two defences, both cheap:
+
+1. **Judge on the external panel, not self-play.** The +24.8 pp is measured against opponents that
+   never co-evolved with this arm, so it is far less susceptible to the co-evolutionary drift that
+   makes self-play numbers swing. Regression still applies, but to a much less noisy statistic.
+2. **Extend a second pooled arm** — whichever of E3-20-27/28/29 ends *least* balanced. Regression
+   pulls two extremes toward each other; a real effect moves them the same way. If both improve on
+   the panel, that is signal. If the good one worsens and the poor one improves by similar
+   amounts, that is regression and the extension has told us nothing.
+
+### Mechanics
+
+`--train-steps` is **cumulative**: a 160M -> 320M continuation passes `--train-steps 320000000`,
+as `arm_H2_cont_240to480` did (resumed at 240M, budget 480M). A budget below the inherited step
+count exits before the first iteration while still writing a final checkpoint that looks complete.
+
+Resume from `resume_state.pt`, never `snapshot_final.pt`: the snapshot is weights only, while the
+resume state carries the optimiser and the frozen reference policy. Restarting NashPG without its
+`pi_ref` is a different experiment.
+
+Measurement at 320M is the **external panel** (`REF-strong`, `REF-weak`), reporting absolute US
+and USSR win rates and the 160M -> 320M change in each — the same instrument that found the effect.
+The self-play endpoint is reported alongside, but it is not what the claim rests on.
+
+### Order and cost
+
+Behind `E3-17-26`, which completes the 4 x 4 and must not be displaced by a follow-up question.
+160M additional steps is about 3.7 h per arm on the local 4090, free and serial.
+
+### Caveat to state with any result
+
+No unpooled arm is being extended, so if the pooled US side keeps improving we will not know
+whether that is the pool or simply more training. Attributing it to pooling needs an unpooled
+extension too — a further 3.7 h, worth doing if the pooled result holds.
