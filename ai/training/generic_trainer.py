@@ -123,12 +123,25 @@ TB_TAGS: Dict[str, str] = {
     "decisive_loss_avoid_rate": "strategy/decisive_loss_avoid",
 }
 
+#: The sampling temperatures the blunder probe runs at, and the metric prefix each writes under.
+#:
+#: Evaluation has always run at 0.1 while rollouts are collected at a stratified 0.1-0.5 and the
+#: PPO ratio is taken against canonical 1.0 log-probabilities. A low evaluation temperature was
+#: introduced to stop the policy acting on moves it rates as unlikely-but-not-negligible -- a
+#: battleground coup at DEFCON 2 and its relatives, which is exactly what these rules count. That
+#: makes a single-temperature blunder rate unreadable: it cannot distinguish a policy that has
+#: learned not to blunder from one whose blunders are merely being argmaxed away at evaluation
+#: time. Both are reported so the gap between them is visible, and 0.1 keeps the unprefixed name
+#: so existing runs stay comparable.
+BLUNDER_PROBES: Tuple[Tuple[float, str], ...] = ((0.1, "blunder"), (1.0, "blunder_hot"))
+
 #: Blunder rules from ai/eval/blunders.py, logged as `strategy/blunder_<rule>_rate` plus the
 #: numerator and denominator. A rate with no denominator cannot be compared across runs: a
 #: policy that never held Olympic Games at DEFCON 2 has demonstrated nothing by not misplaying
 #: it, which is why `_chances` is logged beside `_rate`.
-for _rule in BLUNDER_RULES:
-    TB_TAGS[f"blunder_{_rule}_rate"] = f"strategy/blunder_{_rule}"
+for _prefix in (_p for _t, _p in BLUNDER_PROBES):
+    for _rule in BLUNDER_RULES:
+        TB_TAGS[f"{_prefix}_{_rule}_rate"] = f"strategy/{_prefix}_{_rule}"
 
 #: The metric stems that make up the endgame section. Each also exists per winning side, and
 #: under mid-game start sampling per start turn.
@@ -232,12 +245,13 @@ MULTILINE_CHARTS: Dict[str, Dict[str, Union[str, float]]] = {
 # denominator) that the reader has to combine mentally. The band is what makes the rate safe to
 # read alone: it encodes the sample size, so a rule with two chances is visibly a band across
 # most of [0, 1] rather than a confident-looking 0.0.
-for _rule in BLUNDER_RULES:
-    MULTILINE_CHARTS[f"strategy/blunder_{_rule}"] = {
-        "rate": f"blunder_{_rule}_rate",
-        "ci_low": f"blunder_{_rule}_ci_low",
-        "ci_high": f"blunder_{_rule}_ci_high",
-    }
+for _prefix in (_p for _t, _p in BLUNDER_PROBES):
+    for _rule in BLUNDER_RULES:
+        MULTILINE_CHARTS[f"strategy/{_prefix}_{_rule}"] = {
+            "rate": f"{_prefix}_{_rule}_rate",
+            "ci_low": f"{_prefix}_{_rule}_ci_low",
+            "ci_high": f"{_prefix}_{_rule}_ci_high",
+        }
 for _name in ("win_take", "loss_avoid"):
     MULTILINE_CHARTS[f"strategy/decisive_{_name}"] = {
         "rate": f"decisive_{_name}_rate",
@@ -306,11 +320,13 @@ _TB_SUPPRESSED: frozenset = frozenset({
     "diag/uncontrolled_battlegrounds_turn5",
     "diag/uncontrolled_battlegrounds_turn8",
 } | {
-    f"blunder_{_r}_{_part}" for _r in BLUNDER_RULES for _part in ("count", "chances")
+    f"{_p}_{_r}_{_part}" for _p in (_q for _t, _q in BLUNDER_PROBES)
+    for _r in BLUNDER_RULES for _part in ("count", "chances")
 } | {
     # Interval bounds belong to their rate's band chart and nowhere else; written as scalars of
     # their own they would each open a chart containing one edge of a band.
-    f"blunder_{_r}_{_part}" for _r in BLUNDER_RULES for _part in ("ci_low", "ci_high")
+    f"{_p}_{_r}_{_part}" for _p in (_q for _t, _q in BLUNDER_PROBES)
+    for _r in BLUNDER_RULES for _part in ("ci_low", "ci_high")
 } | {
     f"decisive_{_n}_{_part}" for _n in ("win_take", "loss_avoid")
     for _part in ("ci_low", "ci_high")
@@ -823,15 +839,21 @@ def evaluate_and_log_snapshot(
     # Named mistakes, with their denominators. These ran only in tools/play_match.py before,
     # so nothing was tracking them during training -- which is where they matter, because a
     # policy can gain Elo while learning the mistakes better rather than fewer.
+    # Run at both evaluation temperatures (see BLUNDER_PROBES): 0.1, which is how tournaments
+    # and replays sample, and 1.0, which is the distribution the PPO ratio actually optimises.
+    # The probe is the cheap part of a snapshot evaluation -- 1.6s of ~20s measured, against 9.4s
+    # for the decisive probe -- so the second pass buys the comparison for well under a percent.
     blunder_metrics: Dict[str, float] = {}
-    try:
-        from ai.eval.blunders import measure_blunders_batched
+    for _temperature, _prefix in BLUNDER_PROBES:
+        try:
+            from ai.eval.blunders import measure_blunders_batched
 
-        counts = measure_blunders_batched(model, num_games=blunder_games)
-        blunder_metrics = counts.metrics()
-        print("  blunders:\n" + counts.summary(), flush=True)
-    except Exception as e:
-        print(f"  blunder probe failed ({e}); continuing", flush=True)
+            counts = measure_blunders_batched(
+                model, num_games=blunder_games, temperature=_temperature)
+            blunder_metrics.update(counts.metrics(prefix=_prefix))
+            print(f"  blunders (tau={_temperature}):\n" + counts.summary(), flush=True)
+        except Exception as e:
+            print(f"  blunder probe at tau={_temperature} failed ({e}); continuing", flush=True)
 
     position_metrics: Dict[str, float] = {}
     try:
