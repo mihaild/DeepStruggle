@@ -1,38 +1,44 @@
 #!/usr/bin/env bash
 # Bring a remote run home. Metrics continuously, checkpoints as they appear.
 #
-#   remote_sync.sh <ssh-target> <run-name> [--once] [--with-resume]
+#   remote_sync.sh <ssh-target> <run-name> [--once] [--all-resume]
+#
+# RESUME_STRIDE=<steps> sets which step-tagged resume files come home (default 80000000, 0 for
+# none); --all-resume brings every one.
 #
 # Sizing, measured on E3-17-22 (160M steps, 34 snapshots): a whole run directory is 2.0GB, of
 # which the resume files are 1.6GB (48MB each) and the snapshots 442MB (13MB each). Metrics and
 # TensorBoard together are 25MB.
 #
-# So by default this brings home the metrics, the TensorBoard tree, the hardware record and every
-# snapshot -- about 500MB per run, and everything a tournament or an offline probe needs. The
-# resume files stay remote unless --with-resume is given: they exist to restart an interrupted
-# run *on that host*, and only the newest is ever useful.
+# So this brings home the metrics, the TensorBoard tree, the hardware record, every snapshot,
+# the newest resume_state.pt, and a step-tagged resume roughly every RESUME_STRIDE steps.
 #
-# **Works without rsync.** rsync is not installed on every machine this has to run from (it is
-# absent, and not installable, on the workstation this was written on), so there is a tar-over-ssh
-# fallback. It transfers at file granularity -- fetching only files not already present locally --
-# which suits an append-only directory of snapshots. rsync is still preferred when available
-# because it resumes partial transfers.
+# Resume files are not only for restarting an interrupted host -- they are what lets an
+# experiment branch from a partial result, which is how the current P10/P11 arms were started
+# from E3-17-22's 80M. Bringing every one home is wasteful at 48MB each; bringing none means
+# fetching a branch point by hand later. Every 80M is the useful granularity for branching.
+#
+# **Works without rsync**, which is absent and not installable on the workstation this was
+# written on. The tar-over-ssh fallback transfers at file granularity, fetching only files not
+# already present locally, which suits an append-only directory. rsync is preferred when
+# available because it resumes partial transfers.
 set -euo pipefail
 
-TARGET="${1:?usage: remote_sync.sh <ssh-target> <run-name> [--once] [--with-resume]}"
+TARGET="${1:?usage: remote_sync.sh <ssh-target> <run-name> [--once] [--all-resume]}"
 NAME="${2:?missing run name}"
 shift 2
 
 ONCE=0
-WITH_RESUME=0
+ALL_RESUME=0
 for arg in "$@"; do
     case "$arg" in
         --once) ONCE=1 ;;
-        --with-resume) WITH_RESUME=1 ;;
+        --all-resume) ALL_RESUME=1 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
 
+RESUME_STRIDE="${RESUME_STRIDE:-80000000}"
 REMOTE_DIR="${REMOTE_DIR:-/workspace/ts}"
 LOCAL_ROOT="${LOCAL_CHECKPOINTS:-/workspace/data/checkpoints}"
 RSRC="$REMOTE_DIR/runs/$NAME"
@@ -41,51 +47,81 @@ INTERVAL="${SYNC_INTERVAL:-300}"
 
 mkdir -p "$DST"
 
-# Files that are always re-fetched because they grow in place, versus files that are immutable
-# once written and so only need fetching if absent locally.
-MUTABLE=(training_metrics.jsonl metadata.json hardware.json train.log)
+# Files that grow in place and so are re-fetched every pass. Everything else is immutable once
+# written and only fetched when absent locally.
+MUTABLE=(training_metrics.jsonl metadata.json hardware.json train.log resume_state.pt)
+
+# Which step-tagged resume files to keep, from a list of filenames on stdin.
+#
+# The stride CANNOT be a modulo test. Real step counts are 5046272, 40042496, 80019456 -- never
+# exact multiples of anything -- so `steps % stride == 0` keeps nothing at all. The rule is the
+# same one the trainer uses to write them: walk in step order and keep one whenever it is at
+# least `stride` past the last kept.
+select_resumes() {
+    awk -v stride="$RESUME_STRIDE" -v all="$ALL_RESUME" '
+        {
+            s = $0
+            sub(/^resume_/, "", s); sub(/steps\.pt$/, "", s)
+            if (s !~ /^[0-9]+$/) next
+            n++; name[n] = $0; val[n] = s + 0
+        }
+        END {
+            if (all == 1) { for (i = 1; i <= n; i++) print name[i]; exit }
+            if (stride + 0 == 0) exit
+            for (i = 1; i <= n; i++) ord[i] = i
+            for (i = 1; i <= n; i++)
+                for (j = i + 1; j <= n; j++)
+                    if (val[ord[j]] < val[ord[i]]) { t = ord[i]; ord[i] = ord[j]; ord[j] = t }
+            last = -1
+            for (i = 1; i <= n; i++) {
+                k = ord[i]
+                if (last < 0 || val[k] - last >= stride) { print name[k]; last = val[k] }
+            }
+        }'
+}
+
+remote_resumes() {
+    ssh "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 resume_*steps.pt 2>/dev/null || true"
+}
 
 sync_rsync() {
     local -a filters=(
         --include 'training_metrics.jsonl' --include 'metadata.json'
         --include 'hardware.json' --include 'train.log'
-        --include 'tb/***' --include 'snapshot_*.pt'
+        --include 'resume_state.pt' --include 'tb/***' --include 'snapshot_*.pt'
     )
-    [ "$WITH_RESUME" = "1" ] && filters+=(--include 'resume_*.pt')
+    local f
+    while IFS= read -r f; do
+        [ -n "$f" ] && filters+=(--include "$f")
+    done < <(remote_resumes | select_resumes)
     filters+=(--exclude '*')
     rsync -az --partial "${filters[@]}" "$TARGET:$RSRC/" "$DST/"
 }
 
 sync_tar() {
-    # 1. What immutable files exist remotely?
-    local pattern='snapshot_*.pt'
-    [ "$WITH_RESUME" = "1" ] && pattern='snapshot_*.pt resume_*.pt'
-    local remote_list
-    remote_list=$(ssh "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 $pattern 2>/dev/null || true")
-
-    # 2. Which of them are missing here?
     local -a want=()
     local f
+
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         [ -f "$DST/$f" ] || want+=("$f")
-    done <<< "$remote_list"
+    done < <(ssh "$TARGET" "cd '$RSRC' 2>/dev/null && ls -1 snapshot_*.pt 2>/dev/null || true")
 
-    # 3. The growing files, every time; plus the TensorBoard tree, which is small.
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ -f "$DST/$f" ] || want+=("$f")
+    done < <(remote_resumes | select_resumes)
+
     want+=("${MUTABLE[@]}" tb)
 
-    # `tar --ignore-failed-read` because a run that has not written train.log or hardware.json yet
-    # must not abort the whole sync.
+    # --ignore-failed-read: a run that has not written train.log or hardware.json yet must not
+    # abort the whole sync.
     ssh "$TARGET" "cd '$RSRC' && tar czf - --ignore-failed-read $(printf '%q ' "${want[@]}") 2>/dev/null" \
         | tar xzf - -C "$DST" 2>/dev/null || return 1
 }
 
 sync_once() {
-    if command -v rsync >/dev/null 2>&1; then
-        sync_rsync
-    else
-        sync_tar
-    fi
+    if command -v rsync >/dev/null 2>&1; then sync_rsync; else sync_tar; fi
 }
 
 report() {
@@ -106,7 +142,7 @@ fi
 
 echo "==> syncing $NAME every ${INTERVAL}s into $DST (ctrl-c to stop)"
 while true; do
-    # A transient SSH failure must not end the sync loop; the run is still going.
+    # A transient SSH failure must not end the loop; the run is still going.
     if sync_once; then report; else echo "SYNC-RETRY $NAME: transfer failed, retrying"; fi
     sleep "$INTERVAL"
 done

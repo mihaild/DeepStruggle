@@ -74,6 +74,8 @@ def main():
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
                              "seed to two runs that differ in one thing, to pair them.")
+    parser.add_argument("--resume-every-steps", type=int, default=40_000_000,
+                        help="Write a step-tagged resume_<steps>.pt at most this often. Resume files are 48MB against a snapshot's 13MB, so this is deliberately much coarser than the snapshot interval.")
     parser.add_argument("--snapshot-every-steps", type=int, default=0,
                         help="Take a snapshot every N env steps (0 = derive the "
                              "interval from --duration-seconds and "
@@ -256,6 +258,7 @@ def main():
             seed=args.seed,
             resume=args.resume,
             resume_every_snapshot=args.resume_every_snapshot,
+            resume_every_steps=args.resume_every_steps,
             snapshot_every_steps=args.snapshot_every_steps,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,

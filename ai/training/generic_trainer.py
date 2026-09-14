@@ -1081,6 +1081,7 @@ def train_pipeline(
     seed: Optional[int] = None,
     resume: Optional[str] = None,
     resume_every_snapshot: bool = True,
+    resume_every_steps: int = 40_000_000,
     warmup_checkpoint: Optional[str] = None,
     warmup_dataset: Optional[str] = None,
     inject_dataset: Optional[str] = None,
@@ -1190,6 +1191,7 @@ def train_pipeline(
         "reward_scheme": reward_scheme,
         "duration_seconds": duration_seconds,
         "resume_every_snapshot": bool(resume_every_snapshot),
+        "resume_every_steps": int(resume_every_steps),
         "decisiveness_turns": decisiveness_turns,
         "snapshot_interval_seconds": snapshot_interval_seconds,
         "num_envs": num_envs,
@@ -1485,6 +1487,10 @@ def train_pipeline(
     prev_steps = int(trainer.total_env_steps)
     prev_elapsed = time.time() - t_start - overhead_seconds
 
+    # Step count of the most recent step-tagged resume file, so the interval is
+    # measured from what was actually written rather than from the loop counter.
+    last_tagged_resume: Optional[int] = None
+
     _refresh_start_pool("initial")
 
     while True:
@@ -1604,14 +1610,20 @@ def train_pipeline(
             # load_agent, the tournament runner and every eval module read it as one.
             save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,
                               seed=seed)
-            if resume_every_snapshot:
-                # A second copy under this snapshot's own step count, so this point stays
-                # branchable after the next snapshot overwrites resume_state.pt. 38 MB more than
-                # the snapshot itself; a run with one branch point cost more than that in GPU
-                # hours the first time an experiment needed a different one.
+            # A step-tagged copy, so this point stays branchable after the next snapshot
+            # overwrites resume_state.pt. Gated on its own interval rather than written at
+            # every snapshot: a resume file is 48 MB against a snapshot's 13 MB, so at a 5M
+            # snapshot interval writing one each time is 1.5 GB per 160M-step run and the
+            # resume files become 80% of the directory. Branch points are wanted every tens of
+            # millions of steps; snapshots are wanted far more often than that, because they
+            # are what tournaments and probes read.
+            if resume_every_snapshot and (
+                    last_tagged_resume is None
+                    or total_env_steps - last_tagged_resume >= resume_every_steps):
                 save_resume_state(
                     os.path.join(out_dir, RESUME_AT_STEPS.format(steps=total_env_steps)),
                     model, trainer, it, total_env_steps, elapsed, seed=seed)
+                last_tagged_resume = total_env_steps
             decisive = evaluate_and_log_snapshot(
                 model=model,
                 opponents=opponents,
