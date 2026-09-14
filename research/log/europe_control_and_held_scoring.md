@@ -628,3 +628,45 @@ one that loses by it.
 It also means the remedy should not be aimed at Europe control specifically, and that any fix can
 be validated on either arm. The instrument is `adv_std_raw` plus critic accuracy against the base
 rate, and both are now recorded.
+
+## The tournament: both 160M arms are weaker than their own 80M selves
+
+Round robin, 400 games per side per pair, plus the two baselines
+(`data/tournaments/e3_12_15_17_report.md`). The report's model labels are positional, so the
+mapping is given here once.
+
+| arm | Elo | as USSR | as US | USSR - US |
+|:---|---:|---:|---:|---:|
+| E3-15-22 @80M | **2059.8** | 75.1% | 67.8% | +7.2 pp |
+| E3-17-21 @80M | **2058.7** | 72.5% | 70.1% | **+2.4 pp** |
+| E3-17-22 @80M | 2003.6 | 68.2% | 61.1% | +7.0 pp |
+| E3-15-22 @160M | 1985.0 | 72.3% | 52.2% | **+20.1 pp** |
+| E3-15-21 @80M | 1964.8 | 62.3% | 57.2% | +5.1 pp |
+| E3-17-22 @160M | 1939.3 | 72.8% | 40.3% | **+32.5 pp** |
+| E3-12-21 @80M | 1842.2 | 50.5% | 39.2% | +11.2 pp |
+| HeuristicBot | 1500.0 | 20.4% | 15.0% | +5.4 pp |
+| RandomBot | 895.8 | 0.7% | 0.2% | +0.5 pp |
+
+**Both 160M checkpoints rank below their own 80M versions** -- E3-15-22 loses 74.8 Elo and
+E3-17-22 loses 64.2 over the second half of training. Independent head-to-head confirmation of
+the collapse, from outside the training loop.
+
+**And the loss is entirely on one side:**
+
+| arm | USSR 80M -> 160M | US 80M -> 160M |
+|:---|---:|---:|
+| E3-15-22 | 75.1% -> 72.3% (**-2.8**) | 67.8% -> 52.2% (**-15.6**) |
+| E3-17-22 | 68.2% -> 72.8% (**+4.6**) | 61.1% -> 40.3% (**-20.8**) |
+
+The USSR side is flat or slightly better; the US side drops 16 to 21 points. That is the exact
+signature predicted from the internals -- the side with the working strategy freezes at no cost,
+the side that needed to adapt drifts -- and it is measured here against a fixed external field
+rather than against itself.
+
+The side gap tells the same story: every 80M arm sits between +2.4 and +11.2 pp, while the two
+160M arms are at +20.1 and +32.5. E3-17-22 @160M wins only **13.5%** of its games as US against
+E3-15-22 @80M.
+
+Worth noting separately: **E3-17-21 @80M is both near the top and the most side-balanced arm in
+the field** (+2.4 pp), which makes it a reasonable reference point for what a healthy run looks
+like on these numbers.
