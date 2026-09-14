@@ -12,6 +12,10 @@ import time
 
 def main() -> int:
     limit_min = float(sys.argv[1]) if len(sys.argv) > 1 else 40.0
+    # Instances the caller has declared long-lived on purpose. Age cannot distinguish a leak from
+    # a deliberate six-hour training arm, and warning about the arms every five minutes is how a
+    # guard gets ignored.
+    keep = {x.strip() for x in (sys.argv[2] if len(sys.argv) > 2 else "").split(",") if x.strip()}
     try:
         data = json.load(sys.stdin)
     except Exception:
@@ -24,8 +28,10 @@ def main() -> int:
         started = inst.get("start_date") or 0
         # An instance with no start date is suspicious rather than fine: report it.
         age_min = (now - started) / 60.0 if started else -1.0
+        iid = inst.get("id")
+        if str(iid) in keep:
+            continue
         if age_min < 0 or age_min > limit_min:
-            iid = inst.get("id")
             age = "unknown" if age_min < 0 else f"{age_min:.0f} min"
             print(f"LEAK WARNING: instance {iid} ({inst.get('gpu_name')}, "
                   f"${inst.get('dph_total', 0):.3f}/hr) running {age} -- destroy with: "

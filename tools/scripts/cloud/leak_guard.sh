@@ -6,9 +6,14 @@
 # when `destroy instance` aborted on its interactive confirmation prompt while its output was
 # redirected to /dev/null.
 #
-#   leak_guard.sh [max-minutes]
+#   KEEP=<id,id,...> leak_guard.sh [max-minutes]
 #
 # Emits one line per check only when something is wrong, so it is quiet in the normal case.
+#
+# **$KEEP lists instances that are SUPPOSED to be long-lived** -- training arms, typically. Age
+# alone cannot tell a leak from a six-hour job, and a guard that warns about every deliberate run
+# is one whose warnings get ignored. Pass the arms in KEEP and leave max-minutes short enough to
+# still catch a stray benchmark host.
 #
 # **Set max-minutes to outlive the work, not to a generic default.** A host deliberately kept
 # alive for a training run is not a leak, and a guard that warns about it every five minutes
@@ -20,6 +25,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY=/workspace/.venv/bin/python
 
 while true; do
-    "$HERE/vast.sh" show instances --raw 2>/dev/null | "$PY" "$HERE/_leak_check.py" "$MAX_MIN" || true
+    "$HERE/vast.sh" show instances --raw 2>/dev/null \
+        | "$PY" "$HERE/_leak_check.py" "$MAX_MIN" "${KEEP:-}" || true
     sleep 300
 done
