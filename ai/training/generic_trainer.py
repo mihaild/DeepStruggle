@@ -1242,6 +1242,13 @@ def train_pipeline(
         "per_entity_heads": int(per_entity_heads),
         "graph_layers": int(graph_layers),
         "drop_static": bool(drop_static),
+        # The opponent-pool configuration: the difference between a self-play run and one trained
+        # against its own history, which is otherwise recorded nowhere. `opponent_frac` is the
+        # operative one -- a pool with frac 0 is not in use however it is configured.
+        "opponent_frac": float(opponent_frac),
+        "opponent_self_pool": bool(opponent_self_pool),
+        "opponent_pool_size": int(opponent_pool_size),
+        "opponent_checkpoints": list(opponent_checkpoints or []),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
