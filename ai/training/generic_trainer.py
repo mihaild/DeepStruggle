@@ -1127,6 +1127,9 @@ def train_pipeline(
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
     defcon_coef: float = 0.0,
+    opponent_checkpoints: Optional[List[str]] = None,
+    opponent_frac: float = 0.0,
+    opponent_lock_side: Optional[str] = None,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1324,6 +1327,25 @@ def train_pipeline(
         temperature_schedule=True,
         device=dev,
     )
+
+    # Frozen-opponent sampling. A share of environments plays the learner against a past
+    # snapshot instead of against itself, so the outcome depends on the learner's actions
+    # again and the advantage signal has something to be non-zero about. See
+    # ai/training/opponent_pool.py and research/plans/P10_opponent_sampling.md.
+    if opponent_checkpoints and opponent_frac > 0.0:
+        from ai.training.opponent_pool import OpponentPool, load_pool
+
+        _lock = {"us": 1, "ussr": -1, None: None}[opponent_lock_side]
+        trainer.opponent_pool = OpponentPool(
+            load_pool(opponent_checkpoints, dev),
+            num_envs=num_envs,
+            frac=opponent_frac,
+            seed=(seed or 0),
+            lock_learner_side=_lock,
+        )
+        print(f"[opponent pool] {len(opponent_checkpoints)} snapshot(s), "
+              f"frac={opponent_frac}, learner side="
+              f"{opponent_lock_side or 'alternating'}")
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]

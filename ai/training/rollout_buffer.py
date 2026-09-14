@@ -58,6 +58,12 @@ class RolloutBuffer:
         self.values_win = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.values_vp = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.players = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
+        # 1 where the transition was chosen by the policy being trained. Under an
+        # opponent pool the frozen opponent's transitions are still *stored* -- GAE is a
+        # backward recursion over consecutive steps, and dropping them would leave the
+        # learner's non-consecutive -- but they must not receive policy gradient.
+        self.learner = torch.ones((buffer_size, num_envs), dtype=torch.float32,
+                                  device=self.device)
         self.turns = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
         self.vps = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
@@ -97,6 +103,7 @@ class RolloutBuffer:
         values_win: torch.Tensor,
         values_vp: torch.Tensor,
         players: np.ndarray | torch.Tensor,
+        learner: Optional[np.ndarray | torch.Tensor] = None,
         turns: Optional[np.ndarray | torch.Tensor] = None,
         vps: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
@@ -128,6 +135,12 @@ class RolloutBuffer:
         self.values_win[self.step].copy_(values_win)
         self.values_vp[self.step].copy_(values_vp)
         self.players[self.step].copy_(players)
+        if learner is None:
+            self.learner[self.step].fill_(1.0)
+        else:
+            if isinstance(learner, np.ndarray):
+                learner = torch.from_numpy(learner)
+            self.learner[self.step].copy_(learner.to(self.learner.dtype))
         if turns is not None:
             if isinstance(turns, np.ndarray):
                 turns = torch.from_numpy(turns)
@@ -369,8 +382,12 @@ class RolloutBuffer:
 
     def get_batches(
         self, batch_size: int, priority_alpha: float = 0.0
-    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
-        """Yields mini-batches for inner-loop SGD updates."""
+    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
+        """Yields mini-batches for inner-loop SGD updates.
+
+        The last element is the learner mask: 1 where the action was chosen by the policy being
+        trained, 0 where a frozen opponent chose it. It is all ones without an opponent pool.
+        """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
 
@@ -382,6 +399,7 @@ class RolloutBuffer:
         flat_returns_win = self.returns_win.view(total_steps)
         flat_returns_vp = self.returns_vp.view(total_steps)
         flat_defcon_risk = self.defcon_risk_target.view(total_steps)
+        flat_learner = self.learner.view(total_steps)
 
         for start_idx in range(0, total_steps, batch_size):
             batch_idx = indices[start_idx : start_idx + batch_size]
@@ -394,5 +412,6 @@ class RolloutBuffer:
                 flat_returns_win[batch_idx],
                 flat_returns_vp[batch_idx],
                 flat_defcon_risk[batch_idx],
+                flat_learner[batch_idx],
             )
 

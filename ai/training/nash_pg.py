@@ -187,6 +187,9 @@ class BaseNashPGTrainer:
         # Tier-1 critic discrimination. Holds one sample per game per turn until that
         # game's winner is known; costs an integer compare per env per step.
         self.critic_tracker = CriticTracker(num_envs=self.num_envs)
+        #: Optional frozen-opponent pool. None means ordinary self-play, where the
+        #: learner plays both sides and every transition receives policy gradient.
+        self.opponent_pool: Any = None
         self.buffer = RolloutBuffer(
             buffer_size=self.buffer_size,
             num_envs=self.num_envs,
@@ -238,15 +241,51 @@ class BaseNashPGTrainer:
         """Collects on-policy rollouts across all parallel environments."""
         t0 = time.time()
         self.active_net.eval()
+        if self.opponent_pool is not None:
+            self.opponent_pool.start_iteration()
         self.buffer.reset()
         completed_episodes: List[Dict[str, Any]] = []
 
         for _ in range(self.buffer_size):
-            obs_t = torch.from_numpy(self._obs_np).float().to(self.device)
-            masks_t = torch.from_numpy(self._masks_np).to(self.device)
+            # copy=True is load-bearing. The env's observation and mask arrays are views into
+            # buffers the runner reuses, so `env.step()` below overwrites them in place -- and
+            # `buffer.add` is called *after* that step. On CUDA `.to(device)` already copies, so
+            # this was invisible; on CPU `.to("cpu")` is a no-op and the buffer stored the
+            # *post*-step observation and mask against the pre-step action. It hid during setup,
+            # where consecutive masks are identical, and only showed on the step where the side
+            # to move changed.
+            obs_t = torch.from_numpy(self._obs_np).to(self.device, torch.float32, copy=True)
+            masks_t = torch.from_numpy(self._masks_np).to(self.device, copy=True)
+
+            # Who is to move in each environment, needed before acting so the batch can be
+            # split between the learner and a frozen opponent.
+            if self.opponent_pool is not None:
+                _dp = np.asarray(self.env.runner.get_decision_players(), dtype=np.int8)
+                learner_np = self.opponent_pool.learner_acts(_dp)
+            else:
+                learner_np = np.ones(self.num_envs, dtype=bool)
+            learner_t = torch.from_numpy(learner_np).to(self.device)
 
             with torch.no_grad():
-                logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
+                if self.opponent_pool is None or bool(learner_np.all()):
+                    logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
+                else:
+                    # Two passes on *complementary* subsets, so the total work is the same as
+                    # the single full-batch pass it replaces -- one extra kernel launch, not
+                    # twice the FLOPs. The opponent's logits are used only to act; its values
+                    # are taken from the learner's critic, which is what GAE must bootstrap
+                    # with (a frozen opponent's critic is a different function and mixing the
+                    # two would corrupt the recursion).
+                    logits = torch.empty((self.num_envs, 212), device=self.device,
+                                         dtype=torch.float32)
+                    opp_logits, _, _ = self.opponent_pool.current(
+                        obs_t[~learner_t], masks_t[~learner_t])
+                    logits[~learner_t] = opp_logits.float()
+                    own_logits, _, _ = self.active_net(obs_t[learner_t], masks_t[learner_t])
+                    logits[learner_t] = own_logits.float()
+                    # One learner-critic pass over the whole batch: values must come from the
+                    # policy being trained at every state, opponent-chosen ones included.
+                    _, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
 
@@ -283,6 +322,7 @@ class BaseNashPGTrainer:
                 values_win=v_win_t,
                 values_vp=v_vp_t,
                 players=torch.from_numpy(self._info["acting_players"]).to(self.device),
+                learner=learner_t.float(),
                 turns=torch.from_numpy(self._info["turns"]).to(self.device) if "turns" in self._info else None,
                 vps=torch.from_numpy(self._info["victory_points"]).float().to(self.device) if "victory_points" in self._info else None,
                 held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device) if "held_scoring_us" in self._info else None,
@@ -305,6 +345,8 @@ class BaseNashPGTrainer:
                     continue
                 _vp = float(self._info["victory_points"][_i])
                 self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+                if self.opponent_pool is not None:
+                    self.opponent_pool.on_episode_end(_i)
 
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
                 completed_episodes.extend(self._info["completed_episodes"])
@@ -431,7 +473,8 @@ class NashPGTrainer(BaseNashPGTrainer):
 
         for _ in range(self.num_epochs):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
-                 b_defcon_risk) in self.buffer.get_batches(self.batch_size, self.priority_alpha):
+                 b_defcon_risk, b_learner) in self.buffer.get_batches(
+                     self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
                 if use_risk:
@@ -456,22 +499,30 @@ class NashPGTrainer(BaseNashPGTrainer):
                 cur_dist = torch.distributions.Categorical(logits=cur_logits)
                 cur_lp = cur_dist.log_prob(b_act)
                 cur_entropy = cur_dist.entropy()
+                # Masked with the policy loss below; the KL to pi_ref is deliberately
+                # left over the whole batch, for broader state coverage.
 
                 ratio = torch.exp(cur_lp - b_old_lp)
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)
+                # A frozen opponent's actions are part of the environment, not of the policy
+                # being trained: they are stored so GAE stays a recursion over consecutive
+                # steps, but they must not pull on the policy. Without a pool this is all ones
+                # and the expression reduces to the plain mean.
+                keep = b_learner > 0.5
                 if self.adv_filter_quantile > 0.0 and surrogate.numel() > 1:
                     # Keep the samples the policy can actually learn from. The threshold is a
                     # quantile of this minibatch rather than a fixed |A|, so it adapts as the
                     # advantage scale shrinks over training instead of silently dropping
-                    # everything late on.
-                    keep = (b_adv.abs()
-                            >= torch.quantile(b_adv.abs().float(), self.adv_filter_quantile))
-                    ppo_loss = (surrogate[keep].mean() if bool(keep.any())
-                                else surrogate.mean() * 0.0)
-                else:
-                    ppo_loss = surrogate.mean()
+                    # everything late on. Taken over the learner's own samples, so a mixed
+                    # batch does not move the threshold with transitions it will discard.
+                    own_adv = b_adv.abs()[keep]
+                    if own_adv.numel() > 1:
+                        thresh = torch.quantile(own_adv.float(), self.adv_filter_quantile)
+                        keep = keep & (b_adv.abs() >= thresh)
+                ppo_loss = (surrogate[keep].mean() if bool(keep.any())
+                            else surrogate.sum() * 0.0)
 
                 clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean().item()
 
@@ -483,7 +534,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                 cur_log_p = F.log_softmax(cur_logits, dim=-1)
                 kl_div = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1).mean()
 
-                policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * cur_entropy.mean()
+                # Entropy over the learner's own actions only, for the same reason as the
+                # surrogate: an entropy bonus on a frozen opponent's choices would push
+                # the learner's policy toward states it did not choose to be in.
+                own_entropy = (cur_entropy[b_learner > 0.5].mean()
+                               if bool((b_learner > 0.5).any()) else cur_entropy.sum() * 0.0)
+                policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss

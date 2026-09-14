@@ -195,6 +195,13 @@ def main():
                         help="Discount factor. Keep at 1.0: the game is zero-sum and decided at the end, so any discount biases against the endgame (0.999 attenuates a terminal reward by ~26%% over a full game).")
     parser.add_argument("--defcon-coef", type=float, default=0.0,
                         help="Weight of the auxiliary DEFCON-risk head, which predicts whether the player to move is about to lose the game to its own DEFCON-1 choice (0 = head disabled). Added because val_win_head largely restates the VP margin -- corr(v_win, v_vp) = 0.86 -- so it reads self-inflicted DEFCON-1 deaths as roughly even positions while pricing ordinary losing positions correctly. Try 0.1.")
+    parser.add_argument("--opponent-checkpoints", nargs="+", default=None,
+                        help="Frozen snapshots to play a share of environments against, instead of pure self-play")
+    parser.add_argument("--opponent-frac", type=float, default=0.0,
+                        help="Fraction of environments facing a frozen opponent (0 disables)")
+    parser.add_argument("--opponent-lock-side", type=str, default=None,
+                        choices=["us", "ussr"],
+                        help="Pin the learner to one side against the frozen opponent; default alternates")
     parser.add_argument("--start-pool-frac", type=float, default=0.0,
                         help="Enable mid-game start sampling (>0 turns it on). A share of environments resume from saved turn-boundary positions instead of the real opening, with the split set by DEFAULT_TURN_MIX: 50%% turn 1, 15%% turn 4, 15%% turn 6, 10%% turn 8, 10%% turn 10. Self-play from turn 1 reaches turn 10 in only ~20%% of games and leaves the same eight battlegrounds untouched from turn 8 on, so those states are otherwise barely sampled.")
     parser.add_argument("--start-pool-capacity", type=int, default=512,
@@ -255,6 +262,9 @@ def main():
             inject_weight=args.inject_weight,
             decisiveness_turns=args.decisiveness_turns,
             max_snapshot_opponents=args.eval_max_snapshot_opponents,
+            opponent_checkpoints=args.opponent_checkpoints,
+            opponent_frac=args.opponent_frac,
+            opponent_lock_side=args.opponent_lock_side,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,

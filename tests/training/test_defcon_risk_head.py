@@ -110,7 +110,8 @@ def test_batches_carry_the_target() -> None:
         last_dones=torch.zeros(1), last_players=torch.ones(1),
     )
     batch = next(buf.get_batches(batch_size=8))
-    assert len(batch) == 8, "expected the DEFCON-risk target as the eighth tensor"
+    # Eighth tensor, and the learner mask is the ninth (added for frozen-opponent sampling).
+    assert len(batch) == 9, "expected the DEFCON-risk target eighth and the learner mask ninth"
     assert batch[7].shape == (8,)
 
 
