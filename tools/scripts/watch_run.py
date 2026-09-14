@@ -66,12 +66,44 @@ def read_metrics(run_dir: str) -> Tuple[Optional[int], Optional[Dict[str, Any]],
     return int(last.get("total_steps", 0)), last, n
 
 
+def _cmdline(pid: str) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
 def process_alive(pattern: str) -> bool:
+    """Is the watched training process still running?
+
+    **Must exclude this watcher and its shell.** `--pattern` is normally the run name, and the
+    watcher's own command line contains the run name too (it is an argument), so a bare
+    `pgrep -f <run-name>` matches the watcher itself. That makes `process_alive` permanently
+    true, and CRASH can then never fire -- the watcher reports PROGRESS forever while the run it
+    is watching is dead. That is the exact failure this script exists to prevent, so the
+    self-match is filtered rather than assumed away.
+    """
     try:
         out = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
-        return out.returncode == 0 and bool(out.stdout.strip())
     except OSError:
         return False
+    if out.returncode != 0:
+        return False
+    me = str(os.getpid())
+    for pid in out.stdout.split():
+        if pid == me:
+            continue
+        cmd = _cmdline(pid)
+        if not cmd:
+            continue
+        # The watcher, its shell wrapper, and any sibling watcher are not the training run.
+        if "watch_run.py" in cmd:
+            continue
+        if "shell-snapshots" in cmd or cmd.strip().startswith("/usr/bin/zsh -c"):
+            continue
+        return True
+    return False
 
 
 def summary(row: Optional[Dict[str, Any]]) -> str:
@@ -90,7 +122,9 @@ def main() -> int:
                          "run this includes the steps it inherited, not just the increment.")
     ap.add_argument("--interval", type=int, default=120, help="Seconds between checks")
     ap.add_argument("--pattern", default="tools/train.py",
-                    help="pgrep pattern identifying the training process")
+                    help="pgrep -f pattern identifying the training process. The run name works; "
+                         "this watcher and its shell are excluded from the match, since their own "
+                         "command lines contain it too.")
     ap.add_argument("--grace", type=int, default=600,
                     help="Seconds to allow before a run with no iterations counts as NOSTART")
     ap.add_argument("--stall-after", type=int, default=1800,

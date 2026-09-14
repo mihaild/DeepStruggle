@@ -117,3 +117,27 @@ def test_dead_envs_contribute_nothing() -> None:
     tr.resolve(0, us_won=True)
     tr.resolve(1, us_won=True)
     assert tr.metrics(min_samples=1)["critic_samples"] == 1
+
+
+def test_watcher_excludes_itself_from_the_liveness_check() -> None:
+    """The watcher's own command line contains the run name, because it is an argument.
+
+    A bare `pgrep -f <run-name>` therefore matches the watcher itself, process_alive stays
+    permanently true, and CRASH can never fire -- the watcher reports PROGRESS forever while
+    the run it is watching is dead. This pins the exclusion that prevents it.
+    """
+    import importlib.util
+    import os
+
+    spec = importlib.util.spec_from_file_location(
+        "watch_run", os.path.join(os.path.dirname(__file__), "..", "..",
+                                  "tools", "scripts", "watch_run.py"))
+    assert spec and spec.loader
+    watch_run = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(watch_run)
+
+    # This test process is not a training run, so a pattern matching it must report "not alive".
+    assert watch_run.process_alive("definitely-no-such-process-xyzzy") is False
+
+    # And a pattern that matches only watch_run.py itself must also report "not alive".
+    assert watch_run.process_alive("watch_run.py") is False
