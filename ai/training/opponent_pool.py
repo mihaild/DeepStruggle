@@ -19,6 +19,17 @@ exactly two forward passes -- learner and opponent, on complementary subsets of 
 same total FLOPs as the single pass it replaces. Diversity accumulates across iterations instead
 of within them. Sampling several per iteration would work too, at more kernel launches on smaller
 batches.
+
+**A growing pool, kept spread across the run.** The first version took a fixed list of
+checkpoints, which measured well (E3-19-22 held self-play imbalance to 9.0pp where its control
+reached 71.7pp) but is not a usable recipe: it required eight snapshots of an already-finished
+run. A real run has to pool against its own history as that history appears.
+
+Eviction is by *spacing*, not by age. Dropping the oldest would let the pool become all-recent,
+and then every opponent carries whatever strategy the run has converged on -- the trailing side
+loses the winnable games that made the mechanism work in the first place, and the window quietly
+closes. Instead the first and most recent snapshots are always kept and the interior point with
+the smallest neighbouring gap is evicted, so the pool stays spread over the whole run.
 """
 from __future__ import annotations
 
@@ -36,12 +47,19 @@ class OpponentPool:
     """
 
     def __init__(self, nets: Sequence[Any], num_envs: int, frac: float = 0.25,
-                 seed: int = 0, lock_learner_side: Optional[int] = None) -> None:
+                 seed: int = 0, lock_learner_side: Optional[int] = None,
+                 capacity: int = 12) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
+        if capacity < 1:
+            raise ValueError(f"capacity must be >= 1, got {capacity}")
         if not 0.0 < frac <= 1.0:
             raise ValueError(f"frac must be in (0, 1], got {frac}")
         self.nets = list(nets)
+        self.capacity = capacity
+        #: Step count each net was captured at, parallel to self.nets. Seeds get 0 so that a
+        #: pool started from the initial policy keeps that policy as its earliest point.
+        self.steps: List[int] = [0] * len(self.nets)
         for n in self.nets:
             n.eval()
             for p in n.parameters():
@@ -67,6 +85,35 @@ class OpponentPool:
         if self.lock_learner_side is not None:
             return int(self.lock_learner_side)
         return 1 if self.rng.random() < 0.5 else -1
+
+    def add(self, net: Any, steps: int) -> None:
+        """Add a snapshot taken at `steps`, evicting to stay within capacity.
+
+        The net is frozen in place. Callers pass a freshly loaded copy, not the live training
+        model -- adding the model under training would give the learner an opponent whose
+        weights move with it, which is self-play with extra steps.
+        """
+        net.eval()
+        for p in net.parameters():
+            p.requires_grad_(False)
+        self.nets.append(net)
+        self.steps.append(int(steps))
+
+        while len(self.nets) > self.capacity:
+            # Keep the endpoints; drop the interior snapshot whose neighbours are closest
+            # together, which is the one carrying the least information about the run's span.
+            order = sorted(range(len(self.steps)), key=lambda i: self.steps[i])
+            victim = None
+            best_gap = None
+            for pos in range(1, len(order) - 1):
+                i = order[pos]
+                gap = self.steps[order[pos + 1]] - self.steps[order[pos - 1]]
+                if best_gap is None or gap < best_gap:
+                    best_gap, victim = gap, i
+            if victim is None:  # capacity < 3: fall back to dropping the oldest
+                victim = order[0]
+            self.nets.pop(victim)
+            self.steps.pop(victim)
 
     def start_iteration(self) -> None:
         """Pick the opponent this iteration's mixed environments will face."""
@@ -94,6 +141,8 @@ class OpponentPool:
         return {
             "opp_frac_mixed": float(self.is_mixed.mean()),
             "opp_pool_size": float(len(self.nets)),
+            "opp_pool_span_m": float((max(self.steps) - min(self.steps)) / 1e6)
+            if self.steps else 0.0,
         }
 
 

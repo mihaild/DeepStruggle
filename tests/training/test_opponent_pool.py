@@ -235,3 +235,68 @@ def test_buffer_stores_the_pre_step_mask() -> None:
             assert tr.buffer.masks[t, e, a] > 0, (
                 f"action {a} illegal under the mask stored at t={t}, env={e} -- "
                 "the buffer is storing a post-step mask")
+
+
+# --- growing pool -----------------------------------------------------------------------------
+
+def _tiny():
+    """A stand-in net: add() only needs .eval() and .parameters()."""
+    return torch.nn.Linear(2, 2)
+
+
+def test_add_grows_the_pool_until_capacity() -> None:
+    pool = OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=4)
+    assert pool.stats()["opp_pool_size"] == 1
+    for steps in (10_000_000, 20_000_000, 30_000_000):
+        pool.add(_tiny(), steps)
+    assert pool.stats()["opp_pool_size"] == 4
+    assert pool.steps == [0, 10_000_000, 20_000_000, 30_000_000]
+
+
+def test_eviction_keeps_the_endpoints() -> None:
+    """The whole point: dropping the oldest would make the pool all-recent, and then every
+    opponent carries the strategy the run converged on -- the window closes."""
+    pool = OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=4)
+    for steps in range(10_000_000, 110_000_000, 10_000_000):
+        pool.add(_tiny(), steps)
+    assert min(pool.steps) == 0, "the earliest snapshot must survive"
+    assert max(pool.steps) == 100_000_000, "the most recent must survive"
+    assert len(pool.steps) == 4
+
+
+def test_eviction_keeps_the_pool_spread_not_clustered() -> None:
+    pool = OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=5)
+    for steps in range(5_000_000, 205_000_000, 5_000_000):
+        pool.add(_tiny(), steps)
+    kept = sorted(pool.steps)
+    gaps = [b - a for a, b in zip(kept, kept[1:])]
+    span = kept[-1] - kept[0]
+    # Evenly spread over 5 points means each gap is about a quarter of the span. Allow slack,
+    # but a pool that had collapsed to the recent end would fail this badly.
+    assert max(gaps) < 0.6 * span, f"pool is clustered: {kept}"
+    assert kept[0] == 0 and kept[-1] == 200_000_000
+
+
+def test_added_nets_are_frozen_and_pool_never_exceeds_capacity() -> None:
+    pool = OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=3)
+    for steps in (1_000_000, 2_000_000, 3_000_000, 4_000_000):
+        net = _tiny()
+        assert any(p.requires_grad for p in net.parameters())
+        pool.add(net, steps)
+        assert not any(p.requires_grad for p in net.parameters())
+        assert len(pool.nets) <= 3
+    assert len(pool.nets) == len(pool.steps)
+
+
+def test_capacity_below_three_still_makes_progress() -> None:
+    """The spacing rule needs an interior point; with capacity 2 there is none."""
+    pool = OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=2)
+    for steps in (1_000_000, 2_000_000, 3_000_000):
+        pool.add(_tiny(), steps)
+    assert len(pool.nets) == 2
+    assert max(pool.steps) == 3_000_000, "the newest must always be kept"
+
+
+def test_rejects_bad_capacity() -> None:
+    with pytest.raises(ValueError):
+        OpponentPool([_tiny()], num_envs=4, frac=0.5, capacity=0)

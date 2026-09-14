@@ -201,6 +201,10 @@ def main():
                         help="Frozen snapshots to play a share of environments against, instead of pure self-play")
     parser.add_argument("--opponent-frac", type=float, default=0.0,
                         help="Fraction of environments facing a frozen opponent (0 disables)")
+    parser.add_argument("--opponent-self-pool", action="store_true",
+                        help="Grow the opponent pool from this run's own snapshots, seeded with the initial policy. Use instead of --opponent-checkpoints.")
+    parser.add_argument("--opponent-pool-size", type=int, default=12,
+                        help="Maximum snapshots held in the pool. Eviction keeps the endpoints and drops the most redundant interior point, so the pool stays spread across the run rather than becoming all-recent.")
     parser.add_argument("--opponent-lock-side", type=str, default=None,
                         choices=["us", "ussr"],
                         help="Pin the learner to one side against the frozen opponent; default alternates")
@@ -268,6 +272,8 @@ def main():
             opponent_checkpoints=args.opponent_checkpoints,
             opponent_frac=args.opponent_frac,
             opponent_lock_side=args.opponent_lock_side,
+            opponent_self_pool=args.opponent_self_pool,
+            opponent_pool_size=args.opponent_pool_size,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,

@@ -30,23 +30,34 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 
-def measure(num_envs: int, buffer_size: int, iterations: int, device: str) -> Dict[str, Any]:
+def measure(num_envs: int, buffer_size: int, iterations: int, device: str,
+            compile_mode: "Optional[str]" = None, warmup: int = 1) -> Dict[str, Any]:
     import torch
 
     from ai.models.coldwar_net_v2 import create_coldwar_net_v2
     from ai.training.nash_pg import NashPGTrainer
     from bindings.ts_env import TsVectorizedEnv
 
+    net: Any = create_coldwar_net_v2()
+    if compile_mode:
+        # The rollout runs the full batch and the update runs minibatches, so there is more than
+        # one input shape and therefore more than one compilation. Warm up past all of them, or
+        # the measurement is dominated by compile time rather than by steady-state speed.
+        net = torch.compile(net, mode=compile_mode)
+
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=1234)
-    trainer = NashPGTrainer(active_net=create_coldwar_net_v2(), env=env, num_envs=num_envs,
+    trainer = NashPGTrainer(active_net=net, env=env, num_envs=num_envs,
                             buffer_size=buffer_size, device=device)
 
-    trainer.train_iteration()  # warm up: allocator, autotune, CUDA context
+    t_warm = time.perf_counter()
+    for _ in range(warmup):
+        trainer.train_iteration()
+    warm_seconds = time.perf_counter() - t_warm
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.synchronize()
 
@@ -67,6 +78,7 @@ def measure(num_envs: int, buffer_size: int, iterations: int, device: str) -> Di
         "steps_per_sec": steps / wall,
         # >1 means several cores busy at once; near the core count means CPU-bound.
         "cpu_cores_busy": cpu / wall,
+        "warmup_seconds": warm_seconds,
     }
     if device == "cuda" and torch.cuda.is_available():
         out["gpu_mem_gb"] = torch.cuda.max_memory_allocated() / 1e9
@@ -85,6 +97,11 @@ def main() -> int:
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--price-per-hour", type=float, default=None,
                     help="If given, also report $ per 80M steps at each setting")
+    ap.add_argument("--compile", default=None,
+                    choices=["default", "reduce-overhead", "max-autotune"],
+                    help="Wrap the model in torch.compile. 'reduce-overhead' uses CUDA graphs, the relevant mode for a small network whose cost is launch latency.")
+    ap.add_argument("--warmup", type=int, default=1,
+                    help="Iterations before timing starts. Raise under --compile: several input shapes mean several compilations.")
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args()
 
@@ -96,13 +113,14 @@ def main() -> int:
         name = "unknown"
     print(f"device: {name}   host cores: {os.cpu_count()}")
     print(f"{'num_envs':>9}{'steps/s':>11}{'cores busy':>12}{'GPU GB':>9}"
-          + (f"{'$/80M':>9}" if args.price_per_hour else ""))
-    print("-" * (41 + (9 if args.price_per_hour else 0)))
+          f"{'warmup s':>10}" + (f"{'$/80M':>9}" if args.price_per_hour else ""))
+    print("-" * (51 + (9 if args.price_per_hour else 0)))
 
     rows: List[Dict[str, Any]] = []
     for n in args.num_envs:
         try:
-            r = measure(n, args.buffer_size, args.iterations, args.device)
+            r = measure(n, args.buffer_size, args.iterations, args.device,
+                        compile_mode=args.compile, warmup=args.warmup)
         except RuntimeError as e:
             # Out of memory at this setting is a result, not a crash: it is the point at which
             # the card stops being able to hold the batch.
@@ -110,7 +128,8 @@ def main() -> int:
             continue
         rows.append(r)
         line = (f"{r['num_envs']:>9}{r['steps_per_sec']:>11.0f}"
-                f"{r['cpu_cores_busy']:>12.1f}{r.get('gpu_mem_gb', float('nan')):>9.2f}")
+                f"{r['cpu_cores_busy']:>12.1f}{r.get('gpu_mem_gb', float('nan')):>9.2f}"
+                f"{r['warmup_seconds']:>10.1f}")
         if args.price_per_hour:
             line += f"{args.price_per_hour * 80e6 / r['steps_per_sec'] / 3600:>9.2f}"
         print(line)

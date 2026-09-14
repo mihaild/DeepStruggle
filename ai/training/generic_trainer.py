@@ -3,6 +3,7 @@ if 'TRITON_CACHE_DIR' not in os.environ:
     os.environ['TRITON_CACHE_DIR'] = os.path.abspath('.triton_cache')
 # Generic Trainer: Configurable multi-stage training with live snapshot tournament evaluation.
 
+import copy as _copy
 import os
 import re
 import sys
@@ -78,6 +79,11 @@ TB_TAGS: Dict[str, str] = {
     "critic_brier_skill": "critic/brier_skill",
     "critic_base_rate": "critic/base_rate",
     "critic_samples": "critic/samples",
+
+    # --- opponent pool: is it actually growing, and does it still span the run? ------------
+    "opp_pool_size": "opponent/pool_size",
+    "opp_pool_span_m": "opponent/pool_span_msteps",
+    "opp_frac_mixed": "opponent/frac_mixed",
     "adv_frac_near_zero": "internal/adv_frac_near_zero",
     # Auxiliary heads. Emitted only when the corresponding option is on, so an absent series
     # here means "not enabled for this run", not "broken".
@@ -1131,6 +1137,8 @@ def train_pipeline(
     opponent_checkpoints: Optional[List[str]] = None,
     opponent_frac: float = 0.0,
     opponent_lock_side: Optional[str] = None,
+    opponent_self_pool: bool = False,
+    opponent_pool_size: int = 12,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1334,19 +1342,29 @@ def train_pipeline(
     # snapshot instead of against itself, so the outcome depends on the learner's actions
     # again and the advantage signal has something to be non-zero about. See
     # ai/training/opponent_pool.py and research/plans/P10_opponent_sampling.md.
-    if opponent_checkpoints and opponent_frac > 0.0:
+    if opponent_frac > 0.0 and (opponent_checkpoints or opponent_self_pool):
         from ai.training.opponent_pool import OpponentPool, load_pool
 
         _lock = {"us": 1, "ussr": -1, None: None}[opponent_lock_side]
+        if opponent_checkpoints:
+            _seed_nets = load_pool(opponent_checkpoints, dev)
+            _src = f"{len(opponent_checkpoints)} fixed snapshot(s)"
+        else:
+            # A self-growing pool has nothing to play against at step 0, so it is seeded with a
+            # frozen copy of the starting policy -- the run's own past self, which is exactly
+            # what the pool is made of thereafter.
+            _seed_nets = [_copy.deepcopy(model).to(dev)]
+            _src = "self (seeded from the initial policy)"
         trainer.opponent_pool = OpponentPool(
-            load_pool(opponent_checkpoints, dev),
+            _seed_nets,
             num_envs=num_envs,
             frac=opponent_frac,
             seed=(seed or 0),
             lock_learner_side=_lock,
+            capacity=opponent_pool_size,
         )
-        print(f"[opponent pool] {len(opponent_checkpoints)} snapshot(s), "
-              f"frac={opponent_frac}, learner side="
+        print(f"[opponent pool] {_src}, frac={opponent_frac}, capacity={opponent_pool_size}, "
+              f"self-growing={bool(opponent_self_pool)}, learner side="
               f"{opponent_lock_side or 'alternating'}")
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
@@ -1543,7 +1561,8 @@ def train_pipeline(
         # Only once enough games have finished for the tracker to report; logging a
         # placeholder 0.0 before then would draw a line that looks like a collapse.
         for _ck in ("critic_auc", "critic_auc_turn3", "critic_brier_skill",
-                    "critic_base_rate", "critic_samples"):
+                    "critic_base_rate", "critic_samples",
+                    "opp_pool_size", "opp_pool_span_m", "opp_frac_mixed"):
             if _ck in iteration_metrics:
                 step_metrics[_ck] = float(iteration_metrics[_ck])
         # Auxiliary losses only where the term that produces them is switched on. Logged
@@ -1606,6 +1625,25 @@ def train_pipeline(
                 f"snapshot_{total_env_steps}steps.pt"
                 if snapshot_every_steps > 0 else f"snapshot_{int(elapsed)}s.pt")
             torch.save(model.state_dict(), snap_path)
+            # Hand this snapshot to the opponent pool, if it is growing from the run's own
+            # history. A *copy* is loaded from what was just written rather than the live model:
+            # adding the model under training would give the learner an opponent whose weights
+            # move with it, which is ordinary self-play wearing a costume.
+            if opponent_self_pool and trainer.opponent_pool is not None:
+                try:
+                    # deepcopy for the architecture, then overwrite with the snapshot's
+                    # weights. There is no model factory that reconstructs an arbitrary
+                    # configuration from metadata, and guessing one would be a way to build a
+                    # subtly different opponent.
+                    _opp = _copy.deepcopy(model)
+                    _opp.load_state_dict(torch.load(snap_path, map_location=dev,
+                                                    weights_only=True))
+                    trainer.opponent_pool.add(_opp.to(dev), total_env_steps)
+                except Exception as _e:
+                    # A pool that fails to grow is a degraded experiment, not a dead one --
+                    # say so loudly and keep training rather than losing the run.
+                    print(f"[opponent pool] FAILED to add snapshot at {total_env_steps}: {_e}",
+                          flush=True)
             # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
             # load_agent, the tournament runner and every eval module read it as one.
             save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,

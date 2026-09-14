@@ -393,6 +393,10 @@ class BaseNashPGTrainer:
         }
         metrics.update(self.buffer.diagnostics())
         metrics.update(self.critic_tracker.metrics())
+        # Pool size and span, so a pool that silently stops growing is visible as a flat line
+        # rather than being invisible. Without this the mechanism cannot be verified from a run.
+        if self.opponent_pool is not None:
+            metrics.update(self.opponent_pool.stats())
         return metrics
 
     def train_step(self) -> Dict[str, float]:
