@@ -29,13 +29,18 @@ Two practical consequences:
   **$ per 80M steps**, not on $ per hour and not on VRAM.
 
 **CPU is not free, and on a marketplace it is not automatic.** The engine is a C++ simulator that
-links no CUDA, so it runs on the host CPU, and a run measured **2.8 cores sustained while sharing
-a GPU** — call it **~5.6 cores at full GPU**, across 62 threads. On Vast you are renting a slice
-of a machine and the CPU allocation is a property of the *offer*, so it has to be filtered for:
-the field is `cpu_cores_effective`. An instance with two effective cores will run at a fraction of
-the speed no matter how good the GPU is.
+links no CUDA, so it runs on the host CPU, and a solo run measures **2.7 cores sustained**, across
+62 threads. On Vast you are renting a slice of a machine and the CPU allocation is a property of
+the *offer*, so it has to be filtered for: the field is `cpu_cores_effective`. An instance with two
+effective cores will run at a fraction of the speed no matter how good the GPU is.
 
-A reasonable filter, giving headroom over the measured 5.6 cores:
+An earlier draft of this file reported ~5.6 cores, by taking the 2.8 cores measured *while two
+runs shared a GPU* and doubling it. That extrapolation assumed CPU demand scales with the GPU time
+a run gets, and direct measurement of a solo run says it does not: the figure is 2.7, not 5.6. The
+number mattered, because it is the one that decides which offers are even considered — the stale
+version filtered out cheap low-core hosts that are in fact adequate.
+
+A reasonable filter, giving headroom over the measured 2.7 cores:
 
 ```
 vastai search offers 'gpu_name=RTX_4090 num_gpus=1 cpu_cores_effective>=8 \

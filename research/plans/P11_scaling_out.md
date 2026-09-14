@@ -98,3 +98,35 @@ RunPod images generally run on Vast with little modification, so the image is no
 An account and an API key on whichever provider, and a decision on whether checkpoints come home
 or stay remote. Metrics (`training_metrics.jsonl`, the TensorBoard tree) are small and should sync
 continuously; snapshots are large and only the ones that feed a tournament need to come back.
+
+
+## Queued: does `torch.compile` hold up under training?
+
+**Scheduled to run immediately after the pooling replication settles, and not before** -- it
+changes the numerics of every arm, so introducing it mid-experiment would confound the comparison
+it is meant to accelerate.
+
+A local A/B measured **1.37x** end-to-end on `train_iteration()` (21,716 vs 15,808 steps/s). On
+the cheapest qualifying 4090 that is $1.24/arm falling to about $0.90, and it compounds across
+every arm of every future sweep, so it is worth more than a one-off saving.
+
+It is **not adopted yet**, for a specific reason: gradients from the compiled and eager paths
+agree only to **cosine 0.966**, and that discrepancy is unexplained. A 3.4% angular difference in
+the gradient is not obviously harmless in a self-play system that we already know oscillates, and
+"it trains fine" is not a measurement. Speed was never the open question.
+
+What the experiment has to establish, in order:
+
+1. **Where the 0.966 comes from.** TF32 matmuls, a fused kernel reassociating a reduction, and a
+   genuine bug all produce a number like that and are not equally acceptable. Compare eager,
+   eager+TF32-off, and compiled on identical inputs; if TF32 explains it, the remaining gap is the
+   thing to chase.
+2. **A matched A/B at equal steps.** Two arms differing only in `--compile`, same seed, same
+   budget, compared on the pooling experiment's own endpoint (mean |USSR - 0.5| over the final
+   40M) rather than on final-checkpoint Elo, which an oscillating quantity makes noisy.
+3. **Checkpoint round-trip.** A checkpoint written by a compiled run must load into an eager run
+   and score identically. Compiled modules wrap parameter names, and a checkpoint that silently
+   loads with a prefix mismatch would be the same class of failure as handing a model the wrong
+   observation layout: it returns a number instead of raising.
+
+Only if all three pass does it become the default; the flag stays opt-in until then.
