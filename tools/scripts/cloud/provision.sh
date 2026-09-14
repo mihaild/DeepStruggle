@@ -19,7 +19,9 @@
 # script was blocked in ssh.
 set -euo pipefail
 
-OFFER="${1:?usage: provision.sh <offer-id>}"
+# With ADOPT set there is no offer to rent, so the argument is optional in that mode only.
+OFFER="${1:-}"
+[ -n "$OFFER" ] || [ -n "${ADOPT:-}" ] || { echo "usage: provision.sh <offer-id>   (or ADOPT=<instance-id> provision.sh)" >&2; exit 2; }
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 VAST="$HERE/vast.sh"
@@ -40,11 +42,20 @@ except Exception as e:
     sys.exit(1)
 PYEOF
 
-echo "==> creating instance from offer $OFFER"
-CREATE=$("$VAST" create instance "$OFFER" --image "$IMAGE" --disk 60 --ssh --direct --raw)
-INSTANCE=$(echo "$CREATE" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("new_contract",""))')
-[ -n "$INSTANCE" ] || { echo "could not create: $CREATE" >&2; exit 1; }
-echo "==> instance $INSTANCE  (destroy with: $VAST destroy instance $INSTANCE -y)"
+# ADOPT=<id> takes over an instance that already exists rather than renting another. The wait
+# loop below times out at MAX_MIN, but a host that was still pulling a 3 GB image at that point
+# usually finishes soon after and is then perfectly good -- and billing either way. Adopting it
+# keeps the completed download instead of paying for a second one.
+if [ -n "${ADOPT:-}" ]; then
+    INSTANCE="$ADOPT"
+    echo "==> adopting existing instance $INSTANCE (skipping creation)"
+else
+    echo "==> creating instance from offer $OFFER"
+    CREATE=$("$VAST" create instance "$OFFER" --image "$IMAGE" --disk 60 --ssh --direct --raw)
+    INSTANCE=$(echo "$CREATE" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("new_contract",""))')
+    [ -n "$INSTANCE" ] || { echo "could not create: $CREATE" >&2; exit 1; }
+    echo "==> instance $INSTANCE  (destroy with: $VAST destroy instance $INSTANCE -y)"
+fi
 
 HOST=""; PORT=""
 for _ in $(seq 1 $((MAX_MIN * 4))); do
