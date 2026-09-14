@@ -23,6 +23,16 @@ emits on every terminal state:
 Every line is an event. Exits when the run reaches a terminal state.
 
     tools/scripts/watch_run.py <run-dir> --target-steps 240000000 [--interval 120]
+
+**This is the progress channel, not the completion channel.** Prefer to launch the run itself in
+the background so that its own exit is the notification -- one event, for success and crash
+alike, with nothing to arm and nothing to remember. Use this script when the *intermediate*
+states matter: a stall, or a run that exits without logging an iteration.
+
+If it is watched by something with a deadline, the deadline must outlast the run. A 160M-step arm
+is about 3.5 hours; a watch capped at one hour is killed first, and the completion it existed to
+report then arrives as silence -- which is indistinguishable from the run still going. That is a
+real failure that happened, not a hypothetical.
 """
 from __future__ import annotations
 
