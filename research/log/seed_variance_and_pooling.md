@@ -95,3 +95,66 @@ with no new training. If it buys nothing, the variance question is moot and the 
   common opponents.
 * **Report distributions, not points.** Where arms allow it, IQM with stratified bootstrap
   intervals (Agarwal et al. 2021) rather than means, so a single runaway arm does not dominate.
+
+
+---
+
+## Per-entity heads: measured, and the variance claim narrowed
+
+A tournament of existing finals — 3 `heads=64` arms against 5 `heads=None` arms, 250 games per
+side, 22,500 games, no new training. A screen rather than an ablation: the `p1_*` and `arm_*`
+lineages differ from E3-17 in more than the heads.
+
+`heads=64` took the top three Elo places (1978, 1967, 1945) against 1940, 1936, 1865, 1845, 1836
+— group means 1963 vs 1884. But the groups overlap: the best `heads=None` arm is 5 Elo below the
+worst `heads=64` arm, which is nothing. The margin rests on the weaker `p1_scalar`/`armH2` arms.
+
+**Restricting to cross-group games and reading each side separately:**
+
+| | heads=64 | heads=None | diff |
+|:---|---:|---:|---:|
+| as USSR (vs the other group's US) | 83.4% | 62.1% | **+21.3 pp** |
+| as US (vs the other group's USSR) | 37.9% | 16.6% | **+21.3 pp** |
+
+Attention lifts **both sides by the same 21.3 pp**, to one decimal across 3,750 games per
+direction. It is not a USSR-specialist architecture. `heads=64` playing US still loses to
+`heads=None` playing USSR (37.9%), but that is the game's side advantage at this strength — it
+applies to HeuristicBot (+9.9 pp) and even RandomBot (+0.6 pp) — not a defect of attention.
+
+**So the earlier "heads=64 has ~7x the seed variance" needs narrowing.** Seed spread *on Elo*
+within genuinely same-config pairs is comparable across levels: E3-17 22 Elo, p1_scalar 20,
+p1_identity 4. The 7x applies only to the **side-imbalance endpoint**, and since `heads=64` arms
+sit further from balance to begin with, that extra spread is plausibly a consequence of distance
+from the bound at zero rather than an independent defect.
+
+**Conclusion: do not roll back to E3-12.** Attention buys a uniform, symmetric +21.3 pp and ~79
+Elo with no penalty in strength consistency. Side imbalance should be attacked directly, not by
+reverting the backbone.
+
+## The US side degrades from 80M to 160M, reproducibly
+
+Self-play US win rate at tau=1.0, n=384, for every arm holding both an 80M snapshot and a final
+(E3-18-22 has no 80M snapshot and is absent rather than approximated):
+
+| arm | US% @80M | US% @160M | change |
+|:---|---:|---:|---:|
+| E3-17-22 (no pool) | 49.3% | 13.0% | **−36.3 pp** |
+| E3-17-24 (no pool) | 50.0% | 20.6% | **−29.4 pp** |
+| E3-20-22 (pooled) | 24.5% | 25.0% | +0.5 pp |
+
+Both no-pool arms start at **near-perfect balance** — 49.3% and 50.0%, which is not a coincidence
+worth ignoring — and lose about 30 pp of US strength over the following 80M. Same direction, large
+magnitude, two independent seeds. This is the most reproducible result in this programme, and it
+is more specific than "imbalance oscillates": the *US* side is what decays, from a balanced
+starting point, during the second half of training.
+
+The pooled arm stayed flat, but it was already at 24.5% at 80M, so "did not degrade" may be a
+floor effect rather than protection. One pooled arm cannot separate those.
+
+Two consequences worth acting on:
+
+* **80M is not a waypoint to 160M; it may be better than 160M.** The unpooled control also ranks
+  above its own 160M descendant on Elo (1998 vs 1939) in an earlier arena. Longer is not
+  monotonically better on this axis, so a run's budget should not be assumed benign.
+* **The endpoint should probably be read against 80M**, not only in absolute terms, since both
+  arms pass through balance on the way to imbalance.
