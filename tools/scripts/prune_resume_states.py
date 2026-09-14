@@ -13,13 +13,19 @@ never exact multiples of anything -- so `steps % stride == 0` keeps nothing at a
 `resume_state.pt` (the newest, untagged) is never touched: it is what an interrupted run restarts
 from, and a run in progress rewrites it continuously.
 
-Dry run by default. Pass --apply to delete.
+**Nothing is deleted.** Files are *moved* to a quarantine directory, preserving the run directory
+name, so what was thinned can be reviewed and removed by hand. An earlier version of this script
+deleted outright and destroyed 34.8GB across 678 files that were not recoverable; moving costs
+nothing on the same filesystem and makes the operation reversible.
+
+Dry run by default. Pass --apply to move.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import shutil
 import sys
 from typing import Dict, List, Tuple
 
@@ -59,7 +65,12 @@ def main() -> int:
                     help="Directory of run directories, or a single run directory")
     ap.add_argument("--stride", type=int, default=40_000_000,
                     help="Keep a tagged resume roughly every this many steps")
-    ap.add_argument("--apply", action="store_true", help="Actually delete (default: dry run)")
+    ap.add_argument("--apply", action="store_true",
+                    help="Actually move the files (default: dry run)")
+    ap.add_argument("--quarantine", default="/workspace/data/checkpoints_cleanup",
+                    help="Where thinned files are moved to, under <run-name>/<file>")
+    ap.add_argument("--delete", action="store_true",
+                    help="Delete instead of moving. Not the default, and not reversible.")
     args = ap.parse_args()
 
     root = os.path.abspath(args.root)
@@ -89,17 +100,33 @@ def main() -> int:
         for f in keep:
             print(f"    keep   {f}")
         if args.apply:
+            dest_dir = os.path.join(args.quarantine, os.path.basename(run))
+            if not args.delete:
+                os.makedirs(dest_dir, exist_ok=True)
             for f in removed:
                 path = os.path.join(run, f)
                 try:
-                    os.remove(path)
+                    if args.delete:
+                        os.remove(path)
+                    else:
+                        dest = os.path.join(dest_dir, f)
+                        # shutil.move rather than os.rename: the quarantine may be on a
+                        # different filesystem, where rename fails with EXDEV.
+                        shutil.move(path, dest)
                 except OSError as e:
                     print(f"    FAILED {f}: {e}")
 
-    verb = "freed" if args.apply else "would free"
-    print(f"\n{verb} {human(total_freed)} across {total_removed} files")
     if not args.apply:
-        print("dry run -- pass --apply to delete")
+        verb = "would move"
+    elif args.delete:
+        verb = "DELETED"
+    else:
+        verb = "moved"
+    print(f"\n{verb} {human(total_freed)} across {total_removed} files")
+    if args.apply and not args.delete and total_removed:
+        print(f"quarantined under {args.quarantine}/<run-name>/ -- review and remove by hand")
+    if not args.apply:
+        print("dry run -- pass --apply to move (or --apply --delete to remove outright)")
     return 0
 
 
