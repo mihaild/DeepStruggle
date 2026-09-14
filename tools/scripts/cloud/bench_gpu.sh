@@ -74,11 +74,20 @@ echo "==> instance $INSTANCE"
 SSH_URL=""
 for _ in $(seq 1 "$((MAX_MIN * 4))"); do
     INFO=$("$VAST" show instance "$INSTANCE" --raw 2>/dev/null || echo '{}')
+    # With --direct the reachable endpoint is public_ipaddr:direct_port_start. ssh_host:ssh_port
+    # is the PROXY, which hangs in banner exchange against a host that is plainly `running` --
+    # it cost three rows of the first GPU sweep. Fall back to the proxy only when no direct port
+    # is published. Same resolution as provision.sh; keep the two in step.
     read -r STATUS HOST PORT <<< "$(echo "$INFO" | /workspace/.venv/bin/python -c \
         'import json,sys
 d=json.load(sys.stdin)
 d=d[0] if isinstance(d,list) and d else d
-print(d.get("actual_status",""), d.get("ssh_host",""), d.get("ssh_port",""))')"
+port = d.get("direct_port_start")
+if port and port != -1:
+    host = d.get("public_ipaddr") or ""
+else:
+    host, port = d.get("ssh_host",""), d.get("ssh_port","")
+print(d.get("actual_status",""), host or "", port or "")')"
     if [ "$STATUS" = "running" ] && [ -n "$HOST" ] && [ "$HOST" != "None" ]; then
         SSH_URL="root@${HOST}"
         if ssh -p "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
