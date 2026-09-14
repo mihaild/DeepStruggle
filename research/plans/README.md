@@ -133,3 +133,4 @@ instrument.
 ```
 - [Restoring the advantage signal](restoring_advantage_signal.md) — why komi does not port, and the ranked options that do
 - [P10 — Breaking the advantage collapse](P10_opponent_sampling.md) — the four experiments, awaiting approval
+- [P11 — The experiment programme, and running it in parallel](P11_scaling_out.md) — seeds, phases, and cheap GPU options
