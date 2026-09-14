@@ -5,6 +5,11 @@
 observation, no checkpoint invalidation). Experiments 1 and 3 need no code at all.
 **Instruments:** `critic/auc`, `critic/brier_skill`, `adv_std_raw` — all now logged live.
 
+**Throughput: ~45M steps/hour**, so 80M steps is under two hours. Measured from E3-17-22's
+own snapshot timestamps: 5M at 16:55, 80M at 18:34, 160M at 20:20 — 3.5h for the whole run.
+`metadata.json` records `duration_seconds: 86400`, which is the *configured budget*, not
+elapsed time; reading it as elapsed overstated every cost here by about 7x.
+
 ## What is being tested
 
 Once one side finds a strategy the other has not answered, outcomes become predictable, the critic
@@ -29,7 +34,7 @@ perspective-conditioned policy. A response may therefore be close at hand.
 here is unnecessary. The US still wins ~10% of games, so the signal is not identically zero.
 
 ```
---resume <E3-17-22>/resume_160038912steps.pt   (+80M steps, ~12h)
+--resume <E3-17-22>/resume_160038912steps.pt   (+80M steps, ~1.8h)
 ```
 
 **Read:** `critic/auc` (0.73 at 160M), `critic/brier_skill` (0.16), `adv_std_raw` (0.03-0.05),
@@ -48,10 +53,19 @@ This is AlphaStar's *main exploiter* in miniature, and a special case of experim
 one snapshot, fraction 1.0, learner side-locked to US — so building 4's mechanism gives this for
 free, and this is the thing worth running first with it.
 
-**Setup.** Opponent: `E3-17-22/snapshot_final.pt`, frozen, always USSR. Learner: initialised from
-the same checkpoint, always US, only its own transitions receiving policy gradient. ~40M steps
-(~6h); note only about half the transitions carry policy gradient, so the effective sample rate
-per wall-clock is halved.
+**Setup.** Opponent: `E3-17-22/snapshot_final.pt` (160M), frozen, always USSR. Learner:
+initialised from **`resume_80019456steps.pt` (80M)**, always US, only its own transitions
+receiving policy gradient.
+
+Starting the learner at 80M rather than at the opponent's own 160M matters. By 160M the US side of
+the policy has already degenerated -- probability mass on a contested France fell from 0.177 to
+0.096, and the critic from 0.865 AUC to 0.728 -- so initialising there would hand the experiment a
+learner that has already unlearned the thing being asked for. 80M is the last checkpoint where
+both the US policy and the critic are still healthy.
+
+**Budget.** 80M steps (~1.8h). Only about half the transitions carry policy gradient, so this is
+roughly 40M policy-updated steps; the extra length buys back that halving rather than paying for
+a longer experiment.
 
 **Read:** US win rate against the frozen opponent over training; `adv_std_raw` and `critic/auc` on
 the learner.
@@ -71,7 +85,7 @@ concluding anything general.
 
 ## Experiment 3 — resume from 80M with a different seed. Does it get stuck again?
 
-**Setup.** `--resume <E3-17-22>/resume_80019456steps.pt --seed <new>`, +80M steps (~12h). No code.
+**Setup.** `--resume <E3-17-22>/resume_80019456steps.pt --seed <new>`, +80M steps (~1.8h). No code.
 
 **Read:** whether the collapse recurs, and if so whether it takes the same form (USSR via Europe
 control) or a different one.
@@ -105,9 +119,11 @@ and from the learner's point of view the opponent's move is part of the environm
 head can keep training on every state, since a state's value does not depend on who chose the
 action that reached it.
 
-Open sub-decision: whether the KL-to-`π_ref` term is also masked. Leaving it on all states gives
-broader coverage for the regulariser; masking keeps it consistent with the policy loss. Worth
-deciding explicitly rather than by omission.
+**KL-to-`π_ref`: unmasked**, decided. It is computed on every state, including those the
+opponent's move led to, which gives the regulariser broader state coverage than the policy loss
+gets. Revisit only if the KL term behaves oddly in the mixed environments -- worth watching
+`internal/kl_div` for a step change when mixing switches on, since a KL measured over a wider
+state distribution is not on the same scale as one measured over the learner's own.
 
 **Pool composition.** Uniform over a capped set (8-12) of snapshots spanning the run, refreshed as
 new ones appear. Uniform maximises outcome variance, which is the quantity being restored.
@@ -135,16 +151,17 @@ whether the mechanism is doing what it is supposed to.
 
 ## Suggested order and cost
 
-| | needs code | cost | why here |
-|:---|:---|---:|:---|
-| 1. continue to 240M | no | ~12h | control; if it self-corrects, stop |
-| 3. resume 80M, new seed | no | ~12h | is the basin reached deterministically |
-| build the opponent mechanism | yes | — | gives 2 and 4 |
-| 2. frozen 160M USSR | (above) | ~6h | decisive: does a response exist |
-| 4. full pooled sampling | (above) | ~24h | the actual fix, if 2 says yes |
+| | needs code | steps | cost | why here |
+|:---|:---|---:|---:|:---|
+| 1. continue 160M -> 240M | no | 80M | ~1.8h | control; if it self-corrects, stop |
+| 3. resume 80M, new seed | no | 80M | ~1.8h | is the basin reached deterministically |
+| build the opponent mechanism | yes | — | — | gives 2 and 4 |
+| 2. frozen 160M USSR, learner from 80M | (above) | 80M | ~1.8h | decisive: does a response exist |
+| 4. full pooled sampling | (above) | 160M | ~3.5h | the actual fix, if 2 says yes |
 
-1 and 3 need no code and can start immediately. The GPU is at 98% utilisation with ~14 GB of 24 GB
-free, so two runs fit in memory but will contend for compute — sequential is the honest schedule
-unless a slowdown is acceptable.
+Everything is cheap at ~45M steps/hour: 1 and 3 together are under four hours and need no code at
+all. The GPU is at 98% utilisation with ~14 GB of 24 GB free, so two runs fit in memory but
+contend for compute; sequential is still the honest schedule while E3-15-22 finishes.
 
-Build the mechanism while 1 and 3 run, then 2, then 4 only if 2 says a response exists.
+Build the mechanism while 1 and 3 run, then 2, then 4 only if 2 says a response exists. Because
+the runs are this short, 2 is worth extending rather than cutting if its trend is ambiguous.
