@@ -224,6 +224,18 @@ def run_match(
     opening: Optional[str] = None,
 ) -> Tuple[ReplayLogDict, str]:
     """Runs a full Twilight Struggle game between two specified agents and saves standardized replay."""
+    # The id and the filename must agree. With --output the file used the caller's name while the
+    # id stayed a timestamp, so a replay called s240_1.tslog.json identified itself as
+    # match_1789505117 -- a number appearing nowhere else, which made tracing a reported problem
+    # back to its file a matter of opening every one. An explicit --game-id still wins; otherwise
+    # the id is taken from the output filename, which callers already name descriptively.
+    if game_id is None and output_path is not None:
+        base = os.path.basename(output_path)
+        for suffix in (".tslog.json", ".json"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+        game_id = base or f"match_{int(time.time())}"
     if game_id is None:
         game_id = f"match_{int(time.time())}"
 
