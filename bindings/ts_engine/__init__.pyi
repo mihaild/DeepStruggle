@@ -584,6 +584,11 @@ class GameState:
 
     def to_dict(self) -> dict: ...
 
+    def to_save_dict(self) -> dict:
+        """
+        Named-field save of a STARTING position: scalars, RNG, card locations and board influence. Round-trips with from_save_dict. Does NOT carry the decision-context stack, action history or turn aggregates, so it cannot resume a mid-game position.
+        """
+
     def to_json(self) -> str: ...
 
 def has_held_scoring_card(arg0: GameState, arg1: Player, /) -> bool: ...
@@ -747,6 +752,11 @@ class CardData:
 
 def state_to_dict(arg: GameState, /) -> dict:
     """Convert GameState to Python dictionary"""
+
+def state_from_save_dict(arg: dict, /) -> GameState:
+    """
+    Rebuild a STARTING position from to_save_dict output. Missing keys take their default, so a save written before a field existed still loads -- which is why this is named fields and not a struct blob, whose layout the first new field would break. It does not restore the context stack, action history or turn aggregates, so it must not be used to resume a game in progress.
+    """
 
 def get_flat_action_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
 

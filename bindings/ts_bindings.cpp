@@ -95,6 +95,108 @@ static const char* timing_branch_to_str(uint8_t branch) {
 }
 
 // Helper: Convert entire GameState to a detailed Python dictionary
+namespace {
+
+// Named-field save format for a game's STARTING position. See from_save_dict for the scope.
+nb::dict game_state_to_save_dict(const ts::GameState& state) {
+    nb::dict d;
+    d["format"] = "ts_save_v1";
+
+    d["victory_points"] = state.victory_points;
+    d["defcon"] = state.defcon;
+    d["turn"] = state.turn;
+    d["action_round"] = state.action_round;
+    d["us_mil_ops"] = state.us_mil_ops;
+    d["ussr_mil_ops"] = state.ussr_mil_ops;
+    d["us_space_track"] = state.us_space_track;
+    d["ussr_space_track"] = state.ussr_space_track;
+    d["phasing_player"] = static_cast<int>(state.phasing_player);
+    d["current_phase"] = static_cast<int>(state.current_phase);
+    d["headline_us_card"] = state.headline_us_card;
+    d["headline_ussr_card"] = state.headline_ussr_card;
+    d["headline_first_card"] = state.headline_first_card;
+    d["headline_second_card"] = state.headline_second_card;
+    d["headline_stage"] = state.headline_stage;
+    d["forced_card_player"] = static_cast<int>(state.forced_card_player);
+    d["forced_card_id"] = state.forced_card_id;
+    d["defcon_dropped_to_2"] = state.defcon_dropped_to_2;
+    d["china_card_holder"] = static_cast<int>(state.china_card_holder);
+    d["china_card_playable"] = state.china_card_playable;
+    d["persistent_effects"] = state.persistent_effects;
+    d["rng_state"] = state.rng_state;
+
+    nb::list locs;
+    for (int i = 0; i <= 110; ++i) locs.append(static_cast<int>(state.card_locations[i]));
+    d["card_locations"] = locs;
+
+    nb::list us_inf, ussr_inf;
+    for (int i = 0; i < 84; ++i) {
+        us_inf.append(state.countries[i].us_influence);
+        ussr_inf.append(state.countries[i].ussr_influence);
+    }
+    d["us_influence"] = us_inf;
+    d["ussr_influence"] = ussr_inf;
+    return d;
+}
+
+template <typename T>
+T save_get(const nb::dict& d, const char* key, T fallback) {
+    if (!d.contains(key)) return fallback;   // missing field -> default, so old saves still load
+    try { return nb::cast<T>(d[key]); } catch (...) { return fallback; }
+}
+
+ts::GameState game_state_from_save_dict(const nb::dict& d) {
+    ts::GameState s{};
+    ts::Engine::init_game(s, 1);   // a valid baseline; every field below overwrites it
+
+    s.victory_points = save_get<int8_t>(d, "victory_points", s.victory_points);
+    s.defcon = save_get<uint8_t>(d, "defcon", s.defcon);
+    s.turn = save_get<uint8_t>(d, "turn", s.turn);
+    s.action_round = save_get<uint8_t>(d, "action_round", s.action_round);
+    s.us_mil_ops = save_get<uint8_t>(d, "us_mil_ops", s.us_mil_ops);
+    s.ussr_mil_ops = save_get<uint8_t>(d, "ussr_mil_ops", s.ussr_mil_ops);
+    s.us_space_track = save_get<uint8_t>(d, "us_space_track", s.us_space_track);
+    s.ussr_space_track = save_get<uint8_t>(d, "ussr_space_track", s.ussr_space_track);
+    s.phasing_player = static_cast<ts::Player>(
+        save_get<int>(d, "phasing_player", static_cast<int>(s.phasing_player)));
+    s.current_phase = static_cast<ts::Phase>(
+        save_get<int>(d, "current_phase", static_cast<int>(s.current_phase)));
+    s.headline_us_card = save_get<uint8_t>(d, "headline_us_card", s.headline_us_card);
+    s.headline_ussr_card = save_get<uint8_t>(d, "headline_ussr_card", s.headline_ussr_card);
+    s.headline_first_card = save_get<uint8_t>(d, "headline_first_card", s.headline_first_card);
+    s.headline_second_card = save_get<uint8_t>(d, "headline_second_card", s.headline_second_card);
+    s.headline_stage = save_get<uint8_t>(d, "headline_stage", s.headline_stage);
+    s.forced_card_player = static_cast<ts::Player>(
+        save_get<int>(d, "forced_card_player", static_cast<int>(s.forced_card_player)));
+    s.forced_card_id = save_get<uint8_t>(d, "forced_card_id", s.forced_card_id);
+    s.defcon_dropped_to_2 = save_get<uint8_t>(d, "defcon_dropped_to_2", s.defcon_dropped_to_2);
+    s.china_card_holder = static_cast<ts::Player>(
+        save_get<int>(d, "china_card_holder", static_cast<int>(s.china_card_holder)));
+    s.china_card_playable = save_get<uint8_t>(d, "china_card_playable", s.china_card_playable);
+    s.persistent_effects = save_get<uint64_t>(d, "persistent_effects", s.persistent_effects);
+    s.rng_state = save_get<uint64_t>(d, "rng_state", s.rng_state);
+
+    if (d.contains("card_locations")) {
+        nb::list locs = nb::cast<nb::list>(d["card_locations"]);
+        for (size_t i = 0; i < locs.size() && i <= 110; ++i) {
+            s.card_locations[i] = static_cast<ts::CardLocation>(nb::cast<int>(locs[i]));
+        }
+    }
+    if (d.contains("us_influence") && d.contains("ussr_influence")) {
+        nb::list us_inf = nb::cast<nb::list>(d["us_influence"]);
+        nb::list ussr_inf = nb::cast<nb::list>(d["ussr_influence"]);
+        for (size_t i = 0; i < us_inf.size() && i < 84; ++i) {
+            s.countries[i].us_influence = nb::cast<uint8_t>(us_inf[i]);
+        }
+        for (size_t i = 0; i < ussr_inf.size() && i < 84; ++i) {
+            s.countries[i].ussr_influence = nb::cast<uint8_t>(ussr_inf[i]);
+        }
+    }
+    return s;
+}
+
+}  // namespace
+
 nb::dict game_state_to_dict(const ts::GameState& state) {
     nb::dict d;
 
@@ -631,6 +733,10 @@ NB_MODULE(ts_engine, m) {
             s.card_locations[card_id] = loc;
         })
         .def("to_dict", &game_state_to_dict)
+        .def("to_save_dict", &game_state_to_save_dict,
+             "Named-field save of a STARTING position: scalars, RNG, card locations and board "
+             "influence. Round-trips with from_save_dict. Does NOT carry the decision-context "
+             "stack, action history or turn aggregates, so it cannot resume a mid-game position.")
         .def("to_json", [](const ts::GameState& s) { return ts::Serializer::to_json(s); });
 
     // Engine class
@@ -777,6 +883,12 @@ NB_MODULE(ts_engine, m) {
         });
 
     m.def("state_to_dict", &game_state_to_dict, "Convert GameState to Python dictionary");
+    m.def("state_from_save_dict", &game_state_from_save_dict,
+          "Rebuild a STARTING position from to_save_dict output. Missing keys take their default, "
+          "so a save written before a field existed still loads -- which is why this is named "
+          "fields and not a struct blob, whose layout the first new field would break. It does "
+          "not restore the context stack, action history or turn aggregates, so it must not be "
+          "used to resume a game in progress.");
 
 
     // Flat Action Mask & Codec exports

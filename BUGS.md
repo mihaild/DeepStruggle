@@ -69,3 +69,25 @@ depends on it, and no other suite is affected.
 **Fix.** Repair the imports and re-enable collection, or remove the suite. Leaving it collectable
 but broken is the one option to avoid, since a suite that aborts the run is worse than one that is
 honestly gated.
+
+---
+
+## TODO — no forced-deal affordance, so replays cannot survive a shuffle change
+
+**Status:** deferred by the owner. Not urgent while the engine is not changing between a replay's
+generation and its playback.
+
+Die rolls have a designed override: a `ROLL_DIE` action carries the acting player's value in
+`primary_id` and the opponent's in `secondary_id`, and `state_machine.cpp` documents it as "the
+only source of a forced die". Card deals have no equivalent -- `StateMachine::deal_cards_to_hands`
+draws from the deck through `state.rng_state` with no way for a caller to supply the result.
+
+**Consequence.** A replay cannot be made fully self-contained. Even with the starting position
+saved (`to_save_dict`/`state_from_save_dict`, added) and every die recorded, re-driving a recorded
+game on an engine whose shuffle or draw order has changed diverges at the first deal -- silently,
+producing a different game rather than an error.
+
+**Fix when it matters.** A forced-deal affordance mirroring the forced die: the replay source
+supplies the cards a deal produces, inert in normal play. Record *what was dealt* rather than deck
+order, since that also survives a change to the deal algorithm itself and not merely to the
+shuffle. See `research/plans/P13_one_game_driver.md` § "a replay must carry its own randomness".
