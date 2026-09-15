@@ -170,8 +170,28 @@ Each step is independently useful and revertable.
    The manual-roll affordance is preserved: the UI's `selectedDieRoll` (0 = auto, 1..6) rides in
    `secondary_id` and is passed as `drain_chance(forced_die=...)`, which is deliberate workbench
    behaviour for testing the engine, not a leaked field.
-6. **Training last** -- hottest path, costliest regression, and the only caller keeping the
-   batched fast path -- not started.
+6. **Training and `BatchMatchRunner`** -- **done, and deliberately not by wrapping `GameLoop`.**
+
+   Both drive N games at once through the C++ `VectorizedBatchRunner`, which already drains chance
+   nodes (`ts_bindings.cpp:1127`) and already refuses illegal actions. Putting them inside a
+   one-game Python loop would destroy exactly the batching this step's regression budget exists to
+   protect, so they share the *contract* rather than the implementation.
+
+   What was actually missing was the second half of that contract. `step_flat_all` returns a
+   per-game verdict -- 0 refused, 1 accepted, 2 terminal -- and **both callers discarded the
+   vector**: the same unchecked-return defect as the replay writers, in the hottest paths. A
+   refusal there means a game silently did not advance while the trainer credits the transition and
+   the tournament counts the result.
+
+   Measured before adding the check: **0 refusals in 5,052 batched steps** with actions sampled from
+   the legal mask. So these are guards, not fixes -- and a guard nothing exercises is decoration,
+   so `tests/training/test_batched_step_is_checked.py` forces a refusal in one game of a batch and
+   requires it to be raised and to name the game.
+
+   **Cost.** `0 in results` is a C-level scan with no allocation and lands inside run-to-run noise
+   on a batch of 256 (the raw call itself varied 130-146 us between runs). The obvious
+   `np.asarray(results)` version cost **+29%** of the step call, which is why it is not used; every
+   expensive part of the diagnostic runs only after a refusal has been found.
 
 ## The replay format's contract, as its readers implement it
 

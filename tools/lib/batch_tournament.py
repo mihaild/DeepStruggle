@@ -10,6 +10,7 @@ import numpy.typing as npt
 import torch
 
 import ts_engine as ts
+from tools.lib.game_step import IllegalActionError
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, RandomAgent, load_agent, resolve_device
 from ai.game_length import ply as game_ply
 from tools.lib.tournament_evaluator import classify_game_ending_reason
@@ -285,7 +286,15 @@ class BatchMatchRunner:
                             leg = np.where(masks[idx] > 0)[0]
                             actions[idx] = np.random.choice(leg) if len(leg) > 0 else 0
 
-                runner.step_flat_all(actions.tolist(), auto_advance=auto_advance)
+                step_results = runner.step_flat_all(actions.tolist(),
+                                                    auto_advance=auto_advance)
+                # 0 = refused. A refused action here means a game silently did not advance and the
+                # matchup's win rate is being computed over a position nobody played.
+                if 0 in step_results:
+                    bad = step_results.index(0)
+                    raise IllegalActionError(
+                        f"engine refused flat action {int(actions[bad])} in game {bad} of "
+                        f"{len(actions)}; {step_results.count(0)} of the batch refused")
                 steps += 1
 
             # Accumulate Chunk Results

@@ -291,7 +291,20 @@ class TsVectorizedEnv:
 
         # 2. Step C++ simulation in parallel
         action_list = [int(a) for a in actions]
-        self.runner.step_flat_all(action_list)
+        from tools.lib.game_step import IllegalActionError
+
+        step_results = self.runner.step_flat_all(action_list)
+        # 0 = the engine refused the action. Never observed (0 refusals in 5,052 batched steps),
+        # but if it happens the rollout is being built from a game that did not advance, so the
+        # data is wrong rather than merely late. `0 in list` is a C-level scan with no allocation;
+        # converting to numpy to ask the same question cost ~29% of the step call.
+        if 0 in step_results:
+            bad = step_results.index(0)
+            raise IllegalActionError(
+                f"engine refused flat action {int(action_list[bad])} in env {bad} of "
+                f"{self.num_envs} (decision "
+                f"{ts.DecisionType(int(self.runner.get_state(bad).ctx().decision_type))}); "
+                f"{step_results.count(0)} of the batch refused")
 
         # 3. Read post-step metrics BEFORE auto-resetting
         dones = np.array(self.runner.get_terminals(), dtype=bool)
