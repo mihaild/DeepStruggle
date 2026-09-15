@@ -142,17 +142,41 @@ which turns the replay corpus into a differential test of engine changes, the sa
 
 Each step is independently useful and revertable.
 
-1. **`step_checked`** in `tools/lib/game_step.py` -- done. The nucleus: a refused action raises
+1. **`step_checked`** in `tools/lib/game_step.py` -- **done**. The nucleus: a refused action raises
    instead of being ignored or recorded.
 2. **`game_json.py`** with the three conversions, and `json_to_action` tested round-trip against
-   `action_to_json` over a full game.
-3. **`GameLoop`** with an injected source and an explicit settle policy. `play_match` and
-   `BatchMatchRunner` migrate first: least coupled, already the same shape.
-4. **Recording as a wrapper**, writing every action including forced ones. Verified by re-driving
-   every replay the suite produces and requiring **zero** refusals, with no settle policy applied.
-5. **`GameSession`** onto the loop, with the three sources above.
+   `action_to_json` over a full game -- **done**.
+3. **`GameLoop`** with an injected source and an explicit settle policy -- **done**.
+4. **Recording as a wrapper** -- **done for both replay writers**: `tools/play_match.py` and
+   `tools/lib/self_play.py` (the writer invariant 6 names) now build sources and delegate. Both
+   carried the same defect, and it is the one this step existed to remove: each called
+   `log_step` and only *then* checked the engine's return value, so a refused action was written
+   into the replay as though it had happened. Under `GameLoop` a refusal raises out of
+   `step_checked` and nothing is recorded.
+5. **`GameSession`** onto the loop, with the three sources above -- not started.
 6. **Training last** -- hottest path, costliest regression, and the only caller keeping the
-   batched fast path.
+   batched fast path -- not started.
+
+## The replay format's contract, as its readers implement it
+
+This was read off the readers rather than assumed, after an earlier verification harness applied a
+replay's actions with no draining and reported 85-95% refusals on files that are in fact correct.
+The harness was wrong, not the replays.
+
+* **A chance node is not a step.** A `ROLL_DIE` with `decision_player == NONE` is reproducible from
+  the RNG, so no writer records it and every reader regenerates it
+  (`tests/replayer/test_replay_reproduces.py::_drain`, `web/ui`). `GameLoop` drains them inside the
+  step and never offers one to an `ActionSource` -- which also closes the hole that let a *bot*
+  choose its own dice (see ENG-2 in `BUGS.md`).
+* **`state_snapshot` is the state AFTER the action and after that drain.** Confirmed by
+  `web/server/session.py:475` (`state_snapshot=state_after`), `web/ui/src/main.ts:217` (reads
+  `state_snapshot.die_roll`, which only exists once the roll resolved) and `main.ts:178` (diffs VP
+  between consecutive snapshots).
+* **`flat_action_idx` is mandatory.** `_assert_reproduces` *skips* a replay that lacks it rather
+  than failing, so omitting the field retires the check instead of breaking it.
+
+A single-option *player* decision is a real step and is recorded (`SettlePolicy.RECORD_FORCED`);
+only chance nodes are silent.
 
 ## Constraints
 

@@ -15,6 +15,7 @@ from bindings.ts_env import check_obs_width
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
+from tools.lib.game_loop import GameLoop, SettlePolicy, StepRecord
 from tools.lib.openings import acting_side, scripted_setup_index
 
 
@@ -97,100 +98,107 @@ def generate_self_play_replay(
 
     setup_cursor: Dict[str, int] = {"US": 0, "USSR": 0}
 
-    step_index = 0
     blunders = BlunderCounts()
     last_card: dict[str, int] = {}
     if verbose:
         print("Step | Turn | AR | Player | DEFCON | VP | Action Description")
         print("-" * 75)
 
-    while not ts.Engine.is_terminal(state) and step_index < max_steps:
-        step_index += 1
-        p = state.ctx().decision_player if state.ctx().decision_player != ts.Player.NONE else state.phasing_player
-        player_name = "US" if p == ts.Player.US else ("USSR" if p == ts.Player.USSR else "NONE")
+    class PolicySource:
+        """The network's move, plus the bookkeeping that needs the pre-action position.
 
-        obs = np.array(ts.extract_observation(state, p), copy=False).reshape(1, -1)
-        mask = np.array(ActionEncoder.get_legal_mask(state), copy=False).reshape(1, -1)
+        The blunder check has to run here rather than in the recorder: it reads the card while it
+        is still in its owner's hand, which is only true before the action is applied.
+        """
 
-        obs_t = torch.from_numpy(obs).float().to(dev)
-        mask_t = torch.from_numpy(mask).to(dev)
+        def __init__(self) -> None:
+            self.last_desc = ""
 
-        forced_idx = (scripted_setup_index(state, acting_side(state), opening, setup_cursor)
-                      if opening else None)
-        if forced_idx is not None:
-            action_idx = forced_idx
-        else:
-            with torch.no_grad():
-                if hasattr(active_model, "sample_action"):
-                    act_t, _, _, _, _ = active_model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=False)
-                    action_idx = int(act_t.item())
-                else:
-                    logits, _ = active_model(obs_t, mask_t)
-                    action_idx = int(torch.argmax(logits, dim=-1).item())
+        def choose(self, st: ts.GameState) -> Optional[ts.MicroAction]:
+            p_enum = (st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE
+                      else st.phasing_player)
+            player_name = "US" if p_enum == ts.Player.US else (
+                "USSR" if p_enum == ts.Player.USSR else "NONE")
 
-        action_desc = ActionEncoder.get_action_name(state, action_idx)
-        ma = ts.ActionMask.decode_flat_action(state, action_idx)
+            forced_idx = (scripted_setup_index(st, acting_side(st), opening, setup_cursor)
+                          if opening else None)
+            if forced_idx is not None:
+                action_idx = forced_idx
+            else:
+                obs = np.array(ts.extract_observation(st, p_enum), copy=False).reshape(1, -1)
+                mask = np.array(ActionEncoder.get_legal_mask(st), copy=False).reshape(1, -1)
+                obs_t = torch.from_numpy(obs).float().to(dev)
+                mask_t = torch.from_numpy(mask).to(dev)
+                with torch.no_grad():
+                    if hasattr(active_model, "sample_action"):
+                        act_t, _, _, _, _ = active_model.sample_action(
+                            obs_t, mask_t, temperature=temperature, deterministic=False)
+                        action_idx = int(act_t.item())
+                    else:
+                        logits, _ = active_model(obs_t, mask_t)
+                        action_idx = int(torch.argmax(logits, dim=-1).item())
 
-        # Blunder check. SELECT_PLAY_MODE is where both halves are known -- which card and what it
-        # is being spent on -- and the card is still in its owner's hand there, which the rules
-        # read. Missile Envy forces a card on its recipient, so that play is not their error.
-        _dt = int(ma.decision_type)
-        if _dt == 1:
-            last_card[player_name] = int(ma.primary_id)
-        elif _dt == 2:
-            _mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
-            _card = last_card.get(player_name, 0)
-            if _mode and 1 <= _card <= 110:
-                _forced = (int(getattr(state, "forced_card_id", 0)) == _card
-                           and getattr(state, "forced_card_player", None) == p)
-                for _b in check_play(state, p, _card, _mode, forced=_forced, counts=blunders):
-                    if verbose:
-                        print(f"     !! BLUNDER {_b}")
+            self.last_desc = ActionEncoder.get_action_name(st, action_idx)
+            ma = ts.ActionMask.decode_flat_action(st, action_idx)
 
+            # Blunder check. SELECT_PLAY_MODE is where both halves are known -- which card and
+            # what it is being spent on -- and the card is still in its owner's hand there, which
+            # the rules read. Missile Envy forces a card on its recipient, so that play is not
+            # their error.
+            _dt = int(ma.decision_type)
+            if _dt == 1:
+                last_card[player_name] = int(ma.primary_id)
+            elif _dt == 2:
+                _mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                _card = last_card.get(player_name, 0)
+                if _mode and 1 <= _card <= 110:
+                    _forced = (int(getattr(st, "forced_card_id", 0)) == _card
+                               and getattr(st, "forced_card_player", None) == p_enum)
+                    for _b in check_play(st, p_enum, _card, _mode, forced=_forced, counts=blunders):
+                        if verbose:
+                            print(f"     !! BLUNDER {_b}")
+            return ma
+
+    source = PolicySource()
+
+    def _record(rec: StepRecord, after: ts.GameState) -> None:
+        """Runs only after the engine accepted the action -- a refusal raises out of the loop."""
+        dt = int(rec.action.decision_type)
         action_dict: ReplayActionDict = {
-            "flat_action_idx": action_idx,
-            "decision_type": int(ma.decision_type),
-            "primary_id": int(ma.primary_id),
-            "secondary_id": int(ma.secondary_id),
-            "flags": int(ma.flags),
-            "card_id": int(ma.primary_id) if int(ma.decision_type) in (1, 2, 3, 4) else None,
-            "target_id": int(ma.secondary_id) if int(ma.decision_type) in (5, 6, 7) else None,
+            "flat_action_idx": int(rec.flat) if rec.flat is not None else -1,
+            "decision_type": dt,
+            "primary_id": int(rec.action.primary_id),
+            "secondary_id": int(rec.action.secondary_id),
+            "flags": int(rec.action.flags),
+            "card_id": int(rec.action.primary_id) if dt in (1, 2, 3, 4) else None,
+            "target_id": int(rec.action.secondary_id) if dt in (5, 6, 7) else None,
         }
-
-        turn_before = int(state.turn)
-        ar_before = int(state.action_round)
-        phase_before = str(state.current_phase).replace("Phase.", "")
-
-        ok = ts.Engine.step_flat(state, action_idx)
-
-        # Resolve any chance nodes the action lands on, exactly as the vectorized runner
-        # does in VectorizedBatchRunner::step_flat_all. Asking the agent to choose at a
-        # ROLL_DIE node instead is not equivalent: for Summit (#45) it leaves the engine
-        # with a different phasing_player, which changes who acts next and who loses a
-        # DEFCON-1 ending, and games collapse to a fraction of their true length.
-        while (not ts.Engine.is_terminal(state)
-               and state.ctx().decision_player == ts.Player.NONE
-               and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-            ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
-
-        state_after_dict: GameStateDict = cast(GameStateDict, ts.state_to_dict(state))
-
+        desc = source.last_desc if not rec.forced else ActionEncoder.get_action_name(
+            after, int(rec.flat) if rec.flat is not None else 0)
         replay_logger.log_step(
-            step_index=step_index,
-            turn=turn_before,
-            ar=ar_before,
-            phase=phase_before,
-            player=player_name,
+            step_index=rec.index + 1,
+            turn=rec.turn,
+            ar=rec.action_round,
+            phase=rec.phase_name,
+            player=rec.player,
             action=action_dict,
-            description=action_desc,
-            state_snapshot=state_after_dict,
+            description=desc,
+            state_snapshot=cast(GameStateDict, rec.state_after),
         )
+        if verbose and (rec.index % 10 == 0 or after.current_phase == ts.Phase.GAME_OVER
+                        or "Scoring" in desc):
+            print(f"{rec.index + 1:4d} | {rec.turn:4d} | {rec.action_round:2d} | "
+                  f"{rec.player:>5s} | {after.defcon:6d} | {after.victory_points:+4d} | {desc}")
 
-        if verbose and (step_index % 10 == 0 or state.current_phase == ts.Phase.GAME_OVER or "Scoring" in action_desc):
-            print(f"{step_index:4d} | {turn_before:4d} | {ar_before:2d} | {player_name:>5s} | {state.defcon:6d} | {state.victory_points:+4d} | {action_desc}")
-
-        if not ok:
-            break
+    loop = GameLoop(
+        state, {ts.Player.US: source, ts.Player.USSR: source},
+        settle=SettlePolicy.RECORD_FORCED,
+        recorder=_record,
+        snapshot=lambda st: cast(GameStateDict, ts.state_to_dict(st)),
+        max_steps=max_steps,
+    )
+    outcome = loop.run()
+    step_index = outcome.steps
 
     term_util = ts.Engine.get_terminal_utility(state)
     winner = "US" if term_util > 0 else ("USSR" if term_util < 0 else "DRAW")

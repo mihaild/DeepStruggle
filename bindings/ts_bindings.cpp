@@ -100,7 +100,7 @@ namespace {
 // Named-field save format for a game's STARTING position. See from_save_dict for the scope.
 nb::dict game_state_to_save_dict(const ts::GameState& state) {
     nb::dict d;
-    d["format"] = "ts_save_v1";
+    d["format"] = "ts_save_v2";   // v1 dropped the decision stack; readers must know which
 
     d["victory_points"] = state.victory_points;
     d["defcon"] = state.defcon;
@@ -124,6 +124,58 @@ nb::dict game_state_to_save_dict(const ts::GameState& state) {
     d["china_card_playable"] = state.china_card_playable;
     d["persistent_effects"] = state.persistent_effects;
     d["rng_state"] = state.rng_state;
+
+    d["headline_first_owner"] = static_cast<int>(state.headline_first_owner);
+    d["headline_second_owner"] = static_cast<int>(state.headline_second_owner);
+    d["last_die_roll"] = state.last_die_roll;
+    d["last_opp_die_roll"] = state.last_opp_die_roll;
+
+    nb::dict roll;
+    roll["type"] = static_cast<int>(state.last_roll.type);
+    roll["roller"] = static_cast<int>(state.last_roll.roller);
+    roll["card_id"] = state.last_roll.card_id;
+    roll["country_id"] = state.last_roll.country_id;
+    roll["roll1"] = state.last_roll.roll1;
+    roll["mod1"] = state.last_roll.mod1;
+    roll["roll2"] = state.last_roll.roll2;
+    roll["mod2"] = state.last_roll.mod2;
+    roll["success"] = state.last_roll.success;
+    roll["net_delta"] = state.last_roll.net_delta;
+    d["last_roll"] = roll;
+
+    // The decision state machine. Without this the restored state is pointing at a different
+    // decision than the saved one, and every legal action and every observation differs.
+    nb::list frames;
+    for (size_t i = 0; i < state.ctx_stack.size(); ++i) {
+        const ts::DecisionContext& c = state.ctx_stack[i];
+        nb::dict f;
+        f["decision_player"] = static_cast<int>(c.decision_player);
+        f["decision_type"] = static_cast<int>(c.decision_type);
+        f["op_mode"] = static_cast<int>(c.op_mode);
+        f["pending_op_card"] = c.pending_op_card;
+        f["pending_ops_value"] = c.pending_ops_value;
+        f["remaining_steps"] = c.remaining_steps;
+        f["max_per_country"] = c.max_per_country;
+        f["allow_early_stop"] = c.allow_early_stop;
+        f["resolving_card"] = c.resolving_card;
+        f["timing_branch"] = c.timing_branch;
+        f["suppress_op_card_event"] = c.suppress_op_card_event;
+        f["event_granted_ops"] = c.event_granted_ops;
+        f["pending_roll"] = static_cast<int>(c.pending_roll);
+        f["roll_target"] = c.roll_target;
+        f["roll_actor"] = static_cast<int>(c.roll_actor);
+        f["event_stage"] = c.event_stage;
+        nb::list si, vn, nc;
+        for (size_t k = 0; k < c.start_influence_nodes.size(); ++k) si.append(c.start_influence_nodes[k]);
+        for (size_t k = 0; k < c.visited_nodes.size(); ++k) vn.append(c.visited_nodes[k]);
+        for (size_t k = 0; k < c.node_count_bits.size(); ++k) nc.append(c.node_count_bits[k]);
+        f["start_influence_nodes"] = si;
+        f["visited_nodes"] = vn;
+        f["node_count_bits"] = nc;
+        frames.append(f);
+    }
+    d["ctx_stack"] = frames;
+    d["ctx_stack_depth"] = state.ctx_stack_depth;
 
     nb::list locs;
     for (int i = 0; i <= 110; ++i) locs.append(static_cast<int>(state.card_locations[i]));
@@ -175,6 +227,70 @@ ts::GameState game_state_from_save_dict(const nb::dict& d) {
     s.china_card_playable = save_get<uint8_t>(d, "china_card_playable", s.china_card_playable);
     s.persistent_effects = save_get<uint64_t>(d, "persistent_effects", s.persistent_effects);
     s.rng_state = save_get<uint64_t>(d, "rng_state", s.rng_state);
+
+    s.headline_first_owner = static_cast<ts::Player>(
+        save_get<int>(d, "headline_first_owner", static_cast<int>(s.headline_first_owner)));
+    s.headline_second_owner = static_cast<ts::Player>(
+        save_get<int>(d, "headline_second_owner", static_cast<int>(s.headline_second_owner)));
+    s.last_die_roll = save_get<uint8_t>(d, "last_die_roll", s.last_die_roll);
+    s.last_opp_die_roll = save_get<uint8_t>(d, "last_opp_die_roll", s.last_opp_die_roll);
+
+    if (d.contains("last_roll")) {
+        nb::dict roll = nb::cast<nb::dict>(d["last_roll"]);
+        s.last_roll.type = static_cast<ts::RollType>(
+            save_get<int>(roll, "type", static_cast<int>(s.last_roll.type)));
+        s.last_roll.roller = static_cast<ts::Player>(
+            save_get<int>(roll, "roller", static_cast<int>(s.last_roll.roller)));
+        s.last_roll.card_id = save_get<uint8_t>(roll, "card_id", s.last_roll.card_id);
+        s.last_roll.country_id = save_get<uint8_t>(roll, "country_id", s.last_roll.country_id);
+        s.last_roll.roll1 = save_get<uint8_t>(roll, "roll1", s.last_roll.roll1);
+        s.last_roll.mod1 = save_get<int8_t>(roll, "mod1", s.last_roll.mod1);
+        s.last_roll.roll2 = save_get<uint8_t>(roll, "roll2", s.last_roll.roll2);
+        s.last_roll.mod2 = save_get<int8_t>(roll, "mod2", s.last_roll.mod2);
+        s.last_roll.success = save_get<bool>(roll, "success", s.last_roll.success);
+        s.last_roll.net_delta = save_get<int8_t>(roll, "net_delta", s.last_roll.net_delta);
+    }
+
+    if (d.contains("ctx_stack")) {
+        nb::list frames = nb::cast<nb::list>(d["ctx_stack"]);
+        for (size_t i = 0; i < frames.size() && i < s.ctx_stack.size(); ++i) {
+            nb::dict f = nb::cast<nb::dict>(frames[i]);
+            ts::DecisionContext& c = s.ctx_stack[i];
+            c = ts::DecisionContext{};
+            c.decision_player = static_cast<ts::Player>(save_get<int>(f, "decision_player", 0));
+            c.decision_type = static_cast<ts::DecisionType>(save_get<int>(f, "decision_type", 0));
+            c.op_mode = static_cast<ts::OpMode>(save_get<int>(f, "op_mode", 0));
+            c.pending_op_card = save_get<uint8_t>(f, "pending_op_card", 0);
+            c.pending_ops_value = save_get<uint8_t>(f, "pending_ops_value", 0);
+            c.remaining_steps = save_get<uint8_t>(f, "remaining_steps", 0);
+            c.max_per_country = save_get<uint8_t>(f, "max_per_country", 0);
+            c.allow_early_stop = save_get<uint8_t>(f, "allow_early_stop", 0);
+            c.resolving_card = save_get<uint8_t>(f, "resolving_card", 0);
+            c.timing_branch = save_get<uint8_t>(f, "timing_branch", 0);
+            c.suppress_op_card_event = save_get<uint8_t>(f, "suppress_op_card_event", 0);
+            c.event_granted_ops = save_get<uint8_t>(f, "event_granted_ops", 0);
+            c.pending_roll = static_cast<ts::RollType>(save_get<int>(f, "pending_roll", 0));
+            c.roll_target = save_get<uint8_t>(f, "roll_target", 0);
+            c.roll_actor = static_cast<ts::Player>(save_get<int>(f, "roll_actor", 0));
+            c.event_stage = save_get<uint8_t>(f, "event_stage", 0);
+            if (f.contains("start_influence_nodes")) {
+                nb::list v = nb::cast<nb::list>(f["start_influence_nodes"]);
+                for (size_t k = 0; k < v.size() && k < c.start_influence_nodes.size(); ++k)
+                    c.start_influence_nodes[k] = nb::cast<uint64_t>(v[k]);
+            }
+            if (f.contains("visited_nodes")) {
+                nb::list v = nb::cast<nb::list>(f["visited_nodes"]);
+                for (size_t k = 0; k < v.size() && k < c.visited_nodes.size(); ++k)
+                    c.visited_nodes[k] = nb::cast<uint64_t>(v[k]);
+            }
+            if (f.contains("node_count_bits")) {
+                nb::list v = nb::cast<nb::list>(f["node_count_bits"]);
+                for (size_t k = 0; k < v.size() && k < c.node_count_bits.size(); ++k)
+                    c.node_count_bits[k] = nb::cast<uint64_t>(v[k]);
+            }
+        }
+    }
+    s.ctx_stack_depth = save_get<uint8_t>(d, "ctx_stack_depth", s.ctx_stack_depth);
 
     if (d.contains("card_locations")) {
         nb::list locs = nb::cast<nb::list>(d["card_locations"]);

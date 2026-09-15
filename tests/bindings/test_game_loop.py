@@ -63,21 +63,88 @@ def test_it_plays_a_whole_game() -> None:
     assert res.utility in (-1.0, 0.0, 1.0)
 
 
+def _drain(state: ts.GameState) -> None:
+    """What every reader of the format does: resolve the chance nodes, which are never recorded."""
+    while (not ts.Engine.is_terminal(state)
+           and state.ctx().decision_player == ts.Player.NONE
+           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+
+
 def test_record_forced_records_every_step_so_a_replay_re_drives() -> None:
-    """The property that makes a replay portable: apply its actions in order, with no settling."""
+    """The property that makes a replay portable, stated as its readers implement it.
+
+    The format does not record chance nodes -- they are reproducible from the RNG, so a reader
+    regenerates them (`tests/replayer/test_replay_reproduces.py`, `web/ui`). What the loop must
+    guarantee is that everything *else* is recorded, so draining plus the recorded actions
+    reproduces the game exactly.
+    """
     seen: list[StepRecord] = []
     loop = GameLoop(_fresh(), _both(FirstLegal()), settle=SettlePolicy.RECORD_FORCED,
                     recorder=lambda rec, st: seen.append(rec))
     res = loop.run()
     assert len(seen) == res.steps
 
-    # Re-drive from scratch with NO settling. Every recorded action must be accepted.
     replay = _fresh()
     for rec in seen:
+        _drain(replay)
         assert ts.Engine.step(replay, rec.action), (
             f"recorded action at step {rec.index} was refused on replay")
+    _drain(replay)
     assert ts.Engine.is_terminal(replay) == res.terminal
     assert float(ts.Engine.get_terminal_utility(replay)) == res.utility
+
+
+def test_a_chance_node_is_never_recorded_and_never_reaches_a_source() -> None:
+    """A die nobody owns is not a decision.
+
+    Recording one would desynchronise every existing reader, all of which drain; handing one to a
+    source would ask a policy to choose its own luck.
+    """
+    seen: list[StepRecord] = []
+
+    class Watchful:
+        saw_chance = False
+
+        def choose(self, state: ts.GameState):
+            ctx = state.ctx()
+            if (ctx.decision_player == ts.Player.NONE
+                    and ctx.decision_type == ts.DecisionType.ROLL_DIE):
+                Watchful.saw_chance = True
+            return FirstLegal().choose(state)
+
+    GameLoop(_fresh(), _both(Watchful()), settle=SettlePolicy.RECORD_FORCED,
+             recorder=lambda rec, st: seen.append(rec)).run()
+    assert not Watchful.saw_chance, "a chance node was offered to an action source"
+    assert seen, "no steps recorded"
+    assert not any(r.player == "NONE" for r in seen), "a chance node was recorded as a step"
+
+
+def test_every_record_carries_the_flat_index_a_replay_needs() -> None:
+    """A replay lacking flat_action_idx is *skipped* by the fidelity test, not failed."""
+    seen: list[StepRecord] = []
+    GameLoop(_fresh(), _both(FirstLegal()), settle=SettlePolicy.RECORD_FORCED,
+             recorder=lambda rec, st: seen.append(rec)).run()
+    assert seen
+    assert all(r.flat is not None and 0 <= r.flat < 212 for r in seen)
+
+
+def test_the_snapshot_is_the_state_after_the_action() -> None:
+    """The format's contract, read off its readers: the UI shows a step's resulting board."""
+    seen: list[StepRecord] = []
+    GameLoop(_fresh(), _both(FirstLegal()), settle=SettlePolicy.RECORD_FORCED,
+             recorder=lambda rec, st: seen.append(rec),
+             snapshot=lambda st: {"turn": int(st.turn), "vp": int(st.victory_points),
+                                  "dt": int(st.ctx().decision_type)}).run()
+    assert seen
+    replay = _fresh()
+    for rec in seen:
+        _drain(replay)
+        ts.Engine.step(replay, rec.action)
+        _drain(replay)
+        assert rec.state_after is not None
+        assert rec.state_after["vp"] == int(replay.victory_points), (
+            f"step {rec.index}: snapshot is not the post-action state")
 
 
 def test_engine_settling_cannot_be_recorded_faithfully() -> None:

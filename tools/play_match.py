@@ -41,6 +41,7 @@ from web.server.replay_types import ReplayActionDict, GameStateDict
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 from tools.lib.scoring_formatter import format_regional_scoring_breakdown
 from tools.lib.checkpoint_utils import discover_checkpoints
+from tools.lib.game_loop import GameLoop, SettlePolicy, StepRecord
 from tools.lib.openings import OPENINGS, acting_side, scripted_setup_index
 
 
@@ -210,6 +211,55 @@ def forced_setup_action(state: "ts.GameState", opening: str,
     }
 
 
+class _BotSource:
+    """Adapts a bot to the loop's ActionSource protocol.
+
+    Three kinds of bot reach here and they want different things. A searcher needs the engine
+    state (`wants_game_state`); every other bot reads the JSON view plus the legal-action block;
+    and a scripted opening overrides both while it is still placing influence. Keeping that here
+    means the loop itself never learns about bots.
+    """
+
+    def __init__(self, bot: BaseBot, role: str, opening: Optional[str],
+                 cursor: Dict[str, int], commentary: bool) -> None:
+        self.bot = bot
+        self.role = role
+        self.opening = opening
+        self.cursor = cursor
+        self.commentary = commentary
+        self.last_view: Dict[str, Any] = {}
+        self.last_description = ""
+
+    def choose(self, state: "ts.GameState") -> Optional["ts.MicroAction"]:
+        action_dict = (forced_setup_action(state, self.opening, self.cursor)
+                       if self.opening else None)
+
+        d = cast(Dict[str, Any], state.to_dict())
+        # The engine's own observation, exactly as web/server/session.py hands it to a bot over
+        # the wire. A neural bot needs it and has no other source.
+        p_enum = state.ctx().decision_player
+        d["observation_b64"] = base64.b64encode(
+            np.asarray(ts.extract_observation(state, p_enum), dtype=np.float32).tobytes()
+        ).decode("ascii")
+        self.last_view = d
+
+        if action_dict is None:
+            if getattr(self.bot, "wants_game_state", False):
+                action_dict = getattr(self.bot, "select_from_state")(state)
+            else:
+                action_dict = self.bot.select_action(d, d.get("legal_actions", {}))
+        if action_dict is None:
+            return None
+
+        self.last_description = format_action_description(action_dict, d)
+        return ts.MicroAction(
+            ts.DecisionType(int(action_dict["decision_type"])),
+            int(action_dict["primary_id"]),
+            int(action_dict["secondary_id"]),
+            int(action_dict["flags"]),
+        )
+
+
 def run_match(
     agent_us_spec: str,
     agent_ussr_spec: str,
@@ -255,89 +305,73 @@ def run_match(
 
     setup_cursor: Dict[str, int] = {"US": 0, "USSR": 0}
 
-    step_count = 0
-    while not ts.Engine.is_terminal(state) and step_count < max_steps:
-        p_enum = state.ctx().decision_player
-        p_str = "US" if p_enum == ts.Player.US else "USSR"
-        active_bot = bot_us if p_str == "US" else bot_ussr
+    sources: Dict[Any, Any] = {
+        ts.Player.US: _BotSource(bot_us, "US", opening, setup_cursor, commentary),
+        ts.Player.USSR: _BotSource(bot_ussr, "USSR", opening, setup_cursor, commentary),
+    }
 
-        d = state.to_dict()
-        legal = d.get("legal_actions", {})
-        # The engine's own observation, exactly as web/server/session.py hands it to a bot over
-        # the wire. A neural bot needs it and has no other source: the Python reconstruction it
-        # used to fall back on rebuilt the observation field by field, drifted from the engine,
-        # and produced replays that did not reproduce the games training plays. It is gone, so
-        # this is where the observation comes from.
-        d["observation_b64"] = base64.b64encode(
-            np.asarray(ts.extract_observation(state, p_enum), dtype=np.float32).tobytes()
-        ).decode("ascii")
-
-        action_dict = (forced_setup_action(state, opening, setup_cursor)
-                       if opening else None)
-        if action_dict is None:
-            # A searcher needs the engine state to clone and step; every other bot reads the
-            # JSON view. The state is already in scope here, so no plumbing is required.
-            if getattr(active_bot, "wants_game_state", False):
-                action_dict = getattr(active_bot, "select_from_state")(state)
-            else:
-                action_dict = active_bot.select_action(d, legal)
-        if action_dict is None:
-            if verbose:
-                print(f"[{p_str}] Forfeited or passed.")
-            break
-
-        action = ts.MicroAction(
-            ts.DecisionType(int(action_dict["decision_type"])),
-            int(action_dict["primary_id"]),
-            int(action_dict["secondary_id"]),
-            int(action_dict["flags"]),
-        )
-
-        # Extract commentary and scoring breakdowns if requested
-        strat_text = getattr(active_bot, "last_strategy", "")
-        comm_text = getattr(active_bot, "last_commentary", "")
-        desc = format_action_description(action_dict, d)
-
-        # If a scoring card was selected, generate regional scoring breakdown
-        if commentary and action_dict.get("decision_type") == 1:
-            cid = action_dict.get("primary_id", 0)
-            if 1 <= cid <= 110 and ts.CardData.get_card_info(cid).get("is_scoring", False):
-                breakdown = format_regional_scoring_breakdown(d, cid)
-                if breakdown:
-                    comm_text = f"{comm_text}\n{breakdown}" if comm_text else breakdown
-
+    def _record(rec: StepRecord, after: "ts.GameState") -> None:
+        """Called only after the engine ACCEPTED the action -- refused ones never reach a replay."""
+        src = sources[ts.Player.US if rec.player == "US" else ts.Player.USSR]
+        view = cast(Dict[str, Any], rec.state_before or {})
+        dt = int(rec.action.decision_type)
         replay_action: ReplayActionDict = {
-            "decision_type": ts.DecisionType(int(action_dict["decision_type"])),
-            "primary_id": int(action_dict["primary_id"]),
-            "secondary_id": int(action_dict["secondary_id"]),
-            "flags": int(action_dict["flags"]),
+            # Without flat_action_idx the fidelity test SKIPS the replay instead of checking it,
+            # so omitting it would retire the check rather than fail it.
+            "flat_action_idx": int(rec.flat) if rec.flat is not None else -1,
+            "decision_type": dt,
+            "primary_id": int(rec.action.primary_id),
+            "secondary_id": int(rec.action.secondary_id),
+            "flags": int(rec.action.flags),
+            "card_id": int(rec.action.primary_id) if dt in (1, 2, 3, 4) else None,
+            "target_id": int(rec.action.secondary_id) if dt in (5, 6, 7) else None,
         }
-
+        action_dict = {
+            "decision_type": dt,
+            "primary_id": int(rec.action.primary_id),
+            "secondary_id": int(rec.action.secondary_id),
+            "flags": int(rec.action.flags),
+        }
+        # A forced action was played by the loop, not chosen by a bot, so it has no rationale of
+        # its own and the bot's last description belongs to a different move.
+        desc = (format_action_description(action_dict, view) if rec.forced
+                else (src.last_description or format_action_description(action_dict, view)))
         logger.log_step(
-            step_index=step_count,
-            turn=state.turn,
-            ar=state.action_round,
-            phase=d.get("current_phase_name", "ACTION"),
-            player=p_str,
+            step_index=rec.index,
+            turn=rec.turn,
+            ar=rec.action_round,
+            phase=str(view.get("current_phase_name", "ACTION")),
+            player=rec.player,
             action=replay_action,
             description=desc,
-            state_snapshot=cast(GameStateDict, d),
+            state_snapshot=cast(GameStateDict, rec.state_after or {}),
         )
+        if verbose and (commentary or isinstance(getattr(src, "bot", None), HumanBot)):
+            print(f"[Step {rec.index:3d} | Turn {rec.turn} AR {rec.action_round} | "
+                  f"{rec.player}]: {desc}")
+            if commentary and not rec.forced:
+                strat_text = getattr(src.bot, "last_strategy", "")
+                comm_text = getattr(src.bot, "last_commentary", "")
+                if strat_text:
+                    print(f"    • Rationale: {strat_text}")
+                if comm_text:
+                    print(f"    • Commentary: {comm_text}")
 
-        if verbose and (commentary or isinstance(active_bot, HumanBot)):
-            print(f"[Step {step_count:3d} | Turn {state.turn} AR {state.action_round} | {p_str}]: {desc}")
-            if commentary and strat_text:
-                print(f"    • Rationale: {strat_text}")
-            if commentary and comm_text:
-                print(f"    • Commentary: {comm_text}")
-
-        success = ts.Engine.step(state, action)
-        if not success:
-            if verbose:
-                print(f"❌ Engine rejected legal action: {action_dict}")
-            break
-
-        step_count += 1
+    loop = GameLoop(
+        state, sources,
+        # RECORD_FORCED so every step reaches the recorder: a replay must re-drive by applying its
+        # actions in order, without the reader knowing how it was produced.
+        settle=SettlePolicy.RECORD_FORCED,
+        recorder=_record,
+        snapshot=lambda st: cast(Dict[str, Any], st.to_dict()),
+        max_steps=max_steps,
+    )
+    outcome = loop.run()
+    step_count = outcome.steps
+    if verbose and outcome.forfeited_by:
+        print(f"[{outcome.forfeited_by}] Forfeited or passed.")
+    if verbose and outcome.hit_step_cap:
+        print(f"⚠ Hit the {max_steps}-step cap without finishing -- this is not a completed game.")
 
     # Classify outcome
     reason = classify_game_ending_reason(state)
