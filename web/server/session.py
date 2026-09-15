@@ -18,6 +18,7 @@ except ImportError:
         sys.path.insert(0, _build)
     import ts_engine
 from web.server.replay import ReplayLogger
+from tools.lib.game_step import IllegalActionError, drain_chance, step_checked
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 logger = logging.getLogger("ts_server.session")
@@ -423,17 +424,19 @@ class GameSession:
         state_before = self.state.to_dict()
         action = ts_engine.MicroAction(d_type, primary, secondary, flags)
 
-        success = ts_engine.Engine.step(self.state, action)
-        if not success:
-            logger.warning(f"[{self.game_id}] Engine rejected action step: {action_dict}")
-            self.history_snapshots.pop() # Remove snapshot on failed step
+        try:
+            step_checked(self.state, action, context=f"GameSession {self.game_id}")
+            # The action may land on a chance node -- a coup's die, a realignment, a space race,
+            # a war event. `secondary_id` carries the UI's manual-roll selection (0 = auto,
+            # 1..6 = forced), which is a deliberate workbench affordance for testing the engine.
+            drain_chance(self.state, forced_die=secondary,
+                         context=f"GameSession {self.game_id} chance node")
+        except IllegalActionError as e:
+            # Roll back rather than leaving the game parked mid-chance-node. Before the shared
+            # drain this path could not be reached safely: the loop simply spun on a refusal.
+            logger.warning(f"[{self.game_id}] Engine rejected action {action_dict}: {e}")
+            self.state = self.history_snapshots.pop()
             return False
-
-        # If the action produced a ROLL_DIE chance node (Coup, Realignment, Space Race, War Events), resolve it!
-        while (not ts_engine.Engine.is_terminal(self.state)
-               and self.state.ctx().decision_player == ts_engine.Player.NONE
-               and self.state.ctx().decision_type == ts_engine.DecisionType.ROLL_DIE):
-            ts_engine.Engine.step(self.state, ts_engine.MicroAction(ts_engine.DecisionType.ROLL_DIE, secondary, 0, 0))
 
         self.step_index += 1
         state_after = cast(GameStateDict, self.state.to_dict())

@@ -88,3 +88,27 @@ def assert_legal(state: ts.GameState, action: int, *, context: Optional[str] = N
         if context:
             msg = f"{msg} [{context}]"
         raise IllegalActionError(msg)
+
+
+def drain_chance(state: ts.GameState, *, forced_die: int = 0,
+                 context: Optional[str] = None) -> int:
+    """Resolve the chance nodes the game is sitting on, returning how many were resolved.
+
+    A chance node is a `ROLL_DIE` that no player owns. It is not a decision: no policy, bot or
+    human is asked for one, and no replay records it, because a reader regenerates it from the
+    RNG. Every writer and every reader of a replay has to agree on this, so it lives here rather
+    than being re-implemented per caller -- it was re-implemented four times, and the web copy
+    could not fail safely.
+
+    `forced_die` is the workbench's manual-roll affordance (`selectedDieRoll` in the UI, 0 for
+    auto, 1..6 to force). 0 means "roll normally"; anything outside 0..6 is refused by the engine
+    and raises here rather than looping.
+    """
+    resolved = 0
+    while (not ts.Engine.is_terminal(state)
+           and state.ctx().decision_player == ts.Player.NONE
+           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        step_checked(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, forced_die, 0, 0),
+                     context=context or "chance node")
+        resolved += 1
+    return resolved

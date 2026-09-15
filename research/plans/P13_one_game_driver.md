@@ -153,7 +153,23 @@ Each step is independently useful and revertable.
    `log_step` and only *then* checked the engine's return value, so a refused action was written
    into the replay as though it had happened. Under `GameLoop` a refusal raises out of
    `step_checked` and nothing is recorded.
-5. **`GameSession`** onto the loop, with the three sources above -- not started.
+5. **`GameSession`** onto the shared primitive -- **done**, though not in the shape this plan
+   assumed. The web session is *driven* by the network rather than driving itself: it applies one
+   action per message and returns. So it shares what sits underneath `GameLoop` -- `step_checked`
+   plus `drain_chance` -- rather than wrapping `GameLoop.run()`. Wrapping the loop would have meant
+   inverting control of a websocket handler for no gain.
+
+   This closed a live hang. The session's private drain looped `while` the game sat on a chance
+   node and exited only when the engine *accepted* the roll, discarding the return value. That was
+   survivable only because the engine accepted every forced die; once a die outside 0..6 is
+   refused, a client sending `secondary_id: 99` spins that loop forever. Measured: the old drain
+   body iterated 1,000 times without leaving the node for dice 7, 99 and 255, while a valid die
+   exits after one. It now raises, the handler rolls back to the snapshot it already took, and the
+   session stays playable.
+
+   The manual-roll affordance is preserved: the UI's `selectedDieRoll` (0 = auto, 1..6) rides in
+   `secondary_id` and is passed as `drain_chance(forced_die=...)`, which is deliberate workbench
+   behaviour for testing the engine, not a leaked field.
 6. **Training last** -- hottest path, costliest regression, and the only caller keeping the
    batched fast path -- not started.
 
@@ -163,6 +179,8 @@ This was read off the readers rather than assumed, after an earlier verification
 replay's actions with no draining and reported 85-95% refusals on files that are in fact correct.
 The harness was wrong, not the replays.
 
+* **One drain, in `tools/lib/game_step.py`.** `drain_chance` is the single implementation; it was
+  written four times before, and the web copy was the one that could not fail safely.
 * **A chance node is not a step.** A `ROLL_DIE` with `decision_player == NONE` is reproducible from
   the RNG, so no writer records it and every reader regenerates it
   (`tests/replayer/test_replay_reproduces.py::_drain`, `web/ui`). `GameLoop` drains them inside the

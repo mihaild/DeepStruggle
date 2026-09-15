@@ -4,6 +4,24 @@ This directory contains the backend server for Twilight Struggle, providing real
 
 ---
 
+## Stepping the engine
+
+`GameSession.handle_action` does not step the engine directly. It goes through
+`tools.lib.game_step`: `step_checked` (which raises `IllegalActionError` instead of returning a
+`False` somebody will discard) and then `drain_chance`, which resolves the chance nodes the action
+landed on. That is the same pair `GameLoop` uses for `play_match` and `self_play`, and the three
+have to agree or a replay written by one cannot be re-driven by another.
+
+Two rules follow:
+
+* **Never re-implement the drain.** The session used to own a copy that looped `while` the game sat
+  on a chance node, discarding the engine's return value, so a refused roll spun forever. A client
+  sending an out-of-range `secondary_id` was enough to hang the request.
+* **`secondary_id` on the action that reaches a chance node is the manual die** (the UI's
+  `selectedDieRoll`: 0 for auto, 1..6 to force). It is a workbench affordance for testing the
+  engine and is passed through as `drain_chance(forced_die=...)`. Anything outside 0..6 is refused
+  by the engine, and the handler answers `False` after rolling back.
+
 ## 1. File Overview
 
 - [`main.py`](main.py):

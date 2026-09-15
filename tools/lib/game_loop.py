@@ -27,7 +27,7 @@ import numpy as np
 
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
-from tools.lib.game_step import IllegalActionError, step_checked
+from tools.lib.game_step import IllegalActionError, drain_chance, step_checked
 
 
 class SettlePolicy(enum.Enum):
@@ -156,11 +156,7 @@ class GameLoop:
         """
         if not self.drain_chance:
             return
-        while (not ts.Engine.is_terminal(self.state)
-               and self.state.ctx().decision_player == ts.Player.NONE
-               and self.state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-            step_checked(self.state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0),
-                         context="GameLoop chance node")
+        drain_chance(self.state, context="GameLoop chance node")
 
     def _play(self, action, *, forced: bool, result: LoopResult) -> None:
         player = _player_name(acting_player(self.state))

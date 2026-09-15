@@ -248,3 +248,63 @@ async def test_session_handle_action_resolves_die_roll():
     coup_log = session.action_logs[-1]
     details = coup_log.get("details", [])
     assert any("🎲 Coup in" in d and "rolls 5" in d for d in details), f"Die roll not found in details: {details}"
+
+
+@pytest.mark.anyio
+async def test_an_out_of_range_manual_die_is_refused_without_hanging():
+    """A bad manual roll must be answered, not spun on.
+
+    The UI puts its manual-roll selection (0 = auto, 1..6) in `secondary_id`, and the session
+    applies it to the chance node the action lands on. The old drain looped `while` the game sat on
+    that node and exited only when the engine *accepted* the roll -- which it always did, because
+    it accepted any value. Now that a die outside 0..6 is refused, that loop would never exit, and
+    a client sending 99 would hang the request forever.
+
+    So: refuse it, roll back, and stay playable.
+    """
+    import asyncio
+
+    from web.server.session import GameSession
+    session = GameSession("test-bad-die", seed=42)
+
+    # Drive to a coup the same way the die-roll test above does.
+    for act in ({"decision_type": 5, "primary_id": 14, "secondary_id": 0, "flags": 0},
+                {"decision_type": 5, "primary_id": 13, "secondary_id": 0, "flags": 0},
+                {"decision_type": 5, "primary_id": 0, "secondary_id": 0, "flags": 128},
+                {"decision_type": 5, "primary_id": 6, "secondary_id": 0, "flags": 0},
+                {"decision_type": 5, "primary_id": 7, "secondary_id": 0, "flags": 0},
+                {"decision_type": 5, "primary_id": 0, "secondary_id": 0, "flags": 128},
+                {"decision_type": 1, "primary_id": 24, "secondary_id": 0, "flags": 0},
+                {"decision_type": 1, "primary_id": 25, "secondary_id": 0, "flags": 0}):
+        await session.handle_action(act)
+
+    while (session.state.to_dict()["current_phase_name"] == "HEADLINE"
+           or session.state.ctx().decision_type != ts_engine.DecisionType.SELECT_CARD):
+        valids = session.state.to_dict()["legal_actions"]["valid_ids"]
+        if not valids:
+            break
+        await session.handle_action({"decision_type": int(session.state.ctx().decision_type),
+                                     "primary_id": valids[0], "secondary_id": 0, "flags": 0})
+
+    c_ussr = list(session.state.to_dict()["hands"]["USSR"])[0]
+    await session.handle_action({"decision_type": 1, "primary_id": c_ussr, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 2, "primary_id": 1, "secondary_id": 0, "flags": 0})
+    await session.handle_action({"decision_type": 4, "primary_id": 1, "secondary_id": 0, "flags": 0})
+
+    vp_before = int(session.state.victory_points)
+    steps_before = session.step_index
+
+    # The coup, with a die no six-sided die can show. The timeout is the assertion: before the
+    # shared drain this call did not return.
+    accepted = await asyncio.wait_for(
+        session.handle_action({"decision_type": 5, "primary_id": 40, "secondary_id": 99, "flags": 0}),
+        timeout=10.0)
+
+    assert accepted is False, "an impossible die was accepted"
+    assert int(session.state.victory_points) == vp_before, "a refused action changed the score"
+    assert session.step_index == steps_before, "a refused action was counted as a step"
+
+    # And the game is still playable: the same coup with a real die goes through.
+    assert await session.handle_action(
+        {"decision_type": 5, "primary_id": 40, "secondary_id": 5, "flags": 0}), (
+        "the session did not recover from the refused action")
