@@ -93,6 +93,51 @@ broadcasts. Under the driver it keeps all of that and differs only in where acti
   that tests engine rules directly.
 * **against a bot** -- one seat is the browser, the other a `PlayerAgent`. Identical loop.
 
+## Decision 4: a replay must carry its own randomness
+
+A replay today stores `initial_state = {"seed": 4001}` and nothing else. Re-driving means
+`init_game(seed)` and replaying actions, so **any** engine change to setup, shuffling or the order
+in which random numbers are drawn makes every recorded game diverge -- silently, mid-replay,
+producing a different game rather than an error. That is broader than the observation-layout case:
+an observation change does not touch `GameState` at all, and the viewer renders from
+`state_snapshot`, so those replays already survive.
+
+Three gaps, of which one is already solved:
+
+**Die rolls -- already designed, and it works.** `state_machine.cpp` is explicit: *"The only source
+of a forced die is this action. `primary_id` is the acting player's die and `secondary_id` the
+opponent's."* A `ROLL_DIE` action carrying the value is the supported override, and the
+decision-type guard preserves it -- verified across all six values at box 4, where 1-3 advance and
+4-6 do not. What the guard closed was the *mis-encoded* route: flat 203-208 decode to
+`CHOOSE_BRANCH`, and the value reached `primary_id` only because the engine was not checking the
+type. Same laxity that let a `SELECT_CARD` action consume a coup's roll.
+
+**Card deals -- no equivalent exists.** `deal_cards_to_hands` draws from the deck through
+`state.rng_state` with no forced-deal path. So even with every die recorded, a replay diverges at
+the first deal if shuffling changes. This needs a matching affordance: a replay source supplies the
+cards a deal produces, ignored in normal play. Recording *what was dealt* is more robust than
+recording deck order, because it survives changes to the deal algorithm itself and not merely to
+the shuffle.
+
+**The starting position -- `to_dict` is lossy.** It omits `rng_state` entirely and carries only the
+top `decision_context`, not the `ctx_stack_depth` nesting, so no round-trip is possible today.
+
+### What to build
+
+* extend `to_dict` to be semantically complete (`rng_state`, full ctx stack) and add `from_dict`
+  that **defaults anything missing**. Named fields, not a raw struct blob: a blob is perfectly
+  lossless and layout-fragile, so adding one field would unload every old replay -- exactly the
+  failure this is meant to prevent. With defaults, a replay recorded before a starting-bonus
+  feature loads with the bonus at its default and plays.
+* a forced-deal affordance mirroring the forced die.
+* record, per replay: the full starting state, every action *including the forced ones*, every die
+  result, and every deal.
+
+A replay is then self-contained. It re-drives on any engine version, and where the engine has
+genuinely changed it **fails at that point** rather than quietly producing a different game --
+which turns the replay corpus into a differential test of engine changes, the same role
+`ts_replayer` plays for human games.
+
 ## Migration order
 
 Each step is independently useful and revertable.

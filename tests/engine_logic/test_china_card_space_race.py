@@ -66,38 +66,50 @@ def test_it_is_not_on_offer_when_the_next_box_is_out_of_reach() -> None:
     assert _modes(state) == [111]
 
 
-def test_racing_with_it_passes_it_to_the_opponent_rather_than_discarding_it() -> None:
-    """It changes hands whatever the die says -- that is the rule under test.
+def _race_with_the_china_card(die: int) -> ts.GameState:
+    """Play the China Card for the Space Race and force `die`.
 
-    The roll is taken through flat 211, the only action the mask offers at a ROLL_DIE node. An
-    earlier version forced a value with `step_flat(state, 203 + 2)`; flat 203-208 decode to
-    CHOOSE_BRANCH and are illegal here, and it only worked because the engine acted on a
-    mismatched decision type -- the same defect that let a real game skip a coup's die roll.
-
-    The success branch is not asserted because no legal action reaches it: the roll comes from the
-    engine's RNG and setting `rng_state` does not steer it. Box advancement is covered for real by
-    `test_replay_247_converts_end_to_end`, where the US races to box 5 in a recorded game.
+    Forcing the die is a designed affordance, not a test hack: a ROLL_DIE action carries the
+    acting player's value in `primary_id` (and the opponent's in `secondary_id`, used only by
+    realignment). `decision_type` matches the context, which is what distinguishes it from the
+    flat-203 route an earlier version of this test used -- that decoded to CHOOSE_BRANCH and
+    worked only because the engine did not check the type.
     """
     state = _holding_the_china_card(box=4)
     ts.Engine.step_flat(state, THE_CHINA_CARD - 1)
     ts.Engine.step_flat(state, SPACE)
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
-
-    before = int(state.us_space_track)
-    assert ts.Engine.step_flat(state, 211), "the engine refused the only legal die roll"
-    after = int(state.us_space_track)
-    assert after in (before, before + 1), f"space track moved from {before} to {after}"
-
-    assert state.china_card_holder == ts.Player.USSR
-    assert state.get_card_location(THE_CHINA_CARD) != ts.CardLocation.DISCARD_PILE
+    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, die, 0, 0)), (
+        f"engine refused a forced die of {die}")
+    return state
 
 
-def test_the_die_roll_is_the_only_legal_action_at_a_roll_node() -> None:
-    """Pins why the forced-roll trick is gone, so it is not quietly reintroduced.
+def test_racing_with_it_passes_it_to_the_opponent_rather_than_discarding_it() -> None:
+    """Box 4 needs 3 or less, and the card changes hands either way."""
+    made = _race_with_the_china_card(3)
+    assert int(made.us_space_track) == 5
+    assert made.china_card_holder == ts.Player.USSR
+    assert made.get_card_location(THE_CHINA_CARD) != ts.CardLocation.DISCARD_PILE
 
-    A CHOOSE_BRANCH action at a ROLL_DIE node must be refused. Before the engine guard it was
-    accepted and CONSUMED the roll, which is how a coup in a recorded game reached resolution
-    without ever rolling.
+    missed = _race_with_the_china_card(4)
+    assert int(missed.us_space_track) == 4, "box 4 advanced on a roll of 4"
+    assert missed.china_card_holder == ts.Player.USSR, (
+        "the card must pass to the opponent whether or not the attempt succeeds")
+    assert missed.get_card_location(THE_CHINA_CARD) != ts.CardLocation.DISCARD_PILE
+
+
+def test_the_forced_die_threshold_is_three_at_box_four() -> None:
+    """Every value, so the boundary is pinned rather than sampled."""
+    outcomes = {die: int(_race_with_the_china_card(die).us_space_track) for die in range(1, 7)}
+    assert outcomes == {1: 5, 2: 5, 3: 5, 4: 4, 5: 4, 6: 4}, outcomes
+
+
+def test_a_mismatched_decision_type_cannot_force_a_die() -> None:
+    """Pins the door that was closed, so it is not reopened by accident.
+
+    Flat 203-208 decode to CHOOSE_BRANCH. Submitted at a ROLL_DIE node the engine once read
+    `primary_id` as the die and consumed the roll -- which is how a coup in a recorded game reached
+    resolution without ever rolling.
     """
     state = _holding_the_china_card(box=4)
     ts.Engine.step_flat(state, THE_CHINA_CARD - 1)
@@ -107,8 +119,9 @@ def test_the_die_roll_is_the_only_legal_action_at_a_roll_node() -> None:
     before = int(state.us_space_track)
     assert ts.Engine.step_flat(state, 203 + 2) is False, (
         "engine accepted a CHOOSE_BRANCH action at a ROLL_DIE node")
-    assert int(state.us_space_track) == before, "a rejected action changed the state"
-    assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
+    assert int(state.us_space_track) == before
+    assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE, (
+        "a rejected action consumed the roll")
 
 
 def test_replay_247_converts_end_to_end() -> None:
