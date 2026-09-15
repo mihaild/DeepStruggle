@@ -130,3 +130,40 @@ What the experiment has to establish, in order:
    observation layout: it returns a number instead of raising.
 
 Only if all three pass does it become the default; the flag stays opt-in until then.
+
+
+### Resolved 2026-09-15: the gradient discrepancy was dropout, not a defect
+
+Gate 1 is cleared. `torch.compile` computes the same gradients as eager, to float32 precision.
+
+| comparison | cosine | relative L2 |
+|:---|---:|---:|
+| eager vs eager (train mode) | 1.000000 | 0 |
+| compiled vs compiled (train mode) | 1.000000 | 0 |
+| eager vs compiled (train mode) | 0.996814 | 8.5e-02 |
+| **eager vs compiled (eval mode, dropout off)** | **1.000000** | **1.6e-07** |
+
+The network carries four dropout layers at p=0.05. Each path is individually deterministic under a
+fixed seed, but `torch.compile` consumes the RNG stream differently, so the two were computing
+gradients for **different dropout masks** -- two valid samples of the same stochastic estimator,
+not a disagreement about the answer. With dropout disabled they agree to 1.6e-07, which is float32
+rounding.
+
+Two wrong diagnoses were made on the way, and both are worth recording because each looked
+convincing:
+
+* **"CUDA graphs under `reduce-overhead`"** -- disproved by `max-autotune-no-cudagraphs`, which
+  excludes CUDA graphs and shows the same discrepancy.
+* **"A bug, because the error is concentrated"** -- the worst parameters by *relative* error were
+  biases, which is the classic artefact of dividing by a near-zero gradient norm; but ranking by
+  *absolute* difference showed the largest weight matrices off by 14-78%, which genuinely is not
+  rounding. That reasoning was sound and the conclusion still wrong, because the missing control
+  was never run: **compiled vs compiled**. Once run, it was bit-identical, which rules out
+  nondeterminism in the compiled path and points at the only remaining stochastic element.
+
+The lesson generalises past this gate: when two implementations of a stochastic function disagree,
+compare each against *itself* before comparing them against each other.
+
+**Remaining gates before adoption:** the matched A/B at equal steps, and the checkpoint round-trip
+(a compiled module prefixes parameter names with `_orig_mod.`, which is exactly the kind of
+silent-mismatch hazard gate 3 exists to catch -- it was hit in this very diagnostic).
