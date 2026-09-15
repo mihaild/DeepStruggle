@@ -233,3 +233,55 @@ def test_search_result_is_unchanged_by_the_featuriser(model):
     for (acts_a, vis_a), (acts_b, vis_b) in zip(a, b):
         assert acts_a == acts_b
         np.testing.assert_allclose(vis_a, vis_b)
+
+
+# -- the root-advance contract ---------------------------------------------------------------
+
+
+def test_advance_root_false_returns_an_action_legal_where_the_caller_stands(model):
+    """A caller that does not settle its own state must still get a playable action.
+
+    With advance_root=True the searcher settles its clone first, so the tree can be rooted at a
+    LATER decision than the caller holds; the returned action is legal there and rejected here.
+    That is how a real game stalled: 1,355 rejected actions at one POINT_NODE until the step cap,
+    because `Engine.step_flat` returns False and leaves the state untouched while the loop
+    discarded the return value and re-offered the same node.
+    """
+    cfg = BatchedMCTSConfig(simulations=8, advance_root=False, auto_advance=True, seed=3)
+    mcts = BatchedMCTS(model, config=cfg, featurise_capacity=4)
+
+    s = ts.GameState()
+    ts.Engine.init_game(s, 4002)
+    bad = 0
+    for _ in range(150):
+        if ts.Engine.is_terminal(s):
+            break
+        mask = np.asarray(ActionEncoder.get_legal_mask(s))
+        legal = np.flatnonzero(mask)
+        if len(legal) == 0:
+            break
+        a = int(mcts.best_actions([s])[0])
+        if not mask[a]:
+            bad += 1
+        # Drive with the engine's own choice so the walk does not depend on the search.
+        assert ts.Engine.step_flat(s, int(legal[0])), "engine rejected a masked action"
+    assert bad == 0, f"{bad} actions were illegal in the caller's state"
+
+
+def test_engine_rejects_a_mismatched_action_and_says_so():
+    """The engine is not silent: it returns False and leaves the state alone.
+
+    Recorded because the opposite was assumed for a while. The infinite loop came from callers
+    discarding that return value, not from the engine accepting bad input -- so the fix belongs in
+    the callers, and no engine change is warranted.
+    """
+    s = ts.GameState()
+    ts.Engine.init_game(s, 4002)
+    ts.Engine.auto_advance_step(s)
+    mask = np.asarray(ActionEncoder.get_legal_mask(s))
+    legal = set(np.flatnonzero(mask).tolist())
+    illegal = next(i for i in range(len(mask)) if i not in legal)
+
+    before = int(s.ctx().decision_type)
+    assert ts.Engine.step_flat(s, illegal) is False, "engine accepted an illegal action"
+    assert int(s.ctx().decision_type) == before, "engine advanced on a rejected action"

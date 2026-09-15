@@ -72,6 +72,12 @@ class BatchedMCTSConfig(PIMCTSConfig):
     #: since the Python drain loop is replaced by one C++ call. Changes the sequence of positions
     #: the agent is asked about, so it is a flag: a run with it is not comparable to one without.
     auto_advance: bool = True
+    #: Settle the ROOT before searching. True is right when the caller settles identically (every
+    #: batched harness does), and wrong when it does not: the tree then roots at a later decision
+    #: than the caller holds and returns an action that is illegal there. Set False to search
+    #: exactly the state handed over. Children are settled regardless -- they are the searcher's
+    #: own hypotheticals, not the caller's position.
+    advance_root: bool = True
 
 
 @dataclass
@@ -106,6 +112,9 @@ class BatchedMCTS:
         self._featuriser = (ts.VectorizedBatchRunner(featurise_capacity, int(self.cfg.seed))
                             if featurise_capacity > 0 else None)
         self._featurise_capacity = featurise_capacity
+        #: Roots of the current call, so _evaluate_batch can tell a caller-owned state from one
+        #: the searcher created itself.
+        self._root_nodes: List[_BNode] = []
         self._rng = random.Random(self.cfg.seed)
         self._np_rng = np.random.RandomState(self.cfg.seed)
         self.model.eval()
@@ -119,7 +128,10 @@ class BatchedMCTS:
         """Fill in priors and value for a batch of unexpanded, non-terminal nodes."""
         if not nodes:
             return
-        obs, masks = self._featurise(nodes)
+        # Roots are only safe on the fast path when the searcher settled them itself.
+        allow_fast = self.cfg.advance_root or not any(nd is r for nd in nodes
+                                                      for r in self._root_nodes)
+        obs, masks = self._featurise(nodes, allow_fast=allow_fast)
         obs_t = torch.from_numpy(obs).to(self.device)
         mask_t = torch.from_numpy(masks).to(self.device)
         with torch.no_grad():
@@ -146,10 +158,17 @@ class BatchedMCTS:
             nd.value_us = v if nd.mover == int(ts.Player.US) else -v
             nd.expanded = True
 
-    def _featurise(self, nodes: Sequence[_BNode]) -> Tuple[np.ndarray, np.ndarray]:
-        """Observations and legal masks for a batch of leaves."""
+    def _featurise(self, nodes: Sequence[_BNode],
+                   allow_fast: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        """Observations and legal masks for a batch of leaves.
+
+        `allow_fast=False` forces the per-node path. The C++ runner resolves chance nodes when a
+        state is set into it, so for a state the CALLER still owns it reports the mask of a later
+        decision -- at a ROLL_DIE node it offered 6 actions where the caller had 1. Interior nodes
+        are the searcher's own settled hypotheticals and are unaffected.
+        """
         n = len(nodes)
-        if self._featuriser is not None and n <= self._featurise_capacity:
+        if allow_fast and self._featuriser is not None and n <= self._featurise_capacity:
             for i, nd in enumerate(nodes):
                 self._featuriser.set_state(i, nd.state)
             # REQUIRED: set_state leaves the cached observation buffer stale, and the stale
@@ -246,7 +265,8 @@ class BatchedMCTS:
                 inherited.append(True)
                 continue
             s = st.clone()
-            settle(s, cfg.auto_advance)
+            if cfg.advance_root:
+                settle(s, cfg.auto_advance)
             if cfg.determinize and not ts.Engine.is_terminal(s):
                 s = determinize(s, acting_player(s), self._rng)
                 s.rng_state = self._rng.getrandbits(64) % _UINT64
@@ -254,7 +274,9 @@ class BatchedMCTS:
             inherited.append(False)
 
         # One batch for every root, then one batch per simulation round.
+        self._root_nodes = [r for r in roots if r is not None]
         self._evaluate_batch([r for r in roots if r is not None and not r.expanded])
+        self._root_nodes = []
 
         for r, was_inherited in zip(roots, inherited):
             if r is None or r.terminal or not r.actions:
@@ -354,7 +376,19 @@ class BatchedMCTSAgent:
         self.mcts = BatchedMCTS(model, device=device, config=config, featurise_capacity=1)
 
     def select_action(self, state: ts.GameState, player, temperature: float = 0.1) -> int:
-        return int(self.mcts.best_actions([state])[0])
+        action = int(self.mcts.best_actions([state])[0])
+        # Fail loudly rather than hand back something the caller will have rejected. The engine
+        # already returns False for a mismatched action and leaves the state untouched, so a
+        # caller that ignores the return value loops on the same node forever -- which is exactly
+        # how this surfaced: 1,355 rejected actions at one POINT_NODE.
+        mask = np.asarray(ActionEncoder.get_legal_mask(state))
+        if not (0 <= action < len(mask)) or not mask[action]:
+            raise RuntimeError(
+                f"search returned action {action}, which is not legal in the caller's state "
+                f"(decision_type={int(state.ctx().decision_type)}). This means the tree was "
+                f"rooted at a different decision -- set advance_root=False when the caller does "
+                f"not settle the state itself.")
+        return action
 
     def reset(self) -> None:
         self.mcts.reset()

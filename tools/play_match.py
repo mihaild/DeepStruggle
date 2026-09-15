@@ -85,11 +85,15 @@ def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: 
         sims = int(parts[2]) if len(parts) > 2 and parts[2] else 64
         determinize = len(parts) > 3 and parts[3].lower().startswith("determin")
         from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
+        from bindings.action_encoder import ActionEncoder
         from tools.lib.player_agent import NeuralAgent
 
         base = NeuralAgent.from_checkpoint(path, device=device)
-        cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0,
-                                auto_advance=True, determinize=determinize)
+        # advance_root=False: this match loop does NOT settle the state before asking a bot, so
+        # the tree must root exactly where the loop is. With it True the searcher answered about a
+        # later decision and returned actions the engine rejected -- 1,355 times in one game.
+        cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0, auto_advance=True,
+                                advance_root=False, determinize=determinize)
         searcher = BatchedMCTS(base.model, device=device, config=cfg, featurise_capacity=1)
 
         class _SearchBot(BaseBot):
@@ -112,6 +116,12 @@ def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: 
 
             def select_from_state(self, state) -> Dict[str, Any]:
                 flat = int(searcher.best_actions([state])[0])
+                legal = np.asarray(ActionEncoder.get_legal_mask(state))
+                if not legal[flat]:
+                    raise RuntimeError(
+                        f"search returned flat action {flat}, illegal at decision_type="
+                        f"{int(state.ctx().decision_type)}; the engine would reject it and the "
+                        f"loop would re-offer the same node forever")
                 ma = ts.decode_flat_action(state, flat)
                 return {
                     "decision_type": int(ma.decision_type),
