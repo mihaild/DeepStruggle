@@ -22,10 +22,18 @@ not fill a 4090.
 
 Two practical consequences:
 
-* **MPS does not help this workload — measured, not assumed.** Two training runs under CUDA MPS
-  reached 6,858 + 6,511 = **13,369 steps/s against 13,143 with plain time-slicing** and 13,169
-  solo: +1.7%, which is noise. Both processes were confirmed as MPS clients in the daemon log, so
-  this was a real test rather than a silent fallback. MPS solves GPU under-occupancy, and that is
+* **MPS produced no speedup — measured, not assumed.** Two training runs under CUDA MPS reached
+  **12,484 steps/s combined against 13,143 with plain time-slicing** and 13,169 solo. Both
+  processes were confirmed as MPS clients in the daemon log, so this was a real test rather than
+  a silent fallback.
+
+  Two caveats, both material. **Measure by differencing consecutive metric rows, never from
+  `steps_per_sec_avg`**: that field divides total steps by `elapsed_seconds`, which a resumed run
+  inherits from the session it continues, so it blends two sessions' speeds. It reported 9,950
+  steps/s for a run genuinely doing 6,183, and made a resumed run's ETA read 6.6h against a true
+  2.9h. And the two MPS runs were **pooled**, carrying a 12-network opponent pool that costs an
+  extra forward pass on ~30% of environments, which the time-slicing baseline did not pay -- so
+  the shortfall mixes MPS with the pool's cost and the two cannot be separated here. MPS solves GPU under-occupancy, and that is
   not the constraint here — the engine is a CPU-side simulator, which is why an identical 3090
   varied 45% on host cores alone. **Rent one GPU per run.** Running two in parallel is fine when
   it suits scheduling — same aggregate throughput, both finish together — just not faster.
