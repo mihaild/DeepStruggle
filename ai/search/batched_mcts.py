@@ -93,10 +93,17 @@ class _BNode:
 class BatchedMCTS:
     """Run one MCTS per input position, stepping them together to batch the network calls."""
 
-    def __init__(self, model, device=None, config: Optional[BatchedMCTSConfig] = None) -> None:
+    def __init__(self, model, device=None, config: Optional[BatchedMCTSConfig] = None,
+                 featurise_capacity: int = 0) -> None:
         self.model = model
         self.device = device or next(model.parameters()).device
         self.cfg = config or BatchedMCTSConfig()
+        #: Optional C++ featuriser. `extract_observation` per leaf is 22.7% of a search; the
+        #: runner does the whole batch at once for ~10x less. Sized once; batches beyond its
+        #: capacity use the per-node path rather than being silently truncated.
+        self._featuriser = (ts.VectorizedBatchRunner(featurise_capacity, int(self.cfg.seed))
+                            if featurise_capacity > 0 else None)
+        self._featurise_capacity = featurise_capacity
         self._rng = random.Random(self.cfg.seed)
         self._np_rng = np.random.RandomState(self.cfg.seed)
         self.model.eval()
@@ -110,9 +117,7 @@ class BatchedMCTS:
         """Fill in priors and value for a batch of unexpanded, non-terminal nodes."""
         if not nodes:
             return
-        obs = np.stack([np.asarray(ts.extract_observation(nd.state, acting_player(nd.state)),
-                                   dtype=np.float32) for nd in nodes])
-        masks = np.stack([np.asarray(ActionEncoder.get_legal_mask(nd.state)) for nd in nodes])
+        obs, masks = self._featurise(nodes)
         obs_t = torch.from_numpy(obs).to(self.device)
         mask_t = torch.from_numpy(masks).to(self.device)
         with torch.no_grad():
@@ -137,6 +142,23 @@ class BatchedMCTS:
             v = float(values[i])
             nd.value_us = v if nd.mover == int(ts.Player.US) else -v
             nd.expanded = True
+
+    def _featurise(self, nodes: Sequence[_BNode]) -> Tuple[np.ndarray, np.ndarray]:
+        """Observations and legal masks for a batch of leaves."""
+        n = len(nodes)
+        if self._featuriser is not None and n <= self._featurise_capacity:
+            for i, nd in enumerate(nodes):
+                self._featuriser.set_state(i, nd.state)
+            # REQUIRED: set_state leaves the cached observation buffer stale, and the stale
+            # features match no perspective -- a silent corruption of every leaf evaluation.
+            self._featuriser.refresh_all()
+            obs = np.asarray(self._featuriser.get_observations(), dtype=np.float32)[:n]
+            masks = np.asarray(self._featuriser.get_action_masks())[:n]
+            return obs, masks
+        obs = np.stack([np.asarray(ts.extract_observation(nd.state, acting_player(nd.state)),
+                                   dtype=np.float32) for nd in nodes])
+        masks = np.stack([np.asarray(ActionEncoder.get_legal_mask(nd.state)) for nd in nodes])
+        return obs, masks
 
     @staticmethod
     def _make_node(state: ts.GameState) -> _BNode:

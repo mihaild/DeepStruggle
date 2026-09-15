@@ -184,3 +184,52 @@ def test_forget_removes_a_stream(model):
     assert "g0" in mcts._trees
     mcts.forget("g0")
     assert "g0" not in mcts._trees
+
+
+# -- batched featurisation ------------------------------------------------------------------
+
+
+def test_batched_featurisation_matches_the_per_node_path(model):
+    """The C++ featuriser must produce exactly what extract_observation does.
+
+    `set_state` does not invalidate the runner's cached observation buffer, so a missing
+    `refresh_all()` returns features from whatever it last computed. Those match no perspective,
+    which is the only reason the bug was caught -- a plausible-looking mismatch would have shipped
+    and quietly corrupted every leaf evaluation.
+    """
+    states = _states(8)
+    nodes = [BatchedMCTS._make_node(s) for s in states]
+
+    plain = BatchedMCTS(model, config=BatchedMCTSConfig(simulations=1))
+    fast = BatchedMCTS(model, config=BatchedMCTSConfig(simulations=1),
+                       featurise_capacity=len(states))
+    assert fast._featuriser is not None, "featuriser was not constructed"
+
+    obs_a, mask_a = plain._featurise(nodes)
+    obs_b, mask_b = fast._featurise(nodes)
+
+    np.testing.assert_allclose(obs_a, obs_b, atol=1e-6, err_msg=(
+        "batched featurisation differs from extract_observation; the network would be asked "
+        "about features it was never trained on"))
+    np.testing.assert_array_equal(mask_a, mask_b)
+
+
+def test_featurisation_falls_back_beyond_capacity(model):
+    """A batch larger than the runner must use the per-node path, never a truncated one."""
+    states = _states(6)
+    nodes = [BatchedMCTS._make_node(s) for s in states]
+    small = BatchedMCTS(model, config=BatchedMCTSConfig(simulations=1), featurise_capacity=2)
+    obs, masks = small._featurise(nodes)
+    assert obs.shape[0] == len(nodes), "featurisation truncated the batch instead of falling back"
+    assert masks.shape[0] == len(nodes)
+
+
+def test_search_result_is_unchanged_by_the_featuriser(model):
+    """Same seed, same position: the optimisation must not alter the answer."""
+    states = _states(4)
+    cfg = BatchedMCTSConfig(simulations=16, seed=31)
+    a = BatchedMCTS(model, config=cfg).run(states)
+    b = BatchedMCTS(model, config=cfg, featurise_capacity=len(states)).run(states)
+    for (acts_a, vis_a), (acts_b, vis_b) in zip(a, b):
+        assert acts_a == acts_b
+        np.testing.assert_allclose(vis_a, vis_b)
