@@ -296,19 +296,32 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
     """Factory function loading agents from string specifier (random, heuristic, or checkpoint path)."""
     s = spec.strip()
     if s.lower().startswith("search:"):
-        # search:<checkpoint>[:sims[:determinize]] -- a searching agent over a checkpoint.
+        # search:<checkpoint>[:sims[:determinize[:node_filter[:subsample]]]]
+        #
+        # `node_filter` is "all" (every decision -- what the ~+27pp measurement used) or
+        # "card" (SELECT_CARD / SELECT_PLAY_MODE only, P3's proposal). `subsample` is the
+        # fraction of those actually searched, e.g. 0.125 for P3's "1 in 8". Where search is
+        # skipped the agent plays its own greedy policy, so a coverage sweep varies one thing.
+        #
         # Exposed here rather than left to callers so that search games go through the same
         # CLIs, and therefore the same replay writer, as every other match.
         parts = s.split(":")
         path = parts[1]
         sims = int(parts[2]) if len(parts) > 2 and parts[2] else 64
         determinize = len(parts) > 3 and parts[3].lower().startswith("determin")
+        node_filter = "all"
+        if len(parts) > 4 and parts[4]:
+            node_filter = "card_playmode" if parts[4].lower().startswith("card") else parts[4]
+        subsample = float(parts[5]) if len(parts) > 5 and parts[5] else 1.0
         from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
 
         base = NeuralAgent.from_checkpoint(path, device=device)
         cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0,
-                                auto_advance=True, determinize=determinize)
-        label = f"search{sims}{'-det' if determinize else ''}"
+                                auto_advance=True, determinize=determinize,
+                                node_filter=node_filter, subsample=subsample)
+        tag = "" if node_filter == "all" else "-card"
+        tag += "" if subsample >= 1.0 else f"-{subsample:g}"
+        label = f"search{sims}{'-det' if determinize else ''}{tag}"
         return BatchedMCTSAgent(base.model, name=label, device=device, config=cfg)
     if s.lower() in ["random", "randombot", "rand"]:
         return RandomAgent()

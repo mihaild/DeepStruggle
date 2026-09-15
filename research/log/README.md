@@ -24,6 +24,7 @@ original file, including its maintenance rules, is preserved verbatim below the 
 | [`critic_vs_policy_160M.md`](critic_vs_policy_160M.md) | §15–§18 | policy or critic, asked on real held positions; the counterfactual rounds played out; what the finished 160M run was worth |
 | [`observation_layout.md`](observation_layout.md) | §19, §23–§24 | the dead history slice, opponent-card knowledge, and layouts v2.1 (neutral) and v2.2 (+91.7 Elo) |
 | [`corrected_engine_arms_H_I.md`](corrected_engine_arms_H_I.md) | §25–§27 | arms H/H2 on v2.3 and the corrected engine, the NashPG KL-penalty ablation, and 240M → 480M |
+| [`search_cost_and_coverage.md`](search_cost_and_coverage.md) | — | what search costs per decision, what fraction of decisions it is worth spending on, and why the +27pp figure does not transfer to a cheaper arm |
 | [`europe_control_and_held_scoring.md`](europe_control_and_held_scoring.md) | — | E3-15 / E3-17: why the USSR takes Europe (West Germany is never contested), what the per-side held-scoring series actually says, and the forced human opening |
 
 Several entries were moved to the old `../metrics.md` before this split and left stubs behind;

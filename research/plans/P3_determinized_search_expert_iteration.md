@@ -83,6 +83,31 @@ critic is what needs fixing. For the arm: the same probes on the no-search netwo
 - Play-time search stays a reserve option for a stronger product later; the owner's preference
   is a no-search player first.
 
+## Cost, measured
+
+The plan's estimate ("~1,300 forward passes per searched decision -- well under a second on the
+4090 in batched form") is about right per search, and beside the point for an arm. What decides an
+arm's cost is measured in [`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md):
+
+* the batched searcher runs at **103 decisions/s at 64 simulations** (572 at 16), against an
+  **end-to-end training rate of ~8,300 steps/s** -- so ~70x slower at 64 sims;
+* `SELECT_CARD` + `SELECT_PLAY_MODE` are **42.0%** of all decisions (`POINT_NODE` placements are
+  39.5%), so this plan's node restriction removes well under half the work on its own; the
+  subsample is where the saving is;
+* a 40M-step arm costs **108h** with every decision searched, **46h** at card/play-mode only, and
+  **6.9h** at card/play-mode 1-in-8.
+
+**The strength number this plan would be triggered by does not apply to the configuration this plan
+proposes.** The ~+27pp measured for search was taken with *every* decision searched -- neither
+`_SearchBot` nor `BatchedMCTS` has ever had a node filter. The restricted settings are 8-45x
+cheaper and, until the coverage sweep in that log entry, entirely unmeasured. So "search is worth
++27pp, therefore run the cheap arm" is invalid, and the sweep is a precondition for the arm rather
+than an optimisation of it.
+
+The knob now exists: `BatchedMCTSConfig.node_filter` / `.subsample`, reachable as
+`search:<ckpt>:<sims>:<determinize>:<node_filter>:<subsample>`, with the unsearched decisions
+played by the agent's own greedy policy so a sweep varies exactly one thing.
+
 ## Runs
 
 (none yet)

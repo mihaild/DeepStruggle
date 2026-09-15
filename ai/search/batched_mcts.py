@@ -78,6 +78,14 @@ class BatchedMCTSConfig(PIMCTSConfig):
     #: exactly the state handed over. Children are settled regardless -- they are the searcher's
     #: own hypotheticals, not the caller's position.
     advance_root: bool = True
+    #: Which decisions to search. "all" searches every node handed over -- the setting the ~+27pp
+    #: measurement used. "card_playmode" searches only SELECT_CARD and SELECT_PLAY_MODE, which
+    #: P3 argues are "the decisions that matter"; measured over 8 self-play games they are 42.0%
+    #: of all decisions, against 39.5% POINT_NODE placements.
+    node_filter: str = "all"
+    #: Fraction of the decisions passing `node_filter` that are actually searched, chosen per
+    #: decision from the searcher's own RNG. P3's first guess is 1 in 8.
+    subsample: float = 1.0
 
 
 @dataclass
@@ -341,6 +349,24 @@ class BatchedMCTS:
         """Drop a stream's tree, e.g. when its game ends."""
         self._trees.pop(key, None)
 
+    def should_search(self, state: ts.GameState) -> bool:
+        """Is this a decision this configuration searches?
+
+        Kept on the searcher rather than in each caller so that a coverage setting means the same
+        thing in an evaluation tournament and in a training rollout -- the two numbers are only
+        comparable if the rule is one implementation.
+        """
+        if self.cfg.node_filter == "card_playmode":
+            dt = int(state.ctx().decision_type)
+            if dt not in (int(ts.DecisionType.SELECT_CARD),
+                          int(ts.DecisionType.SELECT_PLAY_MODE)):
+                return False
+        elif self.cfg.node_filter != "all":
+            raise ValueError(f"unknown node_filter {self.cfg.node_filter!r}")
+        if self.cfg.subsample >= 1.0:
+            return True
+        return self._rng.random() < self.cfg.subsample
+
     def best_actions(self, states: Sequence[ts.GameState]) -> List[int]:
         """Most-visited action per position; falls back to the first legal action."""
         res = self.run(states)
@@ -370,10 +396,54 @@ class BatchedMCTSAgent:
     """
 
     def __init__(self, model, name: str = "search", device=None,
-                 config: Optional[BatchedMCTSConfig] = None) -> None:
+                 config: Optional[BatchedMCTSConfig] = None,
+                 featurise_capacity: int = 4096) -> None:
         self.model = model
         self.name = name
-        self.mcts = BatchedMCTS(model, device=device, config=config, featurise_capacity=1)
+        # Sized for the batched path by default. At capacity 1 every leaf is featurised one at a
+        # time, which `_featurise` notes costs ~10x more than letting the runner do the batch.
+        self.mcts = BatchedMCTS(model, device=device, config=config,
+                                featurise_capacity=featurise_capacity)
+
+    def _policy_actions(self, states: Sequence[ts.GameState]) -> List[int]:
+        """The unsearched fallback: this agent's own greedy policy, in one batched pass."""
+        obs = np.stack([np.asarray(ts.extract_observation(
+            st, st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE
+            else st.phasing_player), dtype=np.float32) for st in states])
+        masks = np.stack([np.asarray(ActionEncoder.get_legal_mask(st), dtype=np.uint8)
+                          for st in states])
+        dev = self.mcts.device
+        with torch.no_grad():
+            logits, _, _ = self.model(torch.from_numpy(obs).to(dev),
+                                      torch.from_numpy(masks).to(dev))
+            return [int(a) for a in torch.argmax(logits, dim=-1).cpu().numpy()]
+
+    def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
+        """Actions for a whole batch, searching only the positions this coverage setting covers.
+
+        One search call for every covered position in the batch, and one policy forward for the
+        rest. Calling `select_action` per game instead is what makes a search tournament
+        unaffordable.
+        """
+        states = list(states)
+        want = [self.mcts.should_search(st) for st in states]
+        out: List[int] = [0] * len(states)
+
+        searched_idx = [i for i, w in enumerate(want) if w]
+        if searched_idx:
+            picks = self.mcts.best_actions([states[i] for i in searched_idx])
+            for i, a in zip(searched_idx, picks):
+                out[i] = int(a)
+
+        plain_idx = [i for i, w in enumerate(want) if not w]
+        if plain_idx:
+            picks = self._policy_actions([states[i] for i in plain_idx])
+            for i, a in zip(plain_idx, picks):
+                out[i] = int(a)
+
+        self.searched_count = getattr(self, "searched_count", 0) + len(searched_idx)
+        self.decision_count = getattr(self, "decision_count", 0) + len(states)
+        return out
 
     def select_action(self, state: ts.GameState, player, temperature: float = 0.1) -> int:
         action = int(self.mcts.best_actions([state])[0])
