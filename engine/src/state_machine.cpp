@@ -639,6 +639,16 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     // pairs). Callers that construct actions by hand must set the type the context asks for.
     if (action.decision_type != state.ctx().decision_type) return false;
 
+    // ROLL_DIE is the one decision the 212-wide mask cannot constrain: its primary_id and
+    // secondary_id are the forced dice themselves (actor's and opponent's) rather than indices
+    // into the mask, and forcing a die is a deliberate replayer and test affordance. So the range
+    // has to be checked here or nowhere -- a hand-built action carrying 26, or the 255 sentinel,
+    // was applied as though it were a die. 0 means "roll normally".
+    if (action.decision_type == DecisionType::ROLL_DIE
+        && (action.primary_id > 6 || action.secondary_id > 6)) {
+        return false;
+    }
+
     // 1. SETUP PHASE
     if (state.current_phase == Phase::SETUP) {
         if (state.ctx().decision_player == Player::USSR) {

@@ -108,6 +108,27 @@ struct alignas(4) MicroAction {
 };
 ```
 
+**`ROLL_DIE` is the one decision whose `primary_id` is data, not an index.** It carries the forced
+die for the acting player, and `secondary_id` the opponent's, with **0 meaning "roll normally"**
+(`Operations` reads `forced_roll > 0` as "a die was forced"). Three consequences, each of which has
+already caused a bug:
+
+* **The 212-wide mask cannot constrain it.** Every other decision type validates by the action
+  being a legal index; a die value has no index to check. The range is therefore checked in
+  `StateMachine::step`, beside the `decision_type` guard, or nowhere.
+* **The 255 "no selection" sentinel collides with the value space.** `decode_flat_action_212(211)`
+  returns `primary_id = 255` for every other decision type, which is harmless there and was read as
+  a forced die of 255 here. `ROLL_DIE` is now decoded first and yields 0.
+* **A missing mask case is not a missing action.** `generate_flat_mask_212`'s switch had no
+  `ROLL_DIE` case, so the "ensure at least one action is legal" fallback at the bottom supplied 211
+  as a generic confirm/done — a wrong-but-accepted action rather than a loud failure. The case is
+  now explicit. Prefer a real case to relying on that fallback.
+
+Nothing measured was invalidated: `Engine::auto_advance_step` (`engine/src/engine.cpp:46`) and
+`VectorizedBatchRunner` (`bindings/ts_bindings.cpp:1087,1128`) resolve chance nodes with an explicit
+`{ROLL_DIE, 0, 0, 0}` and never decode, and no `ROLL_DIE` node was ever handed to an agent —
+verified over 879 single-env decisions and 12,800 vectorized env-steps.
+
 ---
 
 ## 5. How to Build, Test, and Benchmark

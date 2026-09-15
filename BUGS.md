@@ -8,37 +8,6 @@ and unfinished work belong in the documentation for the area they concern.
 
 ---
 
-## ENG-2 — a forced die outside 1..6 is accepted
-
-**Area:** engine · **Severity:** medium · **Status:** open, needs owner decision (invariant 11)
-
-`Engine::step` accepts `MicroAction(ROLL_DIE, primary_id, ...)` for **any** `primary_id`. A forced
-roll of 26, or 200, is applied as though it were a legal die.
-
-**Reproduce.** Advance any game to a chance node and step it directly:
-
-```python
-ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 200, 0, 0))   # -> True
-```
-
-**Where it came from.** The `decision_type` guard added to `StateMachine::step` this cycle checks
-that the action answers the decision being asked. It does not check the *value*, and `ROLL_DIE` is
-the one decision whose value rides in `primary_id` rather than being an index into the mask — so
-the mask cannot constrain it. Forcing a die is a deliberate affordance for the replayer and for
-tests, which is why the field is read at all; the gap is that the range is not checked.
-
-**Effect.** This is the mechanism behind the "magic roll of 26" seen in a generated match. The old
-`tools/play_match.py` had no chance-node handling, so at a `ROLL_DIE` node owned by nobody
-`acting_player` fell through to `phasing_player` and a **bot** was asked to choose the roll,
-returning whatever `primary_id` its action carried. Both writers now drain chance nodes through
-`GameLoop`, so no current caller can reach it — but the engine still accepts it from any caller,
-and a replay recording such a roll would re-drive it faithfully.
-
-**Fix, once approved.** Reject `ROLL_DIE` whose `primary_id` is outside 0..6 (0 meaning "roll
-normally"), and the same for `secondary_id`, in `StateMachine::step` beside the existing
-`decision_type` guard. Not done here: invariant 11 reserves engine changes for the owner.
-
----
 ## ENG-1 — UN Intervention offers companion cards the rules forbid
 
 **Area:** engine · **Severity:** medium · **Status:** open

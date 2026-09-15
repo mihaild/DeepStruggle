@@ -172,6 +172,13 @@ The harness was wrong, not the replays.
   `web/server/session.py:475` (`state_snapshot=state_after`), `web/ui/src/main.ts:217` (reads
   `state_snapshot.die_roll`, which only exists once the roll resolved) and `main.ts:178` (diffs VP
   between consecutive snapshots).
+* **Rolling is a real action, and it used to roll 255.** `generate_flat_mask_212` had no
+  `ROLL_DIE` case, so its fallback supplied flat 211, which decodes to `primary_id = 255` — and for
+  `ROLL_DIE`, `primary_id` is the *forced die* rather than an index. Any caller that read the mask
+  and called `step_flat` therefore forced a maximum roll: on seed 777 a space race gave VP +3
+  against +1 with a real roll, and on seed 99 a coup rolled 255 against 5. The old `play_match` was
+  such a caller. Fixed in the engine with an explicit mask case, a `ROLL_DIE`-first decode, and a
+  range guard on forced dice; two regression tests in `engine/tests/test_bugs_regression.cpp`.
 * **`flat_action_idx` is mandatory.** `_assert_reproduces` *skips* a replay that lacks it rather
   than failing, so omitting the field retires the check instead of breaking it.
 

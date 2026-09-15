@@ -382,3 +382,90 @@ TEST(RegressionTest, SummitDefconOneLossFallsOnPhasingPlayer) {
         ASSERT_TRUE(!state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED));
     }
 }
+
+// Advances a fresh game to the first ROLL_DIE node, playing the lowest legal flat action.
+// Returns false if none is reached, so a test fails loudly rather than passing vacuously.
+static bool advance_to_roll_node(GameState& state, uint64_t seed) {
+    Engine::init_game(state, seed);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    for (int step = 0; step < 4000; ++step) {
+        if (Engine::is_terminal(state)) return false;
+        if (state.ctx().decision_type == DecisionType::ROLL_DIE) return true;
+        ActionMask::generate_flat_mask_212(state, mask);
+        int chosen = -1;
+        for (int i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) {
+            if (mask[i]) { chosen = i; break; }
+        }
+        if (chosen < 0) return false;
+        Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen)));
+    }
+    return false;
+}
+
+// A ROLL_DIE node had no case in the flat mask switch at all. Nothing set a bit, so the
+// "ensure at least one action is legal" fallback at the bottom supplied 211 -- the generic
+// confirm/done -- which decodes to primary_id 255. For every other decision type 255 is the
+// harmless "no selection" sentinel; for ROLL_DIE primary_id IS the forced die value, and
+// Operations reads `forced_roll > 0` as "a die was forced". So the one legal action at a
+// chance node rolled a 255, and space race attempts and coups through the flat path succeeded
+// automatically.
+TEST(RegressionTest, FlatRollActionRollsTheDieInsteadOfForcing255) {
+    GameState state{};
+    ASSERT_TRUE(advance_to_roll_node(state, 99));
+
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(state, mask);
+    int legal_count = 0;
+    for (int i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) legal_count += mask[i] ? 1 : 0;
+    ASSERT_EQ(legal_count, 1);
+    ASSERT_TRUE(mask[211] != 0);
+
+    const MicroAction decoded = ActionMask::decode_flat_action_212(state, 211);
+    ASSERT_EQ(static_cast<int>(decoded.decision_type), static_cast<int>(DecisionType::ROLL_DIE));
+    // 0 means "roll normally". Anything else here is a forced die.
+    ASSERT_EQ(static_cast<int>(decoded.primary_id), 0);
+    ASSERT_EQ(static_cast<int>(decoded.secondary_id), 0);
+
+    // Stepping the flat action must be indistinguishable from an explicit unforced roll.
+    GameState via_flat = state;
+    GameState via_explicit = state;
+    ASSERT_TRUE(Engine::step(via_flat, ActionMask::decode_flat_action_212(via_flat, 211)));
+    ASSERT_TRUE(Engine::step(via_explicit, MicroAction(DecisionType::ROLL_DIE, 0, 0, 0)));
+    ASSERT_EQ(static_cast<int>(via_flat.last_die_roll),
+              static_cast<int>(via_explicit.last_die_roll));
+    ASSERT_EQ(static_cast<int>(via_flat.victory_points),
+              static_cast<int>(via_explicit.victory_points));
+    ASSERT_TRUE(via_flat.last_die_roll <= 6);
+}
+
+// ROLL_DIE is the one decision the 212-wide mask cannot constrain: its primary_id and
+// secondary_id are the dice themselves, not indices, because forcing a roll is a deliberate
+// replayer and test affordance. So the range is checked in StateMachine::step or nowhere, and
+// without it a hand-built action carrying 26 was applied as though it were a die.
+TEST(RegressionTest, ForcedDieOutsideOneToSixIsRejected) {
+    GameState state{};
+    ASSERT_TRUE(advance_to_roll_node(state, 99));
+
+    for (int bad : {7, 26, 200, 255}) {
+        GameState probe = state;
+        const int vp_before = probe.victory_points;
+        ASSERT_TRUE(!Engine::step(probe, MicroAction(DecisionType::ROLL_DIE,
+                                                     static_cast<uint8_t>(bad), 0, 0)));
+        // A rejected action must leave the state untouched, not half-applied.
+        ASSERT_EQ(static_cast<int>(probe.victory_points), vp_before);
+        ASSERT_EQ(static_cast<int>(probe.ctx().decision_type),
+                  static_cast<int>(DecisionType::ROLL_DIE));
+
+        // The opponent's die, used by realignment, is guarded the same way.
+        GameState probe2 = state;
+        ASSERT_TRUE(!Engine::step(probe2, MicroAction(DecisionType::ROLL_DIE, 3,
+                                                      static_cast<uint8_t>(bad), 0)));
+    }
+
+    // Every value the affordance exists for is still accepted.
+    for (int good = 1; good <= 6; ++good) {
+        GameState probe = state;
+        ASSERT_TRUE(Engine::step(probe, MicroAction(DecisionType::ROLL_DIE,
+                                                    static_cast<uint8_t>(good), 0, 0)));
+    }
+}

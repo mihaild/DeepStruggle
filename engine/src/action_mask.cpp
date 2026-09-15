@@ -527,6 +527,14 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 mask_212[211] = 1;
             }
             break;
+
+        case DecisionType::ROLL_DIE:
+            // Rolling is the one legal action here, and it needs saying explicitly. Without this
+            // case nothing set a bit and the fallback below supplied 211 as a generic
+            // confirm/done -- which decodes to primary_id 255, and for ROLL_DIE primary_id is the
+            // forced die value rather than an index, so the roll came out as 255.
+            mask_212[211] = 1;
+            break;
     }
 
     // Safety guarantee: ensure at least one action is legal if game is active
@@ -546,6 +554,13 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
     const auto& ctx = state.ctx();
 
     if (action_idx == 211) {
+        // ROLL_DIE first: its primary_id carries the forced die value, so the 255 "no selection"
+        // sentinel used below would be read as a forced roll of 255 rather than as "nothing
+        // chosen". 0 is the encoding for "roll normally" (ops.cpp reads `forced_roll > 0`), and
+        // CONFIRM_DONE has no meaning for a die.
+        if (ctx.decision_type == DecisionType::ROLL_DIE) {
+            return MicroAction{DecisionType::ROLL_DIE, 0, 0, 0};
+        }
         if (ctx.decision_type == DecisionType::SELECT_CARD) {
             // primary_id stays 0, which every card sub-decision already accepts as "decline",
             // but the flag has to be set too: without it is_confirm_done() reported false for
