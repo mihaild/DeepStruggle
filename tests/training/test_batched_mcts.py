@@ -118,3 +118,69 @@ def test_determinize_flag_does_not_leak_the_opponent_hand(model):
         mask = np.asarray(ActionEncoder.get_legal_mask(st))
         if mask.sum() > 0:
             assert mask[a], "determinized search returned an action illegal in the REAL state"
+
+
+# -- subtree reuse ------------------------------------------------------------------------
+
+
+def _step_and_report_chance(state, action):
+    """Step the real game, reporting whether a die roll resolved -- what `advance` needs."""
+    ts.Engine.step_flat(state, int(action))
+    intervened = (not ts.Engine.is_terminal(state)
+                  and state.ctx().decision_type == ts.DecisionType.ROLL_DIE)
+    drain_chance_nodes(state)
+    return intervened
+
+
+def test_reuse_keeps_every_decision_at_full_budget(model):
+    """An inherited tree is topped up, not merely added to -- depth must not depend on history."""
+    cfg = BatchedMCTSConfig(simulations=16, reuse_subtree=True, seed=4)
+    mcts = BatchedMCTS(model, config=cfg)
+    s = _states(1)[0]
+
+    for _ in range(4):
+        actions, visits = mcts.run([s], keys=["g0"])[0]
+        if not actions:
+            break
+        assert visits.sum() >= cfg.simulations, (
+            f"root has {visits.sum()} visits, below the {cfg.simulations} budget: an inherited "
+            f"tree was not topped up")
+        best = int(actions[int(np.argmax(visits))])
+        intervened = _step_and_report_chance(s, best)
+        mcts.advance("g0", best, intervened)
+
+
+def test_advance_drops_the_tree_when_a_die_roll_intervened(model):
+    """A cached child holds ONE sampled chance outcome; if the real roll differed it is invalid."""
+    cfg = BatchedMCTSConfig(simulations=8, reuse_subtree=True, seed=6)
+    mcts = BatchedMCTS(model, config=cfg)
+    s = _states(1)[0]
+    actions, visits = mcts.run([s], keys=["g0"])[0]
+    assert actions, "fixture position has no legal actions"
+    best = int(actions[int(np.argmax(visits))])
+
+    mcts.advance("g0", best, chance_intervened=True)
+    assert "g0" not in mcts._trees, (
+        "tree survived a chance node; the next search would run from a state that never occurred")
+
+
+def test_reuse_is_disabled_under_determinization(model):
+    """A tree built for one sampled world must not be carried into another."""
+    cfg = BatchedMCTSConfig(simulations=8, reuse_subtree=True, determinize=True, seed=8)
+    mcts = BatchedMCTS(model, config=cfg)
+    s = _states(1)[0]
+    actions, visits = mcts.run([s], keys=["g0"])[0]
+    assert not mcts._trees, "determinized search stored a tree for reuse"
+    if actions:
+        mcts.advance("g0", int(actions[int(np.argmax(visits))]), chance_intervened=False)
+        assert not mcts._trees
+
+
+def test_forget_removes_a_stream(model):
+    cfg = BatchedMCTSConfig(simulations=8, reuse_subtree=True, seed=10)
+    mcts = BatchedMCTS(model, config=cfg)
+    s = _states(1)[0]
+    mcts.run([s], keys=["g0"])
+    assert "g0" in mcts._trees
+    mcts.forget("g0")
+    assert "g0" not in mcts._trees

@@ -6,8 +6,15 @@ hopeless as a training component: measured on this network, a forward pass costs
 **193x more states per second**. The trunk is 3.15M parameters -- at batch 1 the GPU is idle and the
 cost is launch latency.
 
-The consequence for training is not marginal. A 160M-step arm with search on both sides at 96
-simulations per move is about **137 days** with batch-1 search and about **18 hours** batched.
+The consequence for training is not marginal. A 160M-step arm with search on both sides is about
+**137 days** with batch-1 search and about **2 days** batched, measured rather than projected:
+476,190 games x 182 decisions (a game is ~336 micro-actions, but the rest are chance nodes the
+engine drains itself) at 64 simulations, which is where the strength curve flattens -- 64 scores
+75.0% against the raw policy and 96 scores 73.4%, inside noise of each other.
+
+An earlier version of this note said 18 hours. That came from a forward-pass microbenchmark
+predicting 193x; the real searcher gets 45.7x once tree bookkeeping, engine clones and Python
+overhead are counted.
 
 The structure here is *tree parallelism across positions*, not within a position: N independent
 searches advance in lockstep, each contributing exactly one leaf per iteration, and all leaves are
@@ -37,11 +44,34 @@ from bindings.action_encoder import ActionEncoder
 _UINT64 = 1 << 64
 
 
+def settle(state: ts.GameState, auto_advance: bool) -> None:
+    """Advance past everything the player has no say in, by whichever rule is configured."""
+    if auto_advance:
+        ts.Engine.auto_advance_step(state)
+    else:
+        drain_chance_nodes(state)
+
+
 @dataclass
 class BatchedMCTSConfig(PIMCTSConfig):
     #: Resample the hidden state before each search, so the tree never reads the opponent's hand.
     #: False reproduces PIMCTS (a privileged teacher); True reproduces DMCTS (deployable).
     determinize: bool = False
+    #: Carry the subtree under the action just played into the next search instead of starting
+    #: empty. Measured on this game, the chosen action holds ~37% of root visits, so a
+    #: 64-simulation search needs only ~40 new simulations -- a 0.63x cost multiplier with no
+    #: approximation, because every decision is still searched to the full budget.
+    #:
+    #: Ignored when `determinize` is set: the honest searcher resamples the hidden state for each
+    #: search, so a tree built under one sampled world says nothing about the next one. Reusing
+    #: across determinizations would silently mix worlds.
+    reuse_subtree: bool = False
+    #: Let the engine skip decisions with no discretion -- chance rolls, single legal actions and
+    #: deterministic event targets -- instead of draining chance nodes alone. Measured: 31.2%
+    #: fewer decisions per game, forced decisions from 6.1% to 0.0%, and 0.76x the engine time,
+    #: since the Python drain loop is replaced by one C++ call. Changes the sequence of positions
+    #: the agent is asked about, so it is a flag: a run with it is not comparable to one without.
+    auto_advance: bool = True
 
 
 @dataclass
@@ -70,6 +100,9 @@ class BatchedMCTS:
         self._rng = random.Random(self.cfg.seed)
         self._np_rng = np.random.RandomState(self.cfg.seed)
         self.model.eval()
+        #: Persistent roots, keyed by whatever the caller uses to identify a position stream
+        #: (a game index, typically). Only populated when `reuse_subtree` is on.
+        self._trees: Dict[object, _BNode] = {}
 
     # -- evaluation -----------------------------------------------------------------------
 
@@ -137,7 +170,7 @@ class BatchedMCTS:
                 nxt = node.state.clone()
                 nxt.rng_state = self._rng.getrandbits(64) % _UINT64
                 ts.Engine.step_flat(nxt, action)
-                drain_chance_nodes(nxt)
+                settle(nxt, self.cfg.auto_advance)
                 child = self._make_node(nxt)
                 node.children[action] = child
                 return path, child
@@ -149,34 +182,60 @@ class BatchedMCTS:
             parent.n[idx] += 1.0
             parent.w[idx] += value_us
 
-    def run(self, states: Sequence[ts.GameState]) -> List[Tuple[List[int], np.ndarray]]:
-        """Search every position. Returns (actions, visit_counts) per input, in order."""
+    def run(self, states: Sequence[ts.GameState],
+            keys: Optional[Sequence[object]] = None) -> List[Tuple[List[int], np.ndarray]]:
+        """Search every position. Returns (actions, visit_counts) per input, in order.
+
+        `keys` identifies each position's stream so its subtree can be carried forward by
+        `advance()`. Required only when `reuse_subtree` is set.
+        """
         cfg = self.cfg
+        reuse = cfg.reuse_subtree and not cfg.determinize and keys is not None
+        # A concrete list, so the type checker can see the indexing below is guarded. `reuse`
+        # already encodes `keys is not None`, but that narrowing does not survive the variable.
+        key_list: List[object] = list(keys) if keys is not None else []
         roots: List[Optional[_BNode]] = []
-        for st in states:
+        inherited: List[bool] = []
+        for i, st in enumerate(states):
+            carried = self._trees.pop(key_list[i], None) if reuse else None
+            if carried is not None and not carried.terminal and carried.expanded:
+                roots.append(carried)
+                inherited.append(True)
+                continue
             s = st.clone()
-            drain_chance_nodes(s)
+            settle(s, cfg.auto_advance)
             if cfg.determinize and not ts.Engine.is_terminal(s):
                 s = determinize(s, acting_player(s), self._rng)
                 s.rng_state = self._rng.getrandbits(64) % _UINT64
             roots.append(self._make_node(s))
+            inherited.append(False)
 
         # One batch for every root, then one batch per simulation round.
         self._evaluate_batch([r for r in roots if r is not None and not r.expanded])
 
-        for r in roots:
+        for r, was_inherited in zip(roots, inherited):
             if r is None or r.terminal or not r.actions:
                 continue
-            if cfg.dirichlet_frac > 0.0 and len(r.actions) > 1:
+            # Root noise belongs to a fresh search. Re-applying it to an inherited tree would
+            # perturb priors that its existing visit counts were already collected under.
+            if not was_inherited and cfg.dirichlet_frac > 0.0 and len(r.actions) > 1:
                 noise = self._np_rng.dirichlet([cfg.dirichlet_alpha] * len(r.actions))
                 f = cfg.dirichlet_frac
                 r.priors = (1.0 - f) * r.priors + f * noise
 
-        for _ in range(cfg.simulations):
+        # Each root runs until IT holds `simulations` visits. A single shared count would be
+        # decided by the least-inherited tree in the batch -- one fresh tree would force the full
+        # budget on every other root, which is how the first version of this saved nothing.
+        remaining = [max(0, cfg.simulations - int(r.n.sum()))
+                     if (r is not None and not r.terminal and r.actions) else 0
+                     for r in roots]
+
+        while any(remaining):
             pending: List[Tuple[List[Tuple[_BNode, int]], _BNode]] = []
-            for r in roots:
-                if r is None or r.terminal or not r.actions:
+            for i, r in enumerate(roots):
+                if r is None or r.terminal or not r.actions or remaining[i] <= 0:
                     continue
+                remaining[i] -= 1
                 pending.append(self._descend(r))
             # Every tree contributed at most one leaf, so a single batch completes the round.
             self._evaluate_batch([leaf for _, leaf in pending
@@ -185,12 +244,37 @@ class BatchedMCTS:
                 self._backup(path, leaf.value_us)
 
         out: List[Tuple[List[int], np.ndarray]] = []
-        for r in roots:
+        for i, r in enumerate(roots):
             if r is None or r.terminal or not r.actions:
                 out.append(([], np.zeros(0)))
             else:
                 out.append((r.actions, r.n.copy()))
+            if reuse and r is not None:
+                self._trees[key_list[i]] = r
         return out
+
+    def advance(self, key: object, action: int, chance_intervened: bool) -> None:
+        """Carry this stream's tree down to the child under `action`, or drop it.
+
+        `chance_intervened` MUST be true when a die roll resolved between the search and the
+        resulting position. Each child caches a single sampled die outcome, taken when the child
+        was first expanded; if the real roll differed, that subtree describes a position that did
+        not occur and reusing it would search the wrong state. Measured on this game a chance node
+        follows 4.7% of decisions, so this is a small but not negligible carve-out -- and the
+        caller is the only one that can observe it.
+        """
+        if not self.cfg.reuse_subtree or self.cfg.determinize:
+            return
+        root = self._trees.pop(key, None)
+        if root is None or chance_intervened:
+            return
+        child = root.children.get(int(action))
+        if child is not None and not child.terminal and child.expanded:
+            self._trees[key] = child
+
+    def forget(self, key: object) -> None:
+        """Drop a stream's tree, e.g. when its game ends."""
+        self._trees.pop(key, None)
 
     def best_actions(self, states: Sequence[ts.GameState]) -> List[int]:
         """Most-visited action per position; falls back to the first legal action."""
