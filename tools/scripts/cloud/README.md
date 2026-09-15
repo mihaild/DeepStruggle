@@ -22,8 +22,13 @@ not fill a 4090.
 
 Two practical consequences:
 
-* **To get two runs onto one card at full speed, enable MPS** (`nvidia-cuda-mps-control -d`).
-  Without it, rent one GPU per run.
+* **MPS does not help this workload — measured, not assumed.** Two training runs under CUDA MPS
+  reached 6,858 + 6,511 = **13,369 steps/s against 13,143 with plain time-slicing** and 13,169
+  solo: +1.7%, which is noise. Both processes were confirmed as MPS clients in the daemon log, so
+  this was a real test rather than a silent fallback. MPS solves GPU under-occupancy, and that is
+  not the constraint here — the engine is a CPU-side simulator, which is why an identical 3090
+  varied 45% on host cores alone. **Rent one GPU per run.** Running two in parallel is fine when
+  it suits scheduling — same aggregate throughput, both finish together — just not faster.
 * **VRAM is not the binding constraint.** At 8GB per run, a 12GB or 16GB card fits one run with
   room to spare, so cheaper smaller cards are on the table and the choice should be made on
   **$ per 80M steps**, not on $ per hour and not on VRAM.
@@ -229,3 +234,26 @@ Both scripts now use `pytorch/pytorch:2.13.0-cuda13.0-cudnn9-runtime` and its bu
 2.13.0+cu130, the same build as the local venv, whose arch list ends `sm_100, sm_120`. The bench
 prints the arch list, so an unsupported card is obvious in the first line rather than five failed
 rows later.
+
+
+## Filter on the host's CUDA driver
+
+`cuda_max_good` is the highest CUDA version an offer's driver supports, and it must cover the
+image. The runtime image ships torch 2.13.0+cu130, so:
+
+```
+cuda_max_good>=13.0
+```
+
+Without it, a host whose driver tops out at CUDA 12.2 rents happily, pulls the 3GB image, builds
+the engine, and only then dies at `torch._C._cuda_init()` with "The NVIDIA driver on your system
+is too old (found version 12020)". That is the most expensive possible way to discover a host is
+unusable — every minute of setup billed before the failure.
+
+It is also the only one of the five failure modes seen in a day of renting that is visible in the
+offer. For the record, the other four were: an image pull that had not finished in 35 minutes; a
+host sitting in `loading` with no status message at all; one whose sshd accepted the connection
+and immediately closed it; and one that could not unpack the image (`failed to register layer:
+write ...`, a disk fault). Those are only discoverable by trying, which is why the guidance is to
+**fail fast** — a working host reaches ssh in about 7 minutes, so a cap of 15 costs a third as
+much per bad host as a cap of 35 and returns you to the queue sooner.
