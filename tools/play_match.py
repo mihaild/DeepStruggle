@@ -77,6 +77,55 @@ def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: 
     if clean_spec == "exploratory":
         return ExploratoryBot(role), "ExploratoryBot"
 
+    # search:<checkpoint>[:sims[:determinize]] -- MCTS over a checkpoint, played through the
+    # standard match loop so the replay goes through the same writer as every other game.
+    if clean_spec.startswith("search:"):
+        parts = clean_spec.split(":")
+        path = parts[1]
+        sims = int(parts[2]) if len(parts) > 2 and parts[2] else 64
+        determinize = len(parts) > 3 and parts[3].lower().startswith("determin")
+        from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
+        from tools.lib.player_agent import NeuralAgent
+
+        base = NeuralAgent.from_checkpoint(path, device=device)
+        cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0,
+                                auto_advance=True, determinize=determinize)
+        searcher = BatchedMCTS(base.model, device=device, config=cfg, featurise_capacity=1)
+
+        class _SearchBot(BaseBot):
+            """Bot-shaped adapter that needs the engine state, not the JSON view.
+
+            A searcher clones and steps the real GameState, so BaseBot's dict interface cannot
+            serve it. `wants_game_state` tells the match loop to pass the state instead, and
+            `select_action` raises rather than silently playing an unsearched move.
+            """
+
+            wants_game_state = True
+
+            def __init__(self, role):
+                super().__init__(role, name=f"search{sims}{'-det' if determinize else ''}")
+
+            def select_action(self, state, legal_actions):
+                raise NotImplementedError(
+                    "search bots need the engine GameState; the match loop must route through "
+                    "select_from_state (see wants_game_state)")
+
+            def select_from_state(self, state) -> Dict[str, Any]:
+                flat = int(searcher.best_actions([state])[0])
+                ma = ts.decode_flat_action(state, flat)
+                return {
+                    "decision_type": int(ma.decision_type),
+                    "primary_id": int(ma.primary_id),
+                    "secondary_id": int(ma.secondary_id),
+                    "flags": int(ma.flags),
+                }
+
+            def reset(self):
+                searcher.reset()
+
+        label = f"Search({sims}{'/det' if determinize else ''}, {os.path.basename(path)})"
+        return _SearchBot(role), label
+
     # Neural bot resolution
     model_path: Optional[str] = None
     if clean_spec.startswith("neural:"):
@@ -204,7 +253,12 @@ def run_match(
         action_dict = (forced_setup_action(state, opening, setup_cursor)
                        if opening else None)
         if action_dict is None:
-            action_dict = active_bot.select_action(d, legal)
+            # A searcher needs the engine state to clone and step; every other bot reads the
+            # JSON view. The state is already in scope here, so no plumbing is required.
+            if getattr(active_bot, "wants_game_state", False):
+                action_dict = getattr(active_bot, "select_from_state")(state)
+            else:
+                action_dict = active_bot.select_action(d, legal)
         if action_dict is None:
             if verbose:
                 print(f"[{p_str}] Forfeited or passed.")

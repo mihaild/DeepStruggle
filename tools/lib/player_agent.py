@@ -295,6 +295,21 @@ class NeuralAgent:
 def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAgent:
     """Factory function loading agents from string specifier (random, heuristic, or checkpoint path)."""
     s = spec.strip()
+    if s.lower().startswith("search:"):
+        # search:<checkpoint>[:sims[:determinize]] -- a searching agent over a checkpoint.
+        # Exposed here rather than left to callers so that search games go through the same
+        # CLIs, and therefore the same replay writer, as every other match.
+        parts = s.split(":")
+        path = parts[1]
+        sims = int(parts[2]) if len(parts) > 2 and parts[2] else 64
+        determinize = len(parts) > 3 and parts[3].lower().startswith("determin")
+        from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
+
+        base = NeuralAgent.from_checkpoint(path, device=device)
+        cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0,
+                                auto_advance=True, determinize=determinize)
+        label = f"search{sims}{'-det' if determinize else ''}"
+        return BatchedMCTSAgent(base.model, name=label, device=device, config=cfg)
     if s.lower() in ["random", "randombot", "rand"]:
         return RandomAgent()
     if s.lower() in ["old_heuristic", "old_heuristicbot", "old_heur", "oldheuristic"]:
