@@ -628,6 +628,17 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     state.last_opp_die_roll = 0;
     if (state.current_phase == Phase::GAME_OVER) return false;
 
+    // An action must answer the question being asked. Without this, a mismatched action can fall
+    // through to a branch that acts on it anyway -- a SELECT_CARD action was once accepted at a
+    // ROLL_DIE node and silently consumed the die roll, so a coup reached resolution and never
+    // rolled. Rejecting is strictly better than that: the caller sees false and the state is
+    // untouched, instead of the game quietly taking a different course.
+    //
+    // This rejects nothing legal: every action in the 212-wide legal mask decodes to a
+    // MicroAction whose decision_type equals the context's (verified over 177,258 state/action
+    // pairs). Callers that construct actions by hand must set the type the context asks for.
+    if (action.decision_type != state.ctx().decision_type) return false;
+
     // 1. SETUP PHASE
     if (state.current_phase == Phase::SETUP) {
         if (state.ctx().decision_player == Player::USSR) {
