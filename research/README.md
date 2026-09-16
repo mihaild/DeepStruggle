@@ -69,14 +69,31 @@ file.
 | [`measurement_bugs.md`](log/measurement_bugs.md) | every instrument that reported confident nonsense, in full |
 | [`variance_and_noise.md`](log/variance_and_noise.md) | run-to-run variance, and how much of a rating is just where you stopped |
 
-## findings/ — short, current, cited
+## findings/ — short, current, cited, and split by what can invalidate it
+
+Two kinds of knowledge live here and they answer to different things, so they are filed apart.
+The index is [`findings/README.md`](findings/README.md), which also lists the cases where the
+boundary is not clean.
+
+| directory | | invalidated by |
+|:---|:---|:---|
+| [`findings/engine/`](findings/engine/) | **(A)** what the simulator does — rules, mask semantics, revision boundaries, the instruments | a defect found, a rules fix, a probe caught lying |
+| [`findings/training/`](findings/training/) | **(B)** what a training choice is worth — architecture, reward, pooling, value targets, seed variance | a better-powered replication, more seeds |
 
 | file | |
 |:---|:---|
-| [`architecture.md`](findings/architecture.md) | what the network is now, and what each change was worth |
-| [`pooling.md`](findings/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
-| [`seed_variance.md`](findings/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
-| [`defcon_blunders.md`](findings/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
+| [`engine/engine_revisions.md`](findings/engine/engine_revisions.md) | which game each arm was trained on: E1/E2/E3, what each boundary changed, what it invalidated |
+| [`engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md) | P14 changed the legality code and moved no decision in 385,812 steps; how to establish that for the next change |
+| [`training/architecture.md`](findings/training/architecture.md) | what the network is now, and what each change was worth |
+| [`training/pooling.md`](findings/training/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
+| [`training/seed_variance.md`](findings/training/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
+| [`training/defcon_blunders.md`](findings/training/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
+
+**The split rests on an assumption, and the assumption is written down.** The owner's: *engine
+changes make old arms incomparable with new, but after the starred events change they do not
+affect the relative effect of training approaches.* What that licenses and what it does not is
+[`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md). Read it
+before carrying any number across an engine revision.
 
 ## method/ — how to measure
 
@@ -86,6 +103,7 @@ file.
 | [`running_experiments.md`](method/running_experiments.md) | how to run an arm and how to rate one |
 | [`measurement_tiers.md`](method/measurement_tiers.md) | which probe runs during training, per snapshot, and once per arm |
 | [`run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`: what each field means and when the engine letter bumps. The arms themselves are [`runs.md`](runs.md) |
+| [`what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md) | **the assumption behind the (A)/(B) split** — what transfers across an engine revision, what does not, and the evidence for and against |
 | [`bookkeeping.md`](method/bookkeeping.md) | **how to record an experiment so it can be found again** — what goes in `runs.md`, `questions.md`, the log and `findings/`, and in what order |
 | [`human_play.md`](method/human_play.md) | the human corpus: game length, side asymmetry, the agreement measure |
 | [`references.md`](method/references.md) | the literature behind the plan ordering |

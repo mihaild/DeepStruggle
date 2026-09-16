@@ -17,7 +17,14 @@ what they are looking for.
 | 1 | [`../runs.md`](../runs.md) | one row per **arm** — what it varied, seeds, budgets, directory, and a link to the writeup |
 | 2 | [`../questions.md`](../questions.md) | one row per **question** — the arms that bear on it, and the verdict |
 | 3 | `../log/<programme>.md` | the experiment: setup, numbers, prediction, outcome, caveats. Append-only |
-| 4 | `../findings/<topic>.md` | what is true now, cited to 3. Rewritten in place |
+| 4 | `../findings/engine/<topic>.md` or `../findings/training/<topic>.md` | what is true now, cited to 3. Rewritten in place |
+
+**Which of the two findings directories.** Ask what would invalidate the claim. If a rules fix, a
+mask change or a broken probe would delete it, it is **engine** knowledge and it is pinned to a
+commit. If only a better-powered replication would move it, it is **training** knowledge and it is
+a difference measured between two arms inside one engine. The cases where that test does not
+decide are listed in [`../findings/README.md`](../findings/README.md), and the assumption the split
+rests on is [`what_survives_an_engine_change.md`](what_survives_an_engine_change.md).
 
 1 and 2 are indexes and cost a minute each. 3 is where the work goes. 4 exists only when a
 question has an answer worth stating without its narrative.
@@ -34,6 +41,13 @@ sample size, and the file it will be read from. The pooling replication pre-regi
 what got reported instead was external side balance from a tournament, a different instrument
 chosen after the fact. That is exactly the failure pre-registration exists to prevent, and
 naming the instrument as well as the statistic is what would have caught it.
+
+**If `engine/` changed since the control was trained, measure the decision stream before claiming
+the pair is matched.** Build both engines, replay fixed seeds under a deterministic walk and under
+the arms' own policies, and diff the decision type, the chosen action and the legal mask's hash at
+every step. It takes hours; the alternative is re-running the control. Record the verdict in the
+arm's row in [`../runs.md`](../runs.md) — the two worked examples are the `ROLL_DIE` pair and P14,
+both under *E3-21*.
 
 **Name the mechanism unambiguously.** Before reusing a word, grep for it. "Pool" already meant an
 opponent pool, a start-state pool, a pooled head-to-head rating protocol, and global average

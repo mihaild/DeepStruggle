@@ -74,6 +74,12 @@ column of [`../runs.md`](../runs.md) is what maps them back.
 | **E2** | `cff2344`, `25d9b70` | starred-card fix, observation v2.3. Arms H, H2, I. |
 | **E3** | `1a3b782`, `a18ceab` | the Aldrich Ames discard and the Star Wars pick made mandatory. Everything from P1 onward. |
 
+Each boundary is a *batch* rather than a commit — eight further engine and observation commits
+landed with the starred-card fix on 2026-09-10 — and what each one changed, with what it
+invalidated, is [`../findings/engine/engine_revisions.md`](../findings/engine/engine_revisions.md).
+What a letter bump does and does not invalidate is
+[`what_survives_an_engine_change.md`](what_survives_an_engine_change.md).
+
 ## Attempt numbers restart with each engine
 
 An attempt number is unique **within its engine letter**, not across the project. The first
@@ -91,6 +97,14 @@ registry row beside the arm that depends on it. The E3-20/E3-21 pairing is the w
 `b6874af` and `9f78026` changed `engine/` between the two runs, and the letter was held at E3
 because no `ROLL_DIE` node is ever handed to an agent (0 in 879 single-env and 12,800 vectorized
 env-steps) and the runner always forces die 0. See [`../runs.md`](../runs.md), *E3-21*.
+
+P14 is the second worked example and the stronger one: the mask/step collapse and the Missile
+Envy forced-play fix (`5938e52`) were replayed against a build of `a09e15a` over 1,068 games and
+385,812 steps under four policies, comparing outcome, length, chosen action and the legal mask's
+hash at every step, with zero divergences. The letter was held at E3 on that measurement. Diffing
+the **mask** as well as the action is the part worth copying — an engine change can alter what is
+offered without altering what a deterministic chooser picks, and a policy sees the offer. Method:
+[`../findings/engine/engine_change_decision_stream.md`](../findings/engine/engine_change_decision_stream.md).
 
 ## What the naming buys
 

@@ -201,4 +201,4 @@ above was never computed; what exists is a different instrument.
 
 Results, caveats and what is still missing — including that experiment 1 (E3-18-22) ran and was
 never written up, and that frac 0.15 and 0.50 were never launched — are in
-[`../findings/pooling.md`](../findings/pooling.md). This plan file stays as written.
+[`../findings/training/pooling.md`](../findings/training/pooling.md). This plan file stays as written.

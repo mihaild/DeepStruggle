@@ -6,8 +6,10 @@ by programme — one investigated question spanning several arms — with the or
 kept so that every existing cross-reference, inside and outside these files, still names the right
 entry. Nothing was rewritten: dead ends, abandoned arms, withdrawn claims and the self-corrections
 that followed them stay exactly as written, and **no file here is edited to match current belief**.
-For what is currently believed read `../findings/`; for how a measure is defined and what it can
-bear read `../method/`; for what runs next read `../plans/`. The preamble of the
+For what is currently believed read `../findings/` — split since 2026-09-16 into
+[`engine/`](../findings/engine/), what the simulator does, and [`training/`](../findings/training/),
+what a training choice is worth; for how a measure is defined and what it can bear read
+`../method/`; for what runs next read `../plans/`. The preamble of the
 original file, including its maintenance rules, is preserved verbatim below the index.
 
 ## Where each section went
@@ -30,8 +32,8 @@ original file, including its maintenance rules, is preserved verbatim below the 
 
 **Conclusions extracted on 2026-09-16.** Three topics were being looked up on their own and were
 buried inside long journals. Their current verdicts now live in `../findings/` —
-[`pooling.md`](../findings/pooling.md), [`seed_variance.md`](../findings/seed_variance.md) and
-[`defcon_blunders.md`](../findings/defcon_blunders.md) — and each source section here carries a
+[`pooling.md`](../findings/training/pooling.md), [`seed_variance.md`](../findings/training/seed_variance.md) and
+[`defcon_blunders.md`](../findings/training/defcon_blunders.md) — and each source section here carries a
 one-line pointer under its heading. Nothing was removed: the setups, the predictions and the
 retractions stay where they were written, which is the only property this directory has.
 
@@ -41,7 +43,7 @@ the stubs travelled with their section. `metrics.md` has since been split in tur
 [`P9_architecture.md`](P9_architecture.md), [`../method/running_experiments.md`](../method/running_experiments.md),
 [`../method/human_play.md`](../method/human_play.md),
 [`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) and
-[`../findings/architecture.md`](../findings/architecture.md); the stubs point at wherever their
+[`../findings/training/architecture.md`](../findings/training/architecture.md); the stubs point at wherever their
 entry landed. The verbatim preamble below still names `metrics.md`, and is left as written.
 
 ---

@@ -8,7 +8,7 @@ readings (the anchor that inverted orderings, the influence probe that scored be
 baseline twice, the trunk figure that moved the right way while play halved) are the most
 valuable entries in the file and are never removed. The *conclusions* — what the architecture is
 now and what each change is worth — are kept current and short in
-[`../findings/architecture.md`](../findings/architecture.md); this file is why they are believed.
+[`../findings/training/architecture.md`](../findings/training/architecture.md); this file is why they are believed.
 The plan this programme was run from is
 [`../plans/P9_graph_architecture.md`](../plans/P9_graph_architecture.md), and the arm names are
 decoded in [`../runs.md`](../runs.md), and the scheme behind them in
@@ -53,9 +53,9 @@ left a stub behind.
 
 | section here | current verdict now in |
 |:---|:---|
-| §21.1 the critic and the provoked DEFCON-1; §21.2 windowing | [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md) |
-| *Seed variance is ~95 Elo* (unnumbered, at the end) | [`../findings/seed_variance.md`](../findings/seed_variance.md) |
-| §21.5–§21.19, the architecture progression and the probes | [`../findings/architecture.md`](../findings/architecture.md), as before |
+| §21.1 the critic and the provoked DEFCON-1; §21.2 windowing | [`../findings/training/defcon_blunders.md`](../findings/training/defcon_blunders.md) |
+| *Seed variance is ~95 Elo* (unnumbered, at the end) | [`../findings/training/seed_variance.md`](../findings/training/seed_variance.md) |
+| §21.5–§21.19, the architecture progression and the probes | [`../findings/training/architecture.md`](../findings/training/architecture.md), as before |
 
 ---
 
@@ -124,7 +124,7 @@ warm start cannot save re-learning something nothing learns in the first place.
 
 ## The critic does not see a provoked DEFCON-1 coming, at any node
 
-> Current verdict: [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md). The trace
+> Current verdict: [`../findings/training/defcon_blunders.md`](../findings/training/defcon_blunders.md). The trace
 > below is the evidence and stays here.
 
 Traced through the `h2_480M_provoked_*` replays by replaying their recorded flat actions through
@@ -172,7 +172,7 @@ excludes provoked endings, so the one-line label fix is a prerequisite for eithe
 
 ## Windowing a provoked DEFCON-1 moves exactly the class it targets
 
-> Current verdict: [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md) — not
+> Current verdict: [`../findings/training/defcon_blunders.md`](../findings/training/defcon_blunders.md) — not
 > adopted, −68 Elo on two seeds. The arm is E3-08 in [`../runs.md`](../runs.md).
 
 `--window-provoked-defcon` credits a provoked DEFCON-1 to the player who played the card, using
@@ -1298,7 +1298,7 @@ distribution even though both models see identical inputs. E3-15 is one seed.
 ## Seed variance is ~95 Elo, and it invalidates the graph-depth comparison
 
 > Current verdict, with every other variance figure alongside it:
-> [`../findings/seed_variance.md`](../findings/seed_variance.md).
+> [`../findings/training/seed_variance.md`](../findings/training/seed_variance.md).
 
 The E3-12/E3-15/E3-17 tournament (400 games per side, `data/tournaments/e3_12_15_17_report.md`)
 was the first time two seeds of the same architecture were rated in the same field. They are far

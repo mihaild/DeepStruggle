@@ -16,6 +16,20 @@ several.
 a writeup. The per-arm notes below the tables are the exception — a prediction registered before
 a run and the outcome recorded against it are history, and those are not edited once written.
 
+**What the engine letter costs a row.** The tables below are grouped by engine revision because
+that is what decides which numbers may be compared. Two different things are at stake and they are
+filed apart in [`findings/`](findings/):
+
+* **Absolute** — a row's Elo, win rate, ending mix or battleground count is a statement about the
+  engine it was measured on. Across a letter it is void. What each boundary changed is
+  [`findings/engine/engine_revisions.md`](findings/engine/engine_revisions.md).
+* **Relative** — what the arm *varied*, measured against its own matched control, is expected to
+  carry across a letter. That expectation is an assumption with its evidence written down in
+  [`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md), and the
+  results it licenses are [`findings/training/`](findings/training/).
+
+So: read the `varied` column across engine revisions, and never the numbers in the writeup cell.
+
 **How to add a row:** [`method/bookkeeping.md`](method/bookkeeping.md).
 
 **Two caveats about the evidence behind this file.**
@@ -36,26 +50,26 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 
 | # | arm | varied | seeds | budgets | directory | result written up in |
 |---:|:---|:---|:---|:---|:---|:---|
-| 01 | control | — | 21 | 80M, 160M, 240M | `p1_scalar_nofilter` | [findings/architecture.md](findings/architecture.md); [log/P9_architecture.md](log/P9_architecture.md) |
+| 01 | control | — | 21 | 80M, 160M, 240M | `p1_scalar_nofilter` | [findings/training/architecture.md](findings/training/architecture.md); [log/P9_architecture.md](log/P9_architecture.md) |
 | 02 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a units bug |
 | 03 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a scale bug |
 | 04 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
 | 05 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
-| 06 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` | [findings/architecture.md](findings/architecture.md) — −28 Elo |
+| 06 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` | [findings/training/architecture.md](findings/training/architecture.md) — −28 Elo |
 | 07 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — +25 Elo, +24 at 160M |
-| 08 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` | [findings/defcon_blunders.md](findings/defcon_blunders.md) |
+| 08 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` | [findings/training/defcon_blunders.md](findings/training/defcon_blunders.md) |
 | 09 | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` | [log/P9_architecture.md](log/P9_architecture.md) — −110 Elo |
-| 10 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` | [findings/architecture.md](findings/architecture.md) — +107/+115 Elo |
+| 10 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` | [findings/training/architecture.md](findings/training/architecture.md) — +107/+115 Elo |
 | 11 | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` | [log/P9_architecture.md](log/P9_architecture.md) — −40/−0 Elo, not adopted |
-| 12 | `--self-transform` (on identity) | 21, 22 | 80M | `E3-12-2*_<ts>` | [findings/architecture.md](findings/architecture.md) — +53/+83 Elo |
-| 13 | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` | [findings/architecture.md](findings/architecture.md) — −14/−23, rejected |
-| 14 | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` | [findings/architecture.md](findings/architecture.md) — −219 Elo, rejected |
-| 15 | as 14 but **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` | [findings/architecture.md](findings/architecture.md) — +181 over 12 |
-| 16 | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` | [findings/seed_variance.md](findings/seed_variance.md) — **withdrawn** |
-| 17 | E3-15 recipe, `--graph-layers 0` | 21, 22, 24, 25, 26 | 80M, 160M, 320M | `E3-17-2*` | [findings/seed_variance.md](findings/seed_variance.md), [findings/pooling.md](findings/pooling.md) |
+| 12 | `--self-transform` (on identity) | 21, 22 | 80M | `E3-12-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — +53/+83 Elo |
+| 13 | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — −14/−23, rejected |
+| 14 | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — −219 Elo, rejected |
+| 15 | as 14 but **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — +181 over 12 |
+| 16 | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` | [findings/training/seed_variance.md](findings/training/seed_variance.md) — **withdrawn** |
+| 17 | E3-15 recipe, `--graph-layers 0` | 21, 22, 24, 25, 26 | 80M, 160M, 320M | `E3-17-2*` | [findings/training/seed_variance.md](findings/training/seed_variance.md), [findings/training/pooling.md](findings/training/pooling.md) |
 | 18 | E3-17-22 continued 160M → 240M, unchanged | (22) | 240M | `E3-18-22` | **no writeup** — see note |
-| 19 | pooled opponents from a mid-run resume, frac 0.30 | (22), 23 | 160M | `E3-19-22`, `E3-19-23` | [findings/pooling.md](findings/pooling.md) — partly; see note |
-| 20 | pooled opponents from scratch (`--opponent-self-pool`, frac 0.3, size 12) | (22), 27, 28, 29 | 160M, 320M | `E3-20-2*` | [findings/pooling.md](findings/pooling.md), [log/seed_variance_and_pooling.md](log/seed_variance_and_pooling.md) |
+| 19 | pooled opponents from a mid-run resume, frac 0.30 | (22), 23 | 160M | `E3-19-22`, `E3-19-23` | [findings/training/pooling.md](findings/training/pooling.md) — partly; see note |
+| 20 | pooled opponents from scratch (`--opponent-self-pool`, frac 0.3, size 12) | (22), 27, 28, 29 | 160M, 320M | `E3-20-2*` | [findings/training/pooling.md](findings/training/pooling.md), [log/seed_variance_and_pooling.md](log/seed_variance_and_pooling.md) |
 | 21 | E3-20 recipe + `--same-perspective-bootstrap` | 28 | 160M | *(none on disk)* | **not run** — registered only; see note |
 
 Seed `21` is 20260921, `22` is 20260922, and so on — `28` is 20260928. A seed in parentheses
@@ -115,7 +129,7 @@ These predate `--run-name` entirely. Their directories are the only names they h
 | V4 oracle-critic fine-tunes | privileged oracle critic distillation | `run_v4_2026082*` | **no writeup in `research/`** — predates the log |
 
 `sp_pool_*` and `sp2_pool_*` are the **start-state** pool, not the opponent pool. The two are
-unrelated mechanisms with opposite verdicts; see [`findings/pooling.md`](findings/pooling.md).
+unrelated mechanisms with opposite verdicts; see [`findings/training/pooling.md`](findings/training/pooling.md).
 
 ---
 
@@ -227,7 +241,7 @@ field and the sign of the comparison reverses with the seed: matched on seed 21 
 better, matched on seed 22 E3-15 is. Seed spread is ~95 Elo, an order of magnitude above the
 1.8pp binomial error on the pairings. The depth question is **open**, and answering it needs
 more seeds per arm, not more games per pairing. See
-[`findings/seed_variance.md`](findings/seed_variance.md) and `log/P9_architecture.md`, *seed
+[`findings/training/seed_variance.md`](findings/training/seed_variance.md) and `log/P9_architecture.md`, *seed
 variance is ~95 Elo*. The throughput figure is unaffected — it is not a play-strength claim.
 
 E3-17 keeps a per-country encoder, so every country is still encoded from its own observation
@@ -270,7 +284,7 @@ They were written down — in `metadata.json`, which the registry had not been r
   "replicates" are not started from the same place.
 
 E3-19 is the pool applied to a run already in progress; E3-20 is the pool from scratch. They are
-different experiments and were numbered as such. See [`findings/pooling.md`](findings/pooling.md).
+different experiments and were numbered as such. See [`findings/training/pooling.md`](findings/training/pooling.md).
 
 ### E3-20 and the unseeded arms
 
@@ -306,3 +320,11 @@ E3-20-28 was trained. The training decision stream is unchanged — no `ROLL_DIE
 handed to an agent (0 in 879 single-env and 12,800 vectorized env-steps) and the runner always
 forces die 0 — so the engine letter stays E3 and the pair is comparable. That is a measured
 claim, not an assumption, and it is the reason the letter was not bumped.
+
+**Added 2026-09-16, after P14.** A third `engine/` change now sits between E3-20-28 and the
+unrun E3-21-28: the mask/step collapse and the Missile Envy forced-play fix (`5938e52`), which is
+the change that killed this arm twice at ~4M steps in the first place. It was measured the same
+way and more thoroughly — 1,068 games, 385,812 steps, four policies, comparing outcome, game
+length, chosen action **and the legal mask itself** at every step against a build of `a09e15a`,
+with **zero divergences of any kind**. The letter stays E3 and the pairing stands. See
+[`findings/engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md).
