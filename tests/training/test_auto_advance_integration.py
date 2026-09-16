@@ -16,19 +16,19 @@ def test_engine_auto_advance_flag_exposed():
     # step with auto_advance=False
     s1 = ts.GameState()
     ts.Engine.init_game(s1, 12345)
-    ok1 = ts.Engine.step(s1, ma, False)
+    ok1 = ts.Engine.try_step(s1, ma, False)
     assert ok1 is True
 
     # step with auto_advance=True
     s2 = ts.GameState()
     ts.Engine.init_game(s2, 12345)
-    ok2 = ts.Engine.step(s2, ma, True)
+    ok2 = ts.Engine.try_step(s2, ma, True)
     assert ok2 is True
 
     # step_flat with auto_advance
     s3 = ts.GameState()
     ts.Engine.init_game(s3, 12345)
-    ok3 = ts.Engine.step_flat(s3, act_idx, True)
+    ok3 = ts.Engine.try_step_flat(s3, act_idx, True)
     assert ok3 is True
 
 def test_suez_crisis_auto_advance():

@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 #include <nanobind/ndarray.h>
 #include "ts/observation.hpp"
 #include <nanobind/nanobind.h>
@@ -38,6 +40,20 @@ static const char* decision_type_to_str(ts::DecisionType dt) {
         case ts::DecisionType::ROLL_DIE: return "ROLL_DIE";
         default: return "UNKNOWN";
     }
+}
+
+// A refused action is a caller bug, never a game event: post-P14 `step` validates against the same
+// mask the caller is expected to sample from, so a refusal can only mean the action was chosen
+// against a different state. Raising is therefore the right default, and `try_step*` is kept for
+// the callers that genuinely probe (the fuzzers, and the mask-vs-step differential sweeps).
+[[noreturn]] static void throw_illegal_action(const ts::GameState& state, const std::string& what) {
+    const auto& ctx = state.ctx();
+    const char* who = (ctx.decision_player == ts::Player::US) ? "US"
+                    : (ctx.decision_player == ts::Player::USSR) ? "USSR" : "NONE";
+    throw std::runtime_error(
+        "engine refused " + what + "; it is asking for " +
+        std::string(decision_type_to_str(ctx.decision_type)) + " from " + who +
+        ". Use try_step/try_step_flat if you meant to probe legality.");
 }
 
 static const char* roll_type_to_str(ts::RollType t) noexcept {
@@ -873,7 +889,16 @@ NB_MODULE(ts_engine, m) {
 
     nb::class_<ts::Engine>(m, "Engine")
         .def_static("init_game", &ts::Engine::init_game)
-        .def_static("step", &ts::Engine::step, nb::arg("state"), nb::arg("action"), nb::arg("auto_advance") = false)
+        .def_static("try_step", &ts::Engine::step, nb::arg("state"), nb::arg("action"), nb::arg("auto_advance") = false,
+                    "Advance one action, returning False if the engine refuses it. For probing only.")
+        .def_static("step", [](ts::GameState& state, const ts::MicroAction& action, bool auto_advance) {
+            if (!ts::Engine::step(state, action, auto_advance)) {
+                throw_illegal_action(state, "MicroAction(decision_type=" +
+                    std::string(decision_type_to_str(action.decision_type)) +
+                    ", primary_id=" + std::to_string(static_cast<int>(action.primary_id)) + ")");
+            }
+        }, nb::arg("state"), nb::arg("action"), nb::arg("auto_advance") = false,
+           "Advance one action, raising RuntimeError if the engine refuses it.")
         .def_static("is_terminal", &ts::Engine::is_terminal)
         .def_static("get_terminal_utility", &ts::Engine::get_terminal_utility)
         .def_static("has_held_scoring_card", &ts::Engine::has_held_scoring_card)
@@ -906,7 +931,14 @@ NB_MODULE(ts_engine, m) {
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
         })
-        .def_static("step_flat", &ts::Engine::step_flat, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false)
+        .def_static("try_step_flat", &ts::Engine::step_flat, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
+                    "Advance one flat action, returning False if the engine refuses it. For probing only.")
+        .def_static("step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance) {
+            if (!ts::Engine::step_flat(state, action_idx, auto_advance)) {
+                throw_illegal_action(state, "flat action " + std::to_string(static_cast<int>(action_idx)));
+            }
+        }, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
+           "Advance one flat action, raising RuntimeError if the engine refuses it.")
         .def_static("auto_advance_step", &ts::Engine::auto_advance_step, nb::arg("state"), nb::arg("max_steps") = 128);
 
     // Map Metadata helpers
@@ -1088,7 +1120,10 @@ NB_MODULE(ts_engine, m) {
                    states[idx].ctx().decision_player == ts::Player::NONE &&
                    states[idx].ctx().decision_type == ts::DecisionType::ROLL_DIE) {
                 ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
-                ts::StateMachine::step(states[idx], chance_ma);
+                // Must match step_flat_all's copy of this drain: without the check a refused
+                // ROLL_DIE leaves the loop condition unchanged and this spins forever. Breaking
+                // leaves the chance node in place, where the empty mask reports it loudly.
+                if (!ts::StateMachine::step(states[idx], chance_ma)) break;
             }
             ts::Player p = (states[idx].ctx().decision_player != ts::Player::NONE)
                 ? states[idx].ctx().decision_player : states[idx].phasing_player;

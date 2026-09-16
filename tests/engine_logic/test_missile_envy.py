@@ -192,7 +192,7 @@ def test_forced_missile_envy_can_only_be_played_for_ops() -> None:
         legal = [int(a) - 119 for a in np.flatnonzero(ActionEncoder.get_legal_mask(st))
                  if 119 <= int(a) < 203]
         assert legal, "no legal influence placement while spending Missile Envy's Ops"
-        assert ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, legal[0], 0, 0)), (
+        assert ts.Engine.try_step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, legal[0], 0, 0)), (
             f"engine refused a placement the mask offered: country {legal[0]}")
 
     # After forced play completes:

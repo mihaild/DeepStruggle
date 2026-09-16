@@ -78,7 +78,7 @@ def test_keeping_our_man_in_tehran_does_not_put_it_inside_its_own_peek() -> None
     # It is in the US hand now, and the peek it opens must not contain it.
     assert ts.in_hand_of(state.get_card_location(OUR_MAN_IN_TEHRAN), ts.Player.US)
 
-    assert ts.Engine.step(
+    assert ts.Engine.try_step(
         state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0)), (
         "playing the kept card as its Event should be accepted"
     )

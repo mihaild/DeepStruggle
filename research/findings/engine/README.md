@@ -7,6 +7,7 @@ or a lying instrument is found, the ratings measured through it are gone rather 
 |:---|:---|
 | [`engine_revisions.md`](engine_revisions.md) | the E1 → E2 → E3 ladder, what each boundary changed, and which comparisons each one breaks |
 | [`engine_change_decision_stream.md`](engine_change_decision_stream.md) | that P14 — the mask/step collapse and the Missile Envy rule — moved **no** decision: 1,068 games, 385,812 steps, four policies, zero divergences including in the legal mask |
+| [`ply_headline_order.md`](ply_headline_order.md) | that `ai.game_length.ply` numbers headlines USSR-then-US while the engine resolves them in ops order, so the index runs backwards inside a headline — bounded at one ply of `terminal_plies`, and open |
 
 The second is the concrete evidence for the assumption in
 [`../../method/what_survives_an_engine_change.md`](../../method/what_survives_an_engine_change.md),

@@ -18,16 +18,40 @@ import ts_engine as ts
 from ai.search.dmcts import CARD_IDS, determinize, hidden_pool
 
 
-def _midgame_state(seed: int = 4242, plies: int = 60) -> ts.GameState:
+def _midgame_state(seed: int = 4242, micro_actions: int = 100) -> ts.GameState:
+    """A position partway into the game, for tests that need real hidden information.
+
+    `micro_actions` counts engine decisions, not game plies. 100 of them reaches turn 2 AR 2,
+    which is the useful window: the deck is down to 7-9 cards so a real discard pile has formed,
+    and the opponent still holds 3-5 unknown cards. Both bounds matter -- at 60 the deck is still
+    the untouched 22-card early war, and by 140 the opponent's hand is empty, which leaves
+    determinization nothing to sample and fails the two tests below outright. A first-legal
+    policy also drives the VP track to an autowin around 168, so there is no room to go deeper.
+
+    Until 2026-09-16 this returned the OPENING position regardless of the count: it fed indices
+    from the 128-wide per-decision mask to step_flat, which reads the flat 212-dim space, so
+    every step was refused and the refusal discarded. Every determinization test below was
+    therefore checking a freshly dealt hand.
+    """
     s = ts.GameState()
     ts.Engine.init_game(s, seed)
-    for _ in range(plies):
+    for _ in range(micro_actions):
         if ts.Engine.is_terminal(s):
             break
-        legal = ts.Engine.get_legal_action_indices(s)
-        if not len(legal):
+        # get_legal_action_indices is the 128-wide PER-DECISION space; step_flat reads the
+        # flat 212-dim space. Mixing them refused every step, and the discarded refusal meant
+        # this loop returned the OPENING position while claiming to have played `plies`.
+        mask = ts.Engine.get_flat_action_mask(s)
+        legal = [j for j, v in enumerate(mask) if v]
+        if not legal:
             break
         ts.Engine.step_flat(s, int(legal[0]))
+    # Pin that the fixture carries hidden information, so it cannot go quietly vacuous again.
+    assert not ts.Engine.is_terminal(s), "the walk terminated; there is no hidden state left"
+    assert int(s.turn) >= 2, f"expected a position past turn 1, got turn {s.turn}"
+    unknown = sum(1 for c in CARD_IDS
+                  if s.get_card_location(c) == ts.CardLocation.HAND_USSR_UNKNOWN)
+    assert unknown >= 2, f"fixture has only {unknown} unknown USSR cards; nothing to determinize"
     return s
 
 

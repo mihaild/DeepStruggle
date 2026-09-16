@@ -79,7 +79,7 @@ def test_the_restored_position_plays_identically() -> None:
         if not len(legal):
             break
         pick = int(legal[0])
-        assert ts.Engine.step_flat(s, pick) == ts.Engine.step_flat(back, pick)
+        assert ts.Engine.try_step_flat(s, pick) == ts.Engine.try_step_flat(back, pick)
     assert ts.Engine.is_terminal(s) == ts.Engine.is_terminal(back)
 
 
@@ -155,8 +155,8 @@ def test_a_restored_mid_game_position_continues_the_same_game() -> None:
         if not len(legal):
             break
         idx = int(legal[i % len(legal)])
-        assert ts.Engine.step_flat(s, idx)
-        assert ts.Engine.step_flat(back, idx), f"restored game refused action {idx} at ply {i}"
+        assert ts.Engine.try_step_flat(s, idx)
+        assert ts.Engine.try_step_flat(back, idx), f"restored game refused action {idx} at ply {i}"
         _same_decision(s, back)
         assert int(s.victory_points) == int(back.victory_points), f"VP diverged at ply {i}"
     assert ts.Engine.is_terminal(s) == ts.Engine.is_terminal(back)

@@ -1284,9 +1284,9 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     state.victory_points = 0;
 
     // US headlines Grain Sales (2 Ops)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0}));
     // USSR headlines We Will Bury You (4 Ops)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0}));
 
     // Stage 1: We Will Bury You (4 Ops) resolves first -> DEFCON drops to 3
     ASSERT_EQ(state.defcon, 3);
@@ -1297,12 +1297,12 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
 
     // US selects Branch 0: Play drawn card
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
 
     // US plays Duck and Cover for PlayMode::EVENT (0)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, 0, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, 0, 0, 0}));
 
     // Duck and Cover resolves: DEFCON drops to 2, US gets 3 VP
     ASSERT_EQ(state.defcon, 2);
@@ -1346,30 +1346,30 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
 
     // US headlines Grain Sales (2 Ops); the USSR headlines a 4 Ops card, which resolves first
     // and asks nothing.
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0}));
     const int8_t vp_before = state.victory_points;
 
     // Grain Sales resolves and offers the US the card it took.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::WILLY_BRANDT);
 
     // It is the USSR's own card, so Operations is the only play mode, and the ordering is a
     // choice of its own.
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_TIMING_BRANCH);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0}));
 
     // The US spends the Operations first -- Influence, so nothing rolls.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     while (state.ctx().decision_type == ts::DecisionType::POINT_NODE &&
            state.ctx().resolving_card == 0) {
-        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0});
+        ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0}));
     }
 
     // ...and only then does Willy Brandt's Event happen.
@@ -1414,8 +1414,8 @@ ts::GameState defectors_headline(uint8_t us_headline,
     for (uint8_t c : ussr_hand) state.card_locations[c] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, us_headline, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, us_headline, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0}));
     return state;
 }
 
@@ -1439,11 +1439,11 @@ TEST(CardEdgeCasesTest, Defectors_HandedOverByGrainSalesInHeadline_CancelsUSSRHe
     // resolves first and offers the US the card it drew.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DEFECTORS);
     // Defectors is a US card, so the US may play it as its Event -- and in a headline it is
     // legal to do so, unlike in an action round.
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0}));
     ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
     ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
 }
@@ -1466,14 +1466,14 @@ TEST(CardEdgeCasesTest, Defectors_TakenByStarWarsInHeadline_CancelsUSSRHeadline)
     state.card_locations[ts::card_ids::DEFECTORS] = ts::CardLocation::DISCARD_PILE;
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::STAR_WARS, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::STAR_WARS, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::VIETNAM_REVOLTS, 0, 0}));
 
     // Star Wars is 2 Ops against Vietnam Revolts' 2 and the US wins ties, so it resolves first
     // and asks which card to take out of the discard pile.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::STAR_WARS);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0}));
 
     ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
     ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
@@ -1498,8 +1498,8 @@ TEST(CardEdgeCasesTest, Defectors_AfterTheUSSRHeadlineHasResolved_CancelsNothing
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0}));
     ASSERT_EQ(state.card_locations[ts::card_ids::DEFECTORS], ts::CardLocation::DISCARD_PILE);
     ASSERT_EQ(state.defcon, 4);   // Duck and Cover resolved: DEFCON degrades by one
 }
@@ -1524,8 +1524,8 @@ TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
     state.card_locations[ts::card_ids::DECOLONIZATION] = ts::hand_of(ts::Player::USSR);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::COLONIAL_REAR_GUARDS, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DECOLONIZATION, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::COLONIAL_REAR_GUARDS, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DECOLONIZATION, 0, 0}));
 
     // Colonial Rear Guards is 2 Ops against Decolonization's 2 and the US wins ties, so it
     // resolves first: four US Influence, one per country.
@@ -1533,9 +1533,9 @@ TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
     const uint8_t shared[] = {ts::countries::ZAIRE, ts::countries::ANGOLA,
                               ts::countries::NIGERIA};
     for (uint8_t cid : shared) {
-        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0});
+        ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0}));
     }
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ZIMBABWE, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ZIMBABWE, 0, 0}));
 
     // ...and Decolonization may place in the same countries, because its frame is its own.
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::DECOLONIZATION);
@@ -1547,7 +1547,7 @@ TEST(CardEdgeCasesTest, Headline_SecondCardStartsFromAFreshContext) {
         ASSERT_EQ(mask[cid], 1);
     }
     for (uint8_t cid : shared) {
-        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0});
+        ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, cid, 0, 0}));
     }
     ASSERT_EQ(state.countries[ts::countries::ZAIRE].ussr_influence, 1);
     ASSERT_EQ(state.countries[ts::countries::ANGOLA].ussr_influence, 1);
@@ -1723,14 +1723,14 @@ TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInSpace_OpponentRevealsHeadlineFirst_A
     // USSR selects headline #31
     state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::DEFECTORS] = ts::hand_of(ts::Player::US);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0}));
 
     // Now US is prompted for Headline second, and USSR's headline is already known in state.headline_ussr_card!
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.headline_ussr_card, ts::card_ids::RED_SCARE_PURGE);
 
     // US selects headline #103 Defectors -> cancels USSR headline!
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0}));
 
     // USSR catches up to Box 4 -> privilege cancelled
     state.ussr_space_track = 4;
@@ -1784,7 +1784,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
     // every other chance node is drained.
     ASSERT_EQ(state.ctx().decision_player, ts::Player::NONE);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
 
     // End of turn reached -> US with Space Walk is prompted to discard a card!
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
@@ -1793,7 +1793,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
     ASSERT_EQ(state.ctx().allow_early_stop, 1);
 
     // US discards Red Scare/Purge (#31)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0}));
 
     // Card should now be in discard pile without event having triggered (Red Scare flag never set)
     ASSERT_FALSE(state.has_flag(ts::effect_bits::PURGE_US_ACTIVE));
@@ -1940,7 +1940,7 @@ TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OpsAndSpaceLegal) {
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
     // Step 1: USSR selects China Card
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::THE_CHINA_CARD);
 
@@ -1977,13 +1977,13 @@ TEST(CardEdgeCasesTest, ChinaCard_RacedForSpace_PassesToOpponentAndIsNeverDiscar
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     bool ok_space = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 0, 0));
     ASSERT_TRUE(ok_space);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
 
     // A roll of 3 makes box 5 (needs 3 or less).
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 3, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 3, 0, 0)));
     ASSERT_EQ(state.us_space_track, 5);
 
     // It passes to the opponent face down, and is not in the discard pile.
@@ -2008,7 +2008,7 @@ TEST(CardEdgeCasesTest, OpponentCard_CannotBePlayedAsEvent_OnlyOpsAndSpaceLegal)
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
     // Step 1: USSR selects US card (Duck and Cover)
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     // Verify ActionMask: EVENT (0) must be 0 for opponent card!
@@ -2039,9 +2039,9 @@ TEST(CardEdgeCasesTest, FormosanResolution_CancelledWhenUSPlaysChinaCard) {
     ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
 
     // Step 1: US selects China Card
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     // Step 2: US selects OPS mode
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0)));
 
     // Formosan resolution flag is cancelled upon US playing China Card for Ops!
     ASSERT_FALSE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
@@ -2062,9 +2062,9 @@ TEST(CardEdgeCasesTest, FormosanResolution_NotCancelledWhenUSSRPlaysChinaCard) {
     ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
 
     // Step 1: USSR selects China Card
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     // Step 2: USSR selects OPS mode
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0)));
 
     // Formosan resolution flag remains ACTIVE when USSR plays China Card
     ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
@@ -2082,14 +2082,14 @@ TEST(CardEdgeCasesTest, DieRollRecord_ResetToNoneOnNextStep) {
     state.ctx().pending_ops_value = 3;
 
     // Step 1: USSR chooses COUP
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, 1, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, 1, 0, 0)));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
 
     // Step 2: USSR points node (Iran) -> transitions to ROLL_DIE
     state.countries[ts::countries::IRAN].us_influence = 2;
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::IRAN, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 5, 0, 0)));
 
     ASSERT_EQ(state.last_roll.type, ts::RollType::COUP);
     ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);
@@ -2100,7 +2100,7 @@ TEST(CardEdgeCasesTest, DieRollRecord_ResetToNoneOnNextStep) {
 
     // Step 3: Next step (US turn, SELECT_CARD), last_roll MUST be reset to NONE
     ASSERT_EQ(state.phasing_player, ts::Player::US);
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0)));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
     ASSERT_EQ(state.last_roll.roll1, 0);
 }
@@ -2116,20 +2116,20 @@ TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
     state.card_locations[ts::card_ids::BRUSH_WAR] = ts::hand_of(ts::Player::USSR);
 
     // Step 1: USSR selects Brush War (#36)
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::BRUSH_WAR, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::BRUSH_WAR, 0, 0)));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
 
     // Step 2: USSR selects EVENT mode -> transitions to POINT_NODE. NO ROLL YET!
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0)));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
 
     // Step 3: USSR points to Brazil (#78, stability 2) -> transitions to ROLL_DIE
     state.countries[ts::countries::BRAZIL].us_influence = 2;
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::BRAZIL, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::BRAZIL, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 4, 0, 0));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::ROLL_DIE, 4, 0, 0)));
 
     ASSERT_EQ(state.last_roll.type, ts::RollType::WAR_EVENT);
     ASSERT_EQ(state.last_roll.roller, ts::Player::USSR);

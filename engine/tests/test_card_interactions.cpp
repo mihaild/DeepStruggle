@@ -81,10 +81,10 @@ TEST(CardInteractionTest, FlowerPower_NoVP_WhenWarCardSpacedByUS) {
     state.victory_points = 0;
 
     // US plays Korean War for Space Race (secondary_id = 1 for forced roll 1 -> success)
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::KOREAN_WAR, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 1, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::KOREAN_WAR, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 1, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 1, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 1, 0, 0}));
 
     // Space race awards +2 VP to US (first to box 1), but Flower Power did NOT award -2 VP to USSR because event did not occur!
     ASSERT_EQ(state.victory_points, 2);
@@ -209,19 +209,19 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // 2. US conducts 1 Op from CIA Created -> selects COUP mode
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0}));
 
     // 3. US coups South Africa with forced roll 6
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0}));
 
     // DEFCON remains 2 due to Nuclear Subs, and USSR did NOT lose!
     ASSERT_EQ(state.defcon, 2);
@@ -245,17 +245,17 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // 2. US selects COUP
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0}));
 
     // 3. US coups a Battleground -> DEFCON drops from 2 to 1 on USSR turn -> USSR LOSES!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0}));
 
     ASSERT_EQ(state.defcon, 1);
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
@@ -282,19 +282,19 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUSSR_USPlaysLoneGunman_USSR
     state.card_locations[ts::card_ids::LONE_GUNMAN] = ts::hand_of(ts::Player::US);
 
     // 1. US plays Lone Gunman for Ops (Event First)
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::LONE_GUNMAN, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::LONE_GUNMAN, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // 2. USSR conducts 1 Op from Lone Gunman -> chooses COUP mode
     ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0}));
 
     // 3. USSR coups Mexico without clearing CMC -> USSR LOSES immediately!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::MEXICO, 4, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::MEXICO, 4, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0}));
 
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
     ASSERT_EQ(state.victory_points, 20); // US wins!
@@ -319,17 +319,17 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
     // 1. USSR plays CIA Created for Ops (Event First)
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // 2. US conducts 1 Op -> chooses COUP
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0}));
 
     // 3. US coups a battleground under CMC -> US LOSES immediately!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 4, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 4, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0}));
 
     ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
     ASSERT_EQ(state.victory_points, -20); // USSR wins!
@@ -475,9 +475,9 @@ TEST(CardInteractionTest, Quagmire_MaskOnlyAllows2PlusOpsCards) {
     ASSERT_EQ(mask[ts::card_ids::TRUMAN_DOCTRINE], 0);
 
     // US discards Duck and Cover and rolls 3 -> escapes Quagmire!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 3, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 3, 0, 0}));
     ASSERT_FALSE(state.has_flag(ts::effect_bits::QUAGMIRE_ACTIVE));
 }
 
@@ -701,15 +701,15 @@ TEST(CardInteractionTest, CIACreated_EventFirst_USSRStillSpendsItsOwnOpAfterUSOp
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
     state.card_locations[ts::card_ids::CIA_CREATED] = ts::hand_of(ts::Player::USSR);
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::CIA_CREATED, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // The US spends the granted Op on influence, which keeps the test off the dice.
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::CANADA, 0, 0}));
 
     // Control returns to the USSR for CIA Created's own Op, still in the same action round.
     ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);
@@ -744,9 +744,9 @@ TEST(CardInteractionTest, FiveYearPlan_EventFirst_USSRStillSpendsItsOwnOpsAfterN
     state.card_locations[ts::card_ids::FIVE_YEAR_PLAN] = ts::hand_of(ts::Player::USSR);
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIVE_YEAR_PLAN, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // Whatever the nested event did, the USSR is owed Five Year Plan's own Ops.
     ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);

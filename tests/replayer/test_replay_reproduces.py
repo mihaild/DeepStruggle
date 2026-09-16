@@ -66,7 +66,7 @@ def _assert_reproduces(log: Any, label: str) -> None:
             f"{label}: game ended at step {step['step_index']} but the log continues"
         )
         idx = step["action"]["flat_action_idx"]
-        assert ts.Engine.step_flat(state, idx), (
+        assert ts.Engine.try_step_flat(state, idx), (
             f"{label}: engine rejected logged action {idx} ({step['description']}) "
             f"at step {step['step_index']}"
         )

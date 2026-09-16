@@ -88,7 +88,7 @@ def test_record_forced_records_every_step_so_a_replay_re_drives() -> None:
     replay = _fresh()
     for rec in seen:
         _drain(replay)
-        assert ts.Engine.step(replay, rec.action), (
+        assert ts.Engine.try_step(replay, rec.action), (
             f"recorded action at step {rec.index} was refused on replay")
     _drain(replay)
     assert ts.Engine.is_terminal(replay) == res.terminal
@@ -161,7 +161,7 @@ def test_engine_settling_cannot_be_recorded_faithfully() -> None:
     replay = _fresh()
     refused = 0
     for rec in seen:
-        if not ts.Engine.step(replay, rec.action):
+        if not ts.Engine.try_step(replay, rec.action):
             refused += 1
     assert refused > 0, (
         "ENGINE settling unexpectedly produced a re-drivable record; if that is now true, "

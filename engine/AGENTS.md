@@ -129,6 +129,23 @@ Nothing measured was invalidated: `Engine::auto_advance_step` (`engine/src/engin
 `{ROLL_DIE, 0, 0, 0}` and never decode, and no `ROLL_DIE` node was ever handed to an agent —
 verified over 879 single-env decisions and 12,800 vectorized env-steps.
 
+**`step` returns `[[nodiscard]] bool`, and the build treats ignoring it as an error.**
+`StateMachine::step`, `Engine::step` and `Engine::step_flat` all carry the attribute, and both
+`CMakeLists.txt` files pass `-Werror=unused-result` (MSVC `/we4834`), so a discarded verdict does
+not compile. This is deliberately stricter than a runtime check: every bad call site fails at build
+time rather than only the ones a given test run happens to reach.
+
+Throwing instead was considered and rejected. `step` is `noexcept` and is called from inside
+`#pragma omp parallel for` in `VectorizedBatchRunner::step_flat_all`, where an escaping exception is
+undefined behaviour; and the batch path needs a *per-game* verdict, which a scalar throw cannot
+express. Compile-time enforcement gives more safety at no runtime cost and keeps both properties.
+
+Adding the attribute found 152 discarding call sites in `engine/tests` and one in production:
+`VectorizedBatchRunner::refresh_single` drained chance nodes with an unchecked `step`, so a refused
+`ROLL_DIE` would leave the loop condition unchanged and spin forever. Its sibling loop in
+`step_flat_all` already had the `if (!step(...)) break;`. All 372 C++ tests passed once the sites
+asserted, so none of them was driving an illegal action; the Python side was not so clean.
+
 ---
 
 ## 5. How to Build, Test, and Benchmark

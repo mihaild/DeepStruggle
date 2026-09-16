@@ -79,7 +79,7 @@ def _race_with_the_china_card(die: int) -> ts.GameState:
     ts.Engine.step_flat(state, THE_CHINA_CARD - 1)
     ts.Engine.step_flat(state, SPACE)
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, die, 0, 0)), (
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, die, 0, 0)), (
         f"engine refused a forced die of {die}")
     return state
 
@@ -117,7 +117,7 @@ def test_a_mismatched_decision_type_cannot_force_a_die() -> None:
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
 
     before = int(state.us_space_track)
-    assert ts.Engine.step_flat(state, 203 + 2) is False, (
+    assert ts.Engine.try_step_flat(state, 203 + 2) is False, (
         "engine accepted a CHOOSE_BRANCH action at a ROLL_DIE node")
     assert int(state.us_space_track) == before
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE, (

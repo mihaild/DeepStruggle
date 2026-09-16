@@ -163,7 +163,7 @@ TEST(FullGameTest, EventBiasedFuzzing_HighEventProbability_MaintainsInvariantsAc
                     ts::MicroAction action{};
                     action.decision_type = state.ctx().decision_type;
                     action.flags = ts::action_flags::CONFIRM_DONE;
-                    ts::Engine::step(state, action);
+                    ASSERT_TRUE(ts::Engine::step(state, action));
                     continue;
                 }
                 ASSERT_TRUE(false);
@@ -219,7 +219,7 @@ TEST(FullGameTest, EventBiasedFuzzing_HighEventProbability_MaintainsInvariantsAc
             action.decision_type = d_type;
             action.primary_id = chosen_action_id;
 
-            ts::Engine::step(state, action);
+            ASSERT_TRUE(ts::Engine::step(state, action));
 
             ASSERT_GE(state.victory_points, -20);
             ASSERT_LE(state.victory_points, 20);

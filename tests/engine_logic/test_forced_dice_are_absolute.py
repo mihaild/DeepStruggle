@@ -58,9 +58,9 @@ def _realign(realigner: ts.Player, actor_die: int, opponent_die: int) -> Tuple[i
     ctx.allow_early_stop = 1
     state.set_country(INDIA, 3, 3)
 
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.POINT_NODE, INDIA, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.POINT_NODE, INDIA, 0, 0))
     assert state.ctx().pending_roll_type == ts.RollType.REALIGNMENT
-    assert ts.Engine.step(
+    assert ts.Engine.try_step(
         state, ts.MicroAction(ts.DecisionType.ROLL_DIE, actor_die, opponent_die, 0))
 
     record = state.to_dict()["die_roll"]

@@ -212,7 +212,7 @@ def run_invariant_audit_game(seed: int) -> Tuple[int, List[str]]:
             int(action_dict["flags"]),
         )
 
-        success = ts_engine.Engine.step(state, action)
+        success = ts_engine.Engine.try_step(state, action)
         if not success:
             all_violations.append(f"[Seed {seed} | Step {step_count}]: Engine rejected legal action {action_dict}")
             break

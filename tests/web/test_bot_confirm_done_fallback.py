@@ -100,5 +100,5 @@ def test_heuristic_bot_closes_out_suez_crisis_with_no_targets():
         action["secondary_id"],
         action["flags"],
     )
-    assert ts.Engine.step(state, micro_action)
+    assert ts.Engine.try_step(state, micro_action)
     assert state.ctx().resolving_card == 0

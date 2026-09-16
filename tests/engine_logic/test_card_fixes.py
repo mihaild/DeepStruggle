@@ -25,7 +25,7 @@ def _step_or_fail(st, action, what):
     """
     import numpy as np
     from bindings.action_encoder import ActionEncoder
-    if not ts.Engine.step(st, action):
+    if not ts.Engine.try_step(st, action):
         mask = np.asarray(ActionEncoder.get_legal_mask(st))
         legal = [int(i) for i in np.flatnonzero(mask)]
         raise AssertionError(
@@ -539,7 +539,7 @@ def test_fix_defectors_no_vp_on_us_action_round():
     assert flat_mask[111] == 1
 
     # 3. StateMachine rejects EVENT play mode
-    step_ok = ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.EVENT), 0, 0))
+    step_ok = ts.Engine.try_step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.EVENT), 0, 0))
     assert not step_ok
 
     # 4. Trigger event directly does not change VP
@@ -777,7 +777,7 @@ def test_fix_card_47_junta_allows_optional_bonus_op_decline():
     mask = ts.Engine.get_legal_action_mask(s)
     assert mask[int(ts.OpMode.INFLUENCE)] == 1
     # Selecting INFLUENCE mode cleanly finishes the card ops immediately
-    step_ok = ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
+    step_ok = ts.Engine.try_step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
     assert step_ok == True
 
 

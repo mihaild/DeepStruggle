@@ -1,4 +1,5 @@
 #include "ts/engine.hpp"
+#include "test_framework.hpp"
 #include "ts/prng.hpp"
 #include "ts/constants.hpp"
 #include <iostream>
@@ -70,7 +71,7 @@ int main(int argc, char** argv) {
                 ts::MicroAction action{};
                 action.decision_type = state.ctx().decision_type;
                 action.flags = ts::action_flags::CONFIRM_DONE;
-                ts::Engine::step(state, action);
+                ASSERT_TRUE(ts::Engine::step(state, action));
                 total_steps++;
                 continue;
             }
@@ -87,7 +88,7 @@ int main(int argc, char** argv) {
         action.primary_id = chosen_action_id;
 
         // Step engine
-        ts::Engine::step(state, action);
+        ASSERT_TRUE(ts::Engine::step(state, action));
         total_steps++;
         game_steps++;
         if (game_steps > 20000) {

@@ -38,7 +38,7 @@ def test_every_action_of_a_whole_game_round_trips() -> None:
         flat = int(legal[steps % len(legal)])
 
         ma = json_to_action(a, dict(action_to_json(a, flat)))
-        assert ts.Engine.step(b, ma), "round-tripped action was refused"
+        assert ts.Engine.try_step(b, ma), "round-tripped action was refused"
         step_checked(a, flat)
         steps += 1
 
@@ -72,7 +72,7 @@ def test_a_forced_die_survives_the_round_trip() -> None:
                 "secondary_id": 0, "flags": 0}
     ma = json_to_action(s, recorded)
     assert int(ma.primary_id) == 3, "the forced value was lost"
-    assert ts.Engine.step(s, ma), "a forced die was refused"
+    assert ts.Engine.try_step(s, ma), "a forced die was refused"
 
 
 def test_a_malformed_action_raises_rather_than_defaulting() -> None:

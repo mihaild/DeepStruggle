@@ -29,8 +29,12 @@ def _states(n: int, plies: int = 40, seed0: int = 5150):
         for _ in range(plies + i):
             if ts.Engine.is_terminal(s):
                 break
-            legal = ts.Engine.get_legal_action_indices(s)
-            if not len(legal):
+            # get_legal_action_indices is the 128-wide PER-DECISION space; step_flat reads the
+            # flat 212-dim space. Mixing them refused every step, and the discarded refusal meant
+            # this loop returned the OPENING position while claiming to have played `plies`.
+            mask = ts.Engine.get_flat_action_mask(s)
+            legal = [j for j, v in enumerate(mask) if v]
+            if not legal:
                 break
             ts.Engine.step_flat(s, int(legal[0]))
         drain_chance_nodes(s)
@@ -98,8 +102,12 @@ def test_terminal_positions_are_handled_without_evaluation(model):
     for _ in range(4000):
         if ts.Engine.is_terminal(s):
             break
-        legal = ts.Engine.get_legal_action_indices(s)
-        if not len(legal):
+        # get_legal_action_indices is the 128-wide PER-DECISION space; step_flat reads the
+        # flat 212-dim space. Mixing them refused every step, and the discarded refusal meant
+        # this loop returned the OPENING position while claiming to have played `plies`.
+        mask = ts.Engine.get_flat_action_mask(s)
+        legal = [j for j, v in enumerate(mask) if v]
+        if not legal:
             break
         ts.Engine.step_flat(s, int(legal[0]))
     if not ts.Engine.is_terminal(s):
@@ -264,7 +272,7 @@ def test_advance_root_false_returns_an_action_legal_where_the_caller_stands(mode
         if not mask[a]:
             bad += 1
         # Drive with the engine's own choice so the walk does not depend on the search.
-        assert ts.Engine.step_flat(s, int(legal[0])), "engine rejected a masked action"
+        assert ts.Engine.try_step_flat(s, int(legal[0])), "engine rejected a masked action"
     assert bad == 0, f"{bad} actions were illegal in the caller's state"
 
 
@@ -283,5 +291,5 @@ def test_engine_rejects_a_mismatched_action_and_says_so():
     illegal = next(i for i in range(len(mask)) if i not in legal)
 
     before = int(s.ctx().decision_type)
-    assert ts.Engine.step_flat(s, illegal) is False, "engine accepted an illegal action"
+    assert ts.Engine.try_step_flat(s, illegal) is False, "engine accepted an illegal action"
     assert int(s.ctx().decision_type) == before, "engine advanced on a rejected action"

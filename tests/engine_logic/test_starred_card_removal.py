@@ -157,9 +157,9 @@ def _play_opponent_card_for_ops(card: int, player: ts.Player, flag: int) -> ts.C
     ctx.decision_type = ts.DecisionType.SELECT_CARD
     state.set_card_location(card, ts.hand_of(player))
 
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, OPS_MODE, 0, 0))
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, OPS_MODE, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
     for _ in range(16):
         ctx = state.ctx()
         if ctx.decision_type == ts.DecisionType.SELECT_OP_MODE:
@@ -222,8 +222,8 @@ def _play_as_event(card: int, setup) -> ts.CardLocation:
     ctx.decision_player = ts.Player.US
     ctx.decision_type = ts.DecisionType.SELECT_CARD
     state.set_card_location(card, ts.hand_of(ts.Player.US))
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    assert ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
+    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 0, 0, 0))
     for _ in range(20):
         ctx = state.ctx()
         if ctx.decision_player == ts.Player.NONE and ctx.decision_type == ts.DecisionType.ROLL_DIE:

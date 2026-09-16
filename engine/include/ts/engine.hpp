@@ -22,10 +22,10 @@ public:
     static void get_flat_action_mask(const GameState& state, uint8_t* mask_212) noexcept;
 
     // Advances game state by 1 validated micro-action. Returns true on success.
-    static bool step(GameState& state, const MicroAction& action, bool auto_advance = false) noexcept;
+    [[nodiscard]] static bool step(GameState& state, const MicroAction& action, bool auto_advance = false) noexcept;
 
     // Advances game state by 1 flat action index [0..211].
-    static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance = false) noexcept;
+    [[nodiscard]] static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance = false) noexcept;
 
     // Automatically advances deterministic decisions (chance rolls, single valid action,
     // and deterministic event targets) until a choice requiring player discretion is reached.

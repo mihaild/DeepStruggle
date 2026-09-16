@@ -1,4 +1,5 @@
 #include "ts/engine.hpp"
+#include "test_framework.hpp"
 #include "ts/prng.hpp"
 #include "ts/constants.hpp"
 #include <iostream>
@@ -46,7 +47,7 @@ int main() {
         action.decision_type = state.ctx().decision_type;
         action.primary_id = legal_buf[chosen];
 
-        ts::Engine::step(state, action);
+        ASSERT_TRUE(ts::Engine::step(state, action));
         completed_steps++;
     }
 

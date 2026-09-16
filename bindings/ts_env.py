@@ -147,7 +147,7 @@ class TsEnv:
         acting_player = int(self.current_player)
         prev_vp = np.array([self.state.victory_points], dtype=np.int8)
 
-        ok = ts.Engine.step_flat(self.state, int(action_idx))
+        ok = ts.Engine.try_step_flat(self.state, int(action_idx))
         while not self.is_done and self.state.ctx().decision_player == ts.Player.NONE and self.state.ctx().decision_type == ts.DecisionType.ROLL_DIE:
             ts.Engine.step(self.state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
 

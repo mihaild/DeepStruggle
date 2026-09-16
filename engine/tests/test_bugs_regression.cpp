@@ -64,25 +64,25 @@ TEST(RegressionTest, DeGaulleOpsFirstTriggersOpponentEventAfterOps) {
     state.countries[countries::FRANCE].ussr_influence = 0;
 
     // 1. Select Card De Gaulle (#17, 3 Ops, USSR event)
-    Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DE_GAULLE, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DE_GAULLE, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_PLAY_MODE);
 
     // 2. Select OPS
-    Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::CHOOSE_TIMING_BRANCH);
 
     // 3. Choose OPS_FIRST
-    Engine::step(state, MicroAction(DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(TimingBranch::OPS_FIRST), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(TimingBranch::OPS_FIRST), 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
 
     // 4. Select INFLUENCE mode
-    Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
 
     // 5. Place 3 ops in UK (ID 1)
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0)));
 
     // After ops finished, De Gaulle event MUST have resolved automatically!
     // France should have: US influence 3 - 2 = 1, USSR influence 0 + 1 = 1, NATO canceled
@@ -109,9 +109,9 @@ TEST(RegressionTest, RealignmentOnlyTargetsCountriesWithOpponentInfluenceAndRoll
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops US card
 
-    Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0));
-    Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::REALIGN), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::REALIGN), 0, 0)));
 
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().op_mode, OpMode::REALIGN);
@@ -128,9 +128,9 @@ TEST(RegressionTest, RealignmentOnlyTargetsCountriesWithOpponentInfluenceAndRoll
     // Execute realignment on Italy with forced rolls (US roll 6, USSR roll 1)
     // US should win by 5, removing all 2 USSR influence from Italy
     MicroAction realign_act(DecisionType::POINT_NODE, countries::ITALY, 6, 1);
-    Engine::step(state, realign_act);
+    ASSERT_TRUE(Engine::step(state, realign_act));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
-    Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 6, 1, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 6, 1, 0)));
     ASSERT_EQ(state.countries[countries::ITALY].ussr_influence, 0);
 }
 
@@ -150,11 +150,11 @@ TEST(RegressionTest, ArabIsraeliWarWithRoll2Fails) {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
     // 1. Select Card
-    Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::ARAB_ISRAELI_WAR, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::ARAB_ISRAELI_WAR, 0, 0)));
     // 2. Select Play Mode EVENT with forced roll = 2
-    Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 2, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 2, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
-    Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0)));
 
     // Roll 2 - 1 = 1 (< 4), so Arab-Israeli War fails!
     // Israel must still have 2 US influence and 0 USSR influence
@@ -181,9 +181,9 @@ TEST(RegressionTest, NoChainInfluencePlacementDuringSameOp) {
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
-    Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0));
-    Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0)));
 
     // 1st point placed in Morocco (legal because adjacent to Algeria)
     uint8_t mask[84];
@@ -192,7 +192,7 @@ TEST(RegressionTest, NoChainInfluencePlacementDuringSameOp) {
     ASSERT_EQ(mask[countries::MOROCCO], 1);
     ASSERT_EQ(mask[countries::WEST_AFRICA], 0);
 
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::MOROCCO, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::MOROCCO, 0, 0)));
     ASSERT_EQ(state.countries[countries::MOROCCO].us_influence, 1);
 
     // 2nd point: West Africa must STILL be 0 (no chain placement allowed in same AR)
@@ -213,11 +213,11 @@ TEST(RegressionTest, WarsawPactEasternEuropeOnlyAndMax2) {
     state.ctx().decision_player = Player::USSR;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
-    Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::WARSAW_PACT, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::WARSAW_PACT, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 0, 0)));
 
     // Choose Branch 1: Add 5 USSR influence in Eastern Europe (max 2 per country)
-    Engine::step(state, MicroAction(DecisionType::CHOOSE_BRANCH, 1, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::CHOOSE_BRANCH, 1, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
 
     // Verify ActionMask: Only Eastern Europe countries are legal!
@@ -233,8 +233,8 @@ TEST(RegressionTest, WarsawPactEasternEuropeOnlyAndMax2) {
     }
 
     // Place 2 in Poland (ID 15)
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::POLAND, 0, 0));
-    Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::POLAND, 0, 0));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::POLAND, 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::POLAND, 0, 0)));
 
     // Poland reached 2 placements -> Poland mask must now be 0!
     ActionMask::generate_mask(state, mask, &out_size);
@@ -404,7 +404,7 @@ static bool advance_to_roll_node(GameState& state, uint64_t seed) {
             if (mask[i]) { chosen = i; break; }
         }
         if (chosen < 0) return false;
-        Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen)));
+        ASSERT_TRUE(Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen))));
     }
     return false;
 }
@@ -493,7 +493,7 @@ static bool advance_to_action_round_card(GameState& state, uint64_t seed) {
             if (mask[i]) { chosen = i; break; }
         }
         if (chosen < 0) return false;
-        Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen)));
+        ASSERT_TRUE(Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen))));
     }
     return false;
 }

@@ -231,7 +231,7 @@ TEST(AutoAdvanceTest, DeterministicEquivalence_FullGame) {
             uint8_t mask[212];
             ts::ActionMask::generate_flat_mask_212(s1, mask);
             uint16_t chosen = pick_deterministic_action(mask);
-            ts::Engine::step_flat(s1, chosen, false);
+            ASSERT_TRUE(ts::Engine::step_flat(s1, chosen, false));
             step_cnt1++;
         }
 
@@ -245,7 +245,7 @@ TEST(AutoAdvanceTest, DeterministicEquivalence_FullGame) {
             uint8_t mask[212];
             ts::ActionMask::generate_flat_mask_212(s2, mask);
             uint16_t chosen = pick_deterministic_action(mask);
-            ts::Engine::step_flat(s2, chosen, true);
+            ASSERT_TRUE(ts::Engine::step_flat(s2, chosen, true));
             step_cnt2++;
         }
 

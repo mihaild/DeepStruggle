@@ -9,7 +9,7 @@ namespace ts {
 class StateMachine {
 public:
     static void init_new_game(GameState& state, uint64_t seed) noexcept;
-    static bool step(GameState& state, const MicroAction& action) noexcept;
+    [[nodiscard]] static bool step(GameState& state, const MicroAction& action) noexcept;
 
     // Phase Transitions
     static void start_turn(GameState& state) noexcept;

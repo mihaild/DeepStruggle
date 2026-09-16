@@ -62,9 +62,9 @@ def step_checked(state: ts.GameState, action: Union[int, ts.MicroAction],
     `context` is appended to the error, so a failure names the loop it came from.
     """
     if isinstance(action, (int, np.integer)):
-        ok = ts.Engine.step_flat(state, int(action), auto_advance)
+        ok = ts.Engine.try_step_flat(state, int(action), auto_advance)
     else:
-        ok = ts.Engine.step(state, action, auto_advance)
+        ok = ts.Engine.try_step(state, action, auto_advance)
     if not ok:
         msg = _describe(state, int(action) if isinstance(action, (int, np.integer)) else action)
         if context:

@@ -212,10 +212,10 @@ TEST(MidCardsTest, Card49_MissileEnvy_OpponentCardNoEvent) {
     ASSERT_EQ(state.ctx().pending_ops_value, 3);
 
     // USSR spends 3 Ops on Influence
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0));
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0)));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
 
     // Duck and Cover event must NOT fire: DEFCON must remain 2, VP remains 0, game not over
     ASSERT_NE(state.current_phase, ts::Phase::GAME_OVER);
@@ -252,7 +252,7 @@ TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
     ASSERT_EQ(card_mask[ts::card_ids::DUCK_AND_COVER], 0);
 
     // US selects forced Missile Envy
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::MISSILE_ENVY, 0, 0));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::MISSILE_ENVY, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     uint8_t mask[4] = {0};
@@ -274,9 +274,9 @@ TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
     ASSERT_TRUE(ops_accepted);
 
     // Spend 2 ops on influence
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0));
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
-    ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0)));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
 
     // After play completes:
     ASSERT_EQ(state.forced_card_id, 0);
@@ -528,8 +528,8 @@ TEST(MidCardsTest, TearDownThisWall_FreeOpsBarInfluence_OwnOpsDoNot) {
     uint8_t mask[212] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);  // the decline
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
-                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
+                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
     ASSERT_NE(state.ctx().decision_type, ts::DecisionType::POINT_NODE);  // declined, not placing
 }
 
@@ -549,8 +549,8 @@ TEST(MidCardsTest, TearDownThisWall_OwnOpsMayPlaceInfluence) {
     uint8_t mask[212] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
-                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
+                                            static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().remaining_steps, 3);
 }
@@ -571,8 +571,8 @@ TEST(MidCardsTest, FlowerPowerChargesForAWarThatCanHappen) {
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -589,8 +589,8 @@ TEST(MidCardsTest, FlowerPowerChargesNothingForAWarCampDavidHasStopped) {
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
     ASSERT_EQ(state.victory_points, 0);
 }
 
@@ -608,8 +608,8 @@ TEST(MidCardsTest, FlowerPowerStillChargesForOtherWarsUnderCampDavid) {
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -638,8 +638,8 @@ TEST(MidCardsTest, WeWillBuryYouSurvivesTheTurnBoundary) {
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
-                                            ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
+                                            ts::card_ids::DUCK_AND_COVER, 0, 0}));
     ASSERT_EQ(state.victory_points, -3);
     ASSERT_FALSE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
 }
@@ -657,8 +657,8 @@ TEST(MidCardsTest, WeWillBuryYouIsNotCollectedInAHeadline) {
     state.ctx().decision_player = ts::Player::US;
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
-                                            ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD,
+                                            ts::card_ids::DUCK_AND_COVER, 0, 0}));
     ASSERT_EQ(state.victory_points, 0);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
 }

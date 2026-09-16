@@ -175,9 +175,9 @@ class NativeEngine(EngineProtocol):
             action.flags,
         )
         if isinstance(state, NativeGameState):
-            return ts_engine.Engine.step(state.raw_state, ts_action)
+            return ts_engine.Engine.try_step(state.raw_state, ts_action)
         elif isinstance(state, ts_engine.GameState):
-            return ts_engine.Engine.step(state, ts_action)
+            return ts_engine.Engine.try_step(state, ts_action)
         return False
 
     def is_terminal(self, state: GameStateProtocol, /) -> bool:

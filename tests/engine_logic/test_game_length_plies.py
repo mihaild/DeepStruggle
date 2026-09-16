@@ -7,6 +7,8 @@ alternates the phasing player USSR -> US and increments `action_round` when the 
 over `max_ar = (turn <= 3) ? 6 : 7`. If that schedule ever changes, these fail.
 """
 
+import random
+
 import ts_engine
 import pytest
 
@@ -49,30 +51,64 @@ def test_turns_outside_the_game_are_rejected(turn: int) -> None:
         ply(turn, 1, is_us=False)
 
 
-def test_ply_never_runs_backwards_across_a_real_game() -> None:
+@pytest.mark.parametrize("seed", [1, 2, 3, 7, 20260921])
+def test_ply_never_runs_backwards_across_a_real_game(seed: int) -> None:
     """Drive a game and check the index is monotonic and inside the schedule.
 
     This is the property that makes a ply usable as a length: whatever the engine does with
     action rounds, walking a game must never produce a ply that goes down.
+
+    What this does NOT cover: an unguided policy drives the VP track to +/-20 in the early war,
+    so every one of these walks terminates by autowin somewhere in turns 1-3 and never reaches
+    the turn-4 boundary where max_ar goes 6 -> 7. That boundary is pinned by
+    `test_early_war_turns_are_shorter_than_late_ones` against the pure function instead. Saying
+    so here because the docstring used to imply this walk covered the whole schedule.
+
+    This test was vacuous until it was fixed: it fed indices from the 128-wide per-decision mask
+    to `step_flat`, which reads the flat 212-dim space. Every step was refused, the refusal
+    discarded, and 4000 iterations ran against a state that never moved, so the assertions below
+    passed without ever seeing a second ply.
     """
+    rng = random.Random(seed)
     state = ts_engine.GameState()
-    ts_engine.Engine.init_game(state, 20260921)
+    ts_engine.Engine.init_game(state, seed)
     _drain_chance_nodes(state)
 
     previous = 0
+    previous_slot = (0, 0)
     steps = 0
     while not ts_engine.Engine.is_terminal(state) and steps < 4000:
         current = ply(int(state.turn), int(state.action_round),
                       is_us=state.phasing_player == ts_engine.Player.US)
         assert 1 <= current <= FULL_GAME_PLIES + 4   # + an AR8's worth of slack
-        assert current >= previous, (
-            f"ply went backwards at turn {state.turn} AR {state.action_round}: "
-            f"{previous} -> {current}")
-        previous = current
 
-        legal = ts_engine.Engine.get_legal_action_indices(state)
-        if not len(legal):
+        # The schedule itself: (turn, action_round) is the engine's own ordering and must never
+        # run backwards.
+        slot = (int(state.turn), int(state.action_round))
+        assert slot >= previous_slot, f"schedule went backwards: {previous_slot} -> {slot}"
+        previous_slot = slot
+
+        # The ply index is monotonic within a turn's action rounds. It is NOT monotonic across
+        # the two headline plies: `ply` numbers the headline USSR-then-US, but the engine
+        # resolves headlines in descending card ops, so the US headline can resolve first and
+        # produce 30 -> 29 inside turn 3's headline. That is a real discrepancy between
+        # ai.game_length and the engine, not a property to assert away -- it is recorded in
+        # research/findings/engine/ply_headline_order.md. It costs at most one ply on a game
+        # that ends inside a headline, which is why terminal_plies tolerates it.
+        if int(state.action_round) != 0:
+            assert current >= previous, (
+                f"ply went backwards at turn {state.turn} AR {state.action_round}: "
+                f"{previous} -> {current}")
+            previous = current
+
+        mask = ts_engine.Engine.get_flat_action_mask(state)
+        legal = [i for i, v in enumerate(mask) if v]
+        if not legal:
             break
-        ts_engine.Engine.step_flat(state, int(legal[0]))
+        ts_engine.Engine.step_flat(state, rng.choice(legal))
         _drain_chance_nodes(state)
         steps += 1
+
+    # Pin that the walk actually moved, so this cannot quietly go vacuous again.
+    assert steps > 50, f"only {steps} steps taken; this is not walking a real game"
+    assert previous > 1, f"the game never advanced past its first ply (reached {previous})"

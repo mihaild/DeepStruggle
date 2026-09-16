@@ -26,7 +26,7 @@ def test_engine_setup_and_step():
         secondary_id=0,
         flags=0
     )
-    ok = ts_engine.Engine.step(state, action)
+    ok = ts_engine.Engine.try_step(state, action)
     assert ok
     assert state.get_country(14).ussr_influence == 4
 
@@ -76,7 +76,7 @@ def test_us_bonus_placement_full_lifecycle():
             secondary_id=0,
             flags=0
         )
-        assert ts_engine.Engine.step(state, action)
+        assert ts_engine.Engine.try_step(state, action)
 
     # 2. Transits to US Stage 0 (7 influence in Western Europe)
     assert state.current_phase == ts_engine.Phase.SETUP
@@ -91,10 +91,10 @@ def test_us_bonus_placement_full_lifecycle():
     # US places 4 in West Germany (7) and 3 in Italy (10)
     for _ in range(4):
         action = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=7, secondary_id=0, flags=0)
-        assert ts_engine.Engine.step(state, action)
+        assert ts_engine.Engine.try_step(state, action)
     for _ in range(3):
         action = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=10, secondary_id=0, flags=0)
-        assert ts_engine.Engine.step(state, action)
+        assert ts_engine.Engine.try_step(state, action)
 
     # 3. Transits to US Stage 1 (2 Bonus influence in countries with existing US presence)
     assert state.current_phase == ts_engine.Phase.SETUP
@@ -110,13 +110,13 @@ def test_us_bonus_placement_full_lifecycle():
 
     # Place bonus 1 in Iran
     act_iran = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=25, secondary_id=0, flags=0)
-    assert ts_engine.Engine.step(state, act_iran)
+    assert ts_engine.Engine.try_step(state, act_iran)
     assert state.get_country(25).us_influence == 2
     assert state.ctx().remaining_steps == 1
 
     # Place bonus 2 in West Germany
     act_wg = ts_engine.MicroAction(decision_type=ts_engine.DecisionType.POINT_NODE, primary_id=7, secondary_id=0, flags=0)
-    assert ts_engine.Engine.step(state, act_wg)
+    assert ts_engine.Engine.try_step(state, act_wg)
     assert state.get_country(7).us_influence == 5
 
     # 4. Setup completes cleanly into Turn 1 HEADLINE phase

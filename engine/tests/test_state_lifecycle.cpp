@@ -93,10 +93,10 @@ TEST(StateLifecycleTest, HeadlineState_HigherOpsResolvesFirst) {
     state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);           // 2 Ops
 
     // US selects Duck and Cover (3 Ops)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0}));
 
     // USSR selects Fidel (2 Ops)
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0}));
 
     // Higher Ops (US Duck & Cover, 3 Ops) resolves first -> DEFCON drops from 5 to 4
     // Then Fidel (2 Ops) resolves second -> Cuba US=0, USSR=3
@@ -118,10 +118,10 @@ TEST(StateLifecycleTest, HeadlineState_TiedOps_USGoesFirst) {
     state.card_locations[ts::card_ids::SOCIALIST_GOVERNMENTS] = ts::hand_of(ts::Player::USSR); // 3 Ops
 
     // US selects Nuclear Test Ban
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::NUCLEAR_TEST_BAN, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::NUCLEAR_TEST_BAN, 0, 0}));
 
     // USSR selects Socialist Governments
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::SOCIALIST_GOVERNMENTS, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::SOCIALIST_GOVERNMENTS, 0, 0}));
 
     // Tied Ops -> US resolves first (Nuclear Test Ban: DEFCON improved to 5, VP awarded)
     // Then Socialist Governments triggers sub-decision for USSR!
@@ -141,8 +141,8 @@ TEST(StateLifecycleTest, HeadlineState_DefectorsCancelsUSSRHeadline) {
     state.countries[ts::countries::CUBA].ussr_influence = 0;
     state.victory_points = 0;
 
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DEFECTORS, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0}));
 
     // Defectors cancels USSR headline -> Cuba US influence remains 2, USSR remains 0!
     // Headline cancellation does not grant VP (1 VP is only when played by USSR in Action Round)
@@ -169,13 +169,13 @@ TEST(StateLifecycleTest, ActionRoundState_ChinaCardPlay_PassesToOpponentFaceDown
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
     // USSR plays China Card for Ops
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
 
     // Place influence in North Korea (5 points from China Card in Asia with +1 Asia bonus)
     for (int i = 0; i < 5; ++i) {
-        ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::NORTH_KOREA, 0, 0});
+        ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::NORTH_KOREA, 0, 0}));
     }
 
     // China Card passes to US face down (playable = 0)!
@@ -200,9 +200,9 @@ TEST(StateLifecycleTest, ActionRoundState_OpponentCard_EventFirst_Timing) {
     state.countries[ts::countries::CUBA].ussr_influence = 0;
 
     // US plays Fidel for Ops -> Choose EVENT_FIRST timing
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
-    ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
 
     // Fidel event occurs first: Cuba US=0, USSR=3
     ASSERT_EQ(state.countries[ts::countries::CUBA].us_influence, 0);
@@ -340,12 +340,12 @@ TEST(StateLifecycleTest, DecisionContext_PushPopStack_DepthIntegrity) {
     ts::GameState state{};
     ASSERT_EQ(state.ctx_stack_depth, 0);
 
-    state.push_context();
+    ASSERT_TRUE(state.push_context());
     ASSERT_EQ(state.ctx_stack_depth, 1);
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().resolving_card = ts::card_ids::GRAIN_SALES;
 
-    state.push_context();
+    ASSERT_TRUE(state.push_context());
     ASSERT_EQ(state.ctx_stack_depth, 2);
     state.ctx().decision_player = ts::Player::US;
     state.ctx().resolving_card = ts::card_ids::FIVE_YEAR_PLAN;

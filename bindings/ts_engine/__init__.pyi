@@ -615,7 +615,14 @@ class Engine:
     def init_game(arg0: GameState, arg1: int, /) -> None: ...
 
     @staticmethod
-    def step(state: GameState, action: MicroAction, auto_advance: bool = False) -> bool: ...
+    def try_step(state: GameState, action: MicroAction, auto_advance: bool = False) -> bool:
+        """
+        Advance one action, returning False if the engine refuses it. For probing only.
+        """
+
+    @staticmethod
+    def step(state: GameState, action: MicroAction, auto_advance: bool = False) -> None:
+        """Advance one action, raising RuntimeError if the engine refuses it."""
 
     @staticmethod
     def is_terminal(arg: GameState, /) -> bool: ...
@@ -642,7 +649,16 @@ class Engine:
     def get_flat_action_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
 
     @staticmethod
-    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False) -> bool: ...
+    def try_step_flat(state: GameState, action_idx: int, auto_advance: bool = False) -> bool:
+        """
+        Advance one flat action, returning False if the engine refuses it. For probing only.
+        """
+
+    @staticmethod
+    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False) -> None:
+        """
+        Advance one flat action, raising RuntimeError if the engine refuses it.
+        """
 
     @staticmethod
     def auto_advance_step(state: GameState, max_steps: int = 128) -> int: ...
