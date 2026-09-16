@@ -1,6 +1,9 @@
 # P6 — Global attention over country and card tokens
 
-**Status:** queued
+**Status:** **superseded by the P9 programme** (2026-09-16) — identity embeddings, the graph
+self-transform and per-entity residual heads landed as the E3-15 baseline
+([`../findings/training/architecture.md`](../findings/training/architecture.md)); the
+full-transformer variant this file proposed stays unrun and would now be a P9 follow-up.
 **Gate:** the §12.1 perturbation probe (`ai/eval/battleground_value.py`) is *still* flat — the
 value does not respond to Poland's influence changing together with Europe Scoring's status —
 after P1 and P2 have fixed the target. Architecture is last because `experiments.md` §5 found

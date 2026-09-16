@@ -60,6 +60,19 @@ supplies the endpoint pooling.md says nothing has computed — external side bal
 over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoints.
 *Decide before running:* games per anchor per snapshot (200/side keeps snapshot cost minutes).
 
+**Detail.**
+- Anchor files: mind the directory trap in [`../checkpoints.md`](../checkpoints.md) — the
+  bare-name directory is sometimes the continuation; pin the anchors by full path + step count
+  in the run's `metadata.json`, and record them as `eval_anchors` so the trace is attributable
+  later.
+- Two derived series, logged per snapshot: `anchor_wr_us`, `anchor_wr_ussr` (per anchor), and
+  `anchor_side_gap = |wr_us − wr_ussr|`. The oscillation metric is the sliding-window
+  (±20M-step) amplitude of `anchor_side_gap`; the strength metric is mean anchor WR.
+- Backfill: run the same evals over the *existing* snapshot ladders of E3-17-22 (unpooled),
+  E3-20-28 and E3-20-29 (pooled) — a few CPU/GPU-hours — so the oscillation's amplitude and
+  period are measured on the arms already on disk **before** any new arm runs. That
+  retro-trace is what X2/X3 screens are compared against.
+
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
 
 Freeze the stalled 160M policy as USSR; train a US-locked learner initialised from the 80M
@@ -71,6 +84,23 @@ plateaus, the runaway strategy is near-unbeatable at this capacity and the queue
 frozen opponents. This also doubles as the first *main exploiter* in the AlphaStar sense, and
 its product is a pool member X3 can use.
 
+**Detail.**
+- Register as the next free arm number, baseline pair E3-17-22 (it is that lineage's own
+  stall being probed). Opponent: E3-17-22 final (160M), frozen, always USSR. Learner: init
+  from `resume_80019456steps.pt`, always US.
+- Mechanism: the opponent-pool path with pool = that one snapshot, `--opponent-frac 1.0`,
+  plus a new `--opponent-side-lock {US,USSR}` (learner takes the other side; the pool's
+  per-episode side alternation is bypassed). Policy loss masked to learner transitions as the
+  pool already does; value trains on all states.
+- Budget 80M (~2.2h at pooled throughput); only ~half the transitions carry policy gradient,
+  which the extra length buys back (P10's arithmetic).
+- Read: learner WR vs the frozen opponent over training (the primary curve), `adv_std_raw`,
+  `critic/auc` on the learner. P10's caveat stands: a best response to one snapshot is not a
+  Nash improvement — before concluding anything general, tournament the exploiter against the
+  wider field.
+- *Decide before running:* whether to run the mirrored cell too (freeze a US-runaway arm,
+  e.g. E3-14-21, train USSR) — cheap and makes the diagnosis side-symmetric.
+
 ### X2 — slow the anchor (two-timescale regularization, the theory-aligned flag)
 
 `--ref-update-freq` 200k → {5M, 20M}, η = 0.1 held; one optional cell η = 0.3 at 5M. Resume
@@ -80,6 +110,19 @@ confirm the winner at 2 seeds. Risk: a slow anchor over-regularizes fresh learni
 why the arms resume from 80M rather than start cold; if the screen looks good, a cold-start
 confirmation decides the adopted schedule (fast-early / slow-late is the expected shape,
 matching Ataraxos's annealed damping).
+
+**Detail.**
+- Cells: `--ref-update-freq {5000000, 20000000}` at `--eta 0.1`, one optional
+  `--ref-update-freq 5000000 --eta 0.3`. Everything else the E3-20-28 recipe; resume from its
+  80M state with a fresh `--seed` (branch points and reseed-on-resume exist and are tested).
+  This also subsumes P10's experiment 3 (seed-resume: does the collapse recur?) — the control
+  cell for these screens *is* that experiment, so register it as such and write both answers.
+- Watch `internal/kl_div` for scale: with a 100× slower anchor the KL term's magnitude grows;
+  if it dominates the loss the right response is the η=0.3-at-5M middle cell, not silently
+  rescaling anything mid-run.
+- Screens are judged on the X0 trace (oscillation amplitude vs the retro-trace of the
+  matched baseline), which is within-run and cheaper to read than endpoint Elo; the 2-seed
+  confirmation of the winning cell is judged on both.
 
 ### X3 — longer memory, adversarial weighting (upgrade the pool from window-FSP toward league)
 
@@ -98,6 +141,18 @@ Three sub-arms, each one factor on top of the pooled baseline (frac 0.30 unchang
 queued in reserve; it needs a periodic in-run tournament and only pays if uniform-over-history
 is insufficient.
 
+**Detail.**
+- (a) is a retention-policy change in the pool: today it keeps the last 12 snapshots at 5M
+  cadence — a ~60M sliding window; change to a capped span-the-run set (keep every ~10M, or
+  reservoir), draw ~80% from the recent window / ~20% uniform over the whole history.
+  One factor: frac stays 0.30, capacity stays 12, cadence stays 5M so pool growth matches the
+  baseline (`compare_runs.py` checks this — the E3-22 void is the cautionary example).
+- (b) is the registered PFSP arm (`--opponent-pfsp`, variance weighting, uniform-mix 0.25),
+  exposure-weighted attribution already built. Run it as registered; pooling.md §3b bounds
+  its claim — it shifts the mixture's composition, not a per-game opponent identity.
+- Each sub-arm resumes from the E3-20-28 80M state, +80M, one seed screen → 2-seed confirm
+  of anything that moves the X0 trace.
+
 ### X4 — expert-iteration distillation (family 4; the strongest single bet)
 
 Build P3's trainer hook: at card/play-mode decisions, 1-in-8 subsample, run the honest
@@ -107,6 +162,35 @@ decisions only**; everything else unchanged. Resume from the 160M stall, +80M �
 The claim being tested is precise: the ~75% search edge is expressible without search at play
 time, and its gradient does not die with the outcome signal. The owner's no-search preference
 is honoured — search runs in training only.
+
+**Detail.**
+- **Distill, don't act.** Rollouts keep sampling from the raw policy; search runs only to
+  produce CE targets on the subsampled decisions. This keeps the state distribution identical
+  to the baseline's — one factor — and is what Ataraxos does (direct policy sampling for
+  data, improvement operators elsewhere). Acting on the search policy is a *second* arm if
+  the first works, never the same arm.
+- Searcher config: `BatchedMCTS`, `determinize=True` (the honest form — privilege is measured
+  to be worth nothing at strength, and an honest teacher cannot leak hidden-hand information
+  into the policy), 32 sims, `node_filter=card_playmode`, `subsample=8`. Target: visit
+  distribution with completed-Q / Gumbel weighting if available, else visit counts.
+- Loss: `+ ce_coef · CE(π_θ(·|s), π_search(·|s))` on searched decisions only. *Decide before
+  running:* `ce_coef` (first guess 0.5, annealed only if it dominates) and whether searched
+  states are exempt from advantage filtering (they should be — the CE term is the point).
+- Cost model from the coverage table: the 2,886 st/s figure was measured *acting* with
+  search at this setting; target-only search costs about the same forward passes, so plan
+  ~8h per 80M leg and measure the real figure in the first hour.
+- The E3-22 lesson applies here in reverse and is worth stating: that arm improved every
+  offline estimate and lost 520 Elo; this arm's CE target is *measured* to be +150–190 Elo
+  stronger online, which is the right kind of evidence — but adoption still waits for the
+  training outcome, not the target's pedigree.
+
+## Registration and hygiene
+
+Every arm: a row in [`../runs.md`](../runs.md) before launch (next free E3 number), matched
+baseline named, `--snapshot-every-steps 5000000` so pool growth matches, `metadata.json`
+carrying the anchors and any new flags, `tools/compare_runs.py` diff against the baseline
+**before** any metric is read, and `tools/scripts/watch_run.py` armed on launch. Screens are
+one seed; nothing is adopted from fewer than two.
 
 ## Measure
 

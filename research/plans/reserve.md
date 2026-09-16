@@ -14,11 +14,29 @@ annealed and why it is behind the target fixes. The owner regards shaping as a s
 only with a specific flat-probe result to justify it.
 
 ## League / PFSP
-**Trigger:** head-to-head results between snapshots of one lineage are non-transitive
-(A > B > C > A) or a specific exploit (DEFCON trap, space rush) appears in self-play and
-disappears when the opponent changes. `ideas_and_plans.md` §4. Not before, because self-play
-on the v2.2 recipe is still gaining with budget (`experiments.md` §24) and nothing has shown
-cycling.
+**Promoted 2026-09-16.** The trigger fired: the stall after 160M with oscillating side balance
+is the cycling this entry was waiting for. The pool, PFSP and the first exploiter are now
+[P15](P15_breaking_the_cycle.md) X1/X3; a full multi-exploiter league remains here, triggered
+by X1 succeeding *and* X3 proving insufficient.
+
+## PSRO-lite: meta-Nash opponent sampling
+**Trigger:** P15-X3's span-the-run pool and PFSP are both neutral. Sample pool opponents from
+the meta-game Nash of the pool's head-to-head matrix (Lanctot et al. 2017) instead of
+uniform/variance weighting; needs a periodic in-run mini-tournament, which X0's anchor evals
+already half-build.
+
+## Optimism / extragradient in the optimizer
+**Trigger:** P15-X2 shows the anchor timescale matters but no refresh cadence both damps the
+cycle and keeps learning speed. OGDA / extragradient / optimistic mirror descent are the
+last-iterate-convergent update rules; deeper surgery than a flag, so it waits for evidence
+that the anchor family is the right one but insufficient.
+
+## Per-side capacity
+**Trigger:** P15-X1 shows a response exists but side-conditioned policy quality keeps
+collapsing on one side while the capability is measurably in the weights (the P10
+observation: 0.15 vs 0.04 mass on the same contested-battleground play depending on
+perspective). Options: side-specific adapters or heads, or a side-conditioned trunk film
+layer — an architecture change, so it queues behind the dynamics fixes.
 
 ## Voice of America exposure probe
 **Trigger:** the agent contests battlegrounds — empty battlegrounds at turn 8 down from 6.2 of 29
@@ -78,8 +96,9 @@ Raise `belief_loss_coef`, or give the belief its own tokens in P6's backbone.
 The 51-atom "VP & end types" head of `ideas_and_plans.md` §3.
 
 ## Entropy / KL-to-π_ref schedule (Ataraxos damping)
-**Trigger:** P3 finds search helps on *beyond-horizon* decisions (setup, battlegrounds), which
-would say the policy head, not the critic, is what is weak.
+**Partly promoted:** the ref-refresh half is now [P15](P15_breaking_the_cycle.md) X2. What
+stays here is the *entropy* schedule (annealing `--entropy-coef` late in training), triggered
+by X2 adopting a slow anchor and entropy then reading as the residual noise floor.
 
 ## Human policy anchor, card-level only (piKL form)
 **Trigger:** P7d — the §22 replication with the new corpus — *still* costs Elo, i.e. the

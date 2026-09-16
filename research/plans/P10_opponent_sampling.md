@@ -1,6 +1,10 @@
 # P10 — Breaking the advantage collapse
 
-**Status:** proposed, **awaiting approval**. Nothing here has been run.
+**Status:** **absorbed into [P15](P15_breaking_the_cycle.md)** (2026-09-16). Experiment 1 ran
+(E3-18-22 — needs its writeup; the one recorded rating, +11 over its parent after +80M, is
+the "no self-recovery" answer), experiment 4 became the pooled arms
+([`../findings/training/pooling.md`](../findings/training/pooling.md)), experiment 2 is
+P15-X1, and experiment 3 folds into P15-X2's screen cells.
 **Needs approval:** experiments 2 and 4 change the rollout loop (trainer only — no engine, no
 observation, no checkpoint invalidation). Experiments 1 and 3 need no code at all.
 **Instruments:** `critic/auc`, `critic/brier_skill`, `adv_std_raw` — all now logged live.
