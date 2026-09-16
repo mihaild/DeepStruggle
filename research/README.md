@@ -25,6 +25,7 @@ subdirectory is one nobody opens:
 | file | |
 |:---|:---|
 | [`runs.md`](runs.md) | **the arm registry** — one row per arm: what it varied, seeds, budgets, checkpoint directory, and where its result is written up (or that it is not) |
+| [`checkpoints.md`](checkpoints.md) | **the checkpoint catalogue** — which model to load and what it is worth: every rated checkpoint with its Elo and the field that measured it, the pooled-vs-unpooled verdict at 160M, and the directory-naming traps |
 | [`questions.md`](questions.md) | **the question index** — one row per question: which arms bear on it and what the verdict is. Start here when you know what you want to know but not which arm measured it |
 
 **The test, when you are unsure:** a statement in here turns out to be wrong. Do you *edit* it, or

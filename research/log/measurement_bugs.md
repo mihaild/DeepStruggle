@@ -277,3 +277,35 @@ A second, smaller thing the test caught about its own design: a watcher on a *he
 exits, because it exits only on a terminal state. A test that waits for exit therefore hangs. The
 helper now takes whatever the watcher printed within a deadline and kills it, which is also how a
 human should read it — the absence of a terminal event is the good news.
+
+## Reading a saturated anchor as a null result
+
+Asked whether the training logs show the opponent pool working, I computed external side balance
+and win rate against `HeuristicBot` for all eight 4x4 arms, averaged over the final 40M — the
+analysis [`../findings/training/pooling.md`](../findings/training/pooling.md) lists as never done —
+and got:
+
+| | mean \|gap\| over 120–160M | win rate vs HeuristicBot |
+|:---|---:|---:|
+| no pool | 8.8 pp (spread 2.3–15.5) | 93.9% (89.5–96.6) |
+| pooled | 8.0 pp (spread 1.5–17.0) | 92.1% (80.2–97.5) |
+
+Fully overlapping, and I reported it as a null before noticing why. **The metric is saturated.**
+By 120M every arm beats `HeuristicBot` above 89% and `RandomBot` above 99%, so neither can express
+a difference that the 20-model peer tournament separates completely (pooled 5.4 pp against unpooled
+33.2 pp). A ceiling cannot show you a gap.
+
+This was already on the checklist in two forms and I used the metric anyway: *an endpoint read
+from self-play alone can be satisfied without getting stronger*, and *the anchor overrates weaker
+arms … no live training metric can rank arms*. What neither entry said explicitly is that the
+anchor also **stops discriminating at all** once the arms outgrow it, which is a different failure
+from overrating — overrating produces a wrong ordering, saturation produces no ordering. The
+checklist entry now says so.
+
+The correct instrument for pooled-vs-unpooled strength is peer Elo from one tournament field, which
+exists (`arena_p12`, 76,000 games). The honest statement of what the training logs can contribute
+is: **nothing**, on this question, after roughly 120M steps.
+
+The two live metrics that remain useful are the ones that do not depend on an opponent's strength:
+`critic_auc` / `critic_brier_skill` (a property of the value head against realised outcomes) and
+the blunder rates (violations of the rules of good play, independent of who is across the table).

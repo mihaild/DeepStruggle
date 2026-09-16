@@ -99,10 +99,16 @@ specific pair directly; quote the anchored column only for the overall picture.
 one seed and +54.7 on another. *Check:* do not read a sequence of leg gains as compressing
 returns.
 
-**The anchor overrates weaker arms.** `HeuristicBot` is a fixed script, and a differently-trained
-policy can exploit its habits without being stronger. *Shows up as:* an arm above the control on
-the anchor and 77–110 Elo below it head to head — three times. *Check:* rate against a strong
-pooled reference; no live training metric can rank arms.
+**The anchor overrates weaker arms, and past ~120M it stops discriminating at all.** Two
+distinct failures of the same metric. *Overrating:* `HeuristicBot` is a fixed script, and a
+differently-trained policy can exploit its habits without being stronger — an arm above the control
+on the anchor and 77–110 Elo below it head to head, three times. *Saturation:* by 120M every one of
+the eight 4 × 4 arms beats `HeuristicBot` above 89% and `RandomBot` above 99%, so the anchor
+separates pooled from unpooled by 8.0 pp against 8.8 pp — a null — where the 20-model peer
+tournament separates them completely, 5.4 pp against 33.2 pp. Overrating gives you a wrong
+ordering; saturation gives you no ordering, and reads exactly like a real null. *Check:* rate
+against a strong pooled reference; **no live training metric can rank arms.** If the arms are
+beating the anchor above ~85%, the anchor is furniture, not an instrument.
 
 **A wall-clock budget hands two arms different amounts of training**, and contention is not
 symmetric between parallel arms (7,044 vs 7,833 steps/s). *Check:* budget by `--train-steps`.

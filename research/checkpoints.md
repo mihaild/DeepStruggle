@@ -1,0 +1,188 @@
+# Checkpoint catalogue — what exists on disk, and what it is worth
+
+One row per rated checkpoint, with its measured strength and the field that measured it. The arms
+themselves — what each one varied and why — are [`runs.md`](runs.md); this file answers the
+narrower question "which model do I load, and how good is it".
+
+**Update discipline: rewritten in place.** Written 2026-09-16.
+
+## How to read a number here
+
+**Elo is not comparable across tournaments.** `P28-160` reads 2096.1 in the 20-model `arena_p12`
+field and 2150.4 in the 10-model `arena_320` field — the same checkpoint, 54 points apart, because
+the field and the anchoring differ. Compare within one block below, never across blocks.
+
+**Two live metrics cannot rank arms**, and both have been used here by mistake:
+
+* **Win rate against `HeuristicBot`** saturates. By 120M every 4 × 4 arm beats it above 89% and
+  `RandomBot` above 99%, so the anchor separates pooled from unpooled by 8.0 pp against 8.8 pp — a
+  null — where the peer tournament separates them completely. A ceiling cannot show a gap.
+* **Self-play side advantage** can be satisfied by both sides drifting together; it is a fact about
+  the pair, not either side. It was pre-registered as the 4 × 4 primary endpoint and abandoned
+  mid-flight for exactly this.
+
+Both are on the checklist in [`method/measurement_pitfalls.md`](method/measurement_pitfalls.md).
+What *is* usable live: `critic_auc` / `critic_brier_skill` and the blunder rates, neither of which
+depends on an opponent's strength.
+
+## The pooling question, answered as far as the data allows
+
+`--opponent-self-pool` at `frac 0.30`, `capacity 12`, against no pool. Four seeds each, both rated
+at 80M and 160M in one 20-model field (`arena_p12`, 76,000 games).
+
+### Strength at 160M
+
+| | arms | mean Elo | range | spread |
+|:---|:---|---:|:---|---:|
+| **pooled** | P22 2067.8, P27 2151.0, P28 2096.1, P29 1929.6 | **2061.1** | 1929.6–2151.0 | 221.4 |
+| **no pool** | N22 1952.3, N24 1912.8, N25 1989.0, N26 1995.7 | **1962.5** | 1912.8–1995.7 | 82.9 |
+
+* difference of means **+98.7 Elo** to pooled
+* **3 of 4** pooled arms rank above *every* unpooled arm; the exception is P29
+* direct cross-condition head-to-head, all 16 pairings (~6,400 games): pooled wins **61.5%**, and
+  wins **13 of 16** pairings. Per arm against the four unpooled: P27 70.9%, P28 67.1%,
+  P22 63.2%, P29 44.6%
+* exact Mann-Whitney on the four-vs-four arm Elos: **U = 13 of 16, one-tailed p = 0.100**
+
+So: the *games* are decisive and the *arms* are not. 6,400 games put pooled ahead 61.5% with a
+standard error near 0.6 pp, but the unit of analysis is the arm, and four per condition gives
+p = 0.10. `pooling.md` records this as "not established" on a cruder rule — condition difference
+against within-condition spread — which is dominated entirely by P29. Drop P29 and the pooled
+spread is 83, identical to the unpooled one.
+
+### The sharper result: the second 80M
+
+The same field rates every arm at both budgets, so the **within-arm** gain is measurable, and
+pairing removes the arm-to-arm variance that blurs the level comparison.
+
+| arm | condition | @80M | @160M | Δ |
+|:---|:---|---:|---:|---:|
+| P22 | pooled | 1935.6 | 2067.8 | **+132.2** |
+| P27 | pooled | 2051.1 | 2151.0 | **+99.9** |
+| P28 | pooled | 2027.4 | 2096.1 | **+68.7** |
+| P29 | pooled | 1901.1 | 1929.6 | **+28.5** |
+| N22 | no pool | 2037.3 | 1952.3 | −85.0 |
+| N24 | no pool | 1925.9 | 1912.8 | −13.1 |
+| N25 | no pool | 1891.9 | 1989.0 | +97.1 |
+| N26 | no pool | 2122.5 | 1995.7 | −126.8 |
+
+**Pooled: 4 of 4 arms improved, mean +82.3 Elo. No pool: 1 of 4, mean −32.0 Elo.** Exact
+Mann-Whitney on the deltas: U = 14 of 16, one-tailed **p = 0.057**.
+
+This is the strongest form of the pooling result in the record, and it says something more
+specific than "pooled is better": **unpooled arms decay over the second 80M and pooled arms do
+not.** That is what a pool of past selves is for — a defence against co-evolutionary drift, which
+is a late-training phenomenon and therefore invisible in the first 80M. It also explains why the
+level comparison is weaker than the paired one: at 80M the conditions are genuinely close
+(N26-80 is the second-strongest model in the entire field), and the gap opens afterwards.
+
+### And it stops there
+
+160M → 320M bought nothing for either condition (`arena_320`): P28 2150.4 → 2151.6, N26
+2050.1 → 2047.6, P29 2015.6 → 1925.1. Two of three flat, one down. Whatever pooling protects
+against, it has finished protecting by 160M.
+
+## Rated checkpoints, by field
+
+### `arena_p12` — the 4 × 4 pooling field (20 models, 7,600 matches each)
+
+| model | directory | steps | pool | Elo |
+|:---|:---|---:|:---|---:|
+| P27-160 | `E3-20-27` | 160M | yes | **2151.0** |
+| N26-80 | `E3-17-26_20260914_234625` | 80M | no | **2122.5** |
+| P28-160 | `E3-20-28` | 160M | yes | 2096.1 |
+| P22-160 | `E3-20-22` | 160M | yes | 2067.8 |
+| P27-80 | `E3-20-27` | 80M | yes | 2051.1 |
+| N22-80 | `E3-17-22_20260913_164848` | 80M | no | 2037.3 |
+| P28-80 | `E3-20-28` | 80M | yes | 2027.4 |
+| N26-160 | `E3-17-26_20260914_234625` | 160M | no | 1995.7 |
+| N25-160 | `E3-17-25` | 160M | no | 1989.0 |
+| N22-160 | `E3-17-22_20260913_164848` | 160M | no | 1952.3 |
+| P22-80 | `E3-20-22` | 80M | yes | 1935.6 |
+| P29-160 | `E3-20-29_20260914_194500` | 160M | yes | 1929.6 |
+| N24-80 | `E3-17-24_20260914_155634` | 80M | no | 1925.9 |
+| N24-160 | `E3-17-24_20260914_155634` | 160M | no | 1912.8 |
+| P29-80 | `E3-20-29_20260914_194500` | 80M | yes | 1901.1 |
+| N25-80 | `E3-17-25` | 80M | no | 1891.9 |
+| REFstrong | — | — | — | 1881.8 |
+| REFweak | — | — | — | 1812.3 |
+| HeuristicBot | — | — | — | 1500.0 (anchor) |
+| RandomBot | — | — | — | 897.7 |
+
+### `arena_320` — the 320M extension (10 models, 4,500 matches each)
+
+| model | directory | Elo |
+|:---|:---|---:|
+| P28-320 | `E3-20-28_20260915_064054` | **2151.6** |
+| P28-160 | `E3-20-28` | 2150.4 |
+| N26-160 | `E3-17-26_20260914_234625` | 2050.1 |
+| N26-320 | `E3-17-26` | 2047.6 |
+| P29-160 | `E3-20-29_20260914_194500` | 2015.6 |
+| P29-320 | `E3-20-29_20260915_064054` | 1925.1 |
+
+### `E3-22-28_vs_E3-20-28` — the per-player GAE arm (10 models, 9,000 matches each)
+
+Run 2026-09-16, `data/tournaments/E3-22-28_vs_E3-20-28/`. Every `arm_*` row is
+`--per-player-gae`; see [`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+
+| model | directory | steps | Elo |
+|:---|:---|---:|---:|
+| base_80M | `E3-20-28` | 80M | **2274.8** |
+| base_60M | `E3-20-28` | 60M | 2180.8 |
+| base_40M | `E3-20-28` | 40M | 2076.3 |
+| base_20M | `E3-20-28` | 20M | 1880.9 |
+| arm_60M | `E3-22-28_20260916_132615` | 60M | 1839.3 |
+| arm_80M | `E3-22-28_20260916_132615` | 80M | 1754.4 |
+| arm_40M | `E3-22-28_20260916_132615` | 40M | 1720.7 |
+| arm_20M | `E3-22-28_20260916_132615` | 20M | 1659.2 |
+
+Note `base_80M` at 2274.8 against the same checkpoint's 2027.4 in `arena_p12` — the clearest
+illustration on this page of why Elo does not travel between fields.
+
+### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
+
+| model | Elo |
+|:---|---:|
+| H64-E3-18-22 | **1978.0** |
+| H64-E3-17-22 | 1967.0 |
+| H64-E3-17-24 | 1944.6 |
+| NOH-p1ident-b | 1940.1 |
+| NOH-p1ident-a | 1935.7 |
+| NOH-p1scalar-a | 1864.9 |
+| NOH-p1scalar-b | 1844.5 |
+| NOH-armH2 | 1836.4 |
+
+This field contains the **only** number ever recorded for `E3-18-22`, which
+[`findings/training/pooling.md`](findings/training/pooling.md) flags as having no writeup at all:
+it tops the field at 1978.0.
+
+### `arena80_160` — retracted
+
+Its three headline claims were withdrawn when a second unpooled seed landed, and two of its arms
+carry confounds (`E3-20-22` ran with `seed=None`; `E3-19-23` resumed from 90M rather than 80M
+because the 80M state had been pruned). Kept for provenance only; see
+[`findings/training/pooling.md`](findings/training/pooling.md) §1.
+
+## Unrated, and worth knowing about
+
+| directory | steps | what it is | status |
+|:---|---:|:---|:---|
+| `E3-21-28_20260916_092205` | 40M | same-perspective bootstrap | negative, critic at chance; not rated |
+| `E3-22-28_20260916_121202_VOID_thin_opponent_pool` | 47M | per-player GAE, first attempt | **void** — snapshot cadence made it a two-factor experiment |
+| `E3-21-28_20260916_004620_VOID_refusal_crash` | — | died on ENG-3 | void |
+| `E3-21-28_20260916_010023_VOID_eng3_crash` | — | died on ENG-3 | void |
+| `E3-18-22` | 160–240M | P10 experiment 1, the do-nothing control | rated only in `arena_heads`, no writeup |
+| `E3-19-22`, `E3-19-23` | 80–160M, 90–160M | pool-from-checkpoint arms | rated only in the retracted `arena80_160` |
+
+## Two traps in the directory names
+
+**The bare-name directory is sometimes the continuation.** `E3-17-26/` holds 160M → 320M while
+`E3-17-26_20260914_234625/` holds the original 0 → 160M. Selecting a run by its bare name silently
+picks the wrong arm — it produced an empty result in this catalogue's own first draft. The same
+pattern holds for `E3-20-28/` (0–160M) against `E3-20-28_20260915_064054/` (160–320M), where the
+bare name is the *original*. There is no rule; check the step range.
+
+**Snapshots across two runs share basenames.** Both arms of a matched pair land on identical step
+counts, so `snapshot_40042496steps.pt` exists in both, and `load_agent` names an agent from its
+basename — two files entering one Bradley-Terry row. Stage symlinks with distinct names, as
+`data/tournaments/E3-22-28_vs_E3-20-28/models/` does.

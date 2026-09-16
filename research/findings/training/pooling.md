@@ -23,10 +23,17 @@ was hard to find.
 
 ## Current verdict, in one line
 
-**On side balance the opponent pool works and the effect is large; on strength it is not
-established, because the spread between pooled arms is larger than the gap between conditions;
-and the endpoint that was pre-registered for the deciding experiment was abandoned mid-flight,
-for a good reason that was never written down until now.**
+**On side balance the opponent pool works and the effect is large. On strength it is better
+supported than this file used to say: pooled arms improve over the second 80M and unpooled arms
+decay — 4 of 4 against 1 of 4, one-tailed p = 0.057 — and pooled wins 61.5% of 6,400
+cross-condition games at 160M. It is still not conclusive at the arm level, where four seeds a
+condition give p = 0.10 on the levels.** And the endpoint pre-registered for the deciding
+experiment was abandoned mid-flight, for a good reason that was never written down until now.
+
+*Revised 2026-09-16.* The previous verdict — "not established, because the spread between pooled
+arms is larger than the gap between conditions" — applied a level comparison and a crude
+credibility rule to data that supports a **paired** one. See
+[§3a](#3a-the-paired-comparison-the-level-comparison-was-hiding) immediately below §3.
 
 Longer: four pooled arms and four unpooled arms at 160M, one tournament, 76,000 games, separate
 completely on side balance — every pooled arm inside 7.2 pp of even, every unpooled arm at least
@@ -133,6 +140,44 @@ done yet.
 defect — it can be satisfied by both sides moving together. See
 [`../../method/measurement_pitfalls.md`](../../method/measurement_pitfalls.md).
 
+### 3a. The paired comparison the level comparison was hiding
+
+`arena_p12` rates every arm at **both** 80M and 160M in one field, so the within-arm gain over the
+second 80M is measurable. Pairing removes the arm-to-arm variance that makes the level comparison
+inconclusive.
+
+| arm | condition | @80M | @160M | Δ |
+|:---|:---|---:|---:|---:|
+| P22 | pooled | 1935.6 | 2067.8 | **+132.2** |
+| P27 | pooled | 2051.1 | 2151.0 | **+99.9** |
+| P28 | pooled | 2027.4 | 2096.1 | **+68.7** |
+| P29 | pooled | 1901.1 | 1929.6 | **+28.5** |
+| N22 | no pool | 2037.3 | 1952.3 | −85.0 |
+| N24 | no pool | 1925.9 | 1912.8 | −13.1 |
+| N25 | no pool | 1891.9 | 1989.0 | +97.1 |
+| N26 | no pool | 2122.5 | 1995.7 | −126.8 |
+
+**Pooled 4 of 4 improved, mean +82.3 Elo; unpooled 1 of 4, mean −32.0.** Exact Mann-Whitney on the
+deltas, U = 14 of 16, one-tailed **p = 0.057** — against p = 0.100 for the same test on the levels.
+
+The finding this supports is more specific than "pooled is stronger": **unpooled arms decay over
+the second 80M and pooled arms do not.** That is what a pool of past selves is for, it is a
+late-training phenomenon, and it is invisible before 80M — which is also why the level comparison
+is the weaker instrument here. At 80M the conditions genuinely overlap; `N26-80`, an unpooled arm,
+is the second-strongest model in the whole 20-model field.
+
+Two further figures from the same field, both stronger than the Elo means:
+
+* direct cross-condition head-to-head at 160M, all 16 pairings, ~6,400 games: pooled **61.5%**,
+  winning **13 of 16** pairings. Per pooled arm against the four unpooled: P27 70.9%, P28 67.1%,
+  P22 63.2%, P29 44.6%.
+* **3 of 4** pooled arms rank above *every* unpooled arm. The 221-Elo pooled spread that the old
+  verdict leaned on is one arm: drop P29 and the pooled spread is 83, the same as the unpooled one.
+
+So the honest split is between units of analysis. Per *game* the result is decisive (SE ≈ 0.6 pp on
+61.5%); per *arm* it is four against four and p = 0.10 on levels, 0.057 paired. One more seed a
+condition would likely settle it, and is cheaper than anything else queued.
+
 ### 4. Extending to 320M
 
 The two extreme pooled arms extended 160M → 320M, with E3-17-26 as the unpooled control — chosen
@@ -188,15 +233,19 @@ unrelated to the opponent pool and its verdict is the opposite one
 
 ## What the record does not say
 
-* **External side balance averaged over the final 40M**, for the 4 × 4. The original endpoint
-  was abandoned because self-play balance does not track strength (§3); its replacement is read at
-  a single checkpoint, which reintroduces the oscillation problem. Neither has been computed from
-  the eight
-  `training_metrics.jsonl` files, the headline result rests on an instrument that was chosen
-  after the arms ran.
+* ~~**External side balance averaged over the final 40M**, for the 4 × 4.~~ **Computed
+  2026-09-16, and it cannot answer the question.** Averaged over 120–160M against `HeuristicBot`:
+  no pool 8.8 pp (spread 2.3–15.5), pooled 8.0 pp (spread 1.5–17.0) — fully overlapping. The metric
+  is **saturated**: every arm beats `HeuristicBot` above 89% and `RandomBot` above 99% by 120M, so
+  neither can express a gap the peer tournament separates completely. The training logs contain no
+  opponent strong enough to rate these arms, which means there is no in-run instrument for this
+  question at all after ~120M. Recorded in
+  [`../../log/measurement_bugs.md`](../../log/measurement_bugs.md).
 * **E3-18-22 has no writeup at all.** It is P10's experiment 1 — continue unchanged, does the
   critic recover on its own — and it is the control that says whether any intervention was needed.
-  Its final checkpoint was rated in `arena_heads` and nothing was written down.
+  Its final checkpoint was rated in `arena_heads`, where it **tops the field at 1978.0**
+  ([`../../checkpoints.md`](../../checkpoints.md)); that number is now recorded, but the experiment
+  it belongs to still has no analysis.
 * **E3-19's own question was never answered.** E3-19 was judged on `adv_std_raw` and critic
   AUC/Brier staying up, per its metadata and [`../../plans/P10_opponent_sampling.md`](../../plans/P10_opponent_sampling.md);
   the only numbers anyone recorded for it are Elo and side balance from `arena80_160`, which are
