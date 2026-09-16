@@ -72,6 +72,17 @@ changes sign when re-measured — `staged_cards` read +52.8 Elo at 80M from one 
 pooled, and +4.7 became −11.4. *Check:* rate the last four snapshots and report the mean; the
 error bar on a single cell is the oscillation, not the binomial SE.
 
+**An endpoint read from self-play alone can be satisfied without getting stronger.** Self-play
+side balance — *mean |ussr_win_rate − 0.5|* — was pre-registered as the primary endpoint of the
+4 × 4 pooling experiment and then abandoned, because it turned out to be uncorrelated with strength
+against a fixed opponent. *Why:* an arm can drive its own USSR win rate to 0.5 by having both of
+its sides drift together; that is a fact about the pair, not about either side. Balancing against
+yourself and beating a third party are different quantities. *Shows up as:* an arm that looks
+converged on the pre-registered metric and unremarkable on the ladder. *Check:* measure the thing
+against an opponent that does not move. If a metric can be satisfied by both sides changing
+together, it is measuring the pair.
+See [`../findings/training/pooling.md`](../findings/training/pooling.md) §3.
+
 **A single cell is not a comparison.** Two arms' final snapshots meeting once gave a ~64 Elo seed
 effect where sixteen pairings give ~13. *Check:* pool all pairings of four snapshots a side.
 

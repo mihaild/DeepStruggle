@@ -25,7 +25,8 @@ was hard to find.
 
 **On side balance the opponent pool works and the effect is large; on strength it is not
 established, because the spread between pooled arms is larger than the gap between conditions;
-and the endpoint that was pre-registered for the deciding experiment was never reported.**
+and the endpoint that was pre-registered for the deciding experiment was abandoned mid-flight,
+for a good reason that was never written down until now.**
 
 Longer: four pooled arms and four unpooled arms at 160M, one tournament, 76,000 games, separate
 completely on side balance — every pooled arm inside 7.2 pp of even, every unpooled arm at least
@@ -111,12 +112,26 @@ effect is credible only if it exceeds the spread between same-condition arms; th
 span 221 Elo (P27-160 at 2151.0 down to P29-160 at 1929.6) against a 98.7 Elo condition
 difference. So: balance, yes, decisively; strength, not established by this experiment.
 
-**The pre-registered primary endpoint was never reported.** It was *mean |ussr_win_rate − 0.5|
-over the final 40M*, read from the per-iteration training metric, chosen precisely because the
-final checkpoint samples where in an oscillation the budget ran out. No document in `research/`
-carries that number for the eight replication arms, and the tournament above is a different
-instrument — external side balance at a single final checkpoint. The numbers quoted here are the
-ones that exist, not the ones that were promised.
+**The pre-registered primary endpoint was abandoned, for cause.** It was *mean
+|ussr_win_rate − 0.5| over the final 40M*, read from the per-iteration training metric and chosen
+because a final checkpoint samples wherever in an oscillation the budget happened to stop. It was
+dropped when **self-play side advantage turned out to be uncorrelated with strength against a
+fixed opponent** — an arm can drive its own USSR win rate to 0.5 by having both of its sides drift
+together, which is a statement about the pair, not about either one. Balancing an agent against
+itself and beating a third party are different quantities, and only the second is what the project
+is for.
+
+So the tournament figures above are not a substitute chosen after the fact to flatter the result;
+they are the endpoint that replaced a metric found to be measuring the wrong thing. What the
+substitution costs is still real and is the reason this section says *suggestive* rather than
+settled: external side balance is read at a single final checkpoint, so it reintroduces exactly the
+oscillation-sampling problem the original endpoint was designed to avoid. The honest version of
+this experiment measures external side balance *averaged over the final 40M*, which nothing has
+done yet.
+
+**This generalises past pooling.** Any endpoint computed from self-play alone inherits the same
+defect — it can be satisfied by both sides moving together. See
+[`../../method/measurement_pitfalls.md`](../../method/measurement_pitfalls.md).
 
 ### 4. Extending to 320M
 
@@ -173,7 +188,10 @@ unrelated to the opponent pool and its verdict is the opposite one
 
 ## What the record does not say
 
-* **The pre-registered endpoint for the 4 × 4.** See §3. Until it is computed from the eight
+* **External side balance averaged over the final 40M**, for the 4 × 4. The original endpoint
+  was abandoned because self-play balance does not track strength (§3); its replacement is read at
+  a single checkpoint, which reintroduces the oscillation problem. Neither has been computed from
+  the eight
   `training_metrics.jsonl` files, the headline result rests on an instrument that was chosen
   after the arms ran.
 * **E3-18-22 has no writeup at all.** It is P10's experiment 1 — continue unchanged, does the
