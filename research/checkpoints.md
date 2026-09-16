@@ -155,6 +155,27 @@ result is a null, see [`findings/training/pooling.md`](findings/training/pooling
 | arm_20M | `E3-23-28_20260916_171033` | 20M | 1834.8 |
 | base_20M | `E3-20-28` | 20M | 1816.9 |
 
+### `P15_X0_frozen_anchors` — three runs to 320M on one scale (24 models, 200 games/side)
+
+Run 2026-09-16 for P15-X0. `p28` = E3-20-28 (pooled), `p29` = E3-20-29 (pooled, weak seed),
+`n26` = E3-17-26 (no pool), each at 40M intervals from 40M to 320M. Full field and the per-side
+matrices in [`log/P15_X0_round_robin.md`](log/P15_X0_round_robin.md); the anchor table and its
+reading in [`log/P15_X0_frozen_anchors.md`](log/P15_X0_frozen_anchors.md).
+
+| model | Elo | | model | Elo |
+|:---|---:|---|:---|---:|
+| `p28_200M` | **2193.7** | | `p28_080M` | 2083.1 |
+| `n26_120M` | **2188.8** | | `p29_200M` | 2057.9 |
+| `n26_080M` | 2172.6 | | `n26_320M` | 2034.3 |
+| `p28_240M` | 2168.0 | | `n26_160M` | 2031.1 |
+| `p28_160M` | 2141.9 | | `n26_200M` | 2020.1 |
+| `p28_320M` | 2138.0 | | `p29_160M` | 1992.4 |
+| `p28_120M` | 2133.3 | | `p29_040M` | 1930.9 |
+| `p28_280M` | 2126.4 | | `p29_120M` | 1723.0 |
+
+**Each run peaks and then declines**: `n26` at 120M (−154 Elo by 320M), `p28` at 200M (−56),
+`p29` at 200M (−152). No arm of any configuration is improving past 200M.
+
 ### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
 
 | model | Elo |

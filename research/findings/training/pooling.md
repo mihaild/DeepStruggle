@@ -296,6 +296,16 @@ stayed where it was, roughly 28–30 pp USSR-favoured, at both budgets.
 The pooled arms are still far better balanced than the unpooled control at 320M, so §3's result
 survives the extension; what does not survive is the hope that more steps settle it.
 
+**Qualified 2026-09-16 by the frozen-anchor sweep**
+([`../../log/P15_X0_frozen_anchors.md`](../../log/P15_X0_frozen_anchors.md)). The −6.9 pp above is
+measured across that tournament's whole field. Against a *fixed* peer anchor the same checkpoint,
+`E3-20-28@320M`, reads **−41.5 pp** — six times larger. Both numbers are correct and they answer
+different questions: a field of the arm's own relatives lets a shared drift cancel, because every
+opponent drifted too, while a frozen peer cannot drift and so does not cancel. The pooled arm is
+better balanced *than the unpooled control*, and it is not balanced. It is also the arm that runs
+away monotonically after 200M rather than oscillating, which the field-averaged number cannot
+show.
+
 ### 5. The pool costs nothing in strength at 80M and the arms are not converged
 
 Three facts that bound how much weight the above can carry, all from

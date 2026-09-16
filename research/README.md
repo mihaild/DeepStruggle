@@ -12,7 +12,7 @@ lives. Topic is a bad filing dimension — topics drift and a document ends up f
 
 | directory | discipline | the question it answers |
 |:---|:---|:---|
-| [`log/`](log/README.md) | **append-only** — never rewritten | what did we try, and why do we believe it? |
+| [`log/`](log/README.md) | **append-only** — never rewritten | what did we try, and why do we believe it? **Every measurement lands here first**; every other document links to it and none holds the only copy of a number ([`method/bookkeeping.md`](method/bookkeeping.md)) |
 | [`findings/`](findings/README.md) | **rewritten in place** — always current | what is true now? |
 | [`method/`](method/README.md) | **living reference** | how do we measure this? |
 | [`plans/`](plans/README.md) | forward-looking; becomes a log once run | what should we try next? |

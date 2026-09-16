@@ -52,6 +52,14 @@ Ordered so each is read through the one before it. Budgets use 45M steps/h.
 
 ### X0 — frozen-anchor gate (instrument; prerequisite for everything else)
 
+> **Measured 2026-09-16 as a retrospective sweep**, ahead of wiring it into the in-run evals:
+> [`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md). The oscillation now has
+> an amplitude — 54 pp with three sign flips for the unpooled arm; the pooled arm does not
+> oscillate late but **runs away** monotonically, −1.5 pp at 200M to −48.0 pp at 280M. Elo peaks
+> at 120M unpooled and 200M pooled, then falls by 154 and 56. And a field-averaged side gap
+> reads −6.9 pp where the frozen anchor reads −41.5 pp for the same checkpoint. The in-run
+> wiring is still to do; this establishes what it will show.
+
 Add frozen peer anchors to the in-run snapshot evals: E3-20-28@160M (strong), E3-20-28@80M
 (mid), HeuristicBot kept for continuity with old traces. Log **per-side** win rate against
 each anchor at every snapshot. This restores an instrument above 120M, makes the oscillation

@@ -29,6 +29,8 @@ original file, including its maintenance rules, is preserved verbatim below the 
 | [`search_cost_and_coverage.md`](search_cost_and_coverage.md) | — | what search costs per decision, what fraction of decisions it is worth spending on, and why the +27pp figure does not transfer to a cheaper arm |
 | [`europe_control_and_held_scoring.md`](europe_control_and_held_scoring.md) | — | E3-15 / E3-17: why the USSR takes Europe (West Germany is never contested), what the per-side held-scoring series actually says, and the forced human opening |
 | [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) | — | the seed spread that withdrew the first pooling result, the US decay from 80M to 160M, and the analysis plan fixed before the 4 × 4 landed |
+| [`P15_X0_frozen_anchors.md`](P15_X0_frozen_anchors.md) | — | P15-X0: three runs at 40M intervals to 320M against two frozen peer anchors — the oscillation with an amplitude at last, and why a field-averaged side gap hides five sixths of it |
+| [`P15_X0_round_robin.md`](P15_X0_round_robin.md) | — | the full 24-model field behind P15-X0: Elo, head-to-head and per-side matrices |
 
 **Conclusions extracted on 2026-09-16.** Three topics were being looked up on their own and were
 buried inside long journals. Their current verdicts now live in `../findings/` —

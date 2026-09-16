@@ -29,6 +29,44 @@ rests on is [`what_survives_an_engine_change.md`](what_survives_an_engine_change
 1 and 2 are indexes and cost a minute each. 3 is where the work goes. 4 exists only when a
 question has an answer worth stating without its narrative.
 
+## Every measurement lands in `log/` first
+
+**A number is recorded when it is in `../log/`. Everywhere else links to it.** No other document
+may hold the only copy of a measurement — not `findings/`, not `runs.md`, not `checkpoints.md`,
+not a plan, and certainly not a commit message.
+
+This is stricter than "write a log entry when the arm finishes", and it is stricter for a reason:
+on 2026-09-16 three measurements were produced and written straight into `findings/` and
+`checkpoints.md` — the per-player GAE tournament, the PFSP tournament, and the base-rate
+sensitivity analysis behind both. Each was a *verdict* in the right place. None had the setup, the
+sample size, the instrument or the caveats anywhere, because those belong to the experiment and
+`findings/` is not where experiments live. A reader asking "how was that 520 Elo obtained, over how
+many games, against which snapshots" had nowhere to go.
+
+What "measurement" covers here is broad, and deliberately so:
+
+* a tournament or any Elo number;
+* a probe, sweep or diagnostic run, including ones that returned nothing;
+* a statistic computed from `training_metrics.jsonl` — a windowed comparison, a correlation, a
+  variance estimate;
+* a sensitivity or robustness check on any of the above;
+* a count taken from the corpus, the engine or the logs to settle a question.
+
+The log entry carries: what was asked, how it was measured, **the instrument and the sample size**,
+the result with an error bar, the verdict, and what would overturn it. `findings/` then states the
+conclusion in a sentence or two and links back. If the conclusion later changes, `findings/` is
+rewritten and the log entry is not — that asymmetry is the whole point of the split, and it only
+works if the numbers are in the half that never moves.
+
+**The practical test.** Open the `findings/` claim and follow its link. If you cannot reach the
+sample size and the instrument in one hop, the measurement is not recorded yet.
+
+**Where in `log/`.** One file per programme, as the index describes. A measurement that belongs to
+an existing programme is appended to that programme's file; a new programme gets a new file and a
+row in [`../log/README.md`](../log/README.md). A measurement large enough to be looked up on its own
+— a full round-robin matrix, a corpus census — gets its own file beside the programme's, linked
+from it.
+
 ## Before launching
 
 **Register the prediction.** In the plan file or in the arm's `--description`, say what the probes
