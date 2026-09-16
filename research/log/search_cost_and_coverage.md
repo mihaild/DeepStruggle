@@ -15,14 +15,35 @@ These numbers existed but were never written to this log, so they had already de
 half-remembered "+27pp". Recorded here in full, with the configuration each belongs to, because
 the attribution was wrong in the first version of this entry and the error changed the conclusion.
 
-**Against the raw policy of the same net, `E3-20-28` @320M:**
+**Against the raw policy of the same net, `E3-20-28` @320M.** Every row carries the commit the
+code was at when it was measured, because three of them predate fixes that could have changed them.
 
-| searcher | budget | win rate | deployable? |
-|---|---:|---:|---|
-| **PIMCTS** (reads the true `GameState`) | 48 sims | **100%** (12/12) | no — sees the opponent's hand |
-| DMCTS (honest) | 48 sims | 58.3% (7/12) | yes — indistinguishable from chance at n=12 |
-| DMCTS, 1 world | 96 sims | **72.5%** | yes |
-| DMCTS, 1 world | 384 sims | **76.7%** (23/30) | yes |
+| searcher | budget | games | win rate | deployable? | measured at |
+|---|---:|---:|---:|---|---|
+| **PIMCTS** (reads the true `GameState`) | 48 sims | 12 | **100%** (12/12) | no — sees the opponent's hand | `3ef3d9b`, 09-15 15:11 |
+| DMCTS (honest) | 48 sims | 12 | 58.3% (7/12) | yes — not distinguishable from chance at n=12 | `3ef3d9b`, 09-15 15:11 |
+| DMCTS, 1 world | 96 sims | 40 | **72.5%** | yes | `5985175`, 09-15 ~17:42 |
+| DMCTS, 4 worlds × 24 | 96 total | 40 | 65.0% | yes | `5985175`, 09-15 ~17:42 |
+| DMCTS, 16 worlds × 6 | 96 total | 40 | 55.0% | yes | `5985175`, 09-15 ~17:42 |
+| DMCTS, 1 world | 384 sims | 30 | **76.7%** (23/30) | yes | pre-`5985175` tree, 09-15 16:56 |
+| DMCTS, 4 worlds × 96 | 384 total | 30 | 73.3% (22/30) | yes | `5985175`, 09-15 17:42 |
+
+The 48-sim pair is recorded in `3ef3d9b`'s own commit message, so that one is certain. The
+384-simulation row was taken from a working tree while batched MCTS was being written, before
+`5985175` committed it.
+
+> **Every row above predates three fixes and should be re-taken before being relied on**
+> (invariant 13). In commit order: `8533a68` "search the state the caller holds, and refuse to
+> return an illegal action"; `b6874af` "reject a micro-action whose decision_type is not the one
+> being asked"; `9f78026` "a chance node's only legal action rolled 255 instead of a die".
+>
+> The searcher's *own* chance handling was never affected — `settle()` uses `auto_advance_step` or
+> an explicit `MicroAction(ROLL_DIE, 0, 0, 0)`, both of which roll properly. The exposure is the
+> harness that played the probe games: any loop that read the legal mask and called `step_flat` at
+> a chance node forced a die of 255 before `9f78026`, which makes space race attempts and coups
+> succeed automatically for *both* sides. And before `8533a68` the searcher could return an action
+> illegal in the caller's state, which a loop ignoring the return value re-offers forever. Neither
+> is proven to have fired in these particular probes, and neither is ruled out.
 
 So the privileged searcher was **100%**, and the honest one reached **76.7%** given enough
 simulations. The "+27pp" that was carried forward is 76.7% − 50%, i.e. the **honest, deployable**
@@ -137,10 +158,19 @@ step guard now raises on. With the caller settling the same way, 0 of 128 were i
 
 ## 7. Coverage sweep
 
-Each configuration plays the **plain policy of the same 160M checkpoint**, 150 games per side, 64
-simulations, `--auto-advance`. One matchup per configuration rather than a round robin: the
-question is how much strength survives restriction, and search-vs-search pairs cost the most while
-answering nothing.
+Measured at `f08cde8` (the working tree it was committed from), engine
+`2fb70052dee0164871632209060cbaa23fd4f0fb99cc2e956241e231b0e8e691` — so this is the first search
+measurement taken *after* `8533a68`, `b6874af` and `9f78026`, and the only one on this page not
+subject to the caveat in §1.
+
+Configuration, spelled out because the comparison to §1 turns on it: the **privileged** searcher
+(`determinize=False`, the default), **64 simulations**, from the **160M** checkpoint, against the
+plain policy of that same checkpoint, 150 games per side, `--auto-advance`. One matchup per
+configuration rather than a round robin: the question is how much strength survives restriction,
+and search-vs-search pairs cost the most while answering nothing.
+
+**64 simulations, not 384.** The honest 76.7% in §1 needed 384; nothing here was run at that
+budget, which is one of the three reasons these numbers do not compare to it.
 
 | searched | % of decisions | search win % | vs plain | Elo | 40M arm |
 |---|---:|---:|---:|---:|---:|
