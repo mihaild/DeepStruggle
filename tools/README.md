@@ -39,6 +39,30 @@ flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps agains
 baseline's ~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
 `--opponent-frac 0.3` that made it a two-factor experiment. It was thrown away.
 
+### Reading an A/B
+
+`tools/compare_runs.py <baseline-dir> <arm-dir>` compares two runs at matched step counts. It
+prints the configuration diff **before** the metrics, deliberately: the numbers mean nothing until
+you know what else differs.
+
+```bash
+PYTHONPATH=. .venv/bin/python tools/compare_runs.py \
+    data/checkpoints/<baseline> data/checkpoints/<arm>
+```
+
+Three things it encodes, each of which was learned by getting it wrong:
+
+* **Observed differences, not just recorded ones.** It compares opponent-pool growth from the
+  runs' own logs, because the confound that voided E3-22-28's first attempt was a snapshot cadence
+  that *neither* run's metadata recorded. What a run did is evidence; what its metadata claims is
+  a claim.
+* **A key one run predates is "unverifiable", not a difference.** Otherwise every comparison
+  against an older baseline invents confounds and the warning stops meaning anything.
+* **Windows, not iterations, and watch the base rate.** A single iteration's `critic_auc` swings
+  by more than the effects usually looked for, and AUC is a discrimination score over whatever
+  win/loss mix the window contained -- two windows with different base rates are not the same
+  problem. Base rates print beside every row, and a material divergence is marked `!`.
+
 ```bash
 # Two runs that are exactly comparable: identical step budget, one flag apart
 PYTHONPATH=. .venv/bin/python tools/train.py --arch v2 --train-steps 60000000 ... --start-pool-frac 1.0
