@@ -74,6 +74,7 @@ known.
 | [P7](P7_human_data.md) **7a only** | human-corpus conversion + strength-split instruments (CPU/engineering); 7b–7d wait for Tier 1's outcome |
 | [P13](P13_one_game_driver.md) | one game driver — removes the five-loop divergence that has already produced search bugs; enabling work for X4-class arms |
 | [P0](P0_instruments.md) | the remaining probes (current file; rebased) |
+| [P16](P16_replay_policy_and_critic_trace.md) | policy probabilities and critic values recorded on every replay step, and shown in the workbench — turns "it blundered" into "it blundered at p=0.02" and makes the critic's degeneracy visible on a played game |
 
 ### Tier 3 — after training converts compute again (re-rank on the X-outcome)
 
