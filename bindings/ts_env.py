@@ -285,6 +285,9 @@ class TsVectorizedEnv:
     def step(self, actions: np.ndarray | List[int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
         """Steps all N environments in parallel with exact acting player attribution."""
         # 1. Capture exact acting players & privileged opponent hands BEFORE stepping simulation
+        # The masks the caller sampled from, captured before the step overwrites the buffer --
+        # needed to tell a mask/engine disagreement from a sampler that ignored the mask.
+        prev_masks = np.array(self.runner.get_action_masks(), copy=True)
         acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
         acting_turns = np.array(self.runner.get_turns(), dtype=np.int8)
         prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
@@ -300,11 +303,27 @@ class TsVectorizedEnv:
         # converting to numpy to ask the same question cost ~29% of the step call.
         if 0 in step_results:
             bad = step_results.index(0)
+            act = int(action_list[bad])
+            st = self.runner.get_state(bad)
+            # Which of the two failures this is, because they need opposite fixes:
+            #   in the mask  -> the mask and the engine disagree, an engine defect;
+            #   not in mask  -> the sampler picked a masked-out action, a trainer defect.
+            # Without this the message names neither, and the first occurrence cost a run.
+            was_legal = bool(0 <= act < len(prev_masks[bad]) and prev_masks[bad][act])
+            n_legal = int(prev_masks[bad].sum())
             raise IllegalActionError(
-                f"engine refused flat action {int(action_list[bad])} in env {bad} of "
-                f"{self.num_envs} (decision "
-                f"{ts.DecisionType(int(self.runner.get_state(bad).ctx().decision_type))}); "
-                f"{step_results.count(0)} of the batch refused")
+                f"engine refused flat action {act} in env {bad} of {self.num_envs} "
+                f"(decision {ts.DecisionType(int(st.ctx().decision_type))}); "
+                f"{step_results.count(0)} of the batch refused. "
+                f"The action WAS legal in the mask it was sampled from"
+                if was_legal else
+                f"engine refused flat action {act} in env {bad} of {self.num_envs} "
+                f"(decision {ts.DecisionType(int(st.ctx().decision_type))}); "
+                f"{step_results.count(0)} of the batch refused. "
+                f"The action was NOT in the mask ({n_legal} legal there), so the sampler "
+                f"chose outside it -- a uniform softmax over an all -1e9 row does exactly "
+                f"this. phase={st.current_phase} vp={int(st.victory_points)} "
+                f"terminal={ts.Engine.is_terminal(st)}")
 
         # 3. Read post-step metrics BEFORE auto-resetting
         dones = np.array(self.runner.get_terminals(), dtype=bool)
