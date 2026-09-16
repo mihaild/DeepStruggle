@@ -115,4 +115,97 @@ simulations, `--auto-advance`. One matchup per configuration rather than a round
 question is how much strength survives restriction, and search-vs-search pairs cost the most while
 answering nothing.
 
-(results appended below when the sweep completes)
+| searched | % of decisions | search win % | vs plain | Elo | 40M arm |
+|---|---:|---:|---:|---:|---:|
+| card/play-mode, 1 in 8 | 5.2% | 55.3% ± 2.9 | +5.3pp | +37 | 6.9h |
+| card/play-mode, 1 in 4 | 10.5% | 56.7% ± 2.9 | +6.7pp | +49 | 12.5h |
+| card/play-mode, all | 42.0% | 62.7% ± 2.8 | +12.7pp | +90 | 46.1h |
+| every decision | 100.0% | 71.0% ± 2.6 | **+21.0pp** | +157 | 107.9h |
+
+**Coverage buys strength and does not saturate.** The gain is sublinear in cost -- 19x the compute
+for 4x the edge -- but there is no cheap plateau: the 1-in-8 setting keeps a quarter of the gain
+for a sixteenth of the cost, and every step up the ladder is worth real points. An intermediate
+reading of the curve, taken after only the two cheapest points were in, looked flat and was wrong;
+two points were not enough to see the shape.
+
+**+21pp at full coverage broadly reproduces the ~+27pp** that was attributed to search, which is
+the first independent confirmation of that figure -- though not on identical footing, since the
+original was never written down and its opponent and checkpoint are unknown.
+
+**These numbers are an upper bound, because the searcher cheats.** `determinize` defaults to
+False, which `BatchedMCTSConfig` itself calls "a privileged teacher": the tree steps the real
+`GameState`, so at opponent decision nodes the opponent's legal moves come from their *actual*
+hand. A deployable searcher (`determinize=True`) would be weaker by an unmeasured amount, and that
+gap is the next thing worth measuring, ahead of any arm.
+
+### What `determinize=True` actually does, and its limits
+
+`BatchedMCTS.run` samples the hidden state **once per search**, at the root:
+`determinize(s, acting_player(s), rng)` reshuffles only the cards the mover cannot see -- the
+opponent's `HAND_*_UNKNOWN` cards plus the draw deck -- preserving the opponent's hand count, the
+deck count, and every card already revealed (`HAND_*_KNOWN`). The whole tree then descends through
+that one sampled world, so at an opponent node the legal moves come from the sampled hand and the
+opponent is modelled by the same network.
+
+Two limits follow, and the second is not in `dmcts.py`'s docstring:
+
+* **Strategy fusion**, as documented there: the tree may act differently in each sampled world when
+  one policy must in truth cover them all.
+* **`BatchedMCTS` samples exactly one world per search.** `dmcts.py` describes running an
+  independent tree per sample and summing root visit counts; the batched implementation does not.
+  So the honest batched searcher carries the full sampling noise of a single determinization with
+  no averaging to reduce it -- the weakest form of the technique. `reuse_subtree` is correctly
+  disabled under `determinize`, since a tree grown in one sampled world says nothing about the
+  next.
+
+## 8. The value bootstrap crosses an information-set boundary
+
+`compute_gae` bootstraps across a change of mover by negating the next state's value:
+
+```python
+sign = (curr_p * next_p).float()      # -1 when the mover changes
+next_val = sign * self.values_win[t + 1]
+delta = self.rewards[t] + gamma * next_val * non_terminal - v_t
+```
+
+This is exact in a perfect-information game, where one value function of the state serves both
+sides. **It is not exact here.** `v_win` is computed from `extract_observation(state, perspective)`,
+which hides the opponent's hand, so `V(s, US)` and `V(s, USSR)` evaluate two different information
+sets rather than one state, and are not negatives of each other.
+
+Measured on 227 positions sampled from the s240 self-play replays, with the 240M checkpoint:
+
+| `v_win(s, US) + v_win(s, USSR)` | |
+|---|---:|
+| mean | +0.051 |
+| mean absolute | 0.144 |
+| median absolute | 0.067 |
+| p90 absolute | 0.374 |
+| max absolute | 0.849 |
+| positions disagreeing by > 0.2 | 28.6% |
+
+Zero for every position if the assumption held. The observation differs by perspective in 227 of
+227 positions, as it must.
+
+**What this costs.** Take the USSR playing a card as an event that resolves with no further
+decisions. Its advantage is
+
+```
+A = r + γ·( −V(s', US) ) − V(s, USSR)
+```
+
+so the continuation is priced by **the US's opinion of the resulting position, formed without
+seeing the USSR's hand**. An event whose value depends on what the USSR still holds -- a setup for
+a combo, a card it can now afford to discard -- is invisible to that term. The error is not just
+noise: the mean is +0.05, so it is biased, by 7.2% of the value range on average and up to 42% in
+the tail.
+
+It is self-consistent as a fixed point, because each row's target is built from the next row's
+value with the same flip, so the value head converges to something coherent. It is simply not the
+information-set value it is being read as.
+
+**The cheap fix, if it is wanted:** bootstrap from the *same player's* evaluation of the next
+state -- store `V(s_{t+1}, p_t)` alongside `V(s_{t+1}, p_{t+1})` -- which is one extra forward per
+step and removes the boundary crossing entirely. That changes the algorithm, so it is recorded here
+rather than done.
+
