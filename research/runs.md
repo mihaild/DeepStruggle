@@ -394,3 +394,26 @@ estimate is not a better training signal.** Per-player GAE beats the default on 
 metric — RMSE 0.551 → 0.481, outcome correlation 0.861 → 0.901, exact telescoping at λ=1 — and
 loses by 520 Elo. Full account in
 [`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+
+### E3-23 — the PFSP arm
+
+**E3-23-28 ran to 160M and is a null.** `E3-20-28`'s recipe flag for flag, seed 20260928
+included, plus `--opponent-pfsp` (weighting `var`, uniform floor 0.10): the opponent-pool draw is
+weighted by the learner's smoothed win rate against each snapshot instead of drawn uniformly.
+Verified one-factor by identical observed pool growth, not only by metadata.
+
+Elo against the matched baseline (`data/tournaments/E3-23-28_vs_E3-20-28/`, 45,000 games):
+**+11.6 at 160M** (2295.6 against 2284.0), with +17.9 / +52.1 / −1.7 at 20M / 40M / 80M. That is
+inside the 83–221 Elo within-condition seed spread this project has already measured, from one
+seed. Critic metrics are null over all 33 windows and positive only on the base-rate-matched
+subset. Full account in
+[`findings/training/pooling.md`](findings/training/pooling.md) §3c.
+
+PFSP is **postponed**, not refuted: the treatment settled at a 1.1–1.2× reweighting over uniform,
+so the null applies to a mild nudge rather than to prioritisation. The arm did leave two things
+behind that outlast it — the per-opponent win-rate instrument (`opp_win_rate_*`,
+`opp_games_recorded`), which is the first in-run signal for whether the pool does anything, and the
+measurement that a pooled game is played against ~5 snapshots in sequence
+([`findings/training/pooling.md`](findings/training/pooling.md) §3b).
+
+Directory: `E3-23-28_20260916_171033`.

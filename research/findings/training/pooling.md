@@ -224,6 +224,57 @@ file credits for the balance result. Holding one opponent for a whole episode is
 arm and is as likely to be a regression as a fix -- it trades within-episode diversity for
 coherence, and this file's own evidence is that diversity is what does the work.
 
+### 3c. PFSP on the pool draw is a null (E3-23-28, 2026-09-16)
+
+`--opponent-pfsp` weights the draw by the learner's smoothed win rate against each snapshot
+instead of drawing uniformly, with `var` weighting -- x(1-x), peaking on evenly matched opponents
+-- and a 0.10 uniform floor. One factor against `E3-20-28`: same seed, envs, budget, reward,
+architecture, eta, pool frac and capacity, and the same `--snapshot-every-steps 5000000`, verified
+by identical observed pool growth (1@0.1M, 2@5.1M, 3@10.1M, 4@15.1M, 5@20.1M on both).
+
+**Strength, the pre-registered primary endpoint** (`data/tournaments/E3-23-28_vs_E3-20-28/`,
+8 models, 45,000 games, anchored HeuristicBot = 1500):
+
+| steps | uniform | PFSP | delta | PFSP head-to-head |
+|---:|---:|---:|---:|---:|
+| 20M | 1816.9 | 1834.8 | +17.9 | 51.3% |
+| 40M | 2016.3 | 2068.4 | +52.1 | 60.0% |
+| 80M | 2208.6 | 2206.9 | −1.7 | 49.5% |
+| **160M** | **2284.0** | **2295.6** | **+11.6** | **57.1%** |
+
+**+11.6 Elo at the endpoint is nothing.** §3 records a within-condition seed spread of 83 Elo
+(unpooled) and 221 Elo (pooled) across four seeds in one field; a single-seed arm cannot resolve a
+twelve-point difference, and the pattern across budgets is not monotone.
+
+**Critic, secondary.** Over all 33 windows: `critic_auc` +0.0096, 95% CI [−0.005, +0.024];
+`critic_brier_skill` +0.0085, CI [−0.028, +0.045] — null. Restricted to the 15 windows where both
+runs were scored on comparable win/loss mixes: +0.0211, CI [+0.005, +0.038] and +0.0368, CI
+[+0.005, +0.069] — positive. The all-window null is driven by one block, 115–140M, where the arm's
+own base rate spiked to 0.82–0.87 against the baseline's 0.54–0.65. That subset analysis was
+introduced at 75M, when the all-window result was already positive, so it was not built to rescue
+anything; it still carries less weight than a pre-registered one, and the pre-registered comparison
+is the null.
+
+**Three things bound this null rather than settling the question.**
+
+* **The treatment was mild by construction.** At capacity 12 the reweighting settled at 1.1–1.2×
+  over uniform (`opp_pfsp_entropy` 0.98, `opp_pfsp_max_prob` 0.13 against a uniform 0.111). A null
+  on a 1.2× nudge is not a null on prioritisation. The follow-up is a 0.0 uniform floor, not
+  abandoning it.
+* **One seed.** §3 needed four a condition and still reached only p = 0.057 paired.
+* **`adv_std_raw` is untouched** — +0.0002, CI [−0.004, +0.004] over 22 windows. PFSP did not
+  degrade the advantage signal the pool exists to protect.
+
+**It also refutes this module's own prediction.** `ai/training/opponent_pool.py` argued
+prioritisation should *hurt*, because the pool's mechanism is that weak old snapshots give the
+learner's trailing side winnable games and prioritising strips those out. It did not hurt.
+
+**The one concrete behavioural difference is worth following.** The arm's self-play base rate
+spiked to 0.82–0.87 for roughly 25M steps around 115–140M and then recovered. Holding side balance
+is the pool's strongest documented effect (§3), so a prioritiser that lets it slip for 25M steps is
+the thread to pull — and it is exactly the oscillation
+[`../../plans/P15_breaking_the_cycle.md`](../../plans/P15_breaking_the_cycle.md) exists to measure.
+
 ### 4. Extending to 320M
 
 The two extreme pooled arms extended 160M → 320M, with E3-17-26 as the unpooled control — chosen

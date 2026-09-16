@@ -65,7 +65,7 @@ known.
 |:---|:---|:---|
 | **P15-X4** | expert-iteration distillation: CE toward the 32-sim honest search policy, card/play-mode nodes, 1-in-8 — the one gradient source that does not die with the outcome signal. Build starts now, in parallel with X1 | build + ~8h/arm |
 | **P15-X2** | anchor timescale: `--ref-update-freq` 200k → {5M, 20M} — the KL anchor currently refreshes every ~16s of wall clock and tracks the cycle it should damp | flags; ~2h/cell |
-| **P15-X3** | pool memory: span-the-run pool with δ-mix (a); the already-built PFSP arm (b); one-opponent-per-episode (c, only if a/b move) | small trainer change; ~2h/arm |
+| **P15-X3** | pool memory: span-the-run pool with δ-mix (a); ~~PFSP (b)~~ **postponed — ran as E3-23-28 and is a null: +11.6 Elo at 160M against an 83–221 Elo seed spread** ([pooling.md §3c](../findings/training/pooling.md)); one-opponent-per-episode (c, only if a moves) | small trainer change; ~2h/arm |
 
 ### Tier 2 — parallel, no GPU
 

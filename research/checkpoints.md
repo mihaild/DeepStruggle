@@ -139,6 +139,22 @@ Run 2026-09-16, `data/tournaments/E3-22-28_vs_E3-20-28/`. Every `arm_*` row is
 Note `base_80M` at 2274.8 against the same checkpoint's 2027.4 in `arena_p12` — the clearest
 illustration on this page of why Elo does not travel between fields.
 
+### `E3-23-28_vs_E3-20-28` — the PFSP arm (10 models, 9,000 matches each)
+
+Run 2026-09-16, `data/tournaments/E3-23-28_vs_E3-20-28/`. `arm_*` rows are `--opponent-pfsp`;
+result is a null, see [`findings/training/pooling.md`](findings/training/pooling.md) §3c.
+
+| model | directory | steps | Elo |
+|:---|:---|---:|---:|
+| arm_160M | `E3-23-28_20260916_171033` | 160M | **2295.6** |
+| base_160M | `E3-20-28` | 160M | 2284.0 |
+| base_80M | `E3-20-28` | 80M | 2208.6 |
+| arm_80M | `E3-23-28_20260916_171033` | 80M | 2206.9 |
+| arm_40M | `E3-23-28_20260916_171033` | 40M | 2068.4 |
+| base_40M | `E3-20-28` | 40M | 2016.3 |
+| arm_20M | `E3-23-28_20260916_171033` | 20M | 1834.8 |
+| base_20M | `E3-20-28` | 20M | 1816.9 |
+
 ### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
 
 | model | Elo |
