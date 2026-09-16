@@ -44,6 +44,12 @@ from bindings.action_encoder import ActionEncoder
 _UINT64 = 1 << 64
 
 
+def _legal_here(state: ts.GameState, action: int) -> bool:
+    """Is `action` legal in this exact state? The only authority on what may be played."""
+    mask = np.asarray(ActionEncoder.get_legal_mask(state))
+    return 0 <= action < len(mask) and bool(mask[action])
+
+
 def settle(state: ts.GameState, auto_advance: bool) -> None:
     """Advance past everything the player has no say in, by whichever rule is configured."""
     if auto_advance:
@@ -441,22 +447,36 @@ class BatchedMCTSAgent:
             for i, a in zip(plain_idx, picks):
                 out[i] = int(a)
 
-        # The same check `select_action` has carried since the 1,355-refusal stall, which the
-        # batched path -- the one every tournament uses -- did not. A searcher that returns an
-        # action the caller cannot play is not a weaker searcher, it is a broken measurement, and
-        # before `step` raised it produced a silently wrong game rather than an error.
+        # A determinized search can legitimately return an action that is illegal in the real
+        # state, because in this game the legal SET itself can depend on hidden information.
+        # The Cambridge Five (card 104) is the worked example: it names the regions on the
+        # opponent's hidden scoring cards, so a sampled world where the US holds Asia Scoring
+        # makes all of Asia placeable when the true state does not. Determinization's usual
+        # assumption -- same action set in every world -- does not hold here.
+        #
+        # So the search proposes and the true mask disposes: an illegal pick is replaced by this
+        # agent's own greedy policy over the real mask, and counted. A pick that is illegal after
+        # that is a genuine fault (a root rooted at the wrong decision) and raises.
+        bad = [i for i, a in enumerate(out)
+               if not _legal_here(states[i], a)]
+        if bad:
+            repl = self._policy_actions([states[i] for i in bad])
+            for i, a in zip(bad, repl):
+                out[i] = int(a)
+            self.world_mismatch_count = getattr(self, "world_mismatch_count", 0) + len(bad)
+
         for i, a in enumerate(out):
-            mask = np.asarray(ActionEncoder.get_legal_mask(states[i]))
-            if not (0 <= a < len(mask)) or not mask[a]:
+            if not _legal_here(states[i], a):
+                mask = np.asarray(ActionEncoder.get_legal_mask(states[i]))
                 legal = np.flatnonzero(mask)
                 raise RuntimeError(
-                    f"search returned action {a} for batch position {i}, which is not legal in "
-                    f"the caller's state (decision_type="
+                    f"action {a} for batch position {i} is not legal in the caller's state even "
+                    f"after the policy fallback (decision_type="
                     f"{int(states[i].ctx().decision_type)}, {legal.size} legal action(s): "
-                    f"{legal[:8].tolist()}). Chosen by "
-                    f"{'search' if want[i] else 'the policy fallback'}. If by search, the tree is "
-                    f"rooted at a different decision than the caller holds -- set "
-                    f"advance_root=False when the caller does not settle the state itself.")
+                    f"{legal[:8].tolist()}). The policy is masked by this same mask, so this is "
+                    f"not a determinization mismatch -- the tree is rooted at a different "
+                    f"decision than the caller holds. Set advance_root=False when the caller "
+                    f"does not settle the state itself.")
 
         self.searched_count = getattr(self, "searched_count", 0) + len(searched_idx)
         self.decision_count = getattr(self, "decision_count", 0) + len(states)
