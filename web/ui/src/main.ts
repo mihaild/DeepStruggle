@@ -5,6 +5,7 @@ import { CardsView } from "./cards_view";
 import { ActionHud } from "./action_hud";
 import { ReplayControls, ReplayStep } from "./replay_controls";
 import { DebugPanel } from "./debug_panel";
+import { policyChipHtml, renderTracePanel, renderValueRibbon } from "./trace_view";
 
 export class TSApp {
   private state: GameState | null = null;
@@ -48,6 +49,7 @@ export class TSApp {
       this.replaySteps = allSteps;
       this.replayCurrentStep = stepIndex;
       this.renderState();
+      this.renderTrace();
     });
 
     this.setupGlobalControls();
@@ -166,6 +168,16 @@ export class TSApp {
     return { targetIndices, includedIndices: sorted };
   }
 
+  /** The two replay-only views of the model's trace: the value ribbon and the readout panel. */
+  private renderTrace() {
+    const ribbon = document.getElementById("rep-value-ribbon");
+    if (ribbon) {
+      renderValueRibbon(ribbon, this.replaySteps, this.replayCurrentStep,
+                        (idx: number) => this.replayControls.goToStep(idx));
+    }
+    renderTracePanel(this.replaySteps[this.replayCurrentStep]);
+  }
+
   private renderLogStream() {
     const logContainer = document.getElementById("action-log-stream");
     const logCountBadge = document.getElementById("log-count");
@@ -254,6 +266,7 @@ export class TSApp {
               <span class="log-step">[T${step.turn} AR${step.ar}]</span>
               <span class="log-player ${playerClass}">${playerClass}:</span>
               <span class="log-text" style="flex: 1;">${step.description || `Action type=${step.action?.decision_type}`}</span>
+              ${policyChipHtml(step, idx > 0 ? this.replaySteps[idx - 1] : undefined)}
               ${isVpTarget ? '<span class="log-vp-badge">🎯 VP CHANGE</span>' : ''}
             </div>
             ${dieRollHtml}

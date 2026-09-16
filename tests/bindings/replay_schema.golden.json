@@ -88,6 +88,11 @@
     "legal_countries": "list[int]",
     "legal_space": "bool"
   },
+  "PolicyChoiceDict": {
+    "idx": "int",
+    "name": "str",
+    "p": "float"
+  },
   "ReplayActionDict": {
     "action_type": "NoneType | int",
     "card_id": "NoneType | int",
@@ -98,6 +103,15 @@
     "secondary_id": "int",
     "target_id": "NoneType | int",
     "type": "NoneType | str"
+  },
+  "ReplayCriticDict": {
+    "at": "str",
+    "v_vp_us": "float",
+    "v_vp_ussr": "float",
+    "v_win_us": "float",
+    "v_win_ussr": "float",
+    "vp_residual": "float",
+    "win_residual": "float"
   },
   "ReplayInitialStateDict": {
     "seed": "int"
@@ -123,11 +137,27 @@
     "players": "dict[str, str]",
     "result": "NoneType | ReplayResultDict",
     "seed": "int",
-    "total_steps": "int"
+    "total_steps": "int",
+    "trace": "ReplayTraceMetaDict"
   },
   "ReplayPlayersDict": {
     "US": "str",
     "USSR": "str"
+  },
+  "ReplayPolicyDict": {
+    "argmax_idx": "int",
+    "chosen_idx": "int",
+    "entropy": "float",
+    "n_legal": "int",
+    "p_chosen": "float",
+    "p_chosen_sampled": "float",
+    "p_max": "float",
+    "p_tail": "float",
+    "source": "str",
+    "temperature": "float",
+    "top": "list[PolicyChoiceDict]",
+    "v_vp": "float",
+    "v_win": "float"
   },
   "ReplayResultDict": {
     "end_turn": "int",
@@ -138,9 +168,11 @@
   "ReplayStepDict": {
     "action": "ReplayActionDict",
     "ar": "int",
+    "critic": "ReplayCriticDict",
     "description": "str",
     "phase": "str",
     "player": "str",
+    "policy": "ReplayPolicyDict",
     "state_snapshot": "GameStateDict",
     "step_index": "int",
     "turn": "int"
@@ -152,5 +184,17 @@
     "players": "dict[str, str]",
     "result": "NoneType | ReplayResultDict",
     "total_steps": "int"
+  },
+  "ReplayTraceMetaDict": {
+    "arch": "str",
+    "checkpoint_sha256_12": "str",
+    "critic_model": "str",
+    "engine_fingerprint": "str",
+    "mode": "str",
+    "model_us": "str",
+    "model_ussr": "str",
+    "p_floor": "float",
+    "temperature": "float",
+    "top_k": "int"
   }
 }

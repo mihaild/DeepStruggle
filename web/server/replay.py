@@ -10,6 +10,9 @@ from web.server.replay_types import (
     ReplayResultDict,
     GameStateDict,
     ReplayActionDict,
+    ReplayPolicyDict,
+    ReplayCriticDict,
+    ReplayTraceMetaDict,
 )
 
 _ROOT_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,6 +47,7 @@ class ReplayLogger:
         self.created_at: str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         self.steps: List[ReplayStepDict] = []
         self.result: Optional[ReplayResultDict] = None
+        self.trace: Optional[ReplayTraceMetaDict] = None
 
     def log_step(
         self,
@@ -55,19 +59,30 @@ class ReplayLogger:
         action: ReplayActionDict,
         description: str,
         state_snapshot: GameStateDict,
+        policy: Optional[ReplayPolicyDict] = None,
+        critic: Optional[ReplayCriticDict] = None,
     ) -> None:
-        self.steps.append(
-            {
-                "step_index": step_index,
-                "turn": turn,
-                "ar": ar,
-                "phase": phase,
-                "player": player,
-                "action": action,
-                "description": description,
-                "state_snapshot": state_snapshot,
-            }
-        )
+        step: ReplayStepDict = {
+            "step_index": step_index,
+            "turn": turn,
+            "ar": ar,
+            "phase": phase,
+            "player": player,
+            "action": action,
+            "description": description,
+            "state_snapshot": state_snapshot,
+        }
+        # Written only when there is something to write: a heuristic bot has no distribution and
+        # a replay without a trace must stay byte-identical to what this writer produced before.
+        if policy is not None:
+            step["policy"] = policy
+        if critic is not None:
+            step["critic"] = critic
+        self.steps.append(step)
+
+    def set_trace_meta(self, trace: ReplayTraceMetaDict) -> None:
+        """Record which model, build and settings produced the per-step trace."""
+        self.trace = trace
 
     def set_result(self, winner: str, margin: int, end_turn: int, reason: str) -> None:
         self.result = {
@@ -89,6 +104,8 @@ class ReplayLogger:
             "total_steps": len(self.steps),
             "result": self.result,
         }
+        if self.trace is not None:
+            metadata["trace"] = self.trace
         return {
             "version": "1.0",
             "metadata": metadata,

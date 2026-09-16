@@ -409,6 +409,13 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR \
    All Python types must be explicitly annotated (using `TypedDict` definitions in `web/server/replay_types.py` for all serialized JSON structures, replays, game states, audit logs, and metrics). Whenever modifying or adding Python code, static type checks MUST be executed via `.venv/bin/pyrefly check` and all typing validation tests must pass cleanly without errors.
 6. **Unified Self-Play & Replay Generation**:
    All self-play simulation and `.tslog.json` replay recording across training pipelines, evaluation benchmarks, and CLI scripts MUST use the unified `generate_self_play_replay` function in `tools.lib.self_play` to guarantee 100% adherence to standard `.tslog.json` schema (`ReplayLogDict`).
+   Each step may also carry a **trace** — `policy` (the distribution the move was drawn from,
+   at the node *before* it) and `critic` (both value heads from both perspectives on the state
+   *after* it) — produced by `ai/eval/policy_readout.py` and described in
+   `web/server/AGENTS.md`. Two rules hold whatever writes it: **recording a belief must not
+   change what is played** (`read_policy` consumes the torch RNG exactly as `sample_action`
+   does, pinned by `tests/training/test_policy_readout.py`; `tests/training/test_replay_trace.py`
+   checks the whole game), and **every reader treats the blocks as optional**.
 7. **Mandatory Checkpoint Directory Naming Convention**:
    A run's checkpoint directory MUST be named from its short name — `<engine>-<attempt>-<seed>`
    — plus the start date and time. Pass `tools/train.py --run-name <engine>-<attempt>-<seed>`

@@ -74,7 +74,6 @@ known.
 | [P7](P7_human_data.md) **7a only** | human-corpus conversion + strength-split instruments (CPU/engineering); 7b–7d wait for Tier 1's outcome |
 | [P13](P13_one_game_driver.md) | one game driver — removes the five-loop divergence that has already produced search bugs; enabling work for X4-class arms |
 | [P0](P0_instruments.md) | the remaining probes (current file; rebased) |
-| [P16](P16_replay_policy_and_critic_trace.md) | policy probabilities and critic values recorded on every replay step, and shown in the workbench — turns "it blundered" into "it blundered at p=0.02" and makes the critic's degeneracy visible on a played game |
 
 ### Tier 3 — after training converts compute again (re-rank on the X-outcome)
 
@@ -95,6 +94,7 @@ known.
 | [P6](P6_attention_backbone.md) | **superseded by the P9 programme** — identity embeddings, self-transform and per-entity heads landed as E3-15 and are the baseline ([`../findings/training/architecture.md`](../findings/training/architecture.md)) |
 | [P9](P9_graph_architecture.md) | its programme ran; record in [`../log/P9_architecture.md`](../log/P9_architecture.md); the open map-layer question sits in [`../questions.md`](../questions.md) |
 | [P10](P10_opponent_sampling.md) | **absorbed** — exp 1 ran (needs the Tier-0 writeup), exp 4 became the pooled arms, exp 2 is P15-X1; exp 3 (seed-resume) folds into X2's screens |
+| [P16](P16_replay_policy_and_critic_trace.md) | **done** — policy probabilities and critic values are recorded on every replay step and shown in the workbench (ribbon, chips, readout panel), with `tools/annotate_replay.py` for replays recorded without them. Live web games were dropped from scope |
 | [P14](P14_one_definition_of_legality.md) | **done** — landed with zero decision-stream divergence ([`../findings/engine/engine_change_decision_stream.md`](../findings/engine/engine_change_decision_stream.md)) |
 | [restoring_advantage_signal](restoring_advantage_signal.md) | **absorbed** — its final proposal (historical opponent sampling) became the pooled arms; the VP-margin idea is dead by measurement; the aux control head moved to Tier 3 |
 | [reserve](reserve.md) | ideas with triggers — now including PSRO-lite meta-Nash sampling, optimism/extragradient, per-side capacity |

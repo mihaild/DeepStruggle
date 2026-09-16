@@ -48,6 +48,15 @@ Two rules follow:
 
 - [`replay.py`](replay.py):
   - `ReplayLogger`: Appends micro-actions, turn/AR milestones, and state snapshots as `.tslog.json`.
+  - Optional per-step **trace**: `policy` (what the model believed at that node) and `critic`
+    (both value heads from both perspectives on the state the step's snapshot shows), plus
+    `metadata.trace` naming the model, engine build and settings that produced them. Written by
+    `tools/lib/self_play.py` and `tools/play_match.py --trace`, and after the fact by
+    `tools/annotate_replay.py`; see `ai/eval/policy_readout.py`. **Every reader must treat both
+    keys as absent by default** — a heuristic bot has no distribution, a human game has no
+    model, and replays predating the trace have neither. The live server never puts a trace in a
+    `STATE_UPDATE`: a distribution over a bot's legal actions is a read on its hand, which is
+    what the per-role `observation_b64` exists to withhold.
   - `ReplayManager`: Discovers and loads those files.
   - `replays_dir()` resolves the location per call — `$TS_REPLAYS_DIR` if set, else `data/replays`
     — so a test fixture can point the server at a directory it has just generated a replay into.

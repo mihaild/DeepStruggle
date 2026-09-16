@@ -248,6 +248,10 @@ PYTHONPATH=. .venv/bin/python tools/play_match.py \
 PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py \
   --agent <checkpoint.pt> --opening human --seed 305 --commentary
 
+# 5. Record what the network believed at every node, and what its critic thought:
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py \
+  --us <checkpoint.pt> --ussr heuristic --trace
+
 # View any generated replay in the Web Workbench at:
 # http://localhost:8000/?replay=<filename>.tslog.json
 ```
@@ -259,6 +263,41 @@ shows what a policy does with a board it did not choose. Currently one opening i
 A scripted placement that is not legal raises rather than falling through to the agent -- a
 partly-forced setup is neither opening, and would be reported as one. The same registry backs
 `ai/eval/forced_setup.py`, so the replays show the opening its numbers were measured on.
+
+**`--trace`** records, on every step of the replay, the distribution the policy drew its move
+from and the critic's reading of the position that move produced — the workbench then shows a
+value ribbon under the timeline, a probability chip per log row, and the full distribution for
+the selected step. Neural self-play traces by default (`--no-trace` turns it off); a match does
+not, because most matches here are bot-vs-bot baselines with no distribution to record.
+`--trace-top-k` (12) sets how many legal actions are listed per node — the rest of the mass is
+reported as `p_tail`, and the move that was played is listed whatever its probability —
+and `--trace-critic-every {step,decision,off}` trades a gap-free value curve against the extra
+forward pass on steps the loop settled itself. The probabilities are the model's own
+distribution at temperature 1, not the tempered one that was sampled from; the sampling
+probability is recorded alongside as `p_chosen_sampled`. Details in `ai/eval/policy_readout.py`.
+
+---
+
+## 3b. `tools/annotate_replay.py` (Post-hoc Policy & Critic Annotation)
+Asks a checkpoint what it thinks of a game it may not have played, and writes the answers onto
+the replay in the same format `--trace` produces.
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python tools/annotate_replay.py \
+  --replay data/replays/s160_1.tslog.json \
+  --model data/checkpoints/<run>/final.pt --print
+```
+
+It re-drives the game from its seed by applying the logged actions, exactly as
+`ai/eval/replay_critic.py` does, and **aborts on the first step where the reconstruction stops
+matching the replay** — a drifted reconstruction still returns numbers and they still look like
+results. A rebuilt engine can change the decision stream with no Python change (invariant 13),
+which is the usual way that happens, so the engine fingerprint is written next to the numbers.
+`--print` gives a per-step table (probability of the move played, the model's best, entropy,
+`v_win` and its step-to-step change); `--limit` stops early for a quick look. The probability
+reported is always the one the model assigns to the move **the replay recorded**, never to the
+move the model would have made — that is `argmax_idx`, and the two differing is the interesting
+case.
 
 ---
 

@@ -64,6 +64,18 @@
           </div>
         </div>
 
+        <!-- Section 1b: What the model believed here, and what its critic thinks of the
+             position. Present only for replays that carry a trace; hidden otherwise. -->
+        <div class="panel trace-panel hidden" id="trace-panel">
+          <div class="panel-header">
+            <h3>MODEL READOUT</h3>
+            <span id="trace-source-badge" class="badge">policy</span>
+          </div>
+          <div id="trace-panel-body" class="trace-body">
+            <!-- Rendered by trace_view.ts -->
+          </div>
+        </div>
+
         <!-- Section 2: Cards & Hands (Full Visibility) -->
         <div class="panel hands-panel">
           <div class="tabs">
@@ -150,6 +162,9 @@
         <div class="timeline-container">
           <span id="rep-step-label">Step 0 / 0</span>
           <input type="range" id="rep-timeline-slider" min="0" max="0" value="0">
+          <!-- The critic's win value across the whole game, one column per step. Empty for a
+               replay without a trace. -->
+          <div class="value-ribbon hidden" id="rep-value-ribbon" title="Critic v_win (US perspective) across the game -- click to seek"></div>
         </div>
         <div class="replay-options">
           <select id="rep-server-select" class="replay-select-dropdown" title="Select server replay">

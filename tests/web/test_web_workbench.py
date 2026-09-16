@@ -94,6 +94,9 @@ def test_frontend_workbench_html_structure():
         "replay-toolbar",
         "rep-timeline-slider",
         "rep-server-select",
+        "rep-value-ribbon",
+        "trace-panel",
+        "trace-panel-body",
         "btn-rep-play",
         "btn-toggle-replay",
         "modal-container"

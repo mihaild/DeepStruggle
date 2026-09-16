@@ -1672,3 +1672,145 @@ body {
   padding: 20px;
   font-size: 11px;
 }
+
+/* ---------- Model readout: policy probabilities and critic values on a replay ---------- */
+
+/* The value ribbon sits under the timeline slider, one column per step. */
+.timeline-container {
+  flex-wrap: wrap;
+}
+.value-ribbon {
+  position: relative;
+  flex-basis: 100%;
+  height: 34px;
+  margin-top: 2px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.value-ribbon-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ribbon-label {
+  position: absolute;
+  right: 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.ribbon-label-top { top: 1px; }
+.ribbon-label-bottom { bottom: 1px; }
+
+/* The per-row chips in the action stream. */
+.trace-chip {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--text-dim);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.trace-chip-forced {
+  opacity: 0.45;
+}
+.trace-dv-us {
+  border-color: var(--us-blue);
+  color: var(--us-blue-light);
+}
+.trace-dv-ussr {
+  border-color: var(--ussr-red);
+  color: var(--ussr-red-light);
+}
+
+/* The right-rail readout panel. */
+.trace-body {
+  padding: 8px 10px 10px;
+  font-size: 11px;
+}
+.trace-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.trace-head-item b { color: var(--text-main); }
+.trace-offmode { color: var(--warning); }
+.trace-note {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin: -4px 0 8px;
+}
+.trace-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.trace-bar-row.chosen .trace-bar-label { color: var(--text-main); font-weight: 600; }
+.trace-bar-label {
+  flex: 0 0 42%;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trace-bar-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.trace-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+}
+.trace-bar-p {
+  flex: 0 0 52px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.trace-tail {
+  margin-top: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.trace-empty {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.trace-critic {
+  width: 100%;
+  margin-top: 10px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  border-collapse: collapse;
+}
+.trace-critic th {
+  text-align: right;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.trace-critic td { text-align: right; }
+.trace-critic td:first-child, .trace-critic th:first-child {
+  text-align: left;
+  color: var(--text-dim);
+}
+.trace-critic .trace-residual td { color: var(--text-dim); }

@@ -37,7 +37,21 @@ except ImportError:
     NeuralBot = None
 
 from web.server.replay import ReplayLogger, ReplayManager, replays_dir
-from web.server.replay_types import ReplayActionDict, GameStateDict
+from web.server.replay_types import (
+    ReplayActionDict,
+    GameStateDict,
+    ReplayCriticDict,
+    ReplayPolicyDict,
+    ReplayTraceMetaDict,
+)
+from ai.eval.policy_readout import (
+    TRACE_P_FLOOR,
+    TRACE_TOP_K,
+    name_actions,
+    read_critic,
+    unasked_readout,
+)
+from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 from tools.lib.scoring_formatter import format_regional_scoring_breakdown
 from tools.lib.checkpoint_utils import discover_checkpoints
@@ -251,6 +265,12 @@ class _BotSource:
         if action_dict is None:
             return None
 
+        # The bot works from the JSON view and cannot name a flat action; here the engine state
+        # is still in hand, so the names are filled in at the only point that has both.
+        readout = getattr(self.bot, "last_readout", None)
+        if readout is not None:
+            name_actions(readout, state)
+
         self.last_description = format_action_description(action_dict, d)
         return ts.MicroAction(
             ts.DecisionType(int(action_dict["decision_type"])),
@@ -272,8 +292,20 @@ def run_match(
     max_steps: int = 4000,
     verbose: bool = True,
     opening: Optional[str] = None,
+    trace: bool = False,
+    trace_top_k: int = TRACE_TOP_K,
+    trace_critic_every: str = "step",
 ) -> Tuple[ReplayLogDict, str]:
-    """Runs a full Twilight Struggle game between two specified agents and saves standardized replay."""
+    """Runs a full Twilight Struggle game between two specified agents and saves standardized replay.
+
+    With `trace`, a neural side records what it believed at each node it chose, and one of the
+    neural models answers the critic for every step -- see `ai/eval/policy_readout.py`. Off by
+    default here, unlike self-play: most matches in this CLI are bot-vs-bot baselines where
+    there is no distribution to record and the extra forwards would be pure cost.
+    """
+    if trace_critic_every not in ("step", "decision", "off"):
+        raise ValueError(
+            f"trace_critic_every must be 'step', 'decision' or 'off'; got {trace_critic_every!r}")
     # The id and the filename must agree. With --output the file used the caller's name while the
     # id stayed a timestamp, so a replay called s240_1.tslog.json identified itself as
     # match_1789505117 -- a number appearing nowhere else, which made tracing a reported problem
@@ -292,10 +324,40 @@ def run_match(
     bot_us, name_us = resolve_agent(agent_us_spec, "US", temperature=temperature, device=device)
     bot_ussr, name_ussr = resolve_agent(agent_ussr_spec, "USSR", temperature=temperature, device=device)
 
+    if trace:
+        for _b in (bot_us, bot_ussr):
+            if hasattr(_b, "trace"):
+                setattr(_b, "trace", True)
+    # ONE critic for the whole game, even when both sides are neural. A ribbon that switched
+    # networks halfway would plot two different opinions on one axis and read as a change of
+    # mind, so the model that supplies it is fixed here and named in the trace metadata.
+    critic_model: Optional[Any] = None
+    critic_model_name = ""
+    if trace:
+        for _b, _n in ((bot_us, name_us), (bot_ussr, name_ussr)):
+            if getattr(_b, "model", None) is not None:
+                critic_model, critic_model_name = getattr(_b, "model"), _n
+                break
+
     state = ts.GameState()
     ts.Engine.init_game(state, seed)
 
     logger = ReplayLogger(game_id=game_id, seed=seed, us_player=name_us, ussr_player=name_ussr)
+
+    if trace:
+        trace_meta: ReplayTraceMetaDict = {
+            "mode": "inline",
+            "model_us": name_us,
+            "model_ussr": name_ussr,
+            "temperature": float(temperature),
+            "top_k": int(trace_top_k),
+            "p_floor": float(TRACE_P_FLOOR),
+            "engine_fingerprint": engine_fingerprint(),
+        }
+        if critic_model is not None:
+            trace_meta["arch"] = type(critic_model).__name__
+            trace_meta["critic_model"] = critic_model_name
+        logger.set_trace_meta(trace_meta)
 
     if verbose:
         print("=" * 80)
@@ -336,6 +398,21 @@ def run_match(
         # its own and the bot's last description belongs to a different move.
         desc = (format_action_description(action_dict, view) if rec.forced
                 else (src.last_description or format_action_description(action_dict, view)))
+
+        policy: Optional[ReplayPolicyDict] = None
+        critic: Optional[ReplayCriticDict] = None
+        if trace:
+            flat = int(rec.flat) if rec.flat is not None else 0
+            if rec.forced:
+                policy = unasked_readout(flat, after)
+            else:
+                # Only a neural bot has a distribution; a heuristic one leaves the block off
+                # rather than reporting a certainty it never computed.
+                policy = getattr(src.bot, "last_readout", None)
+            if critic_model is not None and (
+                    trace_critic_every == "step" or not rec.forced):
+                critic = read_critic(critic_model, after)
+
         logger.log_step(
             step_index=rec.index,
             turn=rec.turn,
@@ -345,6 +422,8 @@ def run_match(
             action=replay_action,
             description=desc,
             state_snapshot=cast(GameStateDict, rec.state_after or {}),
+            policy=policy,
+            critic=critic,
         )
         if verbose and (commentary or isinstance(getattr(src, "bot", None), HumanBot)):
             print(f"[Step {rec.index:3d} | Turn {rec.turn} AR {rec.action_round} | "
@@ -426,6 +505,18 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="PyTorch inference device (cpu or cuda)")
     parser.add_argument("--opening", type=str, default=None, choices=sorted(OPENINGS),
                         help="Force a named setup on both sides instead of letting the agents place (e.g. 'human')")
+    # Tri-state on purpose: the default differs by path. Neural self-play traces unless told
+    # not to; a bot-vs-bot match has nothing to trace unless a neural side is in it and the
+    # caller asks.
+    parser.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None,
+                        help="Record the policy's distribution at each node it chose and the "
+                             "critic's reading of every position, into the replay "
+                             "(default: on for neural self-play, off for a match)")
+    parser.add_argument("--trace-top-k", type=int, default=TRACE_TOP_K,
+                        help="Legal actions listed per node, by descending probability")
+    parser.add_argument("--trace-critic-every", type=str, default="step",
+                        choices=("step", "decision", "off"),
+                        help="'step' for a gap-free value curve, 'decision' for chosen nodes only")
 
     args = parser.parse_args()
 
@@ -448,6 +539,9 @@ def main():
             device=args.device,
             verbose=True,
             opening=args.opening,
+            trace=True if args.trace is None else args.trace,
+            trace_top_k=args.trace_top_k,
+            trace_critic_every=args.trace_critic_every,
         )
         return
 
@@ -461,6 +555,9 @@ def main():
         commentary=args.commentary,
         device=args.device,
         opening=args.opening,
+        trace=bool(args.trace),
+        trace_top_k=args.trace_top_k,
+        trace_critic_every=args.trace_critic_every,
     )
 
 

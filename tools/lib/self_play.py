@@ -1,5 +1,6 @@
 """Unified self-play game simulation and .tslog.json replay generation."""
 
+import hashlib
 import os
 import sys
 import time
@@ -11,12 +12,35 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
 from ai.eval.blunders import BlunderCounts, check_play
+from ai.eval.policy_readout import (
+    TRACE_P_FLOOR,
+    TRACE_TOP_K,
+    read_critic,
+    read_policy,
+    unasked_readout,
+)
 from bindings.ts_env import check_obs_width
+from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint
 from web.server.replay import ReplayLogger, replays_dir
-from web.server.replay_types import ReplayLogDict, ReplayActionDict, GameStateDict
+from web.server.replay_types import (
+    ReplayLogDict,
+    ReplayActionDict,
+    GameStateDict,
+    ReplayPolicyDict,
+    ReplayTraceMetaDict,
+)
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 from tools.lib.game_loop import GameLoop, SettlePolicy, StepRecord
 from tools.lib.openings import acting_side, scripted_setup_index
+
+
+def checkpoint_digest(path: str) -> str:
+    """First 12 hex of a checkpoint's sha256 -- enough to tell two snapshots apart in metadata."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()[:12]
 
 
 def generate_self_play_replay(
@@ -32,13 +56,28 @@ def generate_self_play_replay(
     max_steps: int = 4000,
     verbose: bool = True,
     opening: Optional[str] = None,
+    trace: bool = True,
+    trace_top_k: int = TRACE_TOP_K,
+    trace_p_floor: float = TRACE_P_FLOOR,
+    trace_full: bool = False,
+    trace_critic_every: str = "step",
 ) -> Tuple[ReplayLogDict, str]:
     """Simulates a complete self-play game between neural policies and saves standardized .tslog.json replay.
 
     `opening` names a setup from `tools.lib.openings` to force on both sides in place of their own
     placements (currently only "human"). The policy plays everything after setup, so the replay
     shows what it does with a board it did not choose.
+
+    With `trace` (the default), every step also carries what the policy believed at that node and
+    what the critic thought of the position it produced -- see `ai/eval/policy_readout.py`. It
+    costs one extra forward per step for the critic's second perspective; the policy half is free,
+    reusing the pass the move already needed. `trace_critic_every` is "step" (a gap-free value
+    curve, including the steps the settle policy played), "decision" (only nodes the policy chose,
+    half the forwards) or "off". `trace=False` reproduces the untraced file byte for byte.
     """
+    if trace_critic_every not in ("step", "decision", "off"):
+        raise ValueError(
+            f"trace_critic_every must be 'step', 'decision' or 'off'; got {trace_critic_every!r}")
     dev: torch.device = torch.device(device if torch.cuda.is_available() and str(device) == "cuda" else "cpu")
 
     active_model: Any
@@ -96,6 +135,23 @@ def generate_self_play_replay(
         ussr_player=ussr_label,
     )
 
+    if trace:
+        # Provenance for the numbers: which weights, which engine build, which settings. Without
+        # it a trace is a column of floats whose owner is a guess.
+        trace_meta: ReplayTraceMetaDict = {
+            "mode": "inline",
+            "model_us": us_label,
+            "model_ussr": ussr_label,
+            "arch": type(active_model).__name__,
+            "temperature": float(temperature),
+            "top_k": int(trace_top_k),
+            "p_floor": float(trace_p_floor),
+            "engine_fingerprint": engine_fingerprint(),
+        }
+        if isinstance(model, str):
+            trace_meta["checkpoint_sha256_12"] = checkpoint_digest(model)
+        replay_logger.set_trace_meta(trace_meta)
+
     setup_cursor: Dict[str, int] = {"US": 0, "USSR": 0}
 
     blunders = BlunderCounts()
@@ -113,6 +169,7 @@ def generate_self_play_replay(
 
         def __init__(self) -> None:
             self.last_desc = ""
+            self.last_policy: Optional[ReplayPolicyDict] = None
 
         def choose(self, st: ts.GameState) -> Optional[ts.MicroAction]:
             p_enum = (st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE
@@ -122,21 +179,34 @@ def generate_self_play_replay(
 
             forced_idx = (scripted_setup_index(st, acting_side(st), opening, setup_cursor)
                           if opening else None)
+            self.last_policy = None
             if forced_idx is not None:
                 action_idx = forced_idx
+                if trace:
+                    # A scripted opening overrode a real choice, so there is no distribution to
+                    # report and none is invented -- only the fact that the policy was overruled.
+                    n_legal = int(np.asarray(ActionEncoder.get_legal_mask(st)).sum())
+                    self.last_policy = unasked_readout(action_idx, st, source="scripted",
+                                                       n_legal=n_legal)
             else:
                 obs = np.array(ts.extract_observation(st, p_enum), copy=False).reshape(1, -1)
                 mask = np.array(ActionEncoder.get_legal_mask(st), copy=False).reshape(1, -1)
                 obs_t = torch.from_numpy(obs).float().to(dev)
                 mask_t = torch.from_numpy(mask).to(dev)
-                with torch.no_grad():
-                    if hasattr(active_model, "sample_action"):
-                        act_t, _, _, _, _ = active_model.sample_action(
-                            obs_t, mask_t, temperature=temperature, deterministic=False)
-                        action_idx = int(act_t.item())
-                    else:
-                        logits, _ = active_model(obs_t, mask_t)
-                        action_idx = int(torch.argmax(logits, dim=-1).item())
+                if trace and hasattr(active_model, "sample_action"):
+                    action_idx, self.last_policy = read_policy(
+                        active_model, obs_t, mask_t, temperature=temperature,
+                        deterministic=False, state=st, top_k=trace_top_k,
+                        p_floor=trace_p_floor, full=trace_full)
+                else:
+                    with torch.no_grad():
+                        if hasattr(active_model, "sample_action"):
+                            act_t, _, _, _, _ = active_model.sample_action(
+                                obs_t, mask_t, temperature=temperature, deterministic=False)
+                            action_idx = int(act_t.item())
+                        else:
+                            logits, _ = active_model(obs_t, mask_t)
+                            action_idx = int(torch.argmax(logits, dim=-1).item())
 
             self.last_desc = ActionEncoder.get_action_name(st, action_idx)
             ma = ts.ActionMask.decode_flat_action(st, action_idx)
@@ -175,6 +245,22 @@ def generate_self_play_replay(
         }
         desc = source.last_desc if not rec.forced else ActionEncoder.get_action_name(
             after, int(rec.flat) if rec.flat is not None else 0)
+
+        # The policy block describes the node BEFORE the action -- it is the distribution the
+        # move was drawn from -- while the critic reads the state AFTER it, which is the state
+        # this step's snapshot shows. Keeping them on the same row only works if which is which
+        # is never in doubt, hence `critic["at"]`.
+        policy: Optional[ReplayPolicyDict] = None
+        if trace:
+            if rec.forced:
+                policy = unasked_readout(int(rec.flat) if rec.flat is not None else 0, after)
+            else:
+                policy = source.last_policy
+        critic = None
+        if trace and trace_critic_every != "off" and (
+                trace_critic_every == "step" or not rec.forced):
+            critic = read_critic(active_model, after)
+
         replay_logger.log_step(
             step_index=rec.index + 1,
             turn=rec.turn,
@@ -184,11 +270,19 @@ def generate_self_play_replay(
             action=action_dict,
             description=desc,
             state_snapshot=cast(GameStateDict, rec.state_after),
+            policy=policy,
+            critic=critic,
         )
         if verbose and (rec.index % 10 == 0 or after.current_phase == ts.Phase.GAME_OVER
                         or "Scoring" in desc):
+            belief = ""
+            if policy is not None and policy.get("source") == "policy":
+                belief = f" | p={policy.get('p_chosen', 0.0):.3f}"
+                if critic is not None:
+                    belief += f" v={critic['v_win_us']:+.2f}"
             print(f"{rec.index + 1:4d} | {rec.turn:4d} | {rec.action_round:2d} | "
-                  f"{rec.player:>5s} | {after.defcon:6d} | {after.victory_points:+4d} | {desc}")
+                  f"{rec.player:>5s} | {after.defcon:6d} | {after.victory_points:+4d} | "
+                  f"{desc}{belief}")
 
     loop = GameLoop(
         state, {ts.Player.US: source, ts.Player.USSR: source},

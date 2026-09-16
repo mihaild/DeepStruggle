@@ -21,6 +21,7 @@ from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 from bindings.action_encoder import ActionEncoder
 from tools.lib.player_agent import reject_retired_architecture
 from bot.base_bot import BaseBot
+from web.server.replay_types import ReplayPolicyDict
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +41,16 @@ class NeuralBot(BaseBot):
         device: str = "cpu",
         temperature: float = 0.3,
         name: Optional[str] = None,
+        trace: bool = False,
     ):
         super().__init__(role, name=name)
         self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
         self.temperature = temperature
+        #: When set, `last_readout` carries what the policy believed at the node it just played,
+        #: for a caller that records replays. Off by default: a live game must not hand a policy
+        #: distribution to anyone, since it is a read on this bot's own hand.
+        self.trace = trace
+        self.last_readout: Optional["ReplayPolicyDict"] = None
 
         if model_path and os.path.exists(model_path):
             weights_dict = torch.load(model_path, map_location=self.device, weights_only=True)
@@ -65,6 +72,11 @@ class NeuralBot(BaseBot):
         valid_ids = legal_actions.get("valid_ids", [])
         d_type = legal_actions.get("decision_type", 0)
         allow_early_stop = legal_actions.get("allow_early_stop", False)
+
+        # Cleared up front, not only on the path that sets it: the early returns below answer
+        # without consulting the network, and a readout left over from the previous node would
+        # be recorded against this one -- a distribution describing a different decision.
+        self.last_readout = None
 
         if not valid_ids:
             # The engine guarantees CONFIRM_DONE is legal whenever no other action is
@@ -136,12 +148,18 @@ class NeuralBot(BaseBot):
         obs_t = torch.from_numpy(np.array(obs, dtype=np.float32, copy=True)).float().unsqueeze(0).to(self.device)
         mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
 
-        with torch.no_grad():
-            actions_t, _, _, _, _ = self.model.sample_action(
-                obs_t, mask_t, temperature=self.temperature, deterministic=False
-            )
-
-        chosen_flat = int(actions_t.item())
+        if self.trace:
+            from ai.eval.policy_readout import read_policy
+            # Same sampling, one pass, plus the distribution it came from. The action names are
+            # filled in by the caller, which has the engine state this bot only sees as JSON.
+            chosen_flat, self.last_readout = read_policy(
+                self.model, obs_t, mask_t, temperature=self.temperature, deterministic=False)
+        else:
+            with torch.no_grad():
+                actions_t, _, _, _, _ = self.model.sample_action(
+                    obs_t, mask_t, temperature=self.temperature, deterministic=False
+                )
+            chosen_flat = int(actions_t.item())
 
         if chosen_flat == ActionEncoder.CONFIRM_DONE_INDEX:
             return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0x80}

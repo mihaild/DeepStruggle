@@ -1,10 +1,18 @@
 # P16 — Policy probabilities and critic values on the replay
 
-**Status:** queued (plan only; nothing written)
+**Status:** **done** — phases 1–3 landed; phase 4 (live web games) dropped by the owner.
 **Gate:** none — CPU/engineering, Tier 2. Independent of the P15 arms, and useful while they run.
 **Needs approval:** none for the engine, the bindings or the observation. It adds *optional* replay
-fields, one module, one CLI and a workbench panel. The two owner decisions are in
+fields, one module, one CLI and a workbench panel. The owner's decisions are recorded in
 [Decide before running](#decide-before-running).
+
+> **What landed.** `ai/eval/policy_readout.py`; the trace written by `tools/lib/self_play.py`
+> (on by default) and `tools/play_match.py --trace`; `tools/annotate_replay.py` for the post-hoc
+> path; the value ribbon, probability chips and readout panel in the workbench. Measured on a
+> 189-step CPU game: the file grows **6.21 → 6.48 MB (+4.3%)** and generation takes
+> **0.55 s → 1.55 s** with `--trace-critic-every step`, which is the honest price of two critic
+> forwards on steps that previously ran no network at all; `decision` removes most of it. The
+> action sequence is identical with the trace on and off under a fixed torch seed.
 
 ## Goal
 
@@ -224,12 +232,15 @@ full 212-vector (mostly masked-away zeros).
 
 ## Decide before running
 
-1. **`top_k` and `p_floor`.** Proposal: 12 and 1e-3, with `--trace-full` to store the whole legal
-   distribution for a one-off investigation. 84-way influence placements are the only nodes where 12
-   truncates much.
-2. **Critic on forced steps** — proposal: yes (`--trace-critic-every step`), for a continuous curve;
-   `decision` halves the forwards if generation time turns out to matter.
-3. **Phase 4** (live web games) — wanted, or not?
+*Answered by the owner on 2026-09-16, and built that way.*
+
+1. **`top_k` and `p_floor`** — 12 and 1e-3 as proposed, with `--trace-full` for a one-off
+   investigation. 84-way influence placements are the only nodes where 12 truncates much.
+2. **Critic on forced steps** — yes, `--trace-critic-every step` is the default, for a
+   continuous curve; `decision` halves the forwards if generation time turns out to matter.
+3. **Phase 4** (live web games) — **dropped.** Nothing in `web/server/session.py` or
+   `web/bot_client.py` was touched, so a human-vs-bot game records no trace. The design note in
+   §6 above stands if it is ever wanted.
 
 ## Follow-ups
 

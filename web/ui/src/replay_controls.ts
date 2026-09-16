@@ -1,5 +1,47 @@
 import { GameState } from "./types";
 
+/** One legal action and the probability the policy put on it. */
+export interface PolicyChoice {
+  idx: number;
+  p: number;
+  name?: string;
+}
+
+/**
+ * What the policy believed at the node this step was played from.
+ *
+ * Optional throughout: only a neural side records one, and `source` says how the move came
+ * about -- "policy" (sampled), "forced" (one legal action, played by the loop), "scripted" (a
+ * forced opening overrode the choice, so there is no distribution) or "annotated" (a checkpoint
+ * asked after the fact, about a game it may not have played).
+ */
+export interface PolicyTrace {
+  source?: string;
+  temperature?: number;
+  n_legal?: number;
+  chosen_idx?: number;
+  p_chosen?: number;
+  p_chosen_sampled?: number;
+  argmax_idx?: number;
+  p_max?: number;
+  entropy?: number;
+  top?: PolicyChoice[];
+  p_tail?: number;
+  v_win?: number;
+  v_vp?: number;
+}
+
+/** Both value heads from both perspectives, read on the state this step's snapshot shows. */
+export interface CriticTrace {
+  v_win_us?: number;
+  v_win_ussr?: number;
+  v_vp_us?: number;
+  v_vp_ussr?: number;
+  win_residual?: number;
+  vp_residual?: number;
+  at?: string;
+}
+
 export interface ReplayStep {
   step_index: number;
   turn: number;
@@ -9,6 +51,8 @@ export interface ReplayStep {
   action: any;
   description: string;
   state_snapshot: GameState;
+  policy?: PolicyTrace;
+  critic?: CriticTrace;
 }
 
 export interface ReplayFile {

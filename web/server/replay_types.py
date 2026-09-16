@@ -121,8 +121,80 @@ class ReplayActionDict(TypedDict, total=False):
     type: Optional[str]
 
 
+class PolicyChoiceDict(TypedDict, total=False):
+    """One legal action and the probability the policy put on it."""
+    idx: int
+    p: float
+    name: str
+
+
+class ReplayPolicyDict(TypedDict, total=False):
+    """What the policy believed at one decision node, before the action was applied.
+
+    `p` values are the model's OWN distribution -- softmax of the masked logits at temperature
+    1 -- not the tempered distribution that was sampled from. The two answer different
+    questions ("what did it believe" vs "how likely was this sample"), so both are recorded:
+    `p_chosen` is the belief and `p_chosen_sampled` is the sampling probability at
+    `temperature`. `top` holds the legal actions by descending probability, capped and floored;
+    `p_tail` is the mass that did not fit.
+    """
+    source: str
+    temperature: float
+    n_legal: int
+    chosen_idx: int
+    p_chosen: float
+    p_chosen_sampled: float
+    argmax_idx: int
+    p_max: float
+    entropy: float
+    top: List[PolicyChoiceDict]
+    p_tail: float
+    v_win: float
+    v_vp: float
+
+
+class ReplayCriticDict(TypedDict, total=False):
+    """Both value heads from both perspectives, read on the state the step's snapshot shows.
+
+    A zero-sum critic must satisfy v(US) = -v(USSR), so the residuals are pure model error.
+    """
+    v_win_us: float
+    v_win_ussr: float
+    v_vp_us: float
+    v_vp_ussr: float
+    win_residual: float
+    vp_residual: float
+    at: str
+
+
+class ReplayTraceMetaDict(TypedDict, total=False):
+    """Provenance for the policy/critic trace: which model, which build, which settings.
+
+    `engine_fingerprint` matters for an annotated trace: it is produced by re-driving the game
+    from (seed, actions), and a rebuilt engine can change the decision stream with no Python
+    change, so the numbers belong to the build that produced them.
+    """
+    mode: str
+    model_us: str
+    model_ussr: str
+    #: Which side's network answered the critic. One model answers for the whole game even when
+    #: two different checkpoints are playing, so the value curve stays one opinion.
+    critic_model: str
+    checkpoint_sha256_12: str
+    arch: str
+    temperature: float
+    top_k: int
+    p_floor: float
+    engine_fingerprint: str
+
+
 class ReplayStepDict(TypedDict, total=False):
-    """Single step in a standard .tslog.json replay file."""
+    """Single step in a standard .tslog.json replay file.
+
+    `policy` and `critic` are optional: a heuristic bot has no distribution, a human game has no
+    model, and replays written before the trace existed have neither. Readers must treat both as
+    absent by default.
+    """
     step_index: int
     turn: int
     ar: int
@@ -131,6 +203,8 @@ class ReplayStepDict(TypedDict, total=False):
     action: ReplayActionDict
     description: str
     state_snapshot: GameStateDict
+    policy: ReplayPolicyDict
+    critic: ReplayCriticDict
 
 
 class ReplayResultDict(TypedDict, total=False):
@@ -155,6 +229,7 @@ class ReplayMetadataDict(TypedDict, total=False):
     players: Dict[str, str]
     total_steps: int
     result: Optional[ReplayResultDict]
+    trace: ReplayTraceMetaDict
 
 
 class ReplayInitialStateDict(TypedDict, total=False):
