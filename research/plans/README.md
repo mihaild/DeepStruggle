@@ -142,3 +142,4 @@ instrument.
 - [Restoring the advantage signal](restoring_advantage_signal.md) — why komi does not port, and the ranked options that do
 - [P10 — Breaking the advantage collapse](P10_opponent_sampling.md) — the four experiments, awaiting approval
 - [P11 — The experiment programme, and running it in parallel](P11_scaling_out.md) — seeds, phases, and cheap GPU options
+- [P15 — Breaking the oscillate-then-stall cycle](P15_breaking_the_cycle.md) — the standard remedies for self-play cycling mapped to this record: frozen-anchor instrument, the exploiter diagnostic, anchor timescale, pool memory, and search distillation
