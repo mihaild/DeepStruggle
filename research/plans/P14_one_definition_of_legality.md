@@ -107,23 +107,44 @@ Verify before assuming: replay a fixed set of self-play games through both engin
 same seeds and compare the decision sequences step for step. Unchanged ⇒ keep E3; any change ⇒ bump
 the letter and re-run the baseline.
 
-## Open rules questions
+## Rules decisions
 
-Blocking, because they change what the mask should emit.
+Answered by the owner, 2026-09-16. Recorded here because the mask becomes the definition of
+legality, so these *are* the rules from the engine's point of view.
 
-1. **Quagmire/Bear Trap + Missile Envy.** Today the mask's forced branch returns before the trap
-   branch, so only Missile Envy is offered, for Ops. The owner's reading is that the player
-   discards Missile Envy to the trap and that consumes the action round. Is the discard the whole
-   action round, and does it satisfy the Missile Envy obligation?
-2. **Held scoring + Missile Envy.** If the player holds as many scoring cards as they have action
-   rounds left, the held-scoring obligation presumably outranks the force. Which wins, and does
-   playing the scoring card discharge the force or defer it?
-3. **Grain Sales handing over a scoring card.** `card_dispatcher.cpp:1068` routes it through
-   `SELECT_PLAY_MODE`, the only way a scoring card reaches that node. Should it auto-resolve as an
-   event instead, the way `SELECT_CARD` does at `state_machine.cpp:894`?
-4. **Missile Envy and the China Card.** The China Card is not in a hand — it is tracked by
-   `china_card_holder` — so an `in_hand_of` test on the *forced* card leaves it selectable while a
-   force is live. Should a forced player be able to play the China Card at all?
+1. **Trap + force.** The player discards Missile Envy to the trap, and that discard is the whole
+   action round. It satisfies both obligations at once, so it clears the force.
+2. **Held scoring + force.** Held scoring wins and the force **defers to the next action round** —
+   it is not discharged. Holding scoring cards past the turn's end is a loss outright, so the
+   obligation that can lose the game outranks the one that cannot.
+3. **Grain Sales handing over a scoring card.** Keep the `SELECT_PLAY_MODE` node and offer EVENT
+   only. The node shape does not change; `step` must stop refusing the single mode the mask
+   offers.
+4. **Force + China Card.** The force blocks it. While a force is live, only Missile Envy is
+   playable — the China Card included, even though it is not held in a hand.
+
+### The precedence this implies
+
+One ordering, to be implemented once in the mask and consulted by `step`:
+
+| | condition | what is legal |
+|---|---|---|
+| 1 | held scoring ≥ action rounds left | the scoring cards; force **defers**, flags untouched |
+| 2 | force live **and** trapped | Missile Envy, as a trap discard; clears the force |
+| 3 | force live | Missile Envy only, for Ops; China Card suppressed |
+| 4 | trapped | the ordinary trap discard set |
+| 5 | — | ordinary play |
+
+"Force live" now means **`forced_card_player == p` and Missile Envy is in that player's hand** —
+the in-hand test rather than the remembered flag, so a stale flag cannot restrict anything. Rows 1
+and 3 are the two that today's code gets wrong in opposite directions: row 1 because `step` has no
+held-scoring test at all, row 3 because the wildcard makes it "every card must go to Ops" instead
+of "Missile Envy only".
+
+Row 2 is new behaviour on both sides: today the mask's forced branch returns before the trap branch
+and offers Missile Envy as an ordinary Ops play, not as a discard.
+
+Row 4 keeps the existing trap logic, including its own held-scoring escape, unchanged.
 
 ## Non-blocking
 
