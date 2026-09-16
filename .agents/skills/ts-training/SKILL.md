@@ -45,14 +45,16 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 *This streams the dataset without high RAM usage (<70 MB), runs BC epochs, and saves the standalone warmup checkpoint.*
 
 ### Option B: Full RL Training Starting from Warmup Dataset (BC Warmup -> NashPG RL)
-When the user asks to train a model for $N$ hours starting from a warmup dataset:
+When the user asks to train a model starting from a warmup dataset. Budgets are in env
+steps, not hours -- if the user asks for $N$ hours, convert using the run's observed
+steps/sec and say what you assumed:
 ```bash
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch <arch> \
   --warmup-dataset data/datasets/<latest_dataset>.jsonl.gz \
   --bc-epochs 2 \
-  --duration-seconds 7200 \
-  --snapshot-interval-seconds 1200 \
+  --train-steps 160000000 \
+  --snapshot-every-steps 5000000 \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random \
   --eval-games-per-side 50 \
@@ -70,8 +72,8 @@ Runs vectorized NashPG self-play across 512 parallel C++ environments, with blun
 ```bash
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch <arch> \
-  --duration-seconds 7200 \
-  --snapshot-interval-seconds 1200 \
+  --train-steps 160000000 \
+  --snapshot-every-steps 5000000 \
   --warmup-checkpoint data/checkpoints/<latest_warmup_or_champion>.pt \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random data/checkpoints/<historical_champion>.pt \
@@ -89,8 +91,8 @@ Use this whenever verifying code changes, new loss functions, or architecture mo
 ```bash
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch <arch> \
-  --duration-seconds 30 \
-  --snapshot-interval-seconds 15 \
+  --train-steps 200000 \
+  --snapshot-every-steps 100000 \
   --num-envs 64 \
   --eval-opponents heuristic random \
   --eval-games-per-side 5 \
@@ -155,6 +157,6 @@ PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
    - Value Loss (`L_value_win`): Should steadily decrease towards < 0.15.
    - KL Divergence from Reference Policy (`D_KL`): Kept bounded below 0.20 by the NashPG reference penalty.
 3. **Live Snapshots**:
-   Snapshots are written every `--snapshot-interval-seconds` as `snapshot_[N]s.pt` and evaluated against heuristic baselines.
+   Snapshots are written every `--snapshot-every-steps` as `snapshot_[N]steps.pt` and evaluated against heuristic baselines. That cadence also sets how fast the self-play opponent pool grows, so two arms of an A/B must share it or they are not a one-factor comparison.
 4. **Post-Training Tournament**:
    When `--post-tournament` is enabled, `tools/tournament.py` automatically executes a massive round-robin tournament across all snapshots and baselines upon training completion, dumping `massive_tournament_report.md`.

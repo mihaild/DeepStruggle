@@ -3,7 +3,11 @@
 # Supports warm-started or tabula-rasa RL with periodic snapshots,
 # blunder-aware rewards, live evaluation, and post-training massive tournament.
 #
-# Usage: train_and_tournament.sh [arch] [duration_s] [snapshot_interval_s] [warmup.pt] [opponent.pt]
+# Usage: train_and_tournament.sh [arch] [train_steps] [snapshot_every_steps] [warmup.pt] [opponent.pt]
+#
+# Both budgets are in env steps, not seconds. A wall-clock budget cannot make two arms
+# comparable, because steps/sec depends on the policy, and the snapshot interval also sets
+# how fast the self-play opponent pool grows.
 #
 # The last two are optional and are paths on your machine: a warmup checkpoint to start from,
 # and an extra opponent to evaluate and run the tournament against. With neither, the run starts
@@ -12,8 +16,8 @@
 set -euo pipefail
 
 ARCH="${1:-v2}"                       # v1 | v2 | mlp
-DURATION="${2:-7200}"                 # Default: 2 hours (7200s)
-SNAPSHOT_INTERVAL="${3:-1200}"        # Default: 20 minutes (1200s)
+TRAIN_STEPS="${2:-80000000}"          # Default: the standard 80M env steps
+SNAPSHOT_EVERY_STEPS="${3:-5000000}"  # Default: every 5M steps, which also grows the pool
 WARMUP_CHECKPOINT="${4:-}"            # Optional: path to a BC warmup checkpoint
 OPPONENT_CHECKPOINT="${5:-}"          # Optional: extra opponent for eval and tournament
 
@@ -40,7 +44,7 @@ fi
 
 echo "================================================================================"
 echo " Starting Generic Training & Tournament Pipeline"
-echo " Arch: $ARCH | Duration: ${DURATION}s | Snapshot Every: ${SNAPSHOT_INTERVAL}s"
+echo " Arch: $ARCH | Budget: ${TRAIN_STEPS} steps | Snapshot Every: ${SNAPSHOT_EVERY_STEPS} steps"
 echo " Warmup Checkpoint: ${WARMUP_CHECKPOINT:-None}"
 echo " Opponents: ${OPPONENTS[*]}"
 echo "================================================================================"
@@ -48,8 +52,8 @@ echo "==========================================================================
 TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$(pwd)/.triton_cache}" \
 PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch "$ARCH" \
-  --duration-seconds "$DURATION" \
-  --snapshot-interval-seconds "$SNAPSHOT_INTERVAL" \
+  --train-steps "$TRAIN_STEPS" \
+  --snapshot-every-steps "$SNAPSHOT_EVERY_STEPS" \
   --reward-scheme blunder_aware \
   --eval-opponents "${OPPONENTS[@]}" \
   --eval-games-per-side 50 \

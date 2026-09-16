@@ -16,8 +16,22 @@ from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Generic Twilight Struggle Neural AI Training Pipeline")
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI surface, separated from main() so tests can assert on it.
+
+    Every budget here is in env steps. The time flags this parser used to carry
+    (--duration-seconds, --snapshot-interval-seconds, --curriculum-switch-seconds) are
+    gone rather than deprecated: the snapshot cadence was derived from the first two,
+    and a silently-accepted time flag is exactly how E3-22-28's first attempt came to
+    snapshot five times slower than the baseline it was being compared against.
+    """
+    parser = argparse.ArgumentParser(
+        description="Generic Twilight Struggle Neural AI Training Pipeline",
+        # No prefix matching. `--snapshot-every` used to be an alias for
+        # --snapshot-interval-seconds; with abbreviation on, a stale command passing
+        # `--snapshot-every 600` is silently accepted as --snapshot-every-steps 600 --
+        # a 600-STEP cadence instead of 600 seconds. A removed flag has to fail.
+        allow_abbrev=False)
     parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp"],
                         help="Model architecture. v2 is the baseline; v1 is the original\n"
                              "network, kept because checkpoints that predate v2 still name it.")
@@ -28,11 +42,8 @@ def main():
     parser.add_argument("--warmup-dataset", type=str, default=None, help="Path to dataset file for supervised BC warmup")
     parser.add_argument("--bc-epochs", type=int, default=5, help="Number of epochs for BC warmup")
 
-    # Time & Snapshot parameters
-    parser.add_argument("--duration-seconds", "--seconds-to-train", type=int, default=3600,
-                        help="RL training duration in seconds. Counts training only -- snapshot "
-                             "evaluation and start-pool refreshes are excluded, so the budget is "
-                             "not eaten by evaluation cost that varies with the policy.")
+    # Budget & Snapshot parameters. Both are in env steps, deliberately: a wall-clock budget
+    # cannot make two arms comparable, because steps/sec depends on the policy.
     parser.add_argument("--decisiveness-turns", type=float, default=0.0,
                         help="Scale the terminal reward by (1 - turn/K), so a result on turn T is "
                              "worth 1 - T/K instead of 1 (0 = off). With gamma=1 and terminal-only "
@@ -76,12 +87,14 @@ def main():
                              "seed to two runs that differ in one thing, to pair them.")
     parser.add_argument("--resume-every-steps", type=int, default=40_000_000,
                         help="Write a step-tagged resume_<steps>.pt at most this often. Resume files are 48MB against a snapshot's 13MB, so this is deliberately much coarser than the snapshot interval.")
-    parser.add_argument("--snapshot-every-steps", type=int, default=0,
-                        help="Take a snapshot every N env steps (0 = derive the "
-                             "interval from --duration-seconds and "
-                             "--snapshot-interval-seconds, which is indirect when "
-                             "the budget is already in steps). Snapshots are then "
-                             "named by step count rather than by elapsed seconds.")
+    parser.add_argument("--snapshot-every-steps", type=int, default=5_000_000,
+                        help="Take a snapshot every N env steps. This also sets the rate the "
+                             "self-play opponent pool grows, since the pool is fed from "
+                             "snapshots -- two arms that snapshot at different rates train "
+                             "against different opponent distributions and are not a one-factor "
+                             "comparison. It used to be derived from two time flags; E3-22-28's "
+                             "first attempt thereby snapshotted every 26.7M steps against its "
+                             "baseline's 5M and had to be thrown away.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
                              "RL. A BC warmup washes out early in training; this keeps the "
@@ -93,7 +106,7 @@ def main():
     parser.add_argument("--inject-weight", type=float, default=1.0,
                         help="Scale on the injected supervised loss.")
     parser.add_argument("--train-steps", type=int, default=80_000_000,
-                        help="Budget the run by env steps instead of by time (0 = use --duration-seconds). "
+                        help="The run's budget, in env steps. Must be positive. "
                              "Defaults to the standard 80,000,000. "
                              "Use this for A/B arms: steps/sec depends on the policy, so a wall-clock "
                              "budget gives the two arms different amounts of training. One 3-hour A/B "
@@ -105,7 +118,6 @@ def main():
                              "snapshots (0 = unlimited). Unlimited makes evaluation cost quadratic in run "
                              "length: the final evaluation of a 3-hour run faced 14 opponents and took "
                              "957s against a 900s snapshot interval.")
-    parser.add_argument("--snapshot-interval-seconds", "--snapshot-every", type=int, default=600, help="Snapshot and tournament evaluation interval in seconds")
 
     # Tournament & Evaluation parameters
     parser.add_argument("--eval-opponents", nargs="+", default=["random", "heuristic"], help="List of opponent models/bots to evaluate on snapshots")
@@ -185,8 +197,10 @@ def main():
                              "Model-side only: the observation is untouched.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
-    parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
-    parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
+    parser.add_argument("--curriculum-switch-steps", type=int, default=None,
+                        help="Env step at which the curriculum switches to the BlunderAware "
+                             "reward (default: --curriculum-switch-fraction of --train-steps)")
+    parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of --train-steps at which the curriculum switches to the BlunderAware reward (default: 0.5)")
     parser.add_argument("--per-player-gae", action="store_true", default=False,
                         help="Compute GAE within each player's own subsequence of decisions -- "
                              "bootstrapping from that player's next OWN decision, with the "
@@ -250,6 +264,11 @@ def main():
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True,
                         help="Mirror every training_metrics.jsonl metric to TensorBoard event files in <output-dir>/tb (default: on). Use --no-tensorboard to disable.")
 
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.mode in ["train", "curriculum"]:
@@ -259,8 +278,6 @@ def main():
             warmup_checkpoint=args.warmup_checkpoint,
             warmup_dataset=args.warmup_dataset,
             bc_epochs=args.bc_epochs,
-            duration_seconds=args.duration_seconds,
-            snapshot_interval_seconds=args.snapshot_interval_seconds,
             eval_opponents=args.eval_opponents,
             eval_games_per_side=args.eval_games_per_side,
             num_envs=args.num_envs,
@@ -308,7 +325,7 @@ def main():
             post_tournament=args.post_tournament,
             post_tournament_models=args.post_tournament_models,
             post_tournament_games=args.post_tournament_games,
-            curriculum_switch_seconds=args.curriculum_switch_seconds,
+            curriculum_switch_steps=args.curriculum_switch_steps,
             curriculum_switch_fraction=args.curriculum_switch_fraction,
             slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
             same_perspective_bootstrap=args.same_perspective_bootstrap,

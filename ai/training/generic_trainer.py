@@ -1116,12 +1116,10 @@ def train_pipeline(
     inject_every: int = 0,
     inject_weight: float = 1.0,
     bc_epochs: int = 5,
-    duration_seconds: int = 3600,
-    train_steps: int = 0,
+    train_steps: int = 80_000_000,
     decisiveness_turns: float = 0.0,
     max_snapshot_opponents: int = 4,
-    snapshot_interval_seconds: int = 600,
-    snapshot_every_steps: int = 0,
+    snapshot_every_steps: int = 5_000_000,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
     num_envs: int = 512,
@@ -1149,7 +1147,7 @@ def train_pipeline(
     post_tournament: bool = False,
     post_tournament_models: Optional[List[str]] = None,
     post_tournament_games: int = 500,
-    curriculum_switch_seconds: Optional[int] = None,
+    curriculum_switch_steps: Optional[int] = None,
     curriculum_switch_fraction: float = 0.5,
     slice_turn_boundaries: Optional[bool] = None,
     same_perspective_bootstrap: bool = False,
@@ -1169,6 +1167,23 @@ def train_pipeline(
     ref_update_freq: int = 200_000,
     tensorboard: bool = True,
 ) -> None:
+    # Checked first, before a device is resolved or a directory is made: a run whose budget is
+    # nonsense should fail having built nothing. Both are in env steps and there is no time flag
+    # to fall back to, which is the point -- the snapshot cadence used to be derived from
+    # --duration-seconds and --snapshot-interval-seconds, and E3-22-28's first attempt thereby
+    # snapshotted every 26.7M steps against its baseline's ~5M. Snapshots feed the self-play
+    # opponent pool, so that quietly made it a two-factor experiment and it was discarded.
+    if int(train_steps) <= 0:
+        raise ValueError(
+            f"train_steps must be positive, got {train_steps}. A run is budgeted in env steps; "
+            "there is no wall-clock budget, because steps/sec depends on the policy and a time "
+            "budget gives two arms different amounts of training.")
+    if int(snapshot_every_steps) <= 0:
+        raise ValueError(
+            f"snapshot_every_steps must be positive, got {snapshot_every_steps}. It sets both the "
+            "snapshot cadence and the rate the self-play opponent pool grows, so two arms that "
+            "differ in it are not a one-factor comparison.")
+
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     # Seeding both the environment stream and torch, or neither. Left None the run behaves as
@@ -1223,11 +1238,13 @@ def train_pipeline(
         "reward_scheme": reward_scheme,
         "same_perspective_bootstrap": same_perspective_bootstrap,
         "per_player_gae": per_player_gae,
-        "duration_seconds": duration_seconds,
         "resume_every_snapshot": bool(resume_every_snapshot),
         "resume_every_steps": int(resume_every_steps),
         "decisiveness_turns": decisiveness_turns,
-        "snapshot_interval_seconds": snapshot_interval_seconds,
+        "train_steps": int(train_steps),
+        "snapshot_every_steps": int(snapshot_every_steps),
+        "curriculum_switch_steps": (None if curriculum_switch_steps is None
+                                    else int(curriculum_switch_steps)),
         "num_envs": num_envs,
         # The hyperparameters that distinguish one run from another. Without these an ablation is
         # indistinguishable from its control in the record -- an `--eta 0` run once wrote metadata
@@ -1255,7 +1272,7 @@ def train_pipeline(
         "opponent_checkpoints": list(opponent_checkpoints or []),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
-        "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, duration={duration_seconds}s.",
+        "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, budget={train_steps:,} steps.",
     }
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata_info, f, indent=2)
@@ -1332,12 +1349,14 @@ def train_pipeline(
 
     # Curriculum timing configuration
     if is_curriculum:
-        if curriculum_switch_seconds is not None:
-            curriculum_switch_at = float(curriculum_switch_seconds)
+        if curriculum_switch_steps is not None:
+            curriculum_switch_at = float(curriculum_switch_steps)
         else:
-            curriculum_switch_at = float(duration_seconds) * float(curriculum_switch_fraction)
+            curriculum_switch_at = float(train_steps) * float(curriculum_switch_fraction)
         curriculum_switched = False
-        print(f"[CURRICULUM] Active: Stage 1 = UsefulActionsReward (first {curriculum_switch_at:.0f}s), Stage 2 = BlunderAwareRewardCalculator", flush=True)
+        print(f"[CURRICULUM] Active: Stage 1 = UsefulActionsReward (first "
+              f"{curriculum_switch_at:,.0f} steps), Stage 2 = BlunderAwareRewardCalculator",
+              flush=True)
     else:
         curriculum_switch_at = float("inf")
         curriculum_switched = False
@@ -1447,23 +1466,16 @@ def train_pipeline(
     # completed 1024, purely because the arm that plays longer games has costlier
     # evaluations. That made a wall-clock budget silently policy-dependent.
     overhead_seconds = 0.0
-    next_eval_time = snapshot_interval_seconds
-    # A step budget makes two arms of an experiment exactly comparable; a time budget
-    # cannot, because steps/sec depends on the policy. duration_seconds still bounds
-    # wall time when no step budget is given.
+    # Everything about a run's schedule is stated in env steps. A wall-clock budget cannot make
+    # two arms comparable, because steps/sec depends on the policy -- one 3-hour A/B ended 1024
+    # iterations against 473 for exactly that reason. The snapshot interval used to be DERIVED
+    # from two time flags as `train_steps // (duration_seconds // snapshot_interval_seconds)`,
+    # which is how E3-22-28's first attempt came to snapshot every 26.7M steps where its baseline
+    # snapshotted every ~5M. Snapshots feed the opponent pool, so that silently made the arm a
+    # two-factor experiment. There is no time flag left to get wrong.
     step_budget = int(train_steps)
-    next_eval_steps = 0
-    eval_every_steps = 0
-    if step_budget > 0:
-        if snapshot_every_steps > 0:
-            # Said outright. The derived form below works out an interval from two *time* flags
-            # even though the budget is in steps, which is indirect enough that landing a
-            # snapshot on a chosen step count means solving for it.
-            eval_every_steps = int(snapshot_every_steps)
-        else:
-            evals_planned = max(1, duration_seconds // max(1, snapshot_interval_seconds))
-            eval_every_steps = max(1, step_budget // evals_planned)
-        next_eval_steps = eval_every_steps
+    eval_every_steps = int(snapshot_every_steps)
+    next_eval_steps = eval_every_steps
     it = 0
 
     injector = None
@@ -1476,10 +1488,11 @@ def train_pipeline(
               flush=True)
 
     print("=" * 80, flush=True)
-    print(f"STARTING GENERIC TRAINING PIPELINE ({duration_seconds}s, Snapshots every {snapshot_interval_seconds}s)", flush=True)
+    print(f"STARTING GENERIC TRAINING PIPELINE ({train_steps:,} steps, "
+          f"snapshot every {eval_every_steps:,} steps)", flush=True)
     num_baselines = len(opponents)
-    budget_desc = (f"{train_steps:,} steps" if train_steps > 0
-                   else f"{duration_seconds}s of training (evaluation excluded)")
+    budget_desc = f"{train_steps:,} steps"
+
     print(f"Arch: {arch} | Envs: {num_envs} | Budget: {budget_desc} | "
           f"Opponents to evaluate: {[o.name for o in opponents]} "
           f"(+ up to {max_snapshot_opponents} recent snapshots)", flush=True)
@@ -1497,11 +1510,10 @@ def train_pipeline(
         it = state["iteration"]
         resumed_elapsed = state["elapsed_seconds"]
         # Rewind the clock so elapsed keeps counting from where the run stopped rather than from
-        # zero; otherwise a resumed run's ETA and any time-based schedule think it just started.
+        # zero. Nothing is scheduled on it any more -- it is reporting and ETA only.
         t_start -= resumed_elapsed
         # Snapshots are due by step count, and those steps already happened.
-        if step_budget > 0 and eval_every_steps > 0:
-            next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
+        next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
         print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
               f"{resumed_elapsed:.0f}s of training already done", flush=True)
 
@@ -1548,8 +1560,6 @@ def train_pipeline(
         the run will take, so project the finish from the rate observed so far and include
         evaluation overhead measured to date.
         """
-        if step_budget <= 0:
-            return f"{int(train_elapsed)}s/{duration_seconds}s"
         rate = steps_done / max(train_elapsed, 1e-6)
         remaining = max(0, step_budget - steps_done) / max(rate, 1e-6)
         eta = int(train_elapsed + overhead_seconds + remaining)
@@ -1577,20 +1587,20 @@ def train_pipeline(
 
     while True:
         elapsed = time.time() - t_start - overhead_seconds
-        if step_budget > 0:
-            if trainer.total_env_steps >= step_budget:
-                break
-        elif elapsed >= duration_seconds:
+        if trainer.total_env_steps >= step_budget:
             break
 
         # Curriculum stage switch from UsefulActionsReward to BlunderAwareRewardCalculator
-        if is_curriculum and not curriculum_switched and elapsed >= curriculum_switch_at:
+        if (is_curriculum and not curriculum_switched
+                and trainer.total_env_steps >= curriculum_switch_at):
             curriculum_switched = True
             trainer.set_reward_calculator(
                 BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns))
             trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
-            print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with BlunderAwareRewardCalculator at elapsed={elapsed:.1f}s / {duration_seconds}s", flush=True)
+            print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with "
+                  f"BlunderAwareRewardCalculator at {trainer.total_env_steps:,} / "
+                  f"{step_budget:,} steps", flush=True)
             print(f"{'=' * 80}\n", flush=True)
 
         it += 1
@@ -1678,7 +1688,7 @@ def train_pipeline(
             )
 
         # Snapshot Evaluation
-        due = (total_env_steps >= next_eval_steps) if step_budget > 0 else (elapsed >= next_eval_time)
+        due = total_env_steps >= next_eval_steps
         if due:
             t_eval0 = time.time()
             snap_path = os.path.join(
@@ -1686,8 +1696,7 @@ def train_pipeline(
                 # The exact step count, not millions: an interval below 1M would round every
                 # snapshot to the same name and they would overwrite each other in silence.
                 # Sort these numerically, not lexicographically.
-                f"snapshot_{total_env_steps}steps.pt"
-                if snapshot_every_steps > 0 else f"snapshot_{int(elapsed)}s.pt")
+                f"snapshot_{total_env_steps}steps.pt")
             torch.save(model.state_dict(), snap_path)
             # Hand this snapshot to the opponent pool, if it is growing from the run's own
             # history. A *copy* is loaded from what was just written rather than the live model:
@@ -1747,10 +1756,7 @@ def train_pipeline(
                     f.write(json.dumps({"iteration": it, "elapsed_seconds": int(elapsed), **decisive}) + "\n")
                 if tb is not None:
                     tb.log_metrics(decisive, total_env_steps)
-            if step_budget > 0:
-                next_eval_steps += eval_every_steps
-            else:
-                next_eval_time += snapshot_interval_seconds
+            next_eval_steps += eval_every_steps
             overhead_seconds += time.time() - t_eval0
 
     # Final Snapshot

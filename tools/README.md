@@ -11,12 +11,12 @@ Launches neural network reinforcement learning (NashPG) or supervised demonstrat
 live snapshot tournament evaluation.
 
 ```bash
-# RL training run with blunder-aware rewards and 20-minute snapshot evaluations
+# RL training run with blunder-aware rewards, snapshotting every 5M env steps
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 \
   --warmup-checkpoint <warmup.pt> \
-  --duration-seconds 7200 \
-  --snapshot-interval-seconds 1200 \
+  --train-steps 160000000 \
+  --snapshot-every-steps 5000000 \
   --reward-scheme blunder_aware \
   --num-envs 512 \
   --eval-games-per-side 50 \
@@ -26,13 +26,18 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 
 ### Budgeting a run
 
-`--duration-seconds` budgets **training time only**: snapshot evaluation and start-pool refreshes
-are timed separately and excluded, so the flag means what it says.
+**Every budget is in env steps. There is no wall-clock flag.** A time budget cannot make two
+arms comparable, because steps/sec depends on the policy: the arm whose games run longer has
+costlier evaluations and so gets less training, which biases the comparison in a fixed
+direction rather than a random one.
 
-For an A/B, budget by steps instead -- `--train-steps`. A wall-clock budget cannot make two arms
-comparable, because steps/sec depends on the policy: the one whose games run longer has costlier
-evaluations and so gets less training, which biases the comparison in a fixed direction rather
-than a random one.
+`--train-steps` is the budget and `--snapshot-every-steps` the snapshot cadence. Give an A/B's
+two arms the same value for **both**. The snapshot cadence is not only a reporting knob: the
+self-play opponent pool is fed from snapshots, so an arm that snapshots more slowly trains
+against a smaller, staler pool. `--snapshot-every-steps` used to be derived from two time
+flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps against its
+baseline's ~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
+`--opponent-frac 0.3` that made it a two-factor experiment. It was thrown away.
 
 ```bash
 # Two runs that are exactly comparable: identical step budget, one flag apart
