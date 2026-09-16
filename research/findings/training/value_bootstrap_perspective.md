@@ -96,19 +96,42 @@ return targets differ by mean 0.275 and **max 3.86**, on a scale where the outco
 per-step difference (0.175) producing an unbounded return difference is accumulation, which is what
 a broken telescope looks like.
 
+## Status
+
+`--same-perspective-bootstrap` stays in the code, defaulted off, as the reproduction for this
+result. `E3-21-28` was stopped at **40,632,320 steps** rather than run to 160M once the mechanism
+was established; the run directory `E3-21-28_20260916_092205` is kept as the artifact, with
+`resume_26673152steps.pt` and the metric series.
+
+At the stop the critic had reached `critic_auc` **0.5133** — indistinguishable from chance —
+against a baseline at ~0.71 and still climbing at the same step count.
+
 ## What to do instead
 
 The negation is not an approximation the project got away with; it is what makes GAE valid in an
 alternating-move game. Trading it for a pointwise-better value estimate buys a small bias
 correction and pays for it with a much noisier regression target.
 
-A fix has to make the two perspectives **consistent** rather than choose between them. The cheap
-version: an auxiliary loss pulling `V(s, p)` toward `−V(s, p̄)` on states already in the batch,
-which shrinks the 0.144 asymmetry at its source and leaves the estimator untouched. That is a
-different and much cheaper experiment than this one, and it is the one worth running.
+### What the fix is not
 
-## Status
+An auxiliary loss pulling `V(s, p)` toward `−V(s, p̄)` was proposed and **withdrawn before being
+built**. It would force the perfect-information identity onto quantities that are not supposed to
+satisfy it: the two players hold different information, so the position genuinely is worth
+different amounts to them, and the 0.144 asymmetry is signal rather than error. Training it away
+would destroy information to protect an estimator.
 
-`--same-perspective-bootstrap` stays in the code, defaulted off, as the reproduction for this
-result. `E3-21-28` was stopped at 40M rather than run to 160M once the mechanism was established;
-its checkpoint is kept as the artifact.
+The real choice is between two coherent positions, where the code currently sits between them —
+it computes information-set values and combines them with a world-state identity:
+
+| commit to | means | cost |
+|:---|:---|:---|
+| **world-state value** | a centralised critic that sees the true state, both hands included. Antisymmetry then holds by construction and the telescope is valid. Suphx's oracle guiding; MADDPG/COMA | queued as [`../../plans/P5_oracle_critic.md`](../../plans/P5_oracle_critic.md); old implementation recoverable from `574e04a` |
+| **information-set value** | per-player trajectories: each player's own GAE over its own decision points, bootstrapping from its next *own* decision, opponent rewards folded in. No cross-perspective bootstrap occurs at all | contained to `compute_gae`, no extra forward passes |
+
+A belief-conditioned value (ReBeL, Student of Games —
+[`../../papers/README.md`](../../papers/README.md)) is the principled third option and much heavier
+than this problem warrants.
+
+**Cheap diagnostic first:** `gae_lambda = 1.0` removes the cross-perspective term from the
+estimator entirely. If the critic gap disappears there, the bootstrap is the whole story and the
+run puts a number on what it costs. That has not been run.
