@@ -42,6 +42,16 @@ policy sees the offer.
 
 Zero divergences of any kind, at every step of every game. Not one mask differed.
 
+**One qualification, found afterwards and worth more than the headline.** That measurement covers
+*fresh self-play*. Re-running the archived replays turned up one case it did not: step 631 of
+`h2_480M_selfplay_20260502.tslog.json` records flat action 211 (pass) at a `SELECT_CARD` node
+inside an event where `allow_early_stop` is 0 and the mask offers exactly two cards. Passing was
+never legal there; the pre-P14 `step` accepted it anyway. Ten of the eleven archived replays still
+reproduce exactly, so this is rare rather than systematic — but it is a real recorded game, and it
+shows the collapse does change legality in the direction the sweep could not see: **step used to be
+the more permissive side**, and a sweep that only asks "does the mask offer something step
+refuses?" is blind to that. The replay is kept in `data/replays/archive_pre_p14/` as the evidence.
+
 ## Why that is the expected result, in hindsight
 
 The conditions P14 touches do not arise in play. A 1.54M-position sweep of sampled self-play found

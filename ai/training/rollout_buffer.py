@@ -190,6 +190,7 @@ class RolloutBuffer:
         blunder_window: bool = True,
         defcon_risk_horizon: int = 4,
         same_perspective_bootstrap: bool = False,
+        per_player_gae: bool = False,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -221,6 +222,8 @@ class RolloutBuffer:
                 "bootstrap would make the arm measure nothing.")
 
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+        window_mask = torch.zeros((self.buffer_size, self.num_envs), dtype=torch.bool,
+                                  device=self.device)
 
         # Pending blunder window, armed at a terminal step and disarmed at the turn boundary.
         pending_hs_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -309,6 +312,9 @@ class RolloutBuffer:
             last_gae = torch.where(in_window, win_adv, std_gae)
             self.advantages[t] = last_gae
             self.returns_win[t] = torch.where(in_window, win_ret, last_gae + v_t)
+            # The blunder window is a deliberate override of both, and it outranks the estimator:
+            # per-player GAE below must not undo it.
+            window_mask[t] = in_window
 
             # DEFCON-risk label. defcon_blunder is non-zero only for a loss the losing
             # player chose (an unprovoked DEFCON-1, or a Cuban Missile Crisis coup), which
@@ -335,6 +341,12 @@ class RolloutBuffer:
                 curr_vp_norm * 0.1 + 0.9 * non_terminal * next_ret_vp
             )
 
+        if per_player_gae:
+            pp_adv, pp_ret = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players)
+            keep = ~window_mask
+            self.advantages = torch.where(keep, pp_adv, self.advantages)
+            self.returns_win = torch.where(keep, pp_ret, self.returns_win)
+
         # Normalize advantages per rollout batch.
         #
         # This is ONE mean and ONE std over both sides' transitions together. In a game whose
@@ -359,6 +371,82 @@ class RolloutBuffer:
             }
 
         self.advantages = (self.advantages - mean_adv) / std_adv
+
+    def _gae_per_player(
+        self,
+        gamma: float,
+        gae_lambda: float,
+        last_v_win: torch.Tensor,
+        last_players: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """GAE within each player's own subsequence of decisions.
+
+        Walks backward once, carrying per-player state: the advantage and value at that player's
+        NEXT own decision, the rewards accrued to it since, and the gap in steps. Vectorised over
+        environments; the loop is over timesteps only, as the interleaved version's is.
+
+        Rewards are zero-sum and stored in the acting player's frame, so a step's reward accrues to
+        player q as ``rewards[t] * players[t] * q`` -- which is how the opponent's moves enter q's
+        return without any value being negated.
+        """
+        T, N = self.buffer_size, self.num_envs
+        dev = self.device
+        adv = torch.zeros((T, N), dtype=torch.float32, device=dev)
+        ret = torch.zeros((T, N), dtype=torch.float32, device=dev)
+
+        state = {}
+        for q in (1, -1):
+            # The next decision past the end of the buffer: value carried in q's own frame.
+            state[q] = {
+                "A": torch.zeros(N, dtype=torch.float32, device=dev),
+                "V": last_v_win * last_players.float() * float(q),
+                "R": torch.zeros(N, dtype=torch.float32, device=dev),
+                "gap": torch.zeros(N, dtype=torch.float32, device=dev),
+                "has": torch.ones(N, dtype=torch.bool, device=dev),
+            }
+
+        zero = torch.zeros(N, dtype=torch.float32, device=dev)
+        for t in reversed(range(T)):
+            p_t = self.players[t].float()
+            done_t = self.dones[t].bool()
+            r_t = self.rewards[t]
+
+            # A terminal step ends the episode: everything later belongs to a different game, and
+            # this step's own decision has nothing to bootstrap from.
+            if bool(done_t.any()):
+                for q in (1, -1):
+                    st = state[q]
+                    st["A"] = torch.where(done_t, zero, st["A"])
+                    st["V"] = torch.where(done_t, zero, st["V"])
+                    st["R"] = torch.where(done_t, zero, st["R"])
+                    st["gap"] = torch.where(done_t, zero, st["gap"])
+                    st["has"] = st["has"] & (~done_t)
+
+            for q in (1, -1):
+                st = state[q]
+                st["R"] = st["R"] + r_t * p_t * float(q)
+                st["gap"] = st["gap"] + 1.0
+
+                is_mover = (self.players[t] == q)
+                if not bool(is_mover.any()):
+                    continue
+
+                disc = torch.pow(torch.tensor(gamma, device=dev), st["gap"])
+                carry = st["has"].float()
+                v_t = self.values_win[t]
+                delta = st["R"] + disc * st["V"] * carry - v_t
+                a = delta + disc * gae_lambda * st["A"] * carry
+
+                adv[t] = torch.where(is_mover, a, adv[t])
+                ret[t] = torch.where(is_mover, a + v_t, ret[t])
+
+                st["A"] = torch.where(is_mover, a, st["A"])
+                st["V"] = torch.where(is_mover, v_t, st["V"])
+                st["R"] = torch.where(is_mover, zero, st["R"])
+                st["gap"] = torch.where(is_mover, zero, st["gap"])
+                st["has"] = st["has"] | is_mover
+
+        return adv, ret
 
     def diagnostics(self) -> Dict[str, float]:
         """Value-head and advantage-distribution health metrics for the current rollout.

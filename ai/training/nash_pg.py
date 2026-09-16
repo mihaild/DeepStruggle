@@ -135,6 +135,7 @@ class BaseNashPGTrainer:
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
         same_perspective_bootstrap: bool = False,
+        per_player_gae: bool = False,
         priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
         device: torch.device | str = "cuda",
@@ -183,6 +184,10 @@ class BaseNashPGTrainer:
         #: changes what the critic is trained on, so it is an arm, not a correction applied
         #: silently. See `RolloutBuffer.compute_gae`.
         self.same_perspective_bootstrap = same_perspective_bootstrap
+        #: Compute GAE within each player's own subsequence of decisions instead of over the
+        #: interleaved one, which removes the cross-perspective bootstrap entirely rather than
+        #: patching its sign. Off by default. See RolloutBuffer._gae_per_player.
+        self.per_player_gae = per_player_gae
         self.priority_alpha = priority_alpha
         self.temperature_schedule = temperature_schedule
 
@@ -422,6 +427,7 @@ class BaseNashPGTrainer:
             slice_turn_boundaries=self.slice_turn_boundaries,
             blunder_window=self.blunder_window,
             same_perspective_bootstrap=self.same_perspective_bootstrap,
+            per_player_gae=self.per_player_gae,
         )
 
         # Freeze the entropy probe pool from the first rollout only.

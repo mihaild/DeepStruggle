@@ -88,6 +88,13 @@ class TestDefconSuicideCredit:
         st.phasing_player = ts.Player.US
         st.ctx().decision_player = ts.Player.US
 
+        # A US coup needs USSR influence in the target. Panama has none after setup, so COUP was
+        # not a legal op mode at all -- the sibling test above works only because it is the USSR
+        # couping, and Panama does carry US influence. Engine::step did not check op-mode legality
+        # before it validated against the mask, so this passed while couping an untouchable
+        # country.
+        st.set_country(70, 1, 2)
+
         st.set_card_location(4, ts.hand_of(ts.Player.US))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
@@ -310,8 +317,10 @@ class TestCubanMissileCrisisCoupSuicide:
         st.set_flag(ts.EffectBits.CMC_ACTIVE_US)
         # USSR has 0 influence in Cuba (71)
         st.set_country(71, 0, 0)
-        # Ensure Iran (17) has US influence to be legal coup target
-        st.set_country(17, 2, 0)
+        # Iran is country 25, not 17 -- 17 is Hungary, which is in Europe, where a coup is
+        # forbidden at DEFCON 4. This test couped Hungary believing it was couping Iran, and
+        # passed only because Engine::step did not validate coup targets while the mask did.
+        st.set_country(25, 2, 0)
 
         st.phasing_player = ts.Player.USSR
         st.ctx().decision_player = ts.Player.USSR
@@ -323,8 +332,8 @@ class TestCubanMissileCrisisCoupSuicide:
             ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
 
-        # Coup Iran (17) -> Flat action 136
-        _, _, rewards, dones, info = env.step([136])
+        # Coup Iran (25) -> flat action 119 + 25 = 144
+        _, _, rewards, dones, info = env.step([144])
 
         assert dones[0] is True or dones[0] == 1
         assert st.victory_points == 20  # US Win

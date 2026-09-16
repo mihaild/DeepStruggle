@@ -2,6 +2,36 @@ import pytest
 import ts_engine as ts
 EB = ts.EffectBits
 
+
+def _first_legal_country(st):
+    """The lowest-numbered country the placement mask currently allows."""
+    import numpy as np
+    from bindings.action_encoder import ActionEncoder
+    mask = np.asarray(ActionEncoder.get_legal_mask(st))
+    for flat in np.flatnonzero(mask):
+        if 119 <= int(flat) < 203:
+            return int(flat) - 119
+    raise AssertionError("no legal POINT_NODE target at "
+                         f"{ts.DecisionType(int(st.ctx().decision_type))}")
+
+
+def _step_or_fail(st, action, what):
+    """Step, and assert it was accepted.
+
+    These driver loops are `while <the engine still wants something>: step(...)`, and they ignored
+    the return value. A refused step leaves the state untouched, so the condition stays true and
+    the loop spins forever -- a hang instead of a failure. `Engine::step` validates against the
+    legal mask as of P14, so a test that names an action the mask does not offer now surfaces here.
+    """
+    import numpy as np
+    from bindings.action_encoder import ActionEncoder
+    if not ts.Engine.step(st, action):
+        mask = np.asarray(ActionEncoder.get_legal_mask(st))
+        legal = [int(i) for i in np.flatnonzero(mask)]
+        raise AssertionError(
+            f"{what}: engine refused {action} at "
+            f"{ts.DecisionType(int(st.ctx().decision_type))}; legal flat actions were {legal[:20]}")
+
 def cid(name):
     return ts.MapData.get_country_by_name(name)
 
@@ -1010,23 +1040,33 @@ def test_chain_scenario_3_ussr_grainsales_starwars_fyp_kal007_full_ar():
     # 5. FYP discards KAL-007 -> US executes realignment
     while st.ctx().decision_player == ts.Player.US and st.ctx().decision_type != ts.DecisionType.SELECT_CARD:
         if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 2, 0, 0)) # REALIGN
+            _step_or_fail(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 2, 0, 0), "US REALIGN")
         elif st.ctx().decision_type == ts.DecisionType.POINT_NODE:
             if st.ctx().allow_early_stop:
-                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 255, 0, 0x80))
+                _step_or_fail(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 255, 0, 0x80),
+                              "US early stop")
             else:
-                ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 44, 0, 0))
+                _step_or_fail(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 44, 0, 0),
+                              "US realign target 44")
         elif st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
+            _step_or_fail(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0), "US branch")
         else:
             break
 
     # 6. USSR executes Grain Sales Ops
     while st.ctx().decision_player == ts.Player.USSR and st.ctx().decision_type != ts.DecisionType.SELECT_CARD:
         if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0)) # INFLUENCE
+            _step_or_fail(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0),
+                          "USSR INFLUENCE")
         elif st.ctx().decision_type == ts.DecisionType.POINT_NODE:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 29, 0, 0))
+            # Whatever is legal, rather than a fixed country. The placement mask narrows as ops
+            # are spent -- a target costing 2 (opponent-controlled) drops out once one op is left
+            # -- so country 29 was legal for the first placement and not the last. The test's
+            # assertions are about the action round completing, not about where the influence
+            # went.
+            _step_or_fail(st, ts.MicroAction(ts.DecisionType.POINT_NODE,
+                                             _first_legal_country(st), 0, 0),
+                          "USSR influence placement")
         else:
             break
 

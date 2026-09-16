@@ -44,6 +44,13 @@ def _at_box(player: ts.Player, box: int, hand: List[int]) -> ts.GameState:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     for c in hand:
         state.set_card_location(c, loc)
+    if THE_CHINA_CARD in hand:
+        # The China Card is not held in a hand -- it is tracked by `china_card_holder`, and that is
+        # what the mask keys off. Putting it in a hand location without handing it over left the
+        # holder at its initial USSR, so for a US player the card was never actually selectable.
+        # `Engine::step` did not check the holder before it validated against the mask.
+        state.china_card_holder = player
+        state.china_card_playable = 1
     state.ctx().decision_player = player
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD
     return state

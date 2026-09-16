@@ -312,8 +312,37 @@ information and not here: measured over 227 positions, `v_US + v_USSR` has mean 
 0.144 where the identity requires 0. E3-20-28 is therefore a matched baseline at the same
 seed. See [`log/search_cost_and_coverage.md`](log/search_cost_and_coverage.md) §8.
 
-**No `E3-21-28` directory exists under `data/checkpoints/`.** The arm is registered (commit
-`9f47c3e`) and, as far as this record shows, has not been run.
+**E3-21-28 ran and is a negative result.** Three attempts: the first two died at 4,063,232 steps
+on ENG-3, the mask/state-machine disagreement over Missile Envy's forced play; the third ran to
+**40,632,320 steps** and was stopped there once the mechanism was established. Its critic reached
+`critic_auc` **0.5133** — chance — against the baseline's ~0.71 and still climbing at the same
+step count.
+
+The cause is not the wiring and not the value estimates, both of which check out. It is that the
+negation is what makes GAE **telescope** in an alternating-move game: replacing only the forward
+term leaves δ_t carrying `V(s_{t+1}, p_t)` while δ_{t+1} subtracts `V(s_{t+1}, p_{t+1})`, so the
+residual accumulates instead of cancelling. Return RMSE 0.551 → 0.789 and correlation with the
+realised outcome 0.861 → 0.621, with damage scaling in λ exactly as accumulation predicts. Full
+account in
+[`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+
+Directories: `E3-21-28_20260916_092205` (the 40M run, kept as the artifact) and two voided crashes,
+`..._004620_VOID_refusal_crash` and `..._010023_VOID_eng3_crash`.
+
+### E3-22 — the advantage-estimator arm
+
+**E3-22 is E3-21's successor and removes the problem rather than patching it.** Same E3-20-28
+recipe and seed, plus `--per-player-gae`: GAE is computed within each player's own subsequence of
+decisions, bootstrapping from that player's next *own* decision with the opponent's intervening
+rewards folded in. No cross-perspective bootstrap occurs anywhere, so no antisymmetry assumption is
+needed and the telescope closes exactly.
+
+Measured offline on the same 11,847 steps that reached a realised outcome, against the default:
+RMSE **0.551 → 0.481** and correlation **0.861 → 0.901** at λ = 0.98; and at λ = 1, where a correct
+GAE must reproduce the realised return, RMSE **0.162** against the default's 0.214 — tighter,
+because the default telescopes only under the antisymmetry approximation. No extra forward passes.
+
+E3-20-28 is the matched baseline for this arm as well.
 
 One caveat on the pairing, for when it is: `b6874af` and `9f78026` changed `engine/` after
 E3-20-28 was trained. The training decision stream is unchanged — no `ROLL_DIE` node is ever

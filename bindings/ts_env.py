@@ -287,6 +287,12 @@ class TsVectorizedEnv:
         # 1. Capture exact acting players & privileged opponent hands BEFORE stepping simulation
         # The masks the caller sampled from, captured before the step overwrites the buffer --
         # needed to tell a mask/engine disagreement from a sampler that ignored the mask.
+        #
+        # This is the CACHED buffer, which is what a batched caller actually sampled from. It can
+        # be stale if someone mutated a state through `get_state` without refreshing, and then the
+        # diagnostic below would claim an action "WAS legal in the mask" on the strength of a mask
+        # that no longer describes the position -- which cost real time once. The failure path
+        # re-derives a fresh mask and reports both.
         prev_masks = np.array(self.runner.get_action_masks(), copy=True)
         acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
         acting_turns = np.array(self.runner.get_turns(), dtype=np.int8)
@@ -311,11 +317,17 @@ class TsVectorizedEnv:
             # Without this the message names neither, and the first occurrence cost a run.
             was_legal = bool(0 <= act < len(prev_masks[bad]) and prev_masks[bad][act])
             n_legal = int(prev_masks[bad].sum())
+            fresh = np.asarray(ActionEncoder.get_legal_mask(st))
+            fresh_legal = bool(0 <= act < len(fresh) and fresh[act])
+            stale = int((fresh != prev_masks[bad]).sum())
             raise IllegalActionError(
                 f"engine refused flat action {act} in env {bad} of {self.num_envs} "
                 f"(decision {ts.DecisionType(int(st.ctx().decision_type))}); "
                 f"{step_results.count(0)} of the batch refused. "
-                f"The action WAS legal in the mask it was sampled from"
+                f"The action was legal in the CACHED mask; freshly generated it is "
+                f"{'legal' if fresh_legal else 'NOT legal'}"
+                + (f", and the cache is stale on {stale} entries -- a caller mutated the state "
+                   f"without refreshing" if stale else "")
                 if was_legal else
                 f"engine refused flat action {act} in env {bad} of {self.num_envs} "
                 f"(decision {ts.DecisionType(int(st.ctx().decision_type))}); "

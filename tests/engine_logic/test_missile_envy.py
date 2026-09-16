@@ -179,11 +179,21 @@ def test_forced_missile_envy_can_only_be_played_for_ops() -> None:
     assert 110 not in legal_actions, "PlayMode::EVENT (110) must be ILLEGAL when forced to play for Ops"
     assert 112 not in legal_actions, "PlayMode::SPACE (112) must be ILLEGAL when forced to play for Ops"
 
-    # Step OPS (111) and place influence
+    # Step OPS (111) and place influence.
+    #
+    # Where the mask allows, not country 83. The fixture gives 83 to the USSR only, and the US has
+    # no presence in or next to it, so placing there was never legal -- the play simply never
+    # completed, which is why the discard assertion below is the one that failed. `Engine::step`
+    # validates against the mask as of P14, so the illegal placement is now refused outright
+    # instead of being ignored.
     ts.Engine.step_flat(st, PLAY_MODE_ACTION["ops"])
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 83, 0, 0))
+    for _ in range(2):
+        legal = [int(a) - 119 for a in np.flatnonzero(ActionEncoder.get_legal_mask(st))
+                 if 119 <= int(a) < 203]
+        assert legal, "no legal influence placement while spending Missile Envy's Ops"
+        assert ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, legal[0], 0, 0)), (
+            f"engine refused a placement the mask offered: country {legal[0]}")
 
     # After forced play completes:
     assert int(st.forced_card_id) == 0, "forced_card_id must be cleared after playing"
