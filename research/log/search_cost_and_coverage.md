@@ -268,3 +268,52 @@ state -- store `V(s_{t+1}, p_t)` alongside `V(s_{t+1}, p_{t+1})` -- which is one
 step and removes the boundary crossing entirely. That changes the algorithm, so it is recorded here
 rather than done.
 
+---
+
+## 9. The honest searcher, re-measured on the fixed engine
+
+§1's numbers all predate `8533a68`, `b6874af` and `9f78026`. Re-taken at `c7e3731` on engine
+`2fb7005`, same checkpoint as the originals (`E3-20-28` @320M), against the plain policy of that
+net, **120 games each** — three to four times the games the originals had.
+
+| searcher | sims | games | win rate | old figure |
+|---|---:|---:|---:|---:|
+| honest (determinized) | 96 | 120 | **75.0%** ± 4.0 | 72.5% (40 games) |
+| privileged (reads the real hand) | 96 | 120 | **77.5%** ± 3.8 | — |
+| honest (determinized) | 384 | 120 | **73.3%** ± 4.0 | 76.7% (30 games) |
+
+Three results, and two of them overturn what §1 was being used for.
+
+**Privileged information is worth nothing measurable: +2.5pp ± 5.5 (z = 0.46).** The old pairing at
+48 simulations put it at 100% against 58.3%, a 41.7pp gap, on 12 games a side. That does not
+survive. Since privileged search was only ever a diagnostic upper bound — it cannot be deployed —
+this is the result that matters most: the strength search buys is *available*, and strategy fusion
+is not costing what `dmcts.py`'s docstring warns it might.
+
+**Search saturates by 96 simulations: 384 bought −1.7pp ± 5.6 (z = −0.29).** So the arm costing is
+set by 96, not 384 — a quarter of the cost. The old reading that 384 (76.7%) beat 96 (72.5%) was
+two noisy point estimates on 30 and 40 games; with 120 games each they are indistinguishable.
+
+**The "depth beats breadth" table in §1 therefore needs re-reading.** Its within-budget comparisons
+(1 world vs 4 vs 16 at a fixed total) are untouched by this — splitting a budget across worlds
+still looked clearly worse. But its *across-budget* claim, that 384 is better than 96, does not
+reproduce.
+
+### What this does to an arm
+
+At 96 simulations, from the `honest96` tournament itself — 120 games x 428 steps in 430 s with one
+side searching, i.e. **59.7 searched decisions/s** against 8,300 steps/s for plain training:
+
+| | 40M | 80M | 160M |
+|---|---:|---:|---:|
+| learner searches only | 7.8 d | 15.5 d | 31 d |
+| both sides search | 15.5 d | 31 d | 62 d |
+
+Full coverage. This is measured under CPU contention (the searcher is CPU-bound; the GPU sat at
+8%), so it is a floor on the rate rather than the settled figure.
+
+Worth recording against the estimate in `5985175`'s commit message — "a 160M-step arm with search
+on both sides at 96 simulations per move from ~137 days into ~6 days". The measurement above puts
+that same configuration at ~62 days. The two differ by a factor of ten and the later optimisations
+(`fbeda4d`, `9079e7c`) should have moved it the other way, so one of them is wrong; the tournament
+figure is the one with a 120-game measurement behind it.
