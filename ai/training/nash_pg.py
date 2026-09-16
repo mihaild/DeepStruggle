@@ -134,6 +134,7 @@ class BaseNashPGTrainer:
         max_grad_norm: float = 1.0,
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
+        same_perspective_bootstrap: bool = False,
         priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
         device: torch.device | str = "cuda",
@@ -178,6 +179,10 @@ class BaseNashPGTrainer:
         self.max_grad_norm = max_grad_norm
         self.slice_turn_boundaries = slice_turn_boundaries
         self.blunder_window = blunder_window
+        #: Bootstrap from V(s_{t+1}, p_t) instead of -V(s_{t+1}, p_{t+1}). Off by default: it
+        #: changes what the critic is trained on, so it is an arm, not a correction applied
+        #: silently. See `RolloutBuffer.compute_gae`.
+        self.same_perspective_bootstrap = same_perspective_bootstrap
         self.priority_alpha = priority_alpha
         self.temperature_schedule = temperature_schedule
 
@@ -318,6 +323,27 @@ class BaseNashPGTrainer:
             actions_np = actions_t.cpu().numpy()
             next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
 
+            # V(s_{t+1}, p_t): the resulting state seen by the player who just moved, rather than
+            # by whoever moves next. The default bootstrap negates the next step's value, which
+            # assumes V(s, me) = -V(s, opponent) -- exact only under perfect information, and
+            # measurably false here (mean |v_US + v_USSR| = 0.144 where it should be 0). The gap
+            # lands hardest on the last decision before the side switches: a card played for its
+            # event is then scored by the opponent's opinion of the result, formed without seeing
+            # the deciding player's hand.
+            #
+            # `_info["acting_players"]` is captured before the step (ts_env.py:288), so it names
+            # p_t, and the runner now holds s_{t+1}. Terminal steps are included and cost nothing:
+            # the env has auto-reset by now, so the value is of an unrelated fresh game, and
+            # `non_terminal` zeroes it in compute_gae.
+            next_own_t = None
+            if self.same_perspective_bootstrap:
+                own_obs = self.env.observations_for(
+                    np.asarray(self._info["acting_players"], dtype=np.int8))
+                with torch.no_grad():
+                    _l, own_v, _vp = self.active_net(
+                        torch.from_numpy(own_obs).to(self.device, torch.float32), None)
+                next_own_t = own_v.squeeze(-1)
+
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -334,6 +360,7 @@ class BaseNashPGTrainer:
                 held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device) if "held_scoring_us" in self._info else None,
                 held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device) if "held_scoring_ussr" in self._info else None,
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
+                next_values_own=next_own_t,
             )
 
             # v_win is from the *acting* player's perspective; multiplying by the acting
@@ -394,6 +421,7 @@ class BaseNashPGTrainer:
             gae_lambda=self.gae_lambda,
             slice_turn_boundaries=self.slice_turn_boundaries,
             blunder_window=self.blunder_window,
+            same_perspective_bootstrap=self.same_perspective_bootstrap,
         )
 
         # Freeze the entropy probe pool from the first rollout only.

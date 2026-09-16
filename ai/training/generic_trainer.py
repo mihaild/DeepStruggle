@@ -1152,6 +1152,7 @@ def train_pipeline(
     curriculum_switch_seconds: Optional[int] = None,
     curriculum_switch_fraction: float = 0.5,
     slice_turn_boundaries: Optional[bool] = None,
+    same_perspective_bootstrap: bool = False,
     blunder_window: bool = True,
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
@@ -1219,6 +1220,7 @@ def train_pipeline(
         "git_dirty": git_dirty,
         "training_mode": reward_scheme,
         "reward_scheme": reward_scheme,
+        "same_perspective_bootstrap": same_perspective_bootstrap,
         "duration_seconds": duration_seconds,
         "resume_every_snapshot": bool(resume_every_snapshot),
         "resume_every_steps": int(resume_every_steps),
@@ -1361,6 +1363,7 @@ def train_pipeline(
         # the outcome signal from clean wins too -- so it is opt-in for ablations only.
         slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
         blunder_window=blunder_window,
+        same_perspective_bootstrap=same_perspective_bootstrap,
         priority_alpha=priority_alpha,
         defcon_coef=defcon_coef,
         temperature_schedule=True,

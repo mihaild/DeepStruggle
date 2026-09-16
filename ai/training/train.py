@@ -187,6 +187,14 @@ def main():
     parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
     parser.add_argument("--curriculum-switch-seconds", type=int, default=None, help="Elapsed training seconds at which curriculum switches to BlunderAware reward (default: 50%% of duration)")
     parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of training duration at which curriculum switches to BlunderAware reward (default: 0.5)")
+    parser.add_argument("--same-perspective-bootstrap", action="store_true", default=False,
+                        help="Bootstrap the value target from V(s_{t+1}, p_t) -- the resulting "
+                             "state as seen by the player who just moved -- instead of negating "
+                             "the next step's value. The negation assumes V(s,me) = -V(s,opponent), "
+                             "which is exact only under perfect information; here the observation "
+                             "hides the opponent's hand, and v_US + v_USSR was measured at 0.144 "
+                             "mean absolute where it should be 0. Costs one extra forward per "
+                             "step and changes what the critic is trained on, so it is an arm.")
     parser.add_argument("--slice-turn-boundaries", type=str, default="auto", choices=["auto", "on", "off"],
                         help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off and relies on per-episode blunder windowing instead.")
     parser.add_argument("--no-blunder-window", action="store_true",
@@ -293,6 +301,7 @@ def main():
             curriculum_switch_seconds=args.curriculum_switch_seconds,
             curriculum_switch_fraction=args.curriculum_switch_fraction,
             slice_turn_boundaries=(None if args.slice_turn_boundaries == "auto" else args.slice_turn_boundaries == "on"),
+            same_perspective_bootstrap=args.same_perspective_bootstrap,
             ref_update_freq=args.ref_update_freq,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

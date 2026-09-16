@@ -69,6 +69,13 @@ class RolloutBuffer:
         self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
         self.held_scoring_ussr = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
         self.defcon_blunder = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
+        #: V(s_{t+1}, p_t) -- the state AFTER this step, evaluated from the perspective of the
+        #: player who just moved. Filled only when the same-perspective bootstrap is enabled; the
+        #: default path negates the next step's value instead, which crosses an information-set
+        #: boundary. See `compute_gae`.
+        self.next_values_own = torch.zeros((buffer_size, num_envs), dtype=torch.float32,
+                                           device=self.device)
+        self.has_next_values_own = False
 
         # Computed targets
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
@@ -109,6 +116,7 @@ class RolloutBuffer:
         held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
         held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
         defcon_blunder: Optional[np.ndarray | torch.Tensor] = None,
+        next_values_own: Optional[torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -162,6 +170,10 @@ class RolloutBuffer:
                 defcon_blunder = torch.from_numpy(defcon_blunder)
             self.defcon_blunder[self.step].copy_(defcon_blunder)
 
+        if next_values_own is not None:
+            self.next_values_own[self.step].copy_(next_values_own)
+            self.has_next_values_own = True
+
         self.step += 1
         if self.step >= self.buffer_size:
             self.full = True
@@ -177,6 +189,7 @@ class RolloutBuffer:
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
         defcon_risk_horizon: int = 4,
+        same_perspective_bootstrap: bool = False,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -191,7 +204,22 @@ class RolloutBuffer:
         clean wins, which strips the outcome signal from all but the final turn of the
         ~80% of games that end normally; it is retained only as an ablation knob and
         defaults off.
+
+        ``same_perspective_bootstrap`` replaces ``-V(s_{t+1}, p_{t+1})`` with
+        ``V(s_{t+1}, p_t)``. The default negation assumes ``V(s, me) = -V(s, opponent)``, exact in
+        a perfect-information game and false here: ``v_win`` is computed from a perspective-filtered
+        observation, so the two evaluate different information sets. Measured over 227 positions,
+        ``v_US + v_USSR`` has mean +0.051 and mean absolute 0.144 where the identity requires 0.
+        The error lands hardest on the last decision before the side switches -- a card played for
+        its event is scored by the opponent's opinion of the result, formed without seeing the
+        deciding player's hand. Requires ``next_values_own`` to have been supplied to ``add``.
         """
+        if same_perspective_bootstrap and not self.has_next_values_own:
+            raise ValueError(
+                "same_perspective_bootstrap needs V(s_{t+1}, p_t) for every step, but no "
+                "next_values_own was passed to add(). Silently falling back to the negated "
+                "bootstrap would make the arm measure nothing.")
+
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
 
         # Pending blunder window, armed at a terminal step and disarmed at the turn boundary.
@@ -226,6 +254,17 @@ class RolloutBuffer:
                 if slice_turn_boundaries:
                     turn_boundary_mask = (self.turns[t] == self.turns[t + 1]).float()
                     non_terminal = non_terminal * turn_boundary_mask
+
+            if same_perspective_bootstrap:
+                # The stored value is already the next state seen by the player who moved, so it
+                # needs no sign: it is in the actor's frame by construction. `sign` is still used
+                # below on `last_gae`, which flips the *following step's advantage* -- a different
+                # correction, and still required.
+                #
+                # This overrides `next_val` for BOTH branches above, including the final step,
+                # because next_values_own[t] is stored for every t -- so the last step needs no
+                # `last_v_win` special case either.
+                next_val = self.next_values_own[t]
 
             # Arm/disarm the blunder window at terminal steps, vectorized across envs.
             # The timestep loop must stay sequential because GAE is a backward recursion,
