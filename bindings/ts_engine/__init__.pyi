@@ -586,7 +586,7 @@ class GameState:
 
     def to_save_dict(self) -> dict:
         """
-        Named-field save of a STARTING position: scalars, RNG, card locations and board influence. Round-trips with from_save_dict. Does NOT carry the decision-context stack, action history or turn aggregates, so it cannot resume a mid-game position.
+        Named-field save of a position, mid-game included: scalars, RNG, card locations, board influence, the headline owners, the die-roll record AND the decision-context stack (ctx_stack + depth). Round-trips with state_from_save_dict -- verified over every position of whole games, comparing the pending decision, the legal mask and the observation. Does NOT carry action_history or turn_aggregates, which nothing reads for rules or for the observation; they are diagnostics.
         """
 
     def to_json(self) -> str: ...
@@ -755,7 +755,7 @@ def state_to_dict(arg: GameState, /) -> dict:
 
 def state_from_save_dict(arg: dict, /) -> GameState:
     """
-    Rebuild a STARTING position from to_save_dict output. Missing keys take their default, so a save written before a field existed still loads -- which is why this is named fields and not a struct blob, whose layout the first new field would break. It does not restore the context stack, action history or turn aggregates, so it must not be used to resume a game in progress.
+    Rebuild a position from to_save_dict output, mid-game included. Missing keys take their default, so a save written before a field existed still loads, and an unknown key is ignored, so a save from a newer build opens minus what it cannot use. Restores the decision-context stack; does not restore action_history or turn_aggregates, which are diagnostics that no rule and no observation reads.
     """
 
 def get_flat_action_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
