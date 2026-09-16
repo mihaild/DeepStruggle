@@ -441,6 +441,23 @@ class BatchedMCTSAgent:
             for i, a in zip(plain_idx, picks):
                 out[i] = int(a)
 
+        # The same check `select_action` has carried since the 1,355-refusal stall, which the
+        # batched path -- the one every tournament uses -- did not. A searcher that returns an
+        # action the caller cannot play is not a weaker searcher, it is a broken measurement, and
+        # before `step` raised it produced a silently wrong game rather than an error.
+        for i, a in enumerate(out):
+            mask = np.asarray(ActionEncoder.get_legal_mask(states[i]))
+            if not (0 <= a < len(mask)) or not mask[a]:
+                legal = np.flatnonzero(mask)
+                raise RuntimeError(
+                    f"search returned action {a} for batch position {i}, which is not legal in "
+                    f"the caller's state (decision_type="
+                    f"{int(states[i].ctx().decision_type)}, {legal.size} legal action(s): "
+                    f"{legal[:8].tolist()}). Chosen by "
+                    f"{'search' if want[i] else 'the policy fallback'}. If by search, the tree is "
+                    f"rooted at a different decision than the caller holds -- set "
+                    f"advance_root=False when the caller does not settle the state itself.")
+
         self.searched_count = getattr(self, "searched_count", 0) + len(searched_idx)
         self.decision_count = getattr(self, "decision_count", 0) + len(states)
         return out

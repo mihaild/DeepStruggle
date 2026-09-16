@@ -154,10 +154,26 @@ early rather than late, which is worth knowing before a fifth seed is spent.
 
 * **200 games a side**, so each cell carries roughly ±3.5 pp. The amplitudes above are far larger
   than that; individual cells are not.
-* **One anchor family.** Both anchors are snapshots of `p28`, so `p28`'s own rows are partly
-  self-comparison and its early rows are measured against its own future. That is intended — the
-  point is a fixed reference, not an unbiased one — but a second anchor from a different run would
-  be worth having before these numbers are used to compare *runs* rather than *budgets*.
+* **One anchor family, and it inflates `p28`'s side gap about twofold.** Both anchors are
+  snapshots of `p28`, so `p28`'s rows are same-family comparisons — and an arm's side tilt is
+  *shared with its own earlier selves*, so both seats of the comparison lean the same way and the
+  gap compounds. Measured against the whole 25-model field instead
+  ([`P15_X0_round_robin.md`](P15_X0_round_robin.md), per-side summary), `p28_280M` is **−22.8 pp**
+  where the `@80M` anchor reads **−48.0 pp**, and `p28_320M` is **−15.8 pp** against −41.5. The
+  §2 table is correct for what it measures — drift relative to the run's own past — but it is
+  **not** a measure of how lopsided the arm is in general, and the headline numbers above should
+  not be quoted as if it were.
+
+* **Which makes the real contrast sharper, not softer.** Field-wide, `p28` is competent in both
+  seats (58.6% as USSR, 74.4% as US at 320M) — tilted. `n26` is not: 69.4% as USSR against
+  **37.3% as US**, a 32.1 pp gap, and 38.1 pp at 240M. The unpooled arm has not merely decayed in
+  Elo, it has *lost a seat*. A head-to-head between two same-family checkpoints is then decided by
+  the seat rather than by the 160M steps between them: `p28@320M` and `p28@160M` sit 3.9 Elo apart
+  and whichever plays US wins 71–78%. Cross-family it inverts — `p28@320M` beats `n26@240M` 69.5%
+  *as USSR* and only 52.0% as US, because what decides a matchup is whose weak seat is exposed.
+  This is [`../findings/training/pooling.md`](../findings/training/pooling.md) §3a in a starker
+  form, and it is an argument for a second anchor drawn from a *different* run before these
+  numbers are used to compare runs rather than budgets.
 * Elo here is not comparable to any other tournament in this project.
 
 Source: `data/tournaments/P15_X0_frozen_anchors/tournament_report.md`, full round robin in [`P15_X0_round_robin.md`](P15_X0_round_robin.md).

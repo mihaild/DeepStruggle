@@ -316,8 +316,17 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
 
         base = NeuralAgent.from_checkpoint(path, device=device)
+        # advance_root=False because the CLIs hand over a state they have NOT settled --
+        # tools/tournament.py only auto-advances under --auto-advance, and play_match.py steps
+        # decision by decision. With the default True the searcher settles its own root, so at a
+        # node whose mask holds a single legal action `auto_advance_step` consumes it, the root
+        # moves to the successor, and the search returns an action that is legal there and
+        # illegal in the caller's state. Observed as "engine refused flat action 104 at a
+        # POINT_NODE whose mask has 1 legal action: 211". Settling an already-settled state is a
+        # no-op, so False is also correct when the caller does settle.
         cfg = BatchedMCTSConfig(simulations=sims, temperature=0.0,
-                                auto_advance=True, determinize=determinize,
+                                auto_advance=True, advance_root=False,
+                                determinize=determinize,
                                 node_filter=node_filter, subsample=subsample)
         tag = "" if node_filter == "all" else "-card"
         tag += "" if subsample >= 1.0 else f"-{subsample:g}"
