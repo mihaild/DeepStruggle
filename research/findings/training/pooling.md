@@ -178,6 +178,52 @@ So the honest split is between units of analysis. Per *game* the result is decis
 61.5%); per *arm* it is four against four and p = 0.10 on levels, 0.057 paired. One more seed a
 condition would likely settle it, and is cheaper than anything else queued.
 
+### 3b. A pooled game is played against five different snapshots
+
+Measured 2026-09-16, from `episodes_completed` in the arms' own logs.
+
+`start_iteration()` draws one opponent and every mixed environment uses it for that iteration --
+`buffer_size` = 128 steps per environment. A game does not finish in 128 steps:
+
+| arm | mean episode | opponents faced in one game |
+|:---|---:|---:|
+| E3-20-28 (pooled) | **626.5** micro-actions | **4.89** |
+| E3-17-25 (no pool) | 370.7 micro-actions | n/a |
+
+So **every pooled game this project has run was played against roughly five different frozen
+snapshots in sequence** -- at about 7 turns a game, an opponent swap every ~1.4 turns. With
+capacity 12, each game faces a random ~40% subset of the pool, consecutively.
+
+"The learner played a pool snapshot" has therefore never been accurate. It played a *composite*
+whose identity changes five times a game. In a ten-turn positional game no snapshot ever executes
+a plan spanning turns; it is swapped out mid-plan, and what the learner faces is an average
+opponent that exists as no policy.
+
+**This is not what the module documents.** "Diversity accumulates across iterations instead of
+within them" describes diversity across *environments* within an iteration. That an episode
+outlives an iteration is never stated, and the within-episode switching is an unremarked
+consequence of the two facts sitting side by side.
+
+Three things follow.
+
+* It is why the pool had no per-opponent win-rate instrument for so long. There was no stable
+  opponent identity for a game to be attributed to. PFSP needed exposure-weighted attribution --
+  splitting a result across the snapshots that actually played it -- before it could mean anything.
+* It narrows what `E3-23-28` tests. PFSP changes which snapshot is drawn each iteration, but a game
+  still faces about five of them, so the arm shifts the *composition of the mixture* rather than
+  the identity of a per-game opponent. Still one factor, but a narrower claim than "prioritising
+  who you play".
+* Pooled games run **69% longer** than unpooled ones (626.5 against 370.7 micro-actions), which is
+  consistent with §3's balance result: closer games last longer instead of ending in an early
+  autowin. It also means a pooled arm sees fewer episodes per step than an unpooled one, so any
+  per-episode statistic compared between the conditions is drawn from different sample sizes.
+
+**Whether the switching is harmful is open.** Against it: the learner never meets a coherent
+adversary. For it: it is within-episode opponent diversity, and diversity is the mechanism this
+file credits for the balance result. Holding one opponent for a whole episode is a clean follow-up
+arm and is as likely to be a regression as a fix -- it trades within-episode diversity for
+coherence, and this file's own evidence is that diversity is what does the work.
+
 ### 4. Extending to 320M
 
 The two extreme pooled arms extended 160M → 320M, with E3-17-26 as the unpooled control — chosen

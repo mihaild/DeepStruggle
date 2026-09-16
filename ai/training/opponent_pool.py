@@ -31,6 +31,17 @@ same total FLOPs as the single pass it replaces. Diversity accumulates across it
 of within them. Sampling several per iteration would work too, at more kernel launches on smaller
 batches.
 
+**Which means a game is played against about five different snapshots.** An episode does not fit
+in an iteration: measured on E3-20-28 the mean episode is 626.5 micro-actions against a
+`buffer_size` of 128, so one game faces **4.89** opponents in sequence -- a swap roughly every 1.4
+turns, and a random ~40% subset of a capacity-12 pool per game. The learner therefore never meets
+a coherent adversary over a whole game; it meets a composite that exists as no policy. That is a
+consequence of the two facts above sitting together, it was unremarked until 2026-09-16, and it is
+why results have to be attributed by exposure rather than to "the" opponent (`on_episode_end`).
+Whether it helps or hurts is untested: it costs coherence and buys within-episode diversity, and
+diversity is the mechanism this docstring credits. See
+`research/findings/training/pooling.md` §3b.
+
 **A growing pool, kept spread across the run.** The first version took a fixed list of
 checkpoints, which measured well (E3-19-22 held self-play imbalance to 9.0pp where its control
 reached 71.7pp) but is not a usable recipe: it required eight snapshots of an already-finished
