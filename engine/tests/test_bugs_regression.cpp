@@ -469,3 +469,146 @@ TEST(RegressionTest, ForcedDieOutsideOneToSixIsRejected) {
                                                     static_cast<uint8_t>(good), 0, 0)));
     }
 }
+
+// Advance to a SELECT_CARD node inside an action round, which is where the forced-play rule binds.
+static bool advance_to_action_round_card(GameState& state, uint64_t seed) {
+    Engine::init_game(state, seed);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    for (int step = 0; step < 4000; ++step) {
+        if (Engine::is_terminal(state)) return false;
+        if (state.ctx().decision_type == DecisionType::SELECT_CARD &&
+            state.current_phase == Phase::ACTION_ROUND) {
+            return true;
+        }
+        ActionMask::generate_flat_mask_212(state, mask);
+        int chosen = -1;
+        for (int i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) {
+            if (mask[i]) { chosen = i; break; }
+        }
+        if (chosen < 0) return false;
+        Engine::step(state, ActionMask::decode_flat_action_212(state, static_cast<uint16_t>(chosen)));
+    }
+    return false;
+}
+
+static void give(GameState& s, uint8_t card, Player p) {
+    s.card_locations[card] = (p == Player::US) ? CardLocation::HAND_US_KNOWN
+                                               : CardLocation::HAND_USSR_KNOWN;
+}
+
+static int count_selectable_cards(GameState& s) {
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    int n = 0;
+    for (int i = 0; i < 110; ++i) if (mask[i]) n++;
+    return n;
+}
+
+// Missile Envy obliges its recipient to play THAT CARD for Operations on their next action round.
+// `forced_card_id` only ever holds MISSILE_ENVY -- there is no other forced card -- so the old
+// condition `forced_card_id == card || forced_card_id == MISSILE_ENVY` was always true while a
+// force was live, and the rule became "every card must go to Ops".
+TEST(RegressionTest, ForcedPlayBindsOnlyMissileEnvyAndOnlyInAnActionRound) {
+    GameState base{};
+    ASSERT_TRUE(advance_to_action_round_card(base, 4242));
+    const Player p = base.ctx().decision_player;
+
+    // Live force: only Missile Envy is selectable, and the China Card is suppressed with the rest.
+    {
+        GameState s = base;
+        give(s, card_ids::MISSILE_ENVY, p);
+        s.forced_card_player = p;
+        s.forced_card_id = card_ids::MISSILE_ENVY;
+        uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+        ActionMask::generate_flat_mask_212(s, mask);
+        ASSERT_EQ(count_selectable_cards(s), 1);
+        ASSERT_TRUE(mask[card_ids::MISSILE_ENVY - 1] != 0);
+        ASSERT_TRUE(mask[card_ids::THE_CHINA_CARD - 1] == 0);
+    }
+
+    // A headline is unconstrained: the card says "on their next action round".
+    {
+        GameState s = base;
+        give(s, card_ids::MISSILE_ENVY, p);
+        s.forced_card_player = p;
+        s.forced_card_id = card_ids::MISSILE_ENVY;
+        s.current_phase = Phase::HEADLINE;
+        ASSERT_TRUE(count_selectable_cards(s) > 1);
+    }
+
+    // A stale force -- the flag set, the card gone -- must restrict nothing. 21 positions in
+    // 1,280,000 of sampled self-play carried one.
+    {
+        GameState s = base;
+        s.card_locations[card_ids::MISSILE_ENVY] = CardLocation::DISCARD_PILE;
+        s.forced_card_player = p;
+        s.forced_card_id = card_ids::MISSILE_ENVY;
+        ASSERT_TRUE(count_selectable_cards(s) > 1);
+    }
+}
+
+// Every play mode the mask offers must be accepted. The state machine's copy of the forced-play
+// rule had none of the three guards, so it refused modes the mask had offered: EVENT in a
+// headline, SPACE on the China Card, and -- worst -- EVENT on a scoring card, where the mask's
+// only legal action was refused and the position could not advance at all.
+TEST(RegressionTest, MaskAndStepAgreeOnPlayModesUnderAForce) {
+    GameState base{};
+    ASSERT_TRUE(advance_to_action_round_card(base, 4242));
+    const Player p = base.ctx().decision_player;
+
+    const uint8_t cards_to_try[] = {card_ids::THE_CHINA_CARD, card_ids::MISSILE_ENVY, 13};
+    const Phase phases[] = {Phase::ACTION_ROUND, Phase::HEADLINE};
+
+    for (Phase ph : phases) {
+        for (uint8_t card : cards_to_try) {
+            GameState s = base;
+            give(s, card_ids::MISSILE_ENVY, p);
+            s.forced_card_player = p;
+            s.forced_card_id = card_ids::MISSILE_ENVY;
+            s.current_phase = ph;
+            s.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+            s.ctx().pending_op_card = card;
+
+            uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(s, mask);
+            int offered = 0;
+            for (int i = 110; i <= 113; ++i) {
+                if (!mask[i]) continue;
+                offered++;
+                GameState probe = s;
+                ASSERT_TRUE(Engine::step(
+                    probe, ActionMask::decode_flat_action_212(probe, static_cast<uint16_t>(i))));
+            }
+            ASSERT_TRUE(offered > 0);
+        }
+    }
+}
+
+// Held scoring outranks the force and DEFERS it: holding scoring cards past the end of the turn
+// loses the game outright, so the obligation that can lose it wins, and the forced flags stay set
+// to bind on the next action round.
+TEST(RegressionTest, HeldScoringOutranksTheForceAndDefersIt) {
+    GameState base{};
+    ASSERT_TRUE(advance_to_action_round_card(base, 4242));
+    const Player p = base.ctx().decision_player;
+
+    GameState s = base;
+    give(s, card_ids::MISSILE_ENVY, p);
+    s.forced_card_player = p;
+    s.forced_card_id = card_ids::MISSILE_ENVY;
+    s.turn = 10;
+    s.action_round = 7;          // one round left
+    give(s, 1, p);               // Asia Scoring
+    give(s, 2, p);               // Europe Scoring
+
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    for (int i = 0; i < 110; ++i) {
+        if (mask[i]) {
+            ASSERT_TRUE(CardData::is_scoring_card(static_cast<uint8_t>(i + 1)));
+        }
+    }
+    ASSERT_TRUE(mask[card_ids::MISSILE_ENVY - 1] == 0);
+    // Deferred, not discharged.
+    ASSERT_EQ(static_cast<int>(s.forced_card_id), static_cast<int>(card_ids::MISSILE_ENVY));
+}

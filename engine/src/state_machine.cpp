@@ -931,8 +931,16 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 uint8_t card = state.ctx().pending_op_card;
                 PlayMode mode = static_cast<PlayMode>(action.primary_id);
 
-                // Forced play (Missile Envy recipient must play for Operations)
-                if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
+                // Forced play (Missile Envy recipient must play it for Operations). Mirrors
+                // ActionMask::generate_flat_mask_212 exactly -- see the comment there for why each
+                // test is present. This copy had none of the three, which is how the mask came to
+                // offer play modes the engine then refused: a headline, a stale force, the China
+                // Card and, worst, a scoring card, where the mask's only legal action was refused
+                // and the position could not advance at all.
+                if (state.current_phase == Phase::ACTION_ROUND &&
+                    state.forced_card_player == p &&
+                    card == card_ids::MISSILE_ENVY &&
+                    in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
                     if (mode != PlayMode::OPS) {
                         return false;
                     }

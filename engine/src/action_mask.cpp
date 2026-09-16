@@ -71,12 +71,44 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // their next action round", so it constrains no headline. At turn 6's headline of
             // ts-replayer game 114 the USSR held Missile Envy from a turn 5 exchange and the
             // engine would let them headline nothing else.
+            //
+            // Held scoring outranks the force and DEFERS it: holding scoring cards past the end
+            // of the turn loses the game outright, so the obligation that can lose it wins, and
+            // the forced flags are left alone to bind on the next action round instead.
+            //
+            // Under a trap the mask is the same single card -- Missile Envy is 2 Ops, so it is a
+            // legal discard, and discarding it is the whole action round and satisfies both
+            // obligations. The state machine's trap branch already clears the force when the
+            // discarded card is the forced one.
             if (state.current_phase == Phase::ACTION_ROUND &&
-                state.forced_card_player == p && state.forced_card_id != 0) {
-                if (in_hand_of(state.card_locations[state.forced_card_id], p)) {
-                    mask_out[state.forced_card_id] = 1;
+                state.forced_card_player == p &&
+                in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
+                uint8_t held = 0;
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (in_hand_of(state.card_locations[i], p) && CardData::is_scoring_card(i)) {
+                        held++;
+                    }
+                }
+                uint8_t cap = (state.turn <= 3) ? 6 : 7;
+                const bool ar8 = (p == Player::US)
+                    ? (state.has_flag(effect_bits::NORTH_SEA_OIL_ACTIVE) ||
+                       SpaceRace::has_space_station_ar8(state, Player::US))
+                    : SpaceRace::has_space_station_ar8(state, Player::USSR);
+                if (state.turn >= 4 && ar8) cap = 8;
+                const uint8_t left = (state.action_round <= cap)
+                    ? static_cast<uint8_t>(cap - state.action_round + 1) : 0;
+
+                if (held > 0 && held >= left) {
+                    for (uint8_t i = 1; i <= 110; ++i) {
+                        if (in_hand_of(state.card_locations[i], p) && CardData::is_scoring_card(i)) {
+                            mask_out[i] = 1;
+                        }
+                    }
                     return;
                 }
+                mask_out[card_ids::THE_CHINA_CARD] = 0;   // the force blocks it too
+                mask_out[card_ids::MISSILE_ENVY] = 1;
+                return;
             }
 
             // 4. Quagmire / Bear Trap. Action rounds only: the trap constrains what a player
@@ -197,11 +229,22 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // Forced play (Missile Envy recipient must play for Operations), action rounds only
-            // for the same reason: a headlined card is played as its Event as usual.
+            // Forced play (Missile Envy recipient must play it for Operations). Three tests,
+            // and each rules out a defect this branch used to have:
+            //   ACTION_ROUND      -- the card says "on their next action round", so a headline is
+            //                        unconstrained and its card is played as its Event as usual;
+            //   MISSILE_ENVY held -- the obligation is live only while the card is still in hand,
+            //                        so a stale forced_card_id restricts nothing;
+            //   card == MISSILE_ENVY -- the restriction is on THAT card. `forced_card_id` only
+            //                        ever holds MISSILE_ENVY, so the old disjunct
+            //                        `forced_card_id == card || forced_card_id == MISSILE_ENVY`
+            //                        was always true and read as "every card must go to Ops".
+            // The last one is also what makes ordering irrelevant: a scoring card and the China
+            // Card are never card 49, so their branches above can no longer be overtaken.
             if (state.current_phase == Phase::ACTION_ROUND &&
                 state.forced_card_player == p &&
-                (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY)) {
+                card == card_ids::MISSILE_ENVY &&
+                in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
                 mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
                 return;
             }
