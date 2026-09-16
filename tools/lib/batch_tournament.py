@@ -192,7 +192,8 @@ class BatchMatchRunner:
                         chunk_vps[idx] = int(st.victory_points)
                         chunk_turns[idx] = int(st.turn)
                         chunk_plies[idx] = game_ply(int(st.turn), int(st.action_round),
-                                                    st.phasing_player == ts.Player.US)
+                                                    st.phasing_player == ts.Player.US,
+                                                    headline_stage=int(st.headline_stage))
                         chunk_steps[idx] = steps
                         chunk_causes[idx] = classify_game_ending_reason(st)
                     active = active & (~terms)

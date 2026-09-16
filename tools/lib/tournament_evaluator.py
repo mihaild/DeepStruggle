@@ -150,7 +150,8 @@ class TournamentEvaluator:
             steps_list.append(step)
             turns_list.append(turn)
             plies_list.append(game_ply(turn, int(st.action_round),
-                                       st.phasing_player == ts.Player.US))
+                                       st.phasing_player == ts.Player.US,
+                                       headline_stage=int(st.headline_stage)))
 
             a_won = (term_util > 0 and not a_is_ussr) or (term_util < 0 and a_is_ussr)
             b_won = (term_util < 0 and not a_is_ussr) or (term_util > 0 and a_is_ussr)

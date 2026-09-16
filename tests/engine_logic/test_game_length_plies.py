@@ -22,12 +22,33 @@ from tools.lib.tournament_evaluator import _drain_chance_nodes
 
 
 def test_numeration_matches_the_stated_scheme() -> None:
-    assert ply(1, 0, is_us=False) == 1     # USSR turn 1 headline
-    assert ply(1, 0, is_us=True) == 2      # US   turn 1 headline
+    assert ply(1, 0, is_us=False, headline_stage=1) == 1   # turn 1, first headline
+    assert ply(1, 0, is_us=False, headline_stage=2) == 2   # turn 1, second headline
     assert ply(1, 1, is_us=False) == 3     # USSR turn 1 AR1
     assert ply(1, 6, is_us=True) == 14     # US   turn 1 AR6, the last ply of turn 1
-    assert ply(2, 0, is_us=False) == 15    # USSR turn 2 headline
+    assert ply(2, 0, is_us=True, headline_stage=1) == 15   # turn 2, first headline
     assert ply(10, 7, is_us=True) == FULL_GAME_PLIES
+
+
+@pytest.mark.parametrize("is_us", [False, True])
+def test_a_headline_ply_is_ordered_by_resolution_not_by_side(is_us: bool) -> None:
+    """The bug this parameter exists for: both sides reveal at once and the higher Ops card goes
+    first, so the US headline is the turn's FIRST ply whenever the US played the bigger card.
+    Numbering by side made the index run 30 -> 29 inside turn 3."""
+    assert ply(3, 0, is_us=is_us, headline_stage=1) == 29
+    assert ply(3, 0, is_us=is_us, headline_stage=2) == 30
+
+
+def test_stage_zero_is_the_first_headline_ply() -> None:
+    """While both players are still choosing, no card has resolved: that is the turn's first
+    headline ply, and it must not run ahead of the card that resolves next."""
+    assert ply(3, 0, is_us=False, headline_stage=0) == 29
+
+
+def test_a_headline_without_a_stage_is_refused_rather_than_guessed() -> None:
+    """A wrong ply returns a plausible number, so this has to fail loudly."""
+    with pytest.raises(ValueError, match="headline_stage"):
+        ply(3, 0, is_us=True)
 
 
 def test_early_war_turns_are_shorter_than_late_ones() -> None:
@@ -79,7 +100,8 @@ def test_ply_never_runs_backwards_across_a_real_game(seed: int) -> None:
     steps = 0
     while not ts_engine.Engine.is_terminal(state) and steps < 4000:
         current = ply(int(state.turn), int(state.action_round),
-                      is_us=state.phasing_player == ts_engine.Player.US)
+                      is_us=state.phasing_player == ts_engine.Player.US,
+                      headline_stage=int(state.headline_stage))
         assert 1 <= current <= FULL_GAME_PLIES + 4   # + an AR8's worth of slack
 
         # The schedule itself: (turn, action_round) is the engine's own ordering and must never
@@ -88,18 +110,13 @@ def test_ply_never_runs_backwards_across_a_real_game(seed: int) -> None:
         assert slot >= previous_slot, f"schedule went backwards: {previous_slot} -> {slot}"
         previous_slot = slot
 
-        # The ply index is monotonic within a turn's action rounds. It is NOT monotonic across
-        # the two headline plies: `ply` numbers the headline USSR-then-US, but the engine
-        # resolves headlines in descending card ops, so the US headline can resolve first and
-        # produce 30 -> 29 inside turn 3's headline. That is a real discrepancy between
-        # ai.game_length and the engine, not a property to assert away -- it is recorded in
-        # research/findings/engine/ply_headline_order.md. It costs at most one ply on a game
-        # that ends inside a headline, which is why terminal_plies tolerates it.
-        if int(state.action_round) != 0:
-            assert current >= previous, (
-                f"ply went backwards at turn {state.turn} AR {state.action_round}: "
-                f"{previous} -> {current}")
-            previous = current
+        # Monotonic everywhere, headlines included. This held only outside the headline until
+        # `ply` took headline_stage: it numbered the two headline plies USSR-then-US while the
+        # engine resolves them in descending Ops, which produced 30 -> 29 inside turn 3.
+        assert current >= previous, (
+            f"ply went backwards at turn {state.turn} AR {state.action_round} "
+            f"stage {state.headline_stage}: {previous} -> {current}")
+        previous = current
 
         mask = ts_engine.Engine.get_flat_action_mask(state)
         legal = [i for i, v in enumerate(mask) if v]

@@ -1,21 +1,14 @@
-# `ply` numbers headlines USSR-then-US; the engine resolves them in ops order
+# `ply` numbered headlines by side; the engine resolves them in Ops order
 
-**Status:** open, unsized beyond the bound below. Found 2026-09-16 while making
-`StateMachine::step` `[[nodiscard]]` (see [[engine_change_decision_stream]]).
+**Status:** fixed 2026-09-16 in `ai/game_length.py`. Previously logged `terminal_plies` and
+decisiveness numbers **stand** — the correction is 0.00026 SD, sized below.
 
-## What
+## What was wrong
 
-`ai/game_length.ply(turn, action_round, is_us)` assigns the two headline plies of a turn as
-USSR first, US second:
-
-```
-ply(3, 0, is_us=False) == 29
-ply(3, 0, is_us=True)  == 30
-```
-
-The engine does not resolve headlines in that order. Both sides reveal simultaneously and the
-higher-ops card resolves first, so when the US holds the higher-ops headline the walk observes
-ply 30 and then ply 29 — the index runs backwards inside `Phase::HEADLINE`.
+`ai.game_length.ply(turn, action_round, is_us)` numbered a turn's two headline plies USSR first,
+US second. The engine does not resolve them in that order: both players reveal simultaneously and
+the higher-Ops card resolves first, so when the US holds the bigger headline the walk observed
+ply 30 and then ply 29 — the index ran backwards inside `Phase::HEADLINE`.
 
 Reproduced deterministically at seed 2, step 121:
 
@@ -25,36 +18,50 @@ decision=DecisionType.POINT_NODE decision_player=Player.USSR
 previous ply 30 -> current ply 29
 ```
 
-## Why it went unnoticed
+## The fix
+
+`ply` now takes `headline_stage` and orders the two headline plies by **resolution**, not by side.
+`state.headline_stage` is the engine's own marker: 0 while both players are still choosing, 1
+while the first card resolves, 2 while the second does. Stages 0 and 1 are the turn's first
+headline ply; stage 2 is its second. Action rounds are unchanged — `advance_after_action_round`
+really does alternate USSR then US.
+
+`headline_stage` is **required** when `action_round == 0`, not defaulted. A wrong ply returns a
+plausible number rather than failing, so the omission has to raise; this repo has been bitten
+before by a defaulted parameter that silently returned the wrong thing.
+
+`FULL_GAME_PLIES` stays 154 and `plies_in_turn` is unchanged: a headline is still two plies, one
+per side. Only their order within the turn changed, so the ply scale is the same scale and no
+previous number is on a different axis.
+
+## Size of the correction
+
+Over 2,000 random-policy games:
+
+| quantity | value |
+|:---|---:|
+| games terminating inside a headline | 24 (1.20%) |
+| games whose terminal ply changed | 14 (0.70%) |
+| shift per affected game | exactly 1 ply |
+| mean shift over all games | 0.007 plies |
+| mean terminal ply / SD | 40.44 / 26.54 |
+| **shift as a fraction of one SD** | **0.00026** |
+
+Caveat on the sample: random play ends early (mean terminal ply 40 of 154), so the *rate* at which
+real games end in a headline may differ. The per-game bound does not — it is one ply, always, and
+only for a game that ends between the two headline cards.
+
+`ply` reaches one metric, `terminal_plies` in `bindings/ts_env.py`, which feeds the decisiveness
+metric. It reaches neither the observation, the reward, nor the action space.
+
+## How it stayed hidden
 
 `tests/engine_logic/test_game_length_plies.py::test_ply_never_runs_backwards_across_a_real_game`
 is exactly the test that should have caught it, and it was vacuous. It took its action from
-`Engine.get_legal_action_indices`, which returns indices into the **128-wide per-decision** mask,
-and fed them to `Engine.step_flat`, which reads the **flat 212-dim** space. Every step was
-refused; the refusal was discarded because `step` returned a bool nobody read; the loop ran its
-full 4000 iterations against a state that never moved. The monotonicity assertion passed because
-it never saw a second ply.
+`Engine.get_legal_action_indices` — the 128-wide **per-decision** space — and fed it to
+`Engine.step_flat`, which reads the **flat 212-dim** space. Every step was refused, the refusal
+discarded because `step` returned a bool nobody read, and the loop ran its full 4000 iterations
+against a state that never moved. The monotonicity assertion passed having never seen a second ply.
 
-Making `step` raise is what surfaced it.
-
-## Impact
-
-`ply` has one consumer that reaches a metric: `bindings/ts_env.py` computes `terminal_plies` from
-it, which feeds the decisiveness metric (`--decisiveness-turns`). The error is bounded at **one
-ply out of 154**, and only for a game that terminates inside a headline. Every other consumer
-(`tournament_evaluator`, `batch_tournament`) uses it the same way, as a length.
-
-It does **not** reach the observation, the reward, or the action space.
-
-## Not fixed here
-
-Two defensible resolutions, and the choice is the owner's because it moves a logged metric:
-
-1. Make `ply` order the headline by resolving ops rather than by side. Correct, but `ply` would
-   then need the card ops, which it does not currently take.
-2. Give both headline plies of a turn the same index, since "which side resolved first" is not
-   a length distinction. Cheapest, and adequate for every current consumer.
-
-The test now pins what is actually true — `(turn, action_round)` never runs backwards, and `ply`
-is monotonic across action rounds — and documents the headline exception rather than asserting
-it away.
+Making `step` raise ([[engine_change_decision_stream]], commit `941b45b`) is what surfaced it. The
+test now asserts monotonicity across the whole walk, headlines included, over five seeds.

@@ -384,7 +384,8 @@ class TsVectorizedEnv:
                     st, bool(held_scoring_us[i] or held_scoring_ussr[i])
                 )
                 terminal_plies[i] = _game_ply(
-                    int(st.turn), int(st.action_round), st.phasing_player == ts.Player.US)
+                    int(st.turn), int(st.action_round), st.phasing_player == ts.Player.US,
+                    headline_stage=int(st.headline_stage))
 
         # Retrieve state pointers for any terminal environments (or all environments if reward calculator requires it)
         states: List[Optional[ts.GameState]] = []
