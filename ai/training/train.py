@@ -237,6 +237,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Grow the opponent pool from this run's own snapshots, seeded with the initial policy. Use instead of --opponent-checkpoints.")
     parser.add_argument("--opponent-pool-size", type=int, default=12,
                         help="Maximum snapshots held in the pool. Eviction keeps the endpoints and drops the most redundant interior point, so the pool stays spread across the run rather than becoming all-recent.")
+    parser.add_argument("--opponent-pfsp", action="store_true", default=False,
+                        help="Draw the pool opponent by prioritised fictitious self-play instead "
+                             "of uniformly. NOTE: ai/training/opponent_pool.py argues this should "
+                             "HURT -- the pool's documented mechanism is that weak old snapshots "
+                             "give the learner's trailing side winnable games, and prioritisation "
+                             "removes exactly those. This flag exists to test that argument.")
+    parser.add_argument("--opponent-pfsp-weighting", type=str, default="var",
+                        choices=["var", "hard"],
+                        help="var: x(1-x), peaks on evenly matched opponents. hard: (1-x)^2, "
+                             "peaks on opponents beating the learner. Default var, because among "
+                             "past selves there is usually nothing beating the learner and 'hard' "
+                             "then degenerates to 'most recent'.")
+    parser.add_argument("--opponent-pfsp-uniform-mix", type=float, default=0.25,
+                        help="Floor of uniform probability mixed under the PFSP weights, so no "
+                             "pool member can be driven to zero. The pool's value is its spread.")
     parser.add_argument("--opponent-lock-side", type=str, default=None,
                         choices=["us", "ussr"],
                         help="Pin the learner to one side against the frozen opponent; default alternates")
@@ -309,6 +324,9 @@ def main():
             opponent_lock_side=args.opponent_lock_side,
             opponent_self_pool=args.opponent_self_pool,
             opponent_pool_size=args.opponent_pool_size,
+            opponent_pfsp=args.opponent_pfsp,
+            opponent_pfsp_weighting=args.opponent_pfsp_weighting,
+            opponent_pfsp_uniform_mix=args.opponent_pfsp_uniform_mix,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,

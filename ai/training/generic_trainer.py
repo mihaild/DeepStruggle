@@ -82,6 +82,12 @@ TB_TAGS: Dict[str, str] = {
 
     # --- opponent pool: is it actually growing, and does it still span the run? ------------
     "opp_pool_size": "opponent/pool_size",
+    "opp_win_rate_mean": "opponent/win_rate_mean",
+    "opp_win_rate_min": "opponent/win_rate_min",
+    "opp_win_rate_max": "opponent/win_rate_max",
+    "opp_games_recorded": "opponent/games_recorded",
+    "opp_pfsp_entropy": "opponent/pfsp_entropy",
+    "opp_pfsp_max_prob": "opponent/pfsp_max_prob",
     "opp_pool_span_m": "opponent/pool_span_msteps",
     "opp_frac_mixed": "opponent/frac_mixed",
     "adv_frac_near_zero": "internal/adv_frac_near_zero",
@@ -1161,6 +1167,9 @@ def train_pipeline(
     opponent_lock_side: Optional[str] = None,
     opponent_self_pool: bool = False,
     opponent_pool_size: int = 12,
+    opponent_pfsp: bool = False,
+    opponent_pfsp_weighting: str = "var",
+    opponent_pfsp_uniform_mix: float = 0.25,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1253,6 +1262,9 @@ def train_pipeline(
         "decisiveness_turns": decisiveness_turns,
         "train_steps": int(train_steps),
         "snapshot_every_steps": int(snapshot_every_steps),
+        "opponent_pfsp": bool(opponent_pfsp),
+        "opponent_pfsp_weighting": opponent_pfsp_weighting,
+        "opponent_pfsp_uniform_mix": float(opponent_pfsp_uniform_mix),
         "curriculum_switch_steps": (None if curriculum_switch_steps is None
                                     else int(curriculum_switch_steps)),
         "num_envs": num_envs,
@@ -1455,10 +1467,15 @@ def train_pipeline(
             seed=(seed or 0),
             lock_learner_side=_lock,
             capacity=opponent_pool_size,
+            pfsp=bool(opponent_pfsp),
+            pfsp_weighting=opponent_pfsp_weighting,
+            pfsp_uniform_mix=opponent_pfsp_uniform_mix,
         )
         print(f"[opponent pool] {_src}, frac={opponent_frac}, capacity={opponent_pool_size}, "
               f"self-growing={bool(opponent_self_pool)}, learner side="
-              f"{opponent_lock_side or 'alternating'}")
+              f"{opponent_lock_side or 'alternating'}, "
+              f"draw={'PFSP-' + opponent_pfsp_weighting if opponent_pfsp else 'uniform'}"
+              + (f" (uniform floor {opponent_pfsp_uniform_mix})" if opponent_pfsp else ""))
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]
@@ -1645,10 +1662,16 @@ def train_pipeline(
         # Only once enough games have finished for the tracker to report; logging a
         # placeholder 0.0 before then would draw a line that looks like a collapse.
         for _ck in ("critic_auc", "critic_auc_turn3", "critic_brier_skill",
-                    "critic_base_rate", "critic_samples",
-                    "opp_pool_size", "opp_pool_span_m", "opp_frac_mixed"):
+                    "critic_base_rate", "critic_samples"):
             if _ck in iteration_metrics:
                 step_metrics[_ck] = float(iteration_metrics[_ck])
+        # Every opponent-pool metric, by prefix rather than by name. This was a fixed list of
+        # three, so the per-opponent win rates added for PFSP were computed each iteration and
+        # silently dropped here -- caught by a smoke run, not by any test, because stats() was
+        # correct and only the forwarding was not. A prefix cannot go stale the same way.
+        for _ok, _ov in iteration_metrics.items():
+            if _ok.startswith("opp_") and isinstance(_ov, (int, float)):
+                step_metrics[_ok] = float(_ov)
         # Auxiliary losses only where the term that produces them is switched on. Logged
         # unconditionally they are a flat zero line for the whole run -- five of them on an
         # ordinary v2 run -- which reads as "trained and converged" rather than "not present".

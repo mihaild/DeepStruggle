@@ -394,7 +394,11 @@ class BaseNashPGTrainer:
                     # attached to whatever the next episode in this slot produces.
                     self.critic_tracker.reset_env(_i)
                 if self.opponent_pool is not None:
-                    self.opponent_pool.on_episode_end(_i)
+                    # The outcome goes with it: the pool keys its per-opponent win rates off
+                    # this, and without them there is no in-run signal for whether pooling works
+                    # and no basis for a PFSP draw.
+                    self.opponent_pool.on_episode_end(
+                        _i, victory_points=float(self._info["victory_points"][_i]))
 
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
                 # Win rate, ending mix and game length describe how the policy plays. Games
