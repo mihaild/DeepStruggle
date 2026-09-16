@@ -17,8 +17,8 @@ itself stays in `log/`.
 
 That expectation is an assumption, stated with its evidence in
 [`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md). The
-findings are filed the same way: [`findings/engine/`](findings/engine/) and
-[`findings/training/`](findings/training/).
+findings are filed the same way: [`findings/engine/`](findings/engine/README.md) and
+[`findings/training/`](findings/training/README.md).
 
 **Verdict vocabulary**, used strictly:
 

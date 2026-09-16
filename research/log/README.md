@@ -7,7 +7,7 @@ kept so that every existing cross-reference, inside and outside these files, sti
 entry. Nothing was rewritten: dead ends, abandoned arms, withdrawn claims and the self-corrections
 that followed them stay exactly as written, and **no file here is edited to match current belief**.
 For what is currently believed read `../findings/` — split since 2026-09-16 into
-[`engine/`](../findings/engine/), what the simulator does, and [`training/`](../findings/training/),
+[`engine/`](../findings/engine/README.md), what the simulator does, and [`training/`](../findings/training/README.md),
 what a training choice is worth; for how a measure is defined and what it can bear read
 `../method/`; for what runs next read `../plans/`. The preamble of the
 original file, including its maintenance rules, is preserved verbatim below the index.

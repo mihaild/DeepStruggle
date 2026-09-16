@@ -1,7 +1,7 @@
 # Plans — what is queued, in what order, and why
 
 This directory is the **queue**. Each file is one step that has not been run yet.
-[`../log/`](../log/) is the **record** of what was run. A step lives in exactly one of the two
+[`../log/`](../log/README.md) is the **record** of what was run. A step lives in exactly one of the two
 places at a time.
 
 > `experiments.md`, named throughout this file, was split by programme into `../log/` on

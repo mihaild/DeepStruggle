@@ -90,11 +90,11 @@ Navigate to:
 ## 3. Supported Agent Identifiers
 
 When using `--us`, `--ussr`, or `--agent` in `tools/play_match.py`:
-- `heuristic`: Rule-based battleground and scoring timing expert ([`HeuristicBot`](../../bot/heuristic_bot.py)).
-- `random`: Uniform stochastic player ([`RandomBot`](../../bot/random_bot.py)).
-- `strategic`: DEFCON-2 realist containment agent with rich strategy notes ([`StrategicBot`](../../bot/strategic_bot.py)).
-- `event_heavy`: Event-prioritizing agent with EVENT_FIRST timing ([`EventHeavyBot`](../../bot/event_heavy_bot.py)).
-- `exploratory`: Exploration agent testing Space Race, coups, and edge cases ([`ExploratoryBot`](../../bot/exploratory_bot.py)).
-- `human`: Interactive terminal player prompting for stdin input ([`HumanBot`](../../bot/human_bot.py)).
+- `heuristic`: Rule-based battleground and scoring timing expert ([`HeuristicBot`](../../../bot/heuristic_bot.py)).
+- `random`: Uniform stochastic player ([`RandomBot`](../../../bot/random_bot.py)).
+- `strategic`: DEFCON-2 realist containment agent with rich strategy notes ([`StrategicBot`](../../../bot/strategic_bot.py)).
+- `event_heavy`: Event-prioritizing agent with EVENT_FIRST timing ([`EventHeavyBot`](../../../bot/event_heavy_bot.py)).
+- `exploratory`: Exploration agent testing Space Race, coups, and edge cases ([`ExploratoryBot`](../../../bot/exploratory_bot.py)).
+- `human`: Interactive terminal player prompting for stdin input ([`HumanBot`](../../../bot/human_bot.py)).
 - `neural`: Auto-discovers and loads the latest trained `.pt` checkpoint.
 - Path to any `.pt` file (e.g. `data/checkpoints/<run>/<snapshot>.pt`): Loads that specific checkpoint, auto-detecting V1, V2, or V3 architecture.

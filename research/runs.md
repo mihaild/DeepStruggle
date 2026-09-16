@@ -18,7 +18,7 @@ a run and the outcome recorded against it are history, and those are not edited 
 
 **What the engine letter costs a row.** The tables below are grouped by engine revision because
 that is what decides which numbers may be compared. Two different things are at stake and they are
-filed apart in [`findings/`](findings/):
+filed apart in [`findings/`](findings/README.md):
 
 * **Absolute** — a row's Elo, win rate, ending mix or battleground count is a statement about the
   engine it was measured on. Across a letter it is void. What each boundary changed is
@@ -26,7 +26,7 @@ filed apart in [`findings/`](findings/):
 * **Relative** — what the arm *varied*, measured against its own matched control, is expected to
   carry across a letter. That expectation is an assumption with its evidence written down in
   [`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md), and the
-  results it licenses are [`findings/training/`](findings/training/).
+  results it licenses are [`findings/training/`](findings/training/README.md).
 
 So: read the `varied` column across engine revisions, and never the numbers in the writeup cell.
 

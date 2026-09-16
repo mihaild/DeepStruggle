@@ -1,7 +1,7 @@
 # findings/ — what is true now, split by what can invalidate it
 
 Short, current, cited. **Update discipline: rewritten in place** — a findings file states
-conclusions and links to the append-only [`../log/`](../log/); when a number is superseded it is
+conclusions and links to the append-only [`../log/`](../log/README.md); when a number is superseded it is
 replaced, and the narrative stays in the log. If a file here starts accumulating narrative it is
 drifting into log territory and should be cut back.
 
@@ -12,8 +12,8 @@ things:
 
 | | | invalidated by | survives |
 |:---|:---|:---|:---|
-| **[`engine/`](engine/)** | what the simulator does — rules, action-space and mask semantics, revision boundaries, and the instruments that measure them | a code defect found, a rules fix, a probe found to be lying | — a wrong instrument's numbers are simply gone |
-| **[`training/`](training/)** | what a training choice is worth — architecture, reward shaping, opponent pooling, value targets, seed variance | a better-powered replication, more seeds | an engine revision, under the assumption below |
+| **[`engine/`](engine/README.md)** | what the simulator does — rules, action-space and mask semantics, revision boundaries, and the instruments that measure them | a code defect found, a rules fix, a probe found to be lying | — a wrong instrument's numbers are simply gone |
+| **[`training/`](training/README.md)** | what a training choice is worth — architecture, reward shaping, opponent pooling, value targets, seed variance | a better-powered replication, more seeds | an engine revision, under the assumption below |
 
 The owner's statement of it: *"while engine changes can make old arms incomparable with new, they
 (after the starred events change) don't affect the relative effect of training approaches."* That

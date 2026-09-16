@@ -12,12 +12,12 @@ lives. Topic is a bad filing dimension — topics drift and a document ends up f
 
 | directory | discipline | the question it answers |
 |:---|:---|:---|
-| [`log/`](log/) | **append-only** — never rewritten | what did we try, and why do we believe it? |
-| [`findings/`](findings/) | **rewritten in place** — always current | what is true now? |
-| [`method/`](method/) | **living reference** | how do we measure this? |
-| [`plans/`](plans/) | forward-looking; becomes a log once run | what should we try next? |
-| [`papers/`](papers/) | static | what does the literature say? |
-| [`archive/`](archive/) | frozen | superseded material, kept for history |
+| [`log/`](log/README.md) | **append-only** — never rewritten | what did we try, and why do we believe it? |
+| [`findings/`](findings/README.md) | **rewritten in place** — always current | what is true now? |
+| [`method/`](method/README.md) | **living reference** | how do we measure this? |
+| [`plans/`](plans/README.md) | forward-looking; becomes a log once run | what should we try next? |
+| [`papers/`](papers/README.md) | static | what does the literature say? |
+| [`archive/`](archive/README.md) | frozen | superseded material, kept for history |
 
 Two files sit at the top level because they are indexes into everything below, and an index in a
 subdirectory is one nobody opens:
@@ -48,7 +48,7 @@ Two rules keep the first two from collapsing into one another:
 Not per engine era, and not per arm. An era would give one enormous file again as soon as the
 engine settles; an arm is too granular, and every interesting comparison spans several. A
 *programme* — one investigated question over several arms — is naturally bounded and is what
-[`plans/`](plans/) already numbers. Where a programme has a plan, the log carries its `PN` prefix,
+[`plans/`](plans/README.md) already numbers. Where a programme has a plan, the log carries its `PN` prefix,
 so `plans/PN` proposes and `log/PN` records. The engine era lives inside each entry, in the run's
 short name (`E3-15-21-80M`), which means a programme that straddles an engine bump stays in one
 file.
@@ -77,8 +77,8 @@ boundary is not clean.
 
 | directory | | invalidated by |
 |:---|:---|:---|
-| [`findings/engine/`](findings/engine/) | **(A)** what the simulator does — rules, mask semantics, revision boundaries, the instruments | a defect found, a rules fix, a probe caught lying |
-| [`findings/training/`](findings/training/) | **(B)** what a training choice is worth — architecture, reward, pooling, value targets, seed variance | a better-powered replication, more seeds |
+| [`findings/engine/`](findings/engine/README.md) | **(A)** what the simulator does — rules, mask semantics, revision boundaries, the instruments | a defect found, a rules fix, a probe caught lying |
+| [`findings/training/`](findings/training/README.md) | **(B)** what a training choice is worth — architecture, reward, pooling, value targets, seed variance | a better-powered replication, more seeds |
 
 | file | |
 |:---|:---|
