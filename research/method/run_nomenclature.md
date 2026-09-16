@@ -112,8 +112,28 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` |
 | 16 | v2 + identity | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` |
 | 17 | v2 + identity | E3-15 recipe, `--graph-layers 0` | 21, 22 | 80M, 160M | `E3-17-21_<ts>` |
+| 20 | v2 + identity | E3-17 recipe, **pooled** (`--opponent-self-pool`, frac 0.3, size 12) | 21, 22, 27, 28, 29 | 160M, 320M | `E3-20-2*_<ts>` |
+| 21 | v2 + identity | E3-20 recipe + `--same-perspective-bootstrap` | 28 | 160M | `E3-21-28_<ts>` |
 
-Seed `21` is 20260921 and `22` is 20260922.
+Seed `21` is 20260921, `22` is 20260922, and so on -- `28` is 20260928.
+
+**Attempts 18 and 19 are not recorded here.** Runs named `E3-20-*` exist on disk and the
+table jumped from 17 to 20; the two missing rows were never written down and are not
+reconstructed speculatively. 20 is filled in from `E3-20-28/metadata.json`.
+
+**E3-21 is the value-bootstrap arm.** It copies E3-20-28 flag for flag, seed included, and
+adds `--same-perspective-bootstrap`, which takes the value target from `V(s_{t+1}, p_t)` --
+the result as the player who just moved sees it -- instead of negating the next step's
+value. The negation assumes `V(s, me) = -V(s, opponent)`, which holds under perfect
+information and not here: measured over 227 positions, `v_US + v_USSR` has mean absolute
+0.144 where the identity requires 0. E3-20-28 is therefore a matched baseline at the same
+seed. See `research/log/search_cost_and_coverage.md` §8.
+
+One caveat on the pairing: `b6874af` and `9f78026` changed `engine/` after E3-20-28 was
+trained. The training decision stream is unchanged -- no `ROLL_DIE` node is ever handed to
+an agent (0 in 879 single-env and 12,800 vectorized env-steps) and the runner always forces
+die 0 -- so the engine letter stays E3 and the pair is comparable. That is a measured
+claim, not an assumption, and it is the reason the letter was not bumped.
 
 **E3-12 and E3-13 carry `--identity-dim 16`, and their control is E3-10, not E3-01.** Identity
 is part of the recipe as of the identity arms (`research/log/P9_architecture.md`), so an arm that omitted it would be measuring identity again.
