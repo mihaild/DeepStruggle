@@ -237,3 +237,43 @@ without it the run reported a forced opening that was half junk, and it reported
 (US win rate down, Europe-control endings up -- the story one would expect). `get_decision_players()`
 is the correct, vectorized source. The probe now raises if any placement goes off-script, since a
 partly-forced setup measures neither opening.
+
+## A run watcher tracked "some training process", not its own run
+
+`tools/scripts/watch_run.py` exists because "silence and success look identical" — it watches
+whether the step counter is advancing and emits a terminal event either way. Its liveness check
+was `pgrep -f <pattern>` with `--pattern` defaulting to `tools/train.py`, which is true whenever
+**any** run is on the box.
+
+Found on 2026-09-16, the same day as the E3-22-28 relaunch. The first E3-22-28 attempt was killed
+at 47M steps and a corrected run launched in its place. The old watcher, still pointed at the
+killed run — whose directory had by then been *renamed* — reported
+
+```
+STALL E3-22-28_20260916_121202: alive but stuck at 43,515,904 steps for 1800s
+```
+
+It was not stuck. It was dead, and its directory was gone. The watcher was reading the liveness of
+the **replacement** run and attributing it to the dead one.
+
+The script's own docstring had worried about a neighbouring version of this — that `pgrep -f
+<run-name>` also matches the watcher itself, making liveness permanently true — and filtered the
+self-match. It did not consider that a *different run* could supply the same false liveness, which
+is the likelier case, since relaunching after a fault is exactly when two runs coexist.
+
+Severity is moderate rather than high: the wrong event still fires, so the failure is loud, and a
+STALL prompts the same investigation a CRASH would. The danger is the opposite pairing — a run
+that dies while a sibling lives reads as merely stuck, so a crash can be mistaken for a hang and
+waited out.
+
+**Fixed by making the run identify itself.** `train_pipeline` writes its PID to `run.pid` in the
+run directory before anything can fail, and the watcher checks that exact process with
+`os.kill(pid, 0)`. The pattern match survives only as a fallback for runs started before the file
+existed — including the E3-22-28 relaunch itself, which was already running when this was written.
+`tests/training/test_watch_run_liveness.py` pins the regression: a dead run with a live sibling
+must report CRASH and must not report STALL.
+
+A second, smaller thing the test caught about its own design: a watcher on a *healthy* run never
+exits, because it exits only on a terminal state. A test that waits for exit therefore hangs. The
+helper now takes whatever the watcher printed within a deadline and kills it, which is also how a
+human should read it — the absence of a terminal event is the good news.

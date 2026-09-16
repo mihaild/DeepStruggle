@@ -1202,6 +1202,16 @@ def train_pipeline(
     # ones.
     out_dir = _resolve_run_dir(output_dir, run_name, arch, timestamp)
     os.makedirs(out_dir, exist_ok=True)
+    # This run's own PID, so a watcher can tell THIS run from any other training process on the
+    # box. tools/scripts/watch_run.py otherwise matches `pgrep -f tools/train.py`, which is true
+    # whenever any run is alive: a dead run then reports STALL instead of CRASH, which is the
+    # confusion that script exists to prevent. Written before anything can fail, and left behind
+    # deliberately -- a stale pid file whose process is gone reads as "dead", which is correct.
+    try:
+        with open(os.path.join(out_dir, "run.pid"), "w", encoding="utf-8") as _pf:
+            _pf.write(f"{os.getpid()}\n")
+    except OSError:
+        pass  # a watcher that cannot read it falls back to the pattern match
 
     log_path = os.path.join(out_dir, "training_metrics.jsonl")
     report_path = os.path.join(out_dir, "tournament_report.md")

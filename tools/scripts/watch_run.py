@@ -90,8 +90,38 @@ def _cmdline(pid: str) -> str:
         return ""
 
 
+def pid_alive(pid: int) -> bool:
+    """Is this exact process still running? Signal 0 tests existence without touching it."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else
+    return True
+
+
+def run_pid(run_dir: str) -> Optional[int]:
+    """The PID the run recorded for itself, if it recorded one.
+
+    Preferred over any pattern match, because a pattern cannot distinguish two runs. Runs started
+    before the trainer wrote this file have none, and the caller falls back.
+    """
+    try:
+        with open(os.path.join(run_dir, "run.pid"), encoding="utf-8") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
 def process_alive(pattern: str) -> bool:
-    """Is the watched training process still running?
+    """Is *a* training process still running, by command-line pattern?
+
+    The fallback for runs with no `run.pid`. It cannot tell one run from another: the default
+    pattern is `tools/train.py`, which matches ANY run on the box, so a dead run reports STALL
+    rather than CRASH while a sibling run is alive. That happened on 2026-09-16 when E3-22-28 was
+    relaunched and the old watcher kept reporting on the run that had been killed. Prefer
+    `run_pid`; this exists only for runs that predate it.
 
     **Must exclude this watcher and its shell.** `--pattern` is normally the run name, and the
     watcher's own command line contains the run name too (it is an argument), so a bare
@@ -156,7 +186,8 @@ def main() -> int:
 
     while True:
         steps, row, iters = read_metrics(args.run_dir)
-        alive = process_alive(args.pattern)
+        pid = run_pid(args.run_dir)
+        alive = pid_alive(pid) if pid is not None else process_alive(args.pattern)
         now = time.time()
 
         if steps is not None and not started:
