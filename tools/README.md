@@ -39,6 +39,22 @@ flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps agains
 baseline's ~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
 `--opponent-frac 0.3` that made it a two-factor experiment. It was thrown away.
 
+### Before spending a run on a new advantage estimator
+
+`tools/scripts/advantage_variance_probe.py <checkpoint.pt>` computes every estimator over **one
+shared rollout** and reports advantage spread. Minutes of GPU against the hours an arm costs.
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python tools/scripts/advantage_variance_probe.py \
+    data/checkpoints/<run>/snapshot_<N>steps.pt
+```
+
+It exists because sane return targets do not clear an estimator. Per-player GAE beat the default
+on every offline return metric -- RMSE 0.551 -> 0.481, outcome correlation 0.861 -> 0.901, exact
+telescoping at lambda 1 -- and lost by **520 Elo** at 80M steps, because its advantages carried
+28% more variance on identical data. The advantage is what the policy gradient consumes; the
+return target is not.
+
 ### Reading an A/B
 
 `tools/compare_runs.py <baseline-dir> <arm-dir>` compares two runs at matched step counts. It

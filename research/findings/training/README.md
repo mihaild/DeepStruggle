@@ -10,7 +10,7 @@ these outlive the engine revision they were measured on, where an absolute ratin
 | [`architecture.md`](architecture.md) | the backbone progression — identity, self-transform, per-entity heads — and what each was worth |
 | [`pooling.md`](pooling.md) | the opponent pool: decisive on side balance, unresolved on strength; and the four unrelated things the word "pool" names here |
 | [`seed_variance.md`](seed_variance.md) | how much of a rating is just where the run stopped — the error bars, and the two conclusions they withdraw |
-| [`value_bootstrap_perspective.md`](value_bootstrap_perspective.md) | why the perspective negation in GAE is load-bearing: the assumption behind it is false (0.144 mean absolute), and replacing it breaks the telescoping and costs more than it fixes |
+| [`value_bootstrap_perspective.md`](value_bootstrap_perspective.md) | why the perspective negation in GAE is load-bearing: the assumption behind it is false (0.144 mean absolute), and both replacements lose — patching the term breaks telescoping (E3-21-28), and per-player trajectories telescope correctly but add 28% advantage variance and lose **520 Elo** at 80M (E3-22-28). Also: a better offline return estimate is not a better training signal |
 | [`throughput.md`](throughput.md) | what a run actually costs per step — and the two confounds (GPU model, concurrent runs) that made every earlier rate misleading |
 | [`defcon_blunders.md`](defcon_blunders.md) | that the critic never sees a provoked DEFCON-1, and what windowing the credit costs |
 

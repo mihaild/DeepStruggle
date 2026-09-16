@@ -357,3 +357,40 @@ way and more thoroughly — 1,068 games, 385,812 steps, four policies, comparing
 length, chosen action **and the legal mask itself** at every step against a build of `a09e15a`,
 with **zero divergences of any kind**. The letter stays E3 and the pairing stands. See
 [`findings/engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md).
+
+**E3-22-28 ran to 80M and is a decisive negative result.** Two attempts.
+
+The first, `E3-22-28_20260916_121202_VOID_thin_opponent_pool`, was **voided at 47M steps** — not
+for a crash but because it was not a one-factor comparison. Its eval cadence was derived from the
+time flags, `train_steps // (duration_seconds // snapshot_interval_seconds)` = 160M // 6 = 26.7M,
+against the baseline's ~5M. Snapshots feed the self-play opponent pool, so at 45M it had 2 pool
+opponents spanning 26.7M where the baseline had 9 spanning 40M, and `--opponent-frac 0.3` put a
+third of its games against that pool. Over its eleven 5M windows the critic was indistinguishable
+from baseline (AUC −0.0074, 95% CI [−0.022, +0.007]) — a null that means nothing, because the arm
+differed in two factors. Neither run's metadata even recorded its snapshot cadence. The time flags
+were removed outright in response (`9277cac`), and `tools/compare_runs.py` (`8df58bc`) now diffs
+configuration *and observed pool growth* before it will show a metric.
+
+The second, `E3-22-28_20260916_132615`, ran with `--snapshot-every-steps 5000000` and matched the
+baseline's pool growth exactly (1@0.1M, 2@5.1M, 3@10.1M, 4@15.1M, 5@20.1M on both). It was stopped
+at **80,019,456 steps** for a tournament.
+
+**Elo at 80M: 1754.4 against the baseline's 2274.8 — a 520-point gap**, with the baseline taking
+96.1% of their head-to-head. The arm regressed between 60M and 80M (1839 → 1754) while the baseline
+was still climbing, and `arm_80M` is weaker than `base_20M`: four times the compute for a worse
+player. Tournament: `data/tournaments/E3-22-28_vs_E3-20-28/`, 45,000 games, anchored on
+HeuristicBot at 1500.
+
+The cause is variance in the advantages, not a wiring fault and not the value targets. Computing
+**both estimators over one shared rollout** puts per-player advantage SD at 1.28x the interleaved
+one (0.2963 vs 0.2314) while the return targets stay sane and 0.979-correlated. Per-player delta
+spans the opponent's move and any dice, so the opponent's variance lands on the mover's advantage
+at full weight — which is exactly the objection the owner raised when the change was proposed, and
+which I answered with the wrong measurement (one-step spread at a frozen policy, which reverses
+sign against the quantity the policy gradient actually consumes).
+
+The transferable lesson, and the reason this is worth the two runs: **a better offline return
+estimate is not a better training signal.** Per-player GAE beats the default on every offline
+metric — RMSE 0.551 → 0.481, outcome correlation 0.861 → 0.901, exact telescoping at λ=1 — and
+loses by 520 Elo. Full account in
+[`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
