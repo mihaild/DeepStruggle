@@ -1,7 +1,15 @@
 # Plans — what is queued, in what order, and why
 
-This directory is the **queue**. Each file is one step that has not been run yet. `experiments.md`
-is the **record** of what was run. A step lives in exactly one of the two places at a time.
+This directory is the **queue**. Each file is one step that has not been run yet.
+[`../log/`](../log/) is the **record** of what was run. A step lives in exactly one of the two
+places at a time.
+
+> `experiments.md`, named throughout this file, was split by programme into `../log/` on
+> 2026-09-13 and no longer exists; its section numbers were kept, so a `§N` reference still
+> resolves via [`../log/README.md`](../log/README.md). Read "write the entry in `experiments.md`"
+> as "write the entry in the programme's file under `../log/`", and see
+> [`../method/bookkeeping.md`](../method/bookkeeping.md) for the rest of what a finished step
+> owes: a row in [`../runs.md`](../runs.md) and a verdict in [`../questions.md`](../questions.md).
 
 > **Stale baseline throughout this directory.** Every plan here was written when observation
 > layout **v2.2** was the adopted baseline and arm G's 320M snapshot the strongest checkpoint.

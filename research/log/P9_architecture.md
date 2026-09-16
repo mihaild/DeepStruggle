@@ -11,7 +11,8 @@ now and what each change is worth — are kept current and short in
 [`../findings/architecture.md`](../findings/architecture.md); this file is why they are believed.
 The plan this programme was run from is
 [`../plans/P9_graph_architecture.md`](../plans/P9_graph_architecture.md), and the arm names are
-decoded in [`../method/run_nomenclature.md`](../method/run_nomenclature.md).
+decoded in [`../runs.md`](../runs.md), and the scheme behind them in
+[`../method/run_nomenclature.md`](../method/run_nomenclature.md).
 
 These entries were written under the section numbers of the original `research/experiments.md`, by
 way of the retired `research/metrics.md`. The numbers are recorded here so older references still
@@ -40,6 +41,21 @@ resolve; new entries get a descriptive heading and no number.
 | §21.17 | The architecture progression on one scale |
 | §21.18 | Does the network price a country for the operation it is performing? |
 | §21.19 | Does it know which region a scoring card scores? |
+
+## Where the conclusions from this file now live
+
+This file is 1,300 lines and three of its topics were being looked up on their own, which meant
+scrolling a journal to find a verdict. Those verdicts were extracted into `../findings/` on
+2026-09-16. **Nothing was removed from here** — the sections below still carry the full setup,
+the predictions and the retractions, which is what a log is for. Each extracted section carries a
+one-line pointer under its heading, in the same way sections that moved out of `experiments.md`
+left a stub behind.
+
+| section here | current verdict now in |
+|:---|:---|
+| §21.1 the critic and the provoked DEFCON-1; §21.2 windowing | [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md) |
+| *Seed variance is ~95 Elo* (unnumbered, at the end) | [`../findings/seed_variance.md`](../findings/seed_variance.md) |
+| §21.5–§21.19, the architecture progression and the probes | [`../findings/architecture.md`](../findings/architecture.md), as before |
 
 ---
 
@@ -108,6 +124,9 @@ warm start cannot save re-learning something nothing learns in the first place.
 
 ## The critic does not see a provoked DEFCON-1 coming, at any node
 
+> Current verdict: [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md). The trace
+> below is the evidence and stays here.
+
 Traced through the `h2_480M_provoked_*` replays by replaying their recorded flat actions through
 a fresh engine on the replay's own seed and reading `v_win` from the **losing** side's
 perspective. (Perspective checked: the two sides sum to +0.05 at a sampled node, so these are
@@ -152,6 +171,9 @@ what `v_win` demonstrably does not encode. Its label is the same `defcon_blunder
 excludes provoked endings, so the one-line label fix is a prerequisite for either.
 
 ## Windowing a provoked DEFCON-1 moves exactly the class it targets
+
+> Current verdict: [`../findings/defcon_blunders.md`](../findings/defcon_blunders.md) — not
+> adopted, −68 Elo on two seeds. The arm is E3-08 in [`../runs.md`](../runs.md).
 
 `--window-provoked-defcon` credits a provoked DEFCON-1 to the player who played the card, using
 the existing turn-scoped blunder window, instead of letting the -1 propagate back as an ordinary
@@ -867,9 +889,9 @@ guessed one. Two things the ladder adds to it:
 ## Fixing the graph layer works; attention-pooling into the trunk does not
 
 Two architecture changes, both aimed at the pooling defect above, both with their predicted
-effect written down in [`../method/run_nomenclature.md`](../method/run_nomenclature.md) before
-the runs. One prediction held exactly and the other failed, which is
-the more useful of the two outcomes.
+effect written down before the runs — the predictions live with their arms in
+[`../runs.md`](../runs.md), *E3-12 and E3-13*. One prediction held exactly and the other failed,
+which is the more useful of the two outcomes.
 
 * **E3-12** (`--self-transform`) gives each graph layer a second weight matrix applied to the node
   itself, so a country need not be averaged with its neighbours.
@@ -1274,6 +1296,9 @@ distribution even though both models see identical inputs. E3-15 is one seed.
 ---
 
 ## Seed variance is ~95 Elo, and it invalidates the graph-depth comparison
+
+> Current verdict, with every other variance figure alongside it:
+> [`../findings/seed_variance.md`](../findings/seed_variance.md).
 
 The E3-12/E3-15/E3-17 tournament (400 games per side, `data/tournaments/e3_12_15_17_report.md`)
 was the first time two seeds of the same architecture were rated in the same field. They are far

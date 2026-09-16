@@ -26,6 +26,14 @@ original file, including its maintenance rules, is preserved verbatim below the 
 | [`corrected_engine_arms_H_I.md`](corrected_engine_arms_H_I.md) | §25–§27 | arms H/H2 on v2.3 and the corrected engine, the NashPG KL-penalty ablation, and 240M → 480M |
 | [`search_cost_and_coverage.md`](search_cost_and_coverage.md) | — | what search costs per decision, what fraction of decisions it is worth spending on, and why the +27pp figure does not transfer to a cheaper arm |
 | [`europe_control_and_held_scoring.md`](europe_control_and_held_scoring.md) | — | E3-15 / E3-17: why the USSR takes Europe (West Germany is never contested), what the per-side held-scoring series actually says, and the forced human opening |
+| [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) | — | the seed spread that withdrew the first pooling result, the US decay from 80M to 160M, and the analysis plan fixed before the 4 × 4 landed |
+
+**Conclusions extracted on 2026-09-16.** Three topics were being looked up on their own and were
+buried inside long journals. Their current verdicts now live in `../findings/` —
+[`pooling.md`](../findings/pooling.md), [`seed_variance.md`](../findings/seed_variance.md) and
+[`defcon_blunders.md`](../findings/defcon_blunders.md) — and each source section here carries a
+one-line pointer under its heading. Nothing was removed: the setups, the predictions and the
+retractions stay where they were written, which is the only property this directory has.
 
 Several entries were moved to the old `../metrics.md` before this split and left stubs behind;
 the stubs travelled with their section. `metrics.md` has since been split in turn, into

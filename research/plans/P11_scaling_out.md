@@ -22,11 +22,16 @@ The arm to fix is the E3-17 family (0 graph layers), resumed from its healthy 80
 
 | run | what | status |
 |:---|:---|:---|
-| E3-18-22 | control: 160M -> 240M unchanged | running |
-| E3-19-22 | pooled opponents, frac 0.30, 8 snapshots | running |
-| — | frac 0.15 | to run |
-| — | frac 0.50 | to run |
-| — | single frozen 160M opponent, learner locked US (P10 exp 2) | to run |
+| E3-18-22 | control: 160M -> 240M unchanged | **finished; no result written up** |
+| E3-19-22 | pooled opponents, frac 0.30, 8 snapshots | **finished**, rated in `arena80_160` ([`../findings/pooling.md`](../findings/pooling.md) §1) |
+| — | frac 0.15 | **never launched** |
+| — | frac 0.50 | **never launched** |
+| — | single frozen 160M opponent, learner locked US (P10 exp 2) | **never launched** |
+
+*Status column updated 2026-09-16 from `data/checkpoints/*/metadata.json` and the arena reports;
+the prose below is as written. Phase 2 was in effect run as the 4 × 4 replication — see
+[`../findings/pooling.md`](../findings/pooling.md) — and Phase 3, graph depth × 4 seeds, has not
+been run, which is why graph depth is still open.*
 
 Judged on `critic_auc`, `critic_brier_skill` and `adv_std_raw` holding up, **not** on the US
 recovering -- the runaway is bidirectional, so the target is that neither side's signal dies.

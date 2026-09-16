@@ -187,3 +187,18 @@ A 4 × 4 replication (E3-17-22/24/25/26 against E3-20-22/27/28/29) is running. T
 recorded before the arms land: **null**. If it is null, the recommendation is *not* more pooling
 seeds but a move to `eta` — it targets the oscillation directly, it is an existing flag, and
 unlike the pool it has a mechanism that plausibly damps variance rather than redirecting it.
+
+---
+
+## Status 2026-09-16: the replication landed and the prediction of a null was wrong
+
+The 4 × 4 arms finished, and two pooled arms were extended to 320M against an unpooled control.
+On **side balance** the conditions separate completely at 160M — every pooled arm inside 7.2 pp
+of even, every unpooled arm at least 28.4 pp USSR-favoured. On **strength** nothing is
+established: pooled is +98.7 Elo on arm means while the pooled arms span 221 Elo among
+themselves, which is the credibility rule this plan set for itself. The pre-registered endpoint
+above was never computed; what exists is a different instrument.
+
+Results, caveats and what is still missing — including that experiment 1 (E3-18-22) ran and was
+never written up, and that frac 0.15 and 0.50 were never launched — are in
+[`../findings/pooling.md`](../findings/pooling.md). This plan file stays as written.

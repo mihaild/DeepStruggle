@@ -1,4 +1,10 @@
-# Run nomenclature
+# Run nomenclature — the naming scheme
+
+**This file is the scheme and nothing else.** The arms themselves — what each one varied, its
+seeds, its budgets, its checkpoint directory and where its result is written up — are in
+[`../runs.md`](../runs.md), the registry. They were one file until 2026-09-16, and mixing them
+meant that looking up what `E3-20` *is* required reading three pages of prose about what `E3-14`
+*measured*.
 
 Every number in this project is only meaningful relative to four things, and three of them have
 silently changed under a comparison at least once:
@@ -25,7 +31,7 @@ steps. A continuation keeps everything and changes the budget: `E3-10-21-160M`.
 - **engine letter** — bumped whenever `engine/` or `bindings/` changes the decision stream.
   Checkpoints from different engine letters may be *evaluated* together, but the result is a
   cross-engine comparison and must be labelled as one.
-- **attempt number** — one row in the table below, fixing observation, architecture,
+- **attempt number** — one row in [`../runs.md`](../runs.md), fixing observation, architecture,
   intervention and recipe. Numbered **from 01 within each engine letter**, so both halves of the
   prefix carry information. It does **not** include the seed.
 - **seed** — its own field, the last two digits of the sampling seed (`21` is 20260921). Two
@@ -36,19 +42,19 @@ steps. A continuation keeps everything and changes the budget: `E3-10-21-160M`.
 - **steps** — the budget the checkpoint was taken at, never omitted. Nothing is comparable
   across budgets.
 
-The table is the contract. A short name is only meaningful with it, so it lives in the repository
-and is updated in the same commit as the run.
+The registry is the contract. A short name is only meaningful with it, so it lives in the
+repository and is updated in the same commit as the run.
 
 ## The directory carries the name
 
-A short name that lives only in this file is one someone has to look up. The directory is what
+A short name that lives only in a table is one someone has to look up. The directory is what
 every later command quotes, so it is where the name has to be:
 
     data/checkpoints/E3-12-21_20260912_181622
 
 `tools/train.py --run-name E3-12-21` builds it, validates it against the scheme, and records it
 in `metadata.json` as `run_name`. **The steps field is deliberately absent from the directory**:
-one directory holds every budget of a lineage -- `p1_scalar_nofilter` holds 80M, 160M and 240M --
+one directory holds every budget of a lineage — `p1_scalar_nofilter` holds 80M, 160M and 240M —
 so a steps field in the directory name is a claim that goes stale the first time the run is
 continued. Each snapshot's own filename carries its budget.
 
@@ -56,15 +62,15 @@ Passing `--run-name` together with an `--output-dir` whose basename does not con
 error rather than a preference, because the quiet version of that writes one arm's weights into a
 directory named for another.
 
-The directories named in the tables below predate this and are left alone: renaming them would
-break every path in `research/` that cites one, which is a worse failure than an unhelpful name.
-The `directory` column is what maps them back.
+The directories predating the scheme are left alone: renaming them would break every path in
+`research/` that cites one, which is a worse failure than an unhelpful name. The `directory`
+column of [`../runs.md`](../runs.md) is what maps them back.
 
 ## Engine revisions
 
 | letter | from | what changed in the decision stream |
 |:---|:---|:---|
-| **E1** | before `cff2344` | pre-starred-card fix: a starred card spent for Operations was deleted from the game. Arms A-G and everything older. Not runnable -- the observation layouts they used are gone -- and not numbered below. |
+| **E1** | before `cff2344` | pre-starred-card fix: a starred card spent for Operations was deleted from the game. Arms A–G and everything older. Not runnable — the observation layouts they used are gone. |
 | **E2** | `cff2344`, `25d9b70` | starred-card fix, observation v2.3. Arms H, H2, I. |
 | **E3** | `1a3b782`, `a18ceab` | the Aldrich Ames discard and the Star Wars pick made mandatory. Everything from P1 onward. |
 
@@ -74,190 +80,26 @@ An attempt number is unique **within its engine letter**, not across the project
 arm on a new engine is `01`.
 
 The first draft of this file numbered them globally, which put the E3 control at `E3-03` with
-nothing before it on that engine -- and made the letter redundant, since a global `03` already
+nothing before it on that engine — and made the letter redundant, since a global `03` already
 implies E3. Restarting per engine keeps both halves of the name carrying information.
 
-### E2
+## When the letter does *not* bump
 
-| # | architecture | intervention | seeds | directory |
-|---:|:---|:---|:---|:---|
-| 01 | v2 | baseline (arm H) | — | `arm_H_v23_corrected` |
-| 02 | v2 | baseline (arm H2) | 21 | `arm_H2_v23_seedB`, `arm_H2_cont_160to240`, `arm_H2_cont_240to480` |
-| 03 | v2 | `eta` 0, no KL to the reference (arm I) | — | `arm_I_no_kl` |
-
-`E2-02-21` is one lineage across four budgets, so the strongest checkpoint in the project is
-**`E2-02-21-480M`**.
-
-### E3
-
-Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless noted.
-"Intervention" is what distinguishes the row from the control, E3-01.
-
-| # | architecture | intervention | seeds | budgets | directory |
-|---:|:---|:---|:---|:---|:---|
-| 01 | v2 | — (control) | 21 | 80M, 160M, 240M* | `p1_scalar_nofilter` |
-| 02 | v2 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` |
-| 03 | v2 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` |
-| 04 | v2 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` |
-| 05 | v2 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` |
-| 06 | v2 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` |
-| 07 | v2 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` |
-| 08 | v2 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` |
-| 09 | **mlp** | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` |
-| 10 | v2 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` |
-| 11 | **mlp** | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` |
-| 12 | v2 + identity | `--self-transform` | 21, 22 | 80M | `E3-12-2*_<ts>` |
-| 13 | v2 + identity | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` |
-| 14 | v2 + identity | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` |
-| 15 | v2 + identity | `--self-transform --per-entity-heads 64`, **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` |
-| 16 | v2 + identity | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` |
-| 17 | v2 + identity | E3-15 recipe, `--graph-layers 0` | 21, 22 | 80M, 160M | `E3-17-21_<ts>` |
-| 20 | v2 + identity | E3-17 recipe, **pooled** (`--opponent-self-pool`, frac 0.3, size 12) | 21, 22, 27, 28, 29 | 160M, 320M | `E3-20-2*_<ts>` |
-| 21 | v2 + identity | E3-20 recipe + `--same-perspective-bootstrap` | 28 | 160M | `E3-21-28_<ts>` |
-
-Seed `21` is 20260921, `22` is 20260922, and so on -- `28` is 20260928.
-
-**Attempts 18 and 19 are not recorded here.** Runs named `E3-20-*` exist on disk and the
-table jumped from 17 to 20; the two missing rows were never written down and are not
-reconstructed speculatively. 20 is filled in from `E3-20-28/metadata.json`.
-
-**E3-21 is the value-bootstrap arm.** It copies E3-20-28 flag for flag, seed included, and
-adds `--same-perspective-bootstrap`, which takes the value target from `V(s_{t+1}, p_t)` --
-the result as the player who just moved sees it -- instead of negating the next step's
-value. The negation assumes `V(s, me) = -V(s, opponent)`, which holds under perfect
-information and not here: measured over 227 positions, `v_US + v_USSR` has mean absolute
-0.144 where the identity requires 0. E3-20-28 is therefore a matched baseline at the same
-seed. See `research/log/search_cost_and_coverage.md` §8.
-
-One caveat on the pairing: `b6874af` and `9f78026` changed `engine/` after E3-20-28 was
-trained. The training decision stream is unchanged -- no `ROLL_DIE` node is ever handed to
-an agent (0 in 879 single-env and 12,800 vectorized env-steps) and the runner always forces
-die 0 -- so the engine letter stays E3 and the pair is comparable. That is a measured
-claim, not an assumption, and it is the reason the letter was not bumped.
-
-**E3-12 and E3-13 carry `--identity-dim 16`, and their control is E3-10, not E3-01.** Identity
-is part of the recipe as of the identity arms (`research/log/P9_architecture.md`), so an arm that omitted it would be measuring identity again.
-
-Both target what `research/log/P9_architecture.md` localised (*exact influence and control,
-read off the trunk per country*): a country's exact influence is
-recoverable from its own raw observation slots 97% of the time, from its post-GraphConv token
-63%, and from the pooled 512-float trunk essentially never. E3-12 gives each graph layer a second
-weight matrix applied to the node itself, so a country need not be averaged with its neighbours;
-E3-13 adds an attention read-out at the end of the trunk, where the state vector queries the 84
-country and 110 card tokens -- each concatenated with its raw slots, because the token is itself
-already damaged -- and folds the result back into the trunk.
-
-Predictions were recorded before the runs, so the result could not be read backwards: E3-12
-should lift the `gconv` rungs and leave the trunk near zero; E3-13 should lift the trunk toward
-the token's 63%. Elo may not move at all, and that would itself be the finding.
-
-**Outcome: the first held, the second failed, and Elo moved.** E3-12 lifted `gconv1` recovery from
-60% to 93-94% on both seeds and is worth **+53 and +83 Elo**. E3-13's read-out left the trunk
-where E3-12 already put it and cost the whole gain, **−14 and −23**. A single-query read-out is
-still a pooling operation, so it could not have done otherwise. `--self-transform` is adopted;
-`--attn-readout` is not. See `research/log/P9_architecture.md`, *fixing the graph layer works*.
-
-**E3-14** keeps E3-12's adopted self-transform and replaces the dense policy head for the actions
-that name an entity. A card's logit is computed from that card's own token and raw slots, and a
-country's from that country's, each conditioned on a projection of the trunk; the 18 actions that
-name no entity -- play mode, timing, op mode, branch, confirm -- stay dense.
-
-It follows directly from the attention read-out's negative result (`research/log/P9_architecture.md`). The attention read-out failed because a
-single-query read-out is still a pooling operation: one query over 84 countries returns one
-weighted average. The token holds 89-91% of the recoverable exact influence and the pooled trunk
-holds 6-14%, so the remaining move is to stop routing the board through the trunk at all.
-
-**Outcome: both halves of the prediction were wrong.** The trunk moved *up* (battleground
-recovery 26.9% against E3-12's 14.3% and 6.1%) and Elo collapsed to **−219** against E3-12-21 --
-below even the E3-10 control. The cause is in the implementation: `pe_trunk` projects the trunk
-512 → 64 before the heads see it, so every action logit lost seven eighths of its view of the
-situation to gain its own country's detail. The idea is untested; this build of it is refuted.
-The residual form (`logit = dense + correction`) is what to try. See `research/log/P9_architecture.md`, *per-entity policy heads, built wrong*.
-
-Prediction, recorded before the runs: **the trunk ladder should not move** -- nothing here changes
-what the trunk holds -- and the Elo should, because the information now reaches the decision by
-another path. If Elo does not move while a country's logit demonstrably tracks its own influence
-(`tests/training/test_arch_variants.py`), then exact per-country influence is not what the policy
-was missing, and the self-transform's +53/+83 came from somewhere else in the representation.
-
-**E3-15** is E3-14 rebuilt as a residual: `logit = dense + per-entity correction`, with the
-correction's output layers zero-initialised so the network *starts* as the dense baseline exactly.
-E3-14 replaced the dense head, which made a 64-float projection the only path from the trunk to
-any logit and cost 219 Elo; here the full trunk still reaches every logit through `base`, and the
-narrow context limits only how much situation the correction itself can see.
-
-Predictions, recorded before the runs:
-
-* It cannot start worse than the dense baseline, so a repeat of E3-14's collapse would mean the
-  correction *learns* something harmful rather than that it begins from a bad place --
-  a different and more interesting failure.
-* The floor is E3-12, which it begins as. The question is only whether the correction adds.
-* No strong prediction on the trunk ladder. E3-14 moved it up while halving play, which was the
-  session's clearest demonstration that a representation probe moving the right way is not
-  evidence a change helped, so the ladder is recorded here and not used to judge the arm.
-
-**E3-16 and E3-17** vary only the depth of the map graph, on the E3-15 recipe, at seed 21 --
-the same seed as `E3-15-21`, so each is a paired comparison against it and depth is the only
-difference.
-
-The motivation is that adjacency's *mechanical* uses are already precomputed per country in the
-observation: placement legality and coup legality are board slots, and the realignment modifier is
-another. The graph does not derive them. What it adds is strategic reasoning about
-neighbourhoods, and the map's edges are plainly unequal -- Colombia bridges two regions, Benelux
-to West Germany rarely decides anything -- and some are live only while a particular event is in
-force. None of that is what a degree-normalised convolution computes.
-
-Predictions, recorded before the runs:
-
-* **1 layer matches 2.** The second convolution has lost 5-9 points of per-country influence in
-  five arms out of five and no measured gain offsets it.
-* **0 layers is the real test and has never been run.** The MLP arm removed every structured
-  encoder at once, so the graph alone has never been isolated. If 0 also matches, adjacency is
-  not earning its place in this architecture.
-* Both should be **faster** than 2 layers, which is the practical point: a cheaper backbone makes
-  every later experiment cheaper.
-* The `gconv1`/`gconv2` rungs of the trunk ladder are not comparable across depths -- with one
-  layer or none they tap the same tensor -- so only `raw` and `trunk` are read across arms.
-
-**Outcome of the depth ablation at 80M, seed 21.** Anchored on E3-17, which has no adjacency at
-all: two layers −59 Elo, one layer −84, and the no-graph arm is also the fastest at 13,863
-steps/s against 12,159. **Removing the map graph is not neutral but positive.** The ordering
-within {1, 2} is not resolved -- 25 Elo against a 100-Elo snapshot spread -- so only `0 > {1, 2}`
-is supported, and no U-shape should be read into it.
-
-E3-17 keeps a per-country encoder, so every country is still encoded from its own observation
-slots and identity embedding. What is gone is *only* the adjacency mixing.
-
-`E3-15-22-160M` and `E3-17-22-160M` re-ask the question at a fresh seed and a longer budget,
-paired so depth stays the only difference. Three things ride on it: whether the result replicates
-on a second seed, whether it survives past the steep part of the budget curve, and which arm
-deserves to be continued further.
-
-E3-11 is an ablation *of* E3-09 rather than of the control: it drops the 1,364 observation slots
-that never vary (35.7% of the input, 6.6M parameters against E3-09's 8.0M), which a positional
-reader should not need because it recovers entity identity from the offset. It is the row most
-likely to be misread, so what it measured is written next to it: **-40 and -0 Elo** against E3-09
-across its two seeds, a mean inside a seed spread of 40, at identical throughput (64.4k vs
-65.5k steps/s). The static mask was verified independently -- 0 of the 1,364 claimed-constant
-dimensions take a second value across 16,800 states, counted by distinct values rather than by
-standard deviation. Not adopted.
-
-Continuation legs use a fresh sampling seed so they diverge rather than replay: E3-01-21's legs
-used 20260931 and 20260941, and E3-10's use 20260951 and 20260952. Those are properties of a leg
-rather than of the configuration, so the table records them and the name does not.
-
-The four VOID rows are numbered rather than omitted. They exist on disk, they consumed 6.1 of the
-session's 22 GPU-hours, and a table whose purpose is to identify a directory unambiguously cannot
-leave four directories out of it. Each died to a units or scale bug; see the P1 log.
+A commit that touches `engine/` bumps the letter only if it changes the decision stream the
+agent sees. That is a claim to be measured, not assumed, and the measurement belongs in the
+registry row beside the arm that depends on it. The E3-20/E3-21 pairing is the worked example:
+`b6874af` and `9f78026` changed `engine/` between the two runs, and the letter was held at E3
+because no `ROLL_DIE` node is ever handed to an agent (0 in 879 single-env and 12,800 vectorized
+env-steps) and the runner always forces die 0. See [`../runs.md`](../runs.md), *E3-21*.
 
 ## What the naming buys
 
-The session that produced this table rated nine E3 configurations against **E2-02-480M** and
-called it "the strongest arm we have". That is still the right reference — it is the strongest —
-but `E3-07-21-80M vs E2-02-21-480M` says on its face that the engine differs, where
-`p1_scalar_filter_seed20260921 vs arm_H2_cont_240to480` did not.
+The session that produced the first version of the registry rated nine E3 configurations against
+**E2-02-480M** and called it "the strongest arm we have". That is still the right reference — it
+is the strongest — but `E3-07-21-80M vs E2-02-21-480M` says on its face that the engine differs,
+where `p1_scalar_filter_seed20260921 vs arm_H2_cont_240to480` did not.
 
-Three rules follow, and all three were broken at least once before the table existed:
+Three rules follow, and all three were broken at least once before the scheme existed:
 
 1. **Never compare across budgets.** The suffix makes a violation visible.
 2. **Label cross-engine comparisons.** An E2 checkpoint evaluated on an E3 engine is playing a
@@ -265,4 +107,4 @@ Three rules follow, and all three were broken at least once before the table exi
    not zero, and it biases in favour of the E3 arm.
 3. **A seed is a field, not a detail.** `E3-07-21` and `E3-07-22` differ only there and landed
    11.8 points apart on anchor win rate while being +3 Elo apart head to head. Giving it its own
-   field is what makes that visible without opening the table.
+   field is what makes that visible without opening the registry.

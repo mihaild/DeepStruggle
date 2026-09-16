@@ -19,6 +19,14 @@ lives. Topic is a bad filing dimension — topics drift and a document ends up f
 | [`papers/`](papers/) | static | what does the literature say? |
 | [`archive/`](archive/) | frozen | superseded material, kept for history |
 
+Two files sit at the top level because they are indexes into everything below, and an index in a
+subdirectory is one nobody opens:
+
+| file | |
+|:---|:---|
+| [`runs.md`](runs.md) | **the arm registry** — one row per arm: what it varied, seeds, budgets, checkpoint directory, and where its result is written up (or that it is not) |
+| [`questions.md`](questions.md) | **the question index** — one row per question: which arms bear on it and what the verdict is. Start here when you know what you want to know but not which arm measured it |
+
 **The test, when you are unsure:** a statement in here turns out to be wrong. Do you *edit* it, or
 *correct it underneath*?
 
@@ -66,6 +74,9 @@ file.
 | file | |
 |:---|:---|
 | [`architecture.md`](findings/architecture.md) | what the network is now, and what each change was worth |
+| [`pooling.md`](findings/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
+| [`seed_variance.md`](findings/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
+| [`defcon_blunders.md`](findings/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
 
 ## method/ — how to measure
 
@@ -74,16 +85,24 @@ file.
 | [`measurement_pitfalls.md`](method/measurement_pitfalls.md) | **read this before trusting a number.** The checklist, distilled from every measurement bug we have made |
 | [`running_experiments.md`](method/running_experiments.md) | how to run an arm and how to rate one |
 | [`measurement_tiers.md`](method/measurement_tiers.md) | which probe runs during training, per snapshot, and once per arm |
-| [`run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`, and the table of every arm |
+| [`run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`: what each field means and when the engine letter bumps. The arms themselves are [`runs.md`](runs.md) |
+| [`bookkeeping.md`](method/bookkeeping.md) | **how to record an experiment so it can be found again** — what goes in `runs.md`, `questions.md`, the log and `findings/`, and in what order |
 | [`human_play.md`](method/human_play.md) | the human corpus: game length, side asymmetry, the agreement measure |
 | [`references.md`](method/references.md) | the literature behind the plan ordering |
 
 ## Two habits that this record exists to enforce
 
-**Register the prediction before the run.** Write down what the probes and the Elo should do, in
-`plans/` or `run_nomenclature.md`, *before* launching. It costs a minute and it is the difference
-between a result and a rationalisation. The most useful entries in `log/P9_architecture.md` are
-the two where the prediction failed.
+**Register the prediction before the run.** Write down what the probes and the Elo should do, and
+which instrument will produce the number, in `plans/` or in the arm's note in
+[`runs.md`](runs.md), *before* launching. It costs a minute and it is the difference between a
+result and a rationalisation. The most useful entries in `log/P9_architecture.md` are the two
+where the prediction failed. The full procedure is
+[`method/bookkeeping.md`](method/bookkeeping.md).
+
+**Index by question, not only by arm.** An arm is found by someone who already knows its name.
+Every result also gets a row in [`questions.md`](questions.md), because "what did we learn about
+pooled versus non-pooled?" is the form the question is actually asked in, and answering it used
+to take three files and a `git log`.
 
 **A probe only tests understanding if its answer key is absent from the observation.** This
 observation is unusually rich in precomputed per-country facts, and more than one probe here has

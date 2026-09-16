@@ -2,6 +2,14 @@
 
 *2026-09-14.*
 
+> **This is not the whole pooling record, and it stops before the answer.** The 4 × 4 replication
+> whose analysis plan is fixed below, and the 320M extension planned at the end, both landed
+> after this file was last appended to; their results are in
+> [`../findings/pooling.md`](../findings/pooling.md), together with the earlier `arena80_160`
+> comparison and the start-state pool, which is a different mechanism entirely. The variance
+> figures are collected in [`../findings/seed_variance.md`](../findings/seed_variance.md).
+> Nothing below is edited — including the prediction of a null, which was wrong on balance.
+
 ## Summary
 
 Three results, in descending order of how much weight they bear.

@@ -6,7 +6,8 @@ conclusions, rewritten when they change.** Nothing here is history — when a nu
 it is replaced, and the run that produced it, the failures on the way, and the retracted readings
 stay in [`../log/P9_architecture.md`](../log/P9_architecture.md), which is append-only. Keep this
 file short: a claim that needs a paragraph of setup to state is a log entry, not a finding. The
-arm names are decoded in [`../method/run_nomenclature.md`](../method/run_nomenclature.md).
+arm names are decoded in [`../runs.md`](../runs.md), and the scheme behind them in
+[`../method/run_nomenclature.md`](../method/run_nomenclature.md).
 
 ## The recipe line
 
@@ -107,7 +108,9 @@ Probes built against the engine's own answer key, so none needs a human judgemen
 ## Standing caveats
 
 * **E3-15 rests on one seed**, and it is now the recipe everything downstream is measured
-  against.
+  against. **Graph depth is open**, not settled at 0 layers: the comparison that removed the map
+  graph reverses sign with the seed ([`seed_variance.md`](seed_variance.md)), and `--graph-layers
+  0` is nonetheless the backbone of every arm from E3-17 onward.
 * **The behavioural numbers need a matched-budget control.** Part of what was credited to
   interventions is what longer training does anyway — the 240M control matches identity@160M on
   almost every behavioural line while being 92–109 Elo weaker.
