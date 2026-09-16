@@ -9,22 +9,49 @@ Everything here was measured on the current engine
 
 ---
 
-## 1. The strength number we had was measured at full coverage
+## 1. What search was actually measured at, recovered from the session transcript
 
-Earlier in this line of work the batched searcher was measured at roughly **+27pp** win rate over
-the plain policy with a trained critic, and **−17pp** with an untrained one. That result was never
-written to this log; it is recorded here so it stops being folklore.
+These numbers existed but were never written to this log, so they had already decayed into a
+half-remembered "+27pp". Recorded here in full, with the configuration each belongs to, because
+the attribution was wrong in the first version of this entry and the error changed the conclusion.
 
-**It was measured with search at *every* decision.** `_SearchBot.select_from_state` in
-`tools/play_match.py` searches whatever node it is handed, and `BatchedMCTS` has no node-type
-filter at all — its only mention of `decision_type` is in an error message. There was no
-restriction to "the decisions that matter".
+**Against the raw policy of the same net, `E3-20-28` @320M:**
 
-This matters because `research/plans/P3_determinized_search_expert_iteration.md` proposes search
-"at a `SELECT_CARD` / `SELECT_PLAY_MODE` node (the decisions that matter; skip placement
-micro-actions)" on a subsample, "1 in 8 searched decisions is the first guess". Those restrictions
-are **8–45x cheaper and were never measured**. Reading the +27pp as though it applied to them is
-the error this entry exists to prevent.
+| searcher | budget | win rate | deployable? |
+|---|---:|---:|---|
+| **PIMCTS** (reads the true `GameState`) | 48 sims | **100%** (12/12) | no — sees the opponent's hand |
+| DMCTS (honest) | 48 sims | 58.3% (7/12) | yes — indistinguishable from chance at n=12 |
+| DMCTS, 1 world | 96 sims | **72.5%** | yes |
+| DMCTS, 1 world | 384 sims | **76.7%** (23/30) | yes |
+
+So the privileged searcher was **100%**, and the honest one reached **76.7%** given enough
+simulations. The "+27pp" that was carried forward is 76.7% − 50%, i.e. the **honest, deployable**
+DMCTS at 384 simulations — *not* a privileged number, and not one obtained at 48 or 64 sims.
+
+**Depth beats breadth, and this was already measured.** At a fixed total simulation budget, splitting
+it across more sampled worlds makes the searcher worse:
+
+| total sims | worlds | sims/world | win rate |
+|---:|---:|---:|---:|
+| 384 | 1 | 384 | **76.7%** |
+| 384 | 4 | 96 | 73.3% |
+| 96 | 1 | 96 | **72.5%** |
+| 96 | 4 | 24 | 65.0% |
+| 96 | 16 | 6 | 55.0% |
+
+Sims-per-world dominates; 16 worlds at 6 simulations each is "indistinguishable from no search at
+all". An earlier sweep that split 48 sims over 8 worlds gave each tree 6 simulations and was
+therefore confounded — it could not distinguish determinization from having no search.
+
+**What this means for the coverage sweep below.** The sweep was run with `determinize=False`, i.e.
+the privileged searcher, at 64 sims and from the **160M** checkpoint — so it is not directly
+comparable to any row above, which are @320M. It measures how strength varies with *coverage*, on
+one consistent footing; it does not re-measure the privileged/honest gap, which the table above
+already puts at 100% vs 58.3% at 48 sims.
+
+**The consequence for an arm is worse than the first version of this entry suggested.** The honest
+searcher needs ~384 simulations to reach 76.7%, and §2 measures 64 simulations at 103 decisions/s.
+384 simulations is roughly six times that cost again, before any coverage restriction.
 
 ## 2. What search costs
 
@@ -128,9 +155,11 @@ for a sixteenth of the cost, and every step up the ladder is worth real points. 
 reading of the curve, taken after only the two cheapest points were in, looked flat and was wrong;
 two points were not enough to see the shape.
 
-**+21pp at full coverage broadly reproduces the ~+27pp** that was attributed to search, which is
-the first independent confirmation of that figure -- though not on identical footing, since the
-original was never written down and its opponent and checkpoint are unknown.
+**This does not reproduce any earlier figure, and should not be read as doing so.** 71.0% here is
+the *privileged* searcher at 64 sims from the 160M checkpoint. The comparable privileged number in
+§1 is 100% at 48 sims from 320M, and the 76.7% "+27pp" is the *honest* searcher at 384 sims from
+320M. Three variables differ at once -- privilege, budget, checkpoint -- so the only thing this
+sweep establishes is the shape of the coverage curve.
 
 **These numbers are an upper bound, because the searcher cheats.** `determinize` defaults to
 False, which `BatchedMCTSConfig` itself calls "a privileged teacher": the tree steps the real
