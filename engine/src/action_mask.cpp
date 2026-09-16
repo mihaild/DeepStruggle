@@ -18,12 +18,21 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
     }
 
     const auto& ctx = state.ctx();
+
+    // A decision needs somebody to make it. The one exception is a chance node -- a ROLL_DIE the
+    // engine owns -- which is resolved by the caller draining it, not by choosing from this mask.
+    // Substituting `phasing_player` here used to offer that player's moves at a node they do not
+    // own; harmless while `step` refused them, and legality-inventing once `step` trusts the mask.
+    if (ctx.decision_player == Player::NONE && ctx.decision_type != DecisionType::ROLL_DIE) {
+        *out_size = 0;
+        return;
+    }
     Player p = (ctx.decision_player != Player::NONE) ? ctx.decision_player : state.phasing_player;
 
     switch (ctx.decision_type) {
         case DecisionType::NONE:
-            *out_size = 1;
-            mask_out[0] = 1;
+            // Not a decision, so nothing is legal. This used to emit a confirm/done.
+            *out_size = 0;
             break;
 
         case DecisionType::SELECT_CARD: {
@@ -461,10 +470,13 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 if (!any_legal) {
                     mask_out[0] = 1;
                 }
-            } else {
-                mask_out[0] = 1;
-                mask_out[1] = 1;
             }
+            // No else. A CHOOSE_BRANCH outside an event frame offered branch 0 and branch 1, and
+            // `StateMachine::step` has no case for it -- that type is handled only inside the
+            // `resolving_card != 0` block -- so both were refused and the position could not
+            // advance. Every setter of CHOOSE_BRANCH is in a card handler that also sets
+            // `resolving_card`, so the branch was dead; 7,745 CHOOSE_BRANCH nodes sampled from
+            // self-play were all inside an event frame.
             break;
         }
 
@@ -494,7 +506,7 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
     const auto& ctx = state.ctx();
     switch (ctx.decision_type) {
         case DecisionType::NONE:
-            mask_212[211] = 1;
+            // Not a decision, so nothing is legal -- `step` has no case for it either.
             break;
 
         case DecisionType::SELECT_CARD:
@@ -580,17 +592,15 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             break;
     }
 
-    // Safety guarantee: ensure at least one action is legal if game is active
-    bool any_legal = false;
-    for (size_t i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) {
-        if (mask_212[i]) {
-            any_legal = true;
-            break;
-        }
-    }
-    if (!any_legal) {
-        mask_212[211] = 1; // Fallback confirm/done
-    }
+    // No blanket fallback. There used to be one here -- "ensure at least one action is legal" --
+    // which set flat 211 whenever a case emitted nothing. It is what turned a missing ROLL_DIE
+    // case into a die roll of 255 (`9f78026`), and it would silently re-add an action to exactly
+    // the three cases above that deliberately emit none: NONE, a CHOOSE_BRANCH outside an event
+    // frame, and a node with no decision player.
+    //
+    // An empty mask now means what it says. `StateMachine::step` validates against this mask, so
+    // a position that offers nothing refuses everything -- loudly, at the point of the mistake,
+    // rather than by inventing a move.
 }
 
 MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t action_idx) noexcept {

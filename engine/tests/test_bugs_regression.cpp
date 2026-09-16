@@ -22,6 +22,13 @@ TEST(RegressionTest, USHeadlinesDeStalinizationTriggersUSSRChoice) {
     state.ctx().decision_player = Player::US;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
+    // Put the two cards in the hands that play them. This used to be left to chance: the test
+    // named cards without placing them and `Engine::step` did not check, so it passed on whatever
+    // seed 42 happened to deal. `step` now validates against the legal mask, and a card that is
+    // not in your hand is not a legal play.
+    state.card_locations[card_ids::DE_STALINIZATION] = CardLocation::HAND_US_KNOWN;
+    state.card_locations[card_ids::ASIA_SCORING] = CardLocation::HAND_USSR_KNOWN;
+
     // US headlines De-Stalinization (#33)
     MicroAction us_act(DecisionType::SELECT_CARD, card_ids::DE_STALINIZATION, 0, 0);
     bool ok1 = Engine::step(state, us_act);

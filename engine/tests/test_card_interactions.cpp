@@ -193,7 +193,13 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
     ts::Engine::init_game(state, 42);
     state.defcon = 2;
     state.set_flag(ts::effect_bits::NUCLEAR_SUBS_ACTIVE);
-    state.countries[ts::countries::EGYPT].ussr_influence = 2; // USSR influence in BG
+    // South Africa, not Egypt. Egypt is in the Middle East, and at DEFCON 2 coups there are
+    // forbidden -- so the coup this test asserts was illegal. It passed because Engine::step did
+    // not validate coup targets at all, while the mask did; `step` now validates against the mask,
+    // which is what surfaced it. South Africa is a battleground outside the DEFCON-restricted
+    // regions, so it still exercises what the test is for: Nuclear Subs sparing the DEFCON track
+    // on a US battleground coup.
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 2; // USSR influence in BG
 
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.action_round = 1;
@@ -212,8 +218,8 @@ TEST(CardInteractionTest, NuclearSubs_USSRPlaysCIAAtDefcon2_USCoupsBattleground_
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
 
-    // 3. US coups Egypt with forced roll 6
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 6, 0});
+    // 3. US coups South Africa with forced roll 6
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0});
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
 
@@ -227,7 +233,9 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
     ts::Engine::init_game(state, 42);
     state.defcon = 2;
     state.clear_flag(ts::effect_bits::NUCLEAR_SUBS_ACTIVE);
-    state.countries[ts::countries::EGYPT].ussr_influence = 2; // BG in ME
+    // South Africa, not Egypt: at DEFCON 2 a coup in the Middle East is forbidden, so the coup
+    // this test asserts was illegal. See the sibling test above.
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 2; // BG outside the restriction
 
     state.current_phase = ts::Phase::ACTION_ROUND;
     state.action_round = 1;
@@ -244,8 +252,8 @@ TEST(CardInteractionTest, NuclearSubs_NotActive_USSRPlaysCIAAtDefcon2_USCoupsBat
     // 2. US selects COUP
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
 
-    // 3. US coups Egypt Battleground -> DEFCON drops from 2 to 1 on USSR turn -> USSR LOSES!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 6, 0});
+    // 3. US coups a Battleground -> DEFCON drops from 2 to 1 on USSR turn -> USSR LOSES!
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 6, 0});
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0});
 
@@ -297,7 +305,9 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     ts::Engine::init_game(state, 42);
     state.defcon = 2;
     state.set_flag(ts::effect_bits::CMC_ACTIVE_USSR); // CMC active against US
-    state.countries[ts::countries::EGYPT].ussr_influence = 2;
+    // South Africa, not Egypt: at DEFCON 2 a coup in the Middle East is forbidden,
+    // so the coup this test asserts was illegal. See the Nuclear Subs tests above.
+    state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 2;
     state.countries[ts::countries::WEST_GERMANY].us_influence = 0;
     state.countries[ts::countries::TURKEY].us_influence = 0;
 
@@ -316,8 +326,8 @@ TEST(CardInteractionTest, CubanMissileCrisis_ActiveOnUS_USSRPlaysCIACreated_USCo
     // 2. US conducts 1 Op -> chooses COUP
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::COUP), 0, 0});
 
-    // 3. US coups Egypt under CMC -> US LOSES immediately!
-    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::EGYPT, 4, 0});
+    // 3. US coups a battleground under CMC -> US LOSES immediately!
+    ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 4, 0});
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 4, 0, 0});
 

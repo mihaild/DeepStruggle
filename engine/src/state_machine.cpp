@@ -649,6 +649,29 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
         return false;
     }
 
+    // One definition of legality. The mask decides; this function applies.
+    //
+    // Both used to decide, from separate code, and where they differed the mask offered an action
+    // this function refused: six of twelve forced-play conditions, two of them deadlocks where the
+    // mask's ENTIRE legal set was refused and the position could not advance. Callers either
+    // crashed or -- before the batched-step guard -- silently failed to advance while the trainer
+    // credited the transition anyway. See research/plans/P14_one_definition_of_legality.md.
+    //
+    // Safe because the encoding round-trips: 559,500 masked actions across 300 games re-encoded to
+    // the index they decoded from, 0 failures. A failure here would refuse a legal move, which is
+    // worse than the bug being fixed, so it is worth re-measuring if the flat space ever changes.
+    //
+    // NOT sufficient on its own, which is why the two guards above stay: several MicroActions map
+    // to one flat index, so a forced die's value and other sub-index fields are invisible here.
+    {
+        uint8_t legal_flat[FLAT_ACTION_SPACE_SIZE];
+        ActionMask::generate_flat_mask_212(state, legal_flat);
+        const int16_t flat = ActionMask::encode_micro_action_212(state, action);
+        if (flat < 0 || flat >= static_cast<int16_t>(FLAT_ACTION_SPACE_SIZE) || !legal_flat[flat]) {
+            return false;
+        }
+    }
+
     // 1. SETUP PHASE
     if (state.current_phase == Phase::SETUP) {
         if (state.ctx().decision_player == Player::USSR) {
