@@ -8,6 +8,50 @@ and unfinished work belong in the documentation for the area they concern.
 
 ---
 
+## ENG-3 — the forced-play rule is enforced differently by the mask and the state machine
+
+**Area:** engine · **Severity:** high (it kills a training run) · **Status:** open, needs owner
+decision (invariant 11)
+
+Missile Envy's forced play is implemented twice, with different guards, so the action mask offers
+play modes that `StateMachine::step` then refuses.
+
+| | check |
+|---|---|
+| `engine/src/action_mask.cpp:200` | `current_phase == ACTION_ROUND && forced_card_player == p && (forced_card_id == card \|\| forced_card_id == MISSILE_ENVY)` → OPS only |
+| `engine/src/state_machine.cpp:934` | `forced_card_player == p && (forced_card_id == card \|\| forced_card_id == MISSILE_ENVY)` → refuse any mode but OPS |
+
+Two differences, and both produce a disagreement:
+
+1. **The phase guard.** The mask restricts to OPS only during an action round; the state machine
+   restricts in *every* phase, including `HEADLINE`. The mask's own comment gives the reason for
+   its guard — "a headlined card is played as its Event as usual" — and the printed card text
+   agrees: the opponent must play Missile Envy *on their next action round*.
+2. **Ordering against the China Card.** The mask handles the China Card and returns `OPS|SPACE`
+   *before* it reaches the forced-play branch; the state machine checks forced play *first*. So a
+   forced player holding the China Card is offered SPACE and refused it.
+
+**Reproduce.** Reach any `SELECT_PLAY_MODE` node, set `forced_card_player` to the mover and
+`forced_card_id = 49`, then compare the mask against the engine:
+
+```
+B. forced during HEADLINE   mask offers EVENT, OPS, SPACE   engine refuses EVENT, SPACE
+C. forced, pending card = 6 mask offers OPS, SPACE          engine refuses SPACE
+```
+
+**How it surfaced.** It killed `E3-21-28` twice at 3.9M of 160M steps, deterministically, with
+`engine refused flat action 112 in env 39 of 512 (SELECT_PLAY_MODE) ... The action WAS legal in the
+mask it was sampled from`. Before the batched-step guard (`59d2331`) this was silent: the env
+simply did not advance and the trainer credited the transition anyway. It is rare — one occurrence
+in ~4M env-steps, and 0 in a 22,747-action fuzz of random play — which is why it went unnoticed.
+
+**Fix, once decided.** The rules text points at the mask being right and the state machine needing
+the `Phase::ACTION_ROUND` guard; the China Card ordering is a separate question, since the
+wildcard `forced_card_id == MISSILE_ENVY` means "while forced, any card must go to Ops", which the
+mask does not implement for the China Card. Both halves are the owner's call: they change what is
+legal, so they change the decision stream and invalidate comparisons across the change.
+
+---
 ## ENG-1 — UN Intervention offers companion cards the rules forbid
 
 **Area:** engine · **Severity:** medium · **Status:** open
