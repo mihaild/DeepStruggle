@@ -273,6 +273,60 @@ class OpponentPool:
         self._exposure[env_index] = {}
         self.learner_side[env_index] = self._draw_side()
 
+    def state_dict(self) -> Dict[str, Any]:
+        """Everything about the pool except the weights, which live in the snapshot files.
+
+        Membership is recorded as the *step count* each member was captured at, because that is
+        what identifies a snapshot on disk (`snapshot_<steps>steps.pt`) and it survives eviction
+        reindexing. The per-opponent win and game counts come with it: without them a resumed
+        PFSP draw starts blind and re-learns what the run already knew, and a uniform draw
+        silently loses the record of which opponents were ever played.
+        """
+        return {
+            "steps": list(self.steps),
+            "ids": list(self.ids),
+            "next_id": int(self._next_id),
+            "wins": {int(k): float(v) for k, v in self.wins.items()},
+            "games": {int(k): float(v) for k, v in self.games.items()},
+            "rng_state": self.rng.getstate(),
+        }
+
+    def load_state_dict(self, blob: Dict[str, Any], loaded_steps: Sequence[int]) -> None:
+        """Restore ids and statistics onto a pool whose nets were just reloaded.
+
+        `loaded_steps` is what the caller actually managed to load, in order, which may be a
+        subset of what was saved if a snapshot has since been pruned. Statistics are carried over
+        for the members that survived and dropped for the rest, so a partially recoverable pool
+        keeps what it can rather than being silently zeroed or wrongly re-keyed.
+        """
+        saved_steps = list(blob.get("steps", []))
+        saved_ids = list(blob.get("ids", []))
+        by_step = {int(st): int(oid) for st, oid in zip(saved_steps, saved_ids)}
+
+        self.ids = []
+        for st in loaded_steps:
+            oid = by_step.get(int(st))
+            if oid is None:
+                oid = self._next_id
+                self._next_id += 1
+            self.ids.append(int(oid))
+        self._next_id = max([int(blob.get("next_id", 0))] + [i + 1 for i in self.ids] + [0])
+
+        keep = set(self.ids)
+        self.wins = {int(k): float(v) for k, v in blob.get("wins", {}).items() if int(k) in keep}
+        self.games = {int(k): float(v) for k, v in blob.get("games", {}).items() if int(k) in keep}
+        for oid in self.ids:
+            self.wins.setdefault(oid, 0.0)
+            self.games.setdefault(oid, 0.0)
+        rng = blob.get("rng_state")
+        if rng is not None:
+            try:
+                self.rng.setstate(rng)
+            except (TypeError, ValueError):
+                pass
+        self.current = self.nets[0]
+        self.current_id = self.ids[0]
+
     def learner_acts(self, decision_players: np.ndarray) -> np.ndarray:
         """Per environment: is the learner the one to move?
 

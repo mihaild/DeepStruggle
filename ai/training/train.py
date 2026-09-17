@@ -264,6 +264,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--search-node-filter", type=str, default="card_playmode",
                         choices=["card_playmode", "all"],
                         help="Which decisions are eligible.")
+    parser.add_argument("--reset-opponent-pool", action="store_true", default=False,
+                        help="On resume, discard the opponent pool recorded in the resume state "
+                             "and rebuild it by sampling this run's snapshots evenly. Without "
+                             "this the pool is restored exactly -- same members, same win/game "
+                             "record -- because losing it changes the experiment and should be "
+                             "asked for rather than suffered.")
     parser.add_argument("--opponent-pfsp", action="store_true", default=False,
                         help="Draw the pool opponent by prioritised fictitious self-play instead "
                              "of uniformly. NOTE: ai/training/opponent_pool.py argues this should "
@@ -351,6 +357,7 @@ def main():
             opponent_lock_side=args.opponent_lock_side,
             opponent_self_pool=args.opponent_self_pool,
             opponent_pool_size=args.opponent_pool_size,
+            reset_opponent_pool=args.reset_opponent_pool,
             search_ce_coef=args.search_ce_coef,
             search_sims=args.search_sims,
             search_subsample=args.search_subsample,

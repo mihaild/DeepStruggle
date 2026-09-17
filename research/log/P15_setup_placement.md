@@ -65,7 +65,26 @@ It also cuts against reading diversity as a health metric. The right reading is 
 that plays one opening has stopped searching that part of the space, which matters for what it
 *could* learn, not necessarily for what it currently scores.
 
-## The unfreezing coincides with a resume, not with a step count
+## The unfreezing coincides with a resume — but not with a pool reset
+
+**Correction, same day.** This section first attributed the change to the resume emptying the
+opponent pool. **It did not.** `E3-20-28`'s continuation records
+`base_commit = c9062336`, which *is* the commit "fix(training): rebuild the self-growing opponent
+pool when resuming" — so that resume rebuilt the pool from the run's own snapshots. The pool was
+not reset, and the mechanism proposed here was wrong.
+
+What a resume did still change at that time: the rebuild samples snapshots **evenly over the
+run's history**, which lands on a different pool than the live one (eviction is by spacing and
+depends on the order members arrived), and it **zeroed every opponent's win/game record**. So the
+opponent distribution was perturbed, just not emptied. Whether that is enough to unfreeze a
+decision is unmeasured.
+
+Both of those are now gone as accidental effects: the resume state carries the pool's exact
+membership and statistics, and discarding it requires `--reset-opponent-pool`. A future resume is
+therefore a cleaner control, and re-running this comparison against one would say whether the
+perturbation mattered at all.
+
+## The timing, which stands regardless
 
 `E3-20-28`'s USSR opening is unchanged from 10M through **165M** and has moved by **180M**. The
 continuation leg resumed from the 160M state, so the change lands 5–20M steps after a resume,

@@ -1154,6 +1154,13 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         # Recorded so a later resume can tell "continue this run" from "branch it": restoring the
         # RNG is right for the first and wrong for the second.
         "seed": None if seed is None else int(seed),
+        # Which snapshots the opponent pool held and how each has fared, but not their weights --
+        # those are the snapshot files already beside this state. Carrying it makes a resumed pool
+        # the pool the run actually had, rather than a plausible reconstruction of one. Losing it
+        # is a real change to the experiment, so it should be asked for (--reset-opponent-pool),
+        # not suffered.
+        "opponent_pool": (trainer.opponent_pool.state_dict()
+                          if getattr(trainer, "opponent_pool", None) is not None else None),
     }, path)
 
 
@@ -1196,6 +1203,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         "iteration": int(blob.get("iteration", 0)),
         "total_env_steps": int(blob["total_env_steps"]),
         "elapsed_seconds": float(blob.get("elapsed_seconds", 0.0)),
+        # None for a state written before pools were carried, or for a run that had no pool.
+        "opponent_pool": blob.get("opponent_pool"),
     }
 
 
@@ -1256,6 +1265,7 @@ def train_pipeline(
     opponent_lock_side: Optional[str] = None,
     opponent_self_pool: bool = False,
     opponent_pool_size: int = 12,
+    reset_opponent_pool: bool = False,
     search_ce_coef: float = 0.0,
     search_sims: int = 32,
     search_subsample: float = 0.125,
@@ -1388,6 +1398,7 @@ def train_pipeline(
         "opponent_frac": float(opponent_frac),
         "opponent_self_pool": bool(opponent_self_pool),
         "opponent_pool_size": int(opponent_pool_size),
+        "reset_opponent_pool": bool(reset_opponent_pool),
         "opponent_checkpoints": list(opponent_checkpoints or []),
         # Recorded because they change what the arm IS, and an unrecorded flag is how a
         # two-factor experiment stays invisible -- snapshot_every_steps was missing for
@@ -1531,6 +1542,10 @@ def train_pipeline(
         from ai.training.opponent_pool import OpponentPool, load_pool
 
         _lock = {"us": 1, "ussr": -1, None: None}[opponent_lock_side]
+        # Defined for both branches: a fixed-checkpoint pool has no recorded state to restore,
+        # and the code after the branch reads these unconditionally.
+        _saved_pool: Optional[Dict[str, Any]] = None
+        _seed_steps: List[int] = []
         if opponent_checkpoints:
             _seed_nets = load_pool(opponent_checkpoints, dev)
             _src = f"{len(opponent_checkpoints)} fixed snapshot(s)"
@@ -1543,26 +1558,55 @@ def train_pipeline(
             # nothing would report it. Spread the seeds across the run's history rather than
             # taking the most recent, which is what the pool's eviction rule aims for too.
             _seed_paths: List[str] = []
-            _seed_steps: List[int] = []
             if resume:
-                _run_dir = os.path.dirname(os.path.abspath(resume))
+                _src_file = resolve_resume(resume)
+                _run_dir = os.path.dirname(os.path.abspath(_src_file))
                 _snaps = []
                 for _f in os.listdir(_run_dir):
                     _m = re.match(r"snapshot_(\d+)steps\.pt$", _f)
                     if _m:
                         _snaps.append((int(_m.group(1)), os.path.join(_run_dir, _f)))
                 _snaps.sort()
-                if len(_snaps) > opponent_pool_size:
-                    _idx = np.linspace(0, len(_snaps) - 1, opponent_pool_size).round().astype(int)
-                    _snaps = [_snaps[int(i)] for i in sorted(set(_idx.tolist()))]
-                _seed_paths = [q for _, q in _snaps]
-                _seed_steps = [n for n, _ in _snaps]
+
+                # The pool the run actually held, recorded in its resume state. Preferred over
+                # any reconstruction: eviction is by spacing and depends on the order snapshots
+                # arrived, so an evenly-sampled rebuild lands on a *different* pool that merely
+                # looks similar -- and it zeroes the win/game record, which a PFSP draw needs.
+                if not reset_opponent_pool:
+                    try:
+                        _b = torch.load(_src_file, map_location="cpu", weights_only=False)
+                        _saved_pool = _b.get("opponent_pool")
+                        del _b
+                    except Exception as _exc:     # a resume is still valid without it
+                        print(f"[opponent pool] could not read pool state from {_src_file} "
+                              f"({_exc}); falling back to a rebuild.", flush=True)
+
+                _have = {n: q for n, q in _snaps}
+                _want = [int(x) for x in (_saved_pool or {}).get("steps", [])]
+                if _want:
+                    _seed_steps = [w for w in _want if w in _have]
+                    _seed_paths = [_have[w] for w in _seed_steps]
+                    _missing = len(_want) - len(_seed_steps)
+                    if _missing:
+                        print(f"[opponent pool] {_missing} of {len(_want)} recorded members have "
+                              f"no snapshot on disk and are dropped.", flush=True)
+                if not _seed_paths:
+                    # No record, or none of it survives: spread evenly over the run's history,
+                    # which is what the pool's own eviction rule aims for.
+                    if len(_snaps) > opponent_pool_size:
+                        _idx = np.linspace(0, len(_snaps) - 1,
+                                           opponent_pool_size).round().astype(int)
+                        _snaps = [_snaps[int(i)] for i in sorted(set(_idx.tolist()))]
+                    _seed_paths = [q for _, q in _snaps]
+                    _seed_steps = [n for n, _ in _snaps]
+                    _saved_pool = None
 
             if _seed_paths:
                 _seed_nets = load_pool(_seed_paths, dev)
                 _span = _seed_steps[-1] - _seed_steps[0]
+                _how = "restored" if _saved_pool else "rebuilt"
                 _src = (f"{len(_seed_nets)} snapshot(s) of this run, spanning "
-                        f"{_span / 1e6:.0f}M steps (rebuilt on resume)")
+                        f"{_span / 1e6:.0f}M steps ({_how} on resume)")
             else:
                 # A fresh self-growing pool has nothing to play against at step 0, so it is
                 # seeded with a frozen copy of the starting policy -- the run's own past self,
@@ -1580,6 +1624,11 @@ def train_pipeline(
             pfsp_weighting=opponent_pfsp_weighting,
             pfsp_uniform_mix=opponent_pfsp_uniform_mix,
         )
+        if opponent_self_pool and not opponent_checkpoints and _saved_pool:
+            trainer.opponent_pool.load_state_dict(_saved_pool, _seed_steps)
+        if reset_opponent_pool and resume:
+            print("[opponent pool] --reset-opponent-pool: the recorded pool was discarded "
+                  "deliberately.", flush=True)
         print(f"[opponent pool] {_src}, frac={opponent_frac}, capacity={opponent_pool_size}, "
               f"self-growing={bool(opponent_self_pool)}, learner side="
               f"{opponent_lock_side or 'alternating'}, "
