@@ -1292,6 +1292,14 @@ def train_pipeline(
         "opponent_self_pool": bool(opponent_self_pool),
         "opponent_pool_size": int(opponent_pool_size),
         "opponent_checkpoints": list(opponent_checkpoints or []),
+        # Recorded because they change what the arm IS, and an unrecorded flag is how a
+        # two-factor experiment stays invisible -- snapshot_every_steps was missing for
+        # exactly this reason and cost a 47M-step run. The side lock decides which seat
+        # ever receives a gradient; the warm start decides what the run began from; the
+        # eval opponents decide whether the in-run trace can rate the arm at all.
+        "opponent_lock_side": opponent_lock_side,
+        "warmup_checkpoint": warmup_checkpoint,
+        "eval_opponents": list(eval_opponents or []),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, budget={train_steps:,} steps.",
