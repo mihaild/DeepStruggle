@@ -295,6 +295,36 @@ shape of the control's, whatever that turns out to be; the policy is simply bein
 (Used here only to say the two failures differ, which is a comparison the statistic can support —
 not to characterise either one.)
 
+### Per seat against the 200M start, the decline begins on the USSR side
+
+Extracted from the per-side matrices of the same verdict tournaments, so no new games. Win rate
+against `p28_200M`, the checkpoint both arms resumed from, at temperature 0:
+
+| steps | arm as USSR | arm as US | control as USSR | control as US |
+|---:|---:|---:|---:|---:|
+| 5M | 80.2% | 76.4% | 42.2% | 52.4% |
+| 10M | **83.0%** | 77.6% | 40.4% | 59.2% |
+| 15M | 79.2% | 77.8% | 39.4% | 54.2% |
+| 20M | **67.2%** | 76.8% | 50.4% | 46.4% |
+
+**The search arm beats its own starting checkpoint on both seats throughout** — 67–83% — while the
+no-search control never does, at 39–50% as USSR and 46–59% as US. The +165.6 Elo is therefore not
+an artefact of a weak control: the arm improves on what it started from and the control
+essentially does not.
+
+**And the collapse has a per-seat precursor.** The arm's USSR rate falls 83.0 → 79.2 → 67.2 between
+10M and 20M while its US rate is flat at 77.6 → 77.8 → 76.8. That is visible at 15M and pronounced
+at 20M, **before** the Elo cliff at 25M — so a per-seat rating against a frozen opponent would have
+flagged this arm one checkpoint earlier than the aggregate Elo did, which is a practical argument
+for making it routine rather than occasional.
+
+Note the seat: it is USSR here, the opposite of the control's own late failure, which is on the US
+seat ([`P15_control_per_seat.md`](P15_control_per_seat.md)). Whatever drives the two failures, it
+is not one shared side-specific weakness.
+
+The 25M field did not include `p28_200M`, so the split at the collapse point itself is not
+available without new games.
+
 ### It was not the resume, and it was not sudden
 
 The first suspicion was the continuation itself, because KL was 10–20× the original run's from its
