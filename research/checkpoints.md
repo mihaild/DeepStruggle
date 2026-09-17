@@ -192,18 +192,25 @@ only. See [`log/P15_X4a_distillation.md`](log/P15_X4a_distillation.md).
 over its source for two epochs of offline SFT, no RL. It is also the most side-balanced checkpoint
 this project has: −0.9 pp USSR−US where its own source is −3.3 and `p28_280M` is −17.7.
 
-### `P15_X4a_washout` — does the distilled gain survive RL? (4 models, 500 games/side)
+### `P15_X4a_washout_control` — does the distilled gain survive RL? (5 models, 500 games/side)
+
+Both post-RL arms and the three checkpoints they came from, on one scale. Supersedes the 4-model
+`P15_X4a_washout`, which lacked the control and produced a wrong reading.
 
 | model | Elo | what it is |
 |:---|---:|:---|
-| `distilled` | **1555.3** | as above, pre-RL |
-| `source_200M` | 1517.5 | |
+| `distilled` | **1548.8** | as above, pre-RL |
+| `source_200M` | 1526.7 | pre-RL |
 | `anchor_280M` | 1500.0 | anchor |
-| `after_rl_20M` | **1480.2** | `E3-25-28`, 20M steps of ordinary NashPG from `distilled` |
+| `after_rl_distilled` | 1491.3 | `E3-25-28`, 20M steps from `distilled` |
+| `after_rl_control` | 1482.6 | `E3-26-28`, the same 20M from `source_200M` |
 
-The gain inverted: 75.1 Elo below its own starting point. **Confounded until the control lands** —
-X0 measured this lineage declining past 200M anyway, so `E3-26-28` reruns the same 20M from the
-*undistilled* source. Rated together in `P15_X4a_washout_control`.
+**The edge does not survive: +22.1 Elo before RL, +8.7 after, and the two arms split 51.2% head to
+head over 1,000 games.** The control also lost 44.1 Elo from an undistilled start, so the large
+drop both arms show is the price of training past this lineage's peak, not washout.
+
+Side balance moved **−17.3 pp and −11.6 pp toward US** in the two arms over the identical 20M
+steps — within-arm, same seed. See [`log/P15_X4a_distillation.md`](log/P15_X4a_distillation.md).
 
 ### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
 
@@ -237,8 +244,8 @@ because the 80M state had been pruned). Kept for provenance only; see
 | `E3-22-28_20260916_121202_VOID_thin_opponent_pool` | 47M | per-player GAE, first attempt | **void** — snapshot cadence made it a two-factor experiment |
 | `E3-21-28_20260916_004620_VOID_refusal_crash` | — | died on ENG-3 | void |
 | `E3-21-28_20260916_010023_VOID_eng3_crash` | — | died on ENG-3 | void |
-| `E3-25-28_20260917_020529` | 20M | X4a step 4, RL from the distilled checkpoint | rated in `P15_X4a_washout` |
-| `E3-26-28_20260917_025539` | 20M | X4a step 4 **control**, same recipe from the undistilled source | running 2026-09-17 |
+| `E3-25-28_20260917_020529` | 20M | X4a step 4, RL from the distilled checkpoint | rated in `P15_X4a_washout_control` |
+| `E3-26-28_20260917_025539` | 20M | X4a step 4 **control**, same recipe from the undistilled source | rated in `P15_X4a_washout_control` |
 | `E3-18-22` | 160–240M | P10 experiment 1, the do-nothing control | rated only in `arena_heads`, no writeup |
 | `E3-19-22`, `E3-19-23` | 80–160M, 90–160M | pool-from-checkpoint arms | rated only in the retracted `arena80_160` |
 

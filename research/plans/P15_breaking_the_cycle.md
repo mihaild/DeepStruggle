@@ -260,19 +260,29 @@ already agree, the search edge lives in something a single policy cannot express
 averaging over sampled worlds acting as state-dependent mixing), and CE distillation is the
 wrong extraction — a finding worth a log entry on its own.
 
-> **Run 2026-09-17 — [`log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md).**
-> Step 3 **cleared the bar: +47.7 Elo**, and from a far smaller re-weighting than expected —
-> the policy already agreed with the searcher 93.1% of the time at 0.033 nats. Step 4 resumed
-> 20M steps of ordinary NashPG (`E3-25-28`) and the gain **inverted**: the arm finished 75.1
-> Elo below the distilled checkpoint and 37.3 below the undistilled source. That is confounded
-> on its own, because X0 measured this lineage declining past its 200M peak, so the control
-> `E3-26-28` — same recipe resumed from the *undistilled* source — is running with its reading
-> pre-registered. Verdict not claimed until it lands.
+> **Run 2026-09-17 — [`log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md).
+> Verdict: moves, does not survive → build X4b.**
 >
-> Also open, and queued rather than claimed: step 2 searched card/play-mode nodes only, which
-> average **4.1** legal actions, while `POINT_NODE` placements average **17.5**. X0 measured a
-> searcher over *all* nodes at +129.2 Elo on these weights and X4a extracted 47.7 from
-> card/play-mode alone, so most of the edge plausibly lives in placements.
+> Step 3 **cleared the bar: +47.7 Elo**, from a far smaller re-weighting than expected — the
+> policy already agreed with the searcher 93.1% of the time at 0.033 nats. Step 4 ran the
+> washout test as two arms, `E3-25-28` from the distilled checkpoint and the control `E3-26-28`
+> from the undistilled source, 20M steps each at the same seed. The distilled edge decayed from
+> **+22.1 Elo to +8.7**, and the two post-RL arms split 51.2% head to head over 1,000 games —
+> a dead heat. **The edge does not survive RL.**
+>
+> The control also corrected a wrong reading: rated alone, the distilled arm looked 75 Elo below
+> its own starting point, but the control lost 44.1 Elo over the same steps from an undistilled
+> start. That drop is the price of training past this lineage's peak, which X0 had already
+> measured, not washout.
+>
+> Two findings came out of it that the plan did not ask for. **RL in this recipe gives away the
+> USSR side** — within-arm, same seed, both arms moved −17.3 pp and −11.6 pp toward US over the
+> identical 20M steps, which bears directly on X1. And the search signal is **not** where this
+> section assumed: [`log/P15_X4a_where_the_search_signal_is.md`](../log/P15_X4a_where_the_search_signal_is.md)
+> censuses all 85,113 decisions of 200 games and finds top-1 agreement uninformative (90.5–97.8%
+> everywhere) while KL varies 7×, with `POINT_NODE` carrying **71.8% of the CE signal** against
+> card/play-mode's 20.9%. **X4b below is therefore run with `--search-node-filter all`**, a
+> deliberate deviation from its written spec.
 
 #### X4b — the continuous form (P3's trainer hook)
 
