@@ -53,6 +53,43 @@ throughput-and-clarity change worth doing on its merits, and **nothing in this e
 it would address the collapse**. The 17.5% shorter episodes and the un-aliased decline index are
 real gains; neither is a fix.
 
+## The sharp version: two real specialists, and the student beats both
+
+The pairing above was soft — the "USSR teacher" was strong on *both* seats, and the student began
+mediocre at US, so US survival proved little. Redone with genuine specialists:
+
+* **US teacher** `p28_320M` — 83.0% as US against `ANCHOR_280M`, and **27.0% as USSR**. A real
+  specialist, and a hollowed-out one: this is `E3-20-28`'s own continuation past its 200M peak.
+* **USSR teacher** `E3-31-28` @15M — 83.3% as USSR, the best USSR seat in the inventory.
+* **Student initialised from `p28_320M`**, so it begins excellent at US and *broken* at USSR, and
+  must acquire the broken seat without losing the good one.
+
+2,000 games, 742,852 targets, 3 epochs at 1e-4. Against `ANCHOR_280M`, 300 games a side
+(`/workspace/data/tournaments/P15_specialist/`):
+
+| model | as USSR | as US | weaker seat | field Elo |
+|:---|---:|---:|---:|---:|
+| **student** | **82.0%** | **88.0%** | **82.0%** | 1733.4 |
+| USSR teacher `E31_15M` | 83.3% | 79.7% | 79.7% | 1787.5 |
+| previous student | 82.0% | 57.7% | 57.7% | 1689.2 |
+| US teacher `p28_320M` | 27.0% | 83.0% | 27.0% | 1524.3 |
+| `ANCHOR_280M` | — | — | — | 1500.0 |
+
+**The student went from 27.0 / 83.0 to 82.0 / 88.0** — **+55 pp on USSR and +5 pp on US**. It did
+not trade one seat for the other; it improved both, and its US seat now **exceeds the teacher it
+learned US from**.
+
+It also has the **highest weaker seat in the whole inventory**, 82.0% against `E31_15M`'s 79.7%.
+By the standard of "can play either side", `specialist_distilled.pt` is the best checkpoint this
+project has, and the first strong one not produced by RL.
+
+### A caveat that did not bite
+
+The target set is skewed: the USSR teacher won 1,668 of 2,000 games, so the US teacher's targets
+come overwhelmingly from positions it was already losing. That was flagged as a reason a weak US
+result would be ambiguous. The US seat came out at 88.0%, so the concern is retired rather than
+confirmed — imitating a strong policy from losing positions was evidently enough.
+
 ## Caveats
 
 * One student, one teacher pair, one initialisation.
