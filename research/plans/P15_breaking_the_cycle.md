@@ -27,8 +27,15 @@ rate an arm after ~120M** — HeuristicBot and RandomBot are saturated
 This is the textbook behaviour of simultaneous gradient dynamics in a zero-sum game: the
 last iterate *orbits* the equilibrium (best-response cycling) instead of converging, and when
 one orbit segment makes outcomes predictable the gradient dies until the other side drifts
-into an answer. The standard remedies form four families, and the current recipe is a weak
-version of two of them:
+into an answer. The X0 round robin
+([`../log/P15_X0_round_robin.md`](../log/P15_X0_round_robin.md)) sharpens this two ways:
+the 24-model matrix is essentially **transitive** — no rock-paper-scissors among frozen
+policies, so the instability is *temporal, not strategic*, which favours the
+gradient-starvation reading over pure strategy cycling — and "stall" was generous: every
+lineage **peaks and then declines** (120M unpooled, 200M pooled; −56 to −154 Elo given
+back), with the unpooled arm orbiting in side space while the pooled arm drifts
+monotonically into one-side specialisation. The standard remedies form four families, and
+the current recipe is a weak version of two of them:
 
 | family | canonical form | what this project runs today |
 |:---|:---|:---|
@@ -79,7 +86,17 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
 - Backfill: run the same evals over the *existing* snapshot ladders of E3-17-22 (unpooled),
   E3-20-28 and E3-20-29 (pooled) — a few CPU/GPU-hours — so the oscillation's amplitude and
   period are measured on the arms already on disk **before** any new arm runs. That
-  retro-trace is what X2/X3 screens are compared against.
+  retro-trace is what X2/X3 screens are compared against. *(Done 2026-09-16 for
+  E3-20-28/29 and E3-17-26 — [`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md).)*
+- **Peak selection is an explicit output.** The round robin shows every lineage declines
+  56–154 Elo past a peak (120M unpooled, 200M pooled), so the trace decides *which checkpoint
+  an arm is* — an arm's representative is its peak on the frozen-anchor trace, reported
+  alongside the late-snapshot pooling, and training past a confirmed peak is stopped rather
+  than billed.
+- Anchors, revised after the sweep: **`p28_200M`** (strongest measured checkpoint, 2193.7)
+  joins as the strong anchor, and a second-lineage anchor (**`n26_120M`**, 2188.8) guards
+  against the one-anchor-family caveat the sweep itself records — required before comparing
+  *runs* rather than *budgets*.
 
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
 
@@ -160,16 +177,59 @@ is insufficient.
   its claim — it shifts the mixture's composition, not a per-game opponent identity.
 - Each sub-arm resumes from the E3-20-28 80M state, +80M, one seed screen → 2-seed confirm
   of anything that moves the X0 trace.
+- **Priority within X3, revised after the X0 sweep:** (b) ran as E3-23-28 and is a null
+  (+11.6 Elo against an 83–221 Elo seed spread — postponed), and the sweep shows the pooled
+  failure mode is a **monotone drift** into one-side specialisation after 200M, not an orbit:
+  the pool's ~60M window holds only its own drifting recent selves, which is exactly what (a)
+  fixes — old snapshots still play the side the current policy stopped answering. (a) is the
+  next pool arm; (c) only if (a) moves.
 
 ### X4 — expert-iteration distillation (family 4; the strongest single bet)
 
-Build P3's trainer hook: at card/play-mode decisions, 1-in-8 subsample, run the honest
-searcher (`determinize=True`, 32 sims — Gumbel root if available, completed-Q values
-otherwise) and add a CE term pulling the policy toward the search policy **on searched
-decisions only**; everything else unchanged. Resume from the 160M stall, +80M ≈ 8h; 2 seeds.
-The claim being tested is precise: the ~75% search edge is expressible without search at play
-time, and its gradient does not die with the outcome signal. The owner's no-search preference
-is honoured — search runs in training only.
+Two stages. **X4a** is one *offline* round of the loop "checkpoint → search → SFT →
+continue", built almost entirely from existing machinery, run as a discriminator. **X4b** is
+the *continuous* form — the CE term inside the RL loop — which is the destination, because
+this project has already measured what happens to phased supervised gains under resumed RL:
+BC warmup washes out within ~2M steps, so any offline loop would need a regeneration cadence
+shorter than the washout time, which collapses into the online design. The claim under test
+is precise in both stages: the ~75% search edge is expressible without search at play time,
+and its gradient does not die with the outcome signal. The owner's no-search preference is
+honoured — search runs in training only.
+
+**Shared rule — the teacher stays on-distribution.** Targets are the searcher's answers *at
+states the current policy visits*, never search-driven self-play trajectories. Imitating an
+off-distribution source is the failure this project has measured twice (human injection,
+−157 to −236 Elo); distilling search-on-own-positions is the on-distribution case that
+evidence does not touch.
+
+#### X4a — one offline round (the discriminator; no trainer surgery)
+
+1. **Source checkpoint: `p28_200M`** — the peak, not a final. The round robin shows every
+   lineage declines past its peak with one side degenerated; distilling from a final hands
+   the teacher a degenerated side and the leaf evaluator a base-rate critic.
+2. Generate self-play with the **raw** policy; at card/play-mode decisions, run the honest
+   searcher offline at the measured saturation budget (`determinize=True`, 96 sims) over
+   ~50–100k positions. Store `(state, π′)` with the searcher commit hash.
+3. SFT the policy head toward π′ (CE, small LR, value head untouched, a few epochs), then
+   rate vs the frozen anchors. Question one: **is the search edge expressible as a policy at
+   all?** Expect a real fraction of +150–190 Elo if yes.
+4. Resume normal NashPG from the distilled checkpoint ~20M steps, rating per snapshot.
+   Question two: **does it survive RL?** — the §9.1 washout test, on the X0 trace.
+
+Decision: moves ≥ 40 Elo *and* survives → X4b confirmed worthwhile (and X4a's checkpoint is
+already a product). Moves but washes out → the signal must be present during RL; build X4b.
+Does not move → check per-decision agreement between π′ and π_θ before concluding: if they
+already agree, the search edge lives in something a single policy cannot express (e.g. the
+averaging over sampled worlds acting as state-dependent mixing), and CE distillation is the
+wrong extraction — a finding worth a log entry on its own.
+
+#### X4b — the continuous form (P3's trainer hook)
+
+At card/play-mode decisions, 1-in-8 subsample, run the honest searcher and add a CE term
+pulling the policy toward the search policy **on searched decisions only**; everything else
+unchanged. Resume from the peak checkpoint, +80M ≈ 8h; 2 seeds. Every iteration is then a
+micro-round of X4a's loop with zero staleness: the searcher always uses the current π_θ as
+prior and the current `v_win` at leaves, so the teacher improves with the student.
 
 **Detail.**
 - **Distill, don't act.** Rollouts keep sampling from the raw policy; search runs only to
@@ -218,15 +278,21 @@ adopt decision clears that bar or is dropped.
   the cells are flags, so kill freely.
 - X3a/b adopted on the same rule; if both are neutral the pool stays as it is and PSRO-lite
   stays in reserve.
-- X4 adopted iff the no-search policy gains ≥ 40 Elo vs frozen anchors over the matched
-  continuation; if it gains nothing while the searcher still beats it 75%, the distillation
-  target or coverage is wrong before the idea is (check CE on searched states falls).
+- X4a's three-way rule is written in its own section (transfer + survive → X4b confirmed;
+  transfer but wash out → X4b mandatory; no transfer → check π′/π_θ agreement before
+  concluding, and log the negative). X4b adopted iff the no-search policy gains ≥ 40 Elo vs
+  frozen anchors over the matched continuation; if it gains nothing while the searcher still
+  beats it 75%, the distillation target or coverage is wrong before the idea is (check CE on
+  searched states falls).
 
 ## Budget
 
-X0 eval-only; X1 ~2h; X2 ~5.5h screen + ~3.6h confirm; X3 two arms ~3.6h each at one seed,
-confirm winner ~3.6h; X4 build + ~16h (2 seeds). Roughly **40–50 GPU-hours** for the whole
-programme — under a week of 4090 nights, with X1 gating the rest after the first evening.
+X0 eval-only (backfill done; in-run wiring is eval config); X1 ~2h; X2 ~5.5h screen + ~3.6h
+confirm; X3 two arms ~3.6h each at one seed, confirm winner ~3.6h; X4a an evening (search
+generation over ~10⁵ positions + minutes of SFT + ~0.5h continuation); X4b build + ~16h
+(2 seeds). Roughly **40–55 GPU-hours** for the whole programme — under a week of 4090
+nights, with X1 gating the rest after the first evening and X4a runnable in parallel with
+X1 because it needs no trainer change.
 
 ## Follow-ups
 

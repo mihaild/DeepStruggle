@@ -55,15 +55,16 @@ known.
 
 | item | what | cost | gate |
 |:---|:---|:---|:---|
-| **P15-X0** | frozen-anchor in-run evals (per-side WR vs fixed strong checkpoints) — restores rating above 120M, makes the oscillation quantifiable | eval config only | none |
+| **P15-X0** | frozen-anchor evals — **backfill measured** ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md): peaks at 120M/200M then −56 to −154 Elo; matrix transitive; field tournaments hid 6× of the side gap); in-run wiring + peak selection still to do | eval config only | none |
 | **P15-X1** | frozen-exploiter diagnostic (P10 exp 2, never run): does a response to the runaway strategy exist? | ~2h GPU | side-lock in trainer |
+| **P15-X4a** | one offline distillation round from `p28_200M` (search → SFT → short RL continuation): does the ~75% search edge transfer to a policy, and does it survive RL? No trainer change — runs in parallel with X1 | an evening | none |
 | bookkeeping | write up **E3-18-22** (P10 exp 1, the do-nothing control): its one rating, +11 over its parent after +80M, *is* the "no self-recovery" result | none | none |
 
 ### Tier 1 — the stall attack (gated by X1 climbing; details in [P15](P15_breaking_the_cycle.md))
 
 | item | what | cost |
 |:---|:---|:---|
-| **P15-X4** | expert-iteration distillation: CE toward the 32-sim honest search policy, card/play-mode nodes, 1-in-8 — the one gradient source that does not die with the outcome signal. Build starts now, in parallel with X1 | build + ~8h/arm |
+| **P15-X4b** | continuous expert-iteration distillation: CE toward the 32-sim honest search policy inside the RL loop, card/play-mode nodes, 1-in-8 — the one gradient source that does not die with the outcome signal; X4a's result decides whether it is confirmed or mandatory | build + ~8h/arm |
 | **P15-X2** | anchor timescale: `--ref-update-freq` 200k → {5M, 20M} — the KL anchor currently refreshes every ~16s of wall clock and tracks the cycle it should damp | flags; ~2h/cell |
 | **P15-X3** | pool memory: span-the-run pool with δ-mix (a); ~~PFSP (b)~~ **postponed — ran as E3-23-28 and is a null: +11.6 Elo at 160M against an 83–221 Elo seed spread** ([pooling.md §3c](../findings/training/pooling.md)); one-opponent-per-episode (c, only if a moves) | small trainer change; ~2h/arm |
 
