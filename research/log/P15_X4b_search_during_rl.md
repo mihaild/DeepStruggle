@@ -1,6 +1,6 @@
 # P15-X4b — the search signal present *during* RL
 
-**Launched 2026-09-17, `E3-28-28_20260917_035813` (after a first attempt collapsed; see below).
+**Launched 2026-09-17, `E3-29-28_20260917_041110` (after two arms collapsed on an implementation bug; see below).
 Pre-registered below before any result
 existed.** X4a established that the search edge is expressible as a policy (+47.7 Elo) but does
 not survive subsequent RL — it decays to a dead heat within 20M steps
@@ -18,14 +18,14 @@ never acts**, so the state distribution is the policy's own and the arm varies o
 `E3-26-28_20260917_025539` — run earlier the same night as X4a step 4's control — is this exact
 configuration with the search term switched off:
 
-| | control `E3-26-28` | arm `E3-28-28` |
+| | control `E3-26-28` | arm `E3-29-28` |
 |:---|:---|:---|
 | warmup checkpoint | `p28_200M` | `p28_200M` |
 | seed | 20260928 | 20260928 |
 | steps | 20M | 20M |
 | envs / pool / reward / η / coefs | identical | identical |
 | snapshot cadence | every 5M | every 5M |
-| **search CE** | **off** | **coef 0.05, 64 sims, `all`, 1-in-8** |
+| **search CE** | **off** | **coef 0.5, 64 sims, `all`, 1-in-8** |
 
 One factor, matched seed, matched cadence. The intermediate snapshots line up, so a truncated arm
 is still comparable at 5M, 10M and 15M rather than being lost.
@@ -126,6 +126,27 @@ targets the right weight has to be re-established rather than inherited from tha
 It also leaves one honest loose end. That the off-by-one *fully* explains the collapse is not
 established — it is the cause of a real defect that was certainly harming learning, and the
 relaunched arm's trace against the control is what confirms or refutes it.
+
+## The arm that is running, and why at coef 0.5
+
+With the targets aligned, a 400k-step smoke at **the original coef 0.5** — the weight the first
+collapse was blamed on — tracks the control closely:
+
+| step | entropy, arm / control | `critic_auc`, arm / control | KL, arm / control |
+|---:|---:|---:|---:|
+| 131k | 1.013 / 1.069 | 0.917 / 0.938 | 0.023 / 0.030 |
+| 262k | 0.987 / 1.118 | 0.916 / 0.907 | 0.043 / 0.046 |
+| 458k | 0.913 / 1.068 | 0.877 / 0.869 | 0.034 / 0.040 |
+
+Compare the same coefficient before the fix: KL against π_ref was **3.16 at the very first
+iteration** and 18.9 by 196k. It is now 0.023, inside the control's range.
+
+Entropy sits about 15% below the control and drifts down slowly, which is what a CE term toward a
+sharper teacher should do — and it is settling near **the searcher's own target entropy of 0.96
+nats**, not falling toward zero. The critic tracks the control almost exactly.
+
+So `E3-29-28` runs at coef 0.5: the original value, re-justified by measurement rather than
+inherited from the analysis that turned out to be about a misaimed term.
 
 ## Result
 
