@@ -275,7 +275,73 @@ Elo) with KL ~0.036 and agreement ~97%. The policy is not progressively catching
 which is what expert iteration looks like when the teacher is the student plus search and improves
 with it. It also means the process has not saturated at 20M.
 
-## Extension to 80M, the standard leg — running
+## The 80M extension collapsed the arm, and the +165.6 Elo was measured just before the cliff
+
+**Stopped at 26.3M of 80M.** The arm did not degenerate the way the control did — it fell apart.
+
+Rated at temperature 0, 300 games a side, `/workspace/data/tournaments/P15_X4b_25M/`:
+
+| model | Elo | overall |
+|:---|---:|---:|
+| **arm @20M** (end of the original run) | **1667.0** | 76.9% |
+| control @25M | 1544.8 | 57.8% |
+| `anchor_280M` | 1500.0 | 50.5% |
+| **arm @25M** | **1253.7** | **14.6%** |
+
+**413 Elo lost in 5M steps**, ending 291 Elo *below* its own step-matched control. The instruments
+agree: `critic_auc` fell 0.87 → 0.59, Brier skill to 0.010 — chance — and `kl_div` against π_ref
+spiked to 14.9, 5.8 and 31.99 in consecutive iterations. `critic_base_rate` stayed near 0.51, so
+this is **not** the control's one-sided degeneration; it is the policy being blown apart.
+
+### It was not the resume, and it was not sudden
+
+The first suspicion was the continuation itself, because KL was 10–20× the original run's from its
+first iteration (0.12–0.87 against 0.02–0.04), where the control's continuation rose only ~2×. But
+the original arm run **ended** at KL 0.08–0.40, having started at 0.02. The elevation was
+inherited, not introduced: the continuation resumed an already-rising trend.
+
+The reference policy *is* saved and restored (`generic_trainer.py:1147`, `:1176`), and the searcher
+holds `active_net` by reference while resume loads weights in place, so the teacher is not stale
+either. Both hypotheses were checked and neither holds.
+
+**So the mechanism is the arm's own: search CE at coef 0.5 drives the policy steadily away from
+π_ref, and past roughly 20M steps that divergence goes critical.** The η·KL term at η = 0.1 cannot
+hold it: at KL 30 that term contributes 3.0 to the loss, which is large, but by then the policy has
+already left.
+
+### What this does to the result
+
+**The +165.6 Elo at 20M stands as measured** — it was rated against a step-matched control, at
+temperature 0, and the checkpoint is on disk and still rates 1667.0 in a fresh field. But it is now
+known to be **a reading taken shortly before a cliff**, which changes what it licenses. The gap by
+matched step reads:
+
+| matched steps | gap vs control |
+|---:|---:|
+| 5M | +224.4 |
+| 10M | +249.6 |
+| 15M | +253.8 |
+| 20M | +165.6 |
+| **25M** | **−291.1** |
+
+The decline from +253.8 to +165.6 in the last segment of the first run — flagged at the time as
+"where it settles is open" and "the direction of that last segment is the same" as X4a's — was
+**the leading edge of this collapse, not a fluctuation.** That caution is now cashed in.
+
+### What is worth running next
+
+1. **A coefficient sweep is no longer optional.** 0.5 was a guess that survived a wrong diagnosis
+   and a 458k-step smoke test; it is now known to be unstable over 20M. The obvious arm is a
+   resume from the healthy **20M checkpoint** at a much lower coefficient — 0.05 or 0.1 — which
+   keeps the +165.6 Elo starting point and tests directly whether the instability is dosage.
+2. **Or a KL guard.** The divergence is visible for millions of steps before it goes critical, so
+   an arm that anneals `search_ce_coef` when KL exceeds a threshold would be a cheap fix and is
+   measurable against the same control.
+3. The control's own 80M snapshots are intact and it degenerated on a different schedule and in a
+   different way (side collapse at ~65M, i.e. ~265M cumulative), so the pair still supports the
+   60M comparison for anything that reaches it.
+
+## Extension to 80M, the standard leg — stopped
 
 Launched 2026-09-17: both runs resumed from their 20M resume states, which sat at exactly
 **20,054,016 steps each**, and continue to **80M cumulative**.
