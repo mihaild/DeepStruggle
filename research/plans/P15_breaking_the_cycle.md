@@ -112,6 +112,19 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
   against the one-anchor-family caveat the sweep itself records — required before comparing
   *runs* rather than *budgets*.
 
+> **X1 RAN 2026-09-17 and did not discriminate**
+> ([`../log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md)). A USSR-locked
+> exploiter warm started from `@200M`, trained 40M steps against a frozen `@280M`, reached
+> **51.8%** [48.7, 54.9] against it — **+2.1 pp over its own warm start, z = 0.94, not
+> significant** — and hit that ceiling by 10M steps. The reason it could not discriminate is
+> that the premise was weaker than X0 measured: re-rated at 1000 games a side, `@280M`'s US
+> against `@200M`'s USSR is **50.1%**, a dead heat, where 200 games read 52.0%. There was no
+> unanswered strategy for an exploiter to answer. Also recorded: the locked seat collapsed
+> from 50% to **7%** in 40M steps of receiving no gradient, which bounds how fast a side
+> degenerates once a run stops training it — the mechanism behind X0 §2's oscillation.
+> **X4's case is unchanged by this**, resting where it did: the measured search edge over the
+> same weights.
+>
 > **X0 gives X1 a target and shows the seats are not symmetric**
 > ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md) §5). Asked per seat over
 > the whole 24-model field: **playing US, two models beat every model playing USSR** — `p28_280M`

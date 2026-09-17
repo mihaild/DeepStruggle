@@ -162,6 +162,12 @@ content is asked per seat, over the whole field:
 23 opponents each (HeuristicBot excluded — including a saturated opponent makes "beats
 everything" easier to achieve and harder to interpret).
 
+> **Corrected 2026-09-17 by [`P15_X1_frozen_exploiter.md`](P15_X1_frozen_exploiter.md).**
+> Every cell below is 200 games a side, ±3.5 pp. Re-rated at 1000 games, `p28_280M`'s US
+> against `p28_200M`'s USSR is **50.1%** [47.0, 53.2], not 52.0% — a dead heat. The claim
+> that survives is narrower: `p28_280M`'s US beats **22 of 23** opponents and is held level
+> by the 23rd. It has one answer, which already existed, rather than none.
+
 **(1) Playing US: yes, two of them.**
 
 | model | worst result as US | against |
