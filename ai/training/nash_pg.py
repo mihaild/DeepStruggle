@@ -117,6 +117,10 @@ class BaseNashPGTrainer:
         lr: float = 3e-4,
         eta: float = 0.1,              # NashPG KL-regularization strength
         clip_eps: float = 0.2,         # PPO clipping epsilon
+        search_ce_coef: float = 0.0,   # P15-X4b: weight on CE toward the searcher. 0 = off
+        search_sims: int = 32,
+        search_subsample: float = 0.125,
+        search_node_filter: str = "card_playmode",
         ent_coef: float = 0.01,        # Entropy exploration coefficient
         vf_coef: float = 0.5,          # Value loss coefficient
         vp_coef: float = 0.05,         # Auxiliary VP loss weight
@@ -155,6 +159,21 @@ class BaseNashPGTrainer:
         self.lr = lr
         self.eta = eta
         self.clip_eps = clip_eps
+        # P15-X4b. A searcher used ONLY to produce cross-entropy targets: rollouts keep sampling
+        # from the raw policy, so the state distribution is identical to the baseline's and the
+        # arm stays one factor. Acting on the search policy is a different experiment.
+        self.search_ce_coef = float(search_ce_coef)
+        self._searcher = None
+        if self.search_ce_coef > 0.0:
+            from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
+            self._searcher = BatchedMCTS(
+                active_net, device=self.device,
+                config=BatchedMCTSConfig(
+                    simulations=search_sims, temperature=0.0, auto_advance=True,
+                    advance_root=False, determinize=True,
+                    node_filter=search_node_filter, subsample=search_subsample))
+            print(f"[X4b] search CE on: coef {self.search_ce_coef}, {search_sims} sims, "
+                  f"{search_node_filter}, subsample {search_subsample}", flush=True)
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.vp_coef = vp_coef
@@ -349,6 +368,7 @@ class BaseNashPGTrainer:
                         torch.from_numpy(own_obs).to(self.device, torch.float32), None)
                 next_own_t = own_v.squeeze(-1)
 
+            search_pi_t, has_search_t = self._search_targets()
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -366,6 +386,8 @@ class BaseNashPGTrainer:
                 held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device) if "held_scoring_ussr" in self._info else None,
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
                 next_values_own=next_own_t,
+                search_pi=search_pi_t,
+                has_search=has_search_t,
             )
 
             # v_win is from the *acting* player's perspective; multiplying by the acting
@@ -463,6 +485,52 @@ class BaseNashPGTrainer:
     def train_step(self) -> Dict[str, float]:
         raise NotImplementedError("Subclasses must implement train_step")
 
+    def _search_targets(self):
+        """The searcher's visit distribution at the decisions this configuration searches.
+
+        P15-X4b. Returns (targets, flag) over all environments, or (None, None) when search is
+        off. The searcher only *answers* -- the actions actually played were already sampled from
+        the raw policy above, so the state distribution is the baseline's and this arm varies one
+        thing. Acting on the search policy would be a different experiment.
+
+        A target is dropped when the searcher returns nothing, and normalised over the visits it
+        did return. Legality is not re-checked here: `BatchedMCTS` already filters its answer
+        against the caller's own mask, which is where the authority belongs.
+        """
+        if self._searcher is None:
+            return None, None
+        import numpy as _np
+        import ts_engine as ts
+
+        n = self.num_envs
+        pi = torch.zeros((n, self.buffer.action_dim), dtype=torch.float32, device=self.device)
+        flag = torch.zeros(n, dtype=torch.float32, device=self.device)
+        try:
+            states = [self.env.runner.get_state(i) for i in range(n)]
+            idx = [i for i, st in enumerate(states)
+                   if not ts.Engine.is_terminal(st) and self._searcher.should_search(st)]
+            if not idx:
+                return pi, flag
+            res = self._searcher.run([states[i].clone() for i in idx])
+        except Exception as exc:                      # a broken teacher must not kill the run
+            print(f"[X4b] search targets unavailable this step: {exc}", flush=True)
+            return pi, flag
+
+        for i, (acts, visits) in zip(idx, res):
+            if not acts:
+                continue
+            v = _np.asarray(visits, dtype=_np.float32)
+            tot = float(v.sum())
+            if tot <= 0.0:
+                continue
+            for a, w in zip(acts, v):
+                if 0 <= int(a) < pi.shape[1]:
+                    pi[i, int(a)] = float(w) / tot
+            flag[i] = 1.0
+        self.search_targets_produced = getattr(self, "search_targets_produced", 0) + int(
+            flag.sum().item())
+        return pi, flag
+
     def train_iteration(self) -> Dict[str, Any]:
         """Runs one full training iteration (rollout collection + inner SGD epochs + reference check)."""
         self.total_iterations += 1
@@ -538,7 +606,7 @@ class NashPGTrainer(BaseNashPGTrainer):
 
         for _ in range(self.num_epochs):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
-                 b_defcon_risk, b_learner) in self.buffer.get_batches(
+                 b_defcon_risk, b_learner, b_search_pi, b_has_search) in self.buffer.get_batches(
                      self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
@@ -585,7 +653,10 @@ class NashPGTrainer(BaseNashPGTrainer):
                     own_adv = b_adv.abs()[keep]
                     if own_adv.numel() > 1:
                         thresh = torch.quantile(own_adv.float(), self.adv_filter_quantile)
-                        keep = keep & (b_adv.abs() >= thresh)
+                        # A searched decision is exempt: X4b exists to put gradient on
+                        # exactly these states, and the filter would drop the ones whose
+                        # outcome-advantage is small -- which late in a run is most of them.
+                        keep = keep & ((b_adv.abs() >= thresh) | (b_has_search > 0.5))
                 ppo_loss = (surrogate[keep].mean() if bool(keep.any())
                             else surrogate.sum() * 0.0)
 
@@ -604,7 +675,16 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # the learner's policy toward states it did not choose to be in.
                 own_entropy = (cur_entropy[b_learner > 0.5].mean()
                                if bool((b_learner > 0.5).any()) else cur_entropy.sum() * 0.0)
-                policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy
+                # P15-X4b: pull the policy toward the searcher, on searched decisions only.
+                # Soft cross-entropy against the visit distribution. The target is zero outside
+                # the legal set, so masked logits contribute nothing and cannot produce a NaN.
+                search_ce = cur_logits.sum() * 0.0
+                if self.search_ce_coef > 0.0 and bool((b_has_search > 0.5).any()):
+                    sel = b_has_search > 0.5
+                    search_ce = -(b_search_pi[sel] * cur_log_p[sel]).sum(dim=-1).mean()
+
+                policy_loss = (ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy
+                               + self.search_ce_coef * search_ce)
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss

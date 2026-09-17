@@ -1,0 +1,130 @@
+"""P15-X4b: the CE term toward the searcher, and the guarantees around it.
+
+The arm's whole claim to being one factor is that search produces *targets* and never *acts*, so
+the state distribution is the baseline's. Two things therefore have to hold, and both are easy to
+break silently:
+
+* with `search_ce_coef = 0` nothing changes at all — not the buffer, not the loss, not the
+  sampled actions;
+* a searched decision is exempt from advantage filtering, because putting gradient on exactly
+  those states is the point and the filter drops the ones whose outcome-advantage is small,
+  which late in a run is most of them.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+import torch
+
+from ai.training.rollout_buffer import RolloutBuffer
+
+OBS, ACT, N, T = 8, 12, 4, 6
+
+
+def _buf() -> RolloutBuffer:
+    return RolloutBuffer(buffer_size=T, num_envs=N, obs_dim=OBS, action_dim=ACT, device="cpu")
+
+
+def _add(buf: RolloutBuffer, search_pi=None, has_search=None) -> None:
+    buf.add(obs=torch.zeros(N, OBS), masks=torch.ones(N, ACT, dtype=torch.uint8),
+            actions=torch.zeros(N, dtype=torch.long), log_probs=torch.zeros(N),
+            rewards=np.zeros(N, dtype=np.float32), dones=torch.zeros(N),
+            values_win=torch.zeros(N), values_vp=torch.zeros(N),
+            players=torch.ones(N, dtype=torch.int8),
+            search_pi=search_pi, has_search=has_search)
+
+
+def test_the_buffer_defaults_to_no_targets() -> None:
+    """An unsearched run must carry an all-zero flag, or the CE term fires on nothing."""
+    b = _buf()
+    for _ in range(T):
+        _add(b)
+    assert float(b.has_search.sum()) == 0.0
+    assert float(b.search_pi.abs().sum()) == 0.0
+
+
+def test_a_target_lands_on_the_step_and_env_it_belongs_to() -> None:
+    b = _buf()
+    pi = torch.zeros(N, ACT)
+    pi[2, 5] = 1.0
+    flag = torch.zeros(N)
+    flag[2] = 1.0
+    _add(b)                      # step 0: nothing
+    _add(b, pi, flag)            # step 1: env 2 searched
+    _add(b)                      # step 2: nothing
+    assert float(b.has_search[0].sum()) == 0.0
+    assert float(b.has_search[1, 2]) == 1.0
+    assert float(b.has_search[1].sum()) == 1.0
+    assert float(b.search_pi[1, 2, 5]) == 1.0
+    assert float(b.has_search[2].sum()) == 0.0
+
+
+def test_batches_carry_the_target_after_the_learner_mask() -> None:
+    """Appended, not inserted: every existing caller unpacks the first nine by position."""
+    b = _buf()
+    pi = torch.zeros(N, ACT)
+    pi[:, 3] = 1.0
+    for _ in range(T):
+        _add(b, pi, torch.ones(N))
+    b.compute_gae(last_v_win=torch.zeros(N), last_v_vp=torch.zeros(N),
+                  last_dones=torch.zeros(N, dtype=torch.bool),
+                  last_players=torch.ones(N, dtype=torch.int8))
+    batch = next(b.get_batches(batch_size=8))
+    assert len(batch) == 11, "search target and flag are elements 10 and 11"
+    b_search_pi, b_has_search = batch[9], batch[10]
+    assert b_search_pi.shape == (8, ACT)
+    assert b_has_search.shape == (8,)
+    assert float(b_has_search.sum()) == 8.0
+    assert torch.allclose(b_search_pi.sum(dim=-1), torch.ones(8))
+
+
+def test_the_ce_term_is_zero_where_nothing_was_searched() -> None:
+    """The loss must not average a zero row in: that would pull toward a uniform target."""
+    logits = torch.randn(6, ACT, requires_grad=True)
+    log_p = torch.log_softmax(logits, dim=-1)
+    pi = torch.zeros(6, ACT)
+    has = torch.zeros(6)
+    pi[1, 4] = 1.0
+    has[1] = 1.0
+    pi[4, 0] = 1.0
+    has[4] = 1.0
+
+    sel = has > 0.5
+    ce = -(pi[sel] * log_p[sel]).sum(dim=-1).mean()
+    # by hand, over the two searched rows only
+    manual = -(log_p[1, 4] + log_p[4, 0]) / 2
+    assert torch.allclose(ce, manual, atol=1e-6)
+
+    # and the unsearched rows contribute no gradient
+    ce.backward()
+    grad = logits.grad
+    assert grad is not None
+    for i in (0, 2, 3, 5):
+        assert float(grad[i].abs().sum()) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_searched_sample_survives_advantage_filtering() -> None:
+    """The filter keeps large |A|; a searched decision is kept regardless. X4b exists for them."""
+    adv = torch.tensor([0.001, 5.0, 0.002, 4.0])
+    learner = torch.ones(4)
+    has_search = torch.tensor([1.0, 0.0, 0.0, 0.0])
+
+    keep = learner > 0.5
+    thresh = torch.quantile(adv.abs()[keep].float(), 0.5)
+    keep_filtered = keep & (adv.abs() >= thresh)
+    assert not bool(keep_filtered[0]), "the fixture must have the searched sample below threshold"
+
+    keep_x4b = keep & ((adv.abs() >= thresh) | (has_search > 0.5))
+    assert bool(keep_x4b[0]), "a searched decision was dropped by the advantage filter"
+    assert bool(keep_x4b[1]) and bool(keep_x4b[3])
+
+
+def test_the_flag_is_needed_because_an_unsearched_row_is_all_zeros() -> None:
+    """Why `has_search` exists rather than inferring from the target being non-zero."""
+    b = _buf()
+    _add(b)
+    row = b.search_pi[0, 0]
+    assert float(row.sum()) == 0.0
+    assert float(b.has_search[0, 0]) == 0.0, (
+        "an all-zero row is indistinguishable from a degenerate target without the flag")

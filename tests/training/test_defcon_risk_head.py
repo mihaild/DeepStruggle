@@ -111,7 +111,8 @@ def test_batches_carry_the_target() -> None:
     )
     batch = next(buf.get_batches(batch_size=8))
     # Eighth tensor, and the learner mask is the ninth (added for frozen-opponent sampling).
-    assert len(batch) == 9, "expected the DEFCON-risk target eighth and the learner mask ninth"
+    # X4b appends a search target and its flag after those; positions 1-9 are what is pinned.
+    assert len(batch) >= 9, "expected the DEFCON-risk target eighth and the learner mask ninth"
     assert batch[7].shape == (8,)
 
 

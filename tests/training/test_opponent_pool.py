@@ -42,8 +42,11 @@ def test_learner_mask_round_trips_through_get_batches() -> None:
               players=torch.ones(3, dtype=torch.int8),
               learner=np.array([1.0, 0.0, 1.0], dtype=np.float32))
     batch = next(b.get_batches(batch_size=12))
-    assert len(batch) == 9, "the learner mask is the ninth element"
-    assert batch[-1].sum().item() == pytest.approx(8.0), "2 of 3 envs x 4 steps"
+    # The learner mask is the NINTH element. X4b appended a search target and its flag after
+    # it, so the tuple is longer -- but the mask's position is what callers unpack by, and that
+    # must not move. Indexing from the end would have hidden the change.
+    assert len(batch) >= 9, "the learner mask is the ninth element"
+    assert batch[8].sum().item() == pytest.approx(8.0), "2 of 3 envs x 4 steps"
 
 
 def test_pool_marks_the_configured_fraction_mixed() -> None:

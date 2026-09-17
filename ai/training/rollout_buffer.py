@@ -79,6 +79,13 @@ class RolloutBuffer:
 
         # Computed targets
         self.advantages = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
+        #: P15-X4b. The searcher's visit distribution where a decision was searched, and the
+        #: flag saying where that is. The flag is needed rather than inferred: an unsearched
+        #: step is an all-zero row, which is not distinguishable from a degenerate target.
+        self.search_pi = torch.zeros((buffer_size, num_envs, action_dim),
+                                     dtype=torch.float32, device=self.device)
+        self.has_search = torch.zeros((buffer_size, num_envs), dtype=torch.float32,
+                                      device=self.device)
         self.returns_win = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         self.returns_vp = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
         # Auxiliary target for the DEFCON-risk head: 1 where the acting player is about to
@@ -117,6 +124,8 @@ class RolloutBuffer:
         held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
         defcon_blunder: Optional[np.ndarray | torch.Tensor] = None,
         next_values_own: Optional[torch.Tensor] = None,
+        search_pi: Optional[torch.Tensor] = None,
+        has_search: Optional[torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -174,6 +183,9 @@ class RolloutBuffer:
             self.next_values_own[self.step].copy_(next_values_own)
             self.has_next_values_own = True
 
+        if search_pi is not None and has_search is not None:
+            self.search_pi[self.step] = search_pi.to(self.device)
+            self.has_search[self.step] = has_search.to(self.device)
         self.step += 1
         if self.step >= self.buffer_size:
             self.full = True
@@ -509,11 +521,14 @@ class RolloutBuffer:
 
     def get_batches(
         self, batch_size: int, priority_alpha: float = 0.0
-    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
+    ) -> Generator[Tuple[torch.Tensor, ...], None, None]:
         """Yields mini-batches for inner-loop SGD updates.
 
-        The last element is the learner mask: 1 where the action was chosen by the policy being
+        Element 9 is the learner mask: 1 where the action was chosen by the policy being
         trained, 0 where a frozen opponent chose it. It is all ones without an opponent pool.
+
+        Elements 10 and 11 are P15-X4b's search target and the flag for where it exists. They are
+        appended rather than inserted so that positional unpacking of the first nine is unchanged.
         """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
@@ -527,6 +542,8 @@ class RolloutBuffer:
         flat_returns_vp = self.returns_vp.view(total_steps)
         flat_defcon_risk = self.defcon_risk_target.view(total_steps)
         flat_learner = self.learner.view(total_steps)
+        flat_search_pi = self.search_pi.view(total_steps, self.action_dim)
+        flat_has_search = self.has_search.view(total_steps)
 
         for start_idx in range(0, total_steps, batch_size):
             batch_idx = indices[start_idx : start_idx + batch_size]
@@ -540,5 +557,7 @@ class RolloutBuffer:
                 flat_returns_vp[batch_idx],
                 flat_defcon_risk[batch_idx],
                 flat_learner[batch_idx],
+                flat_search_pi[batch_idx],
+                flat_has_search[batch_idx],
             )
 

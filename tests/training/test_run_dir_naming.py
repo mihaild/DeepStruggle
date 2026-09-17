@@ -9,24 +9,39 @@ quotes, so it is the copy that has to carry it.
 
 No step budget appears in the name: one directory holds every budget of a lineage, and each
 snapshot's own filename already carries the budget it was taken at.
+
+The directory is rooted in the SHARED data tree, not in `data/` relative to the current
+directory. `data/` is git-ignored, so a git worktree gets its own empty one and a run launched
+from a worktree would write where nothing else looks, then lose it when the worktree is removed.
+`tools/lib/data_root.py` resolves the main checkout from git; these tests therefore compare
+against that root rather than a literal `data/checkpoints`.
 """
 from __future__ import annotations
 
 import pytest
 
 from ai.training.generic_trainer import _resolve_run_dir
+from tools.lib.data_root import checkpoints_dir
 
 TS = "20260912_181622"
 
 
 def test_run_name_becomes_the_directory_prefix() -> None:
-    assert _resolve_run_dir(None, "E9-99-01", "v2", TS) == \
-        "data/checkpoints/E9-99-01_20260912_181622"
+    import os
+
+    got = _resolve_run_dir(None, "E9-99-01", "v2", TS)
+    assert got == os.path.join(checkpoints_dir(), "E9-99-01_20260912_181622")
+    assert os.path.isabs(got), (
+        "the run directory must be absolute, or it means a different place depending on which "
+        "worktree the command was run from")
 
 
 def test_without_a_run_name_the_old_default_still_applies() -> None:
     """Not an error: pre-existing scripts and smoke runs keep working."""
-    assert _resolve_run_dir(None, None, "v2", TS) == "data/checkpoints/run_v2_20260912_181622"
+    import os
+
+    assert _resolve_run_dir(None, None, "v2", TS) == os.path.join(
+        checkpoints_dir(), "run_v2_20260912_181622")
 
 
 def test_an_explicit_output_dir_is_honoured_when_it_carries_the_name() -> None:
