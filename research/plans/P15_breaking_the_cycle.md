@@ -67,8 +67,22 @@ Ordered so each is read through the one before it. Budgets use 45M steps/h.
 > reads −6.9 pp where the frozen anchor reads −41.5 pp for the same checkpoint. The in-run
 > wiring is still to do; this establishes what it will show.
 
-Add frozen peer anchors to the in-run snapshot evals: E3-20-28@160M (strong), E3-20-28@80M
-(mid), HeuristicBot kept for continuity with old traces. Log **per-side** win rate against
+Add frozen peer anchors to the in-run snapshot evals: **E3-20-28@200M (strong), E3-20-28@80M
+(weak)**, HeuristicBot kept for continuity with old traces.
+
+> **Anchors changed 2026-09-17**, from `@160M` to `@200M` for the strong end. The X0 round robin
+> rates `@200M` at 2193.7 and `@160M` at 2141.9, and `@200M` is the *peak* of the pooled lineage —
+> every checkpoint after it declines. An anchor should be the best fixed reference available, and
+> a run that eventually passes `@160M` still has 50 Elo of headroom before it has matched the
+> lineage's own best. `@80M` (2083.1) stays as the weak end: it is far enough below to keep a
+> young arm off the floor without saturating, which is what `HeuristicBot` fails to do past 120M.
+> `@200M` is also even-handed against itself — 51.0% US to 48.6% USSR over 500 games, CI
+> 46.6–55.4% ([`../log/P15_X0_selfplay_200M.md`](../log/P15_X0_selfplay_200M.md)) — so
+> `anchor_side_gap` measures the arm's tilt rather than the anchor's.
+> Numbers already taken against `@160M`
+> ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md),
+> [`../log/P15_X0_search_on_200M.md`](../log/P15_X0_search_on_200M.md)) keep their meaning — they
+> are simply against a different fixed opponent, and the `@80M` column is common to both. Log **per-side** win rate against
 each anchor at every snapshot. This restores an instrument above 120M, makes the oscillation
 *quantifiable* (amplitude and period of per-side WR vs a fixed opponent, sliding window), and
 supplies the endpoint pooling.md says nothing has computed — external side balance averaged
