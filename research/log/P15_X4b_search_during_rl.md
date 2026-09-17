@@ -148,6 +148,60 @@ nats**, not falling toward zero. The critic tracks the control almost exactly.
 So `E3-29-28` runs at coef 0.5: the original value, re-justified by measurement rather than
 inherited from the analysis that turned out to be about a misaimed term.
 
+## Interim result at 5M steps: +224 Elo over the step-matched control
+
+The arm is still running to 20M. Both runs snapshot every 5M, so the first matched pair can be
+rated without waiting, and it is emphatic. `/workspace/data/tournaments/P15_X4b_verdict/`,
+500 games a side, **temperature 0.0**:
+
+| model | Elo | overall | vs control |
+|:---|---:|---:|---:|
+| **`x4b_arm` @5M** | **1752.0** | 78.8% | **+224.4** |
+| `source_200M` — where both arms started | 1537.8 | 43.0% | |
+| `control_no_search` @5M | 1527.6 | 41.1% | — |
+| `anchor_280M` | 1500.0 | 36.4% | |
+
+The control drifted slightly *below* the checkpoint it resumed from, which is the decline X0
+measured past this lineage's peak. The arm went **+214 Elo above that same starting point in 5M
+steps**.
+
+The pre-registered bar was 25 Elo. This is nine times it.
+
+### The confound that had to be ruled out first
+
+The arm's policy entropy is 0.56 against the control's 1.17, and the tournament's default is to
+*sample* at temperature 0.1. A sharper policy sampled at a fixed temperature plays closer to its
+own argmax, so it can win on sharpness rather than on strength — which would have made the whole
+result an artefact of the treatment's side effect.
+
+Re-rated at **temperature 0.0**, where every agent plays its argmax and entropy cannot matter by
+construction, the gap is +224.4 Elo against +239.6 when sampling. The confound is worth about 6%
+of the effect; the rest is policy strength.
+
+`tools/tournament.py` gained a `--temperature` flag for this, and the setting is now recorded in
+the report header and the JSON, because a rating is not interpretable without it.
+
+### What is and is not established
+
+**Established:** at 5M matched steps, with one seed, a searcher supplying CE targets during RL
+produces a policy 224 Elo stronger than the identical run without it, measured argmax-on-argmax.
+
+**Not established:**
+
+* **That it holds to 20M.** X4a's +47.7 Elo looked solid at its own checkpoint and had decayed to
+  a dead heat 20M steps later. The same could happen here, and this project has now been wrong
+  once tonight in exactly that way. The arm runs to 20M for that reason.
+* **One seed.** No variance estimate.
+* **That it beats the searcher it learned from.** X0 rated search over all nodes at +129.2 Elo,
+  which is a smaller number than +224, but in a different field against different opponents. Elo
+  does not travel between tournaments and the two must not be subtracted.
+* **Why entropy keeps falling.** It is at 0.56 and still drifting down, through the searcher's own
+  target entropy of 0.96 rather than settling there. The benign reading is that the teacher is
+  bimodal — mean 0.96 nats but 29.9% of targets carry >0.9 mass — so pulling toward the sharp ones
+  sharpens the policy overall. The critic is mildly degraded too (`critic_auc` 0.835 against the
+  control's 0.898). Neither is collapse, both are unexplained, and the 20M trace is what shows
+  whether they stabilise.
+
 ## Result
 
-**Running.** Nothing claimed until the tournament lands.
+**Running to 20M.** The 5M pair above is interim and is not the verdict.

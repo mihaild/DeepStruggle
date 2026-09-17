@@ -111,6 +111,7 @@ def run_head_to_head_report(
 def run_massive_tournament(
     model_specs: List[str],
     games_per_side: int = 500,
+    temperature: float = 0.1,
     batch_chunk_size: int = 1000,
     anchor_model: str = "HeuristicBot",
     anchor_elo: float = 1500.0,
@@ -174,6 +175,7 @@ def run_massive_tournament(
                 agent_b,
                 games_per_side=games_per_side,
                 device=dev,
+                temperature=temperature,
                 batch_chunk_size=batch_chunk_size,
                 track_choices=track_choices,
                 log_games_file=log_games,
@@ -249,6 +251,7 @@ def run_massive_tournament(
     report_lines.append(f"- **Total Models**: {M}\n")
     report_lines.append(f"- **Total Games Played**: {total_games_played:,}\n")
     report_lines.append(f"- **Games Per Matchup Pair**: {games_per_side * 2:,} ({games_per_side} per side)\n")
+    report_lines.append(f"- **Sampling Temperature**: {temperature} ({'deterministic' if temperature <= 0.05 else 'sampled'})\n")
     report_lines.append(f"- **Total Evaluation Time**: {total_tournament_time:.1f} seconds ({total_games_played / max(0.1, total_tournament_time):.1f} games/sec)\n\n")
 
     report_lines.append("## 1. Bradley-Terry MLE Elo Leaderboard\n\n")
@@ -326,6 +329,7 @@ def run_massive_tournament(
         "win_matrix": win_matrix.tolist(),
         "total_matrix": total_matrix.tolist(),
         "games_per_side": games_per_side,
+        "temperature": temperature,
         "total_time_seconds": total_tournament_time,
     }
 
@@ -345,6 +349,13 @@ def main():
     parser.add_argument("--checkpoint-dir", type=str, default=None, help="Directory to auto-discover all snapshot checkpoints")
     parser.add_argument("--include-baselines", action="store_true", default=False, help="Explicitly include RandomBot and HeuristicBot")
     parser.add_argument("--games-per-side", type=int, default=500, help="Games per side per matchup (total 2x games per pair)")
+    parser.add_argument("--temperature", type=float, default=0.1,
+                        help="Sampling temperature for every neural agent. <= 0.05 plays the "
+                             "argmax. The default 0.1 samples, which is fine for comparing "
+                             "models of similar sharpness but confounds a comparison between "
+                             "models whose policy entropy differs -- the sharper one plays "
+                             "closer to its own argmax and wins on temperature rather than on "
+                             "strength. Re-rate at 0.0 when the arms differ in entropy.")
     parser.add_argument("--batch-chunk-size", type=int, default=1000, help="Max parallel games executed in a single vectorized batch")
     parser.add_argument("--anchor-model", type=str, default="HeuristicBot", help="Model name to anchor Elo ratings")
     parser.add_argument("--anchor-elo", type=float, default=1500.0, help="Anchor Elo rating value")
@@ -390,6 +401,7 @@ def main():
     run_massive_tournament(
         model_specs=models,
         games_per_side=args.games_per_side,
+        temperature=args.temperature,
         batch_chunk_size=args.batch_chunk_size,
         anchor_model=args.anchor_model,
         anchor_elo=args.anchor_elo,
