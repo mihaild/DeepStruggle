@@ -165,6 +165,16 @@ its product is a pool member X3 can use.
 
 ### X2 — slow the anchor (two-timescale regularization, the theory-aligned flag)
 
+> **Running 2026-09-17 — [`log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md).** Two arms
+> at `--ref-update-freq 5000000`: `E3-30-28` from scratch with no search, and `E3-31-28` resumed
+> from `p28_200M` with the search-CE term, the latter one factor against the arm that collapsed.
+> Brought forward out of plan order because both of 2026-09-17's collapses are consistent with an
+> anchor that tracks rather than anchors.
+>
+> Early: η·KL measures **0.011–0.015** against a policy loss of order 0.01–0.1, so the KL term is
+> **not** dominating and the η = 0.3 escalation cell this section holds in reserve is not
+> indicated.
+
 `--ref-update-freq` 200k → {5M, 20M}, η = 0.1 held; one optional cell η = 0.3 at 5M. Resume
 from the 80M healthy state, +80M. Screen the three cells at one seed each (~1.8h/cell), read
 the X0 oscillation trace (a within-run trace, far less seed-noisy than an endpoint Elo), then
