@@ -82,3 +82,4 @@ nobody checked.
   axis.
 * **Human data** — the corpus conversion is an instrument (engine side); *"is BC warmup on human
   games better than on self-play"* is a training question. They are filed apart deliberately.
+- [`training/which_decisions_to_search.md`](training/which_decisions_to_search.md) — searching only card and play-mode nodes excluded 71.8% of the search signal; influence placement is a first-class decision, and the filter spent its budget on nodes averaging 2.1 legal actions

@@ -55,7 +55,16 @@ Against that, [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md) measured a 
 **all** nodes at +129.2 Elo on the same weights. X4a extracted 47.7 of it from card/play-mode
 alone.
 
-**This has since been measured, and placements are indeed where the signal is** —
+**The scoping was wrong** — see
+[`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md).
+Redoing this offline round over **all** decisions gives 1565.6 against the card/play-mode round's
+1555.1 and the source's 1530.0, rated at temperature 0 in one field
+(`/workspace/data/tournaments/P15_X4a_allnodes/`): ahead by 10.5 Elo and 51.6% head to head over
+1,000 games, which is about one standard error and **not** a significant difference. The scoping
+was still wrong; the one-shot offline gain from fixing it is just much smaller than the signal
+share suggests.
+
+**Placements are where the signal is** —
 [`P15_X4a_where_the_search_signal_is.md`](P15_X4a_where_the_search_signal_is.md). Searching all
 85,113 decisions of 200 games shows top-1 agreement is uninformative (90.5–97.8% for *every*
 decision type) while KL varies 7×, and `POINT_NODE` carries **71.8% of the total CE signal**

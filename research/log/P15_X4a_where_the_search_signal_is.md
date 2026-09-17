@@ -61,13 +61,25 @@ two numbers are not equal and there is no reason they should be — Elo is not l
 they are the same order, and they point the same way: **the unextracted majority of the edge is at
 `POINT_NODE`.**
 
+## The scoping this overturns
+
+P3 scoped search to card and play-mode decisions as "the decisions that matter", and X4a and X4b
+inherited it. That is wrong on the merits as well as on this census — where influence goes decides
+which country flips, which battleground is contested and what the opponent can do next, and it is
+not a detail of executing a card. Written up in
+[`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md),
+along with the offline test of the fix.
+
 ## What this changes
 
 X4b's specification in [`plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md)
 says card/play-mode nodes, following P3's argument that those are "the decisions that matter".
-That argument is about which decisions are *strategically* consequential, and it may well be
-right about that. It is not a claim about where a searcher disagrees with this policy, and the
-measurement above says those are different places.
+**That argument is wrong twice over.** It is wrong as a claim about where a searcher disagrees
+with this policy, which is what the table above measures. It is also wrong on its own terms:
+choosing to play a card for operations is not a plan until the operations land somewhere, and
+where they land decides which country flips, which battleground is contested, and what the
+opponent can do next. `SELECT_PLAY_MODE`, which the filter *does* search, averages 2.1 legal
+actions — a node with two options cannot carry an edge.
 
 **X4b is therefore run with `--search-node-filter all`**, a deliberate deviation from the plan
 spec, recorded here and in the arm's own `metadata.json`. The cost is throughput — `all` makes
