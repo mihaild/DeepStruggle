@@ -210,6 +210,37 @@ noise. The arm looks stable while one seat falls apart. Its `critic_auc` did fal
 Brier skill −0.157 by the end, so the critic instruments caught *something*; they simply cannot
 say which seat.
 
+### It is a USSR specialist, and that is two instruments agreeing
+
+Mirror self-play, the same checkpoint on both seats, 300 games a side, T=0
+(`/workspace/data/tournaments/P15_selfplay_sides/`):
+
+| | `E3-30-28`@240M | `p28_200M` |
+|:---|---:|---:|
+| mirror self-play, as USSR | **96.3%** | 46.7% |
+| mirror self-play, as US | **3.7%** | 53.3% |
+| vs `frozen_280M`, as USSR | 51.0% | 53.7% |
+| vs `frozen_280M`, as US | **13.7%** | 55.7% |
+
+The two instruments agree, and they are independent: a mirror match says which seat wins when both
+are this policy, and a common-opponent rating says how good each seat is in absolute terms. Here
+both say the same thing — **its USSR play is genuinely competitive** (51.0% against a common
+opponent where the 200M model manages 53.7%) **and its US play is broken** (13.7% against 55.7%).
+
+So "USSR specialist, incompetent as US" is a fair description, and it is safe to say *because* the
+common-opponent number backs the mirror. The mirror alone could not have established it: a 96/4
+split is a fact about the pair and is equally consistent with a strong USSR and a broken US, or
+with both seats mediocre and one slightly less so.
+
+**`p28_200M` is not the mirror image of this.** Its own mirror is 53.3% US against 46.7% USSR — a
+mild lean, near balanced — and against `frozen_280M` it is 53.7 / 55.7. It is a *balanced* model
+that only looks US-specialised beside an opponent whose US seat has collapsed.
+
+One caution on the earlier per-seat matrix: it appeared to show USSR winning most cross-pairings,
+which reads like a population-wide side advantage. It is not. Four of its six entries were
+`E3-30-28` snapshots with broken US play, so anyone playing USSR against them won easily. Between
+the two frozen anchors there is no such skew (44.0 / 46.3 and 53.7 / 55.7).
+
 ### What this answers
 
 The arm was launched to ask whether a 25× slower reference anchor stops the decline on its own.
