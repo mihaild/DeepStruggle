@@ -40,6 +40,7 @@ class SideStats(NamedTuple):
     top_share: float
     ref_overlap: float
     top: List[Tuple[str, int]]
+    top_full: List[Tuple[str, int]]
 
 
 #: The reference openings named as correct: US takes 4 West Germany / 3 Italy unless holding
@@ -48,6 +49,13 @@ REFERENCE = {
     "US": {"West Germany": 4, "Italy": 3},
     "USSR": {"East Germany": 4, "Poland": 4, "Yugoslavia": 1, "Austria": 1},
 }
+
+#: The countries that actually decide the opening, as against the ones that merely appear in a
+#: reasonable line. Poland is the one USSR must have; West Germany and Italy are the two the US
+#: must have. Somewhere like Bulgaria is a defensible point but not a substitute for Poland, and a
+#: single overlap percentage hides that difference -- which is why the per-country table below
+#: reports placements a game against the target rather than only the aggregate.
+CORE = {"US": ("West Germany", "Italy"), "USSR": ("Poland",)}
 
 
 def reference_overlap(counts: Dict[str, int], side: str, games: int) -> float:
@@ -120,6 +128,7 @@ def probe(spec: str, games: int, device: str) -> Dict[str, SideStats]:
             top_share=(top[0][1] / tot) if tot else 0.0,
             ref_overlap=reference_overlap(dict(c), side, games),
             top=top,
+            top_full=list(c.items()),
         )
     return out
 
@@ -148,6 +157,13 @@ def main() -> int:
             print("%-16s %-5s %7d %9d %9.3f %8.1f%% %7.1f%%  %s" % (
                 lab[:16], side, d.placements, d.distinct,
                 d.entropy, 100 * d.top_share, 100 * d.ref_overlap, tops))
+            counts = dict(d.top_full)
+            detail = []
+            for name, target in REFERENCE[side].items():
+                per_game = counts.get(name, 0) / max(1, a.games)
+                mark = "*" if name in CORE[side] else " "
+                detail.append("%s%s %.1f/%d" % (mark, name, per_game, target))
+            print("%-16s %-5s   per game vs target (* = decisive): %s" % ("", "", "  ".join(detail)))
     return 0
 
 
