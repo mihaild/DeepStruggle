@@ -286,6 +286,13 @@ wrong extraction — a finding worth a log entry on its own.
 
 #### X4b — the continuous form (P3's trainer hook)
 
+> **Launched 2026-09-17 — [`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md),
+> `E3-27-28`.** One seed at 20M steps, not the 80M x 2 this section specifies: search costs a
+> measured 8.8x slowdown (1,609 steps/s against 11,500), which puts the written leg at ~17h a
+> seed. It is matched one-factor against `E3-26-28` — same start, seed, steps, pool and snapshot
+> cadence, search-CE off — so the reduced budget costs power, not validity. Runs with
+> `--search-node-filter all` and 64 sims; both deviations are argued in the log.
+
 At card/play-mode decisions, 1-in-8 subsample, run the honest searcher and add a CE term
 pulling the policy toward the search policy **on searched decisions only**; everything else
 unchanged. Resume from the peak checkpoint, +80M ≈ 8h; 2 seeds. Every iteration is then a
