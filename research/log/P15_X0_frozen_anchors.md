@@ -150,6 +150,46 @@ an opponent 40M younger than itself. It is 1723.0 Elo at 120M, last of 24. `pool
 `P29` as the outlier dragging the pooled condition's spread to 221 Elo; this locates the damage
 early rather than late, which is worth knowing before a fifth seed is spent.
 
+### 5. Two checkpoints are unbeaten as the US — which is X1's question, answered
+
+Strongest in each seat, mean win rate over the 23 other neural models (HeuristicBot excluded, it
+saturates):
+
+| seat | best | mean |
+|:---|:---|---:|
+| **USSR** | `p28_200M` | 75.7% |
+| **US** | `p28_280M` | 75.5% |
+
+Two different checkpoints of the same lineage, 80M steps apart. But the interesting question is
+not who is best on average — it is whether anyone is **unanswered**. Taking each model's *worst*
+result in a seat, over all 23 opponents:
+
+| model | worst as US | worst as USSR |
+|:---|---:|---:|
+| `p28_280M` | **52.0%** (vs `p28_200M`) | 12.5% (vs `p28_320M`) |
+| `p28_240M` | **51.0%** (vs `p28_200M`) | 29.5% (vs `p28_280M`) |
+
+**No opponent in the field has a winning record against either of them when they hold the US
+seat.** `p28_280M` loses to 9 of 23 opponents as the USSR and to none as the US.
+
+**Stated at the right strength.** 200 games a side is ±3.5 pp, so a *significant* win needs about
+56.9%. The closest challenger, `p28_200M` at 48.0%, is statistically indistinguishable from even.
+The honest claim is therefore "**no counter, and the nearest thing to one only draws**", not
+"dominant".
+
+**And a dedicated USSR specialist does not answer it either.** The field already contains
+`n26_240M`, the most USSR-tilted model in it (+38.1 pp, 69.3% as USSR across the field). Against
+`p28_280M` playing US it manages **42.5%**. The other USSR specialists do worse: `n26_200M` 38.0%,
+`n26_320M` 37.0%.
+
+That is the direct answer to
+[`../plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md) X1's question — *does a
+response to the runaway strategy exist?* — within this population: **no**. Not from the lineage's
+own past or future selves, not from an independently trained arm, and not from the arm that spent
+320M steps specialising in exactly the seat that would have to answer it. An exploiter trained
+against it deliberately is the remaining way to find out whether the strategy is genuinely strong
+or merely unopposed, which is what X1 proposes and why it is worth running.
+
 ## Caveats
 
 * **200 games a side**, so each cell carries roughly ±3.5 pp. The amplitudes above are far larger

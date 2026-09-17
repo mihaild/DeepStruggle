@@ -112,6 +112,14 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
   against the one-anchor-family caveat the sweep itself records — required before comparing
   *runs* rather than *budgets*.
 
+> **X0 already answers X1's question for one case, in the negative**
+> ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md) §5). `p28_280M` and
+> `p28_240M` are **unbeaten as the US** across all 23 other neural models — worst results 52.0%
+> and 51.0%, both against `p28_200M`, whose 48.0% is within noise of even. The field's most
+> USSR-tilted model, `n26_240M` at +38.1 pp, manages only 42.5% against `p28_280M`'s US. So no
+> response exists in the population, including from an arm that spent 320M steps specialising in
+> the answering seat. What X1 adds is whether one can be *found* on purpose.
+
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
 
 Freeze the stalled 160M policy as USSR; train a US-locked learner initialised from the 80M
