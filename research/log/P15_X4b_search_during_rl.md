@@ -243,7 +243,7 @@ From the same final tournament:
 | `control_no_search` | 34.7% | 48.7% | −13.9 pp |
 | `anchor_280M` | 29.9% | 53.3% | −23.4 pp |
 
-X4a found that 20M steps of this recipe **gives away the USSR side**, within-arm and in two
+X4a reported that 20M steps of this recipe gives away the USSR side, within-arm and in two
 independent runs ([`P15_X4a_distillation.md`](P15_X4a_distillation.md)). The control here does it
 again: USSR 34.7% against the source's 43.1%.
 
@@ -290,8 +290,10 @@ Rated at temperature 0, 300 games a side, `/workspace/data/tournaments/P15_X4b_2
 
 **413 Elo lost in 5M steps**, ending 291 Elo *below* its own step-matched control. The instruments
 agree: `critic_auc` fell 0.87 → 0.59, Brier skill to 0.010 — chance — and `kl_div` against π_ref
-spiked to 14.9, 5.8 and 31.99 in consecutive iterations. `critic_base_rate` stayed near 0.51, so
-this is **not** the control's one-sided degeneration; it is the policy being blown apart.
+spiked to 14.9, 5.8 and 31.99 in consecutive iterations. `critic_base_rate` stayed near 0.51, so the failure does not even have the
+shape of the control's, whatever that turns out to be; the policy is simply being blown apart.
+(Used here only to say the two failures differ, which is a comparison the statistic can support —
+not to characterise either one.)
 
 ### It was not the resume, and it was not sudden
 
@@ -424,6 +426,21 @@ be reached for afterwards.
 `critic_base_rate` first crosses 0.80 at **65,273,856 steps** and reaches 0.96 by 74M: roughly
 **96% of self-play games are won by one side**.
 
+> **Correction: `critic_base_rate` cannot show this, and the wording above was wrong twice over.**
+> It is `max(p, 1 − p)` (`critic_tracker.py:140`), the majority-class rate — so it has **no
+> direction** and cannot name a side at all, a point
+> [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) already records against earlier
+> reports that read it as "US-leaning". And as a magnitude it is a fact about the *pair*: 0.96 is
+> equally consistent with one side collapsing and with both sides improving at different rates.
+> See [`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md).
+>
+> The conclusion survives, but on a different instrument. The per-side matrix in
+> [`P15_X4a_distillation.md`](P15_X4a_distillation.md), rated **against a frozen field**, puts this
+> control at **USSR 34.7% against US 48.7%** where its own starting checkpoint was 43.1 / 46.5 —
+> a per-seat measurement against fixed opponents, which is the instrument for the question. The
+> `critic_base_rate` trace below is the cheap hint that prompted looking; it is not the evidence,
+> and the 80M checkpoint has not yet been rated per seat.
+
 **Those step counts are run-local.** `--warmup-checkpoint` loads weights but resets the counter,
 so step 0 of this control is `p28_200M`, which is itself `snapshot_200015872steps.pt`. The onset
 is therefore **65.3M steps after the source, or ~265.3M cumulative** for the weights. Read it as
@@ -432,19 +449,24 @@ trajectory: this is a fresh run from those weights, with the opponent pool, refe
 optimiser moments all restarted. The critic falls with it, to AUC 0.69 and negative
 Brier skill — it has become a base-rate predictor, which is the collapse mode this project has
 seen before and which `checkpoints.md` records for `E3-21-28`. Entropy *rises* to ~1.43 while this
-happens, so it is not an entropy collapse; it is one side being given away.
+happens, so whatever this is, it is not an entropy collapse.
 
-This is the X4a finding run to completion. There, 20M steps moved side balance −17.3 pp and
-−11.6 pp toward US in two arms
-([`P15_X4a_distillation.md`](P15_X4a_distillation.md)); here the same recipe, given 65M, arrives
-at near-total one-sidedness.
+It looked like the X4a finding run to completion. **It is not, and the side was named wrongly.**
+Rated per seat against frozen anchors
+([`P15_control_per_seat.md`](P15_control_per_seat.md)), this control's **US** win rate collapses —
+47.0% at 60M to 19.3% at 80M against `frozen_200M` — while its USSR play stays flat, 57.0% to
+54.0%. The X4a figures of −17.3 pp and −11.6 pp were side balance *averaged across a tournament
+field*, and that is not a property of a model: this same checkpoint reads −13.9 pp in X4a's field
+and +2.8 pp in the per-seat field. Both instruments relied on earlier — a directionless base rate
+and a field-averaged split — were wrong for the question, and happened to agree.
 
 It also extends X0's curve. [`P15_X0_frozen_anchors.md`](P15_X0_frozen_anchors.md) measured this
 lineage declining past its 200M peak — 2193.7 at 200M against 2168.0 at 240M — and this says where
 that decline ends up: by roughly 265M cumulative the weak side is gone entirely.
 
-**So a straight arm-against-control rating at 80M would largely measure the control's collapse,
-not the arm's strength.** Beating a degenerate opponent is not the claim X4b is making. The pair
+**So a straight arm-against-control rating at 80M risks measuring a control that has gone
+somewhere strange rather than the arm's strength** — provisionally, since what exactly has gone
+wrong with it needs a per-seat rating against the frozen anchors to establish. Beating a degenerate opponent is not the claim X4b is making. The pair
 is rated at **60M as well as 80M** — both snapshot every 5M — and 60M is the honest comparison,
 being the last matched point where the control's instruments are still healthy.
 

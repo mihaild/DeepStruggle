@@ -10,7 +10,10 @@ loop approaches the regularized fixed point **before** the reference moves. X2 p
 Two collapses on 2026-09-17 motivated running it now rather than in plan order: the X4b search arm
 lost 413 Elo in 5M steps with KL against π_ref spiking to 31.99
 ([`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md)), and its no-search control
-degenerated into one-sidedness at ~65M further steps, `critic_base_rate` reaching 0.96.
+went somewhere strange at ~65M further steps, with `critic_base_rate` reaching 0.96 and the critic
+falling to a base-rate predictor. (`critic_base_rate` is the majority-class rate and carries no
+direction, so it cannot name a side; the per-seat evidence that the control's USSR play degraded
+comes from a frozen-field tournament, not from this trace.)
 
 ## The comparison
 
@@ -35,6 +38,18 @@ sit on top of 200M.
 | `critic_auc` 10M | 0.7342 | 0.6418 |
 | `critic_auc` 70M | 0.7915 | 0.7909 |
 
+## What `critic_base_rate` can and cannot say here
+
+Every base-rate number below is a **hint, not a result**. One-sidedness of self-play is a fact
+about the pair: 0.80 is equally consistent with one side collapsing and with both sides improving
+at different rates, and it cannot tell those apart
+([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). The question "does a
+slower anchor stop a side being given away" is answered by **per-side win rate against a frozen
+opponent**, which is a tournament measurement, and the table below is not that.
+
+It is kept because it is free, it is logged every iteration, and it is the cheapest available
+signal of *when* to spend a tournament. It is not evidence.
+
 ## Reading, with the caveat first
 
 **One seed each, and the seeds differ.** This project has a findings entry on seed variance for a
@@ -44,9 +59,10 @@ a reason to finish the arm, not a result.
 With that said, two things are visible:
 
 * **The slow anchor has not crossed `base_rate` 0.80 by 72M**, where the fast anchor crossed at
-  44.6M. Note that the fast anchor's crossing was a **transient spike** — it peaked at 0.8204 and
-  was back to 0.5433 by 70M — so this is not yet the sustained 0.96 degeneration seen in the
-  resumed control. What it shows is a lower ceiling, not a prevented collapse.
+  44.6M — and the fast anchor's crossing was a **transient spike**, peaking at 0.8204 and back to
+  0.5433 by 70M. Read strictly, this says the two runs' self-play mixtures differ; it does **not**
+  say either side is stronger or weaker, and a per-side rating against the frozen anchors is what
+  would.
 * **The slow anchor holds much more entropy early**: 1.32 against 0.74 at 10M, converging by 70M.
   That is the expected shape — a reference that lags pulls less hard toward whatever the policy
   has just become — and it costs early critic accuracy, AUC 0.64 against 0.73 at 10M, which is

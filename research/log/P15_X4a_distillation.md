@@ -123,7 +123,15 @@ arms separately pay a much larger step-cost that has nothing to do with distilla
 during RL; build X4b."* The edge moved (+47.7 Elo in step 3's field) and did not survive. **X4b is
 the indicated next experiment**, and now for a defensible reason rather than an artefact.
 
-### RL in this recipe degrades the USSR side
+### RL in this recipe degrades one side — but which one is not established here
+
+> **Caveat added 2026-09-17.** The figures below are **side balance averaged across the tournament
+> field**, which is not a property of a model: the same checkpoint reads −13.9 pp here and +2.8 pp
+> in a different field ([`P15_control_per_seat.md`](P15_control_per_seat.md)). Rated per seat
+> against *frozen* anchors, the no-search control's collapse is on the **US** seat, not the USSR
+> one. The within-arm *change* below may still be real, being a before/after on one field, but the
+> **side it names is not established** and this section should not be cited for a side-specific
+> claim until the arms are re-rated per seat against fixed opponents.
 
 The same tournament, side balance before and after the identical 20M steps:
 

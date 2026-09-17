@@ -181,3 +181,30 @@ makes a whole class of cross-tournament comparisons legal again. And the variabl
 controlled whenever a treatment changes the policy's entropy, because then the two arms are no
 longer equally far from their own argmax — the X4b arm sits at 0.56 nats against its control's
 1.17.
+
+## One-sidedness of self-play is not evidence that a side is degrading
+
+`critic_base_rate` is `max(p, 1 − p)` over resolved self-play games (`critic_tracker.py:140`) —
+the **majority-class rate**. Two consequences, and both have caught reports in this repo:
+
+* **It has no direction.** It is always ≥ 0.5 and says nothing about *which* side leads, so it can
+  never support a claim about a named side.
+  [`log/seed_variance_and_pooling.md`](../log/seed_variance_and_pooling.md) already records this
+  and notes that earlier reports reading it as "US-leaning" were wrong.
+* **It is a fact about the pair, not about either side.** A base rate of 0.96 is equally
+  consistent with:
+
+  * one side collapsing, and
+  * both sides improving at different rates.
+
+  The statistic cannot distinguish those, so it cannot support the conclusion that a side is
+  getting worse. This is the self-play side-advantage pitfall above in another guise, and it is easy to fall
+into because `critic_base_rate` is logged every iteration and a rising line looks alarming.
+
+**The instrument for the question is win rate as each side against a frozen opponent** — a fixed
+anchor checkpoint, rated per seat, which is what the per-side matrices in `tools/tournament.py`
+reports give. A checkpoint that wins 61.9% as USSR and 81.0% as US is not "imbalanced" in any
+sense that matters; it is strong on both seats and stronger on one.
+
+`critic_base_rate` remains useful as a cheap in-run hint worth following up with a real
+measurement. It is never the measurement.
