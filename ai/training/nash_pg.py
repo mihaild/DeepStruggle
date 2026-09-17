@@ -345,6 +345,17 @@ class BaseNashPGTrainer:
                 log_probs_t = unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
             actions_np = actions_t.cpu().numpy()
+
+            # P15-X4b. MUST happen before the step: `_search_targets` reads the runner's current
+            # state, and `buffer.add` below files the answer against `obs_t`, which is s_t. Taken
+            # after the step the runner holds s_{t+1} (see the bootstrap note further down), so
+            # every target would describe the position *after* the one it is stored with -- a
+            # distribution over another state's actions, then masked against s_t's legal set, so
+            # the mass lands wherever those indices happen to mean something here. It does not
+            # fail loudly: it trains the policy toward noise with a real gradient behind it, which
+            # collapsed two arms (entropy 1.03 -> 0.36, critic to chance) before it was found.
+            search_pi_t, has_search_t = self._search_targets()
+
             next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
 
             # V(s_{t+1}, p_t): the resulting state seen by the player who just moved, rather than
@@ -368,7 +379,6 @@ class BaseNashPGTrainer:
                         torch.from_numpy(own_obs).to(self.device, torch.float32), None)
                 next_own_t = own_v.squeeze(-1)
 
-            search_pi_t, has_search_t = self._search_targets()
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -496,6 +506,9 @@ class BaseNashPGTrainer:
         A target is dropped when the searcher returns nothing, and normalised over the visits it
         did return. Legality is not re-checked here: `BatchedMCTS` already filters its answer
         against the caller's own mask, which is where the authority belongs.
+
+        **Reads the runner's current state, so it must be called while that state is still the
+        one the target will be stored against** -- before `env.step`, not after.
         """
         if self._searcher is None:
             return None, None
