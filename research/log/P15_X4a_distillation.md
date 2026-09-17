@@ -60,8 +60,59 @@ the agreement diagnostic per decision type. It is queued rather than claimed.
 ## Question two: does it survive RL?
 
 `E3-25-28_20260917_020529`, 20M steps of ordinary NashPG resumed from the distilled checkpoint —
-ten times the ~2M-step washout this project measured for a BC warmup. **Running; not yet
-answered.**
+ten times the ~2M-step washout this project measured for a BC warmup. All four models rated
+together, 500 games a side, `/workspace/data/tournaments/P15_X4a_washout/`:
+
+| model | Elo | overall | vs distilled | vs source |
+|:---|---:|---:|---:|---:|
+| **distilled** (pre-RL) | **1555.3** | 57.9% | — | 56.1% |
+| source `@200M` | 1517.5 | 50.7% | 43.8% | — |
+| anchor `@280M` | 1500.0 | 47.4% | 41.9% | 46.5% |
+| **after 20M RL** | **1480.2** | 43.6% | **40.2%** | **44.5%** |
+
+**The gain did not survive, and the checkpoint did not merely return to its starting point — it
+finished last.** 75.1 Elo below the distilled checkpoint it was resumed from, and 37.3 Elo below
+the undistilled source that distillation had improved on.
+
+(The distilled margin over the source reads +37.8 here against +47.7 in the step-3 field. Both
+fields are four models and neither scale travels; the sign and rough size agree, which is all a
+cross-field comparison supports.)
+
+### This is confounded on its own, and the control is what settles it
+
+The tempting reading — "RL erased the distilled prior" — does not follow from this table alone.
+[`P15_X0_frozen_anchors.md`](P15_X0_frozen_anchors.md) measured that **this lineage declines past
+its 200M peak**: 2193.7 Elo at 200M against 2168.0 at 240M. So 20M more steps may cost Elo here
+whether or not anything was distilled in first, and the −37.3 against the source could be the
+price of the steps rather than the loss of the prior.
+
+`E3-26-28_20260917_025539` is the control: same seed, same recipe, same 20M steps, resumed from
+the **undistilled** source. Pre-registered reading, recorded in its `metadata.json` before it was
+launched:
+
+* control also loses ≈ 75 Elo → the loss belongs to the 20M steps, not to the distillation, and
+  the washout conclusion above is wrong.
+* control holds roughly flat → the loss belongs to the distilled prior, X4a step 4 is a genuine
+  washout, and per the plan's pre-registered branch *"moves but washes out → the signal must be
+  present during RL; build X4b"*.
+
+**Running; the verdict is not claimed until it lands.**
+
+### A side observation worth keeping
+
+Side balance across the field, from the same tournament:
+
+| model | as USSR | as US | USSR − US |
+|:---|---:|---:|---:|
+| distilled | 57.5% | 58.4% | **−0.9 pp** |
+| source `@200M` | 49.0% | 52.3% | −3.3 pp |
+| anchor `@280M` | 38.5% | 56.3% | −17.7 pp |
+| after 20M RL | 35.3% | 51.9% | −16.6 pp |
+
+The two checkpoints that received *more RL* — `@280M` and the post-RL arm — carry a ~17 pp US
+bias; the two that did not sit within a few points of balanced. That is four models in one field,
+not an established effect, and it is exactly the shape [`P15_X1_frozen_exploiter.md`](P15_X1_frozen_exploiter.md)
+was circling. Noted as a hypothesis to test properly, not a result.
 
 ## Caveats
 
