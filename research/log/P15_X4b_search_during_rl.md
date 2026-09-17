@@ -328,6 +328,29 @@ The decline from +253.8 to +165.6 in the last segment of the first run — flagg
 "where it settles is open" and "the direction of that last segment is the same" as X4a's — was
 **the leading edge of this collapse, not a fluctuation.** That caution is now cashed in.
 
+### Measured: the CE term is more than half the update
+
+`search_ce_grad_frac` — the CE term's share of the raw gradient norm, measured with a separate
+backward on that term alone — was added after the collapse, because nothing had measured the CE
+term at all. Its **first logged value on a fresh arm at coef 0.5 is 0.561**, with
+`search_ce` = 0.904.
+
+**At coef 0.5 the CE term is 56% of the gradient from the first iteration.** Gradients are
+globally norm-clipped at 1.0, so this does not mean a larger step — it means a step whose
+direction is more than half CE, with the PPO advantage and the value loss splitting what is left.
+That is the concrete form of "the critic's signal was right and was ignored": nothing about the
+advantage estimate is wrong, it is simply outvoted in every update.
+
+It also gives the collapse a monitorable precursor. If the share climbs toward 1.0 as the policy
+sharpens — and sharpening is what makes a soft target expensive, since `-log π` grows without
+bound as the student's probability on a teacher-favoured action goes to zero — the update becomes
+pure CE. A tripwire on `search_ce_grad_frac > 0.75` now runs alongside the arm, so a future
+collapse can be stopped while a healthy checkpoint still exists rather than 5M steps later.
+
+**Caveat:** 0.561 is one iteration of one arm at one coefficient. Whether the share is what rises
+before a collapse is a hypothesis this instrumentation was built to test, not something it has
+shown yet.
+
 ### What is worth running next
 
 1. **A coefficient sweep is no longer optional.** 0.5 was a guess that survived a wrong diagnosis
