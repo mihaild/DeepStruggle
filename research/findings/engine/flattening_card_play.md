@@ -1,4 +1,4 @@
-# Flattening card play: merge play-mode with op-mode
+# Action-representation refactor: flatten card play, and un-alias `INFLUENCE`
 
 **Analysis only, 2026-09-17.** Proposed by the owner; nothing implemented. Engine changes need
 approval (invariant 11) and this one is larger than it looks.
@@ -69,6 +69,49 @@ than two sequential 2-way ones, and it shortens every credit-assignment path thr
    coup target exists, whether DEFCON permits it, and whether the card's ops suffice. That is
    lookahead the mask does not do today, and an error there produces an illegal action accepted as
    legal — the failure class that has already cost this project time twice.
+
+## Also in scope: `INFLUENCE` currently means two different things
+
+At a `SELECT_OP_MODE` node whose Ops came free from an event, `INFLUENCE` does not mean "place
+influence" — it means **"decline the free action"**. `action_mask.cpp` sets the bit
+unconditionally for Junta and Tear Down This Wall rather than consulting
+`get_influence_placement_mask`, and `state_machine.cpp` responds to it by calling
+`advance_after_ops` and placing nothing:
+
+```cpp
+const bool free_action_bars_influence =
+    ctx.event_granted_ops
+    && (op_card == card_ids::JUNTA || op_card == card_ids::TEAR_DOWN_THIS_WALL);
+if (!free_action_bars_influence) { /* real influence mask */ }
+else { mask_out[INFLUENCE] = 1; }        // = "decline"
+```
+
+That is rules-correct — the card says the US *may* make free coup attempts or realignment rolls,
+so declining must be expressible — and the 212-dim space has no dedicated decline index at that
+node, so an existing one was borrowed.
+
+**The cost is that one action index carries two incompatible meanings, and which one applies
+depends on `event_granted_ops` and the card id.** The source comments record **three** separate
+engine bugs from exactly this overloading, each cited against a ts-replayer game: 141 (Tear Down
+named through UN Intervention, confined to Europe with no legal operation), 146 (the card's own
+three Ops left with nothing but a decline on offer), and 105 (Glasnost played for Ops could not
+coup). Every one of those is a human getting the two senses confused.
+
+**And the model has to learn the same distinction from context.** A policy head reading index 116
+sees "influence" at most nodes and "decline" at a few, separated only by state it must infer. That
+is precisely the kind of aliasing a flat action space should not contain, and it is invisible to
+every check — the mask is satisfied either way.
+
+So the refactor should give **decline its own index**, rather than leaving a real action to stand
+in for the absence of one. Cheap in slots: the merge above frees four.
+
+### Where this shows up in behaviour
+
+Opening influence placement is frozen solid in both from-scratch lineages — all six USSR points
+into Yugoslavia, all seven US points into one country, unchanged across 230M steps in `E3-30-28`
+([`../../log/P15_setup_placement.md`](../../log/P15_setup_placement.md)). That is not caused by the
+aliasing, but it is the same theme: the action representation makes some decisions much harder to
+learn than they need to be, and the rare ones never recover.
 
 ## Reading
 
