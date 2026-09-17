@@ -51,43 +51,59 @@ average 26.4 legal actions and reach 82.
 **So the filter excluded roughly three quarters of the available signal, and spent its budget on
 the decisions with least to choose between.**
 
-## The measured consequence, so far: smaller than the signal share suggests
+## The measured consequence: in one-shot offline distillation, almost none
 
-Offline distillation from the same source checkpoint, same recipe, same 2 epochs at 1e-4, rated at
-temperature 0 in one field (`/workspace/data/tournaments/P15_X4a_allnodes/`):
+Offline distillation from the same source checkpoint, same recipe, 2 epochs at 1e-4, rated at
+temperature 0 in one field (`/workspace/data/tournaments/P15_X4a_allnodes/`, 500 games a side):
 
-| model | Elo | vs source |
-|:---|---:|---:|
-| distilled, **all nodes** | 1565.6 | +35.6 |
-| distilled, card/play-mode | 1555.1 | +25.1 |
-| `source_200M` | 1530.0 | — |
+| model | targets | games | Elo | vs source |
+|:---|---:|---:|---:|---:|
+| distilled, **all nodes** | 176,122 | 400 | **1572.5** | +42.9 |
+| distilled, all nodes | 85,113 | 200 | 1566.6 | +37.0 |
+| distilled, card/play-mode | 75,592 | 400 | 1560.3 | +30.7 |
+| `source_200M` | — | — | 1529.6 | — |
+| `anchor_280M` | — | — | 1500.0 | |
 
-All-nodes is ahead by **10.5 Elo**, head to head **51.6%** over 1,000 games — about one standard
-error, so **not a significant difference**.
+The first and third rows are **games-matched**: 400 self-play games each, differing only in which
+decisions the searcher answered. All-nodes gets 2.3× the targets from the same games, which is
+intrinsic to the treatment rather than a confound.
 
-That is worth stating plainly rather than dressing up: the scoping was wrong on the merits and
-wrong on the signal census, but **fixing it did not, in this one-shot offline test, produce the
-large gain the 71.8% figure might lead one to expect.** Elo is not linear in nats, and this is the
-evidence that the two do not track.
+**And they are a dead heat.** Head to head, all-nodes-400 against card/play-mode is **49.4%** —
+it loses marginally, over 1,000 games, while sitting 12.2 Elo higher in the table. Every distilled
+variant lands between +31 and +43 over the source.
 
-Two caveats on that near-tie, one of which points the wrong way:
+So the scoping was wrong on the merits and wrong on the signal census, and **fixing it bought
+nothing measurable in the one-shot offline setting.** That is the honest result, and it is not the
+one the 71.8% figure predicts.
 
-* The all-nodes set came from **200 games** against the card/play-mode set's **400** — half the
-  state diversity, a confound working *against* the arm under test. A games-matched 400-game
-  replication is running.
-* One seed, two epochs, one learning rate, one source checkpoint.
+### Why the signal share does not convert into Elo here
+
+The census measures the *gradient available*; Elo measures what one pass of cross-entropy at
+1e-4 actually installs. The likely explanation is a ceiling on the method rather than on the
+signal: two epochs of soft CE can shift a 5-way distribution toward its teacher, but a 26-way
+placement distribution needs far more capacity moved for the argmax to change, and top-1 agreement
+at `POINT_NODE` was already 92.9%. The disagreement is spread thinly across many low-probability
+placements, which is exactly the shape CE moves slowly.
+
+This is a concrete instance of the standing caution that **Elo is not linear in nats**, and it is
+worth remembering the next time a diagnostic is used to predict a result rather than to explain
+one. The census correctly located the signal; it did not predict the payoff.
 
 ## What this changes
 
 * **X4b runs with `--search-node-filter all`**, decided on the census before the arm was spent.
-  That arm beat its step-matched control by +165.6 Elo at 20M and is continuing to 80M.
+  That arm beat its step-matched control by +165.6 Elo at 20M and is continuing to 80M. **That is
+  not evidence that `all` beats `card_playmode` during RL** — the control had search off
+  altogether, and no `card_playmode` X4b arm has been run. The offline result above says the two
+  filters tie in one-shot distillation; whether they tie continuously is untested.
 * Any search result recorded under `card_playmode` should be read as a **lower bound** on what a
   searcher can do here, not as that searcher's strength.
-* The open question is no longer *whether* placements matter — the census settles that — but why
-  the offline one-shot gain from including them is so much smaller than their signal share. The
-  most likely answer is that a single round of CE cannot exploit a 26-way distribution the way it
-  exploits a 5-way one, and that the continuous form is where placements pay. X4b at 80M is the
-  test.
+* The open question is no longer *whether* placements carry the signal — the census settles that —
+  but whether any method converts that signal into strength. One-shot CE does not. The remaining
+  candidate is the continuous form, where the teacher improves with the student and a placement
+  distribution gets revisited thousands of times rather than twice. **The experiment that would
+  settle it is an X4b arm at `card_playmode`, matched against the `all` arm** — without it, X4b's
+  +165.6 Elo is evidence for search-during-RL, not for this scoping fix.
 
 ## See also
 

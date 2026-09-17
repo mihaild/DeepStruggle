@@ -57,12 +57,12 @@ alone.
 
 **The scoping was wrong** — see
 [`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md).
-Redoing this offline round over **all** decisions gives 1565.6 against the card/play-mode round's
-1555.1 and the source's 1530.0, rated at temperature 0 in one field
-(`/workspace/data/tournaments/P15_X4a_allnodes/`): ahead by 10.5 Elo and 51.6% head to head over
-1,000 games, which is about one standard error and **not** a significant difference. The scoping
-was still wrong; the one-shot offline gain from fixing it is just much smaller than the signal
-share suggests.
+Redoing this offline round over **all** decisions, games-matched at 400 games each, gives 1572.5
+against the card/play-mode round's 1560.3 and the source's 1529.6, rated at temperature 0
+(`/workspace/data/tournaments/P15_X4a_allnodes/`). Head to head the two filters are a **dead
+heat** — 49.4% to all-nodes over 1,000 games, losing marginally while sitting 12 Elo higher in the
+table. The scoping was still wrong, but **fixing it bought nothing measurable in one-shot offline
+distillation**, despite `POINT_NODE` carrying 71.8% of the CE signal.
 
 **Placements are where the signal is** —
 [`P15_X4a_where_the_search_signal_is.md`](P15_X4a_where_the_search_signal_is.md). Searching all
