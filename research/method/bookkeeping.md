@@ -116,6 +116,37 @@ a directory unambiguously.
 4. If the answer is now stable enough to state without its narrative, put it in
    `../findings/`, and link back to the log rather than re-telling the experiment.
 
+## All artifacts go to `/workspace/data`, never to a worktree's own `data/`
+
+**There is one `data/` tree and it belongs to the main checkout.** Checkpoints, tournaments,
+datasets, replays — everything a run or a probe writes.
+
+`data/` is git-ignored, which means a git worktree does **not** share it. A worktree gets its own
+empty one, and `data/checkpoints/...` then names two different directories depending on which
+directory the command was run from. Anything written to the worktree's copy is deleted with the
+worktree.
+
+This was found on 2026-09-17 with 1.4 GB of checkpoints, four completed runs and five tournament
+reports sitting inside `.claude/worktrees/fix-profiler-bias/data/` while every earlier run sat in
+`/workspace/data`. The catalogue in [`../checkpoints.md`](../checkpoints.md) quoted paths that
+resolved for the session that wrote them and for nobody else.
+
+**The code now resolves this itself.** `tools/lib/data_root.py` finds the main checkout from
+`git rev-parse --git-common-dir` — which points at the main repository's `.git` from inside any
+worktree — and `data_root()` returns its `data/`. `tools/train.py` uses it for run directories, so
+a run launched from a worktree writes to the shared tree without being told. `$TS_DATA_ROOT`
+overrides it for a caller that means somewhere else.
+
+What still needs care, because it is not routed through that helper:
+
+* **`--output-dir`, and any path passed on a command line.** Write `/workspace/data/...`, or run
+  from the main checkout where `data/` means the right thing. A bare `data/tournaments/...` typed
+  in a worktree is the failure this section is about.
+* **Staged symlinks.** `readlink -f` them so the link survives a move; a relative symlink into
+  `data/` breaks as soon as either end moves.
+* **Paths quoted in `research/`.** They are relative to the repository root and therefore correct
+  when read from the main checkout. Do not "fix" them to worktree paths.
+
 ## Do not leave a result in `data/checkpoints/`
 
 `data/` is git-ignored. A `report.md` written there by `tools/tournament.py` can be deleted by

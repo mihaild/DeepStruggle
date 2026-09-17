@@ -185,9 +185,15 @@ def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],
                 f"run_name {run_name!r} is not in output_dir {output_dir!r}. The directory name "
                 "is what later commands quote, so it is the copy that has to carry the name.")
         return output_dir
+    # The SHARED data tree, not `data/` relative to the current directory. A git worktree gets
+    # its own empty data/ because the directory is git-ignored, so a run launched from one writes
+    # where nothing else looks and loses everything when the worktree is removed.
+    # tools/lib/data_root.py resolves the main checkout from git.
+    from tools.lib.data_root import checkpoints_dir
+
     if run_name is not None:
-        return os.path.join("data", "checkpoints", f"{run_name}_{timestamp}")
-    return os.path.join("data", "checkpoints", f"run_{arch}_{timestamp}")
+        return os.path.join(checkpoints_dir(), f"{run_name}_{timestamp}")
+    return os.path.join(checkpoints_dir(), f"run_{arch}_{timestamp}")
 
 
 def _game_chart(stem: str) -> str:
