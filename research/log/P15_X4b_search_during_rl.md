@@ -351,6 +351,30 @@ collapse can be stopped while a healthy checkpoint still exists rather than 5M s
 before a collapse is a hypothesis this instrumentation was built to test, not something it has
 shown yet.
 
+### Correction: the CE gradient does not explode, and an earlier explanation here was wrong
+
+Running `E3-31-28` with the instrumentation on shows `search_ce` alternating between ~0.75 and
+spikes of 5.8e3, 1.7e4, 2.0e5 — while `search_ce_grad_frac` sits flat at 0.48–0.53 and entropy,
+KL and `critic_auc` barely move across the same iterations.
+
+That rules out the mechanism proposed above. For softmax cross-entropy the gradient with respect
+to the logits is `π − p_target`, **bounded in [−1, 1] however large the loss becomes**. A CE of
+2e5 therefore produces an ordinary update, which is precisely what the steady gradient share
+shows. The earlier reasoning — that `−log π` grows without bound as the student sharpens, and that
+this is what destabilises the arm — was right about the loss and wrong about the gradient, which
+is the only part that moves weights.
+
+What the spikes *do* diagnose is real: the policy has driven some logits about 2e5 below the
+maximum, so it assigns effectively zero probability to actions the searcher still visits. Entropy
+cannot see this — those actions contribute nothing to it — which is why entropy sat at a
+comfortable 0.79 throughout.
+
+Two consequences. **The mean `search_ce` logged here is outlier-dominated and a poor summary**; a
+median, or the max alongside it, would be the better statistic and is what a future arm should
+record. And the candidate mechanism for the collapse narrows to the **sustained ~50% share of the
+update direction** at coef 0.5 — a large, persistent pull toward the teacher — rather than to any
+spike.
+
 ### What is worth running next
 
 1. **A coefficient sweep is no longer optional.** 0.5 was a guess that survived a wrong diagnosis
