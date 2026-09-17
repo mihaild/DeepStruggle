@@ -127,7 +127,7 @@ It also leaves one honest loose end. That the off-by-one *fully* explains the co
 established — it is the cause of a real defect that was certainly harming learning, and the
 relaunched arm's trace against the control is what confirms or refutes it.
 
-## The arm that is running, and why at coef 0.5
+## The arm that ran, and why at coef 0.5
 
 With the targets aligned, a 400k-step smoke at **the original coef 0.5** — the weight the first
 collapse was blamed on — tracks the control closely:
@@ -148,24 +148,23 @@ nats**, not falling toward zero. The critic tracks the control almost exactly.
 So `E3-29-28` runs at coef 0.5: the original value, re-justified by measurement rather than
 inherited from the analysis that turned out to be about a misaimed term.
 
-## Interim result: +224 Elo at 5M, +250 at 10M, +254 at 15M
+## Result: +165.6 Elo over the step-matched control at 20M
 
-The arm is still running to 20M. Both runs snapshot every 5M, so the first matched pair can be
-rated without waiting, and it is emphatic. `/workspace/data/tournaments/P15_X4b_verdict/`,
-500 games a side, **temperature 0.0**:
+Complete. `/workspace/data/tournaments/P15_X4b_verdict/`, 500 games a side, **temperature 0.0**:
 
 | model | Elo | overall | vs control |
 |:---|---:|---:|---:|
-| **`x4b_arm` @5M** | **1752.0** | 78.8% | **+224.4** |
-| `source_200M` — where both arms started | 1537.8 | 43.0% | |
-| `control_no_search` @5M | 1527.6 | 41.1% | — |
-| `anchor_280M` | 1500.0 | 36.4% | |
+| **`x4b_arm` @20M** | **1666.9** | 71.4% | **+165.6** |
+| `source_200M` — where both arms started | 1518.0 | 44.8% | |
+| `control_no_search` @20M | 1501.3 | 41.7% | — |
+| `anchor_280M` | 1500.0 | 41.6% | |
 
-The control drifted slightly *below* the checkpoint it resumed from, which is the decline X0
-measured past this lineage's peak. The arm went **+214 Elo above that same starting point in 5M
-steps**.
+**Pre-registered branch:** *"arm loses materially less than the control, or gains → the search
+signal helps when present during RL, and X4b is worth the full two-seed leg."* The bar was 25 Elo.
+The arm cleared it by 6.6×, and finished **149 Elo above the checkpoint both runs resumed from**
+while the control ended level with the anchor.
 
-The pre-registered bar was 25 Elo. This is nine times it.
+**X4b works.** With the caveat in the next section, which is not a small one.
 
 ### The trajectory, which is the part that matters
 
@@ -177,10 +176,20 @@ matched pairs are rated as they appear. All at temperature 0.0, same four-model 
 | 5M | 1752.0 | 1527.6 | **+224.4** | +214.2 |
 | 10M | 1763.5 | 1513.9 | **+249.6** | +239.2 |
 | 15M | 1749.8 | 1496.0 | **+253.8** | +223.2 |
+| **20M** | **1666.9** | 1501.3 | **+165.6** | +148.9 |
 
-The control slides steadily — 1527.6, 1513.9, 1496.0 — which is the post-peak decline X0
-measured, and by 15M it has fallen below the 280M anchor. The arm holds near 1750 throughout.
-**The gap grows and then holds**, which is the opposite of what X4a did.
+The control slides steadily — 1527.6, 1513.9, 1496.0, 1501.3 — the post-peak decline X0 measured,
+ending level with the 280M anchor. The arm holds near 1750 through 15M.
+
+**Then the gap falls by 88 Elo in the final 5M.** It is reported here rather than folded into the
+headline, because the headline number alone would say the arm simply won and the shape says
+something more specific: the advantage peaks around 10–15M and is eroding by 20M. Whether it
+levels off well above the control or continues toward X4a's dead heat is **not answered by a
+20M arm**, and it is the single most important thing the 80M leg would settle.
+
+The drop is far too large to be tournament noise — the earlier rows are separated by 25 Elo or
+less while this is 88 — but it is one seed and one 5M segment, so it is a signal to chase, not an
+established decay curve.
 
 (Separate tournaments, so the scales are not identical; the field and the anchor are the same in
 both, which is what makes the two rows comparable at all. The gap within a row is the number to
@@ -202,14 +211,16 @@ the report header and the JSON, because a rating is not interpretable without it
 
 ### What is and is not established
 
-**Established:** at 5M matched steps, with one seed, a searcher supplying CE targets during RL
-produces a policy 224 Elo stronger than the identical run without it, measured argmax-on-argmax.
+**Established:** over 20M matched steps, with one seed, a searcher supplying CE targets during RL
+produces a policy 165 Elo stronger than the identical run without it, measured argmax-on-argmax,
+with the advantage present at every 5M checkpoint along the way.
 
 **Not established:**
 
-* **That it holds to 20M.** X4a's +47.7 Elo looked solid at its own checkpoint and had decayed to
-  a dead heat 20M steps later. The same could happen here, and this project has now been wrong
-  once tonight in exactly that way. The arm runs to 20M for that reason.
+* **Where it settles.** The gap peaked at +253.8 and fell to +165.6 in the last 5M. X4a's +47.7
+  also looked solid at its own checkpoint and was a dead heat 20M steps later. This arm is not
+  that — it ends 165 Elo up, not level — but the final segment points the same direction, and only
+  a longer leg distinguishes "settles high" from "slower washout".
 * **One seed.** No variance estimate.
 * **That it beats the searcher it learned from.** X0 rated search over all nodes at +129.2 Elo,
   which is a smaller number than +224, but in a different field against different opponents. Elo
@@ -221,6 +232,42 @@ produces a policy 224 Elo stronger than the identical run without it, measured a
   control's 0.898). Neither is collapse, both are unexplained, and the 20M trace is what shows
   whether they stabilise.
 
+## It improves the side RL was giving away
+
+From the same final tournament:
+
+| model | as USSR | as US | USSR − US |
+|:---|---:|---:|---:|
+| **`x4b_arm`** | **61.9%** | 81.0% | −19.1 pp |
+| `source_200M` | 43.1% | 46.5% | −3.4 pp |
+| `control_no_search` | 34.7% | 48.7% | −13.9 pp |
+| `anchor_280M` | 29.9% | 53.3% | −23.4 pp |
+
+X4a found that 20M steps of this recipe **gives away the USSR side**, within-arm and in two
+independent runs ([`P15_X4a_distillation.md`](P15_X4a_distillation.md)). The control here does it
+again: USSR 34.7% against the source's 43.1%.
+
+The X4b arm plays USSR at **61.9%** — 27 points above its own control and 19 above the checkpoint
+they both started from. It improves *both* seats, and the larger US gain is why its USSR − US gap
+still reads −19.1 pp. **The side gap is the wrong instrument here**: a model winning 61.9% and
+81.0% is not "imbalanced" in any sense that matters, which is the argument
+[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) already makes about that
+metric.
+
+So the answer to X4a's USSR finding may be that the weak side was never a balance problem but a
+search-depth one.
+
+## What to run next
+
+1. **The 80M two-seed leg the plan specifies.** The one question this arm raises and cannot answer
+   is where the gap settles after its 15M peak. That is what the full leg is for, and it now has a
+   measured throughput (1,609 steps/s) and a matched control recipe to reuse.
+2. **A coefficient sweep.** 0.5 was never swept; it was a guess that survived a wrong diagnosis.
+3. **`card_playmode` as the contrast.** This arm used `all` on the evidence that `POINT_NODE`
+   carries 71.8% of the CE signal. Running the spec's filter would test that reasoning directly
+   rather than leaving it inferred.
+
 ## Result
 
-**Running to 20M.** The 5M pair above is interim and is not the verdict.
+**+165.6 Elo over the step-matched control at 20M, one seed.** X4b's mechanism works. Where the
+advantage settles is open.

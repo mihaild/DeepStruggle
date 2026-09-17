@@ -212,6 +212,27 @@ drop both arms show is the price of training past this lineage's peak, not washo
 Side balance moved **−17.3 pp and −11.6 pp toward US** in the two arms over the identical 20M
 steps — within-arm, same seed. See [`log/P15_X4a_distillation.md`](log/P15_X4a_distillation.md).
 
+### `P15_X4b_verdict` — search targets during RL (4 models, 500 games/side, temperature 0)
+
+The arm against its step-, seed- and cadence-matched control. See
+[`log/P15_X4b_search_during_rl.md`](log/P15_X4b_search_during_rl.md).
+
+| model | Elo | what it is |
+|:---|---:|:---|
+| `x4b_arm` | **1666.9** | `E3-29-28`, 20M steps with search-CE at coef 0.5, 64 sims, all nodes |
+| `source_200M` | 1518.0 | where both runs started |
+| `control_no_search` | 1501.3 | `E3-26-28`, the identical 20M with the search term off |
+| `anchor_280M` | 1500.0 | anchor |
+
+**`E3-29-28`'s final checkpoint is the strongest model this project has produced against this
+field** — +165.6 Elo on its own control, +148.9 on the checkpoint it resumed from, and USSR 61.9%
+where the control manages 34.7%. Rated at temperature 0 because the arm's policy entropy (0.56)
+differs from the control's (1.17); at the sampling default a sharper policy wins partly on
+sharpness.
+
+Gap by matched step: +224.4, +249.6, +253.8, +165.6. It peaks near 15M — do not assume the 20M
+number is where it settles.
+
 ### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
 
 | model | Elo |
@@ -246,6 +267,8 @@ because the 80M state had been pruned). Kept for provenance only; see
 | `E3-21-28_20260916_010023_VOID_eng3_crash` | — | died on ENG-3 | void |
 | `E3-25-28_20260917_020529` | 20M | X4a step 4, RL from the distilled checkpoint | rated in `P15_X4a_washout_control` |
 | `E3-26-28_20260917_025539` | 20M | X4a step 4 **control**, same recipe from the undistilled source | rated in `P15_X4a_washout_control` |
+| `E3-27-28_..._VOID_ce_coef_collapse` | 1.4M | X4b first attempt, coef 0.5 | **void** — search targets off by one step |
+| `E3-28-28_..._VOID_search_target_offbyone` | 0.2M | X4b second attempt, coef 0.05 | **void** — same bug |
 | `E3-18-22` | 160–240M | P10 experiment 1, the do-nothing control | rated only in `arena_heads`, no writeup |
 | `E3-19-22`, `E3-19-23` | 80–160M, 90–160M | pool-from-checkpoint arms | rated only in the retracted `arena80_160` |
 

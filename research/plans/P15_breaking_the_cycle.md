@@ -286,12 +286,27 @@ wrong extraction — a finding worth a log entry on its own.
 
 #### X4b — the continuous form (P3's trainer hook)
 
-> **Launched 2026-09-17 — [`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md),
-> `E3-27-28`.** One seed at 20M steps, not the 80M x 2 this section specifies: search costs a
-> measured 8.8x slowdown (1,609 steps/s against 11,500), which puts the written leg at ~17h a
-> seed. It is matched one-factor against `E3-26-28` — same start, seed, steps, pool and snapshot
-> cadence, search-CE off — so the reduced budget costs power, not validity. Runs with
+> **Run 2026-09-17 — [`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md),
+> `E3-29-28`. Verdict: it works, +165.6 Elo.**
+>
+> One seed at 20M steps, not the 80M x 2 this section specifies — search costs a measured 8.8x
+> slowdown (1,609 steps/s against 11,500) — but matched one-factor against `E3-26-28`, the X4a
+> control, so the reduced budget cost power rather than validity. Run with
 > `--search-node-filter all` and 64 sims; both deviations are argued in the log.
+>
+> Against the step-matched control at temperature 0: **1666.9 against 1501.3**, finishing 149 Elo
+> above the checkpoint both runs resumed from while the control ended level with the 280M anchor.
+> The pre-registered bar was 25 Elo.
+>
+> **Two things the headline hides.** The gap by matched step is +224, +250, +254, **+166** — it
+> peaks near 15M and sheds 88 Elo in the final segment, so where it settles is open and is the
+> main thing the full 80M leg would answer. And the arm plays **USSR at 61.9% against the
+> control's 34.7%**, which speaks directly to X4a's finding that this recipe gives the USSR side
+> away: the weak side may be a search-depth problem rather than a balance one.
+>
+> Getting there cost two void arms and a real bug — search targets were taken after `env.step`,
+> so the CE term trained pi(.|s_t) toward the searcher's answer at s_{t+1}. The targets stayed
+> *legal*, so no mask caught it. Fixed with regression tests including a call-site ordering guard.
 
 At card/play-mode decisions, 1-in-8 subsample, run the honest searcher and add a CE term
 pulling the policy toward the search policy **on searched decisions only**; everything else
