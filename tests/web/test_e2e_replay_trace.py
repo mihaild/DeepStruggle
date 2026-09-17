@@ -72,18 +72,25 @@ def test_the_value_ribbon_and_readout_panel_render_for_a_traced_replay(browser,
     assert ribbon.is_visible(), "the value ribbon stayed hidden for a replay that has a trace"
     assert ribbon.locator("svg path").count() >= 1, "the ribbon drew no curve"
 
-    # Step forward to a node the policy actually chose, and read the panel.
-    for _ in range(40):
-        if page.locator("#trace-panel .trace-bar-row").count() > 1:
+    # Step forward until the position on screen has a real choice open, and check that every
+    # option carries its own number -- on the cards, the HUD buttons or the map.
+    for _ in range(60):
+        if page.locator(".trace-choice-badge").count() > 1:
             break
         page.click("#btn-rep-next")
     assert page.locator("#trace-panel").is_visible(), "the readout panel never appeared"
-    rows = page.locator("#trace-panel .trace-bar-row")
-    assert rows.count() > 1, "no distribution was rendered at any of the first 40 steps"
-    assert page.locator("#trace-panel .trace-bar-row.chosen").count() == 1, (
-        "exactly one listed action is the one that was played")
-    assert page.locator("#trace-panel .trace-critic").count() == 1, "no critic block"
-    assert "played" in page.locator("#trace-panel .trace-head").inner_text()
+    assert page.locator(".trace-choice-badge").count() > 1, (
+        "no choice was labelled with its probability in the first 60 steps")
+    assert page.locator(".trace-choice-played").count() >= 1, (
+        "the move that was actually played is not marked")
+
+    # The critic's prediction for both sides, to five decimals, is the panel's job.
+    critic = page.locator("#trace-panel .trace-critic")
+    assert critic.count() == 1, "no critic block"
+    assert critic.locator("tr.row-us").count() == 1 and critic.locator("tr.row-ussr").count() == 1
+    import re as _re
+    assert _re.search(r"[+-]\d\.\d{5}", critic.inner_text()), (
+        f"expected five-decimal predictions, got: {critic.inner_text()!r}")
     page.close()
 
 

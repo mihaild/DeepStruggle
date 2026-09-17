@@ -52,7 +52,9 @@ Two rules follow:
     (both value heads from both perspectives on the state the step's snapshot shows), plus
     `metadata.trace` naming the model, engine build and settings that produced them. Written by
     `tools/lib/self_play.py` and `tools/play_match.py --trace`, and after the fact by
-    `tools/annotate_replay.py`; see `ai/eval/policy_readout.py`. **Every reader must treat both
+    `tools/annotate_replay.py`; see `ai/eval/policy_readout.py`. `policy.top` lists **every**
+    legal action by default (`trace_top_k=0`), because the workbench paints each probability
+    onto the card, mode button or country it belongs to. **Every reader must treat both
     keys as absent by default** — a heuristic bot has no distribution, a human game has no
     model, and replays predating the trace have neither. The live server never puts a trace in a
     `STATE_UPDATE`: a distribution over a bot's legal actions is a read on its hand, which is
@@ -61,6 +63,14 @@ Two rules follow:
   - `replays_dir()` resolves the location per call — `$TS_REPLAYS_DIR` if set, else `data/replays`
     — so a test fixture can point the server at a directory it has just generated a replay into.
     Prefer it to the `REPLAYS_DIR` constant, which cannot see an override set after import.
+
+- **`GET /api/metadata/action_space`** (in [`main.py`](main.py)): the 212-dim flat action space
+  — offsets, `confirm_done_index`, and the `DecisionType` ids — served from `ActionEncoder` and
+  the engine enum. The workbench needs it to turn a trace's flat index back into the card, mode
+  or country it refers to. **Do not copy these offsets into the frontend**: a second hand-kept
+  table would eventually disagree with the encoder, and every probability would then be painted
+  on the wrong thing while still looking plausible. The mapping is pinned by
+  `tests/web/test_action_space_metadata.py`, which replays a real game through it.
 
 - [`replay_types.py`](replay_types.py):
   - Strongly typed `TypedDict` definitions for all serialized game states, action logs, audit structures, and WebSocket envelopes.

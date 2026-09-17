@@ -513,7 +513,9 @@ def main():
                              "critic's reading of every position, into the replay "
                              "(default: on for neural self-play, off for a match)")
     parser.add_argument("--trace-top-k", type=int, default=TRACE_TOP_K,
-                        help="Legal actions listed per node, by descending probability")
+                        help="Legal actions listed per node, by descending probability; "
+                             "0 (the default) lists every one, which is what the workbench "
+                             "needs to label each card, button and country")
     parser.add_argument("--trace-critic-every", type=str, default="step",
                         choices=("step", "decision", "off"),
                         help="'step' for a gap-free value curve, 'decision' for chosen nodes only")

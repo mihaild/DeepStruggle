@@ -190,9 +190,19 @@ full 212-vector (mostly masked-away zeros).
    * **Log rows** (`main.ts::renderLogStream`, the replay branch): a `p=0.42` chip coloured by
      probability, plus a `Δv` badge when the critic moved more than a threshold across that step.
      Both hidden when the step has no trace.
-   * **Policy panel** — a collapsible card in the right rail beneath `#decision-panel`, rendering
-     the selected step's `top` as a labelled bar list with the chosen action highlighted (and marked
-     when it was *not* the argmax), plus the critic block: `v_win` US/USSR, `v_vp`, and the residual.
+   * **Probabilities on the choices themselves** (landed 2026-09-17, replacing the bar list):
+     each card in hand, each HUD mode/target button and each country on the map carries the
+     probability of choosing it, with the move that was played outlined. The board on screen is
+     the position *after* step N, so it is the node step N+1 was decided at — the numbers come
+     from step N+1's policy, while the critic numbers describe the position itself and come from
+     step N. Pairing them the other way would label a hand that no longer holds the card played.
+     Flat indices are mapped back to cards/countries through `GET /api/metadata/action_space`
+     rather than a duplicated offset table; `tests/web/test_action_space_metadata.py` replays a
+     real game through that mapping.
+   * **Readout panel** — a card in the right rail beneath `#decision-panel`: the critic's
+     prediction for the position on screen, **US and USSR, `v_win` and `v_vp`, to five decimals**,
+     with the zero-sum residual under them, then a one-line summary of the decision whose
+     probabilities are on the board.
      Inline SVG/CSS only, no new dependency — the repo already draws its map by hand.
 6. **Deferred: `web/server/session.py` + `web/bot_client.py` (Phase 4).** A live web game's bot
    moves arrive over the websocket, so the server cannot compute the acting bot's distribution. The
@@ -234,8 +244,12 @@ full 212-vector (mostly masked-away zeros).
 
 *Answered by the owner on 2026-09-16, and built that way.*
 
-1. **`top_k` and `p_floor`** — 12 and 1e-3 as proposed, with `--trace-full` for a one-off
-   investigation. 84-way influence placements are the only nodes where 12 truncates much.
+1. **`top_k` and `p_floor`** — first 12 and 1e-3, then **revised to 0 and 0.0 (list every legal
+   action)** on 2026-09-17, when the display moved onto the choices themselves: a number painted
+   on each card, mode button and country has no list-length problem, and a truncated
+   distribution would leave most of the board unlabelled. A non-zero `--trace-top-k` still caps
+   it; `--trace-full` is gone, being the default. The widest node is an 84-way placement, ~4.5 KB
+   against a step that already carries a ~33 KB snapshot.
 2. **Critic on forced steps** — yes, `--trace-critic-every step` is the default, for a
    continuous curve; `decision` halves the forwards if generation time turns out to matter.
 3. **Phase 4** (live web games) — **dropped.** Nothing in `web/server/session.py` or

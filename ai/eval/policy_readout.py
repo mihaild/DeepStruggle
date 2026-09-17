@@ -29,13 +29,16 @@ from ai.eval.replay_critic import evaluate
 from bindings.action_encoder import ActionEncoder
 from web.server.replay_types import PolicyChoiceDict, ReplayCriticDict, ReplayPolicyDict
 
-#: Legal actions kept in `top`, by descending probability. Twelve covers every node except an
-#: 84-way influence placement, and the tail mass is recorded rather than dropped.
-TRACE_TOP_K: int = 12
+#: How many legal actions to list in `top`, by descending probability. **0 means all of them**,
+#: which is the default: the workbench puts each probability on the card, mode button or country
+#: it belongs to, so there is no list to keep short, and a distribution missing its tail cannot
+#: be read off the board. The widest node is an 84-way influence placement, which costs about
+#: 4.5 KB against a step that already carries a ~33 KB state snapshot.
+TRACE_TOP_K: int = 0
 
-#: Probabilities below this are not listed individually. The chosen action is exempt: a 0.001
-#: choice is exactly the case worth looking at, so dropping it would defeat the instrument.
-TRACE_P_FLOOR: float = 1e-3
+#: Probabilities below this are not listed individually, when a cap is in force at all. The
+#: chosen action is exempt: a 0.001 choice is exactly the case worth looking at.
+TRACE_P_FLOOR: float = 0.0
 
 
 def read_policy(
@@ -48,7 +51,6 @@ def read_policy(
     state: Optional[ts.GameState] = None,
     top_k: int = TRACE_TOP_K,
     p_floor: float = TRACE_P_FLOOR,
-    full: bool = False,
     source: str = "policy",
     include: Optional[int] = None,
 ) -> Tuple[int, ReplayPolicyDict]:
@@ -56,8 +58,10 @@ def read_policy(
 
     `obs` and `mask` are single-row batches, as the callers already build them. `state` is the
     pre-action position, used only to name actions; without it the names are omitted.
-    `include` forces an action into `top` whatever its probability -- the annotator needs the
-    probability of the move the replay actually recorded, which is often the one below the floor.
+    `top_k=0` (the default) lists every legal action; a non-zero cap keeps that many by
+    descending probability, and `include` then forces an action into the listing whatever its
+    probability -- the annotator needs the probability of the move the replay recorded, which
+    under a cap is often the one that would fall off the end.
 
     Returns the flat action index and the trace block for the replay step.
     """
@@ -95,13 +99,13 @@ def read_policy(
         legal = [chosen]
 
     ranked = sorted(legal, key=lambda i: float(probs[i].item()), reverse=True)
-    if full:
-        kept = ranked
-    else:
+    if top_k:
         kept = [i for i in ranked if float(probs[i].item()) >= p_floor][:top_k]
         for must in (chosen, include):
             if must is not None and must not in kept:
                 kept.append(must)
+    else:
+        kept = ranked
 
     top: List[PolicyChoiceDict] = []
     for i in kept:

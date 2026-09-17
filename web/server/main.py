@@ -4,7 +4,7 @@ import sys
 import json
 import argparse
 import logging
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -118,6 +118,38 @@ async def get_cards_metadata():
         cards_path = os.path.join(base_dir, "cards.json")
     with open(cards_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+@app.get("/api/metadata/action_space", response_model=None)
+async def get_action_space_metadata() -> Dict[str, Any]:
+    """The 212-dim flat action space, so a client can map an index back to what it means.
+
+    A replay's policy trace stores flat indices, and the workbench has to put each probability
+    on the card, mode button or country it belongs to. Served from `ActionEncoder` and the
+    engine's own enum rather than copied into the frontend: a second hand-kept table of these
+    offsets would eventually disagree with the encoder, and every probability would then be
+    attached to the wrong thing while still looking plausible.
+    """
+    import ts_engine
+    from bindings.action_encoder import ActionEncoder
+
+    return {
+        "size": int(ActionEncoder.FLAT_ACTION_SIZE),
+        "offsets": {
+            "card": int(ActionEncoder.CARD_OFFSET),
+            "play_mode": int(ActionEncoder.PLAY_MODE_OFFSET),
+            "timing": int(ActionEncoder.TIMING_OFFSET),
+            "op_mode": int(ActionEncoder.OP_MODE_OFFSET),
+            "node": int(ActionEncoder.NODE_OFFSET),
+            "branch": int(ActionEncoder.BRANCH_OFFSET),
+        },
+        "confirm_done_index": int(ActionEncoder.CONFIRM_DONE_INDEX),
+        "decision_types": {
+            name: int(getattr(ts_engine.DecisionType, name))
+            for name in ("SELECT_CARD", "SELECT_PLAY_MODE", "CHOOSE_TIMING_BRANCH",
+                         "SELECT_OP_MODE", "POINT_NODE", "CHOOSE_BRANCH")
+        },
+    }
+
 
 @app.websocket("/ws/game/{game_id}")
 async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERVER"):

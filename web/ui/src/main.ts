@@ -5,7 +5,7 @@ import { CardsView } from "./cards_view";
 import { ActionHud } from "./action_hud";
 import { ReplayControls, ReplayStep } from "./replay_controls";
 import { DebugPanel } from "./debug_panel";
-import { policyChipHtml, renderTracePanel, renderValueRibbon } from "./trace_view";
+import { decorateChoices, loadActionSpace, policyChipHtml, renderTracePanel, renderValueRibbon } from "./trace_view";
 
 export class TSApp {
   private state: GameState | null = null;
@@ -37,6 +37,9 @@ export class TSApp {
     this.debugPanel = new DebugPanel((override: any) => this.sendDebugOverride(override));
 
     this.loadGlobalMetadata();
+    // The flat-action offsets, needed before a probability can be attached to a card or a
+    // country. It arrives after the first render, so the trace views are redrawn once it does.
+    loadActionSpace().then(() => { if (this.isReplayMode) this.renderTrace(); });
 
     this.replayControls = new ReplayControls((replayState: GameState, stepIndex: number, allSteps: ReplayStep[]) => {
       this.isReplayMode = true;
@@ -168,14 +171,23 @@ export class TSApp {
     return { targetIndices, includedIndices: sorted };
   }
 
-  /** The two replay-only views of the model's trace: the value ribbon and the readout panel. */
+  /**
+   * The replay-only views of the model's trace.
+   *
+   * The board on screen is the position *after* the current step, which is the node the NEXT
+   * step was decided at -- so the probabilities painted on the cards, buttons and map come from
+   * step N+1, while the critic numbers describe the position itself and come from step N.
+   */
   private renderTrace() {
     const ribbon = document.getElementById("rep-value-ribbon");
     if (ribbon) {
       renderValueRibbon(ribbon, this.replaySteps, this.replayCurrentStep,
                         (idx: number) => this.replayControls.goToStep(idx));
     }
-    renderTracePanel(this.replaySteps[this.replayCurrentStep]);
+    const current = this.replaySteps[this.replayCurrentStep];
+    const next = this.replaySteps[this.replayCurrentStep + 1];
+    renderTracePanel(current, next, this.replayCurrentStep);
+    decorateChoices(next?.policy, this.state);
   }
 
   private renderLogStream() {

@@ -501,6 +501,8 @@ export class CardsView {
       const isLegal = isCurrentDecision && legalCards.has(id);
       const cardEl = document.createElement("div");
       cardEl.className = `card-item ${meta.side} ${isLegal ? "playable" : ""}`;
+      // The replay trace paints this card's probability onto it; that needs the id on the node.
+      cardEl.setAttribute("data-card-id", id.toString());
 
       const eraClass = meta.age === "early war" ? "era-early" : (meta.age === "mid war" ? "era-mid" : "era-late");
 

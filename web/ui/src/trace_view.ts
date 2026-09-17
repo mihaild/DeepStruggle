@@ -1,23 +1,98 @@
 /**
  * Showing what the model believed, next to what it did.
  *
- * Three views over the same per-step trace (see `ai/eval/policy_readout.py`):
+ * Four views over the same per-step trace (see `ai/eval/policy_readout.py`):
  *   - the value ribbon, the critic's win value across the whole game, under the timeline;
  *   - a probability chip on each log row;
- *   - the readout panel, the distribution at the selected step.
+ *   - **a probability on every choosable thing** -- each card in hand, each mode button, each
+ *     country on the map -- for the decision about to be made from the position on screen;
+ *   - the readout panel, with the critic's prediction for both sides to five decimals.
  *
- * Every one of them is optional at runtime: a replay from a heuristic bot, a human game, or one
- * recorded before the trace existed simply has no `policy`/`critic` keys, and the views hide
- * rather than render zeros.
+ * **Which decision the board's numbers belong to.** A replay step's snapshot is the position
+ * *after* its action, so the board on screen is the node the *next* step was decided at -- its
+ * `decision_context` is that decision, and the HUD is already rendering its buttons. The
+ * probabilities painted on the board therefore come from step N+1, while the critic numbers
+ * describe the position itself, which is step N's `critic`. Pairing them the other way would
+ * label a hand that no longer holds the card that was played.
+ *
+ * Every view is optional at runtime: a replay from a heuristic bot, a human game, or one
+ * recorded before the trace existed has no `policy`/`critic` keys, and the views hide rather
+ * than render zeros.
  */
 import { ReplayStep, PolicyTrace, CriticTrace } from "./replay_controls";
+import { GameState } from "./types";
 
-/** Colour for a probability: the redder, the less the policy expected its own move. */
+/** The 212-dim flat action space, fetched from the server rather than duplicated here. */
+export interface ActionSpace {
+  size: number;
+  offsets: { card: number; play_mode: number; timing: number; op_mode: number; node: number; branch: number };
+  confirm_done_index: number;
+  decision_types: Record<string, number>;
+}
+
+let actionSpace: ActionSpace | null = null;
+
+/**
+ * Fetch the action-space layout once.
+ *
+ * The offsets live in `bindings/action_encoder.py` and are served by
+ * `/api/metadata/action_space`. A second copy maintained here would eventually disagree with the
+ * encoder, and every probability would then be painted on the wrong card or country while still
+ * looking entirely plausible.
+ */
+export async function loadActionSpace(): Promise<void> {
+  if (actionSpace) return;
+  try {
+    const res = await fetch("/api/metadata/action_space");
+    if (res.ok) actionSpace = await res.json();
+  } catch (e) {
+    console.warn("Could not fetch action space metadata; board probabilities disabled:", e);
+  }
+}
+
+const FLAG_CONFIRM_DONE = 0x80;
+
+/** The flat action index for a decision + primary id, or null when it does not map to one. */
+function flatIndex(decisionType: number, primaryId: number, flags: number): number | null {
+  if (!actionSpace) return null;
+  const dt = actionSpace.decision_types;
+  const off = actionSpace.offsets;
+  if (flags & FLAG_CONFIRM_DONE) return actionSpace.confirm_done_index;
+  switch (decisionType) {
+    case dt.SELECT_CARD:
+      return primaryId >= 1 && primaryId <= 110 ? off.card + primaryId - 1 : null;
+    case dt.SELECT_PLAY_MODE:
+      return off.play_mode + primaryId;
+    case dt.CHOOSE_TIMING_BRANCH:
+      return off.timing + primaryId;
+    case dt.SELECT_OP_MODE:
+      return off.op_mode + primaryId;
+    case dt.POINT_NODE:
+      return off.node + primaryId;
+    case dt.CHOOSE_BRANCH:
+      return off.branch + primaryId;
+    default:
+      return null;
+  }
+}
+
+/** Colour for a probability: the redder, the less the policy expected that move. */
 function probColor(p: number): string {
   if (p >= 0.5) return "var(--success)";
   if (p >= 0.2) return "var(--warning)";
   if (p >= 0.05) return "#f97316";
   return "var(--danger)";
+}
+
+/** Three decimals, but never a bare "0.000" for something that is merely unlikely. */
+function fmtP(p: number): string {
+  if (p >= 0.0005) return p.toFixed(3);
+  return p > 0 ? "<.001" : "0";
+}
+
+/** Fixed-width signed value, the precision the panel promises. */
+function fmt5(v: number | undefined): string {
+  return v === undefined ? "–" : (v >= 0 ? "+" : "") + v.toFixed(5);
 }
 
 /** The small `p=0.42` chip that goes on a replay log row. */
@@ -124,75 +199,185 @@ export function renderValueRibbon(
   };
 }
 
-function criticRowsHtml(critic: CriticTrace): string {
-  const cell = (v: number | undefined, nd = 3) => (v === undefined ? "–" : v.toFixed(nd));
+// -- probabilities on the things you would click ----------------------------------------------
+
+function clearDecorations(): void {
+  document.querySelectorAll(".trace-choice-badge").forEach(el => el.remove());
+  document.querySelectorAll(".trace-choice-played").forEach(el =>
+    el.classList.remove("trace-choice-played"));
+}
+
+function htmlBadge(p: number, played: boolean): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "trace-choice-badge" + (played ? " played" : "");
+  span.style.color = probColor(p);
+  span.style.borderColor = probColor(p);
+  span.textContent = fmtP(p) + (played ? " ◀" : "");
+  span.title = `policy probability ${p} (temperature 1)` + (played ? " -- the move it played" : "");
+  return span;
+}
+
+function svgBadge(g: Element, p: number, played: boolean): void {
+  const rect = g.querySelector("rect.country-card-bg");
+  if (!rect) return;
+  const bx = parseFloat(rect.getAttribute("x") || "0");
+  const by = parseFloat(rect.getAttribute("y") || "0");
+  const bw = parseFloat(rect.getAttribute("width") || "0");
+  const bh = parseFloat(rect.getAttribute("height") || "0");
+  const w = 12.4, h = 5.6;
+  const x = bx + bw - w - 1.2;
+  const y = by + bh - h - 1.2;
+
+  const NS = "http://www.w3.org/2000/svg";
+  const box = document.createElementNS(NS, "rect");
+  box.setAttribute("class", "trace-choice-badge");
+  box.setAttribute("x", x.toString());
+  box.setAttribute("y", y.toString());
+  box.setAttribute("width", w.toString());
+  box.setAttribute("height", h.toString());
+  box.setAttribute("rx", "1.0");
+  box.setAttribute("fill", played ? "#422006" : "#0F172A");
+  box.setAttribute("stroke", played ? "var(--warning)" : probColor(p));
+  box.setAttribute("stroke-width", played ? "1.0" : "0.7");
+  g.appendChild(box);
+
+  const text = document.createElementNS(NS, "text");
+  text.setAttribute("class", "trace-choice-badge");
+  text.setAttribute("x", (x + w / 2).toString());
+  text.setAttribute("y", (y + h / 2 + 1.2).toString());
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("fill", played ? "#FDE68A" : "#E2E8F0");
+  text.setAttribute("font-size", "3.4");
+  text.setAttribute("font-weight", "bold");
+  text.textContent = fmtP(p);
+  g.appendChild(text);
+}
+
+/**
+ * Put each legal action's probability on the thing you would click to take it.
+ *
+ * `policy` is the trace of the step decided *from the position now on screen* (step N+1 while
+ * viewing step N), and `state` is that position -- its `decision_context` names which kind of
+ * choice is open, which is what decides whether the numbers belong on the cards, the HUD
+ * buttons or the map.
+ */
+export function decorateChoices(policy: PolicyTrace | undefined, state: GameState | null): void {
+  clearDecorations();
+  const entries = policy?.top;
+  if (!entries || entries.length === 0 || !state || !actionSpace) return;
+
+  const dType = state.decision_context?.decision_type;
+  if (dType === undefined) return;
+
+  const p = new Map<number, number>();
+  entries.forEach(e => p.set(e.idx, e.p));
+  const chosen = policy?.chosen_idx;
+  const dt = actionSpace.decision_types;
+
+  // HUD buttons: play mode, op mode, timing, branch, the target list, and pass/confirm.
+  document.querySelectorAll<HTMLElement>("#decision-body [data-primary]").forEach(btn => {
+    const primary = parseInt(btn.getAttribute("data-primary") || "", 10);
+    if (Number.isNaN(primary)) return;
+    const flags = parseInt(btn.getAttribute("data-flags") || "0", 10) || 0;
+    const idx = flatIndex(dType, primary, flags);
+    if (idx === null || !p.has(idx)) return;
+    const prob = p.get(idx)!;
+    const played = idx === chosen;
+    if (played) btn.classList.add("trace-choice-played");
+    btn.appendChild(htmlBadge(prob, played));
+  });
+
+  // Cards in hand, when a card is what is being chosen.
+  if (dType === dt.SELECT_CARD) {
+    document.querySelectorAll<HTMLElement>(".card-item[data-card-id]").forEach(el => {
+      const cid = parseInt(el.getAttribute("data-card-id") || "", 10);
+      const idx = flatIndex(dType, cid, 0);
+      if (idx === null || !p.has(idx)) return;
+      const prob = p.get(idx)!;
+      const played = idx === chosen;
+      if (played) el.classList.add("trace-choice-played");
+      el.appendChild(htmlBadge(prob, played));
+    });
+  }
+
+  // Countries on the map, when a country is what is being chosen.
+  if (dType === dt.POINT_NODE) {
+    document.querySelectorAll(".svg-country-node[data-id]").forEach(g => {
+      const cid = parseInt(g.getAttribute("data-id") || "", 10);
+      const idx = flatIndex(dType, cid, 0);
+      if (idx === null || !p.has(idx)) return;
+      const prob = p.get(idx)!;
+      const played = idx === chosen;
+      if (played) g.classList.add("trace-choice-played");
+      svgBadge(g, prob, played);
+    });
+  }
+}
+
+// -- the right-rail panel ---------------------------------------------------------------------
+
+function criticTableHtml(critic: CriticTrace): string {
   return `
     <table class="trace-critic">
-      <tr><th></th><th>US</th><th>USSR</th></tr>
-      <tr><td>v_win</td><td>${cell(critic.v_win_us)}</td><td>${cell(critic.v_win_ussr)}</td></tr>
-      <tr><td>v_vp</td><td>${cell(critic.v_vp_us, 2)}</td><td>${cell(critic.v_vp_ussr, 2)}</td></tr>
-      <tr class="trace-residual" title="A zero-sum critic must put these at zero; what is left is model error">
-        <td>residual</td><td>${cell(critic.win_residual)}</td><td>${cell(critic.vp_residual, 2)}</td></tr>
+      <tr><th>prediction</th><th>v_win</th><th>v_vp</th></tr>
+      <tr class="row-us"><td>US</td><td>${fmt5(critic.v_win_us)}</td><td>${fmt5(critic.v_vp_us)}</td></tr>
+      <tr class="row-ussr"><td>USSR</td><td>${fmt5(critic.v_win_ussr)}</td><td>${fmt5(critic.v_vp_ussr)}</td></tr>
+      <tr class="trace-residual" title="A zero-sum critic must put these at zero; whatever is left is model error">
+        <td>residual</td><td>${fmt5(critic.win_residual)}</td><td>${fmt5(critic.vp_residual)}</td></tr>
     </table>`;
 }
 
-function policyBarsHtml(pol: PolicyTrace): string {
-  const top = pol.top || [];
-  if (top.length === 0) {
-    return `<div class="trace-empty">No distribution recorded for this step (${pol.source ?? "unknown"}).</div>`;
+function nextDecisionHtml(pol: PolicyTrace | undefined, index: number): string {
+  if (!pol) {
+    return `<div class="trace-empty">No recorded decision from this position.</div>`;
   }
-  const max = Math.max(...top.map(e => e.p), 1e-6);
-  const rows = top.map(e => {
-    const isChosen = e.idx === pol.chosen_idx;
-    const isMode = e.idx === pol.argmax_idx;
-    const width = Math.max(1, (e.p / max) * 100);
-    return `
-      <div class="trace-bar-row ${isChosen ? "chosen" : ""}">
-        <div class="trace-bar-label" title="${e.name ?? `#${e.idx}`}">${e.name ?? `#${e.idx}`}</div>
-        <div class="trace-bar-track"><div class="trace-bar-fill" style="width:${width.toFixed(1)}%;background:${isChosen ? probColor(e.p) : "var(--us-blue-light)"}"></div></div>
-        <div class="trace-bar-p">${e.p.toFixed(3)}${isChosen ? " ◀" : isMode ? " ✳" : ""}</div>
-      </div>`;
-  }).join("");
-  const tail = (pol.p_tail ?? 0) > 0.0005
-    ? `<div class="trace-tail">+ ${pol.p_tail!.toFixed(3)} spread over the remaining ${(pol.n_legal ?? 0) - top.length} legal actions</div>`
-    : "";
-  return rows + tail;
+  if (pol.source === "forced") {
+    return `<div class="trace-empty">Next step is forced — one legal action, played by the loop.</div>`;
+  }
+  if (pol.source === "scripted") {
+    return `<div class="trace-empty">Next step is a scripted opening — the policy was overruled.</div>`;
+  }
+  const offMode = pol.argmax_idx !== undefined && pol.argmax_idx !== pol.chosen_idx;
+  const played = (pol.top || []).find(e => e.idx === pol.chosen_idx);
+  return `
+    <div class="trace-head">
+      <span class="trace-head-item" title="probability the policy put on the move it went on to play, at temperature 1">plays <b style="color:${probColor(pol.p_chosen ?? 0)}">${(pol.p_chosen ?? 0).toFixed(5)}</b></span>
+      <span class="trace-head-item" title="probability of its most likely move">best ${(pol.p_max ?? 0).toFixed(5)}</span>
+      ${pol.entropy !== undefined ? `<span class="trace-head-item" title="entropy of the distribution, in nats">H ${pol.entropy.toFixed(3)}</span>` : ""}
+      ${pol.n_legal !== undefined ? `<span class="trace-head-item">${pol.n_legal} legal</span>` : ""}
+      ${offMode ? `<span class="trace-head-item trace-offmode" title="the sampler did not take the policy's own best move">off-mode</span>` : ""}
+    </div>
+    <div class="trace-note">step ${index + 2}: ${played?.name ?? `#${pol.chosen_idx}`}</div>
+    <div class="trace-note trace-hint">probabilities for all ${pol.n_legal ?? "legal"} options are on the cards, buttons and map</div>`;
 }
 
-/** Fill the right-rail readout panel for one step, or hide it when there is nothing to show. */
-export function renderTracePanel(step: ReplayStep | undefined): void {
+/**
+ * Fill the right-rail panel: the critic's prediction for the position on screen, then a summary
+ * of the decision whose probabilities are painted on the board.
+ */
+export function renderTracePanel(current: ReplayStep | undefined, next: ReplayStep | undefined,
+                                 index: number): void {
   const panel = document.getElementById("trace-panel");
   const body = document.getElementById("trace-panel-body");
   const badge = document.getElementById("trace-source-badge");
   if (!panel || !body) return;
 
-  const pol = step?.policy;
-  const critic = step?.critic;
-  if (!step || (!pol && !critic)) {
+  const critic = current?.critic;
+  const nextPolicy = next?.policy;
+  if (!critic && !nextPolicy) {
     panel.classList.add("hidden");
     body.innerHTML = "";
     return;
   }
   panel.classList.remove("hidden");
-  if (badge) badge.textContent = pol?.source ?? "critic only";
+  if (badge) badge.textContent = nextPolicy?.source ?? "critic only";
 
-  const head: string[] = [];
-  if (pol && pol.p_chosen !== undefined) {
-    const offMode = pol.argmax_idx !== undefined && pol.argmax_idx !== pol.chosen_idx;
-    head.push(`<div class="trace-head">
-      <span class="trace-head-item" title="probability the policy put on the move it played, at temperature 1">played <b style="color:${probColor(pol.p_chosen)}">${pol.p_chosen.toFixed(3)}</b></span>
-      <span class="trace-head-item" title="probability of its most likely move">best ${(pol.p_max ?? 0).toFixed(3)}</span>
-      ${pol.entropy !== undefined ? `<span class="trace-head-item" title="entropy of the distribution, in nats">H ${pol.entropy.toFixed(2)}</span>` : ""}
-      ${pol.n_legal !== undefined ? `<span class="trace-head-item">${pol.n_legal} legal</span>` : ""}
-      ${offMode ? `<span class="trace-head-item trace-offmode" title="the sampler did not take the policy's own best move">off-mode</span>` : ""}
-    </div>`);
+  const sections: string[] = [];
+  if (critic) {
+    sections.push(`<div class="trace-section-label">POSITION ON SCREEN — after step ${index + 1}</div>`);
+    sections.push(criticTableHtml(critic));
   }
-  if (pol && pol.temperature !== undefined && pol.p_chosen_sampled !== undefined
-      && pol.temperature !== 1.0) {
-    head.push(`<div class="trace-note">sampled at T=${pol.temperature} → ${pol.p_chosen_sampled.toFixed(3)}</div>`);
-  }
-
-  body.innerHTML = head.join("")
-    + (pol ? policyBarsHtml(pol) : "")
-    + (critic ? criticRowsHtml(critic) : "");
+  sections.push(`<div class="trace-section-label">NEXT DECISION — from this position</div>`);
+  sections.push(nextDecisionHtml(nextPolicy, index));
+  body.innerHTML = sections.join("");
 }

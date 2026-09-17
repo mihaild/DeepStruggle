@@ -269,10 +269,12 @@ from and the critic's reading of the position that move produced — the workben
 value ribbon under the timeline, a probability chip per log row, and the full distribution for
 the selected step. Neural self-play traces by default (`--no-trace` turns it off); a match does
 not, because most matches here are bot-vs-bot baselines with no distribution to record.
-`--trace-top-k` (12) sets how many legal actions are listed per node — the rest of the mass is
-reported as `p_tail`, and the move that was played is listed whatever its probability —
-and `--trace-critic-every {step,decision,off}` trades a gap-free value curve against the extra
-forward pass on steps the loop settled itself. The probabilities are the model's own
+`--trace-top-k` sets how many legal actions are listed per node; **0, the default, lists every
+one of them**, because the workbench puts each probability on the card, mode button or country
+it belongs to and a truncated distribution would leave most of the board unlabelled. A non-zero
+cap keeps the file smaller, reports the rest of the mass as `p_tail`, and always lists the move
+that was played whatever its probability. `--trace-critic-every {step,decision,off}` trades a
+gap-free value curve against the extra forward pass on steps the loop settled itself. The probabilities are the model's own
 distribution at temperature 1, not the tempered one that was sampled from; the sampling
 probability is recorded alongside as `p_chosen_sampled`. Details in `ai/eval/policy_readout.py`.
 
@@ -294,7 +296,8 @@ matching the replay** — a drifted reconstruction still returns numbers and the
 results. A rebuilt engine can change the decision stream with no Python change (invariant 13),
 which is the usual way that happens, so the engine fingerprint is written next to the numbers.
 `--print` gives a per-step table (probability of the move played, the model's best, entropy,
-`v_win` and its step-to-step change); `--limit` stops early for a quick look. The probability
+`v_win` and its step-to-step change); `--limit` stops early for a quick look; `--trace-top-k`
+caps the listing as above. The probability
 reported is always the one the model assigns to the move **the replay recorded**, never to the
 move the model would have made — that is `argmax_idx`, and the two differing is the interesting
 case.

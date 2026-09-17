@@ -54,7 +54,6 @@ def annotate(
     model: Any,
     top_k: int = TRACE_TOP_K,
     p_floor: float = TRACE_P_FLOOR,
-    full: bool = False,
     critic_every: str = "step",
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -110,7 +109,6 @@ def annotate(
                 state=state,
                 top_k=top_k,
                 p_floor=p_floor,
-                full=full,
                 source="annotated",
                 include=flat,
             )
@@ -193,10 +191,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--out", default=None,
                         help="Where to write (default: alongside, with .annotated.tslog.json)")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--trace-top-k", type=int, default=TRACE_TOP_K)
+    parser.add_argument("--trace-top-k", type=int, default=TRACE_TOP_K,
+                        help="Legal actions listed per node; 0 (the default) lists them all")
     parser.add_argument("--trace-p-floor", type=float, default=TRACE_P_FLOOR)
-    parser.add_argument("--trace-full", action="store_true",
-                        help="List every legal action, not just the top k")
     parser.add_argument("--trace-critic-every", default="step",
                         choices=("step", "decision", "off"))
     parser.add_argument("--limit", type=int, default=None,
@@ -215,7 +212,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     check_obs_width(model)
 
     doc = annotate(args.replay, model, top_k=args.trace_top_k, p_floor=args.trace_p_floor,
-                   full=args.trace_full, critic_every=args.trace_critic_every, limit=args.limit)
+                   critic_every=args.trace_critic_every, limit=args.limit)
 
     trace_meta: ReplayTraceMetaDict = {
         "mode": "annotated",

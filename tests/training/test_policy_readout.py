@@ -85,14 +85,16 @@ def test_top_is_descending_legal_and_named(model) -> None:
     assert all(e["idx"] in legal for e in readout["top"])
     assert all(e.get("name") for e in readout["top"])
     assert readout["n_legal"] == len(legal)
-    assert len(readout["top"]) <= TRACE_TOP_K + 1   # +1: the chosen action is never dropped
+    # The default lists every legal action: the workbench paints each probability on its own
+    # card, button or country, so a truncated distribution leaves most of the board blank.
+    assert len(readout["top"]) == readout["n_legal"]
 
 
 def test_the_chosen_action_is_listed_even_below_the_floor(model) -> None:
-    """The 0.001 choice is the one worth looking at, so it must survive the floor."""
+    """Under a cap, the 0.001 choice is the one worth looking at -- it must survive the floor."""
     state, obs, mask = _node()
     # A floor above every probability: only the chosen action can remain.
-    _idx, readout = read_policy(model, obs, mask, state=state, p_floor=1.1)
+    _idx, readout = read_policy(model, obs, mask, state=state, top_k=12, p_floor=1.1)
     assert [e["idx"] for e in readout["top"]] == [readout["chosen_idx"]]
     assert readout["p_tail"] == pytest.approx(1.0 - readout["p_chosen"], abs=2e-4)
 
@@ -101,14 +103,27 @@ def test_include_forces_an_action_into_the_listing(model) -> None:
     state, obs, mask = _node()
     legal = np.flatnonzero(np.asarray(mask[0])).tolist()
     target = int(legal[-1])
-    _idx, readout = read_policy(model, obs, mask, state=state, p_floor=1.1, include=target)
+    _idx, readout = read_policy(model, obs, mask, state=state, top_k=12, p_floor=1.1,
+                                include=target)
     assert target in [e["idx"] for e in readout["top"]]
 
 
-def test_full_lists_every_legal_action(model) -> None:
+def test_the_default_lists_every_legal_action(model) -> None:
+    """TRACE_TOP_K is 0 -- no cap -- so every option gets a number of its own."""
+    assert TRACE_TOP_K == 0
     state, obs, mask = _node()
-    _idx, readout = read_policy(model, obs, mask, state=state, full=True)
+    _idx, readout = read_policy(model, obs, mask, state=state)
     assert len(readout["top"]) == readout["n_legal"]
+    assert readout["p_tail"] == 0.0
+
+
+def test_a_cap_truncates_and_reports_the_missing_mass(model) -> None:
+    """The cap still works for someone who wants a smaller file."""
+    state, obs, mask = _node(steps=0)
+    _idx, readout = read_policy(model, obs, mask, state=state, top_k=3)
+    if readout["n_legal"] > 4:
+        assert len(readout["top"]) <= 4          # +1: the chosen action is never dropped
+        assert readout["p_tail"] > 0.0
 
 
 def test_temperature_changes_the_sampling_probability_not_the_belief(model) -> None:

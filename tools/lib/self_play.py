@@ -59,7 +59,6 @@ def generate_self_play_replay(
     trace: bool = True,
     trace_top_k: int = TRACE_TOP_K,
     trace_p_floor: float = TRACE_P_FLOOR,
-    trace_full: bool = False,
     trace_critic_every: str = "step",
 ) -> Tuple[ReplayLogDict, str]:
     """Simulates a complete self-play game between neural policies and saves standardized .tslog.json replay.
@@ -74,6 +73,10 @@ def generate_self_play_replay(
     reusing the pass the move already needed. `trace_critic_every` is "step" (a gap-free value
     curve, including the steps the settle policy played), "decision" (only nodes the policy chose,
     half the forwards) or "off". `trace=False` reproduces the untraced file byte for byte.
+
+    `trace_top_k=0` lists **every** legal action's probability, which is the default: the
+    workbench labels each card, mode button and country with its own number, so a truncated
+    distribution would leave most of the board unlabelled.
     """
     if trace_critic_every not in ("step", "decision", "off"):
         raise ValueError(
@@ -197,7 +200,7 @@ def generate_self_play_replay(
                     action_idx, self.last_policy = read_policy(
                         active_model, obs_t, mask_t, temperature=temperature,
                         deterministic=False, state=st, top_k=trace_top_k,
-                        p_floor=trace_p_floor, full=trace_full)
+                        p_floor=trace_p_floor)
                 else:
                     with torch.no_grad():
                         if hasattr(active_model, "sample_action"):

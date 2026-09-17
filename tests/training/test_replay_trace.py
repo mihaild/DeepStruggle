@@ -75,7 +75,7 @@ def test_the_trace_metadata_says_where_the_numbers_came_from(traced: ReplayLogDi
     assert meta["arch"] == "ColdWarNetV2"
     assert meta["temperature"] == pytest.approx(0.3)
     assert len(meta["engine_fingerprint"]) == 64
-    assert meta["top_k"] >= 1
+    assert meta["top_k"] == 0, "0 means every legal action is listed, which is the default"
 
 
 def test_the_trace_does_not_move_the_decision_stream(model, tmp_path) -> None:
