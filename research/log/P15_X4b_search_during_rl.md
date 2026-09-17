@@ -72,6 +72,52 @@ regardless of what is done to it. So:
 
 `--search-ce-coef 0.5` is a guess. The plan never specified a weight and none has been swept.
 
+## First attempt: `--search-ce-coef 0.5` destroys the policy in its first few updates
+
+`E3-27-28_20260917_034351_VOID_ce_coef_collapse`, killed at 1.44M of 20M steps. Against the
+step-matched control, same seed and same start:
+
+| at 1.44M steps | control `E3-26-28` | arm at coef 0.5 |
+|:---|---:|---:|
+| `critic_auc` | 0.874 | **0.505** — chance |
+| `entropy` | 1.105 | **0.169** |
+| `kl_div` vs π_ref | 0.029 | 0.299, having peaked at **18.9** |
+| `value_loss` | 0.027 | 0.092 |
+
+The damage is done immediately, not gradually. KL against the reference policy spiked to 10.7,
+18.9 and 14.5 over the first three logged iterations while entropy fell from 0.878 to 0.286 in
+one. `critic_auc` never reached even 0.58 and decayed monotonically to chance from there. The
+control, from the same weights and seed, sits at 0.87 with entropy 1.10 and KL 0.03 across the
+identical span and stays there.
+
+**The weight is the cause, and the arithmetic is not subtle.** CE(search ‖ policy) measures about
+**1.0 nats** ([`P15_X4a_where_the_search_signal_is.md`](P15_X4a_where_the_search_signal_is.md)),
+so at coef 0.5 the term contributes ≈ 0.5 to the policy loss. The entropy bonus contributes
+`0.01 × 1.1 ≈ 0.011` and the KL regulariser `η × KL = 0.1 × 0.03 ≈ 0.003`. The CE term outweighs
+both by more than an order of magnitude, so it is not regularising the policy toward the searcher
+— it *is* the objective, and it drives the policy to near-determinism. The critic follows because
+the trunk is shared.
+
+This is the third branch of the pre-registered reading above — *"points at the coefficient rather
+than the idea"* — reached before spending the arm rather than after.
+
+### What it says about the mechanism
+
+Nothing bad, and one useful thing. A CE term strong enough to flatten entropy 6.5× in a single
+iteration is a term with plenty of gradient to give; the problem is dosage. It also means **X4b is
+sensitive to a coefficient the plan never specified and nobody has swept**, which is worth knowing
+before reading any X4b result as a verdict on continuous distillation.
+
+## Second attempt: coef 0.05
+
+`E3-28-28_20260917_035813`, ten times smaller, chosen to put the CE contribution in the same
+regime as the other regularisers rather than an order of magnitude above them. Everything else
+unchanged, and still matched to `E3-26-28`.
+
+The control's healthy trace at matched steps is the live check: **if entropy falls far below ~1.05
+within the first 500k steps, this weight is also too large** and the arm gets killed rather than
+run to completion.
+
 ## Result
 
 **Running.** Nothing claimed until the tournament lands.
