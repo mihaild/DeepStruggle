@@ -262,6 +262,55 @@ which reads like a population-wide side advantage. It is not. Four of its six en
 `E3-30-28` snapshots with broken US play, so anyone playing USSR against them won easily. Between
 the two frozen anchors there is no such skew (44.0 / 46.3 and 53.7 / 55.7).
 
+### Search does not repair the broken seat
+
+If a seat is broken because its *policy* is bad, search should recover much of it at test time.
+If the *value function* is what is broken, search inherits the fault, because it evaluates its
+leaves with that same critic. `E3-30-28`'s critic ended at AUC 0.706 with Brier skill −0.157, so
+the second was the expectation. `P15_search_on_e330`, T=0, 100 games a side:
+
+| vs `p28_200M` | as USSR | as US |
+|:---|---:|---:|
+| `E3-30-28`@240M raw | 70.0% | **9.0%** |
+| `E3-30-28`@240M **+ search** | 77.0% | **13.0%** |
+
+**Search adds 7 points on the healthy seat and 4 on the broken one, leaving US unplayable.**
+Overall it is worth **+14.6 Elo** on this checkpoint (1455.7 against 1441.1) where the same
+searcher is worth **+101.4** on `p28_200M` — about a seventh as much.
+
+Head to head on identical weights, search against raw, the split is **98% / 3%** by seat: whoever
+draws USSR wins almost regardless of whether they are searching. The seat dominates the search.
+
+So a degraded seat is **not** recoverable at test time by search, at least not when the critic has
+degraded with it. That is worth knowing before treating search as a safety net for a damaged
+checkpoint.
+
+(Cross-check: raw against `p28_200M` reads 70.0 / 9.0 here and 70.3 / 11.3 in the 300-game field,
+so the fields agree within sampling error.)
+
+### The US seat has no policy, rather than a bad one
+
+Five self-play games at T=0, full policy traces
+(`/workspace/data/replays/e3_30_240M_selfplay/`), 1,541 decisions:
+
+| seat | mean p | median p | policy entropy | mean `v_win` | p < 0.5 | p > 0.9 |
+|:---|---:|---:|---:|---:|---:|---:|
+| USSR | 0.733 | 0.845 | 0.822 | **+0.761** | 24.6% | 43.9% |
+| US | **0.572** | **0.582** | **1.299** | **−0.759** | **41.8%** | 28.0% |
+
+Same network, same game, comparable branching (12.1 legal actions against 13.5) — but as US the
+policy is diffuse: 58% more entropy, a median chosen probability of 0.58 against 0.85, and **42% of
+US decisions taken with under half the mass on the chosen move**. As USSR it is decisive.
+
+**It is not blundering.** The blunder audit reads 0/12 on `defcon_suicide_with_alternative`, 0/8 on
+`olympic_games_at_defcon2` and 0/1 on `spaced_own_or_neutral` — zero in every tracked category. The
+critic meanwhile reads `v_win` ≈ −0.76 from US's opening placement onward, so the model evaluates
+the US position as near-lost from move one. Games end on turns 2, 4, 5, 6 and 10.
+
+So the failure is not tactical: self-play let one seat stop being a real opponent, and the other
+seat's policy **dissolved rather than degrading into specific mistakes**. That is the shape to look
+for in future — an entropy and confidence split by seat, not a blunder-rate spike.
+
 ### What this answers
 
 The arm was launched to ask whether a 25× slower reference anchor stops the decline on its own.
