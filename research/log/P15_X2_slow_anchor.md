@@ -186,6 +186,55 @@ KL rises 3–5× as expected, but η·KL lands at 0.011–0.015 against a policy
 and an entropy bonus near 0.011. **The KL term is not dominating**, so the η = 0.3 escalation is
 not indicated.
 
-## Result
+## Result: the slower anchor does NOT prevent side degradation
 
-**Running.** Nothing claimed until 240M, and not from one seed.
+`E3-30-28` finished its 240M. Rated per seat against `frozen_200M`, temperature 0, 300 games a
+side (`/workspace/data/tournaments/P15_X2_per_seat/`):
+
+| steps | as USSR | as US | Elo in field |
+|---:|---:|---:|---:|
+| 40M | 7.7% | 4.7% | 987.4 |
+| 80M | 30.0% | 14.3% | 1275.9 |
+| 120M | 50.0% | **23.0%** | 1406.4 |
+| 160M | 60.7% | 19.0% | 1399.7 |
+| 200M | 60.0% | 18.7% | 1413.4 |
+| 240M | **70.3%** | **11.3%** | 1409.9 |
+
+**USSR improves monotonically from 7.7% to 70.3%. US peaks at 23.0% around 120M and then halves to
+11.3%.** Against a *fixed* opponent, so this is absolute degradation on that seat — not the uneven
+improvement that the earlier 40M–120M window showed, and the distinction is exactly the one the
+per-seat instrument exists to make.
+
+**Aggregate Elo hides it entirely**: 1406.4, 1399.7, 1413.4, 1409.9 from 120M onward — flat within
+noise. The arm looks stable while one seat falls apart. Its `critic_auc` did fall to 0.706 with
+Brier skill −0.157 by the end, so the critic instruments caught *something*; they simply cannot
+say which seat.
+
+### What this answers
+
+The arm was launched to ask whether a 25× slower reference anchor stops the decline on its own.
+**It does not.** The degradation arrives around 120M and is on the **US** seat.
+
+It is the same seat as `E3-26-28`'s late failure — US 47.0% → 19.3% against the same frozen
+opponent ([`P15_control_per_seat.md`](P15_control_per_seat.md)) — and that arm had the **fast**
+anchor and a different starting point. Two arms, two anchor settings, two starting points, the
+same seat degrading. That points at something in the recipe or the game rather than at the
+regularisation schedule.
+
+### What it does not answer
+
+* **One seed.** Seed variance is large enough here to matter, and a single lineage cannot separate
+  a treatment effect from a draw.
+* **It does not condemn X2 for the search arm.** The anchor was proposed as a fix for the *search*
+  arm's collapse — a policy blown away from π_ref within a refresh window — which is a different
+  failure from a seat slowly degrading over 120M. `E3-31-28` is still the test of that, and this
+  result does not prejudge it.
+* **Whether the fast anchor from scratch is better or worse at 240M** is not measured; `E3-20-28`
+  ran to 320M but has not been rated per seat on this scale.
+
+### Earlier readings in this file that this supersedes
+
+The 40M–120M window was reported as "both seats improving, so the rising base rate was uneven
+progress". That was true *for that window* and is still the right reading of it. The window
+120M–240M is a different story, and only the per-seat rating distinguishes them — the base rate
+rose across both.

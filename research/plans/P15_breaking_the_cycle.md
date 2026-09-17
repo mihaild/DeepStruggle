@@ -171,9 +171,15 @@ its product is a pool member X3 can use.
 > Brought forward out of plan order because both of 2026-09-17's collapses are consistent with an
 > anchor that tracks rather than anchors.
 >
-> Early: η·KL measures **0.011–0.015** against a policy loss of order 0.01–0.1, so the KL term is
-> **not** dominating and the η = 0.3 escalation cell this section holds in reserve is not
-> indicated.
+> η·KL measures **0.011–0.015** against a policy loss of order 0.01–0.1, so the KL term is **not**
+> dominating and the η = 0.3 escalation cell this section holds in reserve is not indicated.
+>
+> **`E3-30-28` result: a 25× slower anchor does NOT prevent side degradation.** Rated per seat
+> against a frozen anchor, its USSR play improves monotonically to 70.3% while its **US** play
+> peaks at 23.0% near 120M and halves to 11.3% by 240M — with aggregate Elo flat at ~1410
+> throughout, hiding it. The same seat degrades in `E3-26-28`, which had the *fast* anchor and a
+> different start, so this points at the recipe rather than at the regularisation schedule. One
+> seed. It does not prejudge the search arm, whose failure mode is different.
 
 `--ref-update-freq` 200k → {5M, 20M}, η = 0.1 held; one optional cell η = 0.3 at 5M. Resume
 from the 80M healthy state, +80M. Screen the three cells at one seed each (~1.8h/cell), read
