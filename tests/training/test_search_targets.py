@@ -82,7 +82,7 @@ def test_only_searched_decisions_yield_a_target(tmp_path) -> None:
 def test_targets_are_normalised_and_inside_the_mask(tmp_path) -> None:
     path = _write(tmp_path, [_make_game(99), _make_game(100)])
     n = 0
-    for obs, mask, pi in WarmupDataset(path).stream_policy_transitions():
+    for obs, mask, pi, dt in WarmupDataset(path).stream_policy_transitions():
         n += 1
         assert obs.shape[0] == ts.OBS_SIZE
         assert pi.shape == mask.shape
@@ -103,7 +103,7 @@ def test_mass_on_an_illegal_action_is_dropped_not_trusted(tmp_path) -> None:
     first["search_pi"]["v"] = list(first["search_pi"]["v"]) + [1000.0]
 
     path = _write(tmp_path, [game])
-    obs, mask, pi = next(iter(WarmupDataset(path).stream_policy_transitions()))
+    obs, mask, pi, dt = next(iter(WarmupDataset(path).stream_policy_transitions()))
     assert mask[bogus] == 0
     assert float(pi[bogus]) == 0.0, "an illegal action kept its visits"
     assert pi.sum() == pytest.approx(1.0, abs=1e-5), "dropping it must renormalise"
@@ -113,7 +113,7 @@ def test_the_target_is_the_searcher_not_the_played_action(tmp_path) -> None:
     """If these coincided the loader could ignore search_pi and every other test would pass."""
     game = _make_game(31337)
     path = _write(tmp_path, [game])
-    obs, mask, pi = next(iter(WarmupDataset(path).stream_policy_transitions()))
+    obs, mask, pi, dt = next(iter(WarmupDataset(path).stream_policy_transitions()))
     played = game["actions"][0]["flat_action"]
     assert int(np.argmax(pi)) != played, (
         "the fixture's target agrees with the played action, so it cannot detect the loader "
@@ -125,15 +125,27 @@ def test_batches_are_shaped_and_normalised(tmp_path) -> None:
     import torch
 
     seen = 0
-    for b_obs, b_mask, b_pi in WarmupDataset(path).stream_policy_batches(
+    for b_obs, b_mask, b_pi, b_dt in WarmupDataset(path).stream_policy_batches(
             batch_size=8, device=torch.device("cpu"), shuffle_buffer_size=16):
-        assert b_obs.shape[0] == b_mask.shape[0] == b_pi.shape[0]
+        assert b_obs.shape[0] == b_mask.shape[0] == b_pi.shape[0] == b_dt.shape[0]
         assert b_obs.shape[1] == ts.OBS_SIZE
         assert b_pi.shape[1] == b_mask.shape[1]
         sums = b_pi.sum(dim=-1)
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
         seen += b_obs.shape[0]
     assert seen > 0
+
+
+def test_the_decision_type_travels_with_the_target(tmp_path) -> None:
+    """Without it the headline agreement number cannot be split, and X4a's 93.1% over nodes
+    averaging 4.1 legal actions would stay indistinguishable from 93.1% over real choices."""
+    path = _write(tmp_path, [_make_game(4242)])
+    seen = set()
+    for _obs, _mask, _pi, dt in WarmupDataset(path).stream_policy_transitions():
+        assert isinstance(dt, int)
+        assert 0 <= dt <= 7, f"decision type {dt} is outside the enum"
+        seen.add(dt)
+    assert seen, "no targets produced"
 
 
 def test_a_desynchronised_game_stops_rather_than_mislabelling(tmp_path) -> None:

@@ -765,7 +765,7 @@ def run_search_distillation(
         seen = 0
         loss_sum = 0.0
         agree = 0
-        for b_obs, b_mask, b_pi in WarmupDataset(dataset_path).stream_policy_batches(
+        for b_obs, b_mask, b_pi, _b_dt in WarmupDataset(dataset_path).stream_policy_batches(
                 batch_size=batch_size, max_games=max_games, device=dev):
             logits, _v_win, _v_vp = model(b_obs, b_mask)
             logp = F.log_softmax(logits, dim=-1)

@@ -25,7 +25,7 @@ import argparse
 import json
 import os
 import sys
-from typing import List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -62,9 +62,13 @@ def main() -> int:
     legal_sum = 0
     top_mass: List[float] = []
     ranks: List[int] = []
+    # Per decision type, because the headline number hides the thing that matters: card/play-mode
+    # nodes average 4.1 legal actions and POINT_NODE placements 17.5, so a single agreement figure
+    # is dominated by the decisions with almost nothing to choose between.
+    per_type: Dict[int, List[Tuple[float, float, float]]] = {}
 
     with torch.no_grad():
-        for b_obs, b_mask, b_pi in WarmupDataset(a.dataset).stream_policy_batches(
+        for b_obs, b_mask, b_pi, b_dt in WarmupDataset(a.dataset).stream_policy_batches(
                 batch_size=a.batch_size, max_games=a.max_games, device=dev):
             logits, _, _ = model(b_obs, b_mask)
             logp = torch.log_softmax(logits, dim=-1)
@@ -89,6 +93,13 @@ def main() -> int:
             order = logits.argsort(dim=-1, descending=True)
             ranks.extend((order == best).float().argmax(dim=-1).cpu().numpy().tolist())
 
+            agree_v = (logits.argmax(-1) == p_search.argmax(-1)).float().cpu().numpy()
+            kl_v = (ce + (p_search * torch.log(p_search.clamp(min=1e-12))).sum(dim=-1)
+                    ).cpu().numpy()
+            legal_v = b_mask.sum(dim=-1).float().cpu().numpy()
+            for dt, ag, k, lg in zip(b_dt.cpu().numpy().tolist(), agree_v, kl_v, legal_v):
+                per_type.setdefault(int(dt), []).append((float(ag), float(k), float(lg)))
+
     if n == 0:
         print("no search targets in the dataset")
         return 1
@@ -109,6 +120,25 @@ def main() -> int:
     print(f"  targets that are near-deterministic (>0.9) : {(tm > 0.9).mean():6.1%}")
     print(f"  targets that are near-flat (<0.3)          : {(tm < 0.3).mean():6.1%}")
     print()
+    if per_type:
+        names = {1: "SELECT_CARD", 2: "SELECT_PLAY_MODE", 3: "CHOOSE_TIMING_BRANCH",
+                 4: "SELECT_OP_MODE", 5: "POINT_NODE", 6: "CHOOSE_BRANCH"}
+        print("  by decision type:")
+        hdr = f"    {'type':<22} {'n':>8} {'agree':>8} {'KL':>8} {'legal':>7}"
+        print(hdr)
+        print("    " + "-" * (len(hdr) - 4))
+        for dt in sorted(per_type, key=lambda d: -len(per_type[d])):
+            rows = per_type[dt]
+            ag = sum(r[0] for r in rows) / len(rows)
+            kl = sum(r[1] for r in rows) / len(rows)
+            lg = sum(r[2] for r in rows) / len(rows)
+            print(f"    {names.get(dt, str(dt)):<22} {len(rows):>8,} {ag:>7.1%} "
+                  f"{kl:>8.4f} {lg:>7.1f}")
+        print()
+        print("    A type with many legal actions and low agreement is where a searcher has")
+        print("    something to find; one with two legal actions cannot carry an edge.")
+        print()
+
     print("Reading: high agreement with low KL means little for CE to move, and the search edge")
     print("is not expressible as a re-weighting of this policy. Low agreement means the headroom")
     print("is real and the question is whether SFT can take it.")
