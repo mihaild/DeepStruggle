@@ -714,6 +714,89 @@ class _HumanInjector:
         return float(loss.item())
 
 
+def run_search_distillation(
+    model: nn.Module,
+    dataset_path: str,
+    output_checkpoint_path: str,
+    epochs: int = 2,
+    batch_size: int = 512,
+    lr: float = 1e-4,
+    max_games: Optional[int] = None,
+    device: Optional[Union[torch.device, str]] = None,
+) -> Dict[str, float]:
+    """P15-X4a step 3: pull the policy toward the searcher's visit distribution.
+
+    Cross-entropy against a SOFT target -- the searcher's normalised visit counts -- on the
+    decisions a searcher actually answered. Not the played action: the played action is the raw
+    policy's own, and training on it is behaviour cloning of the thing being improved.
+
+    **The value head is left alone.** No value term, because X4a asks one question -- is the
+    search edge expressible as a policy? -- and a value loss would move a second thing. The trunk
+    is shared, so the value head's *inputs* still shift; that is unavoidable without freezing the
+    trunk, and it is why the run is rated rather than assumed.
+
+    Small LR by default (1e-4 against BC's 1e-3): this starts from a trained policy and is meant
+    to bend it, not retrain it.
+    """
+    dev = resolve_device(device)
+    model.to(dev)
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+
+    if os.path.isdir(dataset_path):
+        raise ValueError(
+            f"{dataset_path} is a directory. Search-target distillation reads a single "
+            "jsonl.gz produced by tools/generate_search_targets.py.")
+
+    print(f"=== Search-target distillation from {dataset_path} ===", flush=True)
+    meta_path = dataset_path + ".meta.json"
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        print(f"    targets from {meta.get('searcher')} at commit "
+              f"{str(meta.get('commit'))[:10]} (dirty={meta.get('git_dirty')})", flush=True)
+    else:
+        print("    WARNING: no sidecar metadata; the searcher's configuration is unrecorded",
+              flush=True)
+
+    stats = {"samples": 0.0, "final_loss": 0.0, "final_agreement": 0.0, "final_top1_kl": 0.0}
+    for epoch in range(1, epochs + 1):
+        t0 = time.time()
+        seen = 0
+        loss_sum = 0.0
+        agree = 0
+        for b_obs, b_mask, b_pi in WarmupDataset(dataset_path).stream_policy_batches(
+                batch_size=batch_size, max_games=max_games, device=dev):
+            logits, _v_win, _v_vp = model(b_obs, b_mask)
+            logp = F.log_softmax(logits, dim=-1)
+            # Soft cross-entropy. The target is zero outside the legal set, so masked logits
+            # (-1e9) contribute nothing and cannot produce a NaN.
+            loss = -(b_pi * logp).sum(dim=-1).mean()
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            n = b_obs.size(0)
+            seen += n
+            loss_sum += float(loss.item()) * n
+            agree += int((logits.argmax(-1) == b_pi.argmax(-1)).sum().item())
+
+        dt = max(1e-2, time.time() - t0)
+        stats.update({"samples": float(seen),
+                      "final_loss": loss_sum / max(1, seen),
+                      "final_agreement": agree / max(1, seen)})
+        print(f"  epoch {epoch}/{epochs} | {seen:,} targets ({seen/dt:.0f}/s) | "
+              f"CE {stats['final_loss']:.4f} | top-1 agreement with the searcher "
+              f"{stats['final_agreement']:.1%}", flush=True)
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)) or ".", exist_ok=True)
+    torch.save(model.state_dict(), output_checkpoint_path)
+    print(f"  wrote {output_checkpoint_path}", flush=True)
+    return stats
+
+
 def run_behavioral_cloning_warmup(
     model: nn.Module,
     dataset_path: str,

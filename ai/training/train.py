@@ -9,6 +9,8 @@ import sys
 import torch
 
 from ai.training.generic_trainer import train_pipeline, run_behavioral_cloning_warmup
+from ai.training.generic_trainer import run_search_distillation
+from tools.lib.data_root import data_path
 from tools.lib.player_agent import load_agent
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
@@ -35,11 +37,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp"],
                         help="Model architecture. v2 is the baseline; v1 is the original\n"
                              "network, kept because checkpoints that predate v2 still name it.")
-    parser.add_argument("--mode", type=str, default="train", choices=["train", "warmup", "eval", "curriculum"], help="Execution mode")
+    parser.add_argument("--mode", type=str, default="train",
+                        choices=["train", "warmup", "eval", "curriculum", "distill"],
+                        help="Execution mode. `distill` is P15-X4a: soft cross-entropy "
+                             "toward a searcher's visit distribution, from a dataset made "
+                             "by tools/generate_search_targets.py.")
 
     # Warm-up / Checkpoint options
     parser.add_argument("--warmup-checkpoint", "--load-path", type=str, default=None, help="Path to pre-trained checkpoint")
     parser.add_argument("--warmup-dataset", type=str, default=None, help="Path to dataset file for supervised BC warmup")
+    parser.add_argument("--distill-dataset", type=str, default=None,
+                        help="Search-target dataset for --mode distill. Must carry search_pi "
+                             "records; a plain self-play set has no targets and would train "
+                             "on nothing.")
+    parser.add_argument("--distill-epochs", type=int, default=2)
+    parser.add_argument("--distill-lr", type=float, default=1e-4,
+                        help="Deliberately below BC's 1e-3: this bends a trained policy "
+                             "rather than training one.")
     parser.add_argument("--bc-epochs", type=int, default=5, help="Number of epochs for BC warmup")
 
     # Budget & Snapshot parameters. Both are in env steps, deliberately: a wall-clock budget
@@ -371,6 +385,31 @@ def main():
             epochs=args.bc_epochs,
             batch_size=args.batch_size if args.batch_size <= 2048 else 1024,
             lr=args.lr,
+            device=dev,
+        )
+    elif args.mode == "distill":
+        if not args.distill_dataset:
+            print("Error: --distill-dataset required for mode=distill")
+            sys.exit(1)
+        if not args.warmup_checkpoint:
+            print("Error: --warmup-checkpoint required for mode=distill -- X4a distils FROM a "
+                  "trained policy; starting from random weights would answer a different "
+                  "question.")
+            sys.exit(1)
+        dev = torch.device(args.device if (torch.cuda.is_available() and args.device == "cuda") else "cpu")
+        agent_d = load_agent(args.warmup_checkpoint, device=dev)
+        model_d = getattr(agent_d, "model", None)
+        if model_d is None:
+            print(f"Error: {args.warmup_checkpoint} did not load as a neural agent")
+            sys.exit(1)
+        out_save = args.output_dir or data_path("checkpoints", "distilled_search.pt")
+        run_search_distillation(
+            model=model_d,
+            dataset_path=args.distill_dataset,
+            output_checkpoint_path=out_save,
+            epochs=args.distill_epochs,
+            batch_size=args.batch_size if args.batch_size <= 2048 else 512,
+            lr=args.distill_lr,
             device=dev,
         )
     elif args.mode == "eval":

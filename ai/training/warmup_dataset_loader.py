@@ -133,6 +133,96 @@ class WarmupDataset:
                 yield json.loads(line)
                 count += 1
 
+    def stream_policy_transitions(
+        self, max_games: Optional[int] = None
+    ) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Streams (observation, action_mask, policy_target) for SEARCHED decisions only.
+
+        A dataset from `tools/generate_search_targets.py` carries `search_pi` on the decisions a
+        searcher answered: `{"a": [flat ids], "v": [visit counts]}`. Sparse on disk, dense here.
+        Records without it are replayed (the game has to advance) but not yielded — they have no
+        target, and inventing one from the played action would quietly turn expert iteration back
+        into behaviour cloning of the policy that generated the data, which teaches nothing.
+
+        The target is renormalised over the LEGAL actions of the replayed state. A visit on an
+        action the current engine calls illegal is dropped rather than trusted: the mask is the
+        authority, and a target with mass outside it would train the policy toward a move it
+        cannot play.
+        """
+        with gzip.open(self.filepath, 'rt', encoding='utf-8') as f:
+            games = 0
+            for line in f:
+                if max_games is not None and games >= max_games:
+                    break
+                game = json.loads(line)
+                st = ts.GameState()
+                ts.Engine.init_game(st, game['seed'])
+                for a in game['actions']:
+                    p_ = (st.ctx().decision_player
+                          if st.ctx().decision_player != ts.Player.NONE else st.phasing_player)
+                    mask = np.array(ts.get_flat_action_mask(st), copy=True)
+                    flat_act = a['flat_action']
+                    if (mask.sum() == 0 or flat_act < 0 or flat_act >= mask.shape[0]
+                            or mask[flat_act] == 0):
+                        break            # desynchronised replay; the rest of this game is junk
+
+                    pi = a.get('search_pi')
+                    if pi:
+                        obs = np.array(ts.extract_observation(st, p_), copy=True)
+                        target = np.zeros(mask.shape[0], dtype=np.float32)
+                        for act, vis in zip(pi['a'], pi['v']):
+                            if 0 <= act < target.shape[0] and mask[act]:
+                                target[act] += float(vis)
+                        tot = target.sum()
+                        if tot > 0:
+                            yield obs, mask, target / tot
+
+                    ma = ts.decode_flat_action(st, flat_act)
+                    ts.Engine.step(st, ma)
+                    while (not ts.Engine.is_terminal(st)
+                           and st.ctx().decision_player == ts.Player.NONE
+                           and st.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+                        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+                games += 1
+
+    def stream_policy_batches(
+        self,
+        batch_size: int = 512,
+        max_games: Optional[int] = None,
+        device: torch.device = torch.device('cpu'),
+        shuffle_buffer_size: int = 4096,
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        """Bounded-memory shuffled batches of (obs, mask, policy_target)."""
+        b_obs: List[np.ndarray] = []
+        b_mask: List[np.ndarray] = []
+        b_pi: List[np.ndarray] = []
+
+        def emit(idx):
+            return (
+                torch.from_numpy(np.stack([b_obs[i] for i in idx])).float().to(device),
+                torch.from_numpy(np.stack([b_mask[i] for i in idx])).to(device),
+                torch.from_numpy(np.stack([b_pi[i] for i in idx])).float().to(device),
+            )
+
+        for obs, mask, pi in self.stream_policy_transitions(max_games=max_games):
+            b_obs.append(obs)
+            b_mask.append(mask)
+            b_pi.append(pi)
+            if len(b_obs) >= shuffle_buffer_size:
+                idx = np.random.choice(len(b_obs), size=batch_size, replace=False)
+                yield emit(idx)
+                keep = sorted(set(range(len(b_obs))) - set(idx.tolist()))
+                b_obs = [b_obs[i] for i in keep]
+                b_mask = [b_mask[i] for i in keep]
+                b_pi = [b_pi[i] for i in keep]
+
+        while len(b_obs) >= batch_size:
+            idx = np.arange(batch_size)
+            yield emit(idx)
+            b_obs, b_mask, b_pi = b_obs[batch_size:], b_mask[batch_size:], b_pi[batch_size:]
+        if b_obs:
+            yield emit(np.arange(len(b_obs)))
+
     def stream_batches(
         self,
         batch_size: int = 512,
