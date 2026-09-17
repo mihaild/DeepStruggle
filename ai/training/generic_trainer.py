@@ -1267,6 +1267,7 @@ def train_pipeline(
     opponent_pool_size: int = 12,
     reset_opponent_pool: bool = False,
     setup_explore_frac: float = 0.0,
+    rollout_temps: Optional[List[float]] = None,
     search_ce_coef: float = 0.0,
     search_sims: int = 32,
     search_subsample: float = 0.125,
@@ -1401,6 +1402,7 @@ def train_pipeline(
         "opponent_pool_size": int(opponent_pool_size),
         "reset_opponent_pool": bool(reset_opponent_pool),
         "setup_explore_frac": float(setup_explore_frac),
+        "rollout_temps": list(rollout_temps) if rollout_temps else None,
         "opponent_checkpoints": list(opponent_checkpoints or []),
         # Recorded because they change what the arm IS, and an unrecorded flag is how a
         # two-factor experiment stays invisible -- snapshot_every_steps was missing for
@@ -1534,6 +1536,7 @@ def train_pipeline(
         defcon_coef=defcon_coef,
         temperature_schedule=True,
         setup_explore_frac=setup_explore_frac,
+        rollout_temps=rollout_temps,
         device=dev,
     )
 

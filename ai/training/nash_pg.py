@@ -15,7 +15,7 @@ Implements:
 import copy
 import os
 import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Sequence, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -143,6 +143,7 @@ class BaseNashPGTrainer:
         priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
         setup_explore_frac: float = 0.0,
+        rollout_temps: Optional[Sequence[float]] = None,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -256,13 +257,25 @@ class BaseNashPGTrainer:
             device=self.device,
         )
 
-        # Exploration temperature schedule
+        # Rollout temperature bands. The default four are all BELOW 1.0, so sampling is
+        # softmax(logits / tau) with tau < 1 -- sharper than the policy itself, in every band.
+        # The comment this replaced called that "exploration"; relative to the policy's own
+        # distribution it is the opposite, and nobody has measured whether sharpening rollouts
+        # helps. `rollout_temps` makes the band an argument so that question can be asked.
+        _bands = list(rollout_temps) if rollout_temps else [0.15, 0.50, 0.10, 0.35]
+        if len(_bands) != 4:
+            raise ValueError(f"rollout_temps needs exactly 4 values, got {len(_bands)}")
+        if any(t <= 0.0 for t in _bands):
+            raise ValueError(f"rollout temperatures must be positive, got {_bands}")
         if self.temperature_schedule and self.num_envs > 1:
             temps = np.zeros(self.num_envs, dtype=np.float32)
-            temps[0 : self.num_envs // 4] = 0.15
-            temps[self.num_envs // 4 : self.num_envs // 2] = 0.50
-            temps[self.num_envs // 2 : 3 * self.num_envs // 4] = 0.10
-            temps[3 * self.num_envs // 4 :] = 0.35
+            temps[0 : self.num_envs // 4] = _bands[0]
+            temps[self.num_envs // 4 : self.num_envs // 2] = _bands[1]
+            temps[self.num_envs // 2 : 3 * self.num_envs // 4] = _bands[2]
+            temps[3 * self.num_envs // 4 :] = _bands[3]
+            if rollout_temps:
+                print(f"[rollout temps] bands {_bands} (default is "
+                      f"[0.15, 0.50, 0.10, 0.35], all sharpening)", flush=True)
             self.env_temps = torch.from_numpy(temps).unsqueeze(1).to(self.device)
         else:
             self.env_temps = torch.ones((self.num_envs, 1), dtype=torch.float32, device=self.device)
