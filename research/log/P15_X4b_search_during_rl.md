@@ -1,6 +1,7 @@
 # P15-X4b — the search signal present *during* RL
 
-**Launched 2026-09-17, `E3-27-28_20260917_034351`. Pre-registered below before any result
+**Launched 2026-09-17, `E3-28-28_20260917_035813` (after a first attempt collapsed; see below).
+Pre-registered below before any result
 existed.** X4a established that the search edge is expressible as a policy (+47.7 Elo) but does
 not survive subsequent RL — it decays to a dead heat within 20M steps
 ([`P15_X4a_distillation.md`](P15_X4a_distillation.md)). The plan's branch for that outcome is
@@ -17,14 +18,14 @@ never acts**, so the state distribution is the policy's own and the arm varies o
 `E3-26-28_20260917_025539` — run earlier the same night as X4a step 4's control — is this exact
 configuration with the search term switched off:
 
-| | control `E3-26-28` | arm `E3-27-28` |
+| | control `E3-26-28` | arm `E3-28-28` |
 |:---|:---|:---|
 | warmup checkpoint | `p28_200M` | `p28_200M` |
 | seed | 20260928 | 20260928 |
 | steps | 20M | 20M |
 | envs / pool / reward / η / coefs | identical | identical |
 | snapshot cadence | every 5M | every 5M |
-| **search CE** | **off** | **coef 0.5, 64 sims, `all`, 1-in-8** |
+| **search CE** | **off** | **coef 0.05, 64 sims, `all`, 1-in-8** |
 
 One factor, matched seed, matched cadence. The intermediate snapshots line up, so a truncated arm
 is still comparable at 5M, 10M and 15M rather than being lost.
@@ -57,7 +58,7 @@ rather than against the plan's absolute expectations.
 
 ## Pre-registered reading
 
-Rate `E3-27-28`'s final checkpoint against `E3-26-28`'s in one field, 500 games a side.
+Rate the arm’s final checkpoint against `E3-26-28`'s in one field, 500 games a side.
 
 The control **lost 44.1 Elo** over its 20M steps, because this lineage declines past its 200M peak
 regardless of what is done to it. So:
@@ -70,7 +71,8 @@ regardless of what is done to it. So:
 * **arm loses more than the control** → the CE term is actively harmful at this weight, which
   would be a real finding and points at the coefficient rather than the idea.
 
-`--search-ce-coef 0.5` is a guess. The plan never specified a weight and none has been swept.
+`--search-ce-coef` is a guess: the plan never specified a weight and none has been swept. The
+first attempt at 0.5 collapsed the policy outright, which is recorded next.
 
 ## First attempt: `--search-ce-coef 0.5` destroys the policy in its first few updates
 
