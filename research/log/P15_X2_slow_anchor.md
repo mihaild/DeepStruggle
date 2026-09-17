@@ -114,7 +114,28 @@ So the slow anchor's cost is **transient rather than a standing handicap**: it s
 catches up. That matters for reading the decisive 25M point, because a surviving arm would no
 longer have to be discounted for being permanently weaker.
 
-**That cost is only worth paying if it buys the collapse back.** The arm it replaces read +224.4,
+### By 15M the deficit is gone
+
+| matched steps | `ref200k` | `ref5M` | gap |
+|---:|---:|---:|---:|
+| 5M | 1756.6 | 1670.6 | −86.0 |
+| 10M | 1759.8 | 1727.8 | −32.0 |
+| 15M | 1761.3 | 1755.5 | **−5.8** |
+
+Per seat against `frozen_200M` at 15M the slow anchor is marginally ahead on both seats, 82.7 /
+83.0 against 80.3 / 79.7, while the head-to-head still gives `ref200k` a sliver — a tie within
+noise either way.
+
+**The combination is what matters: equal strength at 15M, but entropy 0.665 against 0.481.** The
+slow-anchor arm has reached the same playing level while staying much less sharpened, and
+over-sharpening is what preceded the other arm's collapse — logits driven about 2e5 apart, so the
+policy assigned effectively zero probability to actions the searcher still visited. It arrives at
+15M in a materially different internal state, roughly 5M steps before `E3-29-28` began to fall
+apart.
+
+That is a reason to expect a different outcome at 25M. It is not evidence of one.
+
+**The early cost is only worth paying if it buys the collapse back.** The arm it replaces read +224.4,
 +249.6, +253.8, +165.6 and then **−291.1** against its control at 5M through 25M. The decisive
 comparison is at 25M. A slower anchor that is 86 Elo behind at 5M and still standing at 25M is a
 win; one that is behind *and* collapses on the same schedule says the anchor was never the
