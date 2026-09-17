@@ -80,6 +80,37 @@ estimate was not as good as it looked. Self-play against a copy of yourself is n
 question as playing a *different* opponent at a different temperature, and the transitive step
 quietly assumed it was.
 
+## Deployed with search, against a common opponent
+
+The sweep above asks what search adds *to a checkpoint, measured against that same checkpoint*.
+This asks the deployed question — the trained checkpoint **running with search**, against the
+`p28_200M` start both arms came from, which is a fixed opponent common to every row.
+`P15_search_on_trained`, temperature 0, 100 games a side.
+
+| deployed system | as USSR | as US | Elo vs `p28_200M` |
+|:---|---:|---:|---:|
+| `E3-29-28`@20M **+ search** | 63.0% | **79.0%** | **+171.1** |
+| `E3-26-28`@20M control **+ search** | 63.0% | 60.0% | +71.7 |
+| `p28_200M` **+ search** (measured separately) | 64.0% | 64.0% | +101.4 |
+
+Against the raw checkpoints' own rates versus the same opponent:
+
+| | raw USSR → with search | raw US → with search |
+|:---|:---|:---|
+| control | 50.4% → **63.0%** (+12.6) | 46.4% → **60.0%** (+13.6) |
+| search-trained arm | 67.2% → 63.0% (−4.2) | 76.8% → 79.0% (+2.2) |
+
+**Search adds about 13 points on both seats to the control and essentially nothing to the
+search-trained arm.** That is the internalisation result again, but measured against a *common
+fixed opponent* rather than against each model's own snapshot — so it does not depend on the two
+baselines being equally strong, which the headroom sweep did. The two methods agree.
+
+Head to head, the deployed systems split **61.0% / 70.0%** to the search-trained arm.
+
+**Caveat:** 100 games a side gives SE ≈ 5 pp, so the arm's −4.2 and +2.2 are inside noise and
+should be read as "no detectable gain", not as search hurting. The control's +12.6 and +13.6 are
+comfortably outside it.
+
 ## Caveats
 
 * 200 games a row; ±3.5 pp is too coarse to resolve a small trend, though it is ample to show the

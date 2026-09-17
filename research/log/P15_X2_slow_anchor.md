@@ -93,6 +93,27 @@ P15 X2 names this risk in its own text: *"a slow anchor over-regularizes fresh l
 why the arms resume from 80M rather than start cold."* This arm resumes from 200M and pays the
 cost anyway, in the first 5M.
 
+### At 10M the deficit has more than halved
+
+`P15_X2_search_10M`, temperature 0, 300 games a side:
+
+| model | Elo | vs `frozen_200M`, USSR / US |
+|:---|---:|---:|
+| `ref200k`@10M | 1759.8 | 83.7% / 80.0% |
+| **`ref5M`@10M** | **1727.8** | **81.7% / 80.7%** |
+| `frozen_200M` | 1500.0 | — |
+| `control`@10M | 1491.1 | |
+| `anchor_280M` | 1481.9 | |
+
+**32 Elo apart, down from 86 at 5M.** Per seat against the 200M start the two are effectively
+indistinguishable — 81.7 / 80.7 against 83.7 / 80.0 — and both beat that start by 80 points or
+more on each seat. Against the shared no-search control the slow-anchor arm is +236.7 and the fast
+one +268.7.
+
+So the slow anchor's cost is **transient rather than a standing handicap**: it starts slower and
+catches up. That matters for reading the decisive 25M point, because a surviving arm would no
+longer have to be discounted for being permanently weaker.
+
 **That cost is only worth paying if it buys the collapse back.** The arm it replaces read +224.4,
 +249.6, +253.8, +165.6 and then **−291.1** against its control at 5M through 25M. The decisive
 comparison is at 25M. A slower anchor that is 86 Elo behind at 5M and still standing at 25M is a
