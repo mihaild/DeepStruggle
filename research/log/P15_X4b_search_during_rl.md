@@ -148,7 +148,7 @@ nats**, not falling toward zero. The critic tracks the control almost exactly.
 So `E3-29-28` runs at coef 0.5: the original value, re-justified by measurement rather than
 inherited from the analysis that turned out to be about a misaimed term.
 
-## Interim result at 5M steps: +224 Elo over the step-matched control
+## Interim result: +224 Elo at 5M, +250 at 10M, over the step-matched control
 
 The arm is still running to 20M. Both runs snapshot every 5M, so the first matched pair can be
 rated without waiting, and it is emphatic. `/workspace/data/tournaments/P15_X4b_verdict/`,
@@ -166,6 +166,23 @@ measured past this lineage's peak. The arm went **+214 Elo above that same start
 steps**.
 
 The pre-registered bar was 25 Elo. This is nine times it.
+
+### The trajectory, which is the part that matters
+
+X4a's lesson was that a gain measured at one checkpoint can be gone 20M steps later, so the
+matched pairs are rated as they appear. All at temperature 0.0, same four-model field, same anchor:
+
+| matched steps | arm | control | **gap** | arm vs its own start |
+|---:|---:|---:|---:|---:|
+| 5M | 1752.0 | 1527.6 | **+224.4** | +214.2 |
+| 10M | 1763.5 | 1513.9 | **+249.6** | +239.2 |
+
+The control slides — 1527.6 to 1513.9 — which is the post-peak decline X0 measured. The arm holds
+and edges up. **The gap is growing, not decaying**, which is the opposite of what X4a did.
+
+(Separate tournaments, so the scales are not identical; the field and the anchor are the same in
+both, which is what makes the two rows comparable at all. The gap within a row is the number to
+read, not the change in either column across rows.)
 
 ### The confound that had to be ruled out first
 
