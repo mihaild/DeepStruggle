@@ -699,6 +699,16 @@ class NashPGTrainer(BaseNashPGTrainer):
         search_ce_accum = 0.0
         search_ce_frac_accum = 0.0
         search_rows_accum = 0
+        # Importance-ratio diagnostics. E3-32-30 went from healthy to NaN logits in one
+        # iteration, and the stated cause -- exp() overflowing -- does not survive the
+        # arithmetic: a log-prob is <= 0, so with the opening's measured -16.6 the exponent
+        # reaches only ~16.6 and exp(16.6) is 1.6e7, far inside float32. The likelier path is a
+        # large ratio meeting a NEGATIVE advantage, where PPO's min() selects the unclipped
+        # branch and the gradient scales with the ratio; clip_grad_norm_ then turns an inf norm
+        # into a zero scale and 0 * inf into NaN. These three separate the two stories.
+        logratio_max_accum = -1e30      # before clamping, so the clamp cannot hide it
+        old_lp_min_accum = 1e30         # how negative a stored log-prob actually gets
+        ratio_negadv_max_accum = 0.0    # the dangerous combination, on its own
         num_updates = 0
 
         for _ in range(self.num_epochs):
@@ -742,7 +752,15 @@ class NashPGTrainer(BaseNashPGTrainer):
                 #
                 # +-20 is far outside the PPO clip range, so this changes nothing a healthy
                 # update would have done -- it only stops an overflow becoming NaN.
-                ratio = torch.exp(torch.clamp(cur_lp - b_old_lp, -20.0, 20.0))
+                log_ratio = cur_lp - b_old_lp
+                ratio = torch.exp(torch.clamp(log_ratio, -20.0, 20.0))
+                with torch.no_grad():
+                    logratio_max_accum = max(logratio_max_accum, float(log_ratio.max()))
+                    old_lp_min_accum = min(old_lp_min_accum, float(b_old_lp.min()))
+                    neg = b_adv < 0
+                    if bool(neg.any()):
+                        ratio_negadv_max_accum = max(
+                            ratio_negadv_max_accum, float(ratio[neg].max()))
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)
@@ -854,4 +872,9 @@ class NashPGTrainer(BaseNashPGTrainer):
             # still distinguishable from a run whose term silently produced nothing.
             "search_ce": search_ce_accum / max(1, search_rows_accum),
             "search_ce_grad_frac": search_ce_frac_accum / max(1, search_rows_accum),
+            # Maxima and a minimum over the iteration, not means: a single pathological sample
+            # is what poisons a batch, and an average would bury it.
+            "logratio_max": logratio_max_accum if num_updates else 0.0,
+            "old_logprob_min": old_lp_min_accum if num_updates else 0.0,
+            "ratio_negadv_max": ratio_negadv_max_accum,
         }

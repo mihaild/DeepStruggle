@@ -1829,6 +1829,11 @@ def train_pipeline(
             "adv_std": float(iteration_metrics.get("adv_std", 0.0)),
             "adv_std_raw": float(iteration_metrics.get("adv_std_raw", 0.0)),
             "adv_frac_near_zero": float(iteration_metrics.get("adv_frac_near_zero", 0.0)),
+            # Importance-ratio health, on every run rather than behind a flag: the failure they
+            # exist to catch took one iteration and left every other instrument looking fine.
+            "logratio_max": float(iteration_metrics.get("logratio_max", 0.0)),
+            "old_logprob_min": float(iteration_metrics.get("old_logprob_min", 0.0)),
+            "ratio_negadv_max": float(iteration_metrics.get("ratio_negadv_max", 0.0)),
         }
         # Only once enough games have finished for the tracker to report; logging a
         # placeholder 0.0 before then would draw a line that looks like a collapse.
