@@ -1,10 +1,12 @@
 # P15 — Breaking the oscillate-then-stall cycle
 
-**Status:** proposed, awaiting approval
-**Gate:** none for X0–X3 (flags and eval config; X1 needs a side-lock in the trainer);
-X4 needs the P3 search-in-training build (trainer only — no engine, no observation change).
-**Needs approval:** the X1 side-lock and the X4 build; X2/X3 are existing flags or small
-trainer changes.
+**Status:** in progress (2026-09-17). X0 backfill and anchors measured; X1 run — did not
+discriminate; X4a run — the edge transfers (+47.7) and does not survive RL; X4b run at 20M,
+one seed — **+165.6 Elo over the matched control, peaking near 15M**. Next: **X4c step 1**
+(the peak-mechanism diagnostic), which routes the 80M two-seed leg. X2/X3a remain queued.
+**Gate:** X4c step 1 before the long leg; X2/X3 are flags or small trainer changes.
+**Needs approval:** none outstanding — the side-lock and the search-in-training build both
+exist now; the frozen-leaf teacher variant (X4c) is a trainer-only flag if step 1 selects it.
 
 ## The failure, as the record states it
 
@@ -136,6 +138,17 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
 > steps (`n26_240M`, +38.1 pp tilt, 42.0%). Whether one can be found on purpose is what X1 adds.
 
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
+
+> **Run 2026-09-17 — [`log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md),
+> `E3-24-28`. Verdict: did not discriminate — the premise was weaker than 200-game cells made
+> it look.** Re-rated at 1,000 games, the "unbeaten" `@280M` US seat was already held *level*
+> by `@200M` (50.1%), so there was no unanswered strategy to counter; 40M steps of deliberate
+> exploitation added +2.1 pp (z = 0.94). Neither pre-registered branch fires; X4's case rests
+> on the measured search edge, unchanged. What the run did buy is the mechanism number behind
+> the oscillation: **the seat that receives no gradient collapses from 50% to 7% in 40M
+> steps** — the side-lock starved the learner's US head, and that decay rate is what a run
+> drifting into one seat does to the other. The exploiter checkpoint is a probe, not a
+> product.
 
 Freeze the stalled 160M policy as USSR; train a US-locked learner initialised from the 80M
 state against it (~2h). If the learner's win rate climbs well above the ~10% start, **a
@@ -371,7 +384,47 @@ prior and the current `v_win` at leaves, so the teacher improves with the studen
   stronger online, which is the right kind of evidence — but adoption still waits for the
   training outcome, not the target's pedigree.
 
-## Registration and hygiene
+#### X4c — name the 15M peak, then spend the long leg (proposed 2026-09-17)
+
+`E3-29-28`'s gap over the matched control runs +224, +250, +254, +166 by 5M segment: the
+advantage peaks near 15M and sheds 88 Elo in the last one. One seed, one segment — a signal
+to chase, not a curve — but the full 80M leg costs ~14h/seed at the measured 1,609 steps/s,
+so the mechanism is worth a few GPU-hours of diagnosis *first*, because it decides which
+guard the leg needs. Three candidates, each with a supporting observation already in the log:
+
+| | mechanism | what the log already shows |
+|:---|:---|:---|
+| **A** | **absorption (benign)** — the student caught the teacher; the CE term's gradient went to ~zero and the arm rejoined the lineage's baseline decline (−44 Elo/20M, measured on the control) from a higher level | the extractable edge was always small and concentrated: KL(search‖policy) was 0.033 nats *before* any distillation |
+| **B** | **teacher decay (self-referential)** — the searcher's leaves are the student's own `v_win`; as the critic degrades, the teacher degrades with it and the CE term distils noise. Compounds: sharper policy → less diverse data → worse critic → worse targets | `critic_auc` 0.835 against the control's 0.898 at 20M |
+| **C** | **over-sharpening** — CE toward a bimodal teacher sharpens the policy *past* the teacher; a near-deterministic policy collapses self-play data diversity and the entropy/clip machinery's exploration | entropy 0.56 at 20M, still falling, already through the teacher's own 0.96 |
+
+**Step 1 — the discriminator (no training; a few GPU-hours).** Run the searcher offline on
+the arm's own 5/10/15/20M snapshots. At each: KL(search‖policy) and search-vs-own-policy win
+rate (`tools/scripts/search_policy_agreement.py` + the X0 search-rating harness, both exist).
+Read:
+
+- search barely beats the arm at 20M, KL shrunk → **A**. The decline is baseline decay
+  resumed; the lever is a *stronger teacher* (more sims, frozen-leaf below), and annealing
+  `ce_coef` after absorption is safe.
+- search still beats the arm by ~+130 at 20M, KL grown → washout, **B or C**. Split them by
+  which trace *leads* the gap on the 5M snapshots: `critic_auc` leading the decline → B;
+  entropy leading → C.
+
+**Step 2 — the 80M two-seed leg, guarded by step 1's answer.** A → absorption-triggered
+`ce_coef` anneal + 96-sim teacher; B → **frozen-leaf teacher**: leaves evaluated by the
+frozen `p28_200M` critic instead of the student's — one flag-level change that breaks the
+self-referential loop, at the acceptable cost of leaf values going stale over the leg; C →
+an entropy floor / target-entropy term (stop the drift below the teacher's ~0.96). Either
+way the leg logs the in-run agreement metric, entropy and `critic_auc` per snapshot next to
+the X0 anchors, so the next peak is visible live rather than in a post-hoc tournament.
+
+**Step 3 — variants behind the leg, one factor each, from the log's own list plus one:**
+`ce_coef` sweep (0.5 was never swept; the collapse-based dosage analysis is void — it
+reasoned about a term aimed at the wrong state); `card_playmode` as the contrast (tests the
+71.8%-of-signal-in-`POINT_NODE` reasoning directly); and **X4b × X2**: the control's steady
+−44 Elo/20M is the *dynamics* problem the CE term only compensates for, and a CE-sharpened
+policy makes the 200k-step π_ref chase worse — the anchor now follows the sharpening too. One
+combined cell after the leg, never confounded with it.
 
 Every arm: a row in [`../runs.md`](../runs.md) before launch (next free E3 number), matched
 baseline named, `--snapshot-every-steps 5000000` so pool growth matches, `metadata.json`
@@ -392,7 +445,11 @@ adopt decision clears that bar or is dropped.
 
 ## Decision rules
 
-- X1 climbs → diagnosis confirmed; X1 flat → stop X2–X4, reopen architecture/capacity.
+- ~~X1 climbs → diagnosis confirmed; X1 flat → stop X2–X4, reopen architecture/capacity.~~
+  **Outcome: neither — X1 did not discriminate** (the premise dissolved at 1,000 games).
+  X2–X4 proceed on the search-edge evidence, which X4b has since vindicated directly.
+- X4c step 1 routes the 80M leg: A → anneal + stronger teacher; B → frozen-leaf teacher;
+  C → entropy floor. The leg is not launched before the diagnostic is read.
 - X2 adopted iff oscillation amplitude falls *and* anchor-Elo is not worse at matched steps;
   the cells are flags, so kill freely.
 - X3a/b adopted on the same rule; if both are neutral the pool stays as it is and PSRO-lite
@@ -406,23 +463,32 @@ adopt decision clears that bar or is dropped.
 
 ## Budget
 
-X0 eval-only (backfill done; in-run wiring is eval config); X1 ~2h; X2 ~5.5h screen + ~3.6h
-confirm; X3 two arms ~3.6h each at one seed, confirm winner ~3.6h; X4a an evening (search
-generation over ~10⁵ positions + minutes of SFT + ~0.5h continuation); X4b build + ~16h
-(2 seeds). Roughly **40–55 GPU-hours** for the whole programme — under a week of 4090
-nights, with X1 gating the rest after the first evening and X4a runnable in parallel with
-X1 because it needs no trainer change.
+X0 eval-only (backfill done; in-run wiring is eval config); X1 spent (~4h at 40M); X2 ~5.5h
+screen + ~3.6h confirm; X3 two arms ~3.6h each at one seed, confirm winner ~3.6h; X4a spent
+(an evening); X4b's 20M interim spent. **Ahead:** X4c step 1 a few GPU-hours of search on
+existing snapshots, then the 80M leg at the *measured* 1,609 steps/s with search on —
+**~14h per seed, ~28h for two** — plus the step-3 variants at ~14h each as taken. The search
+slowdown (8.8×) is now the dominant line item; the coverage/sims cost curve in
+[`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md) is what a cheaper
+leg would trade against.
 
 ## Follow-ups
 
 - X2 or X3 adopted → re-run the 320M extension question on the new recipe (does it still
   oscillate away from balance?).
-- X4 adopted → sweep coverage upward (1-in-4, card/play-mode-all) along the measured
-  coverage curve; consider the searcher as the *evaluation* exploiter for approximate
-  exploitability of future arms.
+- X4b adopted after the long leg → sweep coverage along the measured curve; consider the
+  searcher as the *evaluation* exploiter for approximate exploitability of future arms; and
+  revisit X4a's closing conjecture with the X4b evidence — the USSR seat's weakness behaves
+  like a search-depth problem, which a per-seat split of the search-vs-policy gap (the X4c
+  step-1 measurement, grouped by mover) can say directly at no extra cost.
 - All neutral → the reserve entries in order: optimism/extragradient in the optimizer,
   PSRO-lite meta-Nash sampling, per-side capacity.
 
 ## Runs
 
-(none yet)
+- X0: retro sweep + round robin — [`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md),
+  [`../log/P15_X0_round_robin.md`](../log/P15_X0_round_robin.md)
+- X1: `E3-24-28` — [`../log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md)
+- X4a: `E3-25-28` / control `E3-26-28` — [`../log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md)
+- X4b: `E3-29-28` (+ two VOID arms) — [`../log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md)
+- X4c: (not yet run)
