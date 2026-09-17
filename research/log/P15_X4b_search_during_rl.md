@@ -267,7 +267,41 @@ search-depth one.
    carries 71.8% of the CE signal. Running the spec's filter would test that reasoning directly
    rather than leaving it inferred.
 
+## Extension to 80M, the standard leg — running
+
+Launched 2026-09-17: both runs resumed from their 20M resume states, which sat at exactly
+**20,054,016 steps each**, and continue to **80M cumulative**.
+
+* arm — `E3-29-28_20260917_074357`, search CE unchanged at coef 0.5, 64 sims, `all`, 1-in-8
+* control — `E3-26-28_20260917_074533`, the identical recipe with search **off**
+
+Same seed as the originals, so each continues as if uninterrupted rather than diverging.
+
+**The control is continued too, and that is not optional.** X0 measured this lineage declining
+past its 200M peak, so an 80M rating with nothing to compare against cannot separate the treatment
+from the decline — it would be the same mistake the X4a step-4 control caught. Search-free
+training runs about 7× faster, so the control costs roughly 1.5h against the arm's ~9h; the pair
+is worth far more than the arm alone.
+
+Snapshots every 5M on both, so the gap is measured along the way rather than inferred from the
+endpoints.
+
+### Pre-registered reading of the 80M pair
+
+Rated at temperature 0, for the entropy reason above. The 20M leg gave +224.4, +249.6, +253.8,
++165.6 — a peak near 15M and 88 Elo shed in the final segment. So:
+
+* **gap ≥ 100 Elo** → the advantage is durable at the standard budget, and the late-20M dip was a
+  fluctuation rather than the start of a decay.
+* **gap 25–100** → real but eroding; the early peak was the best of it, and the mechanism buys a
+  transient rather than a new level.
+* **gap < 25** → it washed out the way X4a's offline distillation did, and the 20M result was a
+  transient measured at a flattering moment.
+
+The third outcome is a live possibility, not a formality: this project has already been wrong
+once in exactly that shape tonight.
+
 ## Result
 
-**+165.6 Elo over the step-matched control at 20M, one seed.** X4b's mechanism works. Where the
-advantage settles is open.
+**+165.6 Elo over the step-matched control at 20M, one seed** — the mechanism works. The 80M pair
+is running and decides whether the advantage is a new level or a transient.
