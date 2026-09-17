@@ -37,6 +37,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List
 
+import time
+
 import numpy as np
 import torch
 import ts_engine as ts
@@ -53,87 +55,121 @@ def _commit() -> str:
         return "unknown"
 
 
-def main() -> int:
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  allow_abbrev=False)
     ap.add_argument("--us", required=True, help="checkpoint that plays, and teaches, the US seat")
     ap.add_argument("--ussr", required=True, help="checkpoint that plays, and teaches, USSR")
     ap.add_argument("--total-games", type=int, default=300)
+    ap.add_argument("--batch-size", type=int, default=128,
+                    help="Games stepped together. One forward pass a seat a step over the whole "
+                         "batch, rather than one a game: the first version of this tool stepped "
+                         "a single game at a time and ran at 13 s/game.")
     ap.add_argument("--temperature", type=float, default=0.25,
                     help="sampling temperature for the ACTING teachers; some spread is wanted so "
                          "the targets cover more than one line of play")
     ap.add_argument("--output-path", required=True)
     ap.add_argument("--device", default="cuda")
+    return ap
+
+
+def main() -> int:
+    ap = _parser()
     a = ap.parse_args()
 
     dev = torch.device(a.device if torch.cuda.is_available() else "cpu")
     teachers = {
-        ts.Player.US: NeuralAgent.from_checkpoint(a.us, device=dev).model,
-        ts.Player.USSR: NeuralAgent.from_checkpoint(a.ussr, device=dev).model,
+        1: NeuralAgent.from_checkpoint(a.us, device=dev).model,     # ts.Player.US
+        -1: NeuralAgent.from_checkpoint(a.ussr, device=dev).model,  # ts.Player.USSR
     }
     for m in teachers.values():
         m.eval()
 
     os.makedirs(os.path.dirname(os.path.abspath(a.output_path)), exist_ok=True)
-    games = 0
+    games_done = 0
     targets = 0
+    decisions = 0
     outcomes: Dict[str, int] = {"US": 0, "USSR": 0, "DRAW": 0}
+    t0 = time.time()
 
     with gzip.open(a.output_path, "wt", encoding="utf-8") as out:
-        for g in range(a.total_games):
-            seed = 500_000 + g
-            st = ts.GameState()
-            ts.Engine.init_game(st, seed)
-            actions: List[Dict[str, Any]] = []
-            guard = 0
-            while not ts.Engine.is_terminal(st) and guard < 4000:
-                guard += 1
-                ctx = st.ctx()
-                pl = ctx.decision_player
-                if pl == ts.Player.NONE:
-                    if not ts.Engine.try_step(st, ts.MicroAction(ctx.decision_type, 0, 0, 0)):
-                        break
-                    continue
+        while games_done < a.total_games:
+            n = min(a.batch_size, a.total_games - games_done)
+            base_seed = 500_000 + games_done * 10_007 + 1
+            runner = ts.VectorizedBatchRunner(n, base_seed)
+            hist: List[Dict[str, Any]] = [
+                {"seed": base_seed + i * 10007 + 1, "actions": []} for i in range(n)]
+            done = [False] * n
 
-                obs = np.asarray(ts.extract_observation(st, pl), dtype=np.float32)
-                mask = np.asarray(ts.get_flat_action_mask(st), dtype=np.uint8)
-                with torch.no_grad():
-                    logits, _, _ = teachers[pl](
-                        torch.from_numpy(obs).unsqueeze(0).to(dev),
-                        torch.from_numpy(mask).unsqueeze(0).to(dev))
-                lg = logits[0].float().cpu().numpy()
-                lg = np.where(mask > 0, lg, -np.inf)
-                lg = lg - np.max(lg)
-                p = np.exp(lg)
-                p = p / p.sum()
-
-                legal = np.flatnonzero(mask)
-                rec: Dict[str, Any] = {}
-                if legal.size > 1:
-                    order = legal[np.argsort(p[legal])[::-1]][:TOP_K]
-                    rec["search_pi"] = {"a": [int(i) for i in order],
-                                        "v": [float(p[int(i)]) for i in order]}
-                    targets += 1
-
-                # Act by sampling the teacher, so the states seen are the ones the pair reaches.
-                t = max(1e-3, a.temperature)
-                q = np.power(p, 1.0 / t)
-                q = q / q.sum()
-                chosen = int(np.random.choice(len(q), p=q))
-                rec["flat_action"] = chosen
-                actions.append(rec)
-                if not ts.Engine.try_step(st, ts.decode_flat_action(st, chosen)):
+            for _ in range(4000):
+                terminals = runner.get_terminals()
+                utils = runner.get_terminal_utilities()
+                for i in range(n):
+                    if not done[i] and terminals[i]:
+                        done[i] = True
+                        st = runner.get_state(i)
+                        w = "USSR" if utils[i] < 0 else ("US" if utils[i] > 0 else "DRAW")
+                        outcomes[w] += 1
+                        hist[i]["winner"] = w
+                        hist[i]["final_vp"] = int(st.victory_points)
+                if all(done):
                     break
 
-            vp = int(st.victory_points)
-            winner = "US" if vp > 0 else ("USSR" if vp < 0 else "DRAW")
-            outcomes[winner] += 1
-            out.write(json.dumps({"seed": seed, "actions": actions,
-                                  "winner": winner, "final_vp": vp}) + "\n")
-            games += 1
-            if games % 25 == 0:
-                print(f"  {games}/{a.total_games} games | {targets:,} targets", flush=True)
+                active = [i for i in range(n) if not done[i]]
+                obs_all = np.array(runner.get_observations(), copy=False)
+                masks_all = np.array(runner.get_action_masks(), copy=False)
+                players = np.array(runner.get_decision_players(), dtype=np.int8)
+
+                actions = [0] * n
+                # One batched pass per seat, on the subset that seat is to move in -- the same
+                # shape the opponent pool uses, and the reason this is not one call a game.
+                for side in (1, -1):
+                    idx = [i for i in active if int(players[i]) == side]
+                    if not idx:
+                        continue
+                    obs_t = torch.from_numpy(obs_all[idx]).float().to(dev)
+                    mask_t = torch.from_numpy(masks_all[idx]).to(dev)
+                    with torch.no_grad():
+                        logits, _, _ = teachers[side](obs_t, mask_t)
+                    lg = logits.float()
+                    lg = lg.masked_fill(mask_t <= 0, float("-inf"))
+                    probs = torch.softmax(lg, dim=-1)
+
+                    t = max(1e-3, a.temperature)
+                    sharp = torch.softmax(lg / t, dim=-1)
+                    picks = torch.multinomial(sharp, 1).squeeze(1).cpu().numpy()
+
+                    topv, topi = torch.topk(probs, k=min(TOP_K, probs.shape[-1]), dim=-1)
+                    topv_np = topv.cpu().numpy()
+                    topi_np = topi.cpu().numpy()
+                    nlegal = mask_t.sum(dim=-1).cpu().numpy()
+
+                    for sub, i in enumerate(idx):
+                        act = int(picks[sub])
+                        actions[i] = act
+                        rec: Dict[str, Any] = {"flat_action": act}
+                        if nlegal[sub] > 1:
+                            keep = [(int(c), float(v))
+                                    for c, v in zip(topi_np[sub], topv_np[sub]) if v > 0.0]
+                            if keep:
+                                rec["search_pi"] = {"a": [c for c, _ in keep],
+                                                    "v": [v for _, v in keep]}
+                                targets += 1
+                        hist[i]["actions"].append(rec)
+                        decisions += 1
+
+                runner.step_flat_all(actions)
+
+            for i in range(n):
+                hist[i].setdefault("winner", "DRAW")
+                hist[i].setdefault("final_vp", 0)
+                out.write(json.dumps(hist[i]) + "\n")
+            games_done += n
+            el = time.time() - t0
+            print("  %d/%d games | %s targets | %.0fs | %.1f games/s"
+                  % (games_done, a.total_games, f"{targets:,}", el, games_done / max(el, 1e-9)),
+                  flush=True)
 
     meta = {
         "purpose": "two-seat capacity probe: can one network hold both teachers?",
@@ -141,16 +177,17 @@ def main() -> int:
         "ussr_teacher": a.ussr,
         "acting_temperature": a.temperature,
         "top_k": TOP_K,
-        "games": games,
+        "games": games_done,
         "targets": targets,
+        "decisions": decisions,
         "outcomes": outcomes,
         "commit": _commit(),
         "engine_obs_size": int(ts.OBS_SIZE),
     }
     with open(a.output_path + ".meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1)
-    print(f"\n{games} games, {targets:,} targets -> {a.output_path}")
-    print(f"outcomes: {outcomes}")
+    print("\n%d games, %s targets -> %s" % (games_done, f"{targets:,}", a.output_path))
+    print("outcomes: %s" % outcomes)
     return 0
 
 
