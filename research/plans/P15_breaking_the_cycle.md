@@ -173,6 +173,26 @@ why the arms resume from 80M rather than start cold; if the screen looks good, a
 confirmation decides the adopted schedule (fast-early / slow-late is the expected shape,
 matching Ataraxos's annealed damping).
 
+> **X4b supplies a concrete failure this predicts, 2026-09-17.** The online-distillation arm
+> ([`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md)) collapsed past ~20M:
+> 413 Elo lost in 5M steps, with `kl_div` against π_ref spiking to 14.9, 5.8 and 31.99. A KL of 30
+> reached *within a 200k-step window* is this section's thesis made visible — the anchor is
+> refreshed before it can pull anything back, so each excursion is ratified rather than damped,
+> and the next window starts from wherever the policy went. η·KL cannot hold a policy to a
+> reference that follows it.
+>
+> This makes X2 worth running **with the search-CE term on**, not only against the plain recipe.
+> X4b is the setting where a tracking anchor demonstrably fails, so it is the sharper test of a
+> slow one — and the cell most likely to matter is the optional `η = 0.3 at 5M`, which this
+> section already predicted would be the answer if the KL term's magnitude became the problem.
+>
+> Prerequisite, now in place: `search_ce` and `search_ce_grad_frac` are logged per iteration.
+> They were not, which is why the collapse gave no warning until KL hit 30. The share matters more
+> than the value — gradients are globally norm-clipped, so a CE term that dominates the raw
+> gradient does not take a bigger step, it takes a step that is almost entirely CE, crowding the
+> advantage and value signals out of the update. That is the candidate mechanism for why a healthy
+> critic (AUC 0.87 right up to the break) did not prevent the collapse.
+
 **Detail.**
 - Cells: `--ref-update-freq {5000000, 20000000}` at `--eta 0.1`, one optional
   `--ref-update-freq 5000000 --eta 0.3`. Everything else the E3-20-28 recipe; resume from its

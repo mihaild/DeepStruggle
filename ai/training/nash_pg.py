@@ -615,6 +615,15 @@ class NashPGTrainer(BaseNashPGTrainer):
         kl_accum = 0.0
         entropy_accum = 0.0
         clip_frac_accum = 0.0
+        # P15-X4b. The CE term's own magnitude and how much of the update it claims. Without
+        # these the arm that collapsed at ~20M gave no warning: the first visible symptom was
+        # kl_div reaching 30, by which point the policy had already gone. The share matters more
+        # than the value, because gradients are globally norm-clipped -- a CE term that dominates
+        # the raw gradient does not produce a larger step, it produces a step that is almost
+        # entirely CE, crowding the advantage and value signals out of the update.
+        search_ce_accum = 0.0
+        search_ce_frac_accum = 0.0
+        search_rows_accum = 0
         num_updates = 0
 
         for _ in range(self.num_epochs):
@@ -715,7 +724,28 @@ class NashPGTrainer(BaseNashPGTrainer):
                     risk_loss_accum += risk_loss.item()
 
                 self.optimizer.zero_grad()
+                if self.search_ce_coef > 0.0 and float(search_ce) != 0.0:
+                    # One extra backward on the CE term alone, retaining the graph, to see what
+                    # share of the update it is claiming. Only while the term is active.
+                    ce_grads = torch.autograd.grad(
+                        self.search_ce_coef * search_ce,
+                        [q for q in self.active_net.parameters() if q.requires_grad],
+                        retain_graph=True, allow_unused=True)
+                    _ce_sq = [(g.detach() ** 2).sum() for g in ce_grads if g is not None]
+                    ce_norm = (torch.sqrt(torch.stack(_ce_sq).sum()) if _ce_sq
+                               else torch.zeros((), device=self.device))
+                    self.optimizer.zero_grad()
+                else:
+                    ce_norm = None
                 loss.backward()
+                _tot_sq = [(q.grad.detach() ** 2).sum()
+                           for q in self.active_net.parameters() if q.grad is not None]
+                total_norm = (torch.sqrt(torch.stack(_tot_sq).sum()) if _tot_sq
+                              else torch.zeros((), device=self.device))
+                if ce_norm is not None:
+                    search_ce_accum += float(search_ce)
+                    search_ce_frac_accum += float(ce_norm / total_norm.clamp(min=1e-9))
+                    search_rows_accum += 1
                 nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
                 self.optimizer.step()
 
@@ -735,4 +765,8 @@ class NashPGTrainer(BaseNashPGTrainer):
             "kl_div": kl_accum / max(1, num_updates),
             "entropy": entropy_accum / max(1, num_updates),
             "clip_frac": clip_frac_accum / max(1, num_updates),
+            # 0.0 when search CE is off, so the key is always present and a run without it is
+            # still distinguishable from a run whose term silently produced nothing.
+            "search_ce": search_ce_accum / max(1, search_rows_accum),
+            "search_ce_grad_frac": search_ce_frac_accum / max(1, search_rows_accum),
         }

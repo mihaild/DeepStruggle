@@ -28,8 +28,9 @@ Each win-rate row is 200 games, so **SE ≈ 3.5 pp** and the 56.5–61.0 spread 
 with a constant ~58%. KL does not fall; the 20M value is the highest of the four. Agreement sits
 at 97% throughout.
 
-**So the policy is not progressively closing on its teacher.** Over 15M steps of continuous
-distillation, search keeps winning by the same margin.
+**So the policy is not progressively closing on its teacher** — but it starts much closer than
+an undistilled policy does, and stays there. The control comparison below is what makes that
+readable; within the arm alone the flat line is ambiguous.
 
 ## That is not, by itself, a failure
 
@@ -43,27 +44,41 @@ A shrinking gap would mean the policy had caught its teacher and further distill
 left to give. A flat gap means the opposite: there is still headroom at 20M, and the process has
 not saturated.
 
-## The comparison this enables, and the baseline still running
+## The verdict: search has about half as much to add to the arm
 
-The interesting claim is that search adds **less** to the distilled arm than to an undistilled
-policy — that is what "internalised" would mean. Two baselines bear on it:
+Both baselines landed, all at temperature 0 with the identical searcher (64 sims, determinized,
+`all`), 100 games a side:
 
-1. **`p28_200M`.** [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md) rated search on these
-   weights at **+129.2 Elo / 64.8%** with an identical searcher (64 sims, determinized, `all`),
-   far above the arm's ~58%. That measurement predates `tools/tournament.py --temperature` and
-   sampled its raw policy at 0.1 where the table above plays greedy, which looked like a
-   disqualifying confound — until it was measured.
-   [`P15_temperature_selfplay.md`](P15_temperature_selfplay.md) puts `p28_200M@T0` against
-   `p28_200M@T0.1` at **50.0% over 300 games, 6.9 Elo apart**: the same player. **So the
-   comparison is legitimate, and search does have measurably less to add to the distilled arm —
-   64.8% against ~58%.** A re-measurement at T=0 is running anyway, to close it by direct
-   observation rather than by transitivity.
-2. **The control's snapshots.** `E3-26-28` is the same recipe with search off, so its 5M/10M/15M/20M
-   checkpoints are step-matched and strictly weaker. Search should have *more* room on a weaker
-   policy. If it has the same room, the arm has internalised nothing and the flat gap above means
-   something less flattering.
+| matched steps | arm Δ Elo | **control Δ Elo** | arm KL | **control KL** | arm agree | control agree |
+|---:|---:|---:|---:|---:|---:|---:|
+| 5M | +54.1 | **+108.9** | 0.0361 | **0.0698** | 97.1% | 93.0% |
+| 10M | +50.6 | **+116.6** | 0.0343 | **0.0565** | 97.3% | 92.6% |
+| 15M | +77.4 | **+114.6** | 0.0357 | **0.0621** | 97.3% | 92.7% |
+| 20M | +59.4 | **+154.4** | 0.0400 | **0.0708** | 96.9% | 91.5% |
 
-The control sweep is **running**. The temperature objection is now retired, so the 64.8% against ~58% contrast stands on its own; the control sharpens it by supplying a step-matched policy of known lesser strength.
+Undistilled baseline, `p28_200M` re-measured at T=0: **+101.4 Elo**, KL **0.0649**, agreement
+94.3%.
+
+**At every matched step search has roughly half the room on the arm that it has on its control**,
+with about half the KL and 97% agreement against 92%. The two are step-matched, same seed, same
+recipe apart from the CE term, and rated at the same temperature — so this is the clean version of
+the comparison, and it says the arm genuinely internalised its teacher.
+
+Note the two curves move in opposite directions. The control's headroom **grows**, +108.9 to
++154.4, because the control is getting worse — it is the run that degenerates into one-sidedness
+at ~65M. The arm's stays flat near +50 to +77.
+
+### A cross-check that went the other way, and why it was worth running
+
+The transitive estimate said this comparison was safe to make from X0's old number, because
+[`P15_temperature_selfplay.md`](P15_temperature_selfplay.md) measured greedy and T=0.1 as the same
+player on `p28_200M` — 50.0%, 6.9 Elo. Measured directly, X0's **+129.2 at T=0.1 reads +101.4 at
+T=0**: a gap of **28 Elo**, four times the estimate.
+
+The conclusion is unchanged and the direct baselines are what the table above uses, but the
+estimate was not as good as it looked. Self-play against a copy of yourself is not the same
+question as playing a *different* opponent at a different temperature, and the transitive step
+quietly assumed it was.
 
 ## Caveats
 
