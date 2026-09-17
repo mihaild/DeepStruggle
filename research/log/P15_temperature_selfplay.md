@@ -1,4 +1,4 @@
-# What is a sampling temperature worth? One checkpoint against itself
+# What is a sampling temperature worth? Two checkpoints against themselves
 
 **Measured 2026-09-17.** Every comparison tonight had to pick a temperature, and numbers measured
 at different ones are not obviously comparable — [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md)
@@ -29,6 +29,40 @@ flattens the distinction between a sampled draw and the argmax; T=1.0 plays the 
 entropy and all, which for a policy with ~1.1 nats of entropy at every decision is a great many
 deliberate mistakes per game.
 
+## The distilled student is 2-3x more robust to temperature
+
+The same sweep on the X4b arm's 15M snapshot (`E3-29-28`, entropy **0.56 nats** against
+`p28_200M`'s ~1.1), each tournament anchored on its own T=0.1 so the deltas are comparable:
+
+| T | `p28_200M` Elo | Δ | **arm@15M** Elo | Δ |
+|---:|---:|---:|---:|---:|
+| 0 | 1506.9 | +6.9 | 1499.5 | −0.5 |
+| 0.1 | 1500.0 | — | 1500.0 | — |
+| 0.25 | 1483.7 | −16.3 | 1490.3 | **−9.7** |
+| 0.5 | 1366.0 | −134.0 | 1459.9 | **−40.1** |
+| 1.0 | 1126.0 | −374.0 | 1330.5 | **−169.5** |
+
+Head to head inside each field, T=0.1 against T=0.5: the source wins **72.3%**, the student only
+**52.7%**.
+
+**What T=1.0 actually is** is worth stating, because it is the interesting row: temperature
+divides the logits, so T=1.0 is the policy played *exactly as trained*, and everything below it is
+artificial sharpening. So the source loses **374 Elo** by playing its own distribution rather than
+its argmax; the student loses **170**.
+
+Mechanically this follows from entropy. The student's own distribution already sits close to its
+argmax, so sampling from it cannot wander as far. It is a direct consequence of the sharpening
+that the CE term produced — the same sharpening flagged as an open worry in
+[`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md), where entropy fell from 1.03 to 0.56
+and kept drifting.
+
+**This reads in the treatment's favour, with one honest alternative.** The favourable reading is
+that the CE term concentrated mass on genuinely good actions, so what remains outside the argmax
+is nearly as good and sampling costs little. The alternative is that the student simply reaches
+positions where the choice matters less, which would make the robustness a property of its
+trajectory distribution rather than of its policy. Nothing here separates those, and the
+difference matters: the first is a better player, the second is a narrower one.
+
 ## What this settles
 
 **The X0 / X4b comparison is legitimate after all.** Search at 64 simulations beats undistilled
@@ -45,9 +79,10 @@ at the default.
 
 ## What it does not settle
 
-* **One checkpoint.** A policy much flatter than this one would lose more to sampling at any given
-  temperature, and one much sharper would lose less. The cliff between 0.25 and 0.5 is a property
-  of this policy's logit scale, not a constant.
+* **Two checkpoints, and they disagree by a factor of three.** The cliff between 0.25 and 0.5 is
+  a property of a given policy's logit scale, not a constant — `p28_200M` falls off it and the
+  X4b arm barely notices. Any temperature chosen for a comparison has to be justified per pair,
+  not inherited.
 * **It does not retire `--temperature 0.0` as the right default for these comparisons.** Being
   worth only 7 Elo is a reason the old numbers are usable, not a reason to stop controlling the
   variable — especially when an arm's treatment changes its entropy, which is exactly the X4b
