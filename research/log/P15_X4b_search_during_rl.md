@@ -309,7 +309,14 @@ be reached for afterwards.
 | 74M | 0.96 | 0.69 | **−0.08** | 1.43 |
 
 `critic_base_rate` first crosses 0.80 at **65,273,856 steps** and reaches 0.96 by 74M: roughly
-**96% of self-play games are won by one side**. The critic falls with it, to AUC 0.69 and negative
+**96% of self-play games are won by one side**.
+
+**Those step counts are run-local.** `--warmup-checkpoint` loads weights but resets the counter,
+so step 0 of this control is `p28_200M`, which is itself `snapshot_200015872steps.pt`. The onset
+is therefore **65.3M steps after the source, or ~265.3M cumulative** for the weights. Read it as
+the weights' total training exposure rather than as a continuation of `E3-20-28`'s exact
+trajectory: this is a fresh run from those weights, with the opponent pool, reference policy and
+optimiser moments all restarted. The critic falls with it, to AUC 0.69 and negative
 Brier skill — it has become a base-rate predictor, which is the collapse mode this project has
 seen before and which `checkpoints.md` records for `E3-21-28`. Entropy *rises* to ~1.43 while this
 happens, so it is not an entropy collapse; it is one side being given away.
@@ -318,6 +325,10 @@ This is the X4a finding run to completion. There, 20M steps moved side balance �
 −11.6 pp toward US in two arms
 ([`P15_X4a_distillation.md`](P15_X4a_distillation.md)); here the same recipe, given 65M, arrives
 at near-total one-sidedness.
+
+It also extends X0's curve. [`P15_X0_frozen_anchors.md`](P15_X0_frozen_anchors.md) measured this
+lineage declining past its 200M peak — 2193.7 at 200M against 2168.0 at 240M — and this says where
+that decline ends up: by roughly 265M cumulative the weak side is gone entirely.
 
 **So a straight arm-against-control rating at 80M would largely measure the control's collapse,
 not the arm's strength.** Beating a degenerate opponent is not the claim X4b is making. The pair
