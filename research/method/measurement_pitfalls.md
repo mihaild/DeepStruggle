@@ -208,3 +208,10 @@ sense that matters; it is strong on both seats and stronger on one.
 
 `critic_base_rate` remains useful as a cheap in-run hint worth following up with a real
 measurement. It is never the measurement.
+
+**A worked example, 2026-09-17.** `E3-30-28` from scratch: `critic_base_rate` rose 0.61 → 0.66 →
+0.79 between 40M and 120M, which was read at the time as drifting toward one-sidedness. Rated per
+seat against a frozen anchor over the same span, **both seats improved** — USSR 7.7% → 50.0% and
+US 4.7% → 23.0%. The rising base rate was the *gap between two improvement rates*, and on the
+cheap signal alone the arm would have been written off
+([`log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md)).

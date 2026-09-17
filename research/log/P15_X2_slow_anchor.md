@@ -58,11 +58,10 @@ a reason to finish the arm, not a result.
 
 With that said, two things are visible:
 
-* **The slow anchor has not crossed `base_rate` 0.80 by 72M**, where the fast anchor crossed at
-  44.6M — and the fast anchor's crossing was a **transient spike**, peaking at 0.8204 and back to
-  0.5433 by 70M. Read strictly, this says the two runs' self-play mixtures differ; it does **not**
-  say either side is stronger or weaker, and a per-side rating against the frozen anchors is what
-  would.
+* **The base-rate comparison below is superseded** by the per-seat section that follows, which
+  shows both of this arm's seats improving while its base rate climbed from 0.61 to 0.79. The two
+  runs' base rates differ; that says their self-play mixtures differ and nothing about either
+  side's strength. Kept only as a record of what the cheap signal looked like.
 * **The slow anchor holds much more entropy early**: 1.32 against 0.74 at 10M, converging by 70M.
   That is the expected shape — a reference that lags pulls less hard toward whatever the policy
   has just become — and it costs early critic accuracy, AUC 0.64 against 0.73 at 10M, which is
@@ -102,6 +101,40 @@ mechanism.
 
 (The old arm reads +229.4 here against the +224.4 recorded earlier in a four-model field — a
 useful check that the two tournaments agree to within 5 Elo on a shared quantity.)
+
+## Per seat against frozen anchors: nothing is degrading, and the base rate was misleading
+
+The right instrument, applied to this arm. `E3-30-28` at 40M / 80M / 120M against the two frozen
+anchors, temperature 0, 300 games a side
+(`/workspace/data/tournaments/P15_X2_per_seat/`):
+
+**Against `frozen_200M`:**
+
+| steps | as USSR | as US | `critic_base_rate` at that step |
+|---:|---:|---:|---:|
+| 40M | 7.7% | 4.7% | 0.6124 |
+| 80M | 30.0% | 14.3% | 0.6593 |
+| 120M | **50.0%** | **23.0%** | **0.7903** |
+
+**Against `frozen_280M`:** 6.3 / 4.0 → 25.7 / 12.3 → 37.7 / 18.3, the same shape.
+
+**Both seats improve monotonically** — USSR by 42.3 pp and US by 18.3 pp against `frozen_200M`.
+Nothing is degrading. The arm is simply climbing from a cold start toward anchors that already
+have 200M and 280M steps behind them, and it is climbing faster as USSR than as US.
+
+**And `critic_base_rate` rose from 0.61 to 0.79 across exactly that span.** Earlier entries in
+this file read that rise as "heading toward one-sidedness" and treated it as a warning sign. It
+was measuring the *difference in improvement rates between the two seats* — which is the specific
+thing the statistic cannot distinguish from a side collapsing
+([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). Here the per-seat numbers
+say plainly that the answer is uneven improvement, and the base rate would have had this arm
+written off.
+
+So the question this arm was launched to answer — *does a slower anchor stop a side being given
+away?* — cannot yet be answered from it, because **this arm has not given a side away**. At 120M
+from scratch it is still far below both anchors, as expected, and both seats are rising. The
+comparison that matters is whether it eventually turns the way `E3-20-28` did, and that needs the
+full 240M with per-seat ratings at the end, not a base-rate trace.
 
 ## The KL magnitude question X2 raised
 
