@@ -4,7 +4,7 @@ One row per rated checkpoint, with its measured strength and the field that meas
 themselves — what each one varied and why — are [`runs.md`](runs.md); this file answers the
 narrower question "which model do I load, and how good is it".
 
-**Update discipline: rewritten in place.** Written 2026-09-16.
+**Update discipline: rewritten in place.** Written 2026-09-16, extended 2026-09-17.
 
 ## How to read a number here
 
@@ -176,6 +176,35 @@ reading in [`log/P15_X0_frozen_anchors.md`](log/P15_X0_frozen_anchors.md).
 **Each run peaks and then declines**: `n26` at 120M (−154 Elo by 320M), `p28` at 200M (−56),
 `p29` at 200M (−152). No arm of any configuration is improving past 200M.
 
+### `P15_X4a_distilled` — one offline round of expert iteration (4 models, 1000 games/side)
+
+Distilling an honest searcher's visit distribution into the policy head, card/play-mode nodes
+only. See [`log/P15_X4a_distillation.md`](log/P15_X4a_distillation.md).
+
+| model | Elo | what it is |
+|:---|---:|:---|
+| `x4a_distilled_200M.pt` | **1666.4** | `p28_200M` after 2 epochs of CE toward a 96-sim searcher |
+| `p28_200M` | 1618.7 | the source |
+| `p28_280M` | 1585.7 | |
+| `p28_080M` | 1500.0 | anchor |
+
+**`/workspace/data/checkpoints/x4a_distilled_200M.pt` is a product, not just an arm** — +47.7 Elo
+over its source for two epochs of offline SFT, no RL. It is also the most side-balanced checkpoint
+this project has: −0.9 pp USSR−US where its own source is −3.3 and `p28_280M` is −17.7.
+
+### `P15_X4a_washout` — does the distilled gain survive RL? (4 models, 500 games/side)
+
+| model | Elo | what it is |
+|:---|---:|:---|
+| `distilled` | **1555.3** | as above, pre-RL |
+| `source_200M` | 1517.5 | |
+| `anchor_280M` | 1500.0 | anchor |
+| `after_rl_20M` | **1480.2** | `E3-25-28`, 20M steps of ordinary NashPG from `distilled` |
+
+The gain inverted: 75.1 Elo below its own starting point. **Confounded until the control lands** —
+X0 measured this lineage declining past 200M anyway, so `E3-26-28` reruns the same 20M from the
+*undistilled* source. Rated together in `P15_X4a_washout_control`.
+
 ### `arena_heads` — the per-entity-head ablation (10 models, 4,500 matches each)
 
 | model | Elo |
@@ -208,6 +237,8 @@ because the 80M state had been pruned). Kept for provenance only; see
 | `E3-22-28_20260916_121202_VOID_thin_opponent_pool` | 47M | per-player GAE, first attempt | **void** — snapshot cadence made it a two-factor experiment |
 | `E3-21-28_20260916_004620_VOID_refusal_crash` | — | died on ENG-3 | void |
 | `E3-21-28_20260916_010023_VOID_eng3_crash` | — | died on ENG-3 | void |
+| `E3-25-28_20260917_020529` | 20M | X4a step 4, RL from the distilled checkpoint | rated in `P15_X4a_washout` |
+| `E3-26-28_20260917_025539` | 20M | X4a step 4 **control**, same recipe from the undistilled source | running 2026-09-17 |
 | `E3-18-22` | 160–240M | P10 experiment 1, the do-nothing control | rated only in `arena_heads`, no writeup |
 | `E3-19-22`, `E3-19-23` | 80–160M, 90–160M | pool-from-checkpoint arms | rated only in the retracted `arena80_160` |
 
