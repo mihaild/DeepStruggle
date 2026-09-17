@@ -76,6 +76,16 @@ So the scoping was wrong on the merits and wrong on the signal census, and **fix
 nothing measurable in the one-shot offline setting.** That is the honest result, and it is not the
 one the 71.8% figure predicts.
 
+### One explanation ruled out: the searcher is not dodging operations
+
+The obvious suspect is that the searcher places influence badly, therefore underrates the whole
+ops branch, therefore avoids it — which would make its play-mode targets biased and worthless to
+distil. Measured and **refuted**, in the direction that matters:
+[`log/P15_search_play_mode_bias.md`](../../log/P15_search_play_mode_bias.md). Over 18,097
+play-mode decisions with both options legal, search shifts **toward** ops (+2.16 pp) and away from
+EVENT (−1.08 pp) and SPACE (−1.08 pp) — it takes both of the available escape routes from a
+placement decision *less* often than the raw policy does.
+
 ### Why the signal share does not convert into Elo here
 
 The census measures the *gradient available*; Elo measures what one pass of cross-entropy at
