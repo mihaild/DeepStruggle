@@ -112,13 +112,15 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
   against the one-anchor-family caveat the sweep itself records — required before comparing
   *runs* rather than *budgets*.
 
-> **X0 already answers X1's question for one case, in the negative**
-> ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md) §5). `p28_280M` and
-> `p28_240M` are **unbeaten as the US** across all 23 other neural models — worst results 52.0%
-> and 51.0%, both against `p28_200M`, whose 48.0% is within noise of even. The field's most
-> USSR-tilted model, `n26_240M` at +38.1 pp, manages only 42.5% against `p28_280M`'s US. So no
-> response exists in the population, including from an arm that spent 320M steps specialising in
-> the answering seat. What X1 adds is whether one can be *found* on purpose.
+> **X0 gives X1 a target and shows the seats are not symmetric**
+> ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md) §5). Asked per seat over
+> the whole 24-model field: **playing US, two models beat every model playing USSR** — `p28_280M`
+> (worst 52.0%) and `p28_240M` (worst 51.0%). **Playing USSR, none do**; the closest is
+> `p28_200M` at 47.5% worst-case, beaten by `p28_280M`. So X1 has one target rather than two:
+> beat `p28_280M`'s US from the USSR seat, where the population's ceiling is 47.5%. Three cheap
+> routes to a response have already failed — the lineage's own past and future selves (47.5%), an
+> independently trained arm (40.5%), and an arm that specialised in the answering seat for 320M
+> steps (`n26_240M`, +38.1 pp tilt, 42.0%). Whether one can be found on purpose is what X1 adds.
 
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
 

@@ -150,45 +150,57 @@ an opponent 40M younger than itself. It is 1723.0 Elo at 120M, last of 24. `pool
 `P29` as the outlier dragging the pooled condition's spread to 221 Elo; this locates the damage
 early rather than late, which is worth knowing before a fifth seed is spent.
 
-### 5. Two checkpoints are unbeaten as the US — which is X1's question, answered
+### 5. One seat has an unanswered strategy and the other does not (X1)
 
-Strongest in each seat, mean win rate over the 23 other neural models (HeuristicBot excluded, it
-saturates):
+X1 asks whether a response to the runaway exists — not which model is best on average. "Highest
+win rate as the US" is true of *someone* by construction and says nothing. The question that has
+content is asked per seat, over the whole field:
 
-| seat | best | mean |
-|:---|:---|---:|
-| **USSR** | `p28_200M` | 75.7% |
-| **US** | `p28_280M` | 75.5% |
+1. is there a model that, **playing US, beats every model playing USSR**?
+2. is there a model that, **playing USSR, beats every model playing US**?
 
-Two different checkpoints of the same lineage, 80M steps apart. But the interesting question is
-not who is best on average — it is whether anyone is **unanswered**. Taking each model's *worst*
-result in a seat, over all 23 opponents:
+23 opponents each (HeuristicBot excluded — including a saturated opponent makes "beats
+everything" easier to achieve and harder to interpret).
 
-| model | worst as US | worst as USSR |
-|:---|---:|---:|
-| `p28_280M` | **52.0%** (vs `p28_200M`) | 12.5% (vs `p28_320M`) |
-| `p28_240M` | **51.0%** (vs `p28_200M`) | 29.5% (vs `p28_280M`) |
+**(1) Playing US: yes, two of them.**
 
-**No opponent in the field has a winning record against either of them when they hold the US
-seat.** `p28_280M` loses to 9 of 23 opponents as the USSR and to none as the US.
+| model | worst result as US | against |
+|:---|---:|:---|
+| `p28_280M` | **52.0%** | `p28_200M` |
+| `p28_240M` | **51.0%** | `p28_200M` |
+| `p28_320M` | 48.5% | `n26_120M` (loses or draws to 2 of 23) |
 
-**Stated at the right strength.** 200 games a side is ±3.5 pp, so a *significant* win needs about
-56.9%. The closest challenger, `p28_200M` at 48.0%, is statistically indistinguishable from even.
-The honest claim is therefore "**no counter, and the nearest thing to one only draws**", not
-"dominant".
+**(2) Playing USSR: no, none.**
 
-**And a dedicated USSR specialist does not answer it either.** The field already contains
-`n26_240M`, the most USSR-tilted model in it (+38.1 pp, 69.3% as USSR across the field). Against
-`p28_280M` playing US it manages **42.5%**. The other USSR specialists do worse: `n26_200M` 38.0%,
-`n26_320M` 37.0%.
+| model | worst result as USSR | against |
+|:---|---:|:---|
+| `p28_200M` | 47.5% | `p28_280M` |
+| `n26_080M` | 44.0% | `p28_240M` |
+| `n26_240M` | 42.0% | `p28_240M` |
 
-That is the direct answer to
-[`../plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md) X1's question — *does a
-response to the runaway strategy exist?* — within this population: **no**. Not from the lineage's
-own past or future selves, not from an independently trained arm, and not from the arm that spent
-320M steps specialising in exactly the seat that would have to answer it. An exploiter trained
-against it deliberately is the remaining way to find out whether the strategy is genuinely strong
-or merely unopposed, which is what X1 proposes and why it is worth running.
+Every model in the field, given the USSR seat, is beaten by at least one model given the US seat.
+The closest to an answer is `p28_200M` at 47.5% worst-case — and what beats it is `p28_280M`, the
+same checkpoint that is unanswered in the other direction.
+
+**Read at the strength the sample supports.** 200 games a side is ±3.5 pp, so 52.0% and 51.0% are
+*non-losing records against all 23*, not significant wins over the nearest challenger. The precise
+claim is: **no opponent in the population has a winning record against `p28_280M`'s US, and the
+best anyone manages is a statistical tie.**
+
+**What this means for X1.** The target is well defined — beat `p28_280M` playing US, from the USSR
+seat, which requires better than 47.5%, the population's ceiling. Three cheap ways of finding that
+response have already failed:
+
+* the lineage's **own past and future selves** — `p28_200M` is its best answer at 47.5%, and every
+  other `p28` checkpoint does worse;
+* an **independently trained arm** — `n26_120M` reaches 40.5%;
+* an arm that **specialised in the answering seat for 320M steps** — `n26_240M`, the field's most
+  USSR-tilted model at +38.1 pp, reaches 42.0%.
+
+So the response does not exist by accident, in a population of 24 models spanning three runs and
+eight budgets. Whether it can be found **on purpose** is exactly what X1 proposes to test, and the
+asymmetry above is the reason to run it in one direction rather than both: there is a US strategy
+with no answer, and no USSR strategy in the same position.
 
 ## Caveats
 
