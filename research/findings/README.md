@@ -83,3 +83,4 @@ nobody checked.
 * **Human data** — the corpus conversion is an instrument (engine side); *"is BC warmup on human
   games better than on self-play"* is a training question. They are filed apart deliberately.
 - [`training/which_decisions_to_search.md`](training/which_decisions_to_search.md) — searching only card and play-mode nodes excluded 71.8% of the search signal; influence placement is a first-class decision, and the filter spent its budget on nodes averaging 2.1 legal actions
+- [`engine/flattening_card_play.md`](engine/flattening_card_play.md) — merging play-mode with op-mode removes 12.6% of decisions, 17.5% with the timing branch, and costs the Elo ladder
