@@ -114,6 +114,30 @@ So the slow anchor's cost is **transient rather than a standing handicap**: it s
 catches up. That matters for reading the decisive 25M point, because a surviving arm would no
 longer have to be discounted for being permanently weaker.
 
+### Per seat, both arms lose the USSR seat at 15M-20M
+
+Win rate against the frozen `p28_200M`, as USSR / as US, from the same matched tournaments:
+
+| arm | 5M | 10M | 15M | 20M |
+|:---|:---|:---|:---|:---|
+| `ref5M` (slow anchor) | 72.7 / 69.3 | 81.7 / 80.7 | **82.7 / 83.0** | **67.7** / 79.7 |
+| `ref200k` (collapsed at 25M) | 81.0 / 77.7 | 83.7 / 80.0 | 80.3 / 79.7 | **67.0** / 77.7 |
+| control, no search | 43.0 / 49.3 | 38.0 / 58.0 | 39.3 / 55.3 | 53.7 / 46.3 |
+
+**Both search arms lose the USSR seat between 15M and 20M** — −15.0 pp for the slow anchor and
+−13.3 pp for the fast one — while both hold the US seat within about 3 pp. Same seat, same window,
+nearly the same size.
+
+This is the precursor recorded for `E3-29-28` before its 25M cliff
+([`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md)), and **the slower anchor has not
+prevented it.** Whatever drives the decline is not the reference refresh interval.
+
+**The aggregate Elo hid it.** At 20M the table puts `ref5M` 20 points *ahead* of `ref200k`, which
+reads as the anchor working. Per seat, both are losing the same seat at the same rate, and the
+slow-anchor arm simply started the fall from a slightly higher place. That is the third time in
+this session that an aggregate number was true and the inference drawn from it was not — after
+`critic_base_rate` and after the field-averaged side split.
+
 ### By 15M the deficit is gone
 
 | matched steps | `ref200k` | `ref5M` | gap |
