@@ -14,8 +14,9 @@ Per checkpoint, from self-play with full traces:
   spread across every choice.
 * **game length and outcome** — a policy that has stopped playing loses differently from one that
   plays badly.
-* **blunder rates** — the tracked categories, which stayed at zero through E3-30-28's failure and
-  would be a genuinely different signature if they moved here.
+Blunder rates are deliberately NOT re-measured here: the run's own training_metrics.jsonl
+already carries them per snapshot, and a second estimate from six games would be noisier than
+the one that exists.
 
     tools/scripts/collapse_trace.py --run <run-dir> --every 4 --games 6
 """
@@ -126,6 +127,7 @@ def main() -> int:
     print("%-10s %7s %7s %7s %7s %6s %6s  %s" % (
         "steps", "US p", "USSR p", "US ent", "SU ent", "turn", "len", "winners / reason"))
     print("-" * 104)
+    by_type: List[tuple] = []
     for steps, path in snaps:
         with tempfile.TemporaryDirectory() as d:
             paths = play(path, a.games, d)
@@ -142,6 +144,22 @@ def main() -> int:
             f(s.seat_ent["US"]), f(s.seat_ent["USSR"]),
             statistics.mean(s.turns) if s.turns else 0.0,
             statistics.mean(s.lengths), dict(s.winners), top_reason[:34]))
+        by_type.append((steps, {k: f(v) for k, v in s.per_type.items()}))
+
+    # Second table: mean chosen-probability per decision type. This is the column that
+    # distinguishes a collapse concentrated in one kind of choice -- placements, say -- from one
+    # spread evenly across every decision the policy makes. Summarising it and then dropping it,
+    # as this script did, left the tool unable to answer the question it was written for.
+    kinds = [k for k in NAMES.values() if any(k in d for _, d in by_type)]
+    if kinds:
+        print()
+        print("mean p_chosen by decision type")
+        print("%-10s %s" % ("steps", " ".join("%9s" % k for k in kinds)))
+        print("-" * (11 + 10 * len(kinds)))
+        for steps, d in by_type:
+            cells = " ".join(
+                ("%9.3f" % d[k]) if k in d and d[k] == d[k] else "%9s" % "-" for k in kinds)
+            print("%-10d %s" % (steps, cells))
     return 0
 
 
