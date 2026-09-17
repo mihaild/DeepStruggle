@@ -267,6 +267,14 @@ search-depth one.
    carries 71.8% of the CE signal. Running the spec's filter would test that reasoning directly
    rather than leaving it inferred.
 
+## How much search still adds along the way
+
+[`P15_X4b_search_headroom.md`](P15_X4b_search_headroom.md) runs the searcher on top of each 5M
+snapshot against that same snapshot raw. Across 5M-20M the margin is **flat at ~58%** (+50 to +77
+Elo) with KL ~0.036 and agreement ~97%. The policy is not progressively catching its teacher —
+which is what expert iteration looks like when the teacher is the student plus search and improves
+with it. It also means the process has not saturated at 20M.
+
 ## Extension to 80M, the standard leg — running
 
 Launched 2026-09-17: both runs resumed from their 20M resume states, which sat at exactly
