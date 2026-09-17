@@ -216,6 +216,45 @@ switch this recipe does not use. There is **no learning-rate or coefficient sche
 stop, and `E3-31-28` stays one factor from `E3-29-28` despite the latter having run with
 `--train-steps 20000000`.
 
+## Verdict at 25M: the slower anchor halves the collapse and does not prevent it
+
+`P15_X2_search_25M`, temperature 0, 300 games a side:
+
+| model | Elo | vs `frozen_200M`, USSR / US |
+|:---|---:|:---|
+| control, no search | **1503.2** | — |
+| `frozen_200M` | 1500.0 | — |
+| **`ref5M`@25M** | **1467.5** | 48.3% / 48.0% |
+| **`ref200k`@25M** | **1162.4** | 8.3% / 8.7% |
+
+**Both search arms collapse at 25M.** The slow anchor loses 226 Elo from its 20M peak
+(1694.0 → 1467.5); the fast anchor loses 512 (1674.0 → 1162.4). The refresh interval changes the
+*magnitude* and not the *timing* — the cliff is in the same place — so **the anchor is not the
+mechanism.**
+
+Per seat the slow arm falls from 67.7 / 79.7 at 20M to **48.3 / 48.0**, parity with the checkpoint
+it started from, on both seats at once. The fast arm is annihilated at 8.3 / 8.7.
+
+### The collapse is a loss of control, not an endpoint of sharpening
+
+Earlier entries here and in [`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md) framed
+the failure as the policy over-sharpening until it assigned zero probability to actions the
+searcher wanted. The instruments at the cliff say otherwise:
+
+| | 15M | 20M | 25M |
+|:---|---:|---:|---:|
+| entropy | 0.665 | ~0.85 | **1.137** |
+| `kl_div` | 0.115 | ~20 | **62.8** |
+| `search_ce_grad_frac` | 0.525 | ~0.5 | **0.070** |
+
+**Entropy rises through the collapse** and the CE term's share of the gradient *falls* to 0.07. So
+the sequence is sharpen, then detonate: the policy is not converging to a point, it is losing
+control, and the CE term is not even dominating the update when it happens. Whatever drives it
+acts through the enormous KL rather than through the CE gradient share.
+
+That is a third mechanism, distinct from both the ones this session proposed and rejected — the
+coefficient dosage and the anchor schedule — and it is not yet identified.
+
 ## The KL magnitude question X2 raised
 
 X2 warns that a 25× slower anchor makes the KL term larger and says the response, if it dominates
