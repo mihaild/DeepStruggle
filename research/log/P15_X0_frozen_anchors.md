@@ -176,4 +176,7 @@ early rather than late, which is worth knowing before a fifth seed is spent.
   numbers are used to compare runs rather than budgets.
 * Elo here is not comparable to any other tournament in this project.
 
+Search on top of `@200M`, against these same anchors, is in
+[`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md).
+
 Source: `data/tournaments/P15_X0_frozen_anchors/tournament_report.md`, full round robin in [`P15_X0_round_robin.md`](P15_X0_round_robin.md).
