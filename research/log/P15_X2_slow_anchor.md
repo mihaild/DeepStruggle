@@ -136,6 +136,20 @@ from scratch it is still far below both anchors, as expected, and both seats are
 comparison that matters is whether it eventually turns the way `E3-20-28` did, and that needs the
 full 240M with per-seat ratings at the end, not a base-rate trace.
 
+## Budget: the search arm stops at 40M, not 240M
+
+`E3-31-28` was launched with `--train-steps 240000000`, but the question it answers is narrow —
+*does it collapse the way `E3-29-28` did between 20M and 25M?* — and 240M of search-rate training
+is about 35 hours. It is stopped at **40M**, 15M past the point where the previous arm had already
+lost 413 Elo.
+
+The large budget costs nothing in comparability, which was worth checking rather than assuming:
+`train_steps` drives only loop termination, the metadata, the progress label and a curriculum
+switch this recipe does not use. There is **no learning-rate or coefficient schedule tied to it**
+— no scheduler at all — so a 240M budget and a 40M budget train identically up to the point they
+stop, and `E3-31-28` stays one factor from `E3-29-28` despite the latter having run with
+`--train-steps 20000000`.
+
 ## The KL magnitude question X2 raised
 
 X2 warns that a 25× slower anchor makes the KL term larger and says the response, if it dominates
