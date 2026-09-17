@@ -294,13 +294,51 @@ is worth far more than the arm alone.
 Snapshots every 5M on both, so the gap is measured along the way rather than inferred from the
 endpoints.
 
+### The control degenerates at ~65M, which changes how the 80M pair must be read
+
+Noticed while the continuations were running, and recorded before the result exists so it cannot
+be reached for afterwards.
+
+| control steps | `critic_base_rate` | `critic_auc` | Brier skill | entropy |
+|---:|---:|---:|---:|---:|
+| 20M | 0.65 | 0.92 | 0.44 | 1.20 |
+| 51M | 0.52 | 0.90 | 0.46 | 1.09 |
+| 60M | 0.61 | 0.93 | 0.56 | 1.25 |
+| **65M** | **0.81** | 0.93 | 0.56 | 1.34 |
+| 70M | 0.93 | 0.73 | 0.18 | 1.48 |
+| 74M | 0.96 | 0.69 | **−0.08** | 1.43 |
+
+`critic_base_rate` first crosses 0.80 at **65,273,856 steps** and reaches 0.96 by 74M: roughly
+**96% of self-play games are won by one side**. The critic falls with it, to AUC 0.69 and negative
+Brier skill — it has become a base-rate predictor, which is the collapse mode this project has
+seen before and which `checkpoints.md` records for `E3-21-28`. Entropy *rises* to ~1.43 while this
+happens, so it is not an entropy collapse; it is one side being given away.
+
+This is the X4a finding run to completion. There, 20M steps moved side balance −17.3 pp and
+−11.6 pp toward US in two arms
+([`P15_X4a_distillation.md`](P15_X4a_distillation.md)); here the same recipe, given 65M, arrives
+at near-total one-sidedness.
+
+**So a straight arm-against-control rating at 80M would largely measure the control's collapse,
+not the arm's strength.** Beating a degenerate opponent is not the claim X4b is making. The pair
+is rated at **60M as well as 80M** — both snapshot every 5M — and 60M is the honest comparison,
+being the last matched point where the control's instruments are still healthy.
+
+The arm is at 24M as this is written, with `base_rate` drifting up from 0.60 to about 0.78. **No
+claim is made that search CE prevents this**; it is behind the control on the same axis and has
+not yet reached the steps where the control turned. Whether it degenerates at 65M too is a real
+question the 80M run answers, and it may turn out to be the more interesting output of this arm
+than the Elo number.
+
 ### Pre-registered reading of the 80M pair
 
 Rated at temperature 0, for the entropy reason above. The 20M leg gave +224.4, +249.6, +253.8,
 +165.6 — a peak near 15M and 88 Elo shed in the final segment. So:
 
 * **gap ≥ 100 Elo** → the advantage is durable at the standard budget, and the late-20M dip was a
-  fluctuation rather than the start of a decay.
+  fluctuation rather than the start of a decay. **Read at 60M, not 80M**, unless the arm turns out
+  to have degenerated on the same schedule as the control, in which case the 80M pair compares two
+  collapsed policies and says nothing.
 * **gap 25–100** → real but eroding; the early peak was the best of it, and the mechanism buys a
   transient rather than a new level.
 * **gap < 25** → it washed out the way X4a's offline distillation did, and the 20M result was a
