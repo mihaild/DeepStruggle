@@ -732,7 +732,17 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # Masked with the policy loss below; the KL to pi_ref is deliberately
                 # left over the whole batch, for broader state coverage.
 
-                ratio = torch.exp(cur_lp - b_old_lp)
+                # Bound the exponent before exp(). The log-ratio is unbounded below by the
+                # stored log-prob: an action the policy assigned ~6e-8 -- which is exactly what
+                # --setup-explore-frac forces, since the opening carries a 16.56 logit gap --
+                # gives old_lp near -16.6, and a modest shift then overflows exp() to inf.
+                # Clipping the ratio afterwards does not help, because inf survives clamp and
+                # inf * advantage is NaN. E3-32-30 died this way at 53.7M steps with every
+                # instrument healthy in the iteration before: AUC 0.781, entropy 1.04, KL 0.126.
+                #
+                # +-20 is far outside the PPO clip range, so this changes nothing a healthy
+                # update would have done -- it only stops an overflow becoming NaN.
+                ratio = torch.exp(torch.clamp(cur_lp - b_old_lp, -20.0, 20.0))
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)

@@ -165,3 +165,46 @@ def test_the_ce_metrics_are_registered_for_logging() -> None:
     assert "if search_ce_coef > 0.0" in block, (
         "the CE metrics must be registered only when the term is on; logged unconditionally they "
         "are a flat zero line that reads as 'present and converged'")
+
+
+def test_the_ppo_ratio_cannot_overflow_to_nan() -> None:
+    """A forced low-probability action must not blow up the update.
+
+    --setup-explore-frac replaces the opening with a uniform legal choice and stores the policy's
+    own log-prob of it. At the opening that probability is around 6e-8 -- the measured logit gap is
+    16.56 -- so the stored log-prob is near -16.6, and exp(cur_lp - old_lp) overflows to inf on a
+    modest shift. Clipping the ratio afterwards does not save it: inf survives clamp and
+    inf * advantage is NaN.
+
+    E3-32-30 died exactly this way at 53.7M steps, with every instrument healthy in the iteration
+    before -- AUC 0.781, entropy 1.04, KL 0.126 -- so nothing in the metrics would have warned.
+    """
+    import inspect
+
+    from ai.training.nash_pg import NashPGTrainer
+
+    src = inspect.getsource(NashPGTrainer.train_step)
+    line = next((l for l in src.splitlines() if "ratio = torch.exp(" in l), None)
+    assert line is not None, "the PPO ratio is no longer computed with torch.exp"
+    assert "clamp" in line, (
+        "torch.exp() on the raw log-ratio can overflow to inf and poison the batch with NaN; "
+        "bound the exponent before the exponential")
+
+
+def test_forced_setup_actions_are_stored_with_their_own_log_prob() -> None:
+    """The override must not be recorded as if the policy had chosen it at temperature.
+
+    The ratio starts at 1.0 only because the stored log-prob is the policy's canonical log-prob of
+    the action actually taken. If the override were applied AFTER the gather, the buffer would hold
+    the log-prob of a different action and every ratio involving a forced opening would be wrong.
+    """
+    import inspect
+
+    from ai.training.nash_pg import BaseNashPGTrainer
+
+    src = inspect.getsource(BaseNashPGTrainer.collect_rollouts)
+    force = src.index("_force_setup_exploration")
+    gather = src.index("log_probs_t = unscaled_log_probs.gather")
+    assert force < gather, (
+        "the setup override runs after the log-prob gather, so the buffer would record the "
+        "log-prob of an action that was not taken")
