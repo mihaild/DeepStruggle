@@ -27,6 +27,44 @@ Both from-scratch lineages dump every point of a side's setup into **one country
 for a very long time. `E3-30-28`'s opening is **byte-identical from 10M to 240M** — 230M steps of
 training moved it not at all.
 
+## Pooling is the factor: every unpooled arm is more diverse than every pooled one
+
+The 4 × 4 pooling experiment gives four seeds a side differing in one flag, all probed at 160M:
+
+| arm | pool | USSR distinct | USSR entropy | US distinct | US entropy |
+|:---|:---|---:|---:|---:|---:|
+| P22 | yes | 1 | 0.000 | 4 | 1.273 |
+| P27 | yes | 2 | 0.693 | 8 | 1.530 |
+| P28 | yes | 1 | 0.000 | 3 | 0.684 |
+| P29 | yes | 1 | 0.000 | 5 | 1.451 |
+| N22 | no | **7** | 1.376 | 6 | 1.163 |
+| N24 | no | **4** | 0.362 | **16** | 2.417 |
+| N25 | no | **4** | 1.122 | **16** | 2.233 |
+| N26 | no | **6** | 1.134 | 9 | 1.626 |
+
+**USSR distinct countries separate completely**: pooled 1, 2, 1, 1 against unpooled 7, 4, 4, 6. No
+overlap, so the exact Mann-Whitney gives U = 16 of 16 and a one-tailed **p = 1/70 ≈ 0.014**. Means
+are 1.25 against 5.25 countries for USSR and 5.0 against 11.75 for US.
+
+Note also that P29 opens in **Finland**, not Yugoslavia — so the frozen choice is not a fixed
+attractor of the game, it is whatever that seed settled on early.
+
+### And the diverse arms are the weaker ones
+
+The pooled arms are the stronger half of that experiment — mean Elo 2061.1 against 1962.5, a
+difference of +98.7 ([`../checkpoints.md`](../checkpoints.md)). So **opening diversity
+anti-correlates with strength here**, and a frozen opening evidently costs little.
+
+The likely reason it costs little is that **nothing in the measurement punishes it**: every arm in
+the field opens narrowly, self-play faces the policy with its own habits, and the pool faces it
+with its own past snapshots, which share them. A bad opening is only exposed by an opponent that
+opens differently — a human, or a lineage trained another way. That makes this a blind spot of the
+whole evaluation setup rather than a property of one arm.
+
+It also cuts against reading diversity as a health metric. The right reading is narrower: a policy
+that plays one opening has stopped searching that part of the space, which matters for what it
+*could* learn, not necessarily for what it currently scores.
+
 ## The unfreezing coincides with a resume, not with a step count
 
 `E3-20-28`'s USSR opening is unchanged from 10M through **165M** and has moved by **180M**. The
