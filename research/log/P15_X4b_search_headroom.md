@@ -43,24 +43,27 @@ A shrinking gap would mean the policy had caught its teacher and further distill
 left to give. A flat gap means the opposite: there is still headroom at 20M, and the process has
 not saturated.
 
-## The comparison that would make this informative, and why it is not quoted yet
+## The comparison this enables, and the baseline still running
 
 The interesting claim is that search adds **less** to the distilled arm than to an undistilled
-policy — that is what "internalised" would mean. Two baselines are needed and both are running:
+policy — that is what "internalised" would mean. Two baselines bear on it:
 
-1. **`p28_200M` re-measured at temperature 0.** [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md)
-   rated search on these weights at **+129.2 Elo / 64.8%**, which is far above the arm's ~58%, and
-   the searcher configuration is identical (64 sims, determinized, `all`). **But that measurement
-   predates `tools/tournament.py --temperature`**, so its raw policy sampled at 0.1 while every
-   number in the table above plays greedy. Greedy is the stronger setting, so the old figure
-   flatters search by an unknown amount. Quoting the two side by side would be exactly the
-   confound this project keeps having to catch.
+1. **`p28_200M`.** [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md) rated search on these
+   weights at **+129.2 Elo / 64.8%** with an identical searcher (64 sims, determinized, `all`),
+   far above the arm's ~58%. That measurement predates `tools/tournament.py --temperature` and
+   sampled its raw policy at 0.1 where the table above plays greedy, which looked like a
+   disqualifying confound — until it was measured.
+   [`P15_temperature_selfplay.md`](P15_temperature_selfplay.md) puts `p28_200M@T0` against
+   `p28_200M@T0.1` at **50.0% over 300 games, 6.9 Elo apart**: the same player. **So the
+   comparison is legitimate, and search does have measurably less to add to the distilled arm —
+   64.8% against ~58%.** A re-measurement at T=0 is running anyway, to close it by direct
+   observation rather than by transitivity.
 2. **The control's snapshots.** `E3-26-28` is the same recipe with search off, so its 5M/10M/15M/20M
    checkpoints are step-matched and strictly weaker. Search should have *more* room on a weaker
    policy. If it has the same room, the arm has internalised nothing and the flat gap above means
    something less flattering.
 
-**Running.** Nothing about internalisation is claimed until both land.
+The control sweep is **running**. The temperature objection is now retired, so the 64.8% against ~58% contrast stands on its own; the control sharpens it by supplying a step-matched policy of known lesser strength.
 
 ## Caveats
 

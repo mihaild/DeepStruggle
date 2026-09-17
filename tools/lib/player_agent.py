@@ -295,6 +295,20 @@ class NeuralAgent:
 def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAgent:
     """Factory function loading agents from string specifier (random, heuristic, or checkpoint path)."""
     s = spec.strip()
+    if s.lower().startswith("temp:"):
+        # temp:<T>:<rest-of-spec> -- pins this agent's sampling temperature, overriding the
+        # tournament-wide --temperature. Exists so one checkpoint can be played against itself at
+        # two temperatures, which a single shared setting cannot express. The name carries the
+        # value so the two rows are distinguishable in a report.
+        _, t_str, rest = s.split(":", 2)
+        agent = load_agent(rest, device=device)
+        # setattr rather than a declared field: PlayerAgent is a Protocol, and adding a required
+        # attribute there would oblige every bot in bot/ to carry a tournament-only concern. The
+        # batch runner reads it with getattr(agent, "temperature", None), so an agent that has
+        # never heard of it behaves exactly as before.
+        setattr(agent, "temperature", float(t_str))
+        setattr(agent, "name", f"{agent.name}@T{float(t_str):g}")
+        return agent
     if s.lower().startswith("search:"):
         # search:<checkpoint>[:sims[:determinize[:node_filter[:subsample]]]]
         #

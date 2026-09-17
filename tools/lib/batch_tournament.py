@@ -83,6 +83,20 @@ class BatchMatchRunner:
         dev = resolve_device(device)
         greedy = (temperature <= 0.05) if deterministic is None else deterministic
 
+        # An agent may pin its own temperature, which then overrides the matchup-wide one. That
+        # is what makes a same-weights temperature comparison expressible at all: without it every
+        # agent in a tournament shares one setting, so a policy cannot be played against itself at
+        # two temperatures. Agents that pin nothing are unaffected.
+        def _temp_for(agent):
+            t = getattr(agent, "temperature", None)
+            if t is None:
+                return temperature, greedy
+            t = float(t)
+            return t, (t <= 0.05) if deterministic is None else deterministic
+
+        temp_a, greedy_a = _temp_for(agent_a)
+        temp_b, greedy_b = _temp_for(agent_b)
+
         # Resume from supplied positions instead of dealing fresh games. Each position is
         # played twice with the sides swapped, which is the same pairing the seeded path
         # uses: both copies resume from one pre-deal state, so they draw the same cards and
@@ -256,7 +270,7 @@ class BatchMatchRunner:
                         obs_t = torch.from_numpy(a_obs).float().to(dev)
                         mask_t = torch.from_numpy(masks[a_indices]).to(dev)
                         with torch.no_grad():
-                            act_t, _, _, _, _ = agent_a.model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=greedy)
+                            act_t, _, _, _, _ = agent_a.model.sample_action(obs_t, mask_t, temperature=temp_a, deterministic=greedy_a)
                         actions[a_indices] = act_t.cpu().numpy()
                     elif hasattr(agent_a, "select_actions_batch"):
                         # A searcher pays for batching: one call over every game waiting on it,
@@ -269,7 +283,7 @@ class BatchMatchRunner:
                     elif hasattr(agent_a, "select_action"):
                         for idx in a_indices:
                             st = runner.get_state(int(idx))
-                            actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])), temperature=temperature)
+                            actions[idx] = agent_a.select_action(st, ts.Player(int(d_players[idx])), temperature=temp_a)
                     else:  # RandomAgent, or anything without a state-based interface
                         for idx in a_indices:
                             leg = np.where(masks[idx] > 0)[0]
@@ -284,7 +298,7 @@ class BatchMatchRunner:
                         obs_t = torch.from_numpy(b_obs).float().to(dev)
                         mask_t = torch.from_numpy(masks[b_indices]).to(dev)
                         with torch.no_grad():
-                            act_t, _, _, _, _ = agent_b.model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=greedy)
+                            act_t, _, _, _, _ = agent_b.model.sample_action(obs_t, mask_t, temperature=temp_b, deterministic=greedy_b)
                         actions[b_indices] = act_t.cpu().numpy()
                     elif hasattr(agent_b, "select_actions_batch"):
                         # A searcher pays for batching: one call over every game waiting on it,
@@ -297,7 +311,7 @@ class BatchMatchRunner:
                     elif hasattr(agent_b, "select_action"):
                         for idx in b_indices:
                             st = runner.get_state(int(idx))
-                            actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])), temperature=temperature)
+                            actions[idx] = agent_b.select_action(st, ts.Player(int(d_players[idx])), temperature=temp_b)
                     else:  # RandomAgent, or anything without a state-based interface
                         for idx in b_indices:
                             leg = np.where(masks[idx] > 0)[0]

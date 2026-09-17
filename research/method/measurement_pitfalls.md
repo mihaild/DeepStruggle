@@ -167,3 +167,17 @@ most improved the trunk ladder is the one that halved play.
 provably cannot identify a card, because most cards are separable by properties. *Check:* build
 the restricted test where the shortcut is unavailable — here, positions where exactly one member
 of a same-feature group is in hand.
+
+## Sampling temperature is a property of the measurement, not of the model
+
+A rating is uninterpretable without the temperature it was taken at, and `tools/tournament.py`
+now records it in the report header and the JSON. Measured on `p28_200M`
+([`log/P15_temperature_selfplay.md`](../log/P15_temperature_selfplay.md)): greedy and the old
+default of 0.1 are the **same player** (50.0% over 300 games, 6.9 Elo), 0.25 is still inside
+noise, and then it collapses — 0.5 costs 134 Elo, 1.0 costs 374.
+
+Two consequences. Older numbers taken at 0.1 are comparable with newer ones taken at 0, which
+makes a whole class of cross-tournament comparisons legal again. And the variable still has to be
+controlled whenever a treatment changes the policy's entropy, because then the two arms are no
+longer equally far from their own argmax — the X4b arm sits at 0.56 nats against its control's
+1.17.
