@@ -17,8 +17,18 @@ The instrument for "is a side degrading" is **win rate as each side against a fr
 
 ## The measurement
 
-`E3-26-28`, the no-search control, at 20M / 60M / 80M, against the two frozen anchors. Temperature
-0, 300 games a side, `/workspace/data/tournaments/P15_control_per_seat/`.
+**Which "control".** `E3-26-28`: resumed from `p28_200M`, `search_ce_coef = 0.0`,
+`--ref-update-freq 200000`, pooled, seed 20260928 — the plain recipe. Original run 0→20M
+(`_20260917_025539`), continued 20→80M (`_20260917_074533`); its step counter is therefore *on top
+of* the source's 200M. It is the step-matched no-search partner for the X4b search arm `E3-29-28`
+and the X4a step-4 control, which is why it is called "the control" throughout those entries.
+
+It is **not** `E3-30-28`, the no-search arm at `--ref-update-freq 5000000` started from scratch,
+which is the control for the *anchor* question in
+[`P15_X2_slow_anchor.md`](P15_X2_slow_anchor.md) rather than for the search question.
+
+Rated at 20M / 60M / 80M against the two frozen anchors. Temperature 0, 300 games a side,
+`/workspace/data/tournaments/P15_control_per_seat/`.
 
 **Against `frozen_200M`:**
 
