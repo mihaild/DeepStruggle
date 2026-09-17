@@ -128,3 +128,40 @@ def test_the_flag_is_needed_because_an_unsearched_row_is_all_zeros() -> None:
     assert float(row.sum()) == 0.0
     assert float(b.has_search[0, 0]) == 0.0, (
         "an all-zero row is indistinguishable from a degenerate target without the flag")
+
+
+def test_the_ce_metrics_are_registered_for_logging() -> None:
+    """Computing a metric is not logging it, and this repo has been bitten by the gap twice.
+
+    `train_step` returns `search_ce` and `search_ce_grad_frac`, but `generic_trainer` writes
+    `training_metrics.jsonl` through an allow-list, so a key that nothing registers is dropped
+    without a word -- which is exactly what happened to the PFSP per-opponent win rates, as the
+    comment beside the forwarding loop records. The first version of this instrumentation was
+    dropped the same way, and the arm it was built to diagnose ran without it.
+
+    Asserting on the source of the registration block rather than on a live run: constructing a
+    trainer needs a GPU and an env, and the thing that broke was the registration, not the
+    computation.
+    """
+    import inspect
+
+    from ai.training import generic_trainer
+
+    src = inspect.getsource(generic_trainer.train_pipeline)
+    block = src[src.index("active_aux_losses: List[str] = []"):]
+    block = block[:block.index("prev_steps")]
+
+    assert '"search_ce"' in block, (
+        "search_ce is computed but never registered in active_aux_losses, so it will not reach "
+        "training_metrics.jsonl")
+    assert '"search_ce_grad_frac"' in block, (
+        "search_ce_grad_frac is computed but never registered, so the CE term's share of the "
+        "update stays invisible -- which is what made the 20M collapse silent")
+    # The guard must be able to fail. A block that does not mention the key at all is the
+    # regression being guarded against, so check the assertion would catch it.
+    assert '"search_ce"' not in block.replace('"search_ce"', "", 1), (
+        "the registration appears more than once; this test's teeth check is unreliable")
+
+    assert "if search_ce_coef > 0.0" in block, (
+        "the CE metrics must be registered only when the term is on; logged unconditionally they "
+        "are a flat zero line that reads as 'present and converged'")

@@ -1708,6 +1708,13 @@ def train_pipeline(
         active_aux_losses.append("defcon_risk_loss")
     if injector is not None:
         active_aux_losses.append("inject_loss")
+    if search_ce_coef > 0.0:
+        # P15-X4b. The CE term's magnitude and its share of the raw gradient. Registering them
+        # here rather than unconditionally keeps them off every run that has no searcher, and
+        # registering them at ALL is the point: the arm that collapsed at ~20M logged neither,
+        # so the first visible symptom was kl_div reaching 30 with the policy already gone.
+        active_aux_losses.append("search_ce")
+        active_aux_losses.append("search_ce_grad_frac")
 
     # Seeded from the trainer, not from the loop variable, which does not exist yet -- and from
     # the clock as it stands, not from zero: a resumed run's elapsed already includes the previous
