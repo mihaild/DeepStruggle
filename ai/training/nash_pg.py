@@ -142,6 +142,7 @@ class BaseNashPGTrainer:
         per_player_gae: bool = False,
         priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
+        setup_explore_frac: float = 0.0,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -209,6 +210,28 @@ class BaseNashPGTrainer:
         self.per_player_gae = per_player_gae
         self.priority_alpha = priority_alpha
         self.temperature_schedule = temperature_schedule
+
+        # Forced opening exploration. The setup placement saturates: measured on E3-30-28 @240M
+        # the chosen opening carries a logit 16.56 above the runner-up, so softmax gives it
+        # p = 1 - 6e-8 even at tau = 1.0, and the rollout schedule samples at tau in [0.10, 0.50],
+        # which is *sharper* still. No temperature reaches an alternative -- at tau=1 the second
+        # choice comes up once per 16 million games -- so exploring the opening at all requires
+        # overriding the action, not softening the distribution.
+        #
+        # The forced action is stored as the action taken, and its log-prob is the policy's own
+        # log-prob of it, so the PPO ratio still starts at 1.0 and the transition trains normally.
+        self.setup_explore_frac = float(setup_explore_frac)
+        self._setup_explore_env = np.zeros(self.num_envs, dtype=bool)
+        if self.setup_explore_frac > 0.0:
+            n_expl = int(round(self.num_envs * self.setup_explore_frac))
+            self._setup_explore_env[:n_expl] = True
+            print(f"[setup explore] forcing a uniform legal opening in {n_expl}/{self.num_envs} "
+                  f"envs ({self.setup_explore_frac:.0%}); those placements are trained on",
+                  flush=True)
+        #: Decisions since this env's episode began, so the SETUP check runs only where setup
+        #: can still be live rather than on every step of a ~440-decision episode.
+        self._ep_decisions = np.zeros(self.num_envs, dtype=np.int32)
+        self._setup_rng = np.random.default_rng(12345)
 
         self.optimizer = torch.optim.AdamW(self.active_net.parameters(), lr=lr, weight_decay=1e-4)
 
@@ -341,6 +364,9 @@ class BaseNashPGTrainer:
                 # immediately saturating the clip bounds on modal actions under low temperatures.
                 # Stratified temperature sampling thus acts as pure exploration noise for optimizing
                 # the underlying canonical policy parameterization pi_theta.
+                if self.setup_explore_frac > 0.0:
+                    self._force_setup_exploration(actions_t, masks_t)
+
                 unscaled_log_probs = F.log_softmax(logits, dim=-1)
                 log_probs_t = unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
@@ -357,6 +383,10 @@ class BaseNashPGTrainer:
             search_pi_t, has_search_t = self._search_targets()
 
             next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
+
+            if self.setup_explore_frac > 0.0:
+                self._ep_decisions += 1
+                self._ep_decisions[self._dones_np > 0.5] = 0
 
             # V(s_{t+1}, p_t): the resulting state seen by the player who just moved, rather than
             # by whoever moves next. The default bootstrap negates the next step's value, which
@@ -494,6 +524,38 @@ class BaseNashPGTrainer:
 
     def train_step(self) -> Dict[str, float]:
         raise NotImplementedError("Subclasses must implement train_step")
+
+    def _force_setup_exploration(self, actions_t: torch.Tensor, masks_t: torch.Tensor) -> None:
+        """Replace the chosen opening with a uniform legal one, in the designated envs.
+
+        Only while an env is still in `Phase.SETUP`, which is checked against the engine rather
+        than guessed from the decision type: a `POINT_NODE` at turn 1 is also what an ordinary
+        placement looks like, and overriding those would be a different experiment.
+
+        The phase check reads the runner's state, so it is bounded to the opening window of each
+        episode -- setup is about 15 decisions of roughly 440 -- rather than run every step.
+        """
+        import ts_engine as _ts
+
+        cand = np.flatnonzero(self._setup_explore_env & (self._ep_decisions < 30))
+        if cand.size == 0:
+            return
+        masks_np = masks_t.detach().cpu().numpy()
+        forced = 0
+        for i in cand:
+            idx = int(i)
+            try:
+                st = self.env.runner.get_state(idx)
+            except Exception:                      # a runner without per-env state: skip quietly
+                return
+            if st.current_phase != _ts.Phase.SETUP:
+                continue
+            legal = np.flatnonzero(masks_np[idx])
+            if legal.size <= 1:
+                continue
+            actions_t[idx] = int(self._setup_rng.choice(legal))
+            forced += 1
+        self.setup_forced_actions = getattr(self, "setup_forced_actions", 0) + forced
 
     def _search_targets(self):
         """The searcher's visit distribution at the decisions this configuration searches.

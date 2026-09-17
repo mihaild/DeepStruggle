@@ -264,6 +264,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--search-node-filter", type=str, default="card_playmode",
                         choices=["card_playmode", "all"],
                         help="Which decisions are eligible.")
+    parser.add_argument("--setup-explore-frac", type=float, default=0.0,
+                        help="Fraction of environments whose OPENING placement is replaced by a "
+                             "uniform legal choice, and trained on. Temperature cannot reach these "
+                             "decisions: measured on E3-30-28 the preferred opening carries a "
+                             "logit 16.56 above the runner-up, so it is chosen with probability "
+                             "1-6e-8 even at tau=1, while rollouts sample at tau in [0.10, 0.50], "
+                             "sharper still. 0 disables it and the run is the baseline.")
     parser.add_argument("--reset-opponent-pool", action="store_true", default=False,
                         help="On resume, discard the opponent pool recorded in the resume state "
                              "and rebuild it by sampling this run's snapshots evenly. Without "
@@ -358,6 +365,7 @@ def main():
             opponent_self_pool=args.opponent_self_pool,
             opponent_pool_size=args.opponent_pool_size,
             reset_opponent_pool=args.reset_opponent_pool,
+            setup_explore_frac=args.setup_explore_frac,
             search_ce_coef=args.search_ce_coef,
             search_sims=args.search_sims,
             search_subsample=args.search_subsample,

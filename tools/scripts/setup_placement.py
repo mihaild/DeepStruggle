@@ -38,7 +38,32 @@ class SideStats(NamedTuple):
     distinct: int
     entropy: float
     top_share: float
+    ref_overlap: float
     top: List[Tuple[str, int]]
+
+
+#: The reference openings named as correct: US takes 4 West Germany / 3 Italy unless holding
+#: Marshall Plan; USSR takes 4 East Germany / 4 Poland / 1 Yugoslavia or Austria.
+REFERENCE = {
+    "US": {"West Germany": 4, "Italy": 3},
+    "USSR": {"East Germany": 4, "Poland": 4, "Yugoslavia": 1, "Austria": 1},
+}
+
+
+def reference_overlap(counts: Dict[str, int], side: str, games: int) -> float:
+    """Share of a side's placements landing in a reference country, capped at its target.
+
+    Capped, because seven points into West Germany is not seven points of correct opening -- four
+    is what the opening calls for and the rest is the same waste this probe exists to catch.
+    """
+    ref = REFERENCE[side]
+    tot = sum(counts.values())
+    if tot <= 0:
+        return 0.0
+    good = 0
+    for name, target in ref.items():
+        good += min(counts.get(name, 0), target * games)
+    return good / tot
 
 
 def _entropy(counts: Dict[str, int]) -> float:
@@ -93,6 +118,7 @@ def probe(spec: str, games: int, device: str) -> Dict[str, SideStats]:
             distinct=len(c),
             entropy=_entropy(c),
             top_share=(top[0][1] / tot) if tot else 0.0,
+            ref_overlap=reference_overlap(dict(c), side, games),
             top=top,
         )
     return out
@@ -110,17 +136,18 @@ def main() -> int:
 
     labels = a.labels if a.labels and len(a.labels) == len(a.checkpoints) else a.checkpoints
 
-    print("%-16s %-5s %7s %9s %9s %9s  %s" % (
-        "checkpoint", "side", "places", "distinct", "entropy", "top%", "top countries"))
-    print("-" * 112)
+    print("%-16s %-5s %7s %9s %9s %9s %8s  %s" % (
+        "checkpoint", "side", "places", "distinct", "entropy", "top%", "ref%",
+        "top countries"))
+    print("-" * 120)
     for spec, lab in zip(a.checkpoints, labels):
         r = probe(spec, a.games, a.device)
         for side in ("USSR", "US"):
             d = r[side]
             tops = ", ".join("%s x%d" % (n, k) for n, k in d.top)
-            print("%-16s %-5s %7d %9d %9.3f %8.1f%%  %s" % (
+            print("%-16s %-5s %7d %9d %9.3f %8.1f%% %7.1f%%  %s" % (
                 lab[:16], side, d.placements, d.distinct,
-                d.entropy, 100 * d.top_share, tops))
+                d.entropy, 100 * d.top_share, 100 * d.ref_overlap, tops))
     return 0
 
 
