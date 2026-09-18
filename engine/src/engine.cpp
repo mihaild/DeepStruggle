@@ -147,7 +147,10 @@ size_t Engine::auto_advance_step(GameState& state, size_t max_steps) noexcept {
         ActionMask::generate_flat_mask_212(state, mask_212);
         uint16_t valid_choices = 0;
         int16_t sole_action = -1;
-        for (int i = 0; i < 212; ++i) {
+        // The WHOLE space. This scanned `i < 212`, which after the section 4 repack stops
+        // three short of the region head at 214..219 -- a decision whose only legal
+        // actions live up there would look like it had none and auto-advance would stop.
+        for (int i = 0; i < static_cast<int>(FLAT_ACTION_SPACE_SIZE); ++i) {
             if (mask_212[i]) {
                 valid_choices++;
                 sole_action = static_cast<int16_t>(i);
