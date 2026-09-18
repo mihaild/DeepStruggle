@@ -506,3 +506,44 @@ What can be said now is narrower and still worth saying: **on the one quantity w
 the same condition can be compared, they differ by about as much as the conditions did.** Any
 reading of the ending-mix mechanism that does not account for that is measuring seed variance and
 calling it a treatment.
+
+---
+
+## The 2x2, at last: the effect is real at both seeds (2026-09-18)
+
+`E3-37-31` reached the registered 40M point, so for the first time each treatment can be compared
+against **its own seed's control** rather than against a control from a different seed.
+
+| steps | seed A: ctrl → treat | seed B: ctrl → treat | effect A | effect B |
+|---:|:---|:---|---:|---:|
+| 10M | 0.8% → 0.8% | 0.5% → 1.0% | +0.0 pp | +0.5 pp |
+| 20M | 0.8% → 7.8% | 1.5% → 2.0% | **+7.0 pp** (z=3.5) | +0.5 pp (n.s.) |
+| 30M | 3.8% → 11.0% | 1.0% → 4.0% | **+7.3 pp** (z=2.8) | +3.0 pp (z=1.9) |
+| **40M** | **4.5% → 15.5%** | **2.0% → 9.0%** | **+11.0 pp** (z=3.66) | **+7.0 pp** (z=3.1) |
+
+**At the registered judgment point the treatment beats its own control at both seeds, and both are
+significant.** That is a main effect, not the interaction the 20M row suggested.
+
+(Seed A's 40M treatment figure comes from the resumed run's startup evaluation, recorded in the
+launch log rather than `training_metrics.jsonl`, which is why an automated read of the metrics
+file alone shows a gap at that cell.)
+
+### What this settles, and what it does not
+
+**Settles:** the design objection. Every earlier comparison in this document was two treatment
+seeds against one control seed and could not separate the treatment from between-seed variation
+in the control. With a matched control at each seed, the effect is present at both. The earlier
+worry that "seed 20260931 is simply a strong seed" is dead — that seed's *control* is the weakest
+arm in the table at 30M and 40M (1.0% and 2.0%).
+
+**Does not settle:** the magnitude, which still differs — +11.0 pp against +7.0 pp at 40M, and
+1.4-2.4x on ratios depending on the step. Nor does it rescue the two claims retracted above: the
+**ending mix** is substantially seed-driven (two controls differ by ~8 pp on DEFCON-1 endings), so
+the mechanism this document proposed is still not established; and seed B's advantage still
+**stops growing after 60M** while seed A's continues to 46%, so the effect's persistence is
+seed-dependent even though its existence is not.
+
+**Recommendation.** The bands `0.8 1.2 0.7 1.1` produce a real improvement over
+`0.15 0.50 0.10 0.35` at two seeds with matched controls, significant at the pre-registered point.
+That is enough to justify changing the default — with the honest caveat that **why** it works is
+unknown, since the ending-mix explanation did not survive its own control.
