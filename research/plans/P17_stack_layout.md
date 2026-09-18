@@ -123,6 +123,52 @@ depth-7 overflow that made work item 3.0 necessary never arises. If the drawn ca
 Event-first, the US owes its Ops afterwards: one more owed-Ops record, the same shape as Five Year
 Plan's.
 
+### Three refinements from the owner
+
+**(a) Owed Ops must survive the *whole chain*, not one card.** If the USSR plays the US's Five Year
+Plan, Star Wars or Grain Sales Event-first, they still get their Ops once everything the chain
+started has resolved — however deep it went.
+
+Today this works through the unwind loop finding frame 0's `SELECT_OP_MODE`; those are the 4,845
+suspended `SELECT_OP_MODE` frames in the census, so the current engine does handle it. The
+flattened design handles it *better*: `owed[0]` is not the frame below, it is a separate record, so
+the chain may replace `ctx` any number of times without touching it. Chain depth stops mattering at
+all.
+
+This is the argument for keeping `owed` outside `ctx` rather than modelling it as "the frame
+underneath". A frame underneath has to survive every replacement — which is exactly what broke in
+§5's first attempt.
+
+**(b) The US must see which card it is being offered.** It already does, and the reason should be
+preserved on purpose rather than by accident: the drawn card sits at `PEEKED_TEMP`, which maps to
+`card_slots::PEEKED` with no perspective check (`observation.cpp:188`), so it is named in the card
+block at the decision node. That is the argument for moving the card to hand only when the frame is
+**replaced**, never at setup.
+
+One wrinkle worth knowing. The mask needs `pending_op_card = <drawn>` to offer that card's
+resolutions, while `resolving_card = GRAIN_SALES`. The observation's chain walk treats the two
+identically, so **both cards grade `ACTIVE_NOW`** at this node — `ACTIVE_NOW` stops being unique
+there. Nothing is lost, because the drawn card is still singled out by its `PEEKED` location slot;
+but if the two should be distinguishable in the `ACTIVE_CARD` slot itself, that is an observation
+content change and needs its own decision.
+
+**(c) UN Intervention is inverted here, and this is its only such use.** Normally UN Intervention is
+the card played and it *names* a companion: `SELECT_CARD`(UN Intervention) → resolution `EVENT` →
+`SELECT_CARD`(companion), with `resolving_card = UN_INTERVENTION`. Under Grain Sales the companion
+already exists — it is the drawn card — and UN Intervention is named **as that card's resolution**.
+The direction reverses.
+
+In the action space this is the only node where a **card slot is legal at a `SELECT_PLAY_MODE`
+decision**. Checked, and the encoding already supports it: `decode_flat_action` routes slots
+0..109 to `MicroAction{SELECT_CARD, id}` **unconditionally**, without consulting
+`ctx.decision_type` (`action_mask.cpp:693-694`). So no change to the flat layout — only the state
+machine needs to route a `SELECT_CARD` arriving at a resolution node, before `primary_id` is read
+as a `Resolution`.
+
+What must be checked rather than assumed: anything that assumes a resolution node's legal set is a
+subset of `RESOLUTION`/`OP_MODE`/`CONFIRM_DONE`. The candidates are `p17_adapter.py`, the
+converter's branch search, and `bindings/safety.py`.
+
 ### What is left
 
 ```cpp
