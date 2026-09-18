@@ -33,6 +33,47 @@ ENTROPY_PROBE_SIZE = 2000
 ENTROPY_PROBE_INTERVAL = 10
 
 
+def filter_search_visits(
+    actions: Sequence[int],
+    visits: "np.ndarray",
+    legal_mask: "np.ndarray",
+    width: int,
+) -> Tuple[Optional[List[Tuple[int, float]]], float]:
+    """Drop a determinized search's illegal recommendations and renormalise what survives.
+
+    A determinized search may legitimately propose an action that cannot be played in the real
+    state, because in this game the legal SET depends on hidden information -- `batched_mcts.py`
+    says exactly this where it solves the same problem for an acting agent, letting the search
+    propose and the true mask dispose. The training-target path did not dispose, so visits that
+    were legal only under the sampled determinization became target mass on masked actions, which
+    with the -1e9 mask fill showed up as `search_ce` above 1e5 on a third of iterations.
+
+    Returns `(pairs, dropped_visits)` where `pairs` is `[(action, probability), ...]` over the
+    surviving visits, normalised to sum to 1, or `None` when nothing legal survived -- in which
+    case the caller must record no target rather than a guessed one.
+
+    A free function so the dropping path is directly testable: the rate is ~1 row in 160, far too
+    rare for a short smoke run to exercise, and an untested filter that silently stops filtering
+    returns the bug.
+    """
+    keep = [
+        0 <= int(a) < min(int(width), int(legal_mask.shape[0])) and bool(legal_mask[int(a)])
+        for a in actions
+    ]
+    total = 0.0
+    dropped = 0.0
+    for k, w in zip(keep, visits):
+        if k:
+            total += float(w)
+        else:
+            dropped += float(w)
+    if total <= 0.0:
+        return None, dropped
+    pairs = [(int(a), float(w) / total)
+             for k, a, w in zip(keep, actions, visits) if k and float(w) > 0.0]
+    return pairs, dropped
+
+
 class FixedEntropyProbe:
     """A frozen pool of (observation, action-mask) pairs for drift-free entropy tracking.
 
@@ -646,24 +687,15 @@ class BaseNashPGTrainer:
             # batched_mcts.py applies for an acting agent. Drop visits the determinization made
             # look legal, then normalise over what survives, so the target stays a distribution.
             legal_mask = _np.asarray(ActionEncoder.get_legal_mask(states[i]))
-            # Bound by BOTH widths. They are both the 212-dim flat space today, but indexing the
-            # mask on the strength of the target's width is the kind of assumption that turns a
-            # mismatch into an IndexError deep inside a training run.
-            _hi = min(int(pi.shape[1]), int(legal_mask.shape[0]))
-            keep = _np.array(
-                [0 <= int(a) < _hi and bool(legal_mask[int(a)]) for a in acts],
-                dtype=bool)
-            if not keep.all():
-                dropped_visits += float(v[~keep].sum())
+            probs, dropped = filter_search_visits(acts, v, legal_mask, int(pi.shape[1]))
+            if dropped > 0.0:
+                dropped_visits += dropped
                 dropped_rows += 1
-            v = _np.where(keep, v, 0.0)
-            tot = float(v.sum())
-            if tot <= 0.0:
+            if probs is None:
                 # Every visit was illegal here: no usable target rather than a guessed one.
                 continue
-            for a, w in zip(acts, v):
-                if w > 0.0:
-                    pi[i, int(a)] = float(w) / tot
+            for a, p in probs:
+                pi[i, a] = p
             flag[i] = 1.0
         self.search_dropped_visit_frac = (
             dropped_visits / max(1, len(idx)))

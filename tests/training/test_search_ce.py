@@ -316,3 +316,49 @@ def test_search_targets_are_filtered_by_the_real_mask() -> None:
         "answer becomes target mass on actions that cannot be played")
     assert "search_dropped_visit_frac" in src, (
         "how much the mask rejected must be logged, or a filter that stops working is invisible")
+
+
+def test_filter_search_visits_drops_illegal_and_renormalises() -> None:
+    """Exercise the dropping path directly; a real run is far too coarse to hit it.
+
+    The rate is roughly one row in 160, so the 4-iteration CPU smoke that verified the metrics
+    reach the log reported search_dropped_visit_frac = 0.0 -- correct, and no evidence the filter
+    works. These cases drive it on purpose.
+    """
+    import numpy as np
+
+    from ai.training.nash_pg import filter_search_visits
+
+    legal = np.array([1, 1, 1, 0, 1, 0], dtype=np.uint8)   # 3 and 5 illegal in the real state
+    width = 6
+
+    # an illegal recommendation is dropped and the rest renormalise
+    pairs, dropped = filter_search_visits([0, 3, 4], np.array([10.0, 2.0, 5.0]), legal, width)
+    assert dropped == 2.0
+    assert pairs is not None
+    got = dict(pairs)
+    assert 3 not in got, "the illegal action kept target mass"
+    assert abs(got[0] - 10.0 / 15.0) < 1e-9
+    assert abs(got[4] - 5.0 / 15.0) < 1e-9
+    assert abs(sum(p for _, p in pairs) - 1.0) < 1e-9, "target must remain a distribution"
+
+    # nothing illegal: untouched, and nothing reported as dropped
+    pairs, dropped = filter_search_visits([0, 1, 2], np.array([1.0, 1.0, 2.0]), legal, width)
+    assert dropped == 0.0
+    assert pairs is not None and abs(sum(p for _, p in pairs) - 1.0) < 1e-9
+
+    # every visit illegal: no target at all rather than a guessed one
+    pairs, dropped = filter_search_visits([3, 5], np.array([4.0, 6.0]), legal, width)
+    assert pairs is None, "a row with no legal visit must produce no target"
+    assert dropped == 10.0
+
+    # out-of-range action ids are dropped like illegal ones, not indexed with
+    pairs, dropped = filter_search_visits([0, 99, -1], np.array([3.0, 1.0, 1.0]), legal, width)
+    assert dropped == 2.0
+    assert pairs is not None and dict(pairs) == {0: 1.0}
+
+    # a mask narrower than the target width must not be indexed past its end
+    narrow = np.array([1, 1], dtype=np.uint8)
+    pairs, dropped = filter_search_visits([0, 4], np.array([1.0, 1.0]), narrow, width)
+    assert pairs is not None and dict(pairs) == {0: 1.0}
+    assert dropped == 1.0
