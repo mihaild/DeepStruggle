@@ -216,3 +216,49 @@ seat while leaving the other's alone — which is the shape observed. `search_ta
 the targets are equally *sharp* across the decline, but sharpness is not correctness, and nothing
 measured so far separates target quality by seat. That is the next probe: search-target agreement
 with a strong reference, split US against USSR.
+
+---
+
+## Two retractions: it does not plateau, and it is not USSR-only (2026-09-18)
+
+Both of this document's later claims are wrong, and both failed the same way — a trend read off
+endpoints of a noisy series, within a window that had not finished.
+
+**It does not plateau at ~58%.** The arm held 54–60% for about 1.5M steps and then resumed falling.
+At 33.03M it is **43.0%**, and the last three points read 48.0 / 43.0 / 46.5.
+
+**It is not USSR-only.** Window means over 21 evaluation points, which do not have the
+endpoint-sampling failure mode:
+
+| window | US | USSR |
+|:---|---:|---:|
+| early — 28.31M–29.75M (n=7) | **80.7%** | **62.4%** |
+| middle — 30.02M–31.52M (n=7) | 74.7% | 43.3% |
+| late — 31.78M–33.29M (n=7) | **63.4%** | **32.9%** |
+| **change** | **−17.3 pp** | **−29.6 pp** |
+
+Both seats decline substantially. The USSR seat falls **1.71x** as much, and earlier, but the US
+seat loses 17 points and is still falling at the last measurement.
+
+The earlier claim compared the US column's first and last values inside a window that ended at
+31.52M, where the last point happened to be **82** — one of its highest samples — next to an early
+84. That reads as "flat" and is an artifact of which two samples the window's edges landed on.
+Nothing about the analysis was subtle; it simply used two numbers where it should have used
+twenty-one.
+
+### What this costs the conclusions above
+
+The strong form of the seat argument is gone. It said: targets degrade equally on both seats
+(US +15.9%, USSR +16.0%) while only the USSR seat collapses, therefore target degradation cannot
+be the mechanism. With both seats declining, that exclusion weakens to a **quantitative mismatch**
+— equal target degradation against a 1.71x difference in win-rate loss — which is suggestive and
+no longer decisive. Target quality returns to the candidate list, downgraded rather than restored.
+
+What survives untouched is the separate observation that `E3-31-28` also declined USSR-first, and
+the standing 14–16% USSR target-diffuseness handicap, which was measured directly and does not
+depend on either retracted claim.
+
+**The lesson is the same one as the target-entropy window**, one level up: this project's
+evaluation points carry ±4–5 pp, so *any* claim about a trend needs a window mean and a stated n,
+and "the first and last points of my window" is not a trend. Both errors tonight were made by an
+instrument that was right and a reading that was lazy.
