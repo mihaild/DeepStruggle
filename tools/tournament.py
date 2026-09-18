@@ -370,7 +370,15 @@ def main():
     parser.add_argument("--track-choices", action="store_true", default=False, help="Track and report micro-actions with exactly 1 valid choice")
     parser.add_argument("--log-games", type=str, default=None, help="Path to save per-game JSONL execution logs")
     parser.add_argument("--self-play", action="store_true", default=False, help="Evaluate model against itself")
-    parser.add_argument("--auto-advance", action="store_true", default=False, help="Automatically advance deterministic decisions in engine")
+    # Default ON. The function signature defaulted to True while this flag defaulted to
+    # False and line 413 passes it through unconditionally, so every CLI run settled
+    # nothing and the signature change was invisible -- "the training setup you think you
+    # configured is not the one that ran". The opt-out is explicit instead.
+    parser.add_argument("--no-auto-advance", dest="auto_advance", action="store_false",
+                        default=True,
+                        help="Present decisions with a single legal action instead of "
+                             "settling them in the engine. Changes the decision stream, so "
+                             "a run with it is not comparable with a run without.")
 
     args = parser.parse_args()
 
