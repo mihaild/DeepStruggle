@@ -475,11 +475,6 @@ bool trigger_un_intervention(GameState& state, Player p) noexcept {
     state.ctx().decision_player = p;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
     state.ctx().resolving_card = card_ids::UN_INTERVENTION;
-    // `has_opp_card` guarantees a legal choice exists, so naming one is required -- but nothing
-    // above clears allow_early_stop, which keeps whatever the previous decision left. Same
-    // omission as Missile Envy, and the same class the explicit zeros in late_war.cpp:63 and
-    // :271 were added to close.
-    state.ctx().allow_early_stop = 0;
     return false;
 }
 
