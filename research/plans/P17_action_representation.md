@@ -87,9 +87,24 @@ event has fired.
 ### Ordinary ops placement is mandatory
 
 `allow_early_stop = 1` at `state_machine.cpp:1109` comes off: spending Ops on influence places all
-of them. This is **ordinary ops placement only** -- event placements keep whatever each card
-declares, because "remove up to 4" cards (Socialist Governments, Comecon, Marshall Plan, Voice of
-America, ...) are genuinely stoppable and §3's group A is correct for them.
+of them.
+
+**An earlier draft of this section said event placements were "genuinely stoppable" and should keep
+their flag. That was wrong.** `rules/cards.json` gives exact counts, not maxima:
+
+| card | text |
+|:---|:---|
+| Socialist Governments | "Remove a **total of 3** US Influence" |
+| Comecon | "Add 1 USSR Influence to **each of 4**" |
+| Marshall Plan | "Add 1 US Influence to **each of any 7**" |
+| Decolonization, Colonial Rear Guards | "**each of any 4**" |
+| OAS Founded | "a **total of 2**" |
+| The Voice of America | "**Remove 4** USSR Influence" |
+| Liberation Theology | "a **total of 3**" |
+
+None says "up to". So `allow_early_stop = 1` on roughly twenty cards lets a player place or remove
+fewer than the card requires, and §3's group A is **not** correct for them -- it is a rules bug of
+its own, the same size as the three inherited-flag sites in §6.
 
 The one caveat is the empty mask. `can_place_influence` admits superpower-adjacent countries
 unconditionally, so a target nearly always exists, but the mask also requires
@@ -200,6 +215,37 @@ comments (`late_war.cpp:63`, `late_war.cpp:271`).
 2. **Likely-dead branch** — `action_mask.cpp:66-77` handles `pending_op_card == UN_INTERVENTION`,
    but nothing writes that value and the `resolving_card` check at line 53 fires first. Confirm
    before deleting.
+
+## 6a. The rules fixes land AFTER the refactor, not with it
+
+§6's three sites were implemented and then **reverted** (`57df782`, reverted by `75da57f`). They
+are correct fixes and they were landed in the wrong order.
+
+**Every one of them changes the decision stream.** Setting `allow_early_stop = 0` where it
+previously inherited a 1 removes flat 211 from that node's mask; NORAD's context reset also changes
+which countries are legal. The same is true, on a much larger scale, of the "place exactly N" class
+above -- roughly twenty cards.
+
+That is incompatible with how §7 verifies this refactor. The adapter's whole value is that a
+divergence between old and new means **one** thing: the representation changed. If rules fixes land
+first, every divergence is ambiguous -- a real representation bug and a deliberate rules correction
+look identical in the diff, and the differential test stops being able to fail usefully.
+
+**So: the refactor preserves the decision stream exactly, except where the representation itself
+requires a change** (§1's coup gating, which §7 counts explicitly). Once the adapter is validated
+and the merged engine is trusted, the rules fixes land as their own change, with their own
+before/after, where a decision-stream diff is the *expected* output rather than a warning.
+
+The batch, when it comes:
+
+* the three inherited-`allow_early_stop` sites — Missile Envy, UN Intervention, NORAD (§6);
+* the "place exactly N" class — every event placement whose card text gives a count rather than a
+  maximum, currently `allow_early_stop = 1`;
+* the `may_fizzle` whitelist, which §3 replaces with a per-card property.
+
+All three are the same bug in different clothes: *the engine lets a player do less than the card
+says*. Fixing them together, after the representation is settled, also gives one clean measurement
+of what that class was worth.
 
 ## 7. The adapter, and how this is verified
 
