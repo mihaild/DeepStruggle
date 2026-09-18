@@ -346,6 +346,25 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         tag += "" if subsample >= 1.0 else f"-{subsample:g}"
         label = f"search{sims}{'-det' if determinize else ''}{tag}"
         return BatchedMCTSAgent(base.model, name=label, device=device, config=cfg)
+    if s.lower().startswith("legacy:"):
+        # legacy:<checkpoint> -- play a PRE-P17 checkpoint on the post-P17 engine.
+        #
+        # P17 merged the three-step card play into one resolution node. The observation is
+        # untouched by that refactor, so an old checkpoint's input stays valid and only its
+        # action semantics differ. The adapter reconstructs the old masks from the merged one
+        # and asks the old policy the questions it was trained on, drawing in the same places
+        # it used to -- which is what makes a result comparable against the old engine rather
+        # than a measurement of how many times the distribution got sampled.
+        #
+        # Exists so the old-vs-new check runs through this CLI like every other match, instead
+        # of an ad-hoc script.
+        path = s.split(":", 1)[1]
+        from tools.lib.p17_adapter import LegacyPolicyAdapter
+
+        base = NeuralAgent.from_checkpoint(path, device=device)
+        adapter = LegacyPolicyAdapter(base.model, device=str(device))
+        setattr(adapter, "name", f"legacy-{base.name}")
+        return adapter
     if s.lower() in ["random", "randombot", "rand"]:
         return RandomAgent()
     if s.lower() in ["old_heuristic", "old_heuristicbot", "old_heur", "oldheuristic"]:
