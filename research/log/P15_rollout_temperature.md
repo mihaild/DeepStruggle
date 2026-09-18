@@ -248,3 +248,54 @@ than `0.15 0.50 0.10 0.35` on this lineage, at one seed, with a mechanism (the e
 measured rather than assumed. Before the default changes, the second seed (`E3-36-31`) should
 land, because 83–221 Elo of within-condition seed spread is the documented prior here and one seed
 cannot rule it out.
+
+---
+
+## The 80M registered judgment (appended 2026-09-18)
+
+The arm's second pre-registered point, against its matched control at the identical step count and
+iteration (1221), same anchor, same protocol, 100 games a side:
+
+| steps | control US | control USSR | control overall | **temp US** | **temp USSR** | **temp overall** |
+|---:|---:|---:|---:|---:|---:|---:|
+| 70.1M | 11.0% | 17.5% | 14.2% | **49.0%** | **40.0%** | **44.5%** |
+| 80.0M | 13.0% | 22.5% | 17.8% | **52.0%** | **40.0%** | **46.0%** |
+
+**46.0% against 17.8%**, two-proportion z = **6.05**, p < 1e-9. Ahead on **both** seats — US 52.0%
+against 13.0%, USSR 40.0% against 22.5%.
+
+### Against what was registered
+
+> higher bands trade rollout quality for coverage, so the arm is expected to look WORSE early.
+> [...] an arm that is behind at 40M and level or ahead at 80M is the shape that would justify
+> changing the default.
+
+The arm was never behind: ahead at 20M, 30M, 40M, 50M, 60M, 70M and 80M. The registered criterion
+named a weaker shape than the one observed, so the criterion is met with room to spare — and the
+stated rationale for the sharpened bands, that they buy rollout quality, has no support at any
+measured point on this lineage.
+
+### Full trajectory, both arms, per seat
+
+| steps | control | treatment | ratio |
+|---:|---:|---:|---:|
+| 10.0M | 0.8% | 0.8% | 1.0x |
+| 20.1M | 0.8% | 7.8% | 9.8x |
+| 30.0M | 3.8% | 11.0% | 2.9x |
+| 40.0M | 4.5% | 15.5% | 3.4x |
+| 50.0M | 7.2% | 23.0% | 3.2x |
+| 60.0M | 13.8% | 28.0% | 2.0x |
+| 70.1M | 14.2% | 44.5% | 3.1x |
+| 80.0M | 17.8% | 46.0% | 2.6x |
+
+The control needed **240M** to reach a 27.8–38.8% band; the treatment is at 46.0% by **80M**.
+Stated as a ratio rather than a step-saving on purpose: with ±4–5 pp on each percentage the ratios
+are robust where a "3x faster" claim would not be.
+
+### What remains before the default changes
+
+One thing: the second seed. `E3-36-31` runs the same treatment at seed 20260931 with a
+pre-registered reading, and the documented within-condition seed spread on this lineage is
+83–221 Elo. Everything else that could have undermined the result has now been checked — the pair
+is matched on every replayed setting, the anchor is never trained against, and the strength is
+general across three lineages.
