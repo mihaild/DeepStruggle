@@ -227,8 +227,12 @@ comments (`late_war.cpp:63`, `late_war.cpp:271`).
      `ctx() = DecisionContext{}` reset the normal path does at line 496, leaving `max_per_country`,
      `visited_nodes` and `node_count_bits` stale as well
 2. **Likely-dead branch** — `action_mask.cpp:66-77` handles `pending_op_card == UN_INTERVENTION`,
-   but nothing writes that value and the `resolving_card` check at line 53 fires first. Confirm
-   before deleting.
+   but the `resolving_card` check above it fires first. **Done.** Confirmed dead rather than
+   argued: a `report_anomaly` probe placed in the branch fired 0 times over 20,000 fuzz games
+   (3.57M steps) and all 300 corpus games, then removed. Note the premise "nothing writes that
+   value" was wrong — `state_machine.cpp:1021` sets `pending_op_card = card` for every card
+   played, so it *is* written; what makes the branch unreachable is that the companion decision
+   always sets `resolving_card` too.
 
 ## 6a. The rules fixes land AFTER the refactor, not with it
 

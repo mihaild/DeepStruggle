@@ -63,24 +63,15 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // 2. UN Intervention (#32) companion card selection. Kept identical to the copy in
-            // CardHandlers::get_event_action_mask, which is the one that actually runs once
-            // resolving_card is set -- including the non-scoring half this branch used to omit.
-            // Two spellings of one rule is how ENG-1 survived: the unreachable copy was right,
-            // so nobody looking at it saw a bug.
-            if (ctx.pending_op_card == card_ids::UN_INTERVENTION) {
-                for (uint8_t i = 1; i <= 110; ++i) {
-                    if (in_hand_of(state.card_locations[i], p) &&
-                        CardData::is_opponent_card(i, p) &&
-                        !CardData::is_scoring_card(i)) {
-                        mask_out[i] = 1;
-                    }
-                }
-                bool any = false;
-                for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
-                if (!any) mask_out[0] = 1;
-                return;
-            }
+            // 2. UN Intervention's companion selection used to be handled here, and was
+            // unreachable: block 1 above returns whenever resolving_card is set, and the
+            // companion decision always sets it. The rule existed twice and this was the copy
+            // nobody could run -- see ENG-1, where the reachable copy in
+            // CardHandlers::get_event_action_mask was offering the player's whole hand while
+            // this one had the rule right.
+            //
+            // Confirmed dead before removal rather than argued: a report_anomaly probe in this
+            // branch fired 0 times over 20,000 fuzz games (3.57M steps) and all 300 corpus games.
 
             // 3. Forced play (Missile Envy). Action rounds only: the card must be used "during
             // their next action round", so it constrains no headline. At turn 6's headline of
