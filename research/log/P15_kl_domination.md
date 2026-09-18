@@ -1,0 +1,99 @@
+# E3-31-28's decline: the KL term is 300x the policy gradient on half its iterations
+
+**Measured 2026-09-18.** With the severe X4b collapse explained as pool starvation
+([`P15_X4b_collapse_is_pool_starvation.md`](P15_X4b_collapse_is_pool_starvation.md)), the
+remaining unexplained result is `E3-31-28`: a **healthy** pool of 5, mean win rate 0.574, and
+still a decline from 80.8% to 57.0% against `p28_280M` between 20M and 25M, driven by the USSR
+seat (75.0% → 39.0%).
+
+Its `kl_div` reaches **62.8** where the non-declining replay sits at 0.033. This is that number.
+
+## The KL is bimodal, not a sawtooth
+
+`kl_div` is a proper mean over every minibatch in the iteration, and π_ref refreshes only every
+5M steps, so neither aggregation nor the refresh schedule can produce variation between adjacent
+iterations. It does anyway — from 20.25M it alternates between ordinary and enormous:
+
+| steps | kl_div | | steps | kl_div |
+|---:|---:|---|---:|---:|
+| 20,185,088 | 0.209 | | 20,774,912 | **34.99** |
+| 20,250,624 | **1.758** | | 20,840,448 | **20.51** |
+| 20,316,160 | **12.08** | | 20,905,984 | 0.154 |
+| 20,381,696 | **47.46** | | 20,971,520 | **28.73** |
+| 20,447,232 | **14.01** | | 21,037,056 | **46.52** |
+| 20,512,768 | **24.35** | | 21,102,592 | 0.153 |
+| 20,578,304 | 0.092 | | 21,168,128 | **44.89** |
+| 20,643,840 | **35.87** | | 21,233,664 | **26.02** |
+| 20,709,376 | 0.124 | | 21,299,200 | **32.63** |
+
+Before 20.25M every value is between 0.05 and 0.22. After it, roughly a fifth of iterations stay
+there and the rest are two orders of magnitude higher. Max over the run: **193.7** at 23.2M.
+
+## What that does to the update
+
+The optimised objective is
+
+```python
+policy_loss = ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy + self.search_ce_coef * search_ce
+```
+
+with `eta = 0.1`. On a high-KL iteration the KL term contributes **0.1 × 47 = 4.7**, against a PPO
+surrogate whose reported magnitude at those same iterations is **0.005 – 0.036** — a factor of
+roughly **130 to 900**. On those iterations the update is very nearly pure "return to the
+reference policy", and the advantage signal the arm exists to follow is numerically irrelevant.
+
+That is a sufficient mechanism for a policy that stops improving and then slides, and it starts at
+20.25M, which is where the decline starts.
+
+## Why nobody saw it: `policy_loss` does not report the policy loss
+
+```python
+policy_loss_accum += ppo_loss.item()      # line 889
+...
+"policy_loss": policy_loss_accum / max(1, num_updates),
+```
+
+The logged `policy_loss` is the **PPO surrogate alone**. The KL, entropy and search-CE terms are
+all in the tensor that gets differentiated and none of them are in the number that gets written
+to `training_metrics.jsonl`. So the quantity actually being minimised has never been logged, and a
+regulariser growing to 300x the surrogate shows up nowhere except in `kl_div` itself — which was
+read as "the policy is drifting", the symptom, rather than "the update is now almost entirely
+regularisation", the cause.
+
+## A related inconsistency: the KL covers the opponent's decisions
+
+```python
+kl_div = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1).mean()
+own_entropy = (cur_entropy[b_learner > 0.5].mean() ...)
+```
+
+The surrogate and the entropy bonus are both restricted to `b_learner > 0.5`. The KL is not: it
+is averaged over **every** row in the batch, including decisions made by a frozen pooled opponent.
+The comment beside `own_entropy` states the reason that is wrong for entropy — "an entropy bonus
+on a frozen opponent's choices would push the learner's policy toward states it did not choose to
+be in" — and the same argument applies unchanged to a KL penalty.
+
+This is also the most natural explanation for the *bimodality*. 30% of environments draw a pooled
+opponent, the draw varies per iteration, and `E3-31-28`'s pool spans 20M steps; an iteration that
+happens to draw distant snapshots is evaluated at states far from anything π_ref was fit on.
+Nothing here proves that link — it is the hypothesis the numbers suggest, not a measured result.
+
+## Status and what would settle it
+
+**Not established.** `E3-31-28` and the non-declining `E3-34-28` differ in three things at once —
+reference interval (5M vs 200k), pool size (5 vs 12), and from-scratch vs resumed — so the
+contrast is suggestive only. What is established is arithmetic, and it does not depend on the
+comparison: at `kl_div` 47 and `eta` 0.1 the regulariser is two to three orders of magnitude
+larger than the surrogate it is regularising.
+
+Three things follow, cheapest first:
+
+1. **Log the loss that is optimised.** `policy_loss` should report the assembled `policy_loss`, or
+   each term should be logged separately. This is a measurement fix and costs nothing.
+2. **Decide whether the KL belongs on opponent rows**, and make it consistent with the surrogate
+   and entropy either way. This changes the objective, so it is the owner's call.
+3. **Then test the mechanism**: one arm at `ref_update_freq` 5M with the KL restricted to learner
+   rows, against `E3-31-28` itself. If the bimodality is the pooled-opponent draw, it disappears.
+
+Neither 2 nor 3 should be done while `E3-33-30` and `E3-35-28` are in flight on the same
+objective.

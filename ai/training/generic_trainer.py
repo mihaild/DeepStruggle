@@ -1854,6 +1854,11 @@ def train_pipeline(
             "logratio_max": float(iteration_metrics.get("logratio_max", 0.0)),
             "old_logprob_min": float(iteration_metrics.get("old_logprob_min", 0.0)),
             "ratio_negadv_max": float(iteration_metrics.get("ratio_negadv_max", 0.0)),
+            # The objective actually differentiated, and the KL regulariser's share of it.
+            # "policy_loss" above is the PPO surrogate alone, which is why E3-31-28 could run
+            # with the KL term at 300x the surrogate and no logged series showing it.
+            "policy_loss_total": float(iteration_metrics.get("policy_loss_total", 0.0)),
+            "kl_term": float(iteration_metrics.get("kl_term", 0.0)),
         }
         # Only once enough games have finished for the tracker to report; logging a
         # placeholder 0.0 before then would draw a line that looks like a collapse.

@@ -685,6 +685,11 @@ class NashPGTrainer(BaseNashPGTrainer):
 
         total_loss_accum = 0.0
         policy_loss_accum = 0.0
+        # The objective that is actually differentiated, and the KL regulariser's contribution to
+        # it. `policy_loss` below reports only the PPO surrogate, so a regulariser that grows to
+        # dominate the update leaves no trace in any logged series.
+        policy_loss_total_accum = 0.0
+        kl_term_accum = 0.0
         val_loss_accum = 0.0
         risk_loss_accum = 0.0
         kl_accum = 0.0
@@ -886,7 +891,14 @@ class NashPGTrainer(BaseNashPGTrainer):
                 self.optimizer.step()
 
                 total_loss_accum += loss.item()
+                # NOTE: this is the PPO surrogate ALONE, not the assembled policy_loss. Kept as
+                # it is so the series stays comparable across every run ever logged; the
+                # assembled objective and the regulariser's share are logged separately below,
+                # because their absence is how a KL term reaching 300x the surrogate stayed
+                # invisible for two days. See research/log/P15_kl_domination.md.
                 policy_loss_accum += ppo_loss.item()
+                policy_loss_total_accum += policy_loss.item()
+                kl_term_accum += float(self.eta) * kl_div.item()
                 val_loss_accum += val_loss.item()
                 kl_accum += kl_div.item()
                 entropy_accum += cur_entropy.mean().item()
@@ -897,6 +909,11 @@ class NashPGTrainer(BaseNashPGTrainer):
             "loss": total_loss_accum / max(1, num_updates),
             "defcon_risk_loss": risk_loss_accum / max(1, num_updates),
             "policy_loss": policy_loss_accum / max(1, num_updates),
+            # The assembled objective, and how much of it is the KL pull toward pi_ref. When
+            # kl_term approaches or exceeds |policy_loss|, the update has stopped being policy
+            # improvement and become regularisation.
+            "policy_loss_total": policy_loss_total_accum / max(1, num_updates),
+            "kl_term": kl_term_accum / max(1, num_updates),
             "val_loss": val_loss_accum / max(1, num_updates),
             "kl_div": kl_accum / max(1, num_updates),
             "entropy": entropy_accum / max(1, num_updates),
