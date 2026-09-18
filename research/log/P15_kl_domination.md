@@ -133,3 +133,9 @@ Fixed: illegal visits dropped, target renormalised over the survivors, a row wit
 left untargeted. `search_dropped_visit_frac` and `search_dropped_row_frac` now report what the
 mask rejected — where a **small nonzero value is the correct reading** and zero would mean the
 filter had stopped running. Takes effect from the next launch; `E3-35-28` is running the old code.
+
+---
+
+**Item 1 done, same session (2026-09-18).** `policy_loss_total` and `kl_term` are now logged as
+new keys — new rather than a redefinition of `policy_loss`, so every series recorded to date stays
+comparable and the two arms in flight are undisturbed. Items 2 and 3 remain the owner's call.
