@@ -195,6 +195,11 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
         state.ctx().decision_type = DecisionType::SELECT_CARD;
         state.ctx().remaining_steps = 1;
         state.ctx().resolving_card = card_ids::MISSILE_ENVY;
+        // Handing a card over is not optional once the tie exists, and allow_early_stop is not
+        // reset by setting the fields above -- it keeps whatever the previous decision left. The
+        // same omission made a required discard optional twice before, which is why Aldrich Ames
+        // and Star Wars both carry an explicit zero with a comment (late_war.cpp:63, :271).
+        state.ctx().allow_early_stop = 0;
         return false;
     }
 }

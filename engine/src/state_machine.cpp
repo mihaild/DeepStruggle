@@ -441,12 +441,21 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     // Check NORAD
     if (state.defcon_dropped_to_2 && state.has_flag(effect_bits::NORAD_ACTIVE) &&
         Scoring::is_controlled_by(state, countries::CANADA, Player::US)) {
-        // US gets 1 free influence placement
+        // US gets 1 free influence placement.
+        //
+        // Reset the context first, exactly as the start-of-action-round path below does. Setting
+        // only the four fields it needs left everything else at whatever the just-finished
+        // action round's last decision wrote -- allow_early_stop, max_per_country, visited_nodes,
+        // node_count_bits and start_influence_nodes. A stale allow_early_stop would make this
+        // mandatory placement skippable, and stale visited_nodes/max_per_country would silently
+        // constrain which country it may go to.
         state.defcon_dropped_to_2 = 0;
+        state.ctx() = DecisionContext{};
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 1;
         state.ctx().resolving_card = card_ids::NORAD;
+        state.ctx().allow_early_stop = 0;
         return;
     }
     state.defcon_dropped_to_2 = 0;
