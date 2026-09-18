@@ -205,6 +205,9 @@ DEFCON pass. "Participate vs boycott" does not.
   **decline** returns it and continues with Grain Sales' own 2 Ops; anything else is the ordinary
   5-way resolution acting on the stack top. No card-specific branch remains. This only works given
   §2, which is the argument for §2.
+  **Attempted, failed and reverted once** (clean baseline: `47f6043`). The detail plan, including
+  the three mechanisms that broke it, is
+  [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md). Still to do.
 * **South African Unrest** — `CHOOSE_BRANCH{+2 SA, +1 SA then split}` becomes `POINT_NODE` over
   {South Africa, adjacent} with ops counted after.
 
