@@ -95,7 +95,7 @@ def collect_states(ckpt: str, want: int, device: str) -> List[ts.GameState]:
 
 
 def target_entropy(net_ckpt: str, states: List[ts.GameState], sims: int,
-                   device: str) -> dict:
+                   device: str, determinize: bool = True) -> dict:
     """Per seat: target entropy, top-1 share, and how far the policy sits from its own target.
 
     The seat split is the point. Two independent search-CE arms decline on the **USSR seat only**
@@ -115,7 +115,8 @@ def target_entropy(net_ckpt: str, states: List[ts.GameState], sims: int,
         net, device=device,
         config=BatchedMCTSConfig(
             simulations=sims, temperature=0.0, auto_advance=True,
-            advance_root=False, determinize=True, node_filter="all", subsample=1.0))
+            advance_root=False, determinize=determinize, node_filter="all",
+            subsample=1.0))
     res = searcher.run([s.clone() for s in states])
 
     out: dict = {}
@@ -170,6 +171,12 @@ def main() -> int:
     ap.add_argument("--states", type=int, default=60)
     ap.add_argument("--sims", type=int, default=64)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--no-determinize", action="store_true",
+                    help="search with perfect information instead. The standing finding is\n"
+                         "that USSR targets are 14-16%% more diffuse than US ones, before and\n"
+                         "during a decline alike. Determinization resamples the hidden state,\n"
+                         "and the two seats do not hold symmetric hidden information, so if it\n"
+                         "is the source that asymmetry should shrink or vanish here.")
     ap.add_argument("--state-source", default=None,
                     help="checkpoint whose self-play supplies the fixed positions "
                          "(default: the run's earliest snapshot)")
@@ -183,8 +190,8 @@ def main() -> int:
     source = a.state_source or snapshots(a.run)[0][1]
     print("states from: %s" % os.path.basename(source), flush=True)
     states = collect_states(source, a.states, a.device)
-    print("collected %d searchable positions, %d simulations each\n" % (len(states), a.sims),
-          flush=True)
+    print("collected %d searchable positions, %d simulations each, determinize=%s\n"
+          % (len(states), a.sims, not a.no_determinize), flush=True)
 
     hdr = "%-12s" % "steps"
     for seat in ("US", "USSR", "all"):
@@ -192,13 +199,15 @@ def main() -> int:
     print(hdr)
     print("-" * len(hdr))
     for steps, path in snaps:
-        s = target_entropy(path, states, a.sims, a.device)
+        s = target_entropy(path, states, a.sims, a.device,
+                           determinize=not a.no_determinize)
         row = "%-12d" % steps
         for seat in ("US", "USSR", "all"):
             h, top, ce, n = s[seat]
             row += " | %5.3f %5.3f %6.3f" % (h, top, ce)
         print(row, flush=True)
-    counts = target_entropy(snaps[0][1], states, a.sims, a.device)
+    counts = target_entropy(snaps[0][1], states, a.sims, a.device,
+                            determinize=not a.no_determinize)
     print("\npositions per seat: US %d, USSR %d" % (counts["US"][3], counts["USSR"][3]))
     print("max possible entropy for a 212-way choice: %.3f" % math.log(212))
     print("CE is the search target against the policy's own distribution -- the quantity the "
