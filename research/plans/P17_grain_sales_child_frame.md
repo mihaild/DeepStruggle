@@ -87,6 +87,15 @@ Three consequences:
 
 Each step ends with the check that would catch it going wrong. Do not batch them.
 
+**3.0 — Resize `ctx_stack` from 6 to 8, FIRST.** Derived in
+[P17_ctx_stack_census.md](../log/P17_ctx_stack_census.md) §3: the worst legal chain is
+Five Year Plan → Star Wars → Missile Envy → Grain Sales → drawn card → its event, which with an
+event-first base reaches depth 6 (seven frames). The array holds six, and `push_context()` failing
+calls `invariant_failed` → `std::abort()`. **Today the engine fits with exactly zero margin and
+§5's child frame is the one that pushes it over.** 256 bytes; `sizeof(GameState)` 1,536 → 1,792
+against a 4,096 budget. Check: a scripted deep chain in the engine tests and a fuzz assertion on
+depth, since 251k decisions of random play never exceed depth 2.
+
 **3.1 — Parent contract + relocation.** Trigger sets `pending_op_card = chosen_card` and
 `decision_type = NONE` on the parent before `push_context()`. Verify against Failure B directly:
 a scripted headline Grain Sales that draws a card, coups with it, and asserts the drawn card is in
