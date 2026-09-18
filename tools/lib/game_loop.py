@@ -26,6 +26,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 import numpy as np
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 from bindings.action_encoder import ActionEncoder
 from tools.lib.game_step import IllegalActionError, drain_chance, step_checked
 
@@ -130,7 +131,7 @@ class GameLoop:
         if self.settle is SettlePolicy.NONE:
             return
         if self.settle is SettlePolicy.ENGINE:
-            ts.Engine.auto_advance_step(self.state)
+            settle(self.state, SettleMode.FORCED)
             return
         # RECORD_FORCED: play each forced action ourselves so the recorder sees it.
         for _ in range(self.max_steps):

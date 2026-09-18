@@ -4,6 +4,7 @@ import time
 from typing import Dict, List, Any, Optional
 import numpy as np
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 from tools.lib.player_agent import PlayerAgent
 from ai.game_length import ply as game_ply
 
@@ -71,10 +72,7 @@ def _drain_chance_nodes(state: "ts.GameState") -> None:
     the same matchup. Draining here makes this path agree with the batched one, and is the
     same fix already applied to the decisive probe.
     """
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 class TournamentEvaluator:

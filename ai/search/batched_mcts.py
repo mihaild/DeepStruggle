@@ -37,6 +37,8 @@ import numpy as np
 import torch
 
 import ts_engine as ts
+from bindings.settle import SettleMode
+from bindings.settle import settle as _settle
 from ai.search.dmcts import determinize
 from ai.search.pimcts import PIMCTSConfig, acting_player, drain_chance_nodes
 from bindings.action_encoder import ActionEncoder
@@ -51,11 +53,13 @@ def _legal_here(state: ts.GameState, action: int) -> bool:
 
 
 def settle(state: ts.GameState, auto_advance: bool) -> None:
-    """Advance past everything the player has no say in, by whichever rule is configured."""
-    if auto_advance:
-        ts.Engine.auto_advance_step(state)
-    else:
-        drain_chance_nodes(state)
+    """Advance past everything the player has no say in, by whichever rule is configured.
+
+    The boolean is kept because `BatchedMCTSConfig.auto_advance` is a boolean and a run recorded
+    under one value is not comparable with a run under the other; the depths themselves now come
+    from bindings/settle.py, so this cannot drift from what the rest of the stack does.
+    """
+    _settle(state, SettleMode.FORCED if auto_advance else SettleMode.CHANCE)
 
 
 @dataclass

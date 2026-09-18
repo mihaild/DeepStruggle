@@ -30,6 +30,7 @@ import numpy as np
 import torch
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 from bindings.action_encoder import ActionEncoder
 
 _UINT64 = 1 << 64
@@ -37,10 +38,7 @@ _UINT64 = 1 << 64
 
 def drain_chance_nodes(state: ts.GameState) -> None:
     """Resolve pending die rolls. A chance node is the engine's to settle, never a policy's."""
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 def acting_player(state: ts.GameState) -> ts.Player:

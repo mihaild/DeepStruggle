@@ -30,6 +30,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 import numpy as np
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 
 from ai.eval.dominance import space_dominance_alternatives
 from bindings.action_encoder import ActionEncoder
@@ -83,10 +84,7 @@ def _greedy(model: Any, state: ts.GameState, mover: ts.Player, device: Any) -> i
 
 
 def _drain(state: ts.GameState) -> None:
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 def _space_action(state: ts.GameState) -> Optional[int]:

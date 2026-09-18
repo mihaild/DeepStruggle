@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 
 DE_STALINIZATION = 33
 DECOLONIZATION = 30
@@ -145,10 +146,7 @@ def card_action(state: ts.GameState, card: int) -> Optional[int]:
 
 
 def _drain(state: ts.GameState) -> None:
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 def mode_preference(model: Any, state: ts.GameState, mover: ts.Player, device: Any,

@@ -25,6 +25,7 @@ import statistics
 from typing import Any, Callable, Dict, List, Optional
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 
 REGIONS = (
     ts.Region.EUROPE, ts.Region.ASIA, ts.Region.MIDDLE_EAST,
@@ -110,10 +111,7 @@ def is_salvageable(
 
 
 def _drain(state: ts.GameState) -> None:
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 def profile_self_play(

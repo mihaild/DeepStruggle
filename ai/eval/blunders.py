@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 import ts_engine as ts
+from bindings.settle import SettleMode, settle
 
 from ai.eval import dominance
 from ai.stats import wilson_interval
@@ -404,10 +405,7 @@ def check_play(state: ts.GameState, player: ts.Player, card_id: int, mode: str,
 
 def _drain(state: ts.GameState) -> None:
     """Resolve pending die rolls, so the policy is only ever asked for real decisions."""
-    while (not ts.Engine.is_terminal(state)
-           and state.ctx().decision_player == ts.Player.NONE
-           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
-        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    settle(state, SettleMode.CHANCE)
 
 
 def measure_blunders(
