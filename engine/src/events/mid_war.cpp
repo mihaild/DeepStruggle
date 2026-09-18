@@ -184,6 +184,15 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             state.ctx().decision_player = p;
             state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
             state.ctx().timing_branch = 255;
+            // Two different questions read two different fields, and 255 only answers one of
+            // them. It stops the Event *firing* -- the guard in advance_after_ops requires
+            // OPS_FIRST -- but event_occurred_on_ops_play, which decides whether a starred card
+            // is removed from the game or discarded, never looks at timing_branch: it asks
+            // is_opponent_card and this flag. Without it the taken card counted as an Event that
+            // occurred, so the USSR taking NATO and spending its 4 Ops removed NATO from the
+            // game for good. UN Intervention, the other card that plays an opponent's card
+            // without its Event, has always set this.
+            state.ctx().suppress_op_card_event = 1;
             state.ctx().resolving_card = 0;
             return false;
         }

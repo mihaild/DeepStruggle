@@ -225,6 +225,39 @@ TEST(MidCardsTest, Card49_MissileEnvy_OpponentCardNoEvent) {
     ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
 }
 
+// A starred card taken by Missile Envy and spent for Operations is DISCARDED, not removed: a
+// starred card leaves the game when its Event occurs, and this Event explicitly does not occur.
+//
+// The test above uses Duck and Cover, which is not starred, so it could not see the difference.
+// timing_branch = 255 stops the Event firing, but event_occurred_on_ops_play -- which decides
+// removal -- reads suppress_op_card_event instead and never looks at timing_branch, so the USSR
+// taking NATO and spending its 4 Ops used to remove NATO from the game permanently.
+TEST(MidCardsTest, Card49_MissileEnvy_StarredOpponentCardIsDiscardedNotRemoved) {
+    ts::GameState state{};
+    state.card_locations[ts::card_ids::NATO] = ts::hand_of(ts::Player::US);   // 4 Ops, US, starred
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::US);  // 2 Ops, lower
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::USSR);
+    state.phasing_player = ts::Player::USSR;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.defcon = 2;
+    state.countries[ts::countries::URUGUAY].ussr_influence = 1;
+
+    ts::CardHandlers::trigger_event(state, ts::card_ids::MISSILE_ENVY, ts::Player::USSR);
+
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::NATO);
+    ASSERT_EQ(state.ctx().pending_ops_value, 4);
+
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0)));
+    for (int i = 0; i < 4; ++i) {
+        ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
+    }
+
+    // NATO's Event never fired, so NATO is still in the game.
+    ASSERT_EQ(state.card_locations[ts::card_ids::NATO], ts::CardLocation::DISCARD_PILE);
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::NATO_ACTIVE));
+}
+
 TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
     ts::GameState state{};
     ts::Engine::init_game(state, 42);

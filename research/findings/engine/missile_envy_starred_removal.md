@@ -1,7 +1,12 @@
 # Missile Envy removes a starred card whose Event never fired
 
-**Status: diagnosed, not fixed.** Engine changes need the owner's approval (invariant 11). Found
-while analysing the flattened-stack design, because the fix is exactly what that design proposes.
+**Status: FIXED**, owner approved. Found while analysing the flattened-stack design, because the
+fix is exactly what that design proposes.
+
+Both routes into the use-for-Ops branch now set `suppress_op_card_event = 1` —
+`mid_war.cpp` (untied) and `card_dispatcher.cpp` (the opponent picks among tied cards). Pinned by
+`MidCardsTest.Card49_MissileEnvy_StarredOpponentCardIsDiscardedNotRemoved`. Verified: 377 C++
+tests, 10,000 fuzz games, corpus 300/300, 1,635 Python tests.
 
 ## The bug
 

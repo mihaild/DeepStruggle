@@ -1043,6 +1043,9 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                 state.ctx().decision_player = p_player;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                 state.ctx().timing_branch = 255;
+                // The tied-card route into the same place; see trigger_missile_envy for why
+                // timing_branch alone leaves a starred card removed from the game.
+                state.ctx().suppress_op_card_event = 1;
                 state.ctx().resolving_card = 0;
                 return false;
             }
