@@ -434,7 +434,9 @@ directory until `266e891`, found no snapshots, and started with a pool of one.
 | `E3-32-30` | forced setup exploration | died 53.7M | `E3-32-30_20260917_194158` | NaN; ratio clamp + diagnostics added, relaunch pending |
 | `E3-33-30` | rollout temps `0.8 1.2 0.7 1.1` | 80M | `E3-33-30_20260917_201441`, `…_235834` | **ahead of its control at every point after 10M**; [`log/P15_rollout_temperature.md`](log/P15_rollout_temperature.md) |
 | `E3-34-28` | E3-29-28 cont. replayed, pool fixed, 250k snapshots | 20–28M | `E3-34-28_20260917_222015` | **did not collapse** — 90.0% at 25M, 73–90% throughout |
-| `E3-35-28` | E3-34-28 extended | 28–60M | `E3-35-28_20260918_001501` | running — does search-CE *sustain* with a healthy pool? |
+| `E3-35-28` | E3-34-28 extended | 28–60M | `E3-35-28_20260918_001501` | **no** — declines from 28M, and the fall is global and staggered: USSR first, US after, both heavily degraded by 35M |
+| `E3-36-31` | rollout temps at a **second seed** (20260931) | 80M | `E3-36-31_20260918_011547` | plateaus at ~23% from 60M where seed A reaches 46%; significant vs control at 50M/60M, **not** at 80M |
+| `E3-37-31` | **control config** at seed 20260931 | 80M | `E3-37-31_20260918_034639` | running — the decisive arm, making the temperature comparison two-by-two instead of two treatment seeds against one control seed |
 
 `E3-34-28_20260917_231420` is a byte-identical duplicate of `E3-34-28_20260917_222015`, launched
 by accident and killed at 22.5M; ignore it.
