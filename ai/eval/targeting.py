@@ -27,6 +27,7 @@ import numpy as np
 
 import ts_engine as ts
 from ai.eval.marginal_scoring import marginal_placement_value, region_investment
+from bindings.action_encoder import ActionEncoder
 
 
 @dataclass
@@ -148,7 +149,7 @@ def region_appetite(model: Any, num_games: int = 192, temperature: float = 0.1,
                 continue
             if int(st.turn) < min_turn:
                 continue
-            legal = [c for c in range(84) if masks[i][119 + c]]
+            legal = [c for c in range(84) if masks[i][ActionEncoder.NODE_OFFSET + c]]
             if len(legal) < 4:
                 continue
             ma = ts.ActionMask.decode_flat_action(st, int(a[i]))
@@ -262,7 +263,7 @@ def measure_targeting(model: Any, num_games: int = 256, temperature: float = 0.1
             if not 0 <= chosen < 84:
                 continue
             # Country actions occupy 119..202 of the flat space.
-            legal = [c for c in range(84) if masks[i][119 + c]]
+            legal = [c for c in range(84) if masks[i][ActionEncoder.NODE_OFFSET + c]]
             if len(legal) < 2 or chosen not in legal:
                 continue
 

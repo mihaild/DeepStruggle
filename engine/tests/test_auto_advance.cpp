@@ -36,7 +36,7 @@ TEST(AutoAdvanceTest, SingleChoiceOpMode_AutoAdvancesToPointNode) {
     state.ctx().pending_op_card = 0;
 
     // Check mask: only INFLUENCE (flat action 116) should be legal
-    uint8_t mask[212];
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE];
     ts::ActionMask::generate_flat_mask_212(state, mask);
     ASSERT_EQ(mask[112], 1);
     ASSERT_EQ(mask[113], 0); // Coup
@@ -228,7 +228,7 @@ TEST(AutoAdvanceTest, DeterministicEquivalence_FullGame) {
         int max_steps = 1500;
         int step_cnt1 = 0;
         while (!ts::Engine::is_terminal(s1) && step_cnt1 < max_steps) {
-            uint8_t mask[212];
+            uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE];
             ts::ActionMask::generate_flat_mask_212(s1, mask);
             uint16_t chosen = pick_deterministic_action(mask);
             ASSERT_TRUE(ts::Engine::step_flat(s1, chosen, false));
@@ -242,7 +242,7 @@ TEST(AutoAdvanceTest, DeterministicEquivalence_FullGame) {
 
         int step_cnt2 = 0;
         while (!ts::Engine::is_terminal(s2) && step_cnt2 < max_steps) {
-            uint8_t mask[212];
+            uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE];
             ts::ActionMask::generate_flat_mask_212(s2, mask);
             uint16_t chosen = pick_deterministic_action(mask);
             ASSERT_TRUE(ts::Engine::step_flat(s2, chosen, true));

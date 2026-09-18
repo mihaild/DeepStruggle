@@ -19,6 +19,7 @@ import pytest
 import ts_engine as ts
 
 from tools.lib.ts_replayer_parse import country_id
+from bindings.action_encoder import ActionEncoder
 
 VIETNAM_REVOLTS_ACTIVE = 1 << 9
 CHINA_CARD = 6
@@ -237,14 +238,14 @@ def test_vietnam_revolts_un_intervention_thailand_vs_controlled_italy() -> None:
 
     # Query action mask
     mask = np.asarray(ts.ActionMask.generate_flat_mask(st))
-    assert mask[119 + thailand_id] == 1, (
+    assert mask[ActionEncoder.NODE_OFFSET + thailand_id] == 1, (
         "Thailand (SE Asia) should be legal because Vietnam Revolts bonus gives 2 Ops to pay cost 2"
     )
-    assert mask[119 + italy_id] == 0, (
+    assert mask[ActionEncoder.NODE_OFFSET + italy_id] == 0, (
         "Italy (Europe, cost 2) must NOT be legal because non-SE placements only have 1 Op"
     )
 
     # Placing influence into Thailand succeeds and consumes all 2 Ops
-    ts.Engine.step_flat(st, 119 + thailand_id)
+    ts.Engine.step_flat(st, ActionEncoder.NODE_OFFSET + thailand_id)
     assert st.get_country(thailand_id).ussr_influence == 1
     assert int(st.ctx().remaining_steps) == 0

@@ -10,8 +10,9 @@ from typing import List
 
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
-PASS_ACTION = 211
+PASS_ACTION = ActionEncoder.CONFIRM_DONE_INDEX
 OUR_MAN_IN_TEHRAN = 108
 
 

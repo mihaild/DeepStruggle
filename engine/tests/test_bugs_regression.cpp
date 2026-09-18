@@ -424,7 +424,7 @@ TEST(RegressionTest, FlatRollActionRollsTheDieInsteadOfForcing255) {
     // place -- the decode needed a special case to tell them apart. Now 211 means exactly one
     // thing and this node has its own index.
     ASSERT_TRUE(mask[115] != 0);
-    ASSERT_TRUE(mask[211] == 0);
+    ASSERT_TRUE(mask[ts::flat_slots::CONFIRM_DONE] == 0);
 
     const MicroAction decoded = ActionMask::decode_flat_action_212(state, 115);
     ASSERT_EQ(static_cast<int>(decoded.decision_type), static_cast<int>(DecisionType::ROLL_DIE));

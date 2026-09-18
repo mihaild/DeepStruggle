@@ -10,19 +10,20 @@ from ai.models import ColdWarNet, create_coldwar_net, ColdWarNetV2, create_coldw
 from ai.training import RolloutBuffer, BehavioralCloningTrainer, NashPGTrainer
 from tools.lib import TournamentEvaluator, NeuralAgent, RandomAgent
 from bot.neural_bot import NeuralBot
+from bindings.action_encoder import ActionEncoder
 
 
 class TestActionEncoderAndMasks:
     def test_flat_action_space_bounds(self):
-        assert ActionEncoder.FLAT_ACTION_SIZE == 212
-        assert ActionEncoder.CONFIRM_DONE_INDEX == 211
+        assert ActionEncoder.FLAT_ACTION_SIZE == 220
+        assert ActionEncoder.CONFIRM_DONE_INDEX == 208
 
     def test_initial_state_mask_and_codec_bijection(self):
         state = ts.GameState()
         ts.Engine.init_game(state, 42)
 
         mask = ActionEncoder.get_legal_mask(state)
-        assert mask.shape == (212,)
+        assert mask.shape == (ActionEncoder.FLAT_ACTION_SIZE,)
         assert mask.dtype == np.uint8
         assert np.sum(mask) > 0
 
@@ -64,25 +65,22 @@ class TestActionEncoderAndMasks:
         a_roll = ActionEncoder.decode(state, ActionEncoder.ROLL_DIE_INDEX)
         assert a_roll.decision_type == ts.DecisionType.ROLL_DIE
 
-        # [116..118] are unassigned after the merge and are refused rather than decoded to a
-        # neighbouring meaning -- the bug the merge was most likely to introduce.
-        for idx in range(*ActionEncoder.UNASSIGNED_RANGE):
-            refused = ActionEncoder.decode(state, idx)
-            assert refused.decision_type == ts.DecisionType.NONE
-            assert refused.primary_id == 255
+        # The merge's unassigned band at 116..118 is gone: the section 4 repack closed it and
+        # every block below moved down. tests/bindings/test_flat_layout_agrees.py pins the new
+        # boundaries and that the engine and this codec agree about them.
 
         # Country node
-        a_node = ActionEncoder.decode(state, 119 + 25) # Country #25
+        a_node = ActionEncoder.decode(state, ActionEncoder.NODE_OFFSET + 25)
         assert a_node.decision_type == ts.DecisionType.POINT_NODE
         assert a_node.primary_id == 25
 
         # Branch
-        a_branch = ActionEncoder.decode(state, 203 + 3) # Branch #3
+        a_branch = ActionEncoder.decode(state, ActionEncoder.BRANCH_OFFSET + 3)
         assert a_branch.decision_type == ts.DecisionType.CHOOSE_BRANCH
         assert a_branch.primary_id == 3
 
         # Confirm Done
-        a_done = ActionEncoder.decode(state, 211)
+        a_done = ActionEncoder.decode(state, ActionEncoder.CONFIRM_DONE_INDEX)
         assert a_done.is_confirm_done() or a_done.primary_id == 255 or a_done.primary_id == 0
 
 
@@ -133,11 +131,13 @@ class TestColdWarNet:
         model = create_coldwar_net(device)
         B = 4
         dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
-        dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
-        dummy_mask[:, [0, 10, 110, 119, 211]] = 1
+        dummy_mask = torch.zeros(B, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8, device=device)
+        dummy_mask[:, [0, 10, ActionEncoder.PLAY_MODE_OFFSET,
+                       ActionEncoder.NODE_OFFSET,
+                       ActionEncoder.CONFIRM_DONE_INDEX]] = 1
 
         logits, v_win, v_vp = model(dummy_obs, dummy_mask)
-        assert logits.shape == (B, 212)
+        assert logits.shape == (B, ActionEncoder.FLAT_ACTION_SIZE)
         assert v_win.shape == (B, 1)
         assert v_vp.shape == (B, 1)
         assert torch.all(v_win >= -1.0) and torch.all(v_win <= 1.0)
@@ -152,7 +152,7 @@ class TestColdWarNet:
         model.eval()
         B = 8
         dummy_obs = torch.randn(B, int(ts.OBS_SIZE), device=device)
-        dummy_mask = torch.zeros(B, 212, dtype=torch.uint8, device=device)
+        dummy_mask = torch.zeros(B, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8, device=device)
         dummy_mask[:, [5, 12, 110, 211]] = 1
 
         actions, log_probs, v_win, v_vp, entropy = model.sample_action(dummy_obs, dummy_mask)
@@ -177,13 +177,13 @@ class TestVectorizedEnvironment:
         obs, masks, _ = env.reset_all()
 
         assert obs.shape == (num_envs, int(ts.OBS_SIZE))
-        assert masks.shape == (num_envs, 212)
+        assert masks.shape == (num_envs, ActionEncoder.FLAT_ACTION_SIZE)
 
         for _ in range(20):
             actions = [int(np.random.choice(np.where(masks[i] > 0)[0])) for i in range(num_envs)]
             obs, masks, rewards, dones, info = env.step(actions)
             assert obs.shape == (num_envs, int(ts.OBS_SIZE))
-            assert masks.shape == (num_envs, 212)
+            assert masks.shape == (num_envs, ActionEncoder.FLAT_ACTION_SIZE)
             assert rewards.shape == (num_envs,)
             assert dones.shape == (num_envs,)
 
@@ -215,8 +215,14 @@ class TestVectorizedEnvironment:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
                                           int(ts.Resolution.OPS_COUP), 0, 0))
 
-        # Step coup on Iran (primary_id=17 -> flat action 182) in env 0, dummy actions for others
-        actions = [182]
+        # Coup South Africa (country 63) in env 0, dummy actions for others.
+        #
+        # The comment here used to read "coup on Iran (primary_id=17 -> flat action 182)" and was
+        # wrong twice: 182 - 119 is 63, not 17, and country 63 is South Africa, not Iran. Nothing
+        # caught it because this test only asserts that terminal VP survives auto-reset, so the
+        # identity of the couped country never mattered. Written as offset + country now, which
+        # is the form that cannot drift from the layout OR from its own comment.
+        actions = [ActionEncoder.NODE_OFFSET + 63]
         for e in range(1, num_envs):
             m = env.runner.get_action_masks()[e]
             legal = [i for i, val in enumerate(m) if val == 1]

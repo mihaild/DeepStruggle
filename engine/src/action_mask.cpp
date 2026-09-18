@@ -544,7 +544,7 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 }
             }
             if (temp_mask[0]) {
-                mask_212[211] = 1; // Pass / early stop
+                mask_212[flat_slots::CONFIRM_DONE] = 1; // Pass / early stop
             }
             break;
 
@@ -552,7 +552,7 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             // P17: the merged resolution node, five slots [110..114].
             for (size_t i = 0; i < static_cast<size_t>(Resolution::COUNT) && i < temp_size; ++i) {
                 if (temp_mask[i]) {
-                    mask_212[110 + i] = 1;
+                    mask_212[flat_slots::RESOLUTION + i] = 1;
                 }
             }
             break;
@@ -570,15 +570,15 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             // head sees one concept rather than two.
             for (size_t i = 0; i < 3 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
-                    mask_212[112 + i] = 1;
+                    mask_212[flat_slots::OP_MODE + i] = 1;
                 }
             }
             // The decline, explicitly rather than borrowed. Two cases need it: nothing is
             // spendable at all, or the Ops came from an event whose bonus action is optional
             // (Junta, Tear Down This Wall -- `region_locked` is exactly that predicate).
-            if ((!mask_212[112] && !mask_212[113] && !mask_212[114]) ||
+            if ((!mask_212[flat_slots::OP_MODE] && !mask_212[flat_slots::OP_MODE + 1] && !mask_212[flat_slots::OP_MODE + 2]) ||
                 free_action::region_locked(ctx.pending_op_card, ctx.event_granted_ops)) {
-                mask_212[211] = 1;
+                mask_212[flat_slots::CONFIRM_DONE] = 1;
             }
             break;
 
@@ -586,12 +586,12 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             bool any_target = false;
             for (size_t i = 0; i < 84 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
-                    mask_212[119 + i] = 1;
+                    mask_212[flat_slots::NODE + i] = 1;
                     any_target = true;
                 }
             }
             if (ctx.allow_early_stop) {
-                mask_212[211] = 1;
+                mask_212[flat_slots::CONFIRM_DONE] = 1;
             } else if (!any_target) {
                 // A choice the board cannot supply a single legal target for. The mask would
                 // otherwise be empty and the game would sit on this decision until something
@@ -605,7 +605,7 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 if (!may_fizzle::allowed(ctx.resolving_card)) {
                     report_anomaly("POINT_NODE with no legal target and no early stop", state);
                 }
-                mask_212[211] = 1;
+                mask_212[flat_slots::CONFIRM_DONE] = 1;
             }
             break;
         }
@@ -613,11 +613,11 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
         case DecisionType::CHOOSE_BRANCH:
             for (size_t i = 0; i < 8 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
-                    mask_212[203 + i] = 1;
+                    mask_212[flat_slots::BRANCH + i] = 1;
                 }
             }
             if (ctx.allow_early_stop) {
-                mask_212[211] = 1;
+                mask_212[flat_slots::CONFIRM_DONE] = 1;
             }
             break;
 
@@ -625,7 +625,7 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             // P17: its own index. A chance node with one legal action is not a decline, and
             // sharing 211 was the same aliasing being removed elsewhere -- cheaper only because
             // the decode already special-cased it. 211 now means exactly one thing.
-            mask_212[115] = 1;
+            mask_212[flat_slots::ROLL_DIE] = 1;
             break;
     }
 
@@ -646,11 +646,11 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
     // P17: ROLL_DIE has its own index now. primary_id carries the forced die value, so 0 means
     // "roll normally" (ops.cpp reads `forced_roll > 0`) and the 255 sentinel used for
     // confirm/done would have been read as a forced roll of 255.
-    if (action_idx == 115) {
+    if (action_idx == flat_slots::ROLL_DIE) {
         return MicroAction{DecisionType::ROLL_DIE, 0, 0, 0};
     }
 
-    if (action_idx == 211) {
+    if (action_idx == flat_slots::CONFIRM_DONE) {
         if (ctx.decision_type == DecisionType::SELECT_CARD) {
             // primary_id stays 0, which every card sub-decision already accepts as "decline",
             // but the flag has to be set too: without it is_confirm_done() reported false for
@@ -661,29 +661,41 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
         return MicroAction{ctx.decision_type, 255, 0, action_flags::CONFIRM_DONE};
     }
 
-    if (action_idx < 110) {
+    if (action_idx < flat_slots::RESOLUTION) {
         return MicroAction{DecisionType::SELECT_CARD, static_cast<uint8_t>(action_idx + 1), 0, 0};
     }
-    // [110..114] are the merged resolution node. [112..114] do double duty as the deferred Ops
+    // The merged resolution node. Its last three slots do double duty as the deferred Ops
     // choice, so the decision type decides which of the two this is -- the same slot means
     // "spend Ops on X" either way, which is why they share.
-    if (action_idx < 115) {
-        if (ctx.decision_type == DecisionType::SELECT_OP_MODE && action_idx >= 112) {
+    if (action_idx < flat_slots::ROLL_DIE) {
+        if (ctx.decision_type == DecisionType::SELECT_OP_MODE &&
+            action_idx >= flat_slots::OP_MODE) {
             return MicroAction{DecisionType::SELECT_OP_MODE,
-                               static_cast<uint8_t>(action_idx - 112), 0, 0};
+                               static_cast<uint8_t>(action_idx - flat_slots::OP_MODE), 0, 0};
         }
-        return MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(action_idx - 110), 0, 0};
+        return MicroAction{DecisionType::SELECT_PLAY_MODE,
+                           static_cast<uint8_t>(action_idx - flat_slots::RESOLUTION), 0, 0};
     }
-    if (action_idx < 119) {
-        // [116..118] are unassigned after the merge. Nothing should arrive here; refuse rather
-        // than decode to a neighbouring meaning.
-        return MicroAction{DecisionType::NONE, 255, 0, 0};
+    if (action_idx < flat_slots::BRANCH) {
+        return MicroAction{DecisionType::POINT_NODE,
+                           static_cast<uint8_t>(action_idx - flat_slots::NODE), 0, 0};
     }
-    if (action_idx < 203) {
-        return MicroAction{DecisionType::POINT_NODE, static_cast<uint8_t>(action_idx - 119), 0, 0};
+    if (action_idx < flat_slots::CONFIRM_DONE) {
+        return MicroAction{DecisionType::CHOOSE_BRANCH,
+                           static_cast<uint8_t>(action_idx - flat_slots::BRANCH), 0, 0};
     }
-    if (action_idx < 211) {
-        return MicroAction{DecisionType::CHOOSE_BRANCH, static_cast<uint8_t>(action_idx - 203), 0, 0};
+    if (action_idx >= flat_slots::DEFCON_VALUE && action_idx < flat_slots::REGION) {
+        // "Set DEFCON to V", V in 1..5. Summit and How I Learned share the head; the mask
+        // narrows it per card, which is what makes Summit's "unchanged" a positive choice
+        // rather than a third branch.
+        return MicroAction{DecisionType::CHOOSE_BRANCH,
+                           static_cast<uint8_t>(action_idx - flat_slots::DEFCON_VALUE + 1),
+                           0, action_flags::DEFCON_VALUE};
+    }
+    if (action_idx >= flat_slots::REGION && action_idx < flat_slots::SIZE) {
+        return MicroAction{DecisionType::CHOOSE_BRANCH,
+                           static_cast<uint8_t>(action_idx - flat_slots::REGION),
+                           0, action_flags::REGION};
     }
 
     return MicroAction{ctx.decision_type, 255, 0, action_flags::CONFIRM_DONE};
@@ -692,46 +704,66 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
 int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroAction& action) noexcept {
     (void)state;
     if (action.is_confirm_done() || action.primary_id == 255) {
-        return 211;
+        return flat_slots::CONFIRM_DONE;
     }
 
     switch (action.decision_type) {
         case DecisionType::SELECT_CARD:
-            if (action.primary_id == 0) return 211;
+            if (action.primary_id == 0) return flat_slots::CONFIRM_DONE;
             if (action.primary_id >= 1 && action.primary_id <= 110) {
                 return static_cast<int16_t>(action.primary_id - 1);
             }
-            return 211;
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::SELECT_PLAY_MODE:
             if (action.primary_id < static_cast<uint8_t>(Resolution::COUNT)) {
-                return static_cast<int16_t>(110 + action.primary_id);
+                return static_cast<int16_t>(flat_slots::RESOLUTION + action.primary_id);
             }
-            return 211;
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::CHOOSE_TIMING_BRANCH:
             // P17: retired. No slot encodes it; the merged node carries the timing.
-            return 211;
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::SELECT_OP_MODE:
             // Shares the resolution node's OPS_* slots.
-            if (action.primary_id < 3) return static_cast<int16_t>(112 + action.primary_id);
-            return 211;
+            if (action.primary_id < flat_slots::OP_MODE_COUNT) {
+                return static_cast<int16_t>(flat_slots::OP_MODE + action.primary_id);
+            }
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::ROLL_DIE:
-            return 115;
+            return flat_slots::ROLL_DIE;
 
         case DecisionType::POINT_NODE:
-            if (action.primary_id < 84) return static_cast<int16_t>(119 + action.primary_id);
-            return 211;
+            if (action.primary_id < flat_slots::NODE_COUNT) {
+                return static_cast<int16_t>(flat_slots::NODE + action.primary_id);
+            }
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::CHOOSE_BRANCH:
-            if (action.primary_id < 8) return static_cast<int16_t>(203 + action.primary_id);
-            return 211;
+            // Three heads land on CHOOSE_BRANCH, told apart by the action's flag rather than by
+            // its index -- a plain branch, "set DEFCON to V", and a region.
+            if (action.has_flag(action_flags::DEFCON_VALUE)) {
+                if (action.primary_id >= 1 && action.primary_id <= flat_slots::DEFCON_COUNT) {
+                    return static_cast<int16_t>(flat_slots::DEFCON_VALUE + action.primary_id - 1);
+                }
+                return flat_slots::CONFIRM_DONE;
+            }
+            if (action.has_flag(action_flags::REGION)) {
+                if (action.primary_id < flat_slots::REGION_COUNT) {
+                    return static_cast<int16_t>(flat_slots::REGION + action.primary_id);
+                }
+                return flat_slots::CONFIRM_DONE;
+            }
+            if (action.primary_id < flat_slots::BRANCH_COUNT) {
+                return static_cast<int16_t>(flat_slots::BRANCH + action.primary_id);
+            }
+            return flat_slots::CONFIRM_DONE;
 
         case DecisionType::NONE:
         default:
-            return 211;
+            return flat_slots::CONFIRM_DONE;
     }
 }
 

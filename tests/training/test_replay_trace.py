@@ -15,6 +15,7 @@ import torch
 
 from tools.lib.self_play import generate_self_play_replay
 from web.server.replay_types import ReplayLogDict
+from bindings.action_encoder import ActionEncoder
 
 
 @pytest.fixture(scope="module")
@@ -172,7 +173,7 @@ def test_a_drifted_reconstruction_is_refused_not_reported(untraced_replay: str, 
     # reproduce, so the numbers would belong to a different game.
     mid = len(doc["steps"]) // 2
     doc["steps"][mid]["action"]["flat_action_idx"] = (
-        doc["steps"][mid]["action"]["flat_action_idx"] + 40) % 212
+        doc["steps"][mid]["action"]["flat_action_idx"] + 40) % ActionEncoder.FLAT_ACTION_SIZE
     bad = str(tmp_path / "tampered.tslog.json")
     with open(bad, "w", encoding="utf-8") as f:
         json.dump(doc, f)

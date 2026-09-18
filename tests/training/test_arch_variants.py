@@ -12,6 +12,7 @@ import pytest
 import torch
 
 from ai.models.coldwar_net_v2 import ColdWarNetV2, GraphConvLayer, create_coldwar_net_v2
+from bindings.action_encoder import ActionEncoder
 
 OBS = ColdWarNetV2.TOTAL_OBS_SIZE
 
@@ -130,7 +131,7 @@ def test_a_country_logit_moves_with_that_country_and_not_its_neighbour() -> None
     m.eval()
     bf = ColdWarNetV2.BOARD_FEATURES
     own, other = 3, 40
-    country_action = 119 + own
+    country_action = ActionEncoder.NODE_OFFSET + own
 
     def logit_after(country: int) -> float:
         x = torch.zeros(1, ColdWarNetV2.TOTAL_OBS_SIZE)
@@ -147,14 +148,21 @@ def test_a_country_logit_moves_with_that_country_and_not_its_neighbour() -> None
 
 def test_shared_actions_still_come_from_the_trunk() -> None:
     """Play mode, timing, op mode, branch and confirm name no entity, so they stay dense --
-    and they must still be produced, or the action space silently loses 18 of its 212."""
+    and they must still be produced, or the action space silently loses the shared block.
+
+    The block is the resolution node, roll die, branch, confirm, and section 4's DEFCON and
+    region heads -- everything that does not name a card or a country. Sized from
+    ActionEncoder rather than written down, because the repack changed it from 18 to 26."""
     torch.manual_seed(0)
     m = create_coldwar_net_v2("cpu", identity_dim=16, per_entity_heads=64)
     m.eval()
     with torch.no_grad():
         logits = m(_obs(4), None)[0]
-    shared = torch.cat([logits[:, 110:119], logits[:, 203:212]], dim=-1)
-    assert shared.shape == (4, 18)
+    shared = torch.cat([logits[:, ActionEncoder.PLAY_MODE_OFFSET:ActionEncoder.NODE_OFFSET],
+                        logits[:, ActionEncoder.BRANCH_OFFSET:]], dim=-1)
+    expected = ((ActionEncoder.NODE_OFFSET - ActionEncoder.PLAY_MODE_OFFSET)
+                + (ActionEncoder.FLAT_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET))
+    assert shared.shape == (4, expected)
     assert bool(torch.isfinite(shared).all())
 
 
@@ -215,7 +223,7 @@ def test_the_correction_becomes_live_once_trained() -> None:
 
 
 def test_only_the_entity_actions_are_corrected() -> None:
-    """The 18 actions naming no entity must come from the dense head untouched."""
+    """The actions naming no entity must come from the dense head untouched."""
     torch.manual_seed(0)
     m = create_coldwar_net_v2("cpu", identity_dim=16, per_entity_heads=64)
     for head in (m.pe_country, m.pe_card):
@@ -227,7 +235,8 @@ def test_only_the_entity_actions_are_corrected() -> None:
     with torch.no_grad():
         h, _attn, tokens = m._encode(_obs(2))
         dense, actual = m.policy_head(h), m._policy_logits(h, tokens)
-    for lo, hi in ((110, 119), (203, 212)):
+    for lo, hi in ((ActionEncoder.PLAY_MODE_OFFSET, ActionEncoder.NODE_OFFSET),
+                   (ActionEncoder.BRANCH_OFFSET, ActionEncoder.FLAT_ACTION_SIZE)):
         assert torch.allclose(actual[:, lo:hi], dense[:, lo:hi], atol=1e-6), \
             f"actions {lo}..{hi - 1} name no entity and must not be corrected"
     assert not torch.allclose(actual[:, 0:110], dense[:, 0:110], atol=1e-6)

@@ -8,6 +8,7 @@ arm dies at its first snapshot.
 """
 
 import torch
+from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import (ColdWarNetMLP, ColdWarNetV2, create_coldwar_net_mlp,
                                       create_coldwar_net_v2, create_like)
@@ -16,9 +17,9 @@ from ai.models.coldwar_net_v2 import (ColdWarNetMLP, ColdWarNetV2, create_coldwa
 def test_it_presents_the_same_interface_as_v2() -> None:
     mlp = create_coldwar_net_mlp("cpu")
     obs = torch.randn(4, mlp.TOTAL_OBS_SIZE)
-    mask = torch.ones(4, 212, dtype=torch.uint8)
+    mask = torch.ones(4, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8)
     logits, v_win, v_vp = mlp(obs, mask)
-    assert logits.shape == (4, 212) and v_win.shape == (4, 1) and v_vp.shape == (4, 1)
+    assert logits.shape == (4, ActionEncoder.FLAT_ACTION_SIZE) and v_win.shape == (4, 1) and v_vp.shape == (4, 1)
     assert bool((v_win >= -1).all() and (v_win <= 1).all())
 
 
@@ -92,8 +93,8 @@ def test_drop_static_narrows_the_input_and_survives_a_round_trip(tmp_path) -> No
     assert len(thin.keep_idx) == ColdWarNetV2.TOTAL_OBS_SIZE - 1364
 
     obs = torch.randn(2, ColdWarNetV2.TOTAL_OBS_SIZE)
-    m = torch.ones(2, 212, dtype=torch.uint8)
-    assert thin(obs, m)[0].shape == (2, 212)
+    m = torch.ones(2, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8)
+    assert thin(obs, m)[0].shape == (2, ActionEncoder.FLAT_ACTION_SIZE)
 
     # The narrowed width must still read as layout v2.3, not as a retired layout.
     path = tmp_path / "thin.pt"
@@ -113,7 +114,7 @@ def test_dropping_static_slots_cannot_change_the_function_it_sees() -> None:
     net.eval()
     mask = static_input_mask()
     obs = torch.randn(1, ColdWarNetV2.TOTAL_OBS_SIZE)
-    m = torch.ones(1, 212, dtype=torch.uint8)
+    m = torch.ones(1, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8)
     with torch.no_grad():
         before = net(obs, m)[0]
         obs[0, mask] += 7.0

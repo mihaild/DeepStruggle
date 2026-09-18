@@ -20,6 +20,7 @@ import pytest
 import ts_engine as ts
 
 from ai.training.warmup_dataset_loader import WarmupDataset
+from bindings.action_encoder import ActionEncoder
 
 
 def _legal(st: ts.GameState) -> List[int]:
@@ -98,7 +99,7 @@ def test_mass_on_an_illegal_action_is_dropped_not_trusted(tmp_path) -> None:
     st = ts.GameState()
     ts.Engine.init_game(st, game["seed"])
     legal = set(_legal(st))
-    bogus = next(i for i in range(212) if i not in legal)
+    bogus = next(i for i in range(ActionEncoder.FLAT_ACTION_SIZE) if i not in legal)
     first["search_pi"]["a"] = list(first["search_pi"]["a"]) + [bogus]
     first["search_pi"]["v"] = list(first["search_pi"]["v"]) + [1000.0]
 
@@ -154,6 +155,6 @@ def test_a_desynchronised_game_stops_rather_than_mislabelling(tmp_path) -> None:
     st = ts.GameState()
     ts.Engine.init_game(st, game["seed"])
     legal = set(_legal(st))
-    game["actions"][0]["flat_action"] = next(i for i in range(212) if i not in legal)
+    game["actions"][0]["flat_action"] = next(i for i in range(ActionEncoder.FLAT_ACTION_SIZE) if i not in legal)
     path = _write(tmp_path, [game])
     assert list(WarmupDataset(path).stream_policy_transitions()) == []

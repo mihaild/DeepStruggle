@@ -25,13 +25,11 @@ import ts_engine as ts
 from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import _is_skipped_round, convert_game
 from tools.lib.ts_replayer_parse import parse_entry
+from bindings.action_encoder import ActionEncoder
 
 CORPUS = str(corpus_dir())
 DUCK_AND_COVER, FIVE_YEAR_PLAN = 4, 5
-PASS = 211
-
-
-
+PASS = ActionEncoder.CONFIRM_DONE_INDEX
 def _game(replay_id: int) -> Dict:
     with gzip.open(os.path.join(CORPUS, f"{replay_id}.json.gz"), "rt") as f:
         return json.load(f)

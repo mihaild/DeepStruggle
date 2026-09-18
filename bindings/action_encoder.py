@@ -26,7 +26,7 @@ class ActionEncoder:
     any OPS_* is the ops-first branch, so the timing is carried by the resolution itself.
     """
 
-    FLAT_ACTION_SIZE = 212
+    FLAT_ACTION_SIZE = 220
 
     CARD_OFFSET = 0
     PLAY_MODE_OFFSET = 110
@@ -34,10 +34,13 @@ class ActionEncoder:
     # own: OP_MODE_OFFSET + OpMode.INFLUENCE == PLAY_MODE_OFFSET + Resolution.OPS_INFLUENCE.
     OP_MODE_OFFSET = 112
     ROLL_DIE_INDEX = 115
-    UNASSIGNED_RANGE = (116, 119)
-    NODE_OFFSET = 119
-    BRANCH_OFFSET = 203
-    CONFIRM_DONE_INDEX = 211
+    NODE_OFFSET = 116
+    BRANCH_OFFSET = 200
+    CONFIRM_DONE_INDEX = 208
+    #: P17 section 4. Two heads that name concepts the game already has, rather than generic
+    #: branch slots: "set DEFCON to V" (Summit, How I Learned) and a region (Chernobyl).
+    DEFCON_VALUE_OFFSET = 209
+    REGION_OFFSET = 214
 
     @staticmethod
     def encode(state: ts.GameState, action: ts.MicroAction) -> int:

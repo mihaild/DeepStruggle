@@ -34,6 +34,7 @@ import ts_engine as ts
 from tools.lib.ts_replayer_hands import solve_hands
 from tools.lib.ts_replayer_parse import (Entry, RE_PASSED_ROUND, Section, country_id,
                                         parse_entry)
+from bindings.action_encoder import ActionEncoder
 
 
 def _norm(s: str) -> str:
@@ -1103,8 +1104,8 @@ def _settle_cuban_missile_offer(state: ts.GameState, e: Entry) -> None:
         # The country paid from is the one the entry removes Influence in, and the mask offers
         # only the ones that could pay.
         for _side, delta, cid, _u, _s in (e.influence or []):
-            if int(delta) < 0 and 0 <= cid < 84 and mask[119 + cid]:
-                chosen = 119 + cid
+            if int(delta) < 0 and 0 <= cid < 84 and mask[ActionEncoder.NODE_OFFSET + cid]:
+                chosen = ActionEncoder.NODE_OFFSET + cid
                 break
     if chosen is None and mask[_PASS]:
         chosen = _PASS
@@ -1120,7 +1121,7 @@ def _settle_cuban_missile_offer(state: ts.GameState, e: Entry) -> None:
     # 264 the two Influence paid out of Cuba came back as two more Cuba placements, and "We
     # Will Bury You" put all four of its Operations there instead of two in Cuba and two in
     # Saudi Arabia.
-    paid = int(chosen) - 119
+    paid = int(chosen) - ActionEncoder.NODE_OFFSET
     for rec in list(e.influence or []):
         if rec[2] == paid and int(rec[1]) < 0:
             e.influence.remove(rec)
@@ -1387,7 +1388,7 @@ def _acting(state: ts.GameState) -> ts.Player:
     return ctx.decision_player if ctx.decision_player != ts.Player.NONE else state.phasing_player
 
 
-_PASS = 211
+_PASS = ActionEncoder.CONFIRM_DONE_INDEX
 
 
 def _drive_passed_rounds(state: ts.GameState, e: Entry, conv: "Conversion") -> None:

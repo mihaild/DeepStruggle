@@ -982,8 +982,8 @@ NB_MODULE(ts_engine, m) {
             return res;
         })
         .def_static("get_flat_action_mask", [](const ts::GameState& state) {
-            size_t shape[1] = { 212 };
-            uint8_t* data = new uint8_t[212];
+            size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
+            uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
             ts::ActionMask::generate_flat_mask_212(state, data);
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
@@ -1101,8 +1101,8 @@ NB_MODULE(ts_engine, m) {
 
     // Flat Action Mask & Codec exports
     m.def("get_flat_action_mask", [](const ts::GameState& state) {
-        size_t shape[1] = { 212 };
-        uint8_t* data = new uint8_t[212];
+        size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
+        uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
         ts::ActionMask::generate_flat_mask_212(state, data);
         nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
         return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
@@ -1137,8 +1137,8 @@ NB_MODULE(ts_engine, m) {
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state) {
-            size_t shape[1] = { 212 };
-            uint8_t* data = new uint8_t[212];
+            size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
+            uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
             ts::ActionMask::generate_flat_mask_212(state, data);
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
@@ -1158,7 +1158,7 @@ NB_MODULE(ts_engine, m) {
             : num_envs(n) {
             states.resize(n);
             obs_buffer.resize(n * obs_width);
-            mask_buffer.resize(n * 212);
+            mask_buffer.resize(n * ts::FLAT_ACTION_SPACE_SIZE);
             for (size_t i = 0; i < n; ++i) {
                 ts::StateMachine::init_new_game(states[i], base_seed + i * 10007 + 1);
             }
@@ -1188,7 +1188,7 @@ NB_MODULE(ts_engine, m) {
             ts::Observation::extract(states[idx], p, &ob);
             std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                         obs_width * sizeof(float));
-            ts::ActionMask::generate_flat_mask_212(states[idx], &mask_buffer[idx * 212]);
+            ts::ActionMask::generate_flat_mask_212(states[idx], &mask_buffer[idx * ts::FLAT_ACTION_SPACE_SIZE]);
         }
 
         void refresh_all() {
@@ -1237,7 +1237,7 @@ NB_MODULE(ts_engine, m) {
         }
 
         nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>> get_action_masks() {
-            size_t shape[2] = { num_envs, 212 };
+            size_t shape[2] = { num_envs, ts::FLAT_ACTION_SPACE_SIZE };
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(mask_buffer.data(), 2, shape);
         }
 

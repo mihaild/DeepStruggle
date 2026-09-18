@@ -30,9 +30,10 @@ import ts_engine as ts
 
 from ai.training.nash_pg import BaseNashPGTrainer
 from bindings import TsVectorizedEnv
+from bindings.action_encoder import ActionEncoder
 
 N_ENVS = 8
-ACTION_DIM = 212
+ACTION_DIM = ActionEncoder.FLAT_ACTION_SIZE
 
 
 class _LegalHereSearcher:

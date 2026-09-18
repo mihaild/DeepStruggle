@@ -1,6 +1,6 @@
 """The JSON boundary: one place that converts between the engine and everything outside it.
 
-Inside a game loop there is exactly one action encoding -- the flat 212-index. JSON exists only at
+Inside a game loop there is exactly one action encoding -- the flat index. JSON exists only at
 the edge, for the browser, for replays and for bot protocols. Today those conversions are scattered
 across `play_match`, `self_play`, `GameSession` and the replay logger, each doing part of it, and
 one of them -- JSON back to an action -- does not exist at all. That missing direction is why the

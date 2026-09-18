@@ -13,10 +13,11 @@ import torch
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 from ai.training.opponent_pool import OpponentPool
 from ai.training.rollout_buffer import RolloutBuffer
+from bindings.action_encoder import ActionEncoder
 
 
 def _buf(**kw) -> RolloutBuffer:
-    return RolloutBuffer(buffer_size=4, num_envs=3, obs_dim=8, action_dim=212,
+    return RolloutBuffer(buffer_size=4, num_envs=3, obs_dim=8, action_dim=ActionEncoder.FLAT_ACTION_SIZE,
                          device="cpu", **kw)
 
 
@@ -24,7 +25,7 @@ def test_learner_mask_defaults_to_all_ones() -> None:
     """Without a pool the mask must be inert, or every existing run changes meaning."""
     b = _buf()
     assert torch.all(b.learner == 1.0)
-    b.add(obs=torch.zeros(3, 8), masks=torch.ones(3, 212, dtype=torch.uint8),
+    b.add(obs=torch.zeros(3, 8), masks=torch.ones(3, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8),
           actions=torch.zeros(3, dtype=torch.long), log_probs=torch.zeros(3),
           rewards=np.zeros(3, dtype=np.float32), dones=torch.zeros(3),
           values_win=torch.zeros(3), values_vp=torch.zeros(3),
@@ -35,7 +36,7 @@ def test_learner_mask_defaults_to_all_ones() -> None:
 def test_learner_mask_round_trips_through_get_batches() -> None:
     b = _buf()
     for t in range(4):
-        b.add(obs=torch.zeros(3, 8), masks=torch.ones(3, 212, dtype=torch.uint8),
+        b.add(obs=torch.zeros(3, 8), masks=torch.ones(3, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8),
               actions=torch.zeros(3, dtype=torch.long), log_probs=torch.zeros(3),
               rewards=np.zeros(3, dtype=np.float32), dones=torch.zeros(3),
               values_win=torch.zeros(3), values_vp=torch.zeros(3),
@@ -156,7 +157,7 @@ def test_opponent_actions_come_from_the_opponent_network() -> None:
 
         def forward(self, obs, mask=None):
             n = obs.shape[0]
-            logits = torch.full((n, 212), -1e9)
+            logits = torch.full((n, ActionEncoder.FLAT_ACTION_SIZE), -1e9)
             if mask is not None:
                 first = torch.argmax(mask.float(), dim=-1)
                 logits[torch.arange(n), first] = 10.0
@@ -171,7 +172,7 @@ def test_opponent_actions_come_from_the_opponent_network() -> None:
 
     learner = tr.buffer.learner.bool()
     opp_actions = tr.buffer.actions[~learner]
-    opp_masks = tr.buffer.masks.reshape(-1, 212)[(~learner).reshape(-1)]
+    opp_masks = tr.buffer.masks.reshape(-1, ActionEncoder.FLAT_ACTION_SIZE)[(~learner).reshape(-1)]
     if opp_actions.numel() == 0:
         pytest.skip("no opponent transitions in this rollout")
     expected = torch.argmax(opp_masks.float(), dim=-1)

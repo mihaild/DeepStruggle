@@ -126,7 +126,7 @@ def test_every_record_carries_the_flat_index_a_replay_needs() -> None:
     GameLoop(_fresh(), _both(FirstLegal()), settle=SettlePolicy.RECORD_FORCED,
              recorder=lambda rec, st: seen.append(rec)).run()
     assert seen
-    assert all(r.flat is not None and 0 <= r.flat < 212 for r in seen)
+    assert all(r.flat is not None and 0 <= r.flat < ActionEncoder.FLAT_ACTION_SIZE for r in seen)
 
 
 def test_the_snapshot_is_the_state_after_the_action() -> None:

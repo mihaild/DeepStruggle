@@ -19,6 +19,7 @@ import ts_engine
 
 from ai.models.coldwar_net_v2 import check_checkpoint_layout, create_coldwar_net_v2
 from bindings.ts_env import check_obs_width
+from bindings.action_encoder import ActionEncoder
 
 
 class _FakeModel:
@@ -52,7 +53,7 @@ def test_the_network_refuses_a_vector_of_the_wrong_width() -> None:
     model = create_coldwar_net_v2("cpu")
     with pytest.raises(ValueError, match="floats wide"):
         model(torch.zeros((2, 4293), dtype=torch.float32),
-              torch.ones((2, 212), dtype=torch.uint8))
+              torch.ones((2, ActionEncoder.FLAT_ACTION_SIZE), dtype=torch.uint8))
 
 
 def test_a_retired_checkpoints_weights_are_refused() -> None:

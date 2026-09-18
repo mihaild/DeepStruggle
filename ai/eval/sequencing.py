@@ -76,7 +76,7 @@ def is_companion_node(state: ts.GameState) -> bool:
 
 
 def legal_companions(mask: np.ndarray) -> List[int]:
-    """Card ids selectable at a companion node, from the flat 212-wide mask.
+    """Card ids selectable at a companion node, from the flat flat mask.
 
     The flat action that selects a card is `card_id - 1` (`positions.card_action`) — not the
     card id itself, which is the indexing the engine's internal 112-wide sub-mask uses.

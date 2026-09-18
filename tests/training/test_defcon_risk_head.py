@@ -18,6 +18,7 @@ from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
+from bindings.action_encoder import ActionEncoder
 
 #: The engine emits one observation width; nothing here should hardcode it.
 OBS_DIM = int(ts.OBS_SIZE)
@@ -25,7 +26,7 @@ OBS_DIM = int(ts.OBS_SIZE)
 
 def _buffer(num_envs: int = 1, size: int = 8) -> RolloutBuffer:
     return RolloutBuffer(buffer_size=size, num_envs=num_envs, obs_dim=OBS_DIM,
-                         action_dim=212, device="cpu")
+                         action_dim=ActionEncoder.FLAT_ACTION_SIZE, device="cpu")
 
 
 def _fill(buf: RolloutBuffer, blunder_at: int, blunderer: int) -> None:
@@ -35,7 +36,7 @@ def _fill(buf: RolloutBuffer, blunder_at: int, blunderer: int) -> None:
         player = 1 if t % 2 == 0 else -1
         buf.add(
             obs=torch.zeros(buf.num_envs, OBS_DIM),
-            masks=torch.ones(buf.num_envs, 212, dtype=torch.uint8),
+            masks=torch.ones(buf.num_envs, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8),
             actions=torch.zeros(buf.num_envs, dtype=torch.long),
             log_probs=torch.zeros(buf.num_envs),
             rewards=torch.zeros(buf.num_envs),
@@ -86,13 +87,13 @@ def test_head_does_not_disturb_the_existing_forward_contract(factory) -> None:
     net = factory("cpu")
     net.eval()   # dropout is active in train mode, so the two passes would differ
     obs = torch.zeros(2, OBS_DIM)
-    mask = torch.ones(2, 212, dtype=torch.uint8)
+    mask = torch.ones(2, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8)
 
     out = net(obs, mask)
     assert len(out) == 3
 
     logits, v_win, v_vp, risk = net.forward_with_risk(obs, mask)
-    assert logits.shape == (2, 212) and risk.shape == (2, 1)
+    assert logits.shape == (2, ActionEncoder.FLAT_ACTION_SIZE) and risk.shape == (2, 1)
     torch.testing.assert_close(logits, out[0])
     torch.testing.assert_close(v_win, out[1])
 

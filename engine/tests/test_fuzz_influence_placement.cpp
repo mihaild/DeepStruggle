@@ -117,12 +117,12 @@ DriveResult drive_influence_operation(GameState& state, Player p, RegionFilter f
            state.ctx().resolving_card == 0 &&
            state.ctx().remaining_steps > 0) {
 
-        uint8_t mask_212[212];
+        uint8_t mask_212[ts::FLAT_ACTION_SPACE_SIZE];
         ActionMask::generate_flat_mask_212(state, mask_212);
 
         std::vector<uint8_t> candidates;
         for (uint8_t cid = 0; cid < 84; ++cid) {
-            if (!mask_212[119 + cid]) continue;
+            if (!mask_212[ts::flat_slots::NODE + cid]) continue;
             const auto& c = MapData::get_country(cid);
             if (filter == RegionFilter::ASIA_ONLY && c.region != Region::ASIA) continue;
             if (filter == RegionFilter::SOUTHEAST_ASIA_ONLY && !c.in_southeast_asia) continue;

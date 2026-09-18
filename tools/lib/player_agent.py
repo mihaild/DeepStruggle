@@ -84,7 +84,7 @@ class PlayerAgent(Protocol):
         player: ts.Player,
         temperature: float = 0.1,
     ) -> int:
-        """Selects a legal flat action index [0..211]."""
+        """Selects a legal flat action index [0..FLAT_ACTION_SIZE-1]."""
         ...
 
 

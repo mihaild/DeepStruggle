@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 
 def build_normalized_adjacency_matrix() -> torch.Tensor:
@@ -77,7 +78,7 @@ class ColdWarNet(nn.Module):
     GLOBAL_SIZE = 100
 
     TOTAL_OBS_SIZE = 3824
-    ACTION_SPACE_SIZE = 212
+    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4):
         super().__init__()
@@ -201,10 +202,10 @@ class ColdWarNet(nn.Module):
 
         Args:
             obs: (B, 4293) float tensor.
-            mask: (B, 212) uint8 / bool tensor of legal actions.
+            mask: (B, FLAT_ACTION_SIZE) uint8 / bool tensor of legal actions.
 
         Returns:
-            masked_logits: (B, 212) float tensor.
+            masked_logits: (B, FLAT_ACTION_SIZE) float tensor.
             v_win: (B, 1) float tensor in [-1, 1].
             v_vp: (B, 1) float tensor in [-20, 20].
         """

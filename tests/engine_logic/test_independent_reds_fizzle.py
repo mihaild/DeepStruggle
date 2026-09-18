@@ -29,12 +29,11 @@ import numpy as np
 import pytest
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 INDEPENDENT_REDS = 22
 TARGETS = ("Yugoslavia", "Romania", "Bulgaria", "Hungary", "Czechoslovakia")
-CONFIRM_DONE = 211
-
-
+CONFIRM_DONE = ActionEncoder.CONFIRM_DONE_INDEX
 def _cid(name: str) -> int:
     for cid in range(84):
         if ts.MapData.get_country_info(cid)["name"].lower() == name.lower():

@@ -17,14 +17,13 @@ from typing import List
 
 import pytest
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 PANAMA_CANAL = 64        # 1 Op
 DUCK_AND_COVER = 4       # 3 Ops
 NUCLEAR_TEST_BAN = 34    # 4 Ops
 EUROPE_SCORING = 2       # scoring, 0 Ops
-PASS = 211
-
-
+PASS = ActionEncoder.CONFIRM_DONE_INDEX
 def _bit(name: str) -> int:
     import re
     hdr = open("engine/include/ts/constants.hpp").read()

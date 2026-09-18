@@ -1,4 +1,5 @@
 #include "ts/map_data.hpp"
+#include "ts/action_mask.hpp"
 #include "test_framework.hpp"
 #include "ts/engine.hpp"
 #include "ts/card_data.hpp"
@@ -416,9 +417,9 @@ TEST(MidCardsTest, Card36_BrushWar_TargetChoiceNeverOffersADecline) {
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
     ASSERT_EQ(state.ctx().allow_early_stop, 0);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[211], 0);
+    ASSERT_EQ(mask[ts::flat_slots::CONFIRM_DONE], 0);
     uint8_t targets = 0;
     for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
     ASSERT_GT(targets, 0);
@@ -465,15 +466,15 @@ TEST(MidCardsTest, PointNodeWithNoLegalTargetOffersTheDeclineInsteadOfDeadlockin
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().allow_early_stop, 0);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     uint8_t targets = 0;
     for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
     ASSERT_EQ(targets, 0);
-    ASSERT_EQ(mask[211], 1);   // the escape, not an empty mask
+    ASSERT_EQ(mask[ts::flat_slots::CONFIRM_DONE], 1);   // the escape, not an empty mask
 
     // And taking it ends the event rather than tripping the confirm-done invariant.
-    ts::MicroAction decline = ts::ActionMask::decode_flat_action_212(state, 211);
+    ts::MicroAction decline = ts::ActionMask::decode_flat_action_212(state, ts::flat_slots::CONFIRM_DONE);
     ASSERT_TRUE(ts::Engine::step(state, decline));
     ASSERT_EQ(state.ctx().resolving_card, 0);
 }
@@ -489,12 +490,12 @@ TEST(MidCardsTest, PointNodeWithLegalTargetsStillOffersNoDecline) {
     state.countries[ts::countries::IRAN].us_influence = 2;
     ts::CardHandlers::trigger_event(state, ts::card_ids::MUSLIM_REVOLUTION, ts::Player::USSR);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     uint8_t targets = 0;
     for (uint8_t i = 119; i < 203; ++i) targets = static_cast<uint8_t>(targets + mask[i]);
     ASSERT_GT(targets, 0);
-    ASSERT_EQ(mask[211], 0);
+    ASSERT_EQ(mask[ts::flat_slots::CONFIRM_DONE], 0);
 }
 
 // The allowlist is the whole point of the report staying readable: anything not on it that
@@ -538,11 +539,11 @@ TEST(MidCardsTest, TearDownThisWall_FreeOpsBarInfluence_OwnOpsDoNot) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
     ASSERT_EQ(state.ctx().event_granted_ops, 1);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     // P17: the decline is the shared index, not a borrowed INFLUENCE. Index 112 (INFLUENCE) is
     // now simply illegal here, which is what removes the third meaning it used to carry.
-    ASSERT_EQ(mask[211], 1);                                  // the decline
+    ASSERT_EQ(mask[ts::flat_slots::CONFIRM_DONE], 1);                                  // the decline
     ASSERT_EQ(mask[112], 0);                                  // INFLUENCE is not the decline
     ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
                                             static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
@@ -564,9 +565,9 @@ TEST(MidCardsTest, TearDownThisWall_OwnOpsMayPlaceInfluence) {
     state.ctx().decision_player = ts::Player::USSR;
     state.ctx().decision_type = ts::DecisionType::SELECT_OP_MODE;
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[112 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
+    ASSERT_EQ(mask[ts::flat_slots::OP_MODE + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
                                             static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);

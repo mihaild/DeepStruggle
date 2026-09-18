@@ -23,6 +23,7 @@ import torch
 
 import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
+from bindings.action_encoder import ActionEncoder
 
 #: The engine emits one observation width; nothing here should hardcode it.
 OBS_DIM = int(ts.OBS_SIZE)
@@ -38,7 +39,7 @@ def _build(term_reward: float, held_us: bool = False, held_ussr: bool = False,
     b = RolloutBuffer(buffer_size=len(TURNS), num_envs=1, device="cpu")
     for t in range(len(TURNS)):
         done = (t == len(TURNS) - 1)
-        b.add(obs=torch.zeros(1, OBS_DIM), masks=torch.zeros(1, 212, dtype=torch.uint8),
+        b.add(obs=torch.zeros(1, OBS_DIM), masks=torch.zeros(1, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8),
               actions=torch.zeros(1, dtype=torch.long), log_probs=torch.zeros(1),
               rewards=torch.tensor([term_reward if done else 0.0]),
               dones=torch.tensor([float(done)]),

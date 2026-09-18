@@ -15,11 +15,15 @@ from typing import List, Optional, Tuple
 
 import pytest
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 FIVE_YEAR_PLAN = 5
 GRAIN_SALES = 67
 NUCLEAR_TEST_BAN = 34
-PLAY_EVENT, BRANCH_PLAY_DRAWN, BRANCH_RETURN, OP_INFLUENCE = 110, 203, 204, 112
+PLAY_EVENT = ActionEncoder.PLAY_MODE_OFFSET
+BRANCH_PLAY_DRAWN = ActionEncoder.BRANCH_OFFSET
+BRANCH_RETURN = ActionEncoder.BRANCH_OFFSET + 1
+OP_INFLUENCE = ActionEncoder.OP_MODE_OFFSET
 GOLDEN = 0x9E3779B97F4A7C15
 
 
@@ -93,7 +97,7 @@ def _spend_two_ops(state: ts.GameState) -> Tuple[int, int]:
     ts.Engine.step_flat(state, OP_INFLUENCE)
     assert state.ctx().decision_type == ts.DecisionType.POINT_NODE
     mask = ts.ActionMask.generate_flat_mask(state)
-    return int(state.ctx().remaining_steps), sum(1 for i in range(212) if mask[i])
+    return int(state.ctx().remaining_steps), sum(1 for i in range(ActionEncoder.FLAT_ACTION_SIZE) if mask[i])
 
 
 def test_played_directly_with_an_empty_opposing_hand() -> None:

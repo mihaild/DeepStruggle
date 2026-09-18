@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from ai.models.coldwar_net_v2 import VP_LIMIT
 
 from bindings.ts_env import TsVectorizedEnv
+from bindings.action_encoder import ActionEncoder
 from .rollout_buffer import RolloutBuffer
 from .critic_tracker import CriticTracker
 
@@ -294,7 +295,7 @@ class BaseNashPGTrainer:
             # layout the environment is actually producing. A mismatch here would be a reshape
             # error at best and a silently misaligned observation at worst.
             obs_dim=getattr(self.env, "observation_size", 4293),
-            action_dim=212,
+            action_dim=ActionEncoder.FLAT_ACTION_SIZE,
             device=self.device,
         )
 
@@ -388,7 +389,7 @@ class BaseNashPGTrainer:
                     # are taken from the learner's critic, which is what GAE must bootstrap
                     # with (a frozen opponent's critic is a different function and mixing the
                     # two would corrupt the recursion).
-                    logits = torch.empty((self.num_envs, 212), device=self.device,
+                    logits = torch.empty((self.num_envs, ActionEncoder.FLAT_ACTION_SIZE), device=self.device,
                                          dtype=torch.float32)
                     opp_logits, _, _ = self.opponent_pool.current(
                         obs_t[~learner_t], masks_t[~learner_t])

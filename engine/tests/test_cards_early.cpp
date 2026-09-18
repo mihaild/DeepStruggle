@@ -1,4 +1,5 @@
 #include "test_framework.hpp"
+#include "ts/action_mask.hpp"
 #include "ts/engine.hpp"
 #include "ts/card_data.hpp"
 #include "ts/card_handlers.hpp"
@@ -503,7 +504,7 @@ TEST(EarlyCardsTest, Card32_UNIntervention_OffersOnlyOpponentNonScoringCards) {
         state, ts::card_ids::UN_INTERVENTION, ts::Player::US));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     ASSERT_EQ(mask[ts::card_ids::DE_GAULLE - 1], 1);        // opponent card: offered
     ASSERT_EQ(mask[ts::card_ids::NATO - 1], 0);             // own card: never
@@ -526,9 +527,9 @@ TEST(EarlyCardsTest, Card32_UNIntervention_DoesNotInheritAnEarlyStop) {
     // Mandatory: naming a companion is the whole card. A 1 here is the inherited value.
     ASSERT_EQ(state.ctx().allow_early_stop, 0);
 
-    uint8_t mask[212] = {0};
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[211], 0);   // the decline is not offered for a mandatory choice
+    ASSERT_EQ(mask[ts::flat_slots::CONFIRM_DONE], 0);   // the decline is not offered for a mandatory choice
 }
 
 // Card 33: De-Stalinization

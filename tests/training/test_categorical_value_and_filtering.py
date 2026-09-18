@@ -13,6 +13,7 @@ thing — because the tournament code, the probes and NashPG's advantage computa
 import numpy as np
 import pytest
 import torch
+from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import (VALUE_ATOMS, VP_LIMIT, create_coldwar_net_v2,
                                       create_like)
@@ -26,7 +27,7 @@ def _net(categorical: bool):
 
 
 def _batch(net, n: int = 8):
-    return torch.randn(n, net.TOTAL_OBS_SIZE), torch.ones(n, 212, dtype=torch.uint8)
+    return torch.randn(n, net.TOTAL_OBS_SIZE), torch.ones(n, ActionEncoder.FLAT_ACTION_SIZE, dtype=torch.uint8)
 
 
 # --- the head itself --------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def test_both_heads_expose_the_same_interface(categorical: bool) -> None:
     obs, mask = _batch(net)
     with torch.no_grad():
         logits, v_win, v_vp = net(obs, mask)
-    assert logits.shape == (8, 212)
+    assert logits.shape == (8, ActionEncoder.FLAT_ACTION_SIZE)
     assert v_win.shape == (8, 1) and v_vp.shape == (8, 1)
     assert bool((v_win >= -1.0).all() and (v_win <= 1.0).all()), "v_win must stay a utility"
     assert bool((v_vp >= -VP_LIMIT).all() and (v_vp <= VP_LIMIT).all())

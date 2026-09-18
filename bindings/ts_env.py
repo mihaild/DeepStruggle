@@ -102,7 +102,7 @@ def check_obs_width(model: Any) -> int:
 class TsEnv:
     """Gymnasium-like single-game environment wrapper for ts::Engine."""
 
-    ACTION_SPACE_SIZE = 212
+    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
 
     @property
     def OBSERVATION_SIZE(self) -> int:
@@ -203,7 +203,7 @@ def credits_defcon_blunder(state: "ts.GameState", window_provoked: bool) -> bool
 class TsVectorizedEnv:
     """High-throughput C++ vectorized batch environment executing N parallel games."""
 
-    ACTION_SPACE_SIZE = 212
+    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
 
     @property
     def OBSERVATION_SIZE(self) -> int:

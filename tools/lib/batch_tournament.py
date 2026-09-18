@@ -18,8 +18,8 @@ from tools.lib.tournament_evaluator import classify_game_ending_reason
 
 
 def categorize_flat_action_detailed(action_idx: int) -> str:
-    """Categorizes a flat 212-dim action into human-readable semantic categories."""
-    if action_idx == 211:
+    """Categorizes a flat action into human-readable semantic categories."""
+    if action_idx == ActionEncoder.CONFIRM_DONE_INDEX:
         return "CONFIRM_DONE / PASS"
     elif action_idx < 110:
         card_id = action_idx + 1
@@ -37,7 +37,7 @@ def categorize_flat_action_detailed(action_idx: int) -> str:
         return f"SELECT_OP_MODE ({op_modes[action_idx - 116]})"
     elif action_idx < ActionEncoder.BRANCH_OFFSET:
         return "POINT_NODE (Country)"
-    elif action_idx < 211:
+    elif action_idx < ActionEncoder.CONFIRM_DONE_INDEX:
         return f"CHOOSE_BRANCH ({action_idx - ActionEncoder.BRANCH_OFFSET})"
     else:
         return "UNKNOWN"

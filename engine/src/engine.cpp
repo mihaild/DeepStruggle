@@ -143,7 +143,7 @@ size_t Engine::auto_advance_step(GameState& state, size_t max_steps) noexcept {
         }
 
         // 3. Generic single-choice auto-advance
-        uint8_t mask_212[212];
+        uint8_t mask_212[FLAT_ACTION_SPACE_SIZE];
         ActionMask::generate_flat_mask_212(state, mask_212);
         uint16_t valid_choices = 0;
         int16_t sole_action = -1;

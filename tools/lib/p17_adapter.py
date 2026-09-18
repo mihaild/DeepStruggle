@@ -46,6 +46,7 @@ import numpy.typing as npt
 
 import ts_engine as ts
 from tools.lib.player_agent import ColdWarModel
+from bindings.action_encoder import ActionEncoder
 
 # Old layout, the one the checkpoint's policy head was trained against.
 OLD_PLAY_MODE = 110          # EVENT 0, OPS 1, SPACE 2, PASS 3
@@ -55,7 +56,7 @@ OLD_OP_MODE = 116            # INFLUENCE 0, COUP 1, REALIGN 2
 # New layout.
 NEW_PLAY_MODE = 110          # EVENT 0, SPACE 1, OPS_INFLUENCE 2, OPS_COUP 3, OPS_REALIGN 4
 NEW_ROLL_DIE = 115
-FLAT = 212
+FLAT = ActionEncoder.FLAT_ACTION_SIZE
 
 _OLD_MODULE: Optional[Any] = None
 

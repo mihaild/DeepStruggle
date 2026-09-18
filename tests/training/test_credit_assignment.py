@@ -12,6 +12,7 @@ import ts_engine as ts
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward
 from bindings.ts_env import TsVectorizedEnv
 from ai.training.rollout_buffer import RolloutBuffer
+from bindings.action_encoder import ActionEncoder
 
 
 def setup_to_action_round(st: ts.GameState) -> None:
@@ -72,8 +73,9 @@ class TestDefconSuicideCredit:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
                                           int(ts.Resolution.OPS_COUP), 0, 0))
 
-        # Coup Panama (70) -> Flat action 189
-        _, _, rewards, dones, info = env.step([189])
+        # Coup Panama (70). Written as the offset plus the country, not as the sum:
+        # the sum was 189 before the repack and is a different country now.
+        _, _, rewards, dones, info = env.step([ActionEncoder.NODE_OFFSET + 70])
 
         assert dones[0] is True or dones[0] == 1
         assert st.victory_points == 20  # US Win
@@ -102,8 +104,9 @@ class TestDefconSuicideCredit:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
                                           int(ts.Resolution.OPS_COUP), 0, 0))
 
-        # Coup Panama (70) -> Flat action 189
-        _, _, rewards, dones, info = env.step([189])
+        # Coup Panama (70). Written as the offset plus the country, not as the sum:
+        # the sum was 189 before the repack and is a different country now.
+        _, _, rewards, dones, info = env.step([ActionEncoder.NODE_OFFSET + 70])
 
         assert dones[0] is True or dones[0] == 1
         assert st.victory_points == -20  # USSR Win
@@ -332,8 +335,8 @@ class TestCubanMissileCrisisCoupSuicide:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
                                           int(ts.Resolution.OPS_COUP), 0, 0))
 
-        # Coup Iran (25) -> flat action 119 + 25 = 144
-        _, _, rewards, dones, info = env.step([144])
+        # Coup Iran (25).
+        _, _, rewards, dones, info = env.step([ActionEncoder.NODE_OFFSET + 25])
 
         assert dones[0] is True or dones[0] == 1
         assert st.victory_points == 20  # US Win
@@ -362,8 +365,9 @@ class TestCubanMissileCrisisCoupSuicide:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
                                           int(ts.Resolution.OPS_COUP), 0, 0))
 
-        # Coup Panama (70) -> Flat action 189
-        _, _, rewards, dones, info = env.step([189])
+        # Coup Panama (70). Written as the offset plus the country, not as the sum:
+        # the sum was 189 before the repack and is a different country now.
+        _, _, rewards, dones, info = env.step([ActionEncoder.NODE_OFFSET + 70])
 
         assert dones[0] is True or dones[0] == 1
         assert st.victory_points == -20  # USSR Win
@@ -817,7 +821,7 @@ class TestHeldScoringAndPotentialFixes:
         buffer = RolloutBuffer(buffer_size=6, num_envs=1, device=device)
 
         obs = np.zeros((1, int(ts.OBS_SIZE)), dtype=np.float32)
-        mask = np.zeros((1, 212), dtype=np.uint8)
+        mask = np.zeros((1, ActionEncoder.FLAT_ACTION_SIZE), dtype=np.uint8)
         mask[0, 0] = 1
 
         steps = [

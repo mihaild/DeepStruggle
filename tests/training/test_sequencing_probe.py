@@ -22,6 +22,7 @@ from ai.eval.blunders import defcon_suicide_cards
 from ai.eval.positions import (PLAY_MODE_ACTION, PositionBuilder, card_action, legal_mask,
                                legal_play_modes, step_to_play_mode)
 from ai.eval.sequencing import classify, is_companion_node, legal_companions, new_counts
+from bindings.action_encoder import ActionEncoder
 
 UN_INTERVENTION, TEAR_DOWN_THIS_WALL, GRAIN_SALES = 32, 96, 67
 MARSHALL_PLAN, US_JAPAN_PACT = 23, 27
@@ -129,7 +130,7 @@ def test_an_ordinary_card_selection_is_not_a_companion_node() -> None:
 
 def test_legal_companions_uses_the_flat_action_convention() -> None:
     """A card is selected by flat action `card_id - 1`, not by its id."""
-    mask = np.zeros(212, dtype=np.uint8)
+    mask = np.zeros(ActionEncoder.FLAT_ACTION_SIZE, dtype=np.uint8)
     mask[card_action(GRAIN_SALES)] = 1
     mask[card_action(TEAR_DOWN_THIS_WALL)] = 1
     assert legal_companions(mask) == sorted((GRAIN_SALES, TEAR_DOWN_THIS_WALL))

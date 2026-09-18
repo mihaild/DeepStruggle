@@ -13,11 +13,10 @@ be offered.
 import numpy as np
 import pytest
 import ts_engine
+from bindings.action_encoder import ActionEncoder
 
 STAR_WARS = 85
-PASS_INDEX = 211
-
-
+PASS_INDEX = ActionEncoder.CONFIRM_DONE_INDEX
 def _state(discard: list[int], us_ahead: bool = True) -> ts_engine.GameState:
     state = ts_engine.GameState()
     ts_engine.Engine.init_game(state, 8888)

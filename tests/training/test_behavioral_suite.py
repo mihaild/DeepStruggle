@@ -17,6 +17,7 @@ from ai.eval.behavioral_suite import (
     run_suite,
 )
 from ai.eval.claims import build_claims
+from bindings.action_encoder import ActionEncoder
 from ai.eval.positions import (
     PLAY_MODE_ACTION,
     PositionBuilder,
@@ -79,31 +80,31 @@ def test_step_to_play_mode_rejects_a_card_not_in_hand() -> None:
 # --- assertions -------------------------------------------------------------------------
 
 def test_never_argmax_fails_when_the_action_is_the_top_choice() -> None:
-    probs = np.zeros(212); probs[PLAY_MODE_ACTION["event"]] = 0.9; probs[PLAY_MODE_ACTION["ops"]] = 0.1
+    probs = np.zeros(ActionEncoder.FLAT_ACTION_SIZE); probs[PLAY_MODE_ACTION["event"]] = 0.9; probs[PLAY_MODE_ACTION["ops"]] = 0.1
     out = NeverArgmax(PLAY_MODE_ACTION["event"], "event").check(probs)
     assert not out.passed and "IS the top choice" in out.detail
 
 
 def test_never_argmax_fails_on_the_probability_ceiling_even_when_not_top() -> None:
-    probs = np.zeros(212); probs[PLAY_MODE_ACTION["ops"]] = 0.6; probs[PLAY_MODE_ACTION["event"]] = 0.4
+    probs = np.zeros(ActionEncoder.FLAT_ACTION_SIZE); probs[PLAY_MODE_ACTION["ops"]] = 0.6; probs[PLAY_MODE_ACTION["event"]] = 0.4
     out = NeverArgmax(PLAY_MODE_ACTION["event"], "event", max_prob=0.2).check(probs)
     assert not out.passed
 
 
 def test_never_argmax_passes_when_the_action_is_rare_and_not_top() -> None:
-    probs = np.zeros(212); probs[PLAY_MODE_ACTION["ops"]] = 0.95; probs[PLAY_MODE_ACTION["event"]] = 0.05
+    probs = np.zeros(ActionEncoder.FLAT_ACTION_SIZE); probs[PLAY_MODE_ACTION["ops"]] = 0.95; probs[PLAY_MODE_ACTION["event"]] = 0.05
     assert NeverArgmax(PLAY_MODE_ACTION["event"], "event").check(probs).passed
 
 
 def test_prefer_is_inconclusive_when_neither_option_has_mass() -> None:
     """A deterministic bot picking a third action says nothing about this ordering."""
-    probs = np.zeros(212); probs[5] = 1.0
+    probs = np.zeros(ActionEncoder.FLAT_ACTION_SIZE); probs[5] = 1.0
     out = Prefer(card_action(NATO), card_action(MARSHALL_PLAN), "NATO", "MP").check(probs)
     assert out.inconclusive and not out.passed
 
 
 def test_prefer_orders_by_probability_mass() -> None:
-    probs = np.zeros(212)
+    probs = np.zeros(ActionEncoder.FLAT_ACTION_SIZE)
     probs[card_action(NATO)] = 0.7
     probs[card_action(MARSHALL_PLAN)] = 0.3
     assert Prefer(card_action(NATO), card_action(MARSHALL_PLAN), "NATO", "MP").check(probs).passed

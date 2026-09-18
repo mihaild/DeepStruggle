@@ -45,8 +45,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
-MASK_BITS_ = 212
+MASK_BITS_ = ActionEncoder.FLAT_ACTION_SIZE
 
 
 @dataclass

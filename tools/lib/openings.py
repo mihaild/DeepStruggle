@@ -15,9 +15,10 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 #: Flat action index of country `cid` at a POINT_NODE (`bindings/action_encoder.py`).
-NODE_OFFSET = 119
+NODE_OFFSET = ActionEncoder.NODE_OFFSET
 
 #: 6 USSR placements, then 7 US in Western Europe, then 2 US bonus.
 SETUP_DECISIONS = 15

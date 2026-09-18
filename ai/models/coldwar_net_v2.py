@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 
 #: Final VP is clamped to +/-20 by the engine, and every abrupt ending is normalised to exactly
@@ -113,7 +114,7 @@ class ColdWarNetV2(nn.Module):
     - Multi-head cross-attention, cards querying country nodes, pooled to 256.
     - Global scalar projection (100 -> 128).
     - Fusion trunk: concat -> 896 -> 512, four Pre-LN residual blocks.
-    - Masked policy head (212) and dual value heads (win/loss tanh, auxiliary VP).
+    - Masked policy head (FLAT_ACTION_SIZE) and dual value heads (win/loss tanh, auxiliary VP).
 
     **There is no history branch.** The 512-float block was a constant zero vector --
     `ActionHistoryBuffer::record()` is called nowhere in the engine -- so v2.1 dropped it and no
@@ -146,7 +147,7 @@ class ColdWarNetV2(nn.Module):
     HIST_SIZE = 16 * 32  # 512
 
     TOTAL_OBS_SIZE = 3824
-    ACTION_SPACE_SIZE = 212
+    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
 
     # Declared for the type checker: `value_support` is a registered buffer, and the two scalar
     # heads are None on a categorical instance (and the distribution head None on a scalar one).
@@ -575,9 +576,9 @@ class ColdWarNetV2(nn.Module):
 
     def _policy_logits(self, h: torch.Tensor,
                        tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
-        """The 212 action logits, per-entity where the action names an entity.
+        """The action logits, per-entity where the action names an entity.
 
-        Actions 0..109 are cards and 119..202 are countries; the other 18 -- play mode, timing,
+        Cards and countries occupy their own blocks; the rest -- resolution, roll die,
         op mode, branch, confirm -- name no entity and stay dense off the trunk.
 
         Without `per_entity_heads` every logit comes from the 512-float trunk. Each card and
@@ -610,13 +611,17 @@ class ColdWarNetV2(nn.Module):
         # as the dense baseline exactly and learns a per-entity refinement on top. The full trunk
         # still reaches every logit through `base`; the narrow context now limits only how much
         # situation the correction itself can see.
-        zeros_9 = base[:, 110:119] * 0.0
-        zeros_end = base[:, 203:212] * 0.0
+        # Sliced from ActionEncoder, not by hand: the repack moved every boundary after the
+        # resolution node, and hand-written bounds here would have added the country correction
+        # to card slots without anything failing.
+        _A = ActionEncoder
+        gap_mid = base[:, _A.PLAY_MODE_OFFSET:_A.NODE_OFFSET] * 0.0
+        gap_end = base[:, _A.BRANCH_OFFSET:] * 0.0
         correction = torch.cat([
-            self.pe_card(card_in).squeeze(-1),         # 0..109
-            zeros_9,                                    # play mode, timing, op mode: dense only
-            self.pe_country(country_in).squeeze(-1),    # 119..202
-            zeros_end,                                  # branch, confirm: dense only
+            self.pe_card(card_in).squeeze(-1),          # the card block
+            gap_mid,                                    # resolution + roll die: dense only
+            self.pe_country(country_in).squeeze(-1),    # the country block
+            gap_end,                                    # branch, confirm, DEFCON, region: dense
         ], dim=-1)
         return base + correction
 
@@ -627,10 +632,10 @@ class ColdWarNetV2(nn.Module):
 
         Args:
             obs: (B, 4293) float tensor.
-            mask: (B, 212) uint8 / bool tensor of legal actions.
+            mask: (B, FLAT_ACTION_SIZE) uint8 / bool tensor of legal actions.
 
         Returns:
-            masked_logits: (B, 212) float tensor.
+            masked_logits: (B, FLAT_ACTION_SIZE) float tensor.
             v_win: (B, 1) float tensor in [-1, 1].
             v_vp: (B, 1) float tensor in [-20, 20].
         """

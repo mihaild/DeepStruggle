@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
             // offers the shared decline index, confirm/done is a legal move here.
             uint8_t flat[ts::FLAT_ACTION_SPACE_SIZE] = {0};
             ts::ActionMask::generate_flat_mask_212(state, flat);
-            if (flat[211] || state.ctx().allow_early_stop ||
+            if (flat[ts::flat_slots::CONFIRM_DONE] || state.ctx().allow_early_stop ||
                 state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
                 ts::MicroAction action{};
                 action.decision_type = state.ctx().decision_type;

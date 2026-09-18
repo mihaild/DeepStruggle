@@ -28,9 +28,10 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import torch
+from bindings.action_encoder import ActionEncoder
 
 OBS_DTYPE = np.float16
-MASK_BITS = 212
+MASK_BITS = ActionEncoder.FLAT_ACTION_SIZE
 _COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side", "game",
             "play")
 _META = "meta.json"

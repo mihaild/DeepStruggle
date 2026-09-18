@@ -1,5 +1,7 @@
 import pytest
 import ts_engine as ts
+
+from bindings.action_encoder import ActionEncoder
 EB = ts.EffectBits
 
 
@@ -9,8 +11,8 @@ def _first_legal_country(st):
     from bindings.action_encoder import ActionEncoder
     mask = np.asarray(ActionEncoder.get_legal_mask(st))
     for flat in np.flatnonzero(mask):
-        if 119 <= int(flat) < 203:
-            return int(flat) - 119
+        if ActionEncoder.NODE_OFFSET <= int(flat) < ActionEncoder.BRANCH_OFFSET:
+            return int(flat) - ActionEncoder.NODE_OFFSET
     raise AssertionError("no legal POINT_NODE target at "
                          f"{ts.DecisionType(int(st.ctx().decision_type))}")
 
@@ -165,7 +167,7 @@ def test_fix_card_47_junta_free_ops_restricted_to_ca_sa():
     mask = ts.Engine.get_legal_action_mask(s)
     # P17: declining the free bonus action is the shared decline index in the flat mask,
     # not a borrowed INFLUENCE -- that third meaning is what the refactor removed.
-    assert ts.ActionMask.generate_flat_mask(s)[211] == 1  # decline available
+    assert ts.ActionMask.generate_flat_mask(s)[ActionEncoder.CONFIRM_DONE_INDEX] == 1  # decline available
     assert mask[0] == 0  # INFLUENCE is not the decline
     assert mask[1] == 1 # COUP legal
 
@@ -303,7 +305,7 @@ def test_fix_card_96_tear_down_this_wall_europe_only():
     assert s.ctx().pending_op_card == 96
     mask = ts.Engine.get_legal_action_mask(s)
     # P17: as above -- the decline is the shared index.
-    assert ts.ActionMask.generate_flat_mask(s)[211] == 1  # decline available
+    assert ts.ActionMask.generate_flat_mask(s)[ActionEncoder.CONFIRM_DONE_INDEX] == 1  # decline available
     assert mask[0] == 0  # INFLUENCE is not the decline
 
 def test_fix_card_105_special_relationship_nato_branch():
@@ -785,7 +787,7 @@ def test_fix_card_47_junta_allows_optional_bonus_op_decline():
     # P17: the decline is the shared flat index. INFLUENCE is simply illegal here, which is
     # the whole point -- it used to mean three different things.
     mask = ts.Engine.get_legal_action_mask(s)
-    assert ts.ActionMask.generate_flat_mask(s)[211] == 1
+    assert ts.ActionMask.generate_flat_mask(s)[ActionEncoder.CONFIRM_DONE_INDEX] == 1
     assert mask[int(ts.OpMode.INFLUENCE)] == 0
     # P17: declining is confirm/done, and INFLUENCE is refused because the mask withholds it --
     # step and mask agree on legality, which is what un-aliasing bought.
@@ -793,7 +795,7 @@ def test_fix_card_47_junta_allows_optional_bonus_op_decline():
         s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
     # Built through the flat decode rather than by hand, so the confirm/done flag comes from the
     # same place the engine's own callers get it.
-    step_ok = ts.Engine.try_step(s, ts.decode_flat_action(s, 211))
+    step_ok = ts.Engine.try_step(s, ts.decode_flat_action(s, ActionEncoder.CONFIRM_DONE_INDEX))
     assert step_ok == True
 
 

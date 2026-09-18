@@ -19,8 +19,9 @@ import torch
 
 import ts_engine as ts
 from ai.training.rollout_buffer import RolloutBuffer
+from bindings.action_encoder import ActionEncoder
 
-OBS_DIM, ACTION_DIM = int(ts.OBS_SIZE), 212
+OBS_DIM, ACTION_DIM = int(ts.OBS_SIZE), ActionEncoder.FLAT_ACTION_SIZE
 
 
 def _buffer(size: int) -> RolloutBuffer:

@@ -14,7 +14,7 @@ read as a card played twice and a coup with no resolution.
 This module is the nucleus of `GameDriver` (see `research/plans/P13_one_game_driver.md`), not a
 stopgap: the driver grows around it rather than replacing it.
 
-**A rejected action is a caller bug, never a game event.** Every action in the 212-wide legal mask
+**A rejected action is a caller bug, never a game event.** Every action in the flat legal mask
 decodes to a MicroAction whose `decision_type` matches the context -- verified over 177,258
 state/action pairs -- so the engine only refuses an action the caller had no business submitting:
 it chose outside the mask, or it handed the engine a state the engine was not asking about.

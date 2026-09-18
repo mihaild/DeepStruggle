@@ -12,11 +12,10 @@ event mask finds no legal card, and the mask falls back to pass on its own.
 import numpy as np
 import pytest
 import ts_engine
+from bindings.action_encoder import ActionEncoder
 
 ALDRICH_AMES = 98
-PASS_INDEX = 211
-
-
+PASS_INDEX = ActionEncoder.CONFIRM_DONE_INDEX
 def _state_with_us_hand(cards: list[int]) -> ts_engine.GameState:
     state = ts_engine.GameState()
     ts_engine.Engine.init_game(state, 4242)

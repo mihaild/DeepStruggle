@@ -5,6 +5,7 @@ import torch
 
 from bindings.ts_env import obs_size
 import numpy as np
+from bindings.action_encoder import ActionEncoder
 
 # Advantages below this magnitude (post-normalisation) carry effectively no learning
 # signal for the decision they are attached to.
@@ -36,7 +37,7 @@ class RolloutBuffer:
         buffer_size: int,
         num_envs: int,
         obs_dim: Optional[int] = None,
-        action_dim: int = 212,
+        action_dim: int = ActionEncoder.FLAT_ACTION_SIZE,
         device: torch.device | str = "cuda",
     ):
         self.buffer_size = buffer_size

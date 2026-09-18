@@ -416,6 +416,11 @@ namespace effect_bits {
 // Special flags for MicroAction
 namespace action_flags {
     constexpr uint8_t CONFIRM_DONE = 0x80; // Bit 7 set indicates early stop / pass sub-decision
+    // P17 section 4. Three heads land on DecisionType::CHOOSE_BRANCH and are told apart by these
+    // rather than by their index: a plain branch, "set DEFCON to V", and a region. The flag is on
+    // the action, so encode and decode agree without either having to consult the resolving card.
+    constexpr uint8_t DEFCON_VALUE = 0x40; // primary_id is a DEFCON level, 1..5
+    constexpr uint8_t REGION       = 0x20; // primary_id is a Region, 0..5
 }
 
 } // namespace ts

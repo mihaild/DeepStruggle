@@ -66,8 +66,8 @@ def test_cmc_coup_ends_the_game_without_touching_defcon() -> None:
             coup = 112 + int(ts.OpMode.COUP)
             if coup in legal.tolist():
                 pick = coup
-        elif ctx.decision_type == ts.DecisionType.POINT_NODE and (119 + CUBA) in legal.tolist():
-            pick = 119 + CUBA
+        elif ctx.decision_type == ts.DecisionType.POINT_NODE and (ActionEncoder.NODE_OFFSET + CUBA) in legal.tolist():
+            pick = ActionEncoder.NODE_OFFSET + CUBA
         ts.Engine.step_flat(st, pick)
         while (not ts.Engine.is_terminal(st)
                and st.ctx().decision_player == ts.Player.NONE

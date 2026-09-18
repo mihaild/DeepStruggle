@@ -12,13 +12,12 @@ from typing import List, Tuple
 
 import pytest
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 CHINA_CARD = 6
 DUCK_AND_COVER = 4
 FIVE_YEAR_PLAN = 5
-PASS = 211
-
-
+PASS = ActionEncoder.CONFIRM_DONE_INDEX
 def _at_an_action_round() -> ts.GameState:
     """A game played forward far enough to be asked for an action round card."""
     state = ts.GameState()

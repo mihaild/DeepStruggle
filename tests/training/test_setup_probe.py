@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 from ai.eval.setup_probe import (
     POLAND,
@@ -69,7 +70,7 @@ def test_a_fixed_policy_is_distinguishable_from_a_random_one() -> None:
         out = []
         for row in masks:
             legal = np.flatnonzero(row)
-            want = 119 + POLAND
+            want = ActionEncoder.NODE_OFFSET + POLAND
             out.append(want if row[want] else legal[0])
         return np.array(out)
 

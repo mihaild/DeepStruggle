@@ -27,7 +27,7 @@ ASK_NOT = 77
 #: get_legal_mask returns the 212-dim flat space, not the engine's 112-wide card mask: a card is
 #: at index (id - 1) and the pass/confirm is at 211. Indexing it by card id silently checks the
 #: next card along, which made one of these tests pass for the wrong reason.
-PASS_ACTION = 211
+PASS_ACTION = ActionEncoder.CONFIRM_DONE_INDEX
 MAX_DISCARDS = 9
 
 

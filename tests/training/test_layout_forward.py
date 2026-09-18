@@ -53,7 +53,7 @@ def test_a_real_observation_reaches_an_action(factory) -> None:
         action, logp, entropy, value, _ = model.sample_action(
             torch.from_numpy(obs)[None], torch.from_numpy(mask)[None], deterministic=True)
     idx = int(action.reshape(-1)[0].item())
-    assert 0 <= idx < 212
+    assert 0 <= idx < ActionEncoder.FLAT_ACTION_SIZE
     assert mask[idx], "the model chose an action the mask forbids"
     assert np.isfinite(float(value.reshape(-1)[0].item()))
 
@@ -64,7 +64,7 @@ def test_a_batch_trains_one_step(factory) -> None:
     model = factory()
     width = model.TOTAL_OBS_SIZE
     obs = torch.zeros((4, width), dtype=torch.float32)
-    mask = torch.ones((4, 212), dtype=torch.uint8)
+    mask = torch.ones((4, ActionEncoder.FLAT_ACTION_SIZE), dtype=torch.uint8)
     out = model.extract_features(obs)
     latent = out[0] if isinstance(out, tuple) else out
     loss = latent.square().mean()
@@ -95,7 +95,7 @@ def test_an_observation_of_the_wrong_width_raises(factory) -> None:
     model = factory()
     with pytest.raises(ValueError, match="floats wide"):
         model(torch.zeros((2, 4293), dtype=torch.float32),
-              torch.ones((2, 212), dtype=torch.uint8))
+              torch.ones((2, ActionEncoder.FLAT_ACTION_SIZE), dtype=torch.uint8))
 
 
 def test_a_frozen_copy_matches_the_model_it_was_cloned_from() -> None:

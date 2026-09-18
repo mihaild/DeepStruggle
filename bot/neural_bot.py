@@ -87,7 +87,7 @@ class NeuralBot(BaseBot):
             return {"decision_type": d_type, "primary_id": valid_ids[0], "secondary_id": 0, "flags": 0}
 
         # Build flat mask for valid IDs
-        mask = np.zeros(212, dtype=np.uint8)
+        mask = np.zeros(ActionEncoder.FLAT_ACTION_SIZE, dtype=np.uint8)
         for vid in valid_ids:
             if d_type == int(ts.DecisionType.SELECT_CARD):
                 if 1 <= vid <= 110:

@@ -36,6 +36,7 @@ from ai.itsc_reference import ITSC_GAMES, ITSC_REFERENCE, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
+from bindings.action_encoder import ActionEncoder
 
 # TensorBoard is optional: a missing (or broken) install must never take down a
 # multi-hour training run, so the writer degrades to a no-op and JSONL logging carries on.
@@ -685,7 +686,7 @@ class _HumanInjector:
 
     def _next(self):
         idx = np.sort(self._rng.choice(self.train_idx, size=self.batch_size, replace=False))
-        mask = np.unpackbits(np.asarray(self._mask[idx]), axis=1)[:, :212]
+        mask = np.unpackbits(np.asarray(self._mask[idx]), axis=1)[:, :ActionEncoder.FLAT_ACTION_SIZE]
         return (
             torch.from_numpy(np.asarray(self._obs[idx], dtype=np.float32)).to(self.device),
             torch.from_numpy(mask.astype(np.uint8)).to(self.device),

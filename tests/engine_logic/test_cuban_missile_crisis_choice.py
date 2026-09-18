@@ -17,15 +17,14 @@ import pytest
 
 from tools.lib.corpus_paths import corpus_dir
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 WEST_GERMANY, TURKEY, CUBA = 7, 12, 71
 ANGOLA = 59
 CUBAN_MISSILE_CRISIS = 40
 DUCK_AND_COVER = 4
 OP_COUP = 113   # P17: Ops modes moved to [112..114]
-PASS = 211
-
-
+PASS = ActionEncoder.CONFIRM_DONE_INDEX
 def _bit(name: str) -> int:
     import re
     hdr = open("engine/include/ts/constants.hpp").read()
@@ -84,7 +83,7 @@ def _coup_angola(state: ts.GameState) -> ts.GameState:
     # P17: one decision. Duck and Cover is the US's own card here, so "Ops for a coup" is the
     # whole resolution -- the separate SELECT_OP_MODE step it replaced is gone.
     ts.Engine.step_flat(state, OP_COUP)          # for Operations, as a coup
-    ts.Engine.step_flat(state, 119 + ANGOLA)    # target
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + ANGOLA)    # target
     return state
 
 
@@ -92,7 +91,7 @@ def _offered(state: ts.GameState) -> List[int]:
     """The countries on offer. The decline, where there is one, decodes to 255, not a country."""
     mask = ts.ActionMask.generate_flat_mask(state)
     ids = [int(ts.ActionMask.decode_flat_action(state, i).primary_id)
-           for i in range(212) if mask[i]]
+           for i in range(ActionEncoder.FLAT_ACTION_SIZE) if mask[i]]
     return [c for c in ids if 0 <= c < 84]
 
 
@@ -108,7 +107,7 @@ def test_the_us_is_asked_when_either_country_could_pay() -> None:
 def test_paying_from_turkey_leaves_west_germany_alone() -> None:
     """Replay 234's choice."""
     state = _coup_angola(_us_about_to_coup(west_germany=5, turkey=2))
-    ts.Engine.step_flat(state, 119 + TURKEY)
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + TURKEY)
     assert int(state.get_country(TURKEY).us_influence) == 0
     assert int(state.get_country(WEST_GERMANY).us_influence) == 5
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE, (
@@ -117,7 +116,7 @@ def test_paying_from_turkey_leaves_west_germany_alone() -> None:
 
 def test_paying_from_west_germany_leaves_turkey_alone() -> None:
     state = _coup_angola(_us_about_to_coup(west_germany=5, turkey=2))
-    ts.Engine.step_flat(state, 119 + WEST_GERMANY)
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + WEST_GERMANY)
     assert int(state.get_country(WEST_GERMANY).us_influence) == 3
     assert int(state.get_country(TURKEY).us_influence) == 2
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
@@ -179,7 +178,7 @@ def test_declining_leaves_the_crisis_standing() -> None:
 def test_paying_at_the_head_of_a_round_opens_no_die() -> None:
     """No coup provoked it, so nothing follows but the player's own card."""
     state = _offer_at_head_of_round(ts.Player.US)
-    ts.Engine.step_flat(state, 119 + TURKEY)
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + TURKEY)
     assert int(state.get_country(TURKEY).us_influence) == 0
     assert not (state.persistent_effects & CMC_ACTIVE_USSR)
     assert state.ctx().decision_type == ts.DecisionType.SELECT_CARD
@@ -188,7 +187,7 @@ def test_paying_at_the_head_of_a_round_opens_no_die() -> None:
 def test_the_ussr_pays_from_cuba_and_nowhere_else() -> None:
     state = _offer_at_head_of_round(ts.Player.USSR)
     assert _offered(state) == [CUBA]
-    ts.Engine.step_flat(state, 119 + CUBA)
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + CUBA)
     assert int(state.get_country(CUBA).ussr_influence) == 1
     assert not (state.persistent_effects & CMC_ACTIVE_US)
 
@@ -211,5 +210,5 @@ def test_replay_264_converts_end_to_end() -> None:
 def test_the_crisis_is_gone_once_it_is_paid_for() -> None:
     state = _coup_angola(_us_about_to_coup(west_germany=5, turkey=2))
     assert state.persistent_effects & CMC_ACTIVE_USSR
-    ts.Engine.step_flat(state, 119 + TURKEY)
+    ts.Engine.step_flat(state, ActionEncoder.NODE_OFFSET + TURKEY)
     assert not (state.persistent_effects & CMC_ACTIVE_USSR)

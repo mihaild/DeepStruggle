@@ -16,6 +16,7 @@ import ts_engine as ts
 
 from tools.lib.corpus_paths import corpus_dir
 from tools.lib.ts_replayer_convert import convert_game
+from bindings.action_encoder import ActionEncoder
 
 _CORPUS = str(corpus_dir())
 THE_CHINA_CARD = 6
@@ -126,7 +127,7 @@ def test_a_mismatched_decision_type_cannot_force_a_die() -> None:
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE
 
     before = int(state.us_space_track)
-    assert ts.Engine.try_step_flat(state, 203 + 2) is False, (
+    assert ts.Engine.try_step_flat(state, ActionEncoder.BRANCH_OFFSET + 2) is False, (
         "engine accepted a CHOOSE_BRANCH action at a ROLL_DIE node")
     assert int(state.us_space_track) == before
     assert state.ctx().decision_type == ts.DecisionType.ROLL_DIE, (
