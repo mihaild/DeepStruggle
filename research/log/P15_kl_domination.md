@@ -289,3 +289,35 @@ the USSR seat, plausibly the determinization sampling hidden information the two
 symmetrically. It is present before the decline, it does not widen during it, and so it is
 background rather than mechanism: it may be why the USSR seat is the one with no margin to lose,
 without being what takes the margin away.
+
+### Determinization is not the cause of the USSR target handicap (2026-09-18)
+
+The standing asymmetry — USSR search targets 14–16% more diffuse than US ones, before and during
+the decline alike — was attributed above to determinization, on the reasoning that it resamples
+hidden state the two seats do not hold symmetrically. **Directly tested and false.**
+
+Same snapshots, same 60 fixed positions, 64 simulations, the only change being `determinize`:
+
+| snapshot | determinized US / USSR | ratio | perfect-info US / USSR | ratio |
+|---:|:---|---:|:---|---:|
+| 28.31M | 0.713 / 0.814 | 1.142 | 0.700 / 0.845 | **1.207** |
+| 29.75M | 0.688 / 0.852 | 1.238 | 0.695 / 0.881 | **1.268** |
+| 31.26M | 0.848 / 0.961 | 1.133 | 0.845 / 0.978 | **1.157** |
+
+The asymmetry survives removing determinization completely, and is if anything **slightly larger**
+with perfect information. Whatever makes USSR targets more diffuse, the searcher's hidden-state
+sampling does not create it.
+
+What that leaves is a **structural** reading: at USSR decisions the search genuinely finds more
+moves of near-equal value, and at US decisions it finds a clearer best move — a property of the
+positions, not of the search. That is consistent with the seats' asymmetric roles in this game and
+it is measurable independently of any arm, which makes it a fact about the game rather than a
+finding about training.
+
+**It also stops being a candidate explanation for the collapse.** A constant handicap present at
+28.31M, when the USSR seat was rated 71%, cannot be what takes it to 26% — nothing about it
+changes over the window. At most it says which seat sits closer to the edge.
+
+So four candidates are now excluded by measurement rather than argument: the opponent pool, the
+KL, target quality, and determinization. The seat-specific collapse has no proposed mechanism left
+standing, which is a better position than having a wrong one.
