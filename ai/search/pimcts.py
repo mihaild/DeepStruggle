@@ -37,7 +37,12 @@ _UINT64 = 1 << 64
 
 
 def drain_chance_nodes(state: ts.GameState) -> None:
-    """Resolve pending die rolls. A chance node is the engine's to settle, never a policy's."""
+    """Resolve pending die rolls. A chance node is the engine's to settle, never a policy's.
+
+    Stays CHANCE, not FORCED, because the name is the contract: callers asking to drain chance
+    nodes get chance nodes drained. A caller that wants everything forced settled says so with
+    `settle(state, SettleMode.FORCED)`.
+    """
     settle(state, SettleMode.CHANCE)
 
 

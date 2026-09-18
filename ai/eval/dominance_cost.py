@@ -84,7 +84,7 @@ def _greedy(model: Any, state: ts.GameState, mover: ts.Player, device: Any) -> i
 
 
 def _drain(state: ts.GameState) -> None:
-    settle(state, SettleMode.CHANCE)
+    settle(state, SettleMode.FORCED)
 
 
 def _space_action(state: ts.GameState) -> Optional[int]:

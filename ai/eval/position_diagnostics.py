@@ -111,7 +111,7 @@ def is_salvageable(
 
 
 def _drain(state: ts.GameState) -> None:
-    settle(state, SettleMode.CHANCE)
+    settle(state, SettleMode.FORCED)
 
 
 def profile_self_play(

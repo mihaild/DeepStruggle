@@ -82,12 +82,17 @@ class BatchedMCTSConfig(PIMCTSConfig):
     #: since the Python drain loop is replaced by one C++ call. Changes the sequence of positions
     #: the agent is asked about, so it is a flag: a run with it is not comparable to one without.
     auto_advance: bool = True
-    #: Settle the ROOT before searching. True is right when the caller settles identically (every
-    #: batched harness does), and wrong when it does not: the tree then roots at a later decision
-    #: than the caller holds and returns an action that is illegal there. Set False to search
-    #: exactly the state handed over. Children are settled regardless -- they are the searcher's
-    #: own hypotheticals, not the caller's position.
-    advance_root: bool = True
+    #: Settle the ROOT before searching. False searches exactly the state handed over, which is
+    #: the only setting that cannot be wrong: when the caller has already settled, settling again
+    #: is a no-op, and when it has not, True roots the tree at a later decision than the caller
+    #: holds and returns an action illegal there.
+    #:
+    #: It defaulted to True and every one of the five production searchers overrode it -- a
+    #: default that every caller disables is not a default. play_match.py's comment records what
+    #: it cost before anyone noticed: the engine refusing an action "1,355 times in one game".
+    #: Children are settled regardless; they are the searcher's own hypotheticals, not the
+    #: caller's position.
+    advance_root: bool = False
     #: Which decisions to search. "all" searches every node handed over -- the setting the ~+27pp
     #: measurement used. "card_playmode" searches only SELECT_CARD and SELECT_PLAY_MODE, which
     #: P3 argues are "the decisions that matter"; measured over 8 self-play games they are 42.0%

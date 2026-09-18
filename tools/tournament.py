@@ -120,7 +120,7 @@ def run_massive_tournament(
     device: str = "cuda",
     track_choices: bool = False,
     log_games: Optional[str] = None,
-    auto_advance: bool = False,
+    auto_advance: bool = True,
 ) -> Dict[str, Any]:
     """Runs high-throughput round-robin tournament across all specified models."""
     dev = resolve_device(device)

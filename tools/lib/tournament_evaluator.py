@@ -72,7 +72,7 @@ def _drain_chance_nodes(state: "ts.GameState") -> None:
     the same matchup. Draining here makes this path agree with the batched one, and is the
     same fix already applied to the decisive probe.
     """
-    settle(state, SettleMode.CHANCE)
+    settle(state, SettleMode.FORCED)
 
 
 class TournamentEvaluator:

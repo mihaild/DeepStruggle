@@ -146,7 +146,7 @@ def card_action(state: ts.GameState, card: int) -> Optional[int]:
 
 
 def _drain(state: ts.GameState) -> None:
-    settle(state, SettleMode.CHANCE)
+    settle(state, SettleMode.FORCED)
 
 
 def mode_preference(model: Any, state: ts.GameState, mover: ts.Player, device: Any,

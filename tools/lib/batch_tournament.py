@@ -69,7 +69,7 @@ class BatchMatchRunner:
         start_states: Optional[Sequence["ts.GameState"]] = None,
         track_choices: bool = False,
         log_games_file: Optional[str] = None,
-        auto_advance: bool = False,
+        auto_advance: bool = True,
     ) -> Dict[str, Any]:
         """Play a matchup batched. Action selection matches NeuralAgent.select_action.
 
