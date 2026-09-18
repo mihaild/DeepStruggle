@@ -323,3 +323,48 @@ early lag is compatible with either outcome.
 It is recorded now because it is the first evidence that bears against the headline, and the
 headline is the one result of this session that would change a default. **The recommendation stays
 unactioned until 40M–60M.**
+
+---
+
+## Second seed at the registered 40M point: a partial replication (2026-09-18)
+
+| steps | control | **seed A** (20260930) | **seed B** (20260931) |
+|---:|---:|---:|---:|
+| 10.0M | 0.8% | 0.8% | 1.0% |
+| 20.1M | 0.8% | **7.8%** | 2.0% |
+| 30.0M | 3.8% | **11.0%** | 4.0% |
+| 40.0M | 4.5% | **15.5%** | **9.0%** |
+
+Per seat at 40M: control US 2.0 / USSR 7.0; seed A US **21.0** / USSR 10.0; seed B US 5.0 /
+USSR **13.0**.
+
+**The effect replicates in direction and not in magnitude.** Seed B is above the control at 40M
+(9.0% against 4.5%) but the margin is **not significant** — two-proportion z = 1.79, p = 0.073 —
+and it is significantly *below* seed A, z = 1.98, p = 0.048. Seed A ran 3.4x the control at this
+point; seed B runs 2.0x.
+
+Pooling the two treatment seeds against the single control gives 12.3% against 4.5%, z = 3.04,
+p = 0.002. That is the most favourable honest summary available, and it is weaker than it looks:
+there is one control seed, so the pooled test compares two treatment seeds against one control
+seed and cannot separate the treatment from between-seed variation in the control.
+
+**The seat asymmetry flipped.** Seed A at 40M was US-leaning (21.0 / 10.0); seed B is USSR-leaning
+(5.0 / 13.0). So the asymmetry reported in the earlier entries is a property of a *seed*, not of
+the treatment — which retroactively weakens the reading there that the bands "buy the seat the
+control never learns". They did on seed A. On seed B they bought the other one.
+
+### Against the registration
+
+> Landing near 15-28 percent at 40M-60M confirms the effect is not a lucky seed. Landing near the
+> control trajectory (4.5-13.8 percent) kills the recommendation. Anything between is a real but
+> smaller effect needing the full two-arm replication before any default changes.
+
+9.0% at 40M falls in the third case, and by the letter of the band (4.5–13.8) it also falls inside
+the range nominated for killing it. The registered conclusion for this outcome is therefore the
+one that was written in advance: **a real but smaller effect, needing the full two-arm replication
+before any default changes.**
+
+**The recommendation stays unactioned**, and the reason has changed from "one seed" to "two seeds
+that disagree by a factor of 1.7 at the matched point". What the session can claim is the
+*mechanism* — the ending mix, 59.7% DEFCON 1 against 28.9%, measured on seed A and not yet checked
+on seed B, which is now the cheapest thing that would discriminate.
