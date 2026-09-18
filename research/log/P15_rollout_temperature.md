@@ -199,3 +199,52 @@ measured here**, 4.0/4 into West Germany and the highest reference overlap of th
 against the anchor's 280M — a second, independent sign that the X4b treatment was doing something
 right once its pool was not starved
 ([`P15_X4b_collapse_is_pool_starvation.md`](P15_X4b_collapse_is_pool_starvation.md)).
+
+---
+
+## Cross-anchor rating, 70M (appended 2026-09-18): not an exploit
+
+The previous section put the recommendation on hold pending a rating against opponents the arm
+never trained or evaluated against. `/workspace/data/tournaments/P15_temp_cross_anchor.{md,json}`,
+720 games, 60 a side, T = 0.1 — the same temperature the in-training evals use.
+
+| rank | model | Elo | vs temp@70M |
+|---:|:---|---:|---:|
+| 1 | `p28_280M` | 1500.0 | 65.8% |
+| 2 | **temperature @70M** | **1438.5** | — |
+| 3 | `n26_280M` | 1255.6 | 19.2% |
+| 4 | `p29_280M` | 1127.2 | 12.5% |
+
+**The strength is general, not anchor-specific.** The arm beats `n26_280M` **80.0%** and
+`p29_280M` **87.5%** — two 280M checkpoints from independent lineages it has never met — putting
+it 183 and 311 Elo above them at **70M steps**. It is 61.5 Elo behind `p28_280M`, which this field
+shows is simply the strongest of the three (72.5% and 90.8% against the other two).
+
+So of the two readings offered above, the first survives: **a policy can be 30 pp off the
+reference opening and still be genuinely strong.** The degenerate opening is real and worth fixing,
+but it is not evidence that the win rate was measuring an exploit.
+
+Its side balance across the whole field is **USSR 69.4% / US 64.4%, +5.0 pp** — near even, and a
+sharp contrast with its own control lineage, which was a USSR specialist whose US seat never
+recovered.
+
+### A correction, and a note on error bars
+
+The same checkpoint against the same opponent at the same temperature reads **33.3% here (120
+games)** and **44.5% in the in-training eval (200 games)**. That is about 2 SE apart — inside the
+range two honest samples can differ by, but a useful reminder that every per-seat percentage in
+this document carries roughly **±4–5 pp**.
+
+One claim made earlier in this session does not survive that: that the treatment at 70M "exceeds
+the control's best over its entire 240M run" (44.5% against 38.8% at 170M). With ±4 pp on each,
+and the same pair reading 33.3% on a second sample, **that exceedance is not established**. The
+treatment being well ahead of its matched control at every point after 10M *is* — the gaps there
+are 3x and larger, not 6 pp.
+
+### Status of the recommendation
+
+Off hold, with a stated scope. The bands `0.8 1.2 0.7 1.1` produce a genuinely stronger policy
+than `0.15 0.50 0.10 0.35` on this lineage, at one seed, with a mechanism (the ending mix) that is
+measured rather than assumed. Before the default changes, the second seed (`E3-36-31`) should
+land, because 83–221 Elo of within-condition seed spread is the documented prior here and one seed
+cannot rule it out.
