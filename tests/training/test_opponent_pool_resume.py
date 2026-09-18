@@ -144,3 +144,45 @@ def test_no_pool_is_recorded_as_none_not_omitted() -> None:
 
     assert "opponent_pool" in blob
     assert blob["opponent_pool"] is None
+
+
+def test_the_run_directory_a_resume_argument_names_holds_the_snapshots() -> None:
+    """`--resume <dir>` must locate the snapshots, not the parent of the checkpoints tree.
+
+    The rebuild used to compute the run directory as `dirname(abspath(resume))`, which is correct
+    only when `resume` names the state *file*. Given the run *directory* -- equally valid, and
+    what every recent launch passed -- it returned the PARENT, a directory holding run folders and
+    no snapshot files. The glob found nothing and the pool fell back to a single frozen copy of
+    the current policy.
+
+    Nothing failed. E3-29-28_20260917_074357 trained 5M steps against that one opponent, beating
+    it 99.7%, and the resulting decline was investigated as a property of search-CE training for
+    two days. See research/log/P15_X4b_collapse_is_pool_starvation.md.
+
+    So pin the property that was actually broken: for every accepted spelling of --resume, the
+    directory derived from it is the one holding the snapshots.
+    """
+    import os
+    import tempfile
+
+    from ai.training.generic_trainer import resolve_resume
+
+    with tempfile.TemporaryDirectory() as root:
+        # mimic the real layout: a checkpoints tree whose children are run directories
+        run_dir = os.path.join(root, "E9-99-01_20260101_000000")
+        os.makedirs(run_dir)
+        for name in ("snapshot_1000steps.pt", "snapshot_2000steps.pt", "resume_state.pt"):
+            with open(os.path.join(run_dir, name), "w", encoding="utf-8") as fh:
+                fh.write("x")
+
+        for spelling in (run_dir, os.path.join(run_dir, "resume_state.pt")):
+            derived = os.path.dirname(os.path.abspath(resolve_resume(spelling)))
+            assert derived == os.path.abspath(run_dir), (
+                f"--resume {spelling!r} derived {derived!r}, not the run directory"
+            )
+            snaps = [f for f in os.listdir(derived) if f.startswith("snapshot_")]
+            assert len(snaps) == 2, f"expected the two snapshots, found {snaps}"
+
+        # the parent really is snapshot-free, which is why the old expression starved the pool
+        parent = os.path.dirname(os.path.abspath(run_dir))
+        assert not [f for f in os.listdir(parent) if f.startswith("snapshot_")]

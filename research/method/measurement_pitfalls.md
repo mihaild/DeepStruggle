@@ -215,3 +215,36 @@ seat against a frozen anchor over the same span, **both seats improved** — USS
 US 4.7% → 23.0%. The rising base rate was the *gap between two improvement rates*, and on the
 cheap signal alone the arm would have been written off
 ([`log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md)).
+
+## The training setup you think you configured is not always the one that ran
+
+A flag can be accepted, recorded in `metadata.json`, printed back in the launch banner, and still
+not describe the run — because the code that acts on it failed quietly somewhere else.
+
+**The case, 2026-09-18.** `--opponent-self-pool --opponent-pool-size 12` was set, recorded and
+reported. The run trained against a pool of **one**. Resume rebuilt the pool from
+`dirname(abspath(resume))`, which is the run directory only when `--resume` names the state
+*file*; given the run *directory* — equally valid, and what the launch actually passed — it
+returned the parent of the whole checkpoints tree, which holds no `snapshot_*.pt` files. The glob
+came back empty and control fell through to the branch intended for a fresh run: seed the pool
+with one frozen copy of the current policy.
+
+The consequences were not subtle and still went unnoticed for two days. The arm beat its single
+opponent 99.7%, its games collapsed to a mean of 3.8 turns with 60.8% ending in DEFCON 1, and its
+anchor win rate fell to 24.0% where an otherwise identical run reaches 90.0%. That decline was
+investigated as a property of search-CE training, and two mechanisms were tested and correctly
+exonerated before anyone looked at `opp_pool_size`
+([`../log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md)).
+
+**Three things generalise:**
+
+* **A fallback that is right for one caller is a silent bug for another.** "No snapshots found →
+  seed from the current policy" is correct at step 0 and never correct on resume. Branches like
+  this should say so out loud when the caller cannot have wanted them; that warning now exists.
+* **Check the instruments that describe the *setup*, not only the ones that describe the
+  *result*.** `opp_pool_size` and `opp_win_rate_mean` had been logged on every run the whole
+  time. The loss, entropy, KL and CE-gradient share were all studied first because they are what
+  an investigation into training dynamics reaches for.
+* **A replay that fails to reproduce is a measurement.** The dense-snapshot arm was launched to
+  photograph the collapse in finer detail and instead did not collapse at all. Treating that as
+  the finding, rather than as a failed run to be retried, is what located the cause.

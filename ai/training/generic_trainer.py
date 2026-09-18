@@ -1564,6 +1564,7 @@ def train_pipeline(
             # nothing would report it. Spread the seeds across the run's history rather than
             # taking the most recent, which is what the pool's eviction rule aims for too.
             _seed_paths: List[str] = []
+            _run_dir = ""
             if resume:
                 _src_file = resolve_resume(resume)
                 _run_dir = os.path.dirname(os.path.abspath(_src_file))
@@ -1619,6 +1620,20 @@ def train_pipeline(
                 # which is exactly what the pool is made of thereafter.
                 _seed_nets = [_copy.deepcopy(model).to(dev)]
                 _src = "self (seeded from the initial policy)"
+                if resume and not reset_opponent_pool:
+                    # For a RESUMED run this branch is never what anyone wanted: the run has a
+                    # history of snapshots and should be playing them. Reaching here means none
+                    # were found, and the last time that happened nothing said so --
+                    # E3-29-28_20260917_074357 trained 5M steps against a single frozen copy of
+                    # itself, winning 99.7%, and the resulting "collapse" cost two days of
+                    # investigation aimed at the CE coefficient and the reference schedule.
+                    # See research/log/P15_X4b_collapse_is_pool_starvation.md.
+                    print("[opponent pool] WARNING: resuming a self-growing pool but found no "
+                          f"snapshots in {_run_dir!r}, so the pool starts at ONE frozen copy of "
+                          "the current policy. This is nearly plain self-play and the arm will "
+                          "not be comparable to a pooled one. Pass --reset-opponent-pool if that "
+                          "is deliberate; otherwise check that the resume path names a run "
+                          "directory that holds snapshot_<n>steps.pt files.", flush=True)
         trainer.opponent_pool = OpponentPool(
             _seed_nets,
             num_envs=num_envs,

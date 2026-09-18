@@ -9,6 +9,15 @@ This file exists because the question was hard to answer from the record. The ev
 over one log file, two plan files, three untracked tournament reports and nine `metadata.json`
 descriptions, and the word "pool" names four unrelated things in this project.
 
+> **Before reading any pooled arm's result, check the pool was actually there.** Until
+> 2026-09-17, `--resume <run-directory>` silently rebuilt the opponent pool from the *parent* of
+> the run directory, found no snapshots, and started with a pool of **one** — a frozen copy of the
+> current policy, beaten ~99% of the time. The run logs normally and nothing announces it. This
+> produced the entire "X4b collapse":
+> [`../../log/P15_X4b_collapse_is_pool_starvation.md`](../../log/P15_X4b_collapse_is_pool_starvation.md).
+> `opp_pool_size` and `opp_win_rate_mean` in `training_metrics.jsonl` are the check, and a
+> resumed run now prints a warning when it hits that branch.
+
 ## First: which pool
 
 | the word, where it appears | what it means | verdict |
