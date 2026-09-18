@@ -406,13 +406,13 @@ def check_play(state: ts.GameState, player: ts.Player, card_id: int, mode: str,
 def _drain(state: ts.GameState) -> None:
     """Resolve pending die rolls, so the policy is only ever asked for real decisions.
 
-    CHANCE, not FORCED, and NOT an oversight: `measure_blunders_batched` walks the same games
-    through TsVectorizedEnv, whose settling lives in the C++ runner, and the two probes must
-    count the same opportunities -- that is what test_the_two_probes_agree_on_the_same_games
-    pins. Moving this one to FORCED alone made them disagree (0 batched vs 1 sequential on
-    spaced_own_or_neutral). The pair moves together, through the env, or not at all.
+    FORCED, matching TsVectorizedEnv's default, which is what `measure_blunders_batched` walks
+    the same games through. The two probes must count the same opportunities -- that is what
+    test_the_two_probes_agree_on_the_same_games pins, and moving this one alone made them
+    disagree (0 batched vs 1 sequential on spaced_own_or_neutral) before the env could follow.
+    They move together or not at all.
     """
-    settle(state, SettleMode.CHANCE)
+    settle(state, SettleMode.FORCED)
 
 
 def measure_blunders(

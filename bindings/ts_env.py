@@ -3,6 +3,7 @@
 from typing import Tuple, Dict, Any, List, Optional, Callable
 import numpy as np
 import ts_engine as ts
+from bindings.settle import SettleMode
 from bindings.action_encoder import ActionEncoder
 from ai.rewards.reward_calculator import RewardCalculator, ZeroSumTerminalReward, BlunderAwareRewardCalculator
 from ai.game_length import ply as _game_ply
@@ -216,6 +217,7 @@ class TsVectorizedEnv:
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
         window_provoked_defcon: bool = False,
+        settle: SettleMode = SettleMode.FORCED,
     ):
         self.num_envs = num_envs
         self.base_seed = base_seed
@@ -239,6 +241,26 @@ class TsVectorizedEnv:
         # -1 has nothing to attach to unless it is windowed, and the window's advantage
         # (-1 - v_t) never consults the critic.
         self.window_provoked_defcon = bool(window_provoked_defcon)
+        # How far past a decision the player has no say in each step advances. FORCED is the
+        # default: a decision with one legal action is not a decision, and handing it back costs
+        # a Python round trip and a crossing of the binding boundary for nothing. Measured at
+        # 31.2% fewer decisions per game, forced decisions from 6.1% to 0.0%, and 0.76x the
+        # engine time.
+        #
+        # It is a flag rather than a constant because it moves the decision stream, so a run with
+        # it is not comparable with a run without -- the same footing as window_provoked_defcon
+        # above. The batched and single-state blunder probes must agree on it in particular:
+        # ai/eval/blunders.py settles to match, and test_the_two_probes_agree_on_the_same_games
+        # is what catches them drifting apart.
+        #
+        # NONE is not expressible here. The C++ runner always resolves chance nodes -- it never
+        # exposes a ROLL_DIE at all -- so the only two reachable depths are CHANCE and FORCED.
+        if settle is SettleMode.NONE:
+            raise ValueError(
+                "TsVectorizedEnv cannot present chance nodes: the C++ runner resolves them "
+                "internally, so SettleMode.NONE has no meaning here. Use CHANCE or FORCED.")
+        self.settle = settle
+        self._auto_advance = settle is SettleMode.FORCED
         self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
@@ -302,7 +324,7 @@ class TsVectorizedEnv:
         action_list = [int(a) for a in actions]
         from tools.lib.game_step import IllegalActionError
 
-        step_results = self.runner.step_flat_all(action_list)
+        step_results = self.runner.step_flat_all(action_list, self._auto_advance)
         # 0 = the engine refused the action. Never observed (0 refusals in 5,052 batched steps),
         # but if it happens the rollout is being built from a game that did not advance, so the
         # data is wrong rather than merely late. `0 in list` is a C-level scan with no allocation;
