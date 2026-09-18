@@ -436,3 +436,36 @@ none of this separates the treatment from between-seed variation in the control.
 **Recommendation:** the bands `0.8 1.2 0.7 1.1` are now supported well enough to be worth a
 matched control at a second seed, which is the one arm that would settle it. Changing the shipped
 default should wait for that arm rather than for more points on these two.
+
+---
+
+## Seed B to 80M: the two treatment seeds diverge (2026-09-18)
+
+| steps | control | **seed A** | **seed B** | B vs control |
+|---:|---:|---:|---:|:---|
+| 40.0M | 4.5% | 15.5% | 9.0% | 2.0x, z = 1.79 (n.s.) |
+| 50.0M | 7.2% | 23.0% | 16.5% | 2.3x, **z = 2.88**, p = 0.004 |
+| 60.0M | 13.8% | 28.0% | 22.5% | 1.6x, **z = 2.26**, p = 0.024 |
+| 70.1M | 14.2% | **44.5%** | 22.5% | 1.6x |
+| 80.0M | 17.8% | **46.0%** | 23.5% | 1.3x, **z = 1.41 (n.s.)** |
+
+**Seed B plateaus at ~23% from 60M while seed A climbs to 46%.** At the final registered point the
+two treatment seeds differ by **2x**, and seed B is no longer significantly above the control — the
+control's own growth (13.8 → 17.8) closes most of the gap that was significant at 50M and 60M.
+
+So the replication is real *and* time-dependent: significant in the middle of the window, not at
+its end. Both readings in this document are correct for the points they were taken at, which is
+precisely why neither should be quoted alone.
+
+**What this does to the previous section's conclusion.** "The effect replicates" was written from
+50M and 60M and is not wrong there. It is incomplete: seed B's advantage peaks near 60M and then
+stops growing, and by 80M the honest statement is that **one seed sustains and one does not**. The
+disagreement is no longer only about magnitude — it is about whether the gain persists at all.
+
+This makes the matched control at seed B the decisive arm rather than a tidying-up exercise, and
+it is now running as `E3-37-31_20260918_034639`. Two outcomes matter and both are informative:
+
+* it lands near the first control (17.8% at 80M) → the treatment does something real on seed A
+  and little on seed B, and the default should not change on this evidence;
+* it lands near **23%** → seed 20260931 simply reaches ~23% regardless of the bands, seed B's
+  entire apparent effect dissolves, and seed A's becomes a single-seed result again.
