@@ -63,7 +63,101 @@ That is a trap worth closing rather than stepping around.
 * `event_stage` — multi-stage events (CHE, De-Stalinization) fire no other card's event, so they
   never suspend.
 
-## 2. Proposed layout
+## 1b. The simpler design — flatten, don't shrink
+
+§2 below shrinks the suspended frame. The owner's proposal goes further: **remove suspension
+almost entirely**, by representing each card's outcome as a modified card play rather than as a
+frame to return to. Analysed card by card, it holds.
+
+### Missile Envy — no frame, and the presentation is a live bug fix
+
+The exchange is written to `card_locations` **before** any push (`mid_war.cpp:160-161`), so Missile
+Envy has genuinely nothing to return to. Either the taken card's Event fires — which is that card's
+resolution, not Missile Envy's — or the card is used for Ops with its Event prevented.
+
+The presentation must be "Event **will not** fire", not "Event **already** fired". The owner flagged
+this: an already-fired presentation tells the model a lasting effect is active when it is not. The
+right mechanism exists — `suppress_op_card_event`, which UN Intervention sets.
+
+**Missile Envy does not set it today, and that is a bug**: a starred opponent card taken and used
+for Ops is removed from the game though its Event never occurred. Demonstrated with NATO; see
+[missile_envy_starred_removal.md](../findings/engine/missile_envy_starred_removal.md). The proposed
+presentation fixes it.
+
+### Five Year Plan and Star Wars — no frame; at most an owed-Ops record
+
+Both are US-sided, so:
+
+| how it reaches its Event | owed afterwards | frame? |
+|:--|:--|:--|
+| US plays it as its Event | nothing — the Event is the whole play | no |
+| USSR plays it Ops-first | nothing — the Ops are already spent | no |
+| USSR plays it Event-first | **the USSR's Ops, after the chain resolves** | no — an owed-Ops record |
+
+Only the third case persists anything, and what it persists is one sentence: *player P owes N Ops
+from card C*. That is not a decision context.
+
+### UN Intervention — already correct
+
+`card_dispatcher.cpp:770` sets `suppress_op_card_event = 1`, puts `SELECT_OP_MODE` on the current
+frame and pushes nothing. It is already the model the other cards should follow.
+
+### Grain Sales — the plan
+
+Grain Sales looked like the hard case because P17 §5's first attempt pushed the child frame
+*before* the US answered, so the parent had to survive a possible decline. **The choice comes
+first.** Once it is made, Grain Sales owes nothing either way, so it is tail-position like the rest:
+
+* the merged resolution node sits on **Grain Sales' own frame** — no push;
+* **`CONFIRM_DONE`** (decline) → return the card to the USSR hand marked known, and convert the same
+  frame to Grain Sales' own 2 Ops;
+* **any `Resolution`** → discard Grain Sales and **replace** the same frame with the drawn card's
+  play at that resolution;
+* **UN Intervention's card slot** → replace with the drawn card played for Ops,
+  `suppress_op_card_event = 1`;
+* **headline** → only `CONFIRM_DONE` is legal when the drawn card is UN Intervention; auto-advance
+  settles it.
+
+So §5's goal — `CHOOSE_BRANCH{play, return}` disappears — is reached with **zero nesting**, and the
+depth-7 overflow that made work item 3.0 necessary never arises. If the drawn card is played
+Event-first, the US owes its Ops afterwards: one more owed-Ops record, the same shape as Five Year
+Plan's.
+
+### What is left
+
+```cpp
+DecisionContext ctx;          // the one live decision, a fixed member
+OwedOps         owed[2];      // {player, card, ops, flags} -- 4 bytes each
+uint8_t         owed_count;
+```
+
+**At most two owed-Ops records**, derived rather than measured: owed Ops arise only from an
+EVENT_FIRST play, which requires playing a card from hand. The base play is one. Grain Sales' drawn
+card is the only other card in a chain that receives a full resolution, and there is one Grain Sales
+card, so there is no third.
+
+768 bytes of stack become about 140, and there is no depth limit left to overflow.
+
+### Three things to watch
+
+1. **`owed` is still LIFO.** Two records must unwind innermost-first, so it is a stack — just two
+   deep and four bytes wide. Worth naming as one so nobody later assumes a single slot.
+2. **`relocate_played_card` must move before the replacement.** Today the caller relocates after
+   `trigger_event` returns; with the frame replaced there is no caller to return to. This is the one
+   systematic edit and it carries the known hazard: `highest_takeable_ops` skips
+   `ctx().resolving_card` precisely to stop an Event finding the card in front of it
+   (`mid_war.cpp:141-144`), and replacing the frame changes what `resolving_card` holds at that
+   moment.
+3. **`ACTIVE_SUSPENDED` changes meaning.** The observation computes it by walking `ctx_stack`
+   (`observation.cpp:234`). With no stack it would grade the cards named in `owed` instead — which
+   is arguably more accurate, since that is exactly "this card is waiting", but it is an observation
+   content change and needs the owner's sign-off.
+
+**Discarding the chain's history is safe.** Only three sites read a non-top frame at all —
+`observation.cpp:234` and the two save/load sites — and they read `resolving_card` and
+`pending_op_card`, both of which survive in `owed`. No rule consults the chain.
+
+## 2. Alternative: keep the stack, shrink the frame
 
 ```cpp
 struct SuspendedFrame {          // 8 bytes
