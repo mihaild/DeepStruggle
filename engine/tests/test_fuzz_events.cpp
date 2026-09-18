@@ -71,7 +71,14 @@ int main(int argc, char** argv) {
         }
 
         if (legal_indices.empty()) {
-            if (state.ctx().allow_early_stop || state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
+            // P17: the canonical legal set is the 212-dim flat mask -- that is what
+            // StateMachine::step validates against. The narrow mask has no slot for "decline" at
+            // every decision type, so consult the flat one before declaring a dead end: if it
+            // offers the shared decline index, confirm/done is a legal move here.
+            uint8_t flat[ts::FLAT_ACTION_SPACE_SIZE] = {0};
+            ts::ActionMask::generate_flat_mask_212(state, flat);
+            if (flat[211] || state.ctx().allow_early_stop ||
+                state.ctx().decision_type == ts::DecisionType::POINT_NODE) {
                 ts::MicroAction action{};
                 action.decision_type = state.ctx().decision_type;
                 action.flags = ts::action_flags::CONFIRM_DONE;

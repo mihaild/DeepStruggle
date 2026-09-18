@@ -74,9 +74,7 @@ TEST(StatesTest, Phase_ACTION_ROUND_PlayerAlternation) {
 
     // USSR plays Duck & Cover for Ops
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::DUCK_AND_COVER, 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
     for (int i = 0; i < 3; ++i) {
         ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::NORTH_KOREA, 0, 0}));
     }
@@ -120,22 +118,25 @@ TEST(StatesTest, DecisionType_AllTypes_ActionMaskGeneration) {
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
     state.ctx().pending_op_card = ts::card_ids::DEFECTORS;
     ts::ActionMask::generate_mask(state, mask, &out_size);
-    ASSERT_EQ(out_size, 4);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 0);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);
+    ASSERT_EQ(out_size, static_cast<size_t>(ts::Resolution::COUNT));
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::Resolution::EVENT)], 0);
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));
 
     // Friendly card with valid event (Duck and Cover) CAN be played as Event or Ops
     state.ctx().pending_op_card = ts::card_ids::DUCK_AND_COVER;
     ts::ActionMask::generate_mask(state, mask, &out_size);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 1);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::Resolution::EVENT)], 1);
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));
 
-    // 3. CHOOSE_TIMING_BRANCH
+    // 3. P17: CHOOSE_TIMING_BRANCH is retired. On an opponent's card the merged node carries
+    //    the timing -- EVENT is event-first and any OPS_* is ops-first -- so the node no longer
+    //    occurs and its mask is empty, which is what makes an unexpected arrival refusable
+    //    rather than silently legal.
     state.ctx().decision_type = ts::DecisionType::CHOOSE_TIMING_BRANCH;
     ts::ActionMask::generate_mask(state, mask, &out_size);
-    ASSERT_EQ(out_size, 2);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST)], 1);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST)], 1);
+    for (size_t i = 0; i < out_size; ++i) {
+        ASSERT_EQ(mask[i], 0);
+    }
 
     // 4. SELECT_OP_MODE
     state.ctx().decision_type = ts::DecisionType::SELECT_OP_MODE;

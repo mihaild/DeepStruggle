@@ -38,9 +38,9 @@ TEST(AutoAdvanceTest, SingleChoiceOpMode_AutoAdvancesToPointNode) {
     // Check mask: only INFLUENCE (flat action 116) should be legal
     uint8_t mask[212];
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[116], 1);
-    ASSERT_EQ(mask[117], 0); // Coup
-    ASSERT_EQ(mask[118], 0); // Realign
+    ASSERT_EQ(mask[112], 1);
+    ASSERT_EQ(mask[113], 0); // Coup
+    ASSERT_EQ(mask[114], 0); // Realign
 
     // Calling auto_advance_step directly should advance to POINT_NODE
     size_t advanced = ts::Engine::auto_advance_step(state);

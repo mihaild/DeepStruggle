@@ -621,6 +621,54 @@ static void snapshot_op_influence(GameState& state, Player p) noexcept {
     }
 }
 
+// P17 helpers. The merged resolution node and the deferred Ops node reach the same three Ops
+// modes by different routes, so the work of starting one lives in a single place.
+
+static OpMode to_op_mode(Resolution r) noexcept {
+    switch (r) {
+        case Resolution::OPS_COUP:    return OpMode::COUP;
+        case Resolution::OPS_REALIGN: return OpMode::REALIGN;
+        default:                      return OpMode::INFLUENCE;
+    }
+}
+
+// Playing a card for Operations discharges a Missile Envy obligation.
+static void clear_force_for_card(GameState& state, Player p, uint8_t card) noexcept {
+    if (state.forced_card_player == p &&
+        (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY ||
+         state.forced_card_id == 0)) {
+        state.forced_card_player = Player::NONE;
+        state.forced_card_id = 0;
+    }
+}
+
+// Open the POINT_NODE that spends the Ops. `pending_ops_value` must already be set.
+//
+// Placement and realignment are repeatable and keep their stop; a coup is a single action and
+// does not. That asymmetry is why the merged mask gates coup on a target existing and offers the
+// other two unconditionally -- choosing realignment with nothing to hit stops immediately, while
+// a coup with nothing to hit would have no way out.
+static bool begin_op_mode(GameState& state, Player p, OpMode op_mode) noexcept {
+    const uint8_t ops = state.ctx().pending_ops_value;
+    state.ctx().op_mode = op_mode;
+
+    if (op_mode == OpMode::COUP) {
+        state.ctx().decision_type = DecisionType::POINT_NODE;
+        state.ctx().remaining_steps = 1;
+        state.ctx().max_per_country = 1;
+        state.ctx().allow_early_stop = 0;
+        return true;
+    }
+
+    if (op_mode == OpMode::INFLUENCE) {
+        snapshot_op_influence(state, p);
+    }
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().remaining_steps = ops;
+    state.ctx().allow_early_stop = 1;
+    return true;
+}
+
 bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     // Reset ephemeral die roll record for the current step
     state.last_roll = DieRollRecord{};
@@ -952,7 +1000,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 
             case DecisionType::SELECT_PLAY_MODE: {
                 uint8_t card = state.ctx().pending_op_card;
-                PlayMode mode = static_cast<PlayMode>(action.primary_id);
+                // P17: five-way resolution. See `Resolution` in types.hpp.
+                Resolution mode = static_cast<Resolution>(action.primary_id);
+                const bool opponent_card = CardData::is_opponent_card(card, p);
+                const bool is_ops = (mode == Resolution::OPS_INFLUENCE ||
+                                     mode == Resolution::OPS_COUP ||
+                                     mode == Resolution::OPS_REALIGN);
 
                 // Forced play (Missile Envy recipient must play it for Operations). Mirrors
                 // ActionMask::generate_flat_mask_212 exactly -- see the comment there for why each
@@ -964,7 +1017,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     state.forced_card_player == p &&
                     card == card_ids::MISSILE_ENVY &&
                     in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
-                    if (mode != PlayMode::OPS) {
+                    if (!is_ops) {
                         return false;
                     }
                 }
@@ -972,7 +1025,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 // We Will Bury You check on US Action Round when playing UN Intervention
                 if (p == Player::US && state.current_phase == Phase::ACTION_ROUND && state.has_flag(effect_bits::WE_WILL_BURY_YOU_PENDING)) {
                     state.clear_flag(effect_bits::WE_WILL_BURY_YOU_PENDING);
-                    if (mode != PlayMode::EVENT) {
+                    if (mode != Resolution::EVENT) {
                         state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 3));
                         if (state.victory_points <= -20) {
                             state.current_phase = Phase::GAME_OVER;
@@ -981,7 +1034,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     }
                 }
 
-                if (mode == PlayMode::SPACE) {
+                if (mode == Resolution::SPACE) {
                     state.ctx().pending_roll = RollType::SPACE_RACE;
                     state.ctx().roll_target = card;
                     state.ctx().roll_actor = p;
@@ -990,10 +1043,10 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     return true;
                 }
 
-                if (mode == PlayMode::EVENT) {
+                if (mode == Resolution::EVENT && !opponent_card) {
+                    // A friendly or neutral card played as its Event: that is the whole play.
                     if (card == card_ids::THE_CHINA_CARD ||
                         (card == card_ids::DEFECTORS && p == Player::US && state.current_phase == Phase::ACTION_ROUND) ||
-                        CardData::is_opponent_card(card, p) ||
                         !CardHandlers::can_trigger_event(state, card, p)) {
                         return false; // Illegal event play
                     }
@@ -1007,11 +1060,39 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     return true;
                 }
 
-                if (mode == PlayMode::OPS) {
-                    if (state.forced_card_player == p && (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY || state.forced_card_id == 0)) {
-                        state.forced_card_player = Player::NONE;
-                        state.forced_card_id = 0;
+                if (mode == Resolution::EVENT && opponent_card) {
+                    // Event-first on an opponent's card. The Ops choice is STAGED on this frame
+                    // and a new frame is pushed for the event; pop_context() returns here with
+                    // timing_branch intact, which is what tells the model at that deferred node
+                    // that the event has already resolved (observation TIMING_EVENT_FIRST).
+                    //
+                    // timing_branch must keep being set even though CHOOSE_TIMING_BRANCH is gone
+                    // as a decision: it is still the only thing distinguishing "Ops before the
+                    // event" from "Ops after it".
+                    clear_force_for_card(state, p, card);
+                    state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
+                    state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
+                    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                    state.ctx().decision_player = p;
+                    if (!state.push_context()) {
+                        invariant_failed("event chain too deep; card", static_cast<int>(card));
                     }
+
+                    Player opp = get_opponent(p);
+                    state.ctx().decision_player = opp;
+                    state.ctx().resolving_card = card;
+
+                    const bool fired = CardHandlers::event_has_effect(state, card, opp);
+                    bool done = CardHandlers::trigger_event(state, card, opp);
+                    CardHandlers::relocate_played_card(state, card, fired, CardHandlers::Handover::Respect);
+                    if (done) {
+                        state.pop_context();
+                    }
+                    return true;
+                }
+
+                if (is_ops) {
+                    clear_force_for_card(state, p, card);
                     // Flower Power charges the US 2 VP for playing a war card, but only for a
                     // war that can actually happen. Camp David Accords stops Arab-Israeli War
                     // being played as an event at all, so playing it for Operations sets off
@@ -1030,13 +1111,15 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     if (card == card_ids::THE_CHINA_CARD && p == Player::US) {
                         state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
                     }
-                    if (CardData::is_opponent_card(card, p)) {
-                        state.ctx().decision_type = DecisionType::CHOOSE_TIMING_BRANCH;
-                        return true;
-                    }
-                    state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                    // Ops-first on an opponent's card; timing_branch records which, so the
+                    // event fires after the Ops are spent (advance_after_ops reads it).
+                    // 255 is the "no branch chosen" sentinel the observation reads, and it is
+                    // the right value for a friendly card: no event is pending either way.
+                    state.ctx().timing_branch = opponent_card
+                        ? static_cast<uint8_t>(TimingBranch::OPS_FIRST)
+                        : static_cast<uint8_t>(255);
                     state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
-                    return true;
+                    return begin_op_mode(state, p, to_op_mode(mode));
                 }
                 return false;
             }
@@ -1095,36 +1178,18 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     return true;
                 }
                 OpMode op_mode = static_cast<OpMode>(action.primary_id);
-                uint8_t ops = state.ctx().pending_ops_value;
-                state.ctx().op_mode = op_mode;
-
-                if (op_mode == OpMode::INFLUENCE) {
-                    if (free_action_bars_influence) {   // as above
-                        advance_after_ops(state);
-                        return true;
-                    }
-                    snapshot_op_influence(state, p);
-                    state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = ops;
-                    state.ctx().allow_early_stop = 1;
-                    return true;
+                if (op_mode == OpMode::INFLUENCE && free_action_bars_influence) {
+                    // P17: INFLUENCE is not legal here and the mask no longer offers it. Declining
+                    // the free action is the shared decline index, handled above as confirm/done.
+                    // Refusing keeps one definition of legality (P14) rather than accepting an
+                    // action the mask withheld.
+                    return false;
                 }
-
-                if (op_mode == OpMode::COUP) {
-                    state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = 1;
-                    state.ctx().max_per_country = 1;
-                    state.ctx().allow_early_stop = 0;
-                    return true;
+                if (op_mode != OpMode::INFLUENCE && op_mode != OpMode::COUP &&
+                    op_mode != OpMode::REALIGN) {
+                    return false;
                 }
-
-                if (op_mode == OpMode::REALIGN) {
-                    state.ctx().decision_type = DecisionType::POINT_NODE;
-                    state.ctx().remaining_steps = ops;
-                    state.ctx().allow_early_stop = 1;
-                    return true;
-                }
-                return false;
+                return begin_op_mode(state, p, op_mode);
             }
 
             case DecisionType::POINT_NODE: {

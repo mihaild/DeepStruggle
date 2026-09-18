@@ -67,17 +67,13 @@ TEST(RegressionTest, DeGaulleOpsFirstTriggersOpponentEventAfterOps) {
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DE_GAULLE, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_PLAY_MODE);
 
-    // 2. Select OPS
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
-    ASSERT_EQ(state.ctx().decision_type, DecisionType::CHOOSE_TIMING_BRANCH);
-
-    // 3. Choose OPS_FIRST
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(TimingBranch::OPS_FIRST), 0, 0)));
-    ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
-
-    // 4. Select INFLUENCE mode
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0)));
+    // 2. P17: one resolution. "Ops for placement" on an opponent's card IS ops-first -- the
+    //    three steps this replaced were SELECT_PLAY_MODE(OPS), CHOOSE_TIMING_BRANCH(OPS_FIRST)
+    //    and SELECT_OP_MODE(INFLUENCE). timing_branch must still record it, or the event would
+    //    not know to fire afterwards, which is what the rest of this test checks.
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_INFLUENCE), 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().timing_branch, static_cast<uint8_t>(TimingBranch::OPS_FIRST));
 
     // 5. Place 3 ops in UK (ID 1)
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::POINT_NODE, countries::UNITED_KINGDOM, 0, 0)));
@@ -110,8 +106,7 @@ TEST(RegressionTest, RealignmentOnlyTargetsCountriesWithOpponentInfluenceAndRoll
     state.card_locations[card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::US); // 3 Ops US card
 
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0)));
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::REALIGN), 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_REALIGN), 0, 0)));
 
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().op_mode, OpMode::REALIGN);
@@ -152,7 +147,7 @@ TEST(RegressionTest, ArabIsraeliWarWithRoll2Fails) {
     // 1. Select Card
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::ARAB_ISRAELI_WAR, 0, 0)));
     // 2. Select Play Mode EVENT with forced roll = 2
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 2, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 2, 0)));
     ASSERT_EQ(state.ctx().decision_type, DecisionType::ROLL_DIE);
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::ROLL_DIE, 2, 0, 0)));
 
@@ -182,8 +177,7 @@ TEST(RegressionTest, NoChainInfluencePlacementDuringSameOp) {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0)));
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::OPS), 0, 0)));
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE), 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_INFLUENCE), 0, 0)));
 
     // 1st point placed in Morocco (legal because adjacent to Algeria)
     uint8_t mask[84];
@@ -214,7 +208,7 @@ TEST(RegressionTest, WarsawPactEasternEuropeOnlyAndMax2) {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_CARD, card_ids::WARSAW_PACT, 0, 0)));
-    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(PlayMode::EVENT), 0, 0)));
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
 
     // Choose Branch 1: Add 5 USSR influence in Eastern Europe (max 2 per country)
     ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::CHOOSE_BRANCH, 1, 0, 0)));
@@ -425,9 +419,14 @@ TEST(RegressionTest, FlatRollActionRollsTheDieInsteadOfForcing255) {
     int legal_count = 0;
     for (int i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) legal_count += mask[i] ? 1 : 0;
     ASSERT_EQ(legal_count, 1);
-    ASSERT_TRUE(mask[211] != 0);
+    // P17: slot 115, not the shared 211. A chance node with one legal action is not a decline,
+    // and sharing the index with confirm/done is the aliasing that caused this bug in the first
+    // place -- the decode needed a special case to tell them apart. Now 211 means exactly one
+    // thing and this node has its own index.
+    ASSERT_TRUE(mask[115] != 0);
+    ASSERT_TRUE(mask[211] == 0);
 
-    const MicroAction decoded = ActionMask::decode_flat_action_212(state, 211);
+    const MicroAction decoded = ActionMask::decode_flat_action_212(state, 115);
     ASSERT_EQ(static_cast<int>(decoded.decision_type), static_cast<int>(DecisionType::ROLL_DIE));
     // 0 means "roll normally". Anything else here is a forced die.
     ASSERT_EQ(static_cast<int>(decoded.primary_id), 0);
@@ -436,7 +435,7 @@ TEST(RegressionTest, FlatRollActionRollsTheDieInsteadOfForcing255) {
     // Stepping the flat action must be indistinguishable from an explicit unforced roll.
     GameState via_flat = state;
     GameState via_explicit = state;
-    ASSERT_TRUE(Engine::step(via_flat, ActionMask::decode_flat_action_212(via_flat, 211)));
+    ASSERT_TRUE(Engine::step(via_flat, ActionMask::decode_flat_action_212(via_flat, 115)));
     ASSERT_TRUE(Engine::step(via_explicit, MicroAction(DecisionType::ROLL_DIE, 0, 0, 0)));
     ASSERT_EQ(static_cast<int>(via_flat.last_die_roll),
               static_cast<int>(via_explicit.last_die_roll));

@@ -170,8 +170,7 @@ TEST(StateLifecycleTest, ActionRoundState_ChinaCardPlay_PassesToOpponentFaceDown
 
     // USSR plays China Card for Ops
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
 
     // Place influence in North Korea (5 points from China Card in Asia with +1 Asia bonus)
     for (int i = 0; i < 5; ++i) {
@@ -201,8 +200,7 @@ TEST(StateLifecycleTest, ActionRoundState_OpponentCard_EventFirst_Timing) {
 
     // US plays Fidel for Ops -> Choose EVENT_FIRST timing
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::FIDEL, 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0}));
 
     // Fidel event occurs first: Cuba US=0, USSR=3
     ASSERT_EQ(state.countries[ts::countries::CUBA].us_influence, 0);

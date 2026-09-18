@@ -255,26 +255,29 @@ TEST(MidCardsTest, Card49_MissileEnvy_RecipientMustPlayForOps) {
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::MISSILE_ENVY, 0, 0)));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
-    uint8_t mask[4] = {0};
+    // P17: the merged resolution node writes five entries, not four. A 4-byte buffer here was
+    // a stack overrun the moment the node grew.
+    uint8_t mask[static_cast<size_t>(ts::Resolution::COUNT)] = {0};
     size_t out_size = 0;
     ts::ActionMask::generate_mask(state, mask, &out_size);
 
-    // PlayMode::OPS (index 1) must be legal (1).
-    // PlayMode::EVENT (index 0) and PlayMode::SPACE (index 2) must be ILLEGAL (0).
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0);
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 0);
+    // Missile Envy must be played for Operations: some Ops mode is legal, and neither the Event
+    // nor the Space Race is.
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::EVENT)], 0);
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::SPACE)], 0);
 
     // Attempting EVENT must fail
-    bool event_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    bool event_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0));
     ASSERT_FALSE(event_accepted);
 
     // Step OPS (index 1)
-    bool ops_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0));
+    bool ops_accepted = ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0));
     ASSERT_TRUE(ops_accepted);
 
-    // Spend 2 ops on influence
-    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0)));
+    // Spend 2 ops on influence. The mode was chosen at the resolution node above, so this goes
+    // straight to POINT_NODE -- there is no second decision to make.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction(ts::DecisionType::POINT_NODE, ts::countries::URUGUAY, 0, 0)));
 
@@ -527,9 +530,14 @@ TEST(MidCardsTest, TearDownThisWall_FreeOpsBarInfluence_OwnOpsDoNot) {
 
     uint8_t mask[212] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);  // the decline
-    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
+    // P17: the decline is the shared index, not a borrowed INFLUENCE. Index 112 (INFLUENCE) is
+    // now simply illegal here, which is what removes the third meaning it used to carry.
+    ASSERT_EQ(mask[211], 1);                                  // the decline
+    ASSERT_EQ(mask[112], 0);                                  // INFLUENCE is not the decline
+    ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
                                             static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, 255, 0,
+                                            ts::action_flags::CONFIRM_DONE}));
     ASSERT_NE(state.ctx().decision_type, ts::DecisionType::POINT_NODE);  // declined, not placing
 }
 
@@ -548,7 +556,7 @@ TEST(MidCardsTest, TearDownThisWall_OwnOpsMayPlaceInfluence) {
 
     uint8_t mask[212] = {0};
     ts::ActionMask::generate_flat_mask_212(state, mask);
-    ASSERT_EQ(mask[116 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
+    ASSERT_EQ(mask[112 + static_cast<int>(ts::OpMode::INFLUENCE)], 1);
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE,
                                             static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
@@ -572,7 +580,7 @@ TEST(MidCardsTest, FlowerPowerChargesForAWarThatCanHappen) {
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+                                            static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
     ASSERT_EQ(state.victory_points, -2);
 }
 
@@ -590,7 +598,7 @@ TEST(MidCardsTest, FlowerPowerChargesNothingForAWarCampDavidHasStopped) {
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+                                            static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
     ASSERT_EQ(state.victory_points, 0);
 }
 
@@ -609,7 +617,7 @@ TEST(MidCardsTest, FlowerPowerStillChargesForOtherWarsUnderCampDavid) {
     state.ctx().decision_type = ts::DecisionType::SELECT_PLAY_MODE;
 
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
-                                            static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
+                                            static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
     ASSERT_EQ(state.victory_points, -2);
 }
 

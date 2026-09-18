@@ -181,7 +181,28 @@ enum class PlayMode : uint8_t {
     EVENT = 0,
     OPS   = 1,
     SPACE = 2,
-    PASS  = 3
+    PASS  = 3   // never set by any mask; see Resolution below
+};
+
+// P17: the merged card-resolution choice. `SELECT_PLAY_MODE` carries these values now, replacing
+// the old `PlayMode -> CHOOSE_TIMING_BRANCH -> SELECT_OP_MODE` chain of three shallow decisions
+// (2.1, 2.0 and 2.9 mean legal actions, 35.6% of all decisions) with one.
+//
+// `EVENT` means "the event resolves now" for both a friendly card and an opponent's: ownership is
+// a salient, always-present state feature, so it says what FOLLOWS -- nothing for your own card,
+// and a deferred Ops choice for the opponent's -- rather than needing its own index. The Ops
+// options carry exactly the same ownership-dependent difference (on an opponent card the event
+// fires afterwards), so splitting EVENT by ownership while sharing those would be inconsistent.
+//
+// The deferred Ops choice after an event-first event keeps `SELECT_OP_MODE` and reuses the three
+// OPS_* slots: it is the same question, "how do I spend these Ops", reached by another route.
+enum class Resolution : uint8_t {
+    EVENT         = 0,  // resolve the event now; on an opponent card, event-first
+    SPACE         = 1,
+    OPS_INFLUENCE = 2,
+    OPS_COUP      = 3,
+    OPS_REALIGN   = 4,
+    COUNT         = 5
 };
 
 // Timing Branches

@@ -137,7 +137,7 @@ public:
         };
 
         // 1. Check Action Round event play
-        if (dt_before == DecisionType::SELECT_PLAY_MODE && action.primary_id == static_cast<uint8_t>(PlayMode::EVENT)) {
+        if (dt_before == DecisionType::SELECT_PLAY_MODE && action.primary_id == static_cast<uint8_t>(Resolution::EVENT)) {
             check_scoring_card(pending_card);
         }
 
@@ -259,14 +259,29 @@ public:
                     else chosen_id = legal[0];
                 }
             } else if (dt == DecisionType::SELECT_PLAY_MODE) {
+                // P17: one five-way resolution, so the Ops MODE is chosen here rather than at a
+                // second node. Same policy as the old two-step version -- space out of a DEFCON
+                // danger card, event for a scoring card, otherwise Ops -- with the mode picked by
+                // the same preference order the SELECT_OP_MODE branch below uses.
                 uint8_t card = s.ctx().pending_op_card;
                 bool can_space = SpaceRace::can_attempt_space(s, p, card);
-                if (is_defcon_danger_card(card) && can_space) {
-                    chosen_id = static_cast<uint8_t>(PlayMode::SPACE);
-                } else if (CardData::is_scoring_card(card)) {
-                    chosen_id = static_cast<uint8_t>(PlayMode::EVENT);
+                auto has = [&](Resolution r) {
+                    for (uint8_t m : legal) if (m == static_cast<uint8_t>(r)) return true;
+                    return false;
+                };
+                uint8_t cur_mil = (p == Player::US) ? s.us_mil_ops : s.ussr_mil_ops;
+                if (is_defcon_danger_card(card) && can_space && has(Resolution::SPACE)) {
+                    chosen_id = static_cast<uint8_t>(Resolution::SPACE);
+                } else if (CardData::is_scoring_card(card) && has(Resolution::EVENT)) {
+                    chosen_id = static_cast<uint8_t>(Resolution::EVENT);
+                } else if (cur_mil < s.defcon && s.defcon > 2 && has(Resolution::OPS_COUP)) {
+                    chosen_id = static_cast<uint8_t>(Resolution::OPS_COUP);
+                } else if (has(Resolution::OPS_INFLUENCE)) {
+                    chosen_id = static_cast<uint8_t>(Resolution::OPS_INFLUENCE);
+                } else if (s.defcon <= 2 && has(Resolution::OPS_REALIGN)) {
+                    chosen_id = static_cast<uint8_t>(Resolution::OPS_REALIGN);
                 } else {
-                    chosen_id = static_cast<uint8_t>(PlayMode::OPS);
+                    chosen_id = legal[0];
                 }
             } else if (dt == DecisionType::SELECT_OP_MODE) {
                 uint8_t cur_mil = (p == Player::US) ? s.us_mil_ops : s.ussr_mil_ops;

@@ -1230,12 +1230,12 @@ TEST(CardEdgeCasesTest, Defectors_USActionRound_CannotBePlayedAsEvent) {
     uint8_t mask[128]{};
     size_t out_size = 0;
     ts::ActionMask::generate_mask(state, mask, &out_size);
-    ASSERT_EQ(out_size, 4);
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::EVENT)], 0); // Event is illegal!
-    ASSERT_EQ(mask[static_cast<uint8_t>(ts::PlayMode::OPS)], 1);   // Ops is legal
+    ASSERT_EQ(out_size, static_cast<size_t>(ts::Resolution::COUNT));
+    ASSERT_EQ(mask[static_cast<uint8_t>(ts::Resolution::EVENT)], 0); // Event is illegal!
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));   // Ops is legal
 
     // 3. Attempting to step with PlayMode::EVENT must be rejected by StateMachine
-    bool step_result = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    bool step_result = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
     ASSERT_FALSE(step_result); // Rejected as illegal move
 }
 
@@ -1359,13 +1359,7 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
 
     // It is the USSR's own card, so Operations is the only play mode, and the ordering is a
     // choice of its own.
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0}));
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_TIMING_BRANCH);
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0}));
-
-    // The US spends the Operations first -- Influence, so nothing rolls.
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0}));
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     while (state.ctx().decision_type == ts::DecisionType::POINT_NODE &&
            state.ctx().resolving_card == 0) {
@@ -1443,7 +1437,7 @@ TEST(CardEdgeCasesTest, Defectors_HandedOverByGrainSalesInHeadline_CancelsUSSRHe
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DEFECTORS);
     // Defectors is a US card, so the US may play it as its Event -- and in a headline it is
     // legal to do so, unlike in an action round.
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0}));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0}));
     ASSERT_EQ(state.countries[ts::countries::VIETNAM].ussr_influence, 0);
     ASSERT_FALSE(state.has_flag(ts::effect_bits::VIETNAM_REVOLTS_ACTIVE));
 }
@@ -1951,12 +1945,12 @@ TEST(CardEdgeCasesTest, ChinaCard_CannotBePlayedAsEvent_OpsAndSpaceLegal) {
     uint8_t mask[128] = {0};
     size_t mask_size = 0;
     ts::ActionMask::generate_mask(state, mask, &mask_size);
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0); // Event ILLEGAL
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);   // Ops LEGAL
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 1); // Space LEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::EVENT)], 0); // Event ILLEGAL
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));   // Ops LEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::SPACE)], 1); // Space LEGAL
 
     // Attempting to step with EVENT mode must be rejected
-    bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
+    bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0));
     ASSERT_FALSE(ok_event);
 }
 
@@ -1978,7 +1972,7 @@ TEST(CardEdgeCasesTest, ChinaCard_RacedForSpace_PassesToOpponentAndIsNeverDiscar
     state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
 
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
-    bool ok_space = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::SPACE), 0, 0));
+    bool ok_space = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::SPACE), 0, 0));
     ASSERT_TRUE(ok_space);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
 
@@ -2015,13 +2009,19 @@ TEST(CardEdgeCasesTest, OpponentCard_CannotBePlayedAsEvent_OnlyOpsAndSpaceLegal)
     uint8_t mask[128] = {0};
     size_t mask_size = 0;
     ts::ActionMask::generate_mask(state, mask, &mask_size);
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::EVENT)], 0); // Event ILLEGAL
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::OPS)], 1);   // Ops LEGAL
-    ASSERT_EQ(mask[static_cast<size_t>(ts::PlayMode::SPACE)], 1); // Space LEGAL (3 Ops vs Box 1 min 2)
+    // P17: EVENT on an OPPONENT's card is legal, and it means EVENT-FIRST -- the event resolves
+    // and the Ops choice is deferred. Under the old representation this was reached by choosing
+    // OPS and then CHOOSE_TIMING_BRANCH(EVENT_FIRST); the merged node carries the timing, so the
+    // option appears here instead of being illegal. What is still impossible is playing an
+    // opponent's card for its event INSTEAD of the Ops, and that is checked below by the Ops
+    // choice surviving the event.
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::EVENT)], 1); // event-first LEGAL
+    ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));   // Ops LEGAL
+    ASSERT_EQ(mask[static_cast<size_t>(ts::Resolution::SPACE)], 1); // Space LEGAL (3 Ops vs Box 1 min 2)
 
-    // Attempting to step with EVENT mode must be rejected
-    bool ok_event = ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0));
-    ASSERT_FALSE(ok_event);
+    // Choosing it resolves the opponent's event and leaves the Ops still to be spent.
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0)));
+    ASSERT_EQ(state.ctx().timing_branch, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST));
 }
 
 TEST(CardEdgeCasesTest, FormosanResolution_CancelledWhenUSPlaysChinaCard) {
@@ -2041,7 +2041,7 @@ TEST(CardEdgeCasesTest, FormosanResolution_CancelledWhenUSPlaysChinaCard) {
     // Step 1: US selects China Card
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     // Step 2: US selects OPS mode
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0)));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0)));
 
     // Formosan resolution flag is cancelled upon US playing China Card for Ops!
     ASSERT_FALSE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
@@ -2064,7 +2064,7 @@ TEST(CardEdgeCasesTest, FormosanResolution_NotCancelledWhenUSSRPlaysChinaCard) {
     // Step 1: USSR selects China Card
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_CARD, ts::card_ids::THE_CHINA_CARD, 0, 0)));
     // Step 2: USSR selects OPS mode
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0)));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0)));
 
     // Formosan resolution flag remains ACTIVE when USSR plays China Card
     ASSERT_TRUE(state.has_flag(ts::effect_bits::FORMOSAN_RESOLUTION_ACTIVE));
@@ -2120,7 +2120,7 @@ TEST(CardEdgeCasesTest, DieRollRecord_BrushWar_PopulatedOnTargetResolution) {
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
 
     // Step 2: USSR selects EVENT mode -> transitions to POINT_NODE. NO ROLL YET!
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0)));
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction(ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0)));
     ASSERT_EQ(state.last_roll.type, ts::RollType::NONE);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::BRUSH_WAR);
@@ -2188,7 +2188,7 @@ TEST(CardEdgeCasesTest, Chain_FYP_GrainSales_StarWars_ABMTreaty_Full_AR) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     // Step 2: US selects Play Mode: EVENT
-    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
     ASSERT_TRUE(ok);
 
     // If Grain Sales triggers -> US draws Star Wars and chooses Branch 0 (play drawn card)
@@ -2275,7 +2275,7 @@ TEST(CardEdgeCasesTest, Chain_StarWars_FYP_GrainSales_Glasnost_Full_AR) {
     // 1. US plays Star Wars (#85)
     bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::STAR_WARS, 0, 0});
     ASSERT_TRUE(ok);
-    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
     ASSERT_TRUE(ok);
 
     // 2. Star Wars selects Five Year Plan (#5) from discard
@@ -2291,15 +2291,14 @@ TEST(CardEdgeCasesTest, Chain_StarWars_FYP_GrainSales_Glasnost_Full_AR) {
 
     // 4. US now plays Glasnost (#90) for OPS
     if (state.ctx().decision_type == ts::DecisionType::SELECT_PLAY_MODE) {
-        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE), 0, 0});
         ASSERT_TRUE(ok);
     }
 
     // If timing branch prompt appears: US chooses OPS_FIRST (0)
-    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_TIMING_BRANCH) {
-        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST), 0, 0});
-        ASSERT_TRUE(ok);
-    }
+    // P17: choosing an OPS_* resolution on an opponent's card IS ops-first, so the separate
+    // timing step this replaced no longer exists.
+    ASSERT_EQ(state.ctx().timing_branch, static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST));
 
     // 5. US selects Op Mode: COUP (1)
     if (state.ctx().decision_type == ts::DecisionType::SELECT_OP_MODE) {
@@ -2387,14 +2386,14 @@ TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
     // 1. USSR plays Grain Sales (#67) for Ops
     bool ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0});
     ASSERT_TRUE(ok);
-    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::OPS), 0, 0});
+    // 2. P17: Grain Sales is an opponent card for the USSR, and this test wants EVENT-FIRST --
+    //    the event resolves and the Ops are spent afterwards. That is now the EVENT option at
+    //    the merged node; the separate CHOOSE_TIMING_BRANCH step it replaced is gone.
+    ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
     ASSERT_TRUE(ok);
-
-    // 2. Grain Sales is opponent event -> Event triggers first or prompt timing
-    if (state.ctx().decision_type == ts::DecisionType::CHOOSE_TIMING_BRANCH) {
-        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST), 0, 0});
-        ASSERT_TRUE(ok);
-    }
+    // No timing_branch assertion here: Grain Sales' event opens a sub-decision, so ctx() is the
+    // pushed event frame and the staged Ops frame carrying EVENT_FIRST is below it on the stack.
+    // The De Gaulle regression above checks that field, on an event that completes immediately.
 
     // 3. Grain Sales US prompt: Branch 0 (play drawn Star Wars #85)
     if (state.ctx().decision_type == ts::DecisionType::CHOOSE_BRANCH) {
@@ -2408,7 +2407,7 @@ TEST(CardEdgeCasesTest, Chain_USSR_GrainSales_StarWars_FYP_KAL007_Full_AR) {
     // 3b. US selects Play Mode for Star Wars (#85): EVENT (0)
     if (state.ctx().decision_type == ts::DecisionType::SELECT_PLAY_MODE) {
         ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
-        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::PlayMode::EVENT), 0, 0});
+        ok = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
         ASSERT_TRUE(ok);
     }
 

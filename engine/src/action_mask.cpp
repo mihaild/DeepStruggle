@@ -217,12 +217,33 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
         }
 
         case DecisionType::SELECT_PLAY_MODE: {
-            *out_size = 4;
-            std::memset(mask_out, 0, 4);
+            // P17: the merged resolution node. Five options, not four -- see `Resolution`.
+            //
+            // Ops legality follows the engine's own mechanics rather than a uniform rule.
+            // Placement and realignment are REPEATABLE actions with a stop, so choosing one with
+            // nothing to do resolves to "stop immediately" and they are offered unconditionally.
+            // A coup is a SINGLE action with no stop: once chosen it must happen, so it is gated
+            // on a target existing. That is the one lookahead this node does.
+            *out_size = static_cast<size_t>(Resolution::COUNT);
+            std::memset(mask_out, 0, static_cast<size_t>(Resolution::COUNT));
             uint8_t card = ctx.pending_op_card;
 
+            // Ops options, shared by every branch below that allows Ops play at all.
+            auto set_ops_options = [&]() {
+                mask_out[static_cast<size_t>(Resolution::OPS_INFLUENCE)] = 1;
+                mask_out[static_cast<size_t>(Resolution::OPS_REALIGN)] = 1;
+                uint8_t coup_mask[84];
+                Operations::get_coup_target_mask(state, p, coup_mask);
+                for (uint8_t i = 0; i < 84; ++i) {
+                    if (coup_mask[i]) {
+                        mask_out[static_cast<size_t>(Resolution::OPS_COUP)] = 1;
+                        break;
+                    }
+                }
+            };
+
             if (CardData::is_scoring_card(card)) {
-                mask_out[static_cast<size_t>(PlayMode::EVENT)] = 1;
+                mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
                 return;
             }
 
@@ -231,9 +252,9 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // opponent either way -- but it is a legal one, and at turn 10 AR4 of ts-replayer
             // game 247 the US does exactly that, to box 5.
             if (card == card_ids::THE_CHINA_CARD) {
-                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                set_ops_options();
                 if (SpaceRace::can_attempt_space(state, p, card)) {
-                    mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
+                    mask_out[static_cast<size_t>(Resolution::SPACE)] = 1;
                 }
                 return;
             }
@@ -254,39 +275,46 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 state.forced_card_player == p &&
                 card == card_ids::MISSILE_ENVY &&
                 in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
-                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                set_ops_options();
                 return;
             }
 
             // Defectors cannot be played as an event by US during Action Round
             if (card == card_ids::DEFECTORS && p == Player::US && state.current_phase == Phase::ACTION_ROUND) {
-                mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+                set_ops_options();
                 if (SpaceRace::can_attempt_space(state, p, card)) {
-                    mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
+                    mask_out[static_cast<size_t>(Resolution::SPACE)] = 1;
                 }
                 return;
             }
 
-            // Event play: legal ONLY for friendly or neutral cards (excluding China Card),
-            // and only if event prerequisites are met.
-            if (!CardData::is_opponent_card(card, p) && CardHandlers::can_trigger_event(state, card, p)) {
-                mask_out[static_cast<size_t>(PlayMode::EVENT)] = 1;
+            // EVENT means "the event resolves now". For a friendly or neutral card that is the
+            // whole play. For an OPPONENT's card it is event-first: the event fires and the Ops
+            // choice is deferred until afterwards, which is why it is legal exactly when Ops play
+            // is -- the old CHOOSE_TIMING_BRANCH offered EVENT_FIRST unconditionally there.
+            if (CardData::is_opponent_card(card, p)) {
+                mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
+            } else if (CardHandlers::can_trigger_event(state, card, p)) {
+                mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
             }
 
-            // Ops play: always legal for non-scoring cards
-            mask_out[static_cast<size_t>(PlayMode::OPS)] = 1;
+            // Ops play: always legal for non-scoring cards. Which Ops MODES are legal is the
+            // gating above -- coup needs a target, the other two do not.
+            set_ops_options();
 
             // Space play: legal if prerequisites are met
             if (SpaceRace::can_attempt_space(state, p, card)) {
-                mask_out[static_cast<size_t>(PlayMode::SPACE)] = 1;
+                mask_out[static_cast<size_t>(Resolution::SPACE)] = 1;
             }
             break;
         }
 
         case DecisionType::CHOOSE_TIMING_BRANCH: {
-            *out_size = 2;
-            mask_out[0] = 1; // OPS_FIRST
-            mask_out[1] = 1; // EVENT_FIRST
+            // P17: retired. The merged resolution node carries the timing -- EVENT on an
+            // opponent's card IS event-first, any OPS_* on one is ops-first -- so this node no
+            // longer occurs. Emitting nothing means an unexpected arrival is refused loudly
+            // instead of being handed a choice that no longer means anything.
+            *out_size = 0;
             break;
         }
 
@@ -315,9 +343,11 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         break;
                     }
                 }
-            } else {
-                mask_out[static_cast<size_t>(OpMode::INFLUENCE)] = 1;
             }
+            // P17: when the free action bars Influence, INFLUENCE is simply NOT legal. It used to
+            // be set here to stand for "decline the free action", which is what gave index 116
+            // three meanings and cost three engine bugs (ts-replayer games 141, 146, 105). The
+            // decline is the shared index, added by the flat layer below.
 
             // KAL-007 and Glasnost restrict the *free action their event grants*, not the card
             // itself: played for Ops, either allows a coup like any other card. Barring it
@@ -363,9 +393,10 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                     break;
                 }
             }
-            if (!mask_out[0] && !mask_out[1] && !mask_out[2]) {
-                mask_out[0] = 1; // Allow skipping if no ops legal
-            }
+            // P17: no fallback here. This used to set INFLUENCE(0) to mean "skip", which is the
+            // third meaning that index carried -- a real placement, "nothing is legal", and
+            // "decline this event's free bonus". An all-zero mask here is answered by the flat
+            // layer with the shared decline index, which means exactly one thing.
             break;
         }
 
@@ -521,7 +552,8 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             break;
 
         case DecisionType::SELECT_PLAY_MODE:
-            for (size_t i = 0; i < 4 && i < temp_size; ++i) {
+            // P17: the merged resolution node, five slots [110..114].
+            for (size_t i = 0; i < static_cast<size_t>(Resolution::COUNT) && i < temp_size; ++i) {
                 if (temp_mask[i]) {
                     mask_212[110 + i] = 1;
                 }
@@ -529,18 +561,27 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             break;
 
         case DecisionType::CHOOSE_TIMING_BRANCH:
-            for (size_t i = 0; i < 2 && i < temp_size; ++i) {
-                if (temp_mask[i]) {
-                    mask_212[114 + i] = 1;
-                }
-            }
+            // P17: unreachable. The merged node carries the timing choice -- EVENT on an
+            // opponent's card IS event-first, and any OPS_* on one is ops-first. Kept as a case
+            // so an unexpected arrival emits an empty mask and is refused loudly, rather than
+            // falling through to something that looks legal.
             break;
 
         case DecisionType::SELECT_OP_MODE:
+            // The deferred Ops choice after an event-first event. Reuses the resolution node's
+            // three OPS_* slots [112..114]: the same question reached by another route, so the
+            // head sees one concept rather than two.
             for (size_t i = 0; i < 3 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
-                    mask_212[116 + i] = 1;
+                    mask_212[112 + i] = 1;
                 }
+            }
+            // The decline, explicitly rather than borrowed. Two cases need it: nothing is
+            // spendable at all, or the Ops came from an event whose bonus action is optional
+            // (Junta, Tear Down This Wall -- `region_locked` is exactly that predicate).
+            if ((!mask_212[112] && !mask_212[113] && !mask_212[114]) ||
+                free_action::region_locked(ctx.pending_op_card, ctx.event_granted_ops)) {
+                mask_212[211] = 1;
             }
             break;
 
@@ -584,11 +625,10 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
             break;
 
         case DecisionType::ROLL_DIE:
-            // Rolling is the one legal action here, and it needs saying explicitly. Without this
-            // case nothing set a bit and the fallback below supplied 211 as a generic
-            // confirm/done -- which decodes to primary_id 255, and for ROLL_DIE primary_id is the
-            // forced die value rather than an index, so the roll came out as 255.
-            mask_212[211] = 1;
+            // P17: its own index. A chance node with one legal action is not a decline, and
+            // sharing 211 was the same aliasing being removed elsewhere -- cheaper only because
+            // the decode already special-cased it. 211 now means exactly one thing.
+            mask_212[115] = 1;
             break;
     }
 
@@ -606,14 +646,14 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
 MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t action_idx) noexcept {
     const auto& ctx = state.ctx();
 
+    // P17: ROLL_DIE has its own index now. primary_id carries the forced die value, so 0 means
+    // "roll normally" (ops.cpp reads `forced_roll > 0`) and the 255 sentinel used for
+    // confirm/done would have been read as a forced roll of 255.
+    if (action_idx == 115) {
+        return MicroAction{DecisionType::ROLL_DIE, 0, 0, 0};
+    }
+
     if (action_idx == 211) {
-        // ROLL_DIE first: its primary_id carries the forced die value, so the 255 "no selection"
-        // sentinel used below would be read as a forced roll of 255 rather than as "nothing
-        // chosen". 0 is the encoding for "roll normally" (ops.cpp reads `forced_roll > 0`), and
-        // CONFIRM_DONE has no meaning for a die.
-        if (ctx.decision_type == DecisionType::ROLL_DIE) {
-            return MicroAction{DecisionType::ROLL_DIE, 0, 0, 0};
-        }
         if (ctx.decision_type == DecisionType::SELECT_CARD) {
             // primary_id stays 0, which every card sub-decision already accepts as "decline",
             // but the flag has to be set too: without it is_confirm_done() reported false for
@@ -627,14 +667,20 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
     if (action_idx < 110) {
         return MicroAction{DecisionType::SELECT_CARD, static_cast<uint8_t>(action_idx + 1), 0, 0};
     }
-    if (action_idx < 114) {
+    // [110..114] are the merged resolution node. [112..114] do double duty as the deferred Ops
+    // choice, so the decision type decides which of the two this is -- the same slot means
+    // "spend Ops on X" either way, which is why they share.
+    if (action_idx < 115) {
+        if (ctx.decision_type == DecisionType::SELECT_OP_MODE && action_idx >= 112) {
+            return MicroAction{DecisionType::SELECT_OP_MODE,
+                               static_cast<uint8_t>(action_idx - 112), 0, 0};
+        }
         return MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(action_idx - 110), 0, 0};
     }
-    if (action_idx < 116) {
-        return MicroAction{DecisionType::CHOOSE_TIMING_BRANCH, static_cast<uint8_t>(action_idx - 114), 0, 0};
-    }
     if (action_idx < 119) {
-        return MicroAction{DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(action_idx - 116), 0, 0};
+        // [116..118] are unassigned after the merge. Nothing should arrive here; refuse rather
+        // than decode to a neighbouring meaning.
+        return MicroAction{DecisionType::NONE, 255, 0, 0};
     }
     if (action_idx < 203) {
         return MicroAction{DecisionType::POINT_NODE, static_cast<uint8_t>(action_idx - 119), 0, 0};
@@ -661,16 +707,22 @@ int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroA
             return 211;
 
         case DecisionType::SELECT_PLAY_MODE:
-            if (action.primary_id < 4) return static_cast<int16_t>(110 + action.primary_id);
+            if (action.primary_id < static_cast<uint8_t>(Resolution::COUNT)) {
+                return static_cast<int16_t>(110 + action.primary_id);
+            }
             return 211;
 
         case DecisionType::CHOOSE_TIMING_BRANCH:
-            if (action.primary_id < 2) return static_cast<int16_t>(114 + action.primary_id);
+            // P17: retired. No slot encodes it; the merged node carries the timing.
             return 211;
 
         case DecisionType::SELECT_OP_MODE:
-            if (action.primary_id < 3) return static_cast<int16_t>(116 + action.primary_id);
+            // Shares the resolution node's OPS_* slots.
+            if (action.primary_id < 3) return static_cast<int16_t>(112 + action.primary_id);
             return 211;
+
+        case DecisionType::ROLL_DIE:
+            return 115;
 
         case DecisionType::POINT_NODE:
             if (action.primary_id < 84) return static_cast<int16_t>(119 + action.primary_id);
