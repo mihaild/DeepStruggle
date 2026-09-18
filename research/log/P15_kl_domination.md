@@ -232,3 +232,60 @@ share collapse while its targets stay sharp and the policy drifts away from them
 moving *away* from a fixed target should produce a *larger* (π − p_target), not a smaller one. The
 candidates are that the other terms' gradients grow, or that the number of searched rows per
 iteration falls. Both are cheap to instrument and neither is instrumented.
+
+---
+
+## Correction and extension: the targets DO flatten, after the policy does (2026-09-18)
+
+The section above concluded "the feedback loop is dead" from target entropy being flat across a
+decline. **That measurement ran to 30.28M and stopped about half a million steps before the
+flattening began.** Correct for the window measured; wrong as a conclusion.
+
+Re-run with snapshots to 32.3M, 60 fixed positions, 64 simulations, **split by seat**:
+
+| steps | US H | US top1 | US CE | USSR H | USSR top1 | USSR CE | all H |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 28.31M | 0.713 | 0.714 | 0.734 | 0.814 | 0.695 | 0.839 | 0.759 |
+| 28.77M | 0.702 | 0.728 | 0.723 | 0.825 | 0.686 | 0.861 | 0.757 |
+| 29.29M | 0.710 | 0.731 | 0.729 | 0.865 | 0.675 | 0.888 | 0.780 |
+| 29.75M | 0.688 | 0.731 | 0.715 | 0.852 | 0.681 | 0.878 | 0.762 |
+| 30.28M | 0.723 | 0.696 | 0.757 | 0.839 | 0.675 | 0.906 | 0.775 |
+| 30.80M | **0.844** | 0.685 | 0.879 | **0.981** | 0.649 | 1.012 | **0.905** |
+| 31.26M | 0.848 | 0.665 | 0.867 | 0.961 | 0.636 | 0.981 | 0.899 |
+| 31.78M | 0.824 | 0.659 | 0.848 | 0.988 | 0.616 | 1.015 | 0.898 |
+| 32.31M | 0.826 | 0.680 | 0.841 | 0.944 | 0.647 | 0.961 | 0.879 |
+
+The earlier run's flat window reproduces exactly — 0.759 / 0.757 / 0.780 / 0.762 / 0.775 to
+30.28M — and then the targets step up and stay up: **+18%** overall, with the top-1 share falling
+0.706 → 0.665.
+
+### Two things follow, and they point opposite ways
+
+**1. The ordering exonerates the loop as an initiator.** The win rate falls at **30.02M**
+(77.5% → 58.0%); the targets flatten at **30.80M**. The policy weakens *first*, and the searcher —
+which is guided by that same network — produces flatter targets afterwards. So the flattening is
+downstream of the decline, not its cause. A loop may well amplify from there, and the timing says
+it cannot have started it.
+
+**2. The seat split rules target quality out of the seat-specific collapse entirely.** Over the
+window both seats degrade by almost exactly the same proportion:
+
+| | US | USSR |
+|:---|---:|---:|
+| target entropy | 0.713 → 0.826, **+15.9%** | 0.814 → 0.944, **+16.0%** |
+| policy→target CE | 0.734 → 0.841, **+14.6%** | 0.839 → 0.961, **+14.5%** |
+| **win rate vs anchor** | 84% → 82%, **flat** | 71% → 26%, **−45 pp** |
+
+The targets get worse identically on both seats and only one seat collapses. **Whatever makes the
+USSR seat fail, it is not that its targets degraded** — the US seat absorbs the same degradation
+without losing anything.
+
+### The standing asymmetry, which is constant and not growing
+
+USSR targets are consistently more diffuse than US ones — entropy 0.814 against 0.713 at the
+start, 0.944 against 0.826 at the end, a ratio pinned at **1.14–1.16 throughout** — and the USSR
+policy sits consistently further from its own targets. That is a *standing handicap* of searching
+the USSR seat, plausibly the determinization sampling hidden information the two seats do not hold
+symmetrically. It is present before the decline, it does not widen during it, and so it is
+background rather than mechanism: it may be why the USSR seat is the one with no margin to lose,
+without being what takes the margin away.
