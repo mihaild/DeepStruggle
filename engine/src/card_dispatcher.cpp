@@ -511,7 +511,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = std::min<uint8_t>(4, count);
                     state.ctx().max_per_country = 1;
-                    state.ctx().allow_early_stop = 1;
+                    // P17 6a: mandatory -- remove from 4 / add 5 -- exact counts, and already clamped
+                    state.ctx().allow_early_stop = 0;
                     state.ctx().visited_nodes = {};
                     return false;
                 } else {
@@ -519,7 +520,8 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     state.ctx().decision_type = DecisionType::POINT_NODE;
                     state.ctx().remaining_steps = 5;
                     state.ctx().max_per_country = 2;
-                    state.ctx().allow_early_stop = 1;
+                    // P17 6a: mandatory -- remove from 4 / add 5 -- exact counts, and already clamped
+                    state.ctx().allow_early_stop = 0;
                     state.ctx().clear_node_counts();
                     return false;
                 }

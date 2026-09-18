@@ -189,8 +189,23 @@ _LOG_MISCOUNTED: Dict[int, Dict[Tuple[int, str, str], int]] = {}
 #   which a card taken by Missile Envy may not go to: it is spent on Operations, and a space
 #   race attempt is not Operations. The attempt failed in the log, so nothing came of it there
 #   either.
+#   replay 260, turn 10 AR7 -- the US plays The Voice of America, "remove 4 USSR Influence from
+#   any countries NOT in Europe (removing no more than 2 Influence per country)", and removes
+#   only 3: two from Thailand and one from North Korea. The board had a fourth to give -- North
+#   Korea still holds 3 USSR Influence afterwards and had given up only one of its two -- so
+#   this is stopping short with a legal target on the table, which the card does not allow.
+#   P17 6a removed the early stop these placements never should have had, which is what turned
+#   a play the engine used to accept into one it now refuses.
+#
+#   It is the only entry in the corpus the 6a batch contradicts: the other eleven cards whose
+#   early stop was removed -- Marshall Plan's "any 7", Comecon's "each of 4", Socialist
+#   Governments' "a total of 3" among them -- are all exercised and none of them breaks.
+#   Unlisted it costs 15 entries rather than 1: this entry is what carries the game to its
+#   ending, so without it `game_ended` is False and the end-of-conversion guard rewinds the
+#   whole of turn 10 as an unfinished fragment.
 _INVALID_PLAYS: Dict[int, Set[Tuple[int, str, str]]] = {
     59: {(8, "Headline", "both")},
+    260: {(10, "AR7", "US")},
 }
 
 
@@ -258,6 +273,9 @@ class Conversion:
     hand_misses: int = 0
     # Cards the turn's hand lists gave to the wrong side, corrected from the entries.
     hand_reattributions: int = 0
+    # Entries where a listed invalid play (_INVALID_PLAYS) left the engine's board legitimately
+    # ahead of the log's, because the engine completed a play the record left short.
+    invalid_board_resyncs: int = 0
     # Entries where a listed disagreement (_KNOWN_SCORE) replaced the engine's score.
     scores_forced: int = 0
     # Entries where the log's own arithmetic is wrong (_LOG_MISCOUNTED) and the engine's score
@@ -3852,7 +3870,20 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
 
         # --- did replaying our parsed actions reproduce the log's board? ---
         bad = _board_matches(state, raw.get("countries"))
-        if bad:
+        listed_invalid = (e.turn, e.phase, e.player) in _INVALID_PLAYS.get(
+            conv.replay_id, frozenset())
+        if bad and listed_invalid:
+            # A listed play the rules do not allow, so the boards differ BY CONSTRUCTION: the
+            # engine completes what the log left short, and the extra step lands wherever the
+            # engine's own answer put it. At turn 10 AR7 of replay 260 the log removes 3 of The
+            # Voice of America's 4 and the engine removes the fourth from Syria, which the log
+            # leaves alone. The engine is right and the record is not, so this is not a
+            # mismatch to report -- but nothing in the entry is verified either, so its samples
+            # go the same way a real mismatch's would and the board is taken from the log so
+            # the next entry starts where the record does.
+            del conv.samples[before:]
+            conv.invalid_board_resyncs += 1
+        elif bad:
             del conv.samples[before:]          # unverified actions are not training data
             raise ConversionFailure(Mismatch(
                 conv.replay_id, e.turn, e.phase, e.player, e.card,

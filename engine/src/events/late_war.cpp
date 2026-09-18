@@ -79,7 +79,8 @@ bool trigger_the_reformer(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = total_inf;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- add 4 to Europe -- the 'may' governs the conditional 6, not this
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::THE_REFORMER;
     return false;
 }
@@ -90,7 +91,8 @@ bool trigger_marine_barracks_bombing(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 2;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- a total of 2 from the Middle East -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::MARINE_BARRACKS_BOMBING;
     return false;
 }
@@ -283,7 +285,8 @@ bool trigger_pershing_ii(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 3;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- 1 Influence from any 3 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::PERSHING_II_DEPLOYED;
     return false;
 }

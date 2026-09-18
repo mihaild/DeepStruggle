@@ -336,7 +336,8 @@ bool trigger_colonial_rear_guards(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 4;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- 1 Influence to each of any 4 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::COLONIAL_REAR_GUARDS;
     return false;
 }
@@ -446,7 +447,8 @@ bool trigger_oas_founded(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 2;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- a total of 2 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::OAS_FOUNDED;
     return false;
 }
@@ -478,7 +480,8 @@ bool trigger_voice_of_america(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 4;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- remove 4 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::THE_VOICE_OF_AMERICA;
     return false;
 }
@@ -488,7 +491,8 @@ bool trigger_liberation_theology(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 3;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- a total of 3 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::LIBERATION_THEOLOGY;
     return false;
 }
@@ -503,7 +507,8 @@ bool trigger_ussuri_river(GameState& state, Player p) noexcept {
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 4;
         state.ctx().max_per_country = 2;
-        state.ctx().allow_early_stop = 1;
+        // P17 6a: mandatory -- a total of 4 to Asia -- exact count
+        state.ctx().allow_early_stop = 0;
         state.ctx().resolving_card = card_ids::USSURI_RIVER_SKIRMISH;
         return false;
     }

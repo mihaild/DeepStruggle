@@ -47,10 +47,29 @@ def test_the_entry_converts_and_teaches_nothing() -> None:
     assert conv.entries_converted == 122
 
 
+def test_the_voice_of_america_entry_converts_with_the_board_taken_from_the_log() -> None:
+    """Replay 260 turn 10 AR7: the log removes 3 of the card's 4 with a fourth still available.
+
+    P17 6a took away the early stop that placement never should have had, so the engine now
+    completes the removal and the boards differ by construction -- the engine's is right and the
+    record's is not. The entry still has to convert: it is what carries the game to its ending,
+    and without it the whole of turn 10 rewinds as an unfinished fragment.
+    """
+    conv = convert_game(_game(260))
+    assert conv.failure is None, f"replay 260 stopped at {conv.failure}"
+    assert conv.entries_converted == conv.entries_total == 144
+    assert conv.game_ended, "the entry is what carries this game to its ending"
+    assert conv.invalid_board_resyncs == 1
+
+
 def test_no_other_game_carries_an_invalid_play() -> None:
     """The list is for what the rules settle outright, not for a decision the log fails to
-    determine -- that is a failure, and stays one."""
-    assert sum(len(v) for v in _INVALID_PLAYS.values()) == 1
+    determine -- that is a failure, and stays one.
+
+    Two entries, and both are rules calls rather than gaps: replay 59's Missile Envy card put on
+    the space race, and replay 260's Voice of America stopped one short of its mandatory four.
+    """
+    assert sum(len(v) for v in _INVALID_PLAYS.values()) == 2
     for replay_id, entries in _INVALID_PLAYS.items():
         for key in entries:
             assert key not in _LOG_MISCOUNTED.get(replay_id, {})

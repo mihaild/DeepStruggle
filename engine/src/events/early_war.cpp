@@ -85,7 +85,8 @@ bool trigger_socialist_governments(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 3;
     state.ctx().max_per_country = 2;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- remove a total of 3 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::SOCIALIST_GOVERNMENTS;
     return false;
 }
@@ -152,7 +153,8 @@ bool trigger_comecon(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 4;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- 1 Influence to each of 4 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::COMECON;
     return false;
 }
@@ -263,7 +265,8 @@ bool trigger_marshall_plan(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 7;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- 1 Influence to each of any 7 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::MARSHALL_PLAN;
     return false;
 }
@@ -322,7 +325,8 @@ bool trigger_decolonization(GameState& state, Player p) noexcept {
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = 4;
     state.ctx().max_per_country = 1;
-    state.ctx().allow_early_stop = 1;
+    // P17 6a: mandatory -- 1 Influence to each of any 4 -- exact count
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::DECOLONIZATION;
     return false;
 }

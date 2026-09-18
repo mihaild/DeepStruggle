@@ -504,7 +504,17 @@ TEST(MidCardsTest, OnlyTheNamedCardsMayFizzle) {
         const bool expected = (card == ts::card_ids::TRUMAN_DOCTRINE ||
                                card == ts::card_ids::MUSLIM_REVOLUTION ||
                                card == ts::card_ids::SUEZ_CRISIS ||
-                               card == ts::card_ids::EAST_EUROPEAN_UNREST);
+                               card == ts::card_ids::EAST_EUROPEAN_UNREST ||
+                               // P17 6a. These six were shielded by allow_early_stop = 1: the
+                               // anomaly branch is only reached when early stop is off, so they
+                               // never fizzled visibly. Flipping that flag without listing them
+                               // here would have produced six false positives.
+                               card == ts::card_ids::SOCIALIST_GOVERNMENTS ||
+                               card == ts::card_ids::COMECON ||
+                               card == ts::card_ids::MARSHALL_PLAN ||
+                               card == ts::card_ids::THE_VOICE_OF_AMERICA ||
+                               card == ts::card_ids::MARINE_BARRACKS_BOMBING ||
+                               card == ts::card_ids::PERSHING_II_DEPLOYED);
         ASSERT_EQ(ts::may_fizzle::allowed(card), expected);
     }
     ASSERT_FALSE(ts::may_fizzle::allowed(0));

@@ -298,11 +298,25 @@ namespace de_stalinization {
 }
 
 namespace may_fizzle {
+    // BEST_EFFORT cards: the player must execute as fully as possible -- no early stop -- but the
+    // board can legitimately fail to supply enough targets, so a short or empty result is correct
+    // play and not a defect. Every other card reaching an empty POINT_NODE is a bug worth the
+    // anomaly report, which is the only reason keeping this list honest matters.
+    //
+    // The six added with P17 6a were previously shielded by allow_early_stop = 1: action_mask.cpp
+    // only reaches the anomaly branch when early stop is off, so flipping that flag without
+    // extending this list would have turned six silent cards into six false positives.
     inline constexpr bool allowed(uint8_t card_id) noexcept {
-        return card_id == card_ids::TRUMAN_DOCTRINE ||
-               card_id == card_ids::MUSLIM_REVOLUTION ||
-               card_id == card_ids::SUEZ_CRISIS ||
-               card_id == card_ids::EAST_EUROPEAN_UNREST;
+        return card_id == card_ids::TRUMAN_DOCTRINE ||        // a single uncontrolled European country
+               card_id == card_ids::MUSLIM_REVOLUTION ||      // 2 of 8 named countries
+               card_id == card_ids::SUEZ_CRISIS ||            // a total of 4 from France/UK/Israel
+               card_id == card_ids::EAST_EUROPEAN_UNREST ||   // 1-2 from 3 Eastern European countries
+               card_id == card_ids::SOCIALIST_GOVERNMENTS ||  // a total of 3 from Western Europe
+               card_id == card_ids::COMECON ||                // each of 4 non-US-controlled in E. Europe
+               card_id == card_ids::MARSHALL_PLAN ||          // each of any 7 non-USSR-controlled in W. Europe
+               card_id == card_ids::THE_VOICE_OF_AMERICA ||       // 4 from outside Europe
+               card_id == card_ids::MARINE_BARRACKS_BOMBING ||        // a total of 2 from the Middle East
+               card_id == card_ids::PERSHING_II_DEPLOYED;              // 1 from any 3 in Western Europe
     }
 }
 
