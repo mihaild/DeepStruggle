@@ -1,0 +1,141 @@
+# P17 — what the decision stack actually needs to hold
+
+Companion to [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md). Evidence in
+[P17_ctx_stack_census.md](../log/P17_ctx_stack_census.md).
+
+Today every frame is a full 128-byte `DecisionContext`, whether it is the decision being made or a
+card waiting three levels down. The owner's observation is that those are not the same thing:
+*"it is impossible to use 2 Ops from Five Year Plan, then trigger the event, then use the last Op."*
+A suspended frame's Ops are never **partially** spent — so it does not need the machinery that
+tracks a partially spent sequence.
+
+That is true, and it is the fact the whole design rests on.
+
+## 1. What a suspended frame carries today — measured
+
+1,500 games, **5,152 suspended (non-top) frames** inspected field by field.
+
+| field | non-default on a suspended frame |
+|:--|:--|
+| `decision_player` | 5,152 |
+| `decision_type` | 5,088 — `SELECT_OP_MODE` 4,845, then `SELECT_CARD` 80, `ROLL_DIE` 59, `SELECT_PLAY_MODE` 55, `POINT_NODE` 49 |
+| `pending_op_card` | 5,010 |
+| `pending_ops_value` | 4,955 |
+| `timing_branch` | 4,955 |
+| `resolving_card` | 252 |
+| `allow_early_stop` | 84 |
+| `op_mode` | 77 |
+| `pending_roll` / `roll_actor` | 72 |
+| `roll_target` | 68 |
+| `remaining_steps` | 45 |
+| `start_influence_nodes` | 36 |
+| `max_per_country` | 29 |
+| **`visited_nodes`** | **0** |
+| **`node_count_bits`** | **0** |
+| **`suppress_op_card_event`** | **0** |
+| **`event_granted_ops`** | **0** |
+| **`event_stage`** | **0** |
+
+### The tail of that table is stale, not live
+
+`remaining_steps > 0` on a suspended frame looks like a counterexample — a sequence caught
+mid-flight. It is not. Every such frame has `visited_nodes == 0` **and** `node_count_bits == 0`,
+which a genuinely mid-sequence frame cannot: those are what record the steps already taken. Dumped
+in full, all of them are the same shape — frame 0, `resolving_card` Five Year Plan, `ROLL_DIE` or
+`POINT_NODE` left over, `remaining_steps` 1, nothing visited.
+
+The cause is structural: `pop_context()` does **not** clear the frame it leaves, and
+`push_context()` zeroes only the *new* top. The base frame therefore accumulates debris from
+earlier action rounds and keeps it indefinitely.
+
+**This is harmless today only by luck.** The unwind loops read exactly one field of a suspended
+frame — `decision_type == SELECT_OP_MODE` — and the observation reads two. Nothing else looks, so
+nothing else sees the garbage. Any design that reads *more* fields off a suspended frame, including
+the `frame_kind`/`owes` proposal, is reading stale bytes unless suspension writes them explicitly.
+That is a trap worth closing rather than stepping around.
+
+### And the four always-zero fields are derivable, not lucky
+
+* `visited_nodes`, `node_count_bits` — the owner's point. A suspension happens *between* sequences.
+* `suppress_op_card_event` — UN Intervention's flag. UN Intervention terminates a chain and never
+  pushes, so its frame is never suspended.
+* `event_granted_ops` — event-granted Ops are spent on the top frame, immediately.
+* `event_stage` — multi-stage events (CHE, De-Stalinization) fire no other card's event, so they
+  never suspend.
+
+## 2. Proposed layout
+
+```cpp
+struct SuspendedFrame {          // 8 bytes
+    Player  decision_player;
+    uint8_t resolving_card;      // whose handler resumes; 0 = a plain card play
+    uint8_t pending_op_card;     // the card whose Ops are owed
+    uint8_t pending_ops_value;   // Ops still owed; 0 = nothing owed
+    uint8_t timing_branch;
+    uint8_t flags;               // owes_event; frame kind
+    uint8_t pad[2];
+};
+
+DecisionContext               ctx;               // THE decision being made — one fixed member
+std::array<SuspendedFrame, 7> suspended;         // everything below it
+uint8_t                       suspended_depth;
+```
+
+Four things this buys.
+
+**The top frame is at a fixed address by construction.** Not `ctx_stack[ctx_stack_depth]` — a
+single member. The owner's requirement that the currently-resolving card always be read from the
+same place stops being a convention the observation has to honour and becomes a property of the
+type.
+
+**Stale debris becomes unrepresentable.** Suspending marshals six named bytes. There is no room
+left for anything to be stale in.
+
+**Memory falls.** 6 x 128 = 768 bytes today; 128 + 7 x 8 = 184. That is 584 bytes back, and
+`sizeof(GameState)` drops from 1,536 toward ~950 — while raising the depth limit from 5 to 8, past
+the derived worst case of 6.
+
+**The resume rule becomes explicit.** `pending_ops_value > 0 || owes_event`, instead of
+`decision_type == SELECT_OP_MODE` — a decision type currently doing double duty as a flag, and the
+thing Grain Sales' parent frame could not express.
+
+## 3. Why rehydration is sound
+
+Resuming means rebuilding a full `DecisionContext` from eight bytes. That works precisely because
+of §1: the Ops were never partially spent, so every field not carried across is *already* at its
+default when the frame resumes. Concretely:
+
+* **deferred Ops** (the EVENT_FIRST split) → `decision_type = SELECT_OP_MODE` plus the carried
+  card, value, player and timing. `op_mode`, `remaining_steps`, `visited_nodes`, `node_count_bits`
+  are all correctly zero: the sequence has not begun.
+* **a chain extender resuming** — only Grain Sales, which resumes to its 2 Ops on a decline.
+* **a frame that is merely unwound through** needs nothing at all.
+
+If this invariant were ever false, rehydration would silently lose state. So it is asserted, not
+assumed: **on suspend, `visited_nodes` and `node_count_bits` must be zero**, and violating it is an
+`invariant_failed`. The owner is explicit that abort is the right failure here — it would mean a
+rules implementation is wrong, and a wrong game reaching a training set is worse than a crash.
+
+## 4. Call sites that change
+
+Small and enumerable — only three places read a non-top frame:
+
+* `observation.cpp:234` — the chain walk grading `ACTIVE_SUSPENDED`. Reads `resolving_card` and
+  `pending_op_card`; both are carried.
+* `ts_bindings.cpp:168` / `:276` — `to_save_dict` / `state_from_save_dict`. The per-frame dict
+  shrinks to the carried fields. Named-field, so old saves still load.
+* the three unwind loops (`state_machine.cpp:375`, `:414`, `:989`) — `pop_context()` becomes
+  "rehydrate `ctx` from the top suspended record", and the resume test becomes the explicit one.
+
+Everything else already goes through `ctx()`, which becomes `ctx`.
+
+## 5. Sequencing
+
+This is a bigger change than §5 and should not be bundled with it.
+
+1. **Resize `ctx_stack` 6 → 8** (§5 work item 3.0). Unblocks Grain Sales, no behaviour change.
+2. **Land §5** on the existing layout.
+3. **Then this**, with its own whole-corpus run and its own fuzz sweep.
+
+Doing it in the other order means debugging a Grain Sales restructure and a stack rewrite in the
+same failure.
