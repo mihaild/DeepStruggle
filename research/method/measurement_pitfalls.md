@@ -248,3 +248,34 @@ exonerated before anyone looked at `opp_pool_size`
 * **A replay that fails to reproduce is a measurement.** The dense-snapshot arm was launched to
   photograph the collapse in finer detail and instead did not collapse at all. Treating that as
   the finding, rather than as a failed run to be retried, is what located the cause.
+
+## Two points are not a trend, and a null is only as wide as its window
+
+The single most repeated error of 2026-09-18 — **three of the nine claims retracted that night**,
+each from a sound instrument and a lazy reading.
+
+Every per-seat evaluation in this project is 100 games a side. At a win rate near 0.6 that is a
+standard error of about **3.5 pp**, so a point carries **±4–5 pp** and two points carry a
+difference that must clear roughly 10 pp before it means anything.
+
+**The endpoint trap.** `E3-35-28`'s US seat was reported as "flat, does not move" from a window
+whose first value was 84 and last was 82. Both were real measurements; the last happened to be one
+of the column's highest samples. Window means over the same 21 points give **80.7 → 74.7 → 63.4**,
+a 17.3 pp fall that was in the data the whole time. The claim then propagated: a "USSR-only"
+decline was used to *exclude* target degradation as a mechanism, and that exclusion had to be
+withdrawn with it.
+
+**The unfinished-window trap.** Target entropy was measured across a decline, found flat, and
+reported as killing the CE-feedback-loop hypothesis. The window ended ~0.5M steps before the
+flattening started; extended, the targets flatten 18%. A null result says nothing outside the
+range it was taken over, and "the decline" is not a range until you have checked where it ends.
+
+**So, for any directional claim on this project's evaluation series:**
+
+* quote a **window mean with its n**, never first-versus-last;
+* compare **three windows, not two** — early/middle/late catches a trend that reverses;
+* for a null, state the step range it covers and check that range contains the whole phenomenon;
+* prefer a ratio or a fold-change over a difference of two noisy percentages.
+
+`tools/scripts/` has no helper for this yet; the ad-hoc version is nine lines and is reproduced in
+[`log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md).
