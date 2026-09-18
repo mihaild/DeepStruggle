@@ -597,6 +597,28 @@ class GameState:
 
     def set_space_turns_used(self, arg0: Player, arg1: int, /) -> None: ...
 
+    def set_forced_deal(self, player: Player, cards: Sequence[int]) -> None:
+        """
+        Name the cards the NEXT deal gives this player, for re-driving a recording.
+
+        A die roll can already be forced through its own action; a deal cannot, because a
+        deal is not a decision. Without this a replay is not self-contained: re-driving it
+        on an engine whose shuffle or draw order changed diverges at the first deal,
+        silently, producing a different game rather than an error.
+
+        Per player on purpose -- what is recorded is WHICH CARDS each side received, so a
+        recording survives a change to the deal algorithm and not merely to the shuffle.
+        Consumed by one deal and then cleared; a source driving several refills before
+        each. Empty in normal play, which costs one comparison per draw. A named card that
+        is not in the draw deck when the deal reaches it is reported as an anomaly and that
+        draw falls back to the RNG, rather than being silently mis-dealt.
+        """
+
+    def get_forced_deal_remaining(self, player: Player) -> int:
+        """
+        How many named cards this player's queue still holds. 0 in normal play.
+        """
+
     def record_space_attempt(self, arg: Player, /) -> None: ...
 
     def get_card_location(self, arg: int, /) -> CardLocation: ...

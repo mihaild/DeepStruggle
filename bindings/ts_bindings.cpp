@@ -868,6 +868,50 @@ NB_MODULE(ts_engine, m) {
         })
         .def("get_space_turns_used", &ts::GameState::get_space_turns_used)
         .def("set_space_turns_used", &ts::GameState::set_space_turns_used)
+        .def("set_forced_deal",
+             [](ts::GameState& s, ts::Player p, const std::vector<uint8_t>& cards) {
+                 const bool us = (p == ts::Player::US);
+                 uint8_t* q = us ? s.forced_deal_us : s.forced_deal_ussr;
+                 uint8_t& n = us ? s.forced_deal_us_count : s.forced_deal_ussr_count;
+                 uint8_t& pos = us ? s.forced_deal_us_pos : s.forced_deal_ussr_pos;
+                 if (cards.size() > ts::GameState::FORCED_DEAL_MAX) {
+                     throw std::invalid_argument(
+                         "a deal gives at most " +
+                         std::to_string(ts::GameState::FORCED_DEAL_MAX) +
+                         " cards to a player; got " + std::to_string(cards.size()));
+                 }
+                 for (size_t i = 0; i < cards.size(); ++i) {
+                     if (cards[i] < 1 || cards[i] > 110) {
+                         throw std::invalid_argument(
+                             "forced deal card ids are 1..110; got " +
+                             std::to_string(cards[i]));
+                     }
+                     q[i] = cards[i];
+                 }
+                 n = static_cast<uint8_t>(cards.size());
+                 pos = 0;
+             },
+             nb::arg("player"), nb::arg("cards"),
+             "Name the cards the NEXT deal gives this player, for re-driving a recording.\n\n"
+             "A die roll can already be forced through its own action; a deal cannot, because a\n"
+             "deal is not a decision. Without this a replay is not self-contained: re-driving it\n"
+             "on an engine whose shuffle or draw order changed diverges at the first deal,\n"
+             "silently, producing a different game rather than an error.\n\n"
+             "Per player on purpose -- what is recorded is WHICH CARDS each side received, so a\n"
+             "recording survives a change to the deal algorithm and not merely to the shuffle.\n"
+             "Consumed by one deal and then cleared; a source driving several refills before\n"
+             "each. Empty in normal play, which costs one comparison per draw. A named card that\n"
+             "is not in the draw deck when the deal reaches it is reported as an anomaly and that\n"
+             "draw falls back to the RNG, rather than being silently mis-dealt.")
+        .def("get_forced_deal_remaining",
+             [](const ts::GameState& s, ts::Player p) {
+                 const bool us = (p == ts::Player::US);
+                 const uint8_t n = us ? s.forced_deal_us_count : s.forced_deal_ussr_count;
+                 const uint8_t pos = us ? s.forced_deal_us_pos : s.forced_deal_ussr_pos;
+                 return static_cast<int>(n) - static_cast<int>(pos);
+             },
+             nb::arg("player"),
+             "How many named cards this player's queue still holds. 0 in normal play.")
         .def("record_space_attempt", &ts::GameState::record_space_attempt)
         .def("get_card_location", [](const ts::GameState& s, uint8_t card_id) -> ts::CardLocation {
             if (card_id < 1 || card_id > 110) throw std::out_of_range("Card ID must be 1..110");

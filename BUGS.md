@@ -84,8 +84,22 @@ honestly gated.
 
 ## TODO — no forced-deal affordance, so replays cannot survive a shuffle change
 
-**Status:** deferred by the owner. Not urgent while the engine is not changing between a replay's
-generation and its playback.
+**Status:** DONE (P17). `GameState.set_forced_deal(player, cards)` names the cards the next deal
+gives a player; `get_forced_deal_remaining` reports what is left of it. Per player, not one queue
+in deal order, so a recording survives a change to the deal algorithm and not merely to the
+shuffle. Consumed by one deal and then cleared, so a leftover cannot be applied to a deal it was
+never recorded for. Inert in normal play. A named card that is not in the draw deck when the deal
+reaches it is reported as an anomaly and that draw falls back to the RNG, rather than being
+silently mis-dealt.
+
+The premise for deferring it expired: the engine changed under P17 and the pre-merge replays had
+to be archived because they could no longer be driven. Adding it now is what stops the next
+breaking change from costing the same thing again.
+
+Original report follows.
+
+**Status (original):** deferred by the owner. Not urgent while the engine is not changing between
+a replay's generation and its playback.
 
 Die rolls have a designed override: a `ROLL_DIE` action carries the acting player's value in
 `primary_id` and the opponent's in `secondary_id`, and `state_machine.cpp` documents it as "the

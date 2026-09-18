@@ -263,6 +263,30 @@ struct alignas(64) GameState {
     uint8_t last_die_roll;             // Backwards-compat: result of most recent die roll (1..6, 0 if none)
     uint8_t last_opp_die_roll;         // Backwards-compat: opponent die roll
 
+    // Forced deal: the cards the NEXT deal gives each player, supplied by a replay source.
+    //
+    // A die roll already has an override -- a ROLL_DIE action carries the value -- but a deal
+    // does not, and a deal is not a decision, so there is no action to hang one on. Without this
+    // a replay cannot be made self-contained: re-driving a recorded game on an engine whose
+    // shuffle or draw order has changed diverges at the first deal, silently, producing a
+    // different game rather than an error (BUGS.md TODO).
+    //
+    // PER PLAYER, not one queue in deal order, and that is the point: what is recorded is WHICH
+    // CARDS each side received, so a replay survives a change to the deal algorithm itself and
+    // not merely to the shuffle. A single queue consumed in the engine's own order would
+    // misassign every card the day that order changed, and would do it silently.
+    //
+    // Inert when empty, which is every normal game. A named card that is not in the draw deck
+    // when the deal reaches it is a contradiction between the recording and the engine, and is
+    // reported rather than skipped -- see StateMachine::deal_cards_to_hands.
+    static constexpr uint8_t FORCED_DEAL_MAX = 9;   // a deal tops a hand up to at most 9
+    uint8_t forced_deal_us[FORCED_DEAL_MAX];
+    uint8_t forced_deal_ussr[FORCED_DEAL_MAX];
+    uint8_t forced_deal_us_count;
+    uint8_t forced_deal_ussr_count;
+    uint8_t forced_deal_us_pos;
+    uint8_t forced_deal_ussr_pos;
+
     // -------------------------------------------------------------------------
     // 3. China Card Status
     // -------------------------------------------------------------------------
