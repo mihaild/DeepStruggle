@@ -164,3 +164,13 @@ severity knob rather than the cause.
 **This is three to six evaluation points, each ±4–5 pp, on a run still in flight.** The direction
 is consistent across the instruments, which is why it is recorded now, but the magnitude is not
 settled and the arm should be read again at 35M and 40M before anything is concluded from it.
+
+**Confirmed, and it plateaus (2026-09-18).** Three consecutive points after the drop: 58.0%,
+57.5%, 59.0% — mean **58.2%** against the previous five-point band's **73.6%**, a 15.4 pp fall at
+200 games a point. Not noise.
+
+The important difference from the starved run is what happens next: this one **stops falling**.
+The starved arm went to 24.0% and kept going; this settles at ~58% and holds, with the US seat at
+72–73% and the USSR seat at 42–48%. So a healthy pool does not prevent the decline, but it appears
+to **bound** it — consistent with the pool's stated job of keeping a trailing side in winnable
+games. Whether it holds at 58% or resumes falling is the thing to read at 35M and 40M.
