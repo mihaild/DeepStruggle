@@ -1788,6 +1788,10 @@ def train_pipeline(
         # Target/mask alignment, which search_ce only reports by accident: mass on a masked
         # action shows up as an absurd CE because the mask fill is -1e9, while the same
         # misalignment on a legal action is silent. These two measure it directly.
+        # Entropy of the search target, to be read beside the policy's own "entropy". The decline
+        # signature is policy entropy RISING; whether the target's rises with it decides whether
+        # the CE term is teaching that flattening or merely failing to prevent it.
+        active_aux_losses.append("search_target_entropy")
         active_aux_losses.append("search_target_illegal_mass_max")
         active_aux_losses.append("search_target_illegal_row_frac")
         # What the real mask rejected from the searcher's answer before it became a target. A

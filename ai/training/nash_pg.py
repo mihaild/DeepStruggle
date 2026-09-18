@@ -796,6 +796,11 @@ class NashPGTrainer(BaseNashPGTrainer):
         search_illegal_mass_accum = 0.0      # worst single row in the iteration
         search_illegal_rows_accum = 0        # rows with any mass outside the mask
         search_rows_seen_accum = 0           # searched rows examined, for the rate
+        # Entropy of the search target itself. Compare against `entropy`, the policy's own: the
+        # decline's signature is policy entropy RISING, and whether the target's rises with it
+        # decides whether the CE term is teaching that or merely failing to prevent it.
+        search_target_entropy_accum = 0.0
+        search_target_entropy_rows = 0
         # Importance-ratio diagnostics. E3-32-30 went from healthy to NaN logits in one
         # iteration, and the stated cause -- exp() overflowing -- does not survive the
         # arithmetic: a log-prob is <= 0, so with the opening's measured -16.6 the exponent
@@ -923,6 +928,21 @@ class NashPGTrainer(BaseNashPGTrainer):
                     sel = b_has_search > 0.5
                     search_ce = -(b_search_pi[sel] * cur_log_p[sel]).sum(dim=-1).mean()
                     with torch.no_grad():
+                        # Entropy of the TARGET, which is the one quantity that separates two
+                        # readings of the decline. Its signature is policy entropy RISING while
+                        # strength falls, which is backwards for a policy that is merely
+                        # over-sharpening. One explanation is a feedback loop: if the searcher's
+                        # visit distribution flattens -- because the network guiding it has
+                        # weakened, or because the positions reached are less decisive -- then
+                        # the CE term is actively TEACHING the policy to be flatter, which
+                        # weakens it further. If that is what happens, target entropy rises
+                        # before or with policy entropy. If target entropy stays flat while the
+                        # policy's rises, the CE term is not the thing doing it and the loop is
+                        # dead as an explanation.
+                        _t = b_search_pi[sel].clamp_min(1e-12)
+                        _tent = -(b_search_pi[sel] * _t.log()).sum(dim=-1)
+                        search_target_entropy_accum += float(_tent.mean())
+                        search_target_entropy_rows += 1
                         _legal = b_mask[sel].bool()
                         _illegal_mass = (b_search_pi[sel] * (~_legal).to(b_search_pi.dtype))
                         _row = _illegal_mass.sum(dim=-1)
@@ -1010,6 +1030,11 @@ class NashPGTrainer(BaseNashPGTrainer):
             # Target/mask alignment. A nonzero rate means the searcher is recommending actions
             # the current mask forbids, which is a misalignment whose legal-action counterpart
             # would be invisible -- see the comment beside the CE term.
+            # Read beside "entropy": if this rises with the policy's, the CE term is teaching the
+            # policy to be flatter; if it stays put, the loop is not the explanation.
+            "search_target_entropy": (
+                search_target_entropy_accum / search_target_entropy_rows
+                if search_target_entropy_rows else 0.0),
             "search_target_illegal_mass_max": search_illegal_mass_accum,
             "search_target_illegal_row_frac": (
                 search_illegal_rows_accum / search_rows_seen_accum

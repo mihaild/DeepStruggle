@@ -13,6 +13,8 @@ break silently:
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -362,3 +364,45 @@ def test_filter_search_visits_drops_illegal_and_renormalises() -> None:
     pairs, dropped = filter_search_visits([0, 4], np.array([1.0, 1.0]), narrow, width)
     assert pairs is not None and dict(pairs) == {0: 1.0}
     assert dropped == 1.0
+
+
+def test_search_target_entropy_is_the_targets_own_entropy_and_is_logged() -> None:
+    """Separates "the CE term taught the policy to flatten" from "the policy flattened anyway".
+
+    The decline signature on every X4b arm is policy entropy RISING while strength falls, which is
+    backwards for a policy that is merely over-sharpening. If the searcher's visit distribution
+    is itself flattening, the CE term is actively teaching that, and the loop is the explanation.
+    If target entropy stays put while the policy's climbs, the loop is dead. Nothing logged that
+    number, so neither reading could be tested.
+    """
+    import inspect
+
+    import torch
+
+    from ai.training import generic_trainer, nash_pg
+
+    # the quantity: entropy of the TARGET, not of the policy
+    one_hot = torch.zeros(1, 8)
+    one_hot[0, 3] = 1.0
+    ent = -(one_hot * one_hot.clamp_min(1e-12).log()).sum(dim=-1)
+    assert abs(float(ent[0])) < 1e-6, "a decisive target must have ~zero entropy"
+
+    # a uniform target over 4 legal actions is log(4)
+    uni = torch.zeros(1, 8)
+    uni[0, :4] = 0.25
+    ent = -(uni * uni.clamp_min(1e-12).log()).sum(dim=-1)
+    assert abs(float(ent[0]) - math.log(4)) < 1e-6
+
+    # zeros outside the legal set must not contribute: clamp_min guards log(0) -> -inf, and
+    # 0 * -inf would be NaN, which would silently poison the mean for a whole iteration
+    assert not torch.isnan(ent).any()
+
+    src = inspect.getsource(nash_pg.NashPGTrainer.train_step)
+    assert "search_target_entropy" in src
+
+    block = inspect.getsource(generic_trainer.train_pipeline)
+    block = block[block.index("active_aux_losses: List[str] = []"):]
+    block = block[:block.index("prev_steps")]
+    assert '"search_target_entropy"' in block, (
+        "search_target_entropy is computed but never registered, so it will not reach "
+        "training_metrics.jsonl -- the same allow-list gap that dropped search_ce")
