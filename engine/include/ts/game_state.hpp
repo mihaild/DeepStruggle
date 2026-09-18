@@ -458,7 +458,23 @@ namespace ctx_slots {
     // 72, not 76: legacy reserved 76 globals and only ever wrote 0..71, so v2.2 reclaims
     // the four it left blank rather than carrying them forward as padding.
     constexpr size_t BASE                 = 72;
-    constexpr size_t DECISION_TYPE        = BASE +  0; // 8 one-hot: NONE..ROLL_DIE
+    // 8 one-hot: NONE..ROLL_DIE, indexed by the DecisionType value itself. Two of the eight are
+    // permanently zero and stay reserved rather than being reclaimed:
+    //
+    //   [0] NONE                 -- never a decision a player is asked for
+    //   [3] CHOOSE_TIMING_BRANCH -- the node P17 retired; on an opponent card EVENT is now the
+    //                               event-first branch and any OPS_* the ops-first one
+    //
+    // Measured over 68,699 positions of random play, both never leave 0 while the other six all
+    // vary. Reclaiming them would save two floats in 3,824 -- inputs that are constant, so a
+    // network already ignores them -- at the price of replacing `DECISION_TYPE + dt` with a remap
+    // table. That indirection is precisely the shape of mistake P17 was cleaning up: a layout
+    // mapping that can be wrong without failing. The slot count is not the cost here; the
+    // mapping being trivially checkable is the value.
+    //
+    // Pinned by tests/engine_logic/test_observation_dead_slots.py, so a change that makes either
+    // fire is caught rather than quietly filling a slot documented as empty.
+    constexpr size_t DECISION_TYPE        = BASE +  0;
     constexpr size_t OP_MODE              = BASE +  8; // 3 one-hot: INFLUENCE, COUP, REALIGN
     constexpr size_t REMAINING_STEPS      = BASE + 11;
     constexpr size_t PENDING_OPS_VALUE    = BASE + 12;
