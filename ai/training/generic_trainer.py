@@ -1785,6 +1785,11 @@ def train_pipeline(
         # so the first visible symptom was kl_div reaching 30 with the policy already gone.
         active_aux_losses.append("search_ce")
         active_aux_losses.append("search_ce_grad_frac")
+        # Target/mask alignment, which search_ce only reports by accident: mass on a masked
+        # action shows up as an absurd CE because the mask fill is -1e9, while the same
+        # misalignment on a legal action is silent. These two measure it directly.
+        active_aux_losses.append("search_target_illegal_mass_max")
+        active_aux_losses.append("search_target_illegal_row_frac")
 
     # Seeded from the trainer, not from the loop variable, which does not exist yet -- and from
     # the clock as it stands, not from zero: a resumed run's elapsed already includes the previous

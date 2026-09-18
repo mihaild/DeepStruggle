@@ -699,6 +699,13 @@ class NashPGTrainer(BaseNashPGTrainer):
         search_ce_accum = 0.0
         search_ce_frac_accum = 0.0
         search_rows_accum = 0
+        # How much of the search target lands OUTSIDE the legal mask. Inferred until now from the
+        # size of search_ce (mask fill -1e9, so CE ~ 1e5 implies ~1e-4 of misplaced mass);
+        # measured directly here, because the inference only works while the misplaced action is
+        # illegal and says nothing about the legal-but-wrong case.
+        search_illegal_mass_accum = 0.0      # worst single row in the iteration
+        search_illegal_rows_accum = 0        # rows with any mass outside the mask
+        search_rows_seen_accum = 0           # searched rows examined, for the rate
         # Importance-ratio diagnostics. E3-32-30 went from healthy to NaN logits in one
         # iteration, and the stated cause -- exp() overflowing -- does not survive the
         # arithmetic: a log-prob is <= 0, so with the opening's measured -16.6 the exponent
@@ -801,12 +808,38 @@ class NashPGTrainer(BaseNashPGTrainer):
                 own_entropy = (cur_entropy[b_learner > 0.5].mean()
                                if bool((b_learner > 0.5).any()) else cur_entropy.sum() * 0.0)
                 # P15-X4b: pull the policy toward the searcher, on searched decisions only.
-                # Soft cross-entropy against the visit distribution. The target is zero outside
-                # the legal set, so masked logits contribute nothing and cannot produce a NaN.
+                # Soft cross-entropy against the visit distribution.
+                #
+                # The target is SUPPOSED to be zero outside the legal set, and this comment used
+                # to assert it was. It is not. With the mask fill at -1e9, target mass e on a
+                # masked action contributes e * 1e9 to the CE, and search_ce is observed above
+                # 100 -- impossible for a 212-way softmax, whose maximum is log(212) = 5.36 -- in
+                # about a third of iterations on every search arm measured, implying ~1e-4 of the
+                # target sitting outside the legal set.
+                #
+                # Training is not visibly harmed: the CE gradient is (pi - p_target), so a masked
+                # action contributes ~1e-4 and search_ce_grad_frac stays flat through the spikes.
+                # What it costs is the METRIC -- a third of the rows are unusable -- and what it
+                # warns about is worse: mass landing on the wrong action is only detectable when
+                # the wrong action happens to be illegal. The same misalignment placing mass on a
+                # LEGAL wrong action would be silent, which is exactly how the earlier
+                # search-target off-by-one survived.
+                #
+                # So measure it rather than infer it from the loss magnitude. This is a
+                # diagnostic only; the loss is deliberately left alone, because changing it would
+                # change the experiment for arms in flight.
                 search_ce = cur_logits.sum() * 0.0
                 if self.search_ce_coef > 0.0 and bool((b_has_search > 0.5).any()):
                     sel = b_has_search > 0.5
                     search_ce = -(b_search_pi[sel] * cur_log_p[sel]).sum(dim=-1).mean()
+                    with torch.no_grad():
+                        _legal = b_mask[sel].bool()
+                        _illegal_mass = (b_search_pi[sel] * (~_legal).to(b_search_pi.dtype))
+                        _row = _illegal_mass.sum(dim=-1)
+                        search_illegal_mass_accum = max(
+                            search_illegal_mass_accum, float(_row.max()))
+                        search_illegal_rows_accum += int((_row > 1e-9).sum())
+                        search_rows_seen_accum += int(_row.numel())
 
                 policy_loss = (ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy
                                + self.search_ce_coef * search_ce)
@@ -872,6 +905,13 @@ class NashPGTrainer(BaseNashPGTrainer):
             # still distinguishable from a run whose term silently produced nothing.
             "search_ce": search_ce_accum / max(1, search_rows_accum),
             "search_ce_grad_frac": search_ce_frac_accum / max(1, search_rows_accum),
+            # Target/mask alignment. A nonzero rate means the searcher is recommending actions
+            # the current mask forbids, which is a misalignment whose legal-action counterpart
+            # would be invisible -- see the comment beside the CE term.
+            "search_target_illegal_mass_max": search_illegal_mass_accum,
+            "search_target_illegal_row_frac": (
+                search_illegal_rows_accum / search_rows_seen_accum
+                if search_rows_seen_accum else 0.0),
             # Maxima and a minimum over the iteration, not means: a single pathological sample
             # is what poisons a batch, and an average would bury it.
             "logratio_max": logratio_max_accum if num_updates else 0.0,

@@ -208,3 +208,61 @@ def test_forced_setup_actions_are_stored_with_their_own_log_prob() -> None:
     assert force < gather, (
         "the setup override runs after the log-prob gather, so the buffer would record the "
         "log-prob of an action that was not taken")
+
+
+def test_mass_outside_the_legal_mask_is_measured_not_inferred() -> None:
+    """The alignment check must count misplaced target mass directly.
+
+    `search_ce` reports this only by accident. The mask fill is -1e9, so target mass e on a
+    MASKED action contributes e * 1e9 to the cross-entropy, which is why search_ce is observed
+    above 1e5 -- impossible for a 212-way softmax, whose maximum is log(212) = 5.36 -- in about a
+    third of iterations on every search arm measured.
+
+    Inferring the mass by dividing the loss by 1e9 works only while the misplaced action happens
+    to be illegal. The same misalignment landing on a LEGAL wrong action produces an ordinary CE
+    and is invisible, which is precisely how the earlier search-target off-by-one survived: the
+    targets stayed legal, so no mask caught them.
+
+    This pins the arithmetic the diagnostic rests on, and that the metric is registered.
+    """
+    import inspect
+
+    import torch
+
+    from ai.training import generic_trainer, nash_pg
+
+    # 1. the arithmetic: mass e on a masked action costs e * 1e9 of CE
+    logits = torch.zeros(1, 4)
+    mask = torch.tensor([[True, True, True, False]])
+    masked = torch.where(mask, logits, torch.tensor(-1e9))
+    log_p = torch.log_softmax(masked, dim=-1)
+
+    eps = 1e-4
+    target = torch.tensor([[1.0 - eps, 0.0, 0.0, eps]])
+    ce = -(target * log_p).sum(dim=-1).mean()
+    assert ce > 1e4, f"masked mass should blow the CE up, got {ce}"
+    assert abs(float(ce) / 1e9 - eps) < 0.2 * eps, (
+        "CE/1e9 should recover the misplaced mass, which is the inference the metric replaces")
+
+    # the measured quantity is exact where the inferred one is approximate
+    measured = (target * (~mask).to(target.dtype)).sum(dim=-1)
+    # exact up to float32 epsilon at this magnitude (~1e-11), against the inferred value's ~20%
+    assert abs(float(measured[0]) - eps) < 1e-9
+
+    # 2. a LEGAL wrong action is invisible to the loss but not to a target check
+    legal_wrong = torch.tensor([[0.0, 0.0, 1.0, 0.0]])
+    ce_legal = -(legal_wrong * log_p).sum(dim=-1).mean()
+    assert ce_legal < 5.36 + 1e-6, (
+        "a legal target must produce an ordinary CE -- this is the silent case")
+    assert float((legal_wrong * (~mask).to(legal_wrong.dtype)).sum()) == 0.0
+
+    # 3. the metrics exist and are registered, or none of the above reaches the log
+    src = inspect.getsource(nash_pg.NashPGTrainer.train_step)
+    assert "search_target_illegal_mass_max" in src
+    assert "search_target_illegal_row_frac" in src
+
+    block = inspect.getsource(generic_trainer.train_pipeline)
+    block = block[block.index("active_aux_losses: List[str] = []"):]
+    block = block[:block.index("prev_steps")]
+    for key in ("search_target_illegal_mass_max", "search_target_illegal_row_frac"):
+        assert f'"{key}"' in block, f"{key} is computed but never registered for logging"
