@@ -185,3 +185,50 @@ is clean is the level shift in both series across the decline. Establishing the 
 the arm suggested above: KL restricted to learner rows, or η annealed, against this arm as control.
 `policy_loss_total` and `kl_term` are now logged, so the next run can be read on the objective
 that is actually optimised rather than on the surrogate alone.
+
+---
+
+## Refuted: KL crowding does not explain the CE gradient collapse (2026-09-18)
+
+The entry above offered, as a hypothesis, that the KL regulariser growing until it crowds the
+policy-improvement terms out of the update explains `search_ce_grad_frac` collapsing on
+`E3-35-28`. **That is wrong, and the same run refutes it.**
+
+Split every iteration from 28M by whether its KL was large:
+
+| | n | mean `search_ce_grad_frac` | mean entropy |
+|:---|---:|---:|---:|
+| `kl_div` > 1.0 | 16 | **0.1166** | 0.8323 |
+| `kl_div` ≤ 1.0 | 29 | **0.1339** | 0.8131 |
+
+No effect, and what difference there is runs the *wrong way* — the CE share is slightly higher
+when the KL is small. The time series is worse still for the hypothesis:
+
+| steps | kl mean | kl max | grad_frac | entropy |
+|---:|---:|---:|---:|---:|
+| 28.00M | 0.060 | 0.077 | **0.2380** | 0.687 |
+| 28.50M | 24.266 | 82.104 | 0.1303 | 0.735 |
+| 28.75M | 31.367 | 69.513 | 0.2019 | 0.775 |
+| 29.25M | 3.955 | 15.526 | 0.2070 | 0.775 |
+| 30.25M | 15.444 | 32.703 | 0.0603 | 0.941 |
+| 30.75M | **0.042** | 0.055 | **0.0246** | 0.928 |
+
+The KL spiked to a mean of 31 and a max of 82 while `grad_frac` held around 0.20, then returned to
+baseline — 0.042, lower than it was before any of this started — while `grad_frac` fell to its
+**lowest value of the run**. The CE share kept collapsing after the thing supposedly crowding it
+out had gone away.
+
+**What does move together** is entropy and the CE gradient share, monotonically and inversely
+across the whole window: 0.687 → 0.928 while 0.238 → 0.025. Neither tracks the KL.
+
+So both offered mechanisms are now dead: the CE feedback loop (targets stay sharp — measured
+above) and KL crowding (this table). The KL bimodality is real and remains unexplained, but it is
+**not** what drives the decline on this arm, and the `E3-31-28` arithmetic — a regulariser two to
+three orders of magnitude larger than the surrogate — stands as arithmetic without yet being shown
+to be causal anywhere.
+
+The open question is now sharper than when this entry was written: **why does the CE gradient
+share collapse while its targets stay sharp and the policy drifts away from them?** A policy
+moving *away* from a fixed target should produce a *larger* (π − p_target), not a smaller one. The
+candidates are that the other terms' gradients grow, or that the number of searched rows per
+iteration falls. Both are cheap to instrument and neither is instrumented.
