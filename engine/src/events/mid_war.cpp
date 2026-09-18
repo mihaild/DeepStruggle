@@ -229,9 +229,23 @@ bool trigger_portuguese_empire(GameState& state, Player p) noexcept {
 }
 
 bool trigger_south_african_unrest(GameState& state, Player p) noexcept {
-    // USSR chooses: Branch 0 = Add 2 to South Africa, Branch 1 = Add 1 to SA and 2 to country adjacent to SA
+    // P17 section 5: no bespoke branch, and every influence the card places gets its own node.
+    //
+    //   stage 0: South Africa only        -- both readings require it, so this is forced
+    //   stage 1: South Africa or adjacent -- South Africa ends it, an adjacent starts the split
+    //   stage 2: adjacent only            -- the second half of the split
+    //
+    // Placing stage 0 implicitly was tried and broke six corpus games: the log writes "+1 in
+    // South Africa" as its own line, so the reconstruction's first placement was South Africa,
+    // which the choice node then read as "spend the rest here". An implicit placement is still a
+    // decision the record contains. A forced node costs nothing at play time -- auto-advance
+    // settles it -- and keeps the reconstruction able to follow the log placement for placement.
+    state.ctx() = DecisionContext{};
     state.ctx().decision_player = Player::USSR;
-    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+    state.ctx().decision_type = DecisionType::POINT_NODE;
+    state.ctx().event_stage = 0;
+    state.ctx().remaining_steps = 1;
+    state.ctx().allow_early_stop = 0;     // both readings place everything; set, never inherited
     state.ctx().resolving_card = card_ids::SOUTH_AFRICAN_UNREST;
     return false;
 }

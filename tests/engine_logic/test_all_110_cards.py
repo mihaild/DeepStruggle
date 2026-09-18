@@ -557,7 +557,14 @@ class TestMidWarCards:
         state = make_clean_state()
         done = ts_engine.CardHandlers.trigger_event(state, 53, ts_engine.Player.USSR)
         assert done == False
-        ts_engine.CardHandlers.handle_event_step(state, ts_engine.MicroAction(ts_engine.DecisionType.CHOOSE_BRANCH, 0))
+        # P17 section 5: no branch index. Every influence the card places is its own node --
+        # South Africa first (both readings require it), then South Africa again to spend the
+        # rest there rather than splitting to an adjacent country.
+        sa = country_id("South Africa")
+        ts_engine.CardHandlers.handle_event_step(
+            state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, sa))
+        ts_engine.CardHandlers.handle_event_step(
+            state, ts_engine.MicroAction(ts_engine.DecisionType.POINT_NODE, sa))
         _, sa_ussr = get_inf(state, "South Africa")
         assert sa_ussr == 2
 

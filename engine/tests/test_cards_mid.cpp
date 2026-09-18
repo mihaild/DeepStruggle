@@ -335,69 +335,108 @@ TEST(MidCardsTest, Card52_PortugueseEmpireCrumbles) {
     ASSERT_EQ(state.countries[ts::countries::SE_AFRICAN_STS].ussr_influence, 2);
 }
 
-// Card 53: South African Unrest
-TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch0) {
+// Card 53: South African Unrest. P17 section 5: no branch index -- the first placement chooses.
+// Both readings start with at least 1 in South Africa, so that goes down at trigger time and
+// picking South Africa again means "spend the rest here".
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_AllIntoSouthAfrica) {
     ts::GameState state{};
     state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+
+    // Stage 0: the placement both readings share. Forced -- South Africa is the only target.
+    bool done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0});
+    ASSERT_FALSE(done);
+    ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 1);
+
+    // Stage 1: South Africa again spends the rest there.
+    done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 2);
 }
 
-// Branch 1 is "1 Influence in South Africa and 2 Influence in any countries adjacent to South
-// Africa" -- plural, so the pair may be split. The engine asked once and added both to the one
-// country chosen, which at turn 5 AR2 of ts-replayer game 112 could not express the USSR's
-// 1 in Botswana and 1 in Angola.
-TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_SplitsAcrossTwoNeighbours) {
+// The split reading: 1 in South Africa and 2 adjacent. The card says "a single country", but at
+// turn 5 AR2 of ts-replayer game 112 the USSR put 1 in Botswana and 1 in Angola, so each
+// placement is its own node and the pair may be split.
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_SplitsAcrossTwoNeighbours) {
     ts::GameState state{};
     state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
     state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
     state.countries[ts::countries::ANGOLA].ussr_influence = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
-
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
-    ASSERT_FALSE(done);
+    ASSERT_FALSE(ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0}));
     ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 1);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
 
-    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
-    ASSERT_FALSE(done); // one of the two adjacent placements is still to come
+    bool done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ASSERT_FALSE(done);   // one of the two adjacent placements is still to come
     ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 1);
 
-    done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ANGOLA, 0, 0});
+    done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ANGOLA, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::ANGOLA].ussr_influence, 1);
     ASSERT_EQ(state.ctx().resolving_card, 0);
+    ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 1);
+}
+
+// Once the split has started, South Africa is off the mask: the choice was made at the first
+// placement and cannot be walked back at the second.
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_SouthAfricaLeavesTheMaskAfterTheSplitBegins) {
+    ts::GameState state{};
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
+    ASSERT_FALSE(ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0}));
+
+    uint8_t first[ts::FLAT_ACTION_SPACE_SIZE] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, first);
+    ASSERT_EQ(first[ts::flat_slots::NODE + ts::countries::SOUTH_AFRICA], 1);
+
+    ASSERT_FALSE(ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0}));
+
+    uint8_t second[ts::FLAT_ACTION_SPACE_SIZE] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, second);
+    ASSERT_EQ(second[ts::flat_slots::NODE + ts::countries::SOUTH_AFRICA], 0);
+    ASSERT_EQ(second[ts::flat_slots::NODE + ts::countries::ANGOLA], 1);
 }
 
 // Both into one country stays available: it is a choice, not the only option.
-TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_MayStackBothInOneNeighbour) {
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_MayStackBothInOneNeighbour) {
     ts::GameState state{};
     state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
     state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
     ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
-    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
-    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0});
+    ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    bool done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
     ASSERT_TRUE(done);
     ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 2);
+    ASSERT_EQ(state.countries[ts::countries::SOUTH_AFRICA].ussr_influence, 1);
 }
 
 // An event that says "add Influence" places it directly. The Ops path charges two per point
 // in a country the opponent controls; this must not.
-TEST(MidCardsTest, Card53_SouthAfricanUnrest_Branch1_IgnoresOpponentControl) {
+TEST(MidCardsTest, Card53_SouthAfricanUnrest_IgnoresOpponentControl) {
     ts::GameState state{};
     state.countries[ts::countries::SOUTH_AFRICA].ussr_influence = 0;
     // US control of Botswana: stability 2, so 4 US Influence against 0 is firmly controlled.
     state.countries[ts::countries::BOTSWANA].ussr_influence = 0;
     state.countries[ts::countries::BOTSWANA].us_influence = 4;
     ts::CardHandlers::trigger_event(state, ts::card_ids::SOUTH_AFRICAN_UNREST, ts::Player::USSR);
-    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
-    ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::SOUTH_AFRICA, 0, 0});
+    ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
+    bool done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::BOTSWANA, 0, 0});
     ASSERT_TRUE(done);
     // Both points land despite US control -- an event pays no doubled cost.
     ASSERT_EQ(state.countries[ts::countries::BOTSWANA].ussr_influence, 2);

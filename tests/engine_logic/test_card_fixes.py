@@ -193,8 +193,9 @@ def test_fix_card_53_south_african_unrest_branch1_adjacent():
     set_inf(s, sa_id, 0, 0)
     set_inf(s, angola_id, 0, 0)
     ts.CardHandlers.trigger_event(s, 53, ts.Player.USSR)
-    # Branch 1: 1 in SA, 2 in adjacent
-    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 1))
+    # P17 section 5: the shared South Africa placement is its own node, then choosing an
+    # adjacent country is what selects the split.
+    done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, sa_id))
     assert not done
     assert get_inf(s, sa_id)[1] == 1
     assert s.ctx().decision_type == ts.DecisionType.POINT_NODE
@@ -216,7 +217,7 @@ def test_fix_card_53_south_african_unrest_branch1_splits_across_neighbours():
     set_inf(s, angola_id, 0, 0)
     set_inf(s, botswana_id, 0, 0)
     ts.CardHandlers.trigger_event(s, 53, ts.Player.USSR)
-    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 1))
+    ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, sa_id))
     done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, botswana_id))
     assert not done
     done = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, angola_id))
