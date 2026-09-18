@@ -116,3 +116,51 @@ collapse was investigated for two days through the loss, the entropy, the CE gra
 the KL, and the answer was sitting in two columns of the same file. The instrument that finally
 caught it was a *replay that failed to reproduce* — worth more than any amount of staring at the
 run that did.
+
+---
+
+## Important qualification (appended 2026-09-18): a real decline exists, later and milder
+
+`E3-35-28`, the extension of the non-collapsing replay, has begun declining at **~30M with a
+demonstrably healthy pool** — capacity 12, span 30M, `opp_win_rate_mean` 0.45–0.49.
+
+Per seat against `p28_280M`:
+
+| steps | overall | US | USSR |
+|---:|---:|---:|---:|
+| 28.77M | 77.5% | 84.0% | 71.0% |
+| 29.03M | 75.5% | 84.0% | 67.0% |
+| 29.29M | 70.0% | 85.0% | 55.0% |
+| 29.56M | 72.5% | 81.0% | 64.0% |
+| 29.75M | 72.5% | 86.0% | 59.0% |
+| 30.02M | **58.0%** | 68.0% | **48.0%** |
+
+And the training instruments show the documented collapse signature arriving with it:
+
+| | 29.43M | 30.28M |
+|:---|---:|---:|
+| `kl_div` | 0.073 | **7.486** (spiking through 2.36, 3.62, 7.49) |
+| `entropy` | 0.774 | **0.947**, rising |
+| `search_ce_grad_frac` | 0.207 | **0.033**, falling |
+| `explained_variance` | 0.804 | 0.665 |
+| `mean_turn` | 6.83 | 6.44 |
+
+**So the entry above overstates the case.** What the pool bug explains is the *severity and
+timing* of the 20M–25M collapse: 24.0% at 25M, against 90.0% for the same configuration with a
+working pool. What it does not explain is a genuine decline that arrives around 30M anyway, from a
+much higher peak, with entropy rising and the CE gradient share falling exactly as recorded in
+[`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md).
+
+Read together with `E3-31-28` — healthy pool of 5, declining from 20M — the shape now looks like:
+**a real failure mode of search-CE training that pool starvation dramatically accelerated and
+deepened.** The starved run reached 24%; this one is at 58% and falling from 90%.
+
+Notably the KL bimodality appears here too, at `ref_update_freq` **200k**, where
+[`P15_kl_domination.md`](P15_kl_domination.md) observed it at 5M. A stale reference is therefore
+*not* necessary for it — it is milder here (7.5 against 47) but the same pattern, which weakens
+the pooled-opponent-draw hypothesis offered there and makes the reference interval look like a
+severity knob rather than the cause.
+
+**This is three to six evaluation points, each ±4–5 pp, on a run still in flight.** The direction
+is consistent across the instruments, which is why it is recorded now, but the magnitude is not
+settled and the arm should be read again at 35M and 40M before anything is concluded from it.
