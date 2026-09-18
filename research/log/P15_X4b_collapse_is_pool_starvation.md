@@ -262,3 +262,36 @@ depend on either retracted claim.
 evaluation points carry ±4–5 pp, so *any* claim about a trend needs a window mean and a stated n,
 and "the first and last points of my window" is not a trend. Both errors tonight were made by an
 instrument that was right and a reading that was lazy.
+
+### The collapse is global and staggered, and the seat ratio is not a quantity (2026-09-18)
+
+Six more evaluation points, 27 in total, re-read with the window means the section above
+prescribes:
+
+| window | US | USSR |
+|:---|---:|---:|
+| early — 28.31M–30.28M (n=9) | **78.4%** | **58.6%** |
+| middle — 30.54M–32.51M (n=9) | 72.0% | 38.4% |
+| late — 32.77M–34.80M (n=9) | **49.4%** | **33.6%** |
+| **change** | **−29.0 pp** | **−25.0 pp** |
+
+**The US seat has now lost more than the USSR seat.** The ratio quoted one section earlier, "USSR
+falls 1.71x as much", computed on 21 points, is **0.86x** on 27.
+
+The shape is sequential, not seat-specific. The USSR seat falls first and hard (58.6 → 38.4) and
+then levels off (38.4 → 33.6); the US seat holds through that (78.4 → 72.0) and then collapses
+(72.0 → 49.4). Both end heavily degraded.
+
+So **there is no seat-specific failure to explain** — there is one failure that reaches the seats
+in order. Three consequences:
+
+1. The "USSR-only" framing is gone entirely, including the softened version. `E3-31-28`'s
+   USSR-first decline now reads as the same staggered pattern caught early rather than as a
+   different phenomenon.
+2. **Target degradation is no longer a poor fit.** It degrades equally on both seats, and both
+   seats collapse. The mismatch that made it look wrong was an artifact of measuring during the
+   stagger. It is back to being a live candidate, on the same footing it had before any of this.
+3. **A ratio between two quantities that move on different schedules is not a summary of
+   anything.** Switching from endpoints to window means fixed the first error and did not fix
+   this one: the statistic was better and still described a moment rather than the process. Where
+   timing differs per series, report the series.
