@@ -469,3 +469,40 @@ it is now running as `E3-37-31_20260918_034639`. Two outcomes matter and both ar
   and little on seed B, and the default should not change on this evidence;
 * it lands near **23%** → seed 20260931 simply reaches ~23% regardless of the bands, seed B's
   entire apparent effect dissolves, and seed A's becomes a single-seed result again.
+
+---
+
+## Interim, and it undercuts the strongest claim: the ending mix is seed-dependent (2026-09-18)
+
+The matched control reached 17M, which allows the first **control-against-control** comparison —
+two seeds, the *same* default sharpened bands, no treatment in either:
+
+| at 16.97M | control seed A | control seed B |
+|:---|---:|---:|
+| mean turn | 6.32 | **7.67** |
+| mean ply | 87.5 | **108.7** |
+| ends in DEFCON 1 | 53.0% | **45.0%** |
+| — own decision | 17.4% | **10.0%** |
+| reaches final scoring | 8.3% | **16.0%** |
+
+**Control seed B has a markedly better ending mix than control seed A, with no treatment applied.**
+Roughly 8 pp on the DEFCON-1 rate, 7 pp on the self-inflicted share, +1.35 turns, and double the
+share of games reaching final scoring.
+
+That is the same *direction* and a comparable *magnitude* to what this document attributed to the
+rollout bands, and it is entirely a seed difference.
+
+**This is the most solid claim in the document and it is now in question.** "The rollout bands
+reliably change the ending mix — on both seeds" was supported by two treatment arms against one
+control. If a second control seed produces most of that shift on its own, the bands were credited
+with something the seed was doing.
+
+**Not yet settled, and deliberately not overstated.** The comparison here is at 17M; the
+treatment figures quoted earlier are at 30M and 40M, and the ending mix moves with training
+(control seed A reads 53.0% at 17M and 59.7% at 30M), so these cannot be put side by side. The
+clean four-way table needs control seed B at 30M and 40M, which is about an hour away.
+
+What can be said now is narrower and still worth saying: **on the one quantity where two seeds of
+the same condition can be compared, they differ by about as much as the conditions did.** Any
+reading of the ending-mix mechanism that does not account for that is measuring seed variance and
+calling it a treatment.
