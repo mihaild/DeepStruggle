@@ -22,7 +22,10 @@ from ai.eval.positions import PLAY_MODE_ACTION, PositionBuilder
 from bindings.action_encoder import ActionEncoder
 
 GRAIN_SALES, COMECON, WARSAW_PACT = 67, 14, 16
-TIMING_OPS_FIRST, TIMING_EVENT_FIRST = 114, 115
+# P17: the timing is carried by the resolution itself. On an opponent's card EVENT (110) is
+# event-first and any OPS_* is ops-first, so these name resolutions rather than a separate
+# timing node.
+TIMING_OPS_FIRST, TIMING_EVENT_FIRST = 112, 110
 
 
 def _play_for_ops(timing: int) -> Tuple[int, int]:
@@ -32,10 +35,9 @@ def _play_for_ops(timing: int) -> Tuple[int, int]:
         turn=8, defcon=4, opponent_hand=[4, 23, 34],
     ).build()
     ts.Engine.step_flat(st, GRAIN_SALES - 1)
-    ts.Engine.step_flat(st, PLAY_MODE_ACTION["ops"])
 
     legal = np.flatnonzero(ActionEncoder.get_legal_mask(st))
-    assert timing in legal.tolist(), f"timing branch {timing} not offered"
+    assert timing in legal.tolist(), f"resolution {timing} not offered"
     ts.Engine.step_flat(st, timing)
 
     offers = us_ops = 0

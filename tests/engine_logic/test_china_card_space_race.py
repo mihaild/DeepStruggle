@@ -54,7 +54,12 @@ def test_the_space_race_is_on_offer_for_the_china_card() -> None:
     state = _holding_the_china_card(box=4)
     ts.Engine.step_flat(state, THE_CHINA_CARD - 1)
     assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
-    assert _modes(state) == [111, 112], "Operations and the Space Race, and no Event"
+    # P17: SPACE is 111 and the Ops modes are [112..114]. The China Card has no Event of its
+    # own, so what is on offer is the Space Race plus whichever Ops modes the board allows.
+    modes = _modes(state)
+    assert 110 not in modes, "the China Card has no Event"
+    assert 111 in modes, "the Space Race must be on offer"
+    assert any(m in modes for m in (112, 113, 114)), "Operations must be on offer"
 
 
 def test_it_is_not_on_offer_when_the_next_box_is_out_of_reach() -> None:
@@ -64,7 +69,10 @@ def test_it_is_not_on_offer_when_the_next_box_is_out_of_reach() -> None:
     state.record_space_attempt(ts.Player.US)
     state.record_space_attempt(ts.Player.US)
     ts.Engine.step_flat(state, THE_CHINA_CARD - 1)
-    assert _modes(state) == [111]
+    # P17: the Space Race (111) is gone from the offer; only Ops modes remain.
+    modes = _modes(state)
+    assert 111 not in modes, "nothing left to race for"
+    assert any(m in modes for m in (112, 113, 114)), "Operations remain"
 
 
 def _race_with_the_china_card(die: int) -> ts.GameState:

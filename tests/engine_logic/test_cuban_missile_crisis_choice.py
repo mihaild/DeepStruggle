@@ -81,8 +81,9 @@ def _coup_angola(state: ts.GameState) -> ts.GameState:
     if int(state.ctx().resolving_card) == CUBAN_MISSILE_CRISIS:
         ts.Engine.step_flat(state, PASS)          # decline at the head of the round
     ts.Engine.step_flat(state, DUCK_AND_COVER - 1)
-    ts.Engine.step_flat(state, 111)             # for Operations
-    ts.Engine.step_flat(state, OP_COUP)
+    # P17: one decision. Duck and Cover is the US's own card here, so "Ops for a coup" is the
+    # whole resolution -- the separate SELECT_OP_MODE step it replaced is gone.
+    ts.Engine.step_flat(state, OP_COUP)          # for Operations, as a coup
     ts.Engine.step_flat(state, 119 + ANGOLA)    # target
     return state
 

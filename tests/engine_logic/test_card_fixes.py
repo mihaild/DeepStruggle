@@ -163,7 +163,10 @@ def test_fix_card_47_junta_free_ops_restricted_to_ca_sa():
     assert s.ctx().pending_op_card == 47
     # In SELECT_OP_MODE, INFLUENCE mode is legal for Junta to allow declining bonus coup/realign
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[0] == 1 # INFLUENCE legal (decline option)
+    # P17: declining the free bonus action is the shared decline index in the flat mask,
+    # not a borrowed INFLUENCE -- that third meaning is what the refactor removed.
+    assert ts.ActionMask.generate_flat_mask(s)[211] == 1  # decline available
+    assert mask[0] == 0  # INFLUENCE is not the decline
     assert mask[1] == 1 # COUP legal
 
 def test_fix_card_50_we_will_bury_you_pending_ar_check():
@@ -176,7 +179,7 @@ def test_fix_card_50_we_will_bury_you_pending_ar_check():
     s.ctx().pending_op_card = 4 # Duck and Cover (not UN Intervention)
     s.victory_points = 0
     # US plays card for OPS without playing UN Intervention as Event
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # OPS
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 2))  # P17: OPS_INFLUENCE (index 1 is now SPACE)
     # USSR is awarded +3 VP (-3 on VP track) and pending flag is cleared
     assert s.victory_points == -3
     assert not s.has_flag(EB.WE_WILL_BURY_YOU_PENDING)
@@ -230,7 +233,7 @@ def test_fix_card_59_flower_power_war_cards_for_ops():
     s.ctx().pending_op_card = 36 # Brush War (actual War card)
     s.victory_points = 0
     # US plays Brush War for Ops
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # OPS
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 2))  # P17: OPS_INFLUENCE (index 1 is now SPACE)
     # USSR is awarded +2 VP (-2 on VP track)
     assert s.victory_points == -2
 
@@ -299,7 +302,9 @@ def test_fix_card_96_tear_down_this_wall_europe_only():
     assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
     assert s.ctx().pending_op_card == 96
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[0] == 1 # INFLUENCE allowed (decline option)
+    # P17: as above -- the decline is the shared index.
+    assert ts.ActionMask.generate_flat_mask(s)[211] == 1  # decline available
+    assert mask[0] == 0  # INFLUENCE is not the decline
 
 def test_fix_card_105_special_relationship_nato_branch():
     s = make_state()
@@ -762,6 +767,12 @@ def test_fix_card_47_junta_allows_optional_bonus_op_decline():
     s = make_state()
     nicaragua_id = cid("Nicaragua")
     set_inf(s, nicaragua_id, 0, 2) # USSR has influence in CA
+    # The phase has to be an action round, and this test never said so. StateMachine::step only
+    # reaches its interactive decisions under ACTION_ROUND or HEADLINE, so in SETUP the op-mode
+    # action fell through to the setup placement branch instead -- primary_id 0 read as a country
+    # id -- and the assertion below passed for a reason that had nothing to do with declining.
+    # P17 exposed it by making the decline a different index.
+    s.current_phase = ts.Phase.ACTION_ROUND
     # US plays Junta
     s.ctx().decision_player = ts.Player.US
     s.ctx().decision_type = ts.DecisionType.POINT_NODE
@@ -771,11 +782,18 @@ def test_fix_card_47_junta_allows_optional_bonus_op_decline():
     done2 = ts.CardHandlers.handle_event_step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, nicaragua_id))
     assert not done2
     assert s.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE
-    # Action mask MUST allow INFLUENCE (mode 0) as option to decline bonus coup/realign
+    # P17: the decline is the shared flat index. INFLUENCE is simply illegal here, which is
+    # the whole point -- it used to mean three different things.
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[int(ts.OpMode.INFLUENCE)] == 1
-    # Selecting INFLUENCE mode cleanly finishes the card ops immediately
-    step_ok = ts.Engine.try_step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
+    assert ts.ActionMask.generate_flat_mask(s)[211] == 1
+    assert mask[int(ts.OpMode.INFLUENCE)] == 0
+    # P17: declining is confirm/done, and INFLUENCE is refused because the mask withholds it --
+    # step and mask agree on legality, which is what un-aliasing bought.
+    assert not ts.Engine.try_step(
+        s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE)))
+    # Built through the flat decode rather than by hand, so the confirm/done flag comes from the
+    # same place the engine's own callers get it.
+    step_ok = ts.Engine.try_step(s, ts.decode_flat_action(s, 211))
     assert step_ok == True
 
 
@@ -946,16 +964,13 @@ def test_chain_scenario_2_starwars_fyp_grainsales_glasnost_full_ar():
     if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_BRANCH, 0, 0, 0))
 
-    # 4. US plays Glasnost (#90) for OPS
+    # 4/5. P17: US plays Glasnost (#90) for Ops as a COUP, in one decision. Glasnost is the
+    #      USSR's card, so an OPS_* resolution is ops-first -- the coup happens and the event
+    #      fires afterwards, which is what step 6 below checks. This replaced three steps:
+    #      SELECT_PLAY_MODE(OPS), CHOOSE_TIMING_BRANCH(OPS_FIRST) and SELECT_OP_MODE(COUP).
     if st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE:
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0)) # OPS
-
-    if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0)) # OPS_FIRST
-
-    # 5. US chooses COUP (1) on Cuba with roll 4
-    if st.ctx().decision_type == ts.DecisionType.SELECT_OP_MODE:
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))
+        ts.Engine.step(st, ts.MicroAction(
+            ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_COUP), 0, 0))
     if st.ctx().decision_type == ts.DecisionType.POINT_NODE:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, 67, 0, 0))
     if st.ctx().decision_type == ts.DecisionType.ROLL_DIE:
@@ -1012,13 +1027,12 @@ def test_chain_scenario_3_ussr_grainsales_starwars_fyp_kal007_full_ar():
     st.ctx().decision_player = ts.Player.USSR
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
-    # 1. USSR plays Grain Sales for OPS
+    # 1/2. P17: Grain Sales is the US's card, so the USSR playing it EVENT-FIRST is the EVENT
+    #      resolution -- one decision where there were two. Raw index 1 used to mean OPS and now
+    #      means SPACE, so leaving it would have raced the card instead.
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 67, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))
-
-    # 2. EVENT_FIRST
-    if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 1, 0, 0))
+    ts.Engine.step(st, ts.MicroAction(
+        ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.EVENT), 0, 0))
 
     # 3. US chooses Branch 0 (play drawn Star Wars)
     if st.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH:

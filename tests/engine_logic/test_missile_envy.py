@@ -171,13 +171,14 @@ def test_forced_missile_envy_can_only_be_played_for_ops() -> None:
     ts.Engine.step_flat(st, MISSILE_ENVY - 1)
     assert st.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
 
-    # Legal play modes must ONLY include OPS (flat action 111)
+    # P17: the resolution node is [110..114]. Forced to Operations means some OPS_* mode is
+    # legal and neither the Event nor the Space Race is.
     mask = ActionEncoder.get_legal_mask(st)
     legal_actions = np.flatnonzero(mask)
 
-    assert 111 in legal_actions, "PlayMode::OPS (111) must be legal"
-    assert 110 not in legal_actions, "PlayMode::EVENT (110) must be ILLEGAL when forced to play for Ops"
-    assert 112 not in legal_actions, "PlayMode::SPACE (112) must be ILLEGAL when forced to play for Ops"
+    assert any(a in legal_actions for a in (112, 113, 114)), "an Ops mode must be legal"
+    assert 110 not in legal_actions, "the Event must be ILLEGAL when forced to play for Ops"
+    assert 111 not in legal_actions, "the Space Race must be ILLEGAL when forced to play for Ops"
 
     # Step OPS (111) and place influence.
     #
@@ -186,8 +187,7 @@ def test_forced_missile_envy_can_only_be_played_for_ops() -> None:
     # completed, which is why the discard assertion below is the one that failed. `Engine::step`
     # validates against the mask as of P14, so the illegal placement is now refused outright
     # instead of being ignored.
-    ts.Engine.step_flat(st, PLAY_MODE_ACTION["ops"])
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0, 0, 0))
+    ts.Engine.step_flat(st, PLAY_MODE_ACTION["ops_influence"])
     for _ in range(2):
         legal = [int(a) - 119 for a in np.flatnonzero(ActionEncoder.get_legal_mask(st))
                  if 119 <= int(a) < 203]

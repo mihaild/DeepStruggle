@@ -25,7 +25,9 @@ TERRORISM = 92            # USSR
 MISSILE_ENVY = 49         # neutral, 2 Ops
 NUCLEAR_TEST_BAN = 34     # 4 Ops
 DUCK_AND_COVER = 4        # 3 Ops
-PLAY_OPS, EVENT_FIRST = 111, 115
+# P17: the resolution node is [110..114]; EVENT at 110 is event-first on an
+# opponent's card, which is what these tests want.
+PLAY_EVENT = 110
 
 
 def _action_round(mover) -> ts.GameState:
@@ -62,9 +64,9 @@ def _play_for_ops(mover, card: int, hand: List[int]) -> ts.GameState:
     for c in hand:
         state.set_card_location(c, loc)
     ts.Engine.step_flat(state, card - 1)
-    ts.Engine.step_flat(state, PLAY_OPS)
-    if state.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-        ts.Engine.step_flat(state, EVENT_FIRST)
+    # P17: these are the opponent's cards played event-first. EVENT at the merged resolution node
+    # IS event-first, so the separate CHOOSE_TIMING_BRANCH step it replaced is gone.
+    ts.Engine.step_flat(state, PLAY_EVENT)
     return state
 
 
