@@ -36,11 +36,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 from ai.stats import wilson_interval
 
 #: Flat action index of country `cid` at a POINT_NODE (`bindings/action_encoder.py`).
-NODE_OFFSET = 119
+NODE_OFFSET = ActionEncoder.NODE_OFFSET   # one source; see bindings/action_encoder.py
 
 #: The setup block is a fixed length: 6 USSR, then 7 US, then 2 US bonus. Every env is in
 #: lockstep through it, so after this many batched steps every game has just left SETUP.

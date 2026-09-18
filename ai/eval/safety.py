@@ -56,7 +56,7 @@ OPPONENT_COUP_CARDS = {
 
 EVENT_ACTION = PLAY_MODE_ACTION["event"]
 OPS_ACTION = PLAY_MODE_ACTION["ops"]
-NODE_OFFSET = 119
+NODE_OFFSET = ActionEncoder.NODE_OFFSET   # one source; see bindings/action_encoder.py
 
 
 def _acting(state: ts.GameState) -> ts.Player:
@@ -108,7 +108,11 @@ def classify_legal_actions(
     if card == WARGAMES and ctx.decision_type == ts.DecisionType.CHOOSE_BRANCH:
         lead = _vp_for(state, who)
         # Branch 0 hands the opponent 6 VP and ends the game.
-        trigger = NODE_OFFSET - 119  # branch actions are CHOOSE_BRANCH indices 0/1
+        # `legal` holds CHOOSE_BRANCH indices here, not flat actions, so branch 0 is 0.
+        # This was written `NODE_OFFSET - 119`, which is 0 only while NODE_OFFSET is 119 --
+        # arithmetic on an unrelated constant that would have silently selected the wrong
+        # branch the moment the flat layout moved.
+        trigger = 0
         for a in legal:
             if a == trigger:
                 out[a] = "win" if lead - 6 > 0 else ("loss" if lead - 6 < 0 else "normal")

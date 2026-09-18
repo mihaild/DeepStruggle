@@ -19,11 +19,12 @@ from typing import Any, Dict, List
 import numpy as np
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 #: The five European battlegrounds -- the countries Europe control actually turns on.
 EUROPE_BG = [7, 8, 10, 14, 15]
 NAMES = {c: str(ts.MapData.get_country_info(c)["name"]) for c in EUROPE_BG}
-NODE_OFFSET = 119
+NODE_OFFSET = ActionEncoder.NODE_OFFSET   # one source; see bindings/action_encoder.py
 
 
 def _controls(state: ts.GameState, cid: int, player: ts.Player) -> bool:

@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 from ai.eval.positions import PLAY_MODE_ACTION, card_action, legal_mask
 
 #: (card id, the side that holds it). All own-side, so playing for Ops does not fire the event
@@ -43,7 +44,7 @@ DEFAULT_CARDS: Tuple[Tuple[int, ts.Player], ...] = (
 )
 
 OP_MODE_INFLUENCE = 112      # P17: the Ops modes share the resolution node's slots
-COUNTRY_OFFSET = 119
+COUNTRY_OFFSET = ActionEncoder.NODE_OFFSET   # one source; see bindings/action_encoder.py
 
 
 @dataclass

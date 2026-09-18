@@ -10,6 +10,7 @@ import numpy.typing as npt
 import torch
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 from tools.lib.game_step import IllegalActionError
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, HeuristicAgent, RandomAgent, load_agent, resolve_device
 from ai.game_length import ply as game_ply
@@ -31,13 +32,13 @@ def categorize_flat_action_detailed(action_idx: int) -> str:
     elif action_idx < 116:
         timings = ["OPS_FIRST", "EVENT_FIRST"]
         return f"CHOOSE_TIMING_BRANCH ({timings[action_idx - 114]})"
-    elif action_idx < 119:
+    elif action_idx < ActionEncoder.NODE_OFFSET:
         op_modes = ["INFLUENCE", "COUP", "REALIGN"]
         return f"SELECT_OP_MODE ({op_modes[action_idx - 116]})"
-    elif action_idx < 203:
+    elif action_idx < ActionEncoder.BRANCH_OFFSET:
         return "POINT_NODE (Country)"
     elif action_idx < 211:
-        return f"CHOOSE_BRANCH ({action_idx - 203})"
+        return f"CHOOSE_BRANCH ({action_idx - ActionEncoder.BRANCH_OFFSET})"
     else:
         return "UNKNOWN"
 
