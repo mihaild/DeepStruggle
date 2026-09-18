@@ -174,3 +174,45 @@ The starved arm went to 24.0% and kept going; this settles at ~58% and holds, wi
 72–73% and the USSR seat at 42–48%. So a healthy pool does not prevent the decline, but it appears
 to **bound** it — consistent with the pool's stated job of keeping a trailing side in winnable
 games. Whether it holds at 58% or resumes falling is the thing to read at 35M and 40M.
+
+---
+
+## The healthy-pool decline is one-sided: USSR only (2026-09-18)
+
+Twelve consecutive evaluation points on `E3-35-28`, per seat against `p28_280M`, 100 games a side:
+
+| steps | US | USSR |
+|---:|---:|---:|
+| 28.77M | 84.0% | **71.0%** |
+| 29.03M | 84.0% | 67.0% |
+| 29.29M | 85.0% | 55.0% |
+| 29.56M | 81.0% | 64.0% |
+| 29.75M | 86.0% | 59.0% |
+| 30.02M | 68.0% | 48.0% |
+| 30.28M | 73.0% | 42.0% |
+| 30.54M | 72.0% | 46.0% |
+| 30.80M | 77.0% | 44.0% |
+| 31.06M | 82.0% | 57.0% |
+| 31.26M | 69.0% | 40.0% |
+| 31.52M | 82.0% | **26.0%** |
+
+**The US seat does not decline.** It scatters between 68% and 86% with no trend across the whole
+window, beginning and ending at 82–84%. The USSR seat falls monotonically from 71% to 26% — a
+45 pp collapse — and the overall number is that fall, diluted.
+
+This is the same shape as `E3-31-28`, whose decline was also USSR-specific (75.0% → 39.0%) while
+its US seat held. **Two independent search-CE arms, with healthy pools, degrade on the USSR seat
+and only the USSR seat.**
+
+That is a far more specific target than "the policy declines", and it is only visible per seat: the
+pooled series reads as a vague 77.5% → 54.0% slide and gives no hint that half the policy is
+untouched — the exact failure mode
+[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) was written about.
+
+**What it suggests to look at.** The search is *determinized*: it resamples the hidden state before
+each search, and in this game the two seats do not hold symmetric hidden information. A
+determinization that misleads more often for one seat would produce targets that are worse for that
+seat while leaving the other's alone — which is the shape observed. `search_target_entropy` shows
+the targets are equally *sharp* across the decline, but sharpness is not correctness, and nothing
+measured so far separates target quality by seat. That is the next probe: search-target agreement
+with a strong reference, split US against USSR.
