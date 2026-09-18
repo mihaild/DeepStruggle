@@ -36,10 +36,12 @@ of "cards that play other cards" puts it in the same group as the other four.
 
 ## 3. The worst case, derived
 
-US plays the USSR's Five Year Plan **event-first**:
+Five Year Plan, Star Wars and Grain Sales are all **US-sided**; Missile Envy and UN Intervention are
+neutral. The EVENT_FIRST split needs an *opponent's* card, so the chain must be started by the
+**USSR** playing the US's Five Year Plan event-first:
 
 ```
-d0  CARD_PLAY   US's deferred Ops for Five Year Plan      (P: the EVENT_FIRST split)
+d0  CARD_PLAY   USSR's deferred Ops for Five Year Plan    (P: the EVENT_FIRST split)
 d1  EVENT       Five Year Plan -> USSR discards Star Wars (US-sided) -> fires
 d2  EVENT       Star Wars      -> US replays Missile Envy from the discard
 d3  EVENT       Missile Envy   -> USSR hands over Grain Sales (US-sided) -> fires
@@ -66,6 +68,49 @@ or one, and the failure mode is `abort()`.
 goes 1,536 → 1,792 against a 4,096 budget. Size it from this derivation plus margin rather than
 from observed play, and add a scripted deep chain to the engine tests plus a fuzz assertion on
 depth — 251k random decisions exercise none of it.
+
+## 3b. Only one extender has work left to do — the chain can be flattened
+
+An ordinary play does **not** push. `state_machine.cpp:1126` runs a friendly or neutral card's
+Event on the *current* frame — "that is the whole play". A frame is pushed in exactly two
+situations: the EVENT_FIRST timing split, and an event firing *another card's* event. Pushes are
+for chains, not for plays.
+
+That raises the owner's question: does a middle card need its frame while the next card resolves?
+Checked card by card, and the answer is no for three of the four:
+
+| card | work remaining after it hands off | frame needed? |
+|:--|:--|:--|
+| Five Year Plan | none — returns the nested event's `done` directly | **no, tail position** |
+| Star Wars | none — same shape | **no, tail position** |
+| Missile Envy | none; and the exchange is already written to `card_locations` **before** the push (`mid_war.cpp:160-161`) | **no, tail position** |
+| **Grain Sales** | **2 Ops, owed if the drawn card is returned** | **yes** |
+
+So a chain could **reuse one frame** by tail-replacement rather than nesting, and only Grain Sales
+would have to stay. Since there is exactly one Grain Sales card, at most one extender per chain is
+non-tail. The bound collapses:
+
+```
+d0  CARD_PLAY   base play's deferred Ops (EVENT_FIRST split)
+d1  EVENT       the whole chain, one frame reused: 5YP -> Star Wars -> Missile Envy -> Grain Sales
+d2  CARD_PLAY   Grain Sales' drawn card
+d3  EVENT       the drawn card's own event, if event-first
+```
+
+**Depth 3, four frames** — against seven today. The owner's formulation, "simultaneously only top
+card → Grain Sales → Grain Sales target", is right, with the base play's deferred Ops as a fourth.
+
+**But it is not free, and it should not ride with §5.** The enabling move is relocating a card
+before the next card's event runs, and that changes what the nested event can *see*. One concrete
+hazard already has a comment in the tree: `highest_takeable_ops` deliberately skips
+`ctx().resolving_card`, because "an opponent's card played for Operations fires its own event, so
+the event can otherwise find the very card in front of it" (`mid_war.cpp:141-144`). Pop the parent
+frame and `resolving_card` changes, so that guard stops protecting the card it was written for —
+Missile Envy could take the very card whose event is running. Every zone-timing change of this kind
+in this engine has cost a corpus regression.
+
+**Recommendation: resize to 8 now** — cheap, no behaviour change, unblocks §5 — and do
+tail-replacement as its own change with its own whole-corpus run.
 
 ## 4. The census, and what it does *not* show
 
