@@ -299,3 +299,27 @@ pre-registered reading, and the documented within-condition seed spread on this 
 83–221 Elo. Everything else that could have undermined the result has now been checked — the pair
 is matched on every replayed setting, the anchor is never trained against, and the strength is
 general across three lineages.
+
+---
+
+## Second seed, interim at 20M (appended 2026-09-18) — weaker than seed A so far
+
+`E3-36-31`, the treatment at seed 20260931, against the same anchor and protocol:
+
+| steps | control | **seed A** (20260930) | **seed B** (20260931) |
+|---:|---:|---:|---:|
+| 10.0M | 0.8% | 0.8% | 1.0% |
+| 20.1M | 0.8% | **7.8%** | **2.0%** |
+
+At 20M, seed B (US 4.0% / USSR 0.0%) sits much nearer the control than seed A did. Seed A's 20M
+gap was z = 3.45; seed B's 2.0% against 0.8% is not significant at 200 games.
+
+**This is below the registered judgment window and should not be read as a verdict.** The
+pre-registration for this arm names **40M–60M**: landing at 15–28% there confirms the effect,
+landing at 4.5–13.8% (the control's own trajectory) kills the recommendation. Seed A's advantage
+also grew rather than appearing at once — 7.8 → 11.0 → 15.5 → 23.0 → 28.0 → 44.5 → 46.0 — so an
+early lag is compatible with either outcome.
+
+It is recorded now because it is the first evidence that bears against the headline, and the
+headline is the one result of this session that would change a default. **The recommendation stays
+unactioned until 40M–60M.**
