@@ -295,3 +295,46 @@ in order. Three consequences:
    anything.** Switching from endpoints to window means fixed the first error and did not fix
    this one: the statistic was better and still described a moment rather than the process. Where
    timing differs per series, report the series.
+
+---
+
+## The healthy pool does not bound the collapse — it delays it (2026-09-18)
+
+Retracting this document's other surviving claim. Window means, 15 points from 33.03M:
+
+| window | US | USSR |
+|:---|---:|---:|
+| 33.03M–34.01M (n=5) | 57.6% | 33.0% |
+| 34.28M–35.26M (n=5) | 31.8% | 30.6% |
+| 35.52M–36.50M (n=5) | **14.4%** | **7.6%** |
+
+**`E3-35-28` has collapsed completely.** From **90.0%** against `p28_280M` at 25.03M to roughly
+**11%** at 36.5M, both seats, still falling at the last measurement. It is not a decline to a lower
+plateau; it is the same destination the starved run reached, arrived at later.
+
+For direct comparison the starved continuation read **24.0%** at 25M — *higher* than this arm's
+current 11%, though that run was never continued past 28M, so the comparison is of trajectories
+rather than endpoints.
+
+### What survives of this document
+
+**Intact.** The pool bug is real, the mechanism is verified, the attribution is tight: at the
+identical step 25,034,752 the starved run scored 24.0% and this one 90.0%, and the only
+behavioural code change between them was the pool fix. A resumed run trained against one opponent
+it beat 99.7% of the time, and that is worth fixing regardless of what follows.
+
+**Retracted.** Every claim about what the healthy pool *prevents*:
+
+* it does not prevent the collapse — the arm reached ~11%;
+* it does not bound the collapse — "plateaus at ~58%" was a pause, not a floor;
+* it does not make the failure seat-specific — both seats collapse, in sequence.
+
+**The corrected conclusion is simpler and harder on the treatment.** Search CE at coefficient 0.5
+with a 200k reference anchor **collapses completely, with or without a healthy opponent pool.**
+The pool changes *when*: starved, it fell apart by 25M; healthy, it peaked at 90% around 25M and
+was gone by 36M. An 11M-step reprieve and the same end.
+
+That also reframes the pool bug's significance for this programme. It explains why the collapse
+looked so abrupt and so early, and it does **not** rescue the X4b treatment, which was the hope
+behind extending the arm at all. `E3-35-28` was launched to ask whether search-CE sustains once
+the pool is healthy. It does not.
