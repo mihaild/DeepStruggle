@@ -68,6 +68,40 @@ Note the cost of the permissive direction: a policy may select realignment with 
 waste a card. That is a legal, strictly dominated action, and the position is one the policy should
 learn to avoid rather than one the mask hides.
 
+### The deferred ops node must stay distinguishable
+
+Verified before starting. `EVENT_FIRST` stages the deferred ops decision on the *current* frame --
+`timing_branch = EVENT_FIRST`, `decision_type = SELECT_OP_MODE`, `pending_ops_value` set -- then
+pushes a new frame for the event; `pop_context()` returns to that staged frame with `timing_branch`
+intact (`state_machine.cpp:1044-1075`). The observation already exposes it as
+`TIMING_OPS_FIRST` / `TIMING_EVENT_FIRST` (`observation.cpp:358-360`), so the model gets a
+three-way distinction at an ops node: `EVENT_FIRST` = the event has already resolved,
+`OPS_FIRST` = it is still pending, 255 = own or neutral card with no event coming.
+
+**So the merged resolution MUST keep setting `ctx.timing_branch`** even though
+`CHOOSE_TIMING_BRANCH` disappears as a decision. Dropping it is easy to do by accident while
+deleting the node, and it would silently blank two observation features and make the deferred node
+ambiguous -- the model would be choosing how to spend Ops without knowing whether the opponent's
+event has fired.
+
+### Ordinary ops placement is mandatory
+
+`allow_early_stop = 1` at `state_machine.cpp:1109` comes off: spending Ops on influence places all
+of them. This is **ordinary ops placement only** -- event placements keep whatever each card
+declares, because "remove up to 4" cards (Socialist Governments, Comecon, Marshall Plan, Voice of
+America, ...) are genuinely stoppable and §3's group A is correct for them.
+
+The one caveat is the empty mask. `can_place_influence` admits superpower-adjacent countries
+unconditionally, so a target nearly always exists, but the mask also requires
+`ops_available >= cost` and cost is 2 for an opponent-controlled country. A position with influence
+nowhere, every superpower-adjacent country opponent-controlled and 1 Op left has **no legal
+placement**. This is rare to the point of being hard to construct -- and the failure mode of
+removing early stop without handling it is a deadlock on an empty mask, which is the worst
+available outcome.
+
+§3's rule covers it without a special case: the decline index is in the mask when nothing else is,
+which is a position offering nothing rather than an early stop being offered as a choice.
+
 ## 2. The resolution always acts on the top of the stack
 
 `GameState` already carries `std::array<DecisionContext, 6> ctx_stack` with `ctx_stack_depth`, and
