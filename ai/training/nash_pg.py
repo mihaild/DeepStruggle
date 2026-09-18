@@ -801,6 +801,10 @@ class NashPGTrainer(BaseNashPGTrainer):
         # decides whether the CE term is teaching that or merely failing to prevent it.
         search_target_entropy_accum = 0.0
         search_target_entropy_rows = 0
+        # The two norms behind search_ce_grad_frac, kept separately. The ratio hides which side
+        # moved, which is exactly what the open question turns on.
+        ce_norm_accum = 0.0
+        total_norm_accum = 0.0
         # Importance-ratio diagnostics. E3-32-30 went from healthy to NaN logits in one
         # iteration, and the stated cause -- exp() overflowing -- does not survive the
         # arithmetic: a log-prob is <= 0, so with the opening's measured -16.6 the exponent
@@ -992,6 +996,14 @@ class NashPGTrainer(BaseNashPGTrainer):
                     search_ce_accum += float(search_ce)
                     search_ce_frac_accum += float(ce_norm / total_norm.clamp(min=1e-9))
                     search_rows_accum += 1
+                    # The ratio alone cannot say WHICH side moved, and that is now the open
+                    # question: on E3-35-28 search_ce_grad_frac falls 0.238 -> 0.025 while the
+                    # search targets stay sharp (measured) and the KL is ruled out (measured).
+                    # A policy drifting AWAY from a fixed target should give a LARGER
+                    # (pi - p_target), so either the CE gradient is shrinking anyway or the other
+                    # terms are growing past it. Logging both norms separates those in one look.
+                    ce_norm_accum += float(ce_norm)
+                    total_norm_accum += float(total_norm)
                 nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
                 self.optimizer.step()
 
@@ -1027,6 +1039,19 @@ class NashPGTrainer(BaseNashPGTrainer):
             # still distinguishable from a run whose term silently produced nothing.
             "search_ce": search_ce_accum / max(1, search_rows_accum),
             "search_ce_grad_frac": search_ce_frac_accum / max(1, search_rows_accum),
+            # The numerator and denominator of that ratio, and how many minibatches carried a
+            # searched row at all. Together they say whether a falling share means the CE
+            # gradient shrank, the rest of the update grew, or simply that fewer rows were
+            # searched -- three different problems with three different fixes.
+            #
+            # These will NOT divide to give search_ce_grad_frac, and neither is wrong:
+            # grad_frac is the mean of per-minibatch RATIOS, while these are means of the norms
+            # themselves, and E[a/b] != E[a]/E[b]. Measured on a smoke: 0.5567 / 4.3237 = 0.129
+            # against a reported grad_frac of 0.191. Read each series for its own trend rather
+            # than reconciling them against each other.
+            "search_ce_grad_norm": ce_norm_accum / max(1, search_rows_accum),
+            "total_grad_norm": total_norm_accum / max(1, search_rows_accum),
+            "search_ce_rows": float(search_rows_accum),
             # Target/mask alignment. A nonzero rate means the searcher is recommending actions
             # the current mask forbids, which is a misalignment whose legal-action counterpart
             # would be invisible -- see the comment beside the CE term.

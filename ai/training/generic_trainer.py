@@ -1791,6 +1791,12 @@ def train_pipeline(
         # Entropy of the search target, to be read beside the policy's own "entropy". The decline
         # signature is policy entropy RISING; whether the target's rises with it decides whether
         # the CE term is teaching that flattening or merely failing to prevent it.
+        # The two norms behind search_ce_grad_frac plus the searched-row count. A falling share
+        # can mean the CE gradient shrank, the rest of the update grew, or fewer rows were
+        # searched; the ratio alone cannot tell those apart and they need different fixes.
+        active_aux_losses.append("search_ce_grad_norm")
+        active_aux_losses.append("total_grad_norm")
+        active_aux_losses.append("search_ce_rows")
         active_aux_losses.append("search_target_entropy")
         active_aux_losses.append("search_target_illegal_mass_max")
         active_aux_losses.append("search_target_illegal_row_frac")
