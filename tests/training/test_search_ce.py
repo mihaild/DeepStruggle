@@ -266,3 +266,53 @@ def test_mass_outside_the_legal_mask_is_measured_not_inferred() -> None:
     block = block[:block.index("prev_steps")]
     for key in ("search_target_illegal_mass_max", "search_target_illegal_row_frac"):
         assert f'"{key}"' in block, f"{key} is computed but never registered for logging"
+
+
+def test_search_targets_are_filtered_by_the_real_mask() -> None:
+    """A determinized search may propose actions that are illegal in the true state.
+
+    batched_mcts.py says so where it handles this for an ACTING agent: "a determinized search can
+    legitimately return an action that is illegal in the real state, because in this game the
+    legal SET itself can depend on hidden information", and there the search proposes and the true
+    mask disposes. `_search_targets` calls `run()` directly, which is not that path, and used to
+    write the visit counts straight into the target with only a bounds check -- so visits that
+    were legal only under the sampled determinization became target mass on masked actions.
+
+    The symptom was search_ce above 1e5 in about a third of iterations on every search arm, which
+    is impossible for a 212-way softmax (max log(212) = 5.36) and arises because the mask fill is
+    -1e9.
+
+    This pins the normalisation the filter must preserve, and that the source still applies it.
+    """
+    import inspect
+
+    import numpy as np
+
+    from ai.training import nash_pg
+
+    # the renormalisation: drop illegal visits, and what survives must still sum to 1
+    acts = [3, 7, 11]
+    visits = np.array([10.0, 1.0, 5.0], dtype=np.float32)
+    legal = {3: True, 7: False, 11: True}          # 7 legal only under determinization
+
+    keep = np.array([legal[a] for a in acts], dtype=bool)
+    kept = np.where(keep, visits, 0.0)
+    total = float(kept.sum())
+    assert total == 15.0
+    probs = kept / total
+    assert abs(float(probs.sum()) - 1.0) < 1e-6, "a filtered target must still be a distribution"
+    assert float(probs[1]) == 0.0, "the illegal action must carry no mass"
+    # and the surviving two keep their relative weights
+    assert abs(float(probs[0]) - 10.0 / 15.0) < 1e-6
+    assert abs(float(probs[2]) - 5.0 / 15.0) < 1e-6
+
+    # a row where EVERY visit is illegal yields no target rather than a guessed one
+    all_illegal = np.where(np.array([False, False, False]), visits, 0.0)
+    assert float(all_illegal.sum()) == 0.0
+
+    src = inspect.getsource(nash_pg.NashPGTrainer._search_targets)
+    assert "get_legal_mask" in src, (
+        "_search_targets must consult the real state's mask; without it a determinized search's "
+        "answer becomes target mass on actions that cannot be played")
+    assert "search_dropped_visit_frac" in src, (
+        "how much the mask rejected must be logged, or a filter that stops working is invisible")

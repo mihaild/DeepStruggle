@@ -1790,6 +1790,11 @@ def train_pipeline(
         # misalignment on a legal action is silent. These two measure it directly.
         active_aux_losses.append("search_target_illegal_mass_max")
         active_aux_losses.append("search_target_illegal_row_frac")
+        # What the real mask rejected from the searcher's answer before it became a target. A
+        # small nonzero rate is correct -- determinization makes some illegal actions look legal;
+        # zero would mean the filter is not running.
+        active_aux_losses.append("search_dropped_visit_frac")
+        active_aux_losses.append("search_dropped_row_frac")
 
     # Seeded from the trainer, not from the loop variable, which does not exist yet -- and from
     # the clock as it stands, not from zero: a resumed run's elapsed already includes the previous
