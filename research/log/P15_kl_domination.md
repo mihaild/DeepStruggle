@@ -139,3 +139,49 @@ filter had stopped running. Takes effect from the next launch; `E3-35-28` is run
 **Item 1 done, same session (2026-09-18).** `policy_loss_total` and `kl_term` are now logged as
 new keys — new rather than a redefinition of `policy_loss`, so every series recorded to date stays
 comparable and the two arms in flight are undisturbed. Items 2 and 3 remain the owner's call.
+
+---
+
+## The search targets do not flatten (2026-09-18) — the feedback loop is dead
+
+The decline's signature is the policy's entropy **rising** while strength falls. Two readings, with
+opposite fixes: either the searcher's distribution flattens and the CE term is actively teaching
+that, or the policy flattens on its own and the targets are bystanders.
+
+`tools/scripts/search_target_entropy.py` over `E3-35-28`'s snapshots, spanning the 73.6% era and
+the 58.2% era — 48 positions held **fixed** across every snapshot, so this measures the network's
+effect on search sharpness and not a drift in which positions the arm reaches, 64 simulations:
+
+| steps | mean target H | median | top-1 share | policy entropy |
+|---:|---:|---:|---:|---:|
+| 28.31M | 0.715 | 0.578 | 0.733 | 0.774 |
+| 28.77M | 0.725 | 0.636 | 0.733 | — |
+| 29.29M | 0.742 | 0.748 | 0.725 | — |
+| 29.75M | 0.713 | 0.531 | 0.742 | — |
+| 30.28M | **0.693** | 0.578 | 0.727 | **0.947** |
+
+**Flat.** Target entropy sits in 0.693–0.742 with no trend and the top-1 share is pinned at
+0.725–0.742, while the policy's own entropy climbs 0.774 → 0.947 over the same span.
+
+So the loop is dead as an explanation. The searcher keeps producing targets just as decisive as
+before; the policy drifts away from them anyway. **The CE term is failing to prevent the decline,
+not causing it** — and removing or reweighting it, which was the obvious response to the loop
+hypothesis, would not address this.
+
+### What that leaves
+
+If the targets stay sharp and the policy flattens, something is out-competing the CE term in the
+update, and the logged gradient share says it is being out-competed badly: `search_ce_grad_frac`
+falls from **0.21–0.32** before the decline to **0.03–0.17** after, while `kl_div` over the same
+span rises from ~0.07–0.13 to spikes of 2.4, 3.6 and 7.5.
+
+That is the same shape as this entry's main finding on `E3-31-28`, one order of magnitude smaller:
+the KL regulariser growing until it crowds the policy-improvement terms out of the update, and the
+policy consequently drifting toward a stale reference rather than toward its targets.
+
+**Stated as the hypothesis it is.** The per-iteration coupling is *not* clean — 29.82M pairs
+`kl_div` 2.36 with `grad_frac` 0.077, but 30.21M pairs `kl_div` 3.62 with `grad_frac` 0.171. What
+is clean is the level shift in both series across the decline. Establishing the mechanism needs
+the arm suggested above: KL restricted to learner rows, or η annealed, against this arm as control.
+`policy_loss_total` and `kl_term` are now logged, so the next run can be read on the objective
+that is actually optimised rather than on the surrogate alone.
