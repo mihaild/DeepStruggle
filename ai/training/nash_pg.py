@@ -646,8 +646,12 @@ class BaseNashPGTrainer:
             # batched_mcts.py applies for an acting agent. Drop visits the determinization made
             # look legal, then normalise over what survives, so the target stays a distribution.
             legal_mask = _np.asarray(ActionEncoder.get_legal_mask(states[i]))
+            # Bound by BOTH widths. They are both the 212-dim flat space today, but indexing the
+            # mask on the strength of the target's width is the kind of assumption that turns a
+            # mismatch into an IndexError deep inside a training run.
+            _hi = min(int(pi.shape[1]), int(legal_mask.shape[0]))
             keep = _np.array(
-                [0 <= int(a) < pi.shape[1] and bool(legal_mask[int(a)]) for a in acts],
+                [0 <= int(a) < _hi and bool(legal_mask[int(a)]) for a in acts],
                 dtype=bool)
             if not keep.all():
                 dropped_visits += float(v[~keep].sum())
