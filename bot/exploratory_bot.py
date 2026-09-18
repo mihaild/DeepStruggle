@@ -59,26 +59,27 @@ class ExploratoryBot(BaseBot):
             if is_scoring:
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}  # EVENT
 
-            # Bias: 60% Ops, 25% Event, 15% Space
+            # Bias: 60% Ops, 25% Event, 15% Space -- unchanged in total. P17 merged the Ops
+            # mode into this node, so the 60 is split across the three Ops resolutions by the
+            # same 45/35/20 this bot uses at SELECT_OP_MODE, which keeps the joint distribution
+            # over (play mode, op mode) exactly what it was before the merge.
             weights = []
             for m in valid_ids:
-                if m == 1:
-                    weights.append(60)
-                elif m == 0:
+                if m == 0:                      # EVENT
                     weights.append(25)
-                elif m == 2:
+                elif m == 1:                    # SPACE
                     weights.append(15)
+                elif m == 2:                    # OPS_INFLUENCE  (60 * 0.45)
+                    weights.append(27)
+                elif m == 3:                    # OPS_COUP       (60 * 0.35)
+                    weights.append(21)
+                elif m == 4:                    # OPS_REALIGN    (60 * 0.20)
+                    weights.append(12)
                 else:
                     weights.append(10)
             chosen = self.rng.choices(valid_ids, weights=weights, k=1)[0]
-            sec_id = self.rng.randint(1, 6) if chosen == 2 else 0  # Space roll
+            sec_id = self.rng.randint(1, 6) if chosen == 1 else 0  # Space roll
             return {"decision_type": d_type, "primary_id": chosen, "secondary_id": sec_id, "flags": 0}
-
-        # 3. CHOOSE_TIMING_BRANCH (3)
-        elif d_type == 3:
-            # 0 = OPS_FIRST, 1 = EVENT_FIRST
-            chosen = self.rng.choice(valid_ids) if valid_ids else 0
-            return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}
 
         # 4. SELECT_OP_MODE (4)
         elif d_type == 4:

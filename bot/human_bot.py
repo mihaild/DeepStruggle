@@ -75,7 +75,16 @@ class HumanBot(BaseBot):
                 })
 
         elif d_type == 2:  # SELECT_PLAY_MODE
-            modes = {0: "EVENT", 1: "OPERATIONS", 2: "SPACE RACE"}
+            # P17 merged the Ops mode and the event/ops timing into this node. On an opponent
+            # card EVENT is the event-first branch -- the event resolves and the engine then
+            # asks how to spend the Ops -- and each OPERATIONS entry is the ops-first branch.
+            modes = {
+                0: "EVENT",
+                1: "SPACE RACE",
+                2: "OPERATIONS - Place Influence",
+                3: "OPERATIONS - Coup",
+                4: "OPERATIONS - Realignment",
+            }
             for m in valid_ids:
                 name = modes.get(m, f"MODE_{m}")
                 choices.append({
@@ -83,18 +92,6 @@ class HumanBot(BaseBot):
                     "label": f"Play as {name}",
                     "decision_type": d_type,
                     "primary_id": m,
-                    "secondary_id": 0,
-                    "flags": 0,
-                })
-
-        elif d_type == 3:  # CHOOSE_TIMING_BRANCH
-            branches = {0: "Operations First (Opponent Event Second)", 1: "Opponent Event First (Operations Second)"}
-            for b in valid_ids:
-                choices.append({
-                    "index": len(choices) + 1,
-                    "label": branches.get(b, f"Branch {b}"),
-                    "decision_type": d_type,
-                    "primary_id": b,
                     "secondary_id": 0,
                     "flags": 0,
                 })

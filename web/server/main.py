@@ -137,8 +137,8 @@ async def get_action_space_metadata() -> Dict[str, Any]:
         "offsets": {
             "card": int(ActionEncoder.CARD_OFFSET),
             "play_mode": int(ActionEncoder.PLAY_MODE_OFFSET),
-            "timing": int(ActionEncoder.TIMING_OFFSET),
             "op_mode": int(ActionEncoder.OP_MODE_OFFSET),
+            "roll_die": int(ActionEncoder.ROLL_DIE_INDEX),
             "node": int(ActionEncoder.NODE_OFFSET),
             "branch": int(ActionEncoder.BRANCH_OFFSET),
         },

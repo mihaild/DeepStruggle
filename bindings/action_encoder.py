@@ -10,20 +10,31 @@ class ActionEncoder:
 
     Action Vocabulary Breakdown (N = 212):
       [0..109]   (110): SELECT_CARD (Card IDs 1..110, index = card_id - 1)
-      [110..113] (4)  : SELECT_PLAY_MODE (0: EVENT, 1: OPS, 2: SPACE, 3: PASS)
-      [114..115] (2)  : CHOOSE_TIMING_BRANCH (0: OPS_FIRST, 1: EVENT_FIRST)
-      [116..118] (3)  : SELECT_OP_MODE (0: INFLUENCE, 1: COUP, 2: REALIGN)
+      [110..114] (5)  : SELECT_PLAY_MODE -- the merged resolution node
+                        (0: EVENT, 1: SPACE, 2: OPS_INFLUENCE, 3: OPS_COUP, 4: OPS_REALIGN)
+      [112..114]      : SELECT_OP_MODE (0: INFLUENCE, 1: COUP, 2: REALIGN) -- the *same* three
+                        slots, reused for the deferred Ops choice that follows an event-first
+                        event. "Spend Ops on X" means the same thing at either node, so they
+                        share an index and the decision type says which one is being asked.
+      [115]      (1)  : ROLL_DIE
+      [116..118] (3)  : unassigned after the P17 merge -- decoding one is refused
       [119..202] (84) : POINT_NODE (Country IDs 0..83, index = 119 + country_id)
       [203..210] (8)  : CHOOSE_BRANCH (Branches 0..7, index = 203 + branch_id)
       [211]      (1)  : CONFIRM_DONE / PASS (0x80 / early stop)
+
+    CHOOSE_TIMING_BRANCH is retired: on an opponent card EVENT is the event-first branch and
+    any OPS_* is the ops-first branch, so the timing is carried by the resolution itself.
     """
 
     FLAT_ACTION_SIZE = 212
 
     CARD_OFFSET = 0
     PLAY_MODE_OFFSET = 110
-    TIMING_OFFSET = 114
-    OP_MODE_OFFSET = 116
+    # The deferred Ops choice lands on the three OPS_* resolution slots, not on a block of its
+    # own: OP_MODE_OFFSET + OpMode.INFLUENCE == PLAY_MODE_OFFSET + Resolution.OPS_INFLUENCE.
+    OP_MODE_OFFSET = 112
+    ROLL_DIE_INDEX = 115
+    UNASSIGNED_RANGE = (116, 119)
     NODE_OFFSET = 119
     BRANCH_OFFSET = 203
     CONFIRM_DONE_INDEX = 211
@@ -65,20 +76,23 @@ class ActionEncoder:
             except Exception:
                 return f"SelectCard #{card_id}"
 
-        if action_idx < ActionEncoder.TIMING_OFFSET:
+        if action_idx < ActionEncoder.ROLL_DIE_INDEX:
             mode_id = action_idx - ActionEncoder.PLAY_MODE_OFFSET
-            mode_names = ["EVENT", "OPS", "SPACE", "PASS"]
-            return f"PlayMode: {mode_names[mode_id] if mode_id < 4 else mode_id}"
+            mode_names = ["EVENT", "SPACE", "OPS_INFLUENCE", "OPS_COUP", "OPS_REALIGN"]
+            # [112..114] are also the deferred Ops choice. Without the state there is no way to
+            # tell which node is being named, so say both rather than pick one and be wrong.
+            name = mode_names[mode_id] if mode_id < 5 else str(mode_id)
+            if action_idx >= ActionEncoder.OP_MODE_OFFSET:
+                op_names = ["INFLUENCE", "COUP", "REALIGN"]
+                op = op_names[action_idx - ActionEncoder.OP_MODE_OFFSET]
+                return f"Resolution: {name} / OpMode: {op}"
+            return f"Resolution: {name}"
 
-        if action_idx < ActionEncoder.OP_MODE_OFFSET:
-            timing_id = action_idx - ActionEncoder.TIMING_OFFSET
-            timing_names = ["OPS_FIRST", "EVENT_FIRST"]
-            return f"Timing: {timing_names[timing_id] if timing_id < 2 else timing_id}"
+        if action_idx == ActionEncoder.ROLL_DIE_INDEX:
+            return "RollDie"
 
         if action_idx < ActionEncoder.NODE_OFFSET:
-            op_id = action_idx - ActionEncoder.OP_MODE_OFFSET
-            op_names = ["INFLUENCE", "COUP", "REALIGN"]
-            return f"OpMode: {op_names[op_id] if op_id < 3 else op_id}"
+            return f"Unassigned #{action_idx}"
 
         if action_idx < ActionEncoder.BRANCH_OFFSET:
             country_id = action_idx - ActionEncoder.NODE_OFFSET

@@ -95,12 +95,10 @@ class NeuralBot(BaseBot):
                 elif vid == 0:
                     mask[ActionEncoder.CONFIRM_DONE_INDEX] = 1
             elif d_type == int(ts.DecisionType.SELECT_PLAY_MODE):
-                if vid < 4:
+                if vid < 5:
                     mask[ActionEncoder.PLAY_MODE_OFFSET + vid] = 1
-            elif d_type == int(ts.DecisionType.CHOOSE_TIMING_BRANCH):
-                if vid < 2:
-                    mask[ActionEncoder.TIMING_OFFSET + vid] = 1
             elif d_type == int(ts.DecisionType.SELECT_OP_MODE):
+                # The deferred Ops choice shares the three OPS_* resolution slots.
                 if vid < 3:
                     mask[ActionEncoder.OP_MODE_OFFSET + vid] = 1
             elif d_type == int(ts.DecisionType.POINT_NODE):
@@ -171,10 +169,6 @@ class NeuralBot(BaseBot):
         if d_type == int(ts.DecisionType.SELECT_PLAY_MODE):
             mode_id = chosen_flat - ActionEncoder.PLAY_MODE_OFFSET
             return {"decision_type": d_type, "primary_id": mode_id, "secondary_id": 0, "flags": 0}
-
-        if d_type == int(ts.DecisionType.CHOOSE_TIMING_BRANCH):
-            timing_id = chosen_flat - ActionEncoder.TIMING_OFFSET
-            return {"decision_type": d_type, "primary_id": timing_id, "secondary_id": 0, "flags": 0}
 
         if d_type == int(ts.DecisionType.SELECT_OP_MODE):
             op_id = chosen_flat - ActionEncoder.OP_MODE_OFFSET

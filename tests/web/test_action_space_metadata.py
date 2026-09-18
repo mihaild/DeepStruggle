@@ -76,8 +76,8 @@ def test_the_endpoint_agrees_with_the_encoder(action_space: Dict[str, Any]) -> N
     assert action_space["offsets"] == {
         "card": ActionEncoder.CARD_OFFSET,
         "play_mode": ActionEncoder.PLAY_MODE_OFFSET,
-        "timing": ActionEncoder.TIMING_OFFSET,
         "op_mode": ActionEncoder.OP_MODE_OFFSET,
+        "roll_die": ActionEncoder.ROLL_DIE_INDEX,
         "node": ActionEncoder.NODE_OFFSET,
         "branch": ActionEncoder.BRANCH_OFFSET,
     }

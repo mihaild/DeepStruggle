@@ -642,6 +642,39 @@ static void clear_force_for_card(GameState& state, Player p, uint8_t card) noexc
     }
 }
 
+// Side effects of committing a card to its Operations, independent of WHEN the Ops are spent.
+//
+// P17 split the old single OPS branch in two -- ops-first and event-first now arrive at different
+// places -- and these were left behind in the ops-first one. On an opponent's card, event-first is
+// still a play FOR OPERATIONS, so it owes the same charges. Missing them cost the US its Flower
+// Power penalty on four corpus games, every one a war card played at a turn's last action round:
+// replays 56, 138, 258 and 272.
+//
+// Returns false if the game ended (Flower Power can take the US to -20), in which case the caller
+// must stop.
+static bool commit_card_to_ops(GameState& state, Player p, uint8_t card) noexcept {
+    clear_force_for_card(state, p, card);
+
+    // Flower Power charges the US 2 VP for playing a war card, but only for a war that can
+    // actually happen. Camp David Accords stops Arab-Israeli War being played as an event at all,
+    // so playing it for Operations sets off no war and costs nothing: at turn 8 AR2 of
+    // ts-replayer game 105 the US coups Guatemala with it under both effects and the log records
+    // no VP change, where the engine handed the USSR 2.
+    if (p == Player::US && CardData::is_war_card(card) &&
+        state.has_flag(effect_bits::FLOWER_POWER_ACTIVE) &&
+        CardHandlers::can_trigger_event(state, card, p)) {
+        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
+        if (state.victory_points <= -20) {
+            state.current_phase = Phase::GAME_OVER;
+            return false;
+        }
+    }
+    if (card == card_ids::THE_CHINA_CARD && p == Player::US) {
+        state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
+    }
+    return true;
+}
+
 // Open the POINT_NODE that spends the Ops. `pending_ops_value` must already be set.
 //
 // Placement and realignment are repeatable and keep their stop; a coup is a single action and
@@ -1069,7 +1102,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                     // timing_branch must keep being set even though CHOOSE_TIMING_BRANCH is gone
                     // as a decision: it is still the only thing distinguishing "Ops before the
                     // event" from "Ops after it".
-                    clear_force_for_card(state, p, card);
+                    // Event-first is still a play for Operations, so it owes the same charges.
+                    if (!commit_card_to_ops(state, p, card)) return true;   // game ended
                     state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
                     state.ctx().pending_ops_value = Operations::grant_ops_for_card(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
@@ -1092,25 +1126,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
                 }
 
                 if (is_ops) {
-                    clear_force_for_card(state, p, card);
-                    // Flower Power charges the US 2 VP for playing a war card, but only for a
-                    // war that can actually happen. Camp David Accords stops Arab-Israeli War
-                    // being played as an event at all, so playing it for Operations sets off
-                    // no war and costs nothing: at turn 8 AR2 of ts-replayer game 105 the US
-                    // coups Guatemala with it under both effects and the log records no VP
-                    // change, where the engine handed the USSR 2.
-                    if (p == Player::US && CardData::is_war_card(card) &&
-                        state.has_flag(effect_bits::FLOWER_POWER_ACTIVE) &&
-                        CardHandlers::can_trigger_event(state, card, p)) {
-                        state.victory_points = static_cast<int8_t>(std::max(-20, state.victory_points - 2));
-                        if (state.victory_points <= -20) {
-                            state.current_phase = Phase::GAME_OVER;
-                            return true;
-                        }
-                    }
-                    if (card == card_ids::THE_CHINA_CARD && p == Player::US) {
-                        state.clear_flag(effect_bits::FORMOSAN_RESOLUTION_ACTIVE);
-                    }
+                    if (!commit_card_to_ops(state, p, card)) return true;   // game ended
                     // Ops-first on an opponent's card; timing_branch records which, so the
                     // event fires after the Ops are spent (advance_after_ops reads it).
                     // 255 is the "no branch chosen" sentinel the observation reads, and it is

@@ -27,6 +27,33 @@ class StrategicBot(BaseBot):
         self.last_strategy: str = ""
         self.last_commentary: str = ""
 
+    def _pick_op_mode(self, available: List[int], pending_ops: int,
+                      mil_ops: int, defcon: int, ar: int) -> Tuple[int, str, str]:
+        """Which Ops mode to spend a card on: 0 INFLUENCE, 1 COUP, 2 REALIGN.
+
+        P17 asks for this at two different nodes -- the resolution node, for an ops-first play,
+        and the deferred SELECT_OP_MODE that follows an event-first event -- so the choice lives
+        here rather than at either of them. `available` is the list of Ops modes the mask allows,
+        already translated out of whichever encoding the calling node uses.
+
+        The realignment draw is taken only when realignment is actually on offer, so a card play
+        consumes the same number of rng values as it did before the merge.
+        """
+        if 1 in available and mil_ops < defcon and ar == 1 and defcon >= 3:
+            return (1,
+                    "AR1 Coup: Fulfilling MilOps requirement and dropping DEFCON to 2.",
+                    "Launching early Action Round Coup to secure MilOps and restrict DEFCON.")
+        if 2 in available and self.rng.random() < 0.4:
+            return (2,
+                    f"Strategic Realignment: Using {pending_ops} Ops for Realignment rolls.",
+                    "Initiating targeted realignment maneuvers to purge enemy influence.")
+        if 0 in available:
+            return (0,
+                    f"Influence Placement: Deploying {pending_ops} Influence.",
+                    f"Strengthening political networks with {pending_ops} Influence.")
+        chosen = available[0] if available else 0
+        return chosen, f"Mode {chosen}", "Executing mode."
+
     def select_action(self, state: Dict[str, Any], legal_actions: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         action_dict, strat, comm = self.choose_action(state, legal_actions)
         self.last_strategy = strat
@@ -194,12 +221,12 @@ class StrategicBot(BaseBot):
             if is_scoring:
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, f"Scoring Event '{card_name}'", "Resolving scoring event."
 
-            # Hostile card -> send to Space if available
-            if card_side == self.opp_role and 2 in valid_ids:
+            # Hostile card -> send to Space if available (P17: SPACE moved from 2 to 1)
+            if card_side == self.opp_role and 1 in valid_ids:
                 roll = self.rng.randint(1, 6)
                 strat = f"Space Race Disposal: Discarding hostile card '{card_name}' to space track."
                 comm = f"Neutralizing enemy card '{card_name}' into our space program."
-                return {"decision_type": d_type, "primary_id": 2, "secondary_id": roll, "flags": 0}, strat, comm
+                return {"decision_type": d_type, "primary_id": 1, "secondary_id": roll, "flags": 0}, strat, comm
 
             # Friendly powerful permanent event
             if 0 in valid_ids and card_side == self.role and (card_info.get("one_time", False) or card_ops >= 3):
@@ -207,41 +234,19 @@ class StrategicBot(BaseBot):
                 comm = f"Activating historical event: '{card_name}'!"
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, strat, comm
 
-            strat = f"Operations Play: Using '{card_name}' for {card_ops} Operations."
-            comm = f"Conducting {card_ops} Operations across contested regions."
-            return {"decision_type": d_type, "primary_id": 1, "secondary_id": 0, "flags": 0}, strat, comm
+            # P17 folded the Ops mode into this node, so the mode is chosen here for an
+            # ops-first play. Picking an OPS_* resolution on an opponent card is the ops-first
+            # branch this bot used to choose at the retired CHOOSE_TIMING_BRANCH.
+            ops_modes = [r - 2 for r in (2, 3, 4) if r in valid_ids]
+            mode, strat, comm = self._pick_op_mode(
+                ops_modes, card_ops, mil_ops, defcon, ar)
+            return {"decision_type": d_type, "primary_id": 2 + mode, "secondary_id": 0, "flags": 0}, strat, comm
 
-        # 3. CHOOSE_TIMING_BRANCH
-        elif d_type == 3:
-            chosen = 0 if 0 in valid_ids else (valid_ids[0] if valid_ids else 0)
-            strat = "Timing Branch: Operations First (0)."
-            comm = "Securing board position before opponent event triggers."
-            return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, strat, comm
-
-        # 4. SELECT_OP_MODE
+        # 4. SELECT_OP_MODE -- now only the deferred node that follows an event-first event.
         elif d_type == 4:
-            pending_ops = ctx.get("pending_ops_value", 0)
-
-            # Check if AR1 Coup is needed for MilOps and DEFCON is 3+
-            if 1 in valid_ids and mil_ops < defcon and ar == 1 and defcon >= 3:
-                strat = "AR1 Coup: Fulfilling MilOps requirement and dropping DEFCON to 2."
-                comm = "Launching early Action Round Coup to secure MilOps and restrict DEFCON."
-                return {"decision_type": d_type, "primary_id": 1, "secondary_id": 0, "flags": 0}, strat, comm
-
-            # Realignments: Check if 2 is available
-            if 2 in valid_ids and self.rng.random() < 0.4:
-                strat = f"Strategic Realignment: Using {pending_ops} Ops for Realignment rolls."
-                comm = "Initiating targeted realignment maneuvers to purge enemy influence."
-                return {"decision_type": d_type, "primary_id": 2, "secondary_id": 0, "flags": 0}, strat, comm
-
-            # Default: Influence Placement (0)
-            if 0 in valid_ids:
-                strat = f"Influence Placement: Deploying {pending_ops} Influence."
-                comm = f"Strengthening political networks with {pending_ops} Influence."
-                return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, strat, comm
-
-            chosen = valid_ids[0] if valid_ids else 0
-            return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, f"Mode {chosen}", "Executing mode."
+            mode, strat, comm = self._pick_op_mode(
+                valid_ids, ctx.get("pending_ops_value", 0), mil_ops, defcon, ar)
+            return {"decision_type": d_type, "primary_id": mode, "secondary_id": 0, "flags": 0}, strat, comm
 
         # 5. POINT_NODE
         elif d_type == 5:

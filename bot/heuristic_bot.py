@@ -64,7 +64,10 @@ class HeuristicBot(BaseBot):
                         best_cid = cid
             return {"decision_type": d_type, "primary_id": best_cid, "secondary_id": 0, "flags": 0}
 
-        # 3. SELECT_PLAY_MODE: If friendly event, play as Event (0), else Ops (1)
+        # 3. SELECT_PLAY_MODE: friendly event as Event, otherwise Ops as Influence.
+        #    P17 folded the Ops mode and the event/ops timing into this one node, so the
+        #    retired CHOOSE_TIMING_BRANCH no longer needs a case: picking an OPS_* resolution
+        #    on an opponent card *is* the ops-first branch this bot used to choose there.
         if d_type == 2:  # SELECT_PLAY_MODE
             ctx = state.get("decision_context", {})
             card_id = ctx.get("pending_op_card", 0)
@@ -72,12 +75,10 @@ class HeuristicBot(BaseBot):
                 info = ts_engine.CardData.get_card_info(card_id)
                 if info.get("side") == self.role and 0 in valid_ids:
                     return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}
-            if 1 in valid_ids:  # OPS
-                return {"decision_type": d_type, "primary_id": 1, "secondary_id": 0, "flags": 0}
-
-        # 4. CHOOSE_TIMING_BRANCH: OPS_FIRST (0)
-        if d_type == 3:  # CHOOSE_TIMING_BRANCH
-            return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}
+            # OPS_INFLUENCE, OPS_COUP, OPS_REALIGN -- same preference as SELECT_OP_MODE below.
+            for res in (2, 3, 4):
+                if res in valid_ids:
+                    return {"decision_type": d_type, "primary_id": res, "secondary_id": 0, "flags": 0}
 
         # 5. SELECT_OP_MODE: Prefer Influence (0) unless DEFCON allows safe Coup (1)
         if d_type == 4:  # SELECT_OP_MODE

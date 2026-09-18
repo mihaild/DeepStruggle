@@ -2785,6 +2785,13 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             #    longer occurs on this path.
             if want == PLAY_MODE_ACTION["ops"]:
                 mode_name = _peek_op_mode(e, sections, pq, step_outcomes)
+                # The mode travels with the section, so it has to be recorded here as well as
+                # at the deferred SELECT_OP_MODE. P17 made this node the ops-first path, and
+                # leaving cur_mode alone left it holding the *previous* card's mode: at turn 9's
+                # headline of replay 123 the USSR's ABM Treaty coups Pakistan and the US then
+                # plays Portuguese Empire Crumbles* ops-first into the same country, whose
+                # placement was still labelled "coup" and went looking for a die to explain it.
+                cur_mode = mode_name
                 if mode_name is not None:
                     want = PLAY_MODE_ACTION["ops_" + mode_name]
 

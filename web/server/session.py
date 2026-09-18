@@ -92,17 +92,21 @@ def describe_action_and_deltas(state_before: Any, state_after: Any, action: ts_e
                     logs.append(f"{p} places Influence in {c_name}")
 
     elif d_type == ts_engine.DecisionType.SELECT_PLAY_MODE:
-        modes = {0: "EVENT", 1: "OPERATIONS", 2: "SPACE RACE", 3: "PASS"}
+        # P17: one resolution node. On an opponent card EVENT reads as event-first and any
+        # OPS_* as ops-first, which is what the retired CHOOSE_TIMING_BRANCH used to say.
+        modes = {
+            0: "EVENT",
+            1: "SPACE RACE",
+            2: "OPERATIONS - INFLUENCE PLACEMENT",
+            3: "OPERATIONS - COUP ATTEMPT",
+            4: "OPERATIONS - REALIGNMENT",
+        }
         mode_str = modes.get(primary, str(primary))
-        if primary == 2: # Space Race
+        if primary == 1:  # Space Race
             roll_info = f" (Input Roll: {secondary})" if secondary > 0 else ""
             logs.append(f"{p} attempts Space Race with pending card{roll_info}")
         else:
             logs.append(f"{p} selects play mode: {mode_str}")
-
-    elif d_type == ts_engine.DecisionType.CHOOSE_TIMING_BRANCH:
-        branches = {0: "OPS FIRST (Opponent Event Second)", 1: "OPPONENT EVENT FIRST (Ops Second)"}
-        logs.append(f"{p} chooses timing branch: {branches.get(primary, str(primary))}")
 
     elif d_type == ts_engine.DecisionType.SELECT_OP_MODE:
         op_modes = {0: "INFLUENCE PLACEMENT", 1: "COUP ATTEMPT", 2: "REALIGNMENT"}

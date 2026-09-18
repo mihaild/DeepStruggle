@@ -75,18 +75,16 @@ class EventHeavyBot(BaseBot):
         elif d_type == 2:
             card_id = ctx.get("pending_op_card", 0)
             c_name = ts_engine.CardData.get_card_name(card_id) if 1 <= card_id <= 110 else f"#{card_id}"
+            # EVENT is legal on an opponent card under P17 and *means* event-first, which is
+            # exactly what this bot chose at the retired CHOOSE_TIMING_BRANCH -- so preferring
+            # it here preserves the old behaviour with one node instead of two.
             if 0 in valid_ids:
                 return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 0}, f"Play as Event: '{c_name}'", f"Triggering event for '{c_name}'."
-            if 1 in valid_ids:
-                return {"decision_type": d_type, "primary_id": 1, "secondary_id": 0, "flags": 0}, f"Play as Ops: '{c_name}'", f"Using '{c_name}' for operations."
+            for res in (2, 3, 4):  # OPS_INFLUENCE, OPS_COUP, OPS_REALIGN
+                if res in valid_ids:
+                    return {"decision_type": d_type, "primary_id": res, "secondary_id": 0, "flags": 0}, f"Play as Ops: '{c_name}'", f"Using '{c_name}' for operations."
             chosen = valid_ids[0] if valid_ids else 0
             return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, f"Mode {chosen}", "Selecting mode."
-
-        # 3. CHOOSE_TIMING_BRANCH: Always choose EVENT_FIRST (1)
-        elif d_type == 3:
-            chosen = 1 if 1 in valid_ids else (0 if 0 in valid_ids else (valid_ids[0] if valid_ids else 0))
-            strat = "Timing: EVENT_FIRST (1)." if chosen == 1 else "Timing: OPS_FIRST (0)."
-            return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, strat, "Resolving event timing branch."
 
         # 4. SELECT_OP_MODE: Prefer Influence (0)
         elif d_type == 4:
