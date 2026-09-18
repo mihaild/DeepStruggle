@@ -368,3 +368,30 @@ before any default changes.**
 that disagree by a factor of 1.7 at the matched point". What the session can claim is the
 *mechanism* — the ending mix, 59.7% DEFCON 1 against 28.9%, measured on seed A and not yet checked
 on seed B, which is now the cheapest thing that would discriminate.
+
+### The mechanism replicates; the strength gain does not
+
+The discriminating check named above, run immediately. Self-play ending mix, seed B against the
+same control:
+
+| | control 30M | seed A 30M | seed B 30M | control 40M | seed A 40M | seed B 40M |
+|:---|---:|---:|---:|---:|---:|---:|
+| ends in **DEFCON 1** | 59.7% | 28.9% | **46.4%** | 48.9% | 32.6% | **29.2%** |
+| — own decision | 23.5% | 10.8% | 18.8% | 20.0% | 12.6% | **6.25%** |
+| reaches final scoring | 6.7% | 25.3% | 16.1% | 7.8% | 23.2% | — |
+| mean turn | 6.38 | 7.71 | 7.55 | 6.93 | 8.08 | 7.61 |
+| **win rate vs anchor** | 3.8% | **11.0%** | 4.0% | 4.5% | **15.5%** | **9.0%** |
+
+**Seed B gets the mechanism in full and half the gain.** At 40M it reduces DEFCON-1 endings *more*
+than seed A does (29.2% against 32.6%) and cuts the self-inflicted share to **6.25%**, less than
+half seed A's 12.6% — and it converts that into 9.0% against seed A's 15.5%.
+
+So the causal chain proposed earlier — bands → fewer nuclear endings → stronger policy — **breaks
+at the second link**. The first link is solid and replicated across both seeds: the rollout bands
+reliably change the ending mix, halve self-inflicted DEFCON-1, and add a full turn to the average
+game. The second link is not: the same ending-mix improvement bought 3.4x the control on one seed
+and 2.0x on the other, and the seed with the *better* ending mix is the weaker player.
+
+That is a real correction to this document's own mechanism section. The ending mix is **what the
+bands do**, reliably. It is not, on this evidence, **why the strong seed is strong** — something
+else separates the two seeds, and nothing measured here identifies it.
