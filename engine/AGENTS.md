@@ -10,7 +10,7 @@ This directory contains the zero-allocation, high-throughput simulation engine f
 2. **Micro-Decision State Machine**: All multi-step actions (Ops, events with multiple target choices, headline selection, space races) are decomposed into fine-grained atomic steps (`DecisionType`).
 3. **High Simulation Throughput**: Over 2,000,000 steps/second on one core of a modern desktop CPU (`ts_benchmark` reports the figure for the machine at hand), which is what makes reinforcement-learning-scale self-play affordable.
 4. **Deterministic Bit-for-Bit State**: Built-in 64-bit SplitMix64 PRNG (`Prng`) ensures bit-for-bit replayability from integer seeds.
-5. **Unified Sub-Decision Processing**: State machine handles sub-decisions (e.g. `SELECT_OP_MODE`, `POINT_NODE`, `CHOOSE_TIMING_BRANCH`, `CHOOSE_BRANCH`) uniformly across both `Phase::HEADLINE` and `Phase::ACTION_ROUND`.
+5. **Unified Sub-Decision Processing**: State machine handles sub-decisions (e.g. `SELECT_OP_MODE`, `POINT_NODE`, `CHOOSE_BRANCH`) uniformly across both `Phase::HEADLINE` and `Phase::ACTION_ROUND`.
 
 ---
 
@@ -101,7 +101,7 @@ The engine splits complex turns into a sequential stream of atomic 4-byte `Micro
 
 ```cpp
 struct alignas(4) MicroAction {
-    DecisionType decision_type; // 1 byte: SELECT_CARD, SELECT_PLAY_MODE, CHOOSE_TIMING_BRANCH, SELECT_OP_MODE, POINT_NODE, CHOOSE_BRANCH
+    DecisionType decision_type; // 1 byte: SELECT_CARD, SELECT_PLAY_MODE, SELECT_OP_MODE, POINT_NODE, CHOOSE_BRANCH, ROLL_DIE
     uint8_t      primary_id;    // 1 byte: Card ID (1..110), Country ID (0..83), Branch ID (0..7), PlayMode, OpMode, TimingBranch, or CONFIRM_DONE (0x80)
     uint8_t      secondary_id;  // 1 byte: Sub-choice / quantity / manual die roll
     uint8_t      flags;         // 1 byte: Additional modifiers / opponent manual die roll
@@ -247,9 +247,11 @@ cmake --build build_san -j
    the coup is already staged and the chance node opens on the far side of the answer;
    `ctx().pending_roll == RollType::COUP` is what tells the two apart. With one payer, or
    none, `execute_coup` settles it inline as before.
-11. **An Opponent's Card Owes Its Event In A Headline Too**: playing an opponent's card for
-   Operations asks which resolves first, and `OPS_FIRST` leaves the Event owed until the Ops
-   are spent. `advance_after_ops` fires it on both paths -- the headline's as well as the
+11. **An Opponent's Card Owes Its Event In A Headline Too**: playing an opponent's card
+   carries the order in the resolution itself -- P17 retired `CHOOSE_TIMING_BRANCH`, so
+   `Resolution::EVENT` on an opponent card means event-first and any `OPS_*` means
+   ops-first. The `timing_branch` field survives as internal state, set from whichever was
+   chosen, and `OPS_FIRST` still leaves the Event owed until the Ops are spent. `advance_after_ops` fires it on both paths -- the headline's as well as the
    action round's, which it used to unwind past. At turn 4's headline of ts-replayer game 137
    the US headlines Grain Sales To Soviets, takes Willy Brandt and realigns Cuba twice with it,
    and Willy Brandt's Event must still follow. A headlined card is excluded: it is played as

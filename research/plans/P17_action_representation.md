@@ -9,6 +9,12 @@ Owner-approved 2026-09-18. Supersedes the analysis in
 [`../findings/engine/flattening_card_play.md`](../findings/engine/flattening_card_play.md), which
 proposed the merge and measured its size.
 
+**Status of the corpus check:** restored to 300/300, 0 guessed, 0 board mismatches, 122,056
+decisions. The two conversion regressions the merge introduced, the consumers it had not reached
+(`action_encoder.py`, all six bots, `behavioral_cloning.py` indexing the refused slots), and the
+`advance_root` finding behind search returning illegal actions are written up in
+[`../log/P17_corpus_restoration.md`](../log/P17_corpus_restoration.md).
+
 ## Why now
 
 The ladder is being reset anyway. Every checkpoint and `(seed, actions)` dataset is invalidated by
