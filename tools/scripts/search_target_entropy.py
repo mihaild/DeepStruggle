@@ -95,8 +95,18 @@ def collect_states(ckpt: str, want: int, device: str) -> List[ts.GameState]:
 
 
 def target_entropy(net_ckpt: str, states: List[ts.GameState], sims: int,
-                   device: str) -> Tuple[float, float, float]:
-    """Mean entropy of the visit distribution, its median, and the mean top-1 share."""
+                   device: str) -> dict:
+    """Per seat: target entropy, top-1 share, and how far the policy sits from its own target.
+
+    The seat split is the point. Two independent search-CE arms decline on the **USSR seat only**
+    while their US seat holds flat, so a pooled number over both seats averages a failing half
+    with a healthy one and shows a mild slide that belongs to neither.
+
+    `ce` is the cross-entropy of the search target against the policy's own distribution at the
+    same state -- the quantity the CE term minimises. It says how far each seat's policy has
+    drifted from the target it is being trained toward, which entropy alone cannot: a target can
+    stay perfectly sharp while the policy walks away from it.
+    """
     agent = load_agent(net_ckpt, device=device)
     net = getattr(agent, "model", None) or getattr(agent, "net", None)
     if net is None:
@@ -107,9 +117,12 @@ def target_entropy(net_ckpt: str, states: List[ts.GameState], sims: int,
             simulations=sims, temperature=0.0, auto_advance=True,
             advance_root=False, determinize=True, node_filter="all", subsample=1.0))
     res = searcher.run([s.clone() for s in states])
-    ents: List[float] = []
-    tops: List[float] = []
-    for acts, visits in res:
+
+    out: dict = {}
+    for seat in ("US", "USSR", "all"):
+        out[seat] = {"ent": [], "top": [], "ce": []}
+
+    for st, (acts, visits) in zip(states, res):
         if not acts:
             continue
         v = np.asarray(visits, dtype=np.float64)
@@ -117,12 +130,35 @@ def target_entropy(net_ckpt: str, states: List[ts.GameState], sims: int,
         if tot <= 0.0:
             continue
         p = v / tot
-        p = p[p > 0.0]
-        ents.append(float(-(p * np.log(p)).sum()))
-        tops.append(float(p.max()))
-    if not ents:
-        return float("nan"), float("nan"), float("nan")
-    return statistics.mean(ents), statistics.median(ents), statistics.mean(tops)
+        nz = p > 0.0
+        ent = float(-(p[nz] * np.log(p[nz])).sum())
+        top = float(p.max())
+
+        # the policy's own distribution at this state, for the CE the training term minimises
+        pl = st.ctx().decision_player
+        seat = "US" if pl == ts.Player.US else "USSR"
+        obs = torch.from_numpy(
+            np.asarray(ts.extract_observation(st, pl), dtype=np.float32)).unsqueeze(0).to(device)
+        mask = torch.from_numpy(
+            np.asarray(ActionEncoder.get_legal_mask(st), dtype=np.uint8)).unsqueeze(0).to(device)
+        with torch.no_grad():
+            logits, _, _ = net(obs, mask)
+            log_p = torch.log_softmax(logits, dim=-1)[0].cpu().numpy()
+        ce = float(-sum(p[i] * log_p[int(a)] for i, a in enumerate(acts) if p[i] > 0.0))
+
+        for key in (seat, "all"):
+            out[key]["ent"].append(ent)
+            out[key]["top"].append(top)
+            out[key]["ce"].append(ce)
+
+    summary: dict = {}
+    for seat, d in out.items():
+        if d["ent"]:
+            summary[seat] = (statistics.mean(d["ent"]), statistics.mean(d["top"]),
+                             statistics.mean(d["ce"]), len(d["ent"]))
+        else:
+            summary[seat] = (float("nan"), float("nan"), float("nan"), 0)
+    return summary
 
 
 def main() -> int:
@@ -150,12 +186,23 @@ def main() -> int:
     print("collected %d searchable positions, %d simulations each\n" % (len(states), a.sims),
           flush=True)
 
-    print("%-12s %10s %10s %10s" % ("steps", "mean H", "median H", "top-1"))
-    print("-" * 46)
+    hdr = "%-12s" % "steps"
+    for seat in ("US", "USSR", "all"):
+        hdr += " | %s H   top1    CE" % seat.ljust(4)
+    print(hdr)
+    print("-" * len(hdr))
     for steps, path in snaps:
-        mean_h, med_h, top1 = target_entropy(path, states, a.sims, a.device)
-        print("%-12d %10.4f %10.4f %10.4f" % (steps, mean_h, med_h, top1), flush=True)
-    print("\nmax possible entropy for a 212-way choice: %.3f" % math.log(212))
+        s = target_entropy(path, states, a.sims, a.device)
+        row = "%-12d" % steps
+        for seat in ("US", "USSR", "all"):
+            h, top, ce, n = s[seat]
+            row += " | %5.3f %5.3f %6.3f" % (h, top, ce)
+        print(row, flush=True)
+    counts = target_entropy(snaps[0][1], states, a.sims, a.device)
+    print("\npositions per seat: US %d, USSR %d" % (counts["US"][3], counts["USSR"][3]))
+    print("max possible entropy for a 212-way choice: %.3f" % math.log(212))
+    print("CE is the search target against the policy's own distribution -- the quantity the "
+          "training CE term minimises.")
     return 0
 
 
