@@ -134,3 +134,25 @@ and 0.867 vs 0.788 at 40M, favouring the treatment.
 The arm was paused at 40.04M to give the GPU to the dense collapse replay, and resumed toward
 80M. The pause landed on the first registered judgment point by coincidence, which is why this
 entry exists now rather than at 80M.
+
+---
+
+## Update, 50M (appended 2026-09-18)
+
+The arm resumed and passed its next matched point. Same anchor, same protocol:
+
+| steps | control US | control USSR | control overall | **temp US** | **temp USSR** | **temp overall** |
+|---:|---:|---:|---:|---:|---:|---:|
+| 50.0M | 5.0% | 9.5% | 7.2% | **35.0%** | 11.0% | **23.0%** |
+
+The lead holds and widens in absolute terms (23.0% against 7.2%), and it is still carried by the
+US seat: **35.0% against 5.0%, a sevenfold gap**, while the USSR seats are nearly level (11.0%
+against 9.5%).
+
+That sharpens the reading of the 40M entry above. The treatment is not uniformly better — on the
+USSR seat the two arms are indistinguishable at both 40M and 50M. What the higher rollout bands
+buy is **the seat the control never learns**, which is consistent with the DEFCON-1 mechanism: it
+is the US seat whose points come from the late game, and the late game is what the control's
+turn-6 nuclear exchanges remove from its training distribution.
+
+Still one seed, and 80M remains the registered judgment point.
