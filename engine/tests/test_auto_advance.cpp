@@ -212,10 +212,15 @@ TEST(AutoAdvanceTest, IndependentReds_1Country_AutoResolves) {
 }
 
 static uint16_t pick_deterministic_action(const uint8_t* mask) {
-    for (int i = 0; i < 211; ++i) {
-        if (mask[i]) return static_cast<uint16_t>(i);
+    // The WHOLE space, and confirm/done as the fallback by name. This scanned `i < 211` and
+    // returned 211, which was the decline under the old layout; after the section 4 repack 211
+    // is a DEFCON slot and the region head sits at 214..219, past the end of the scan. A
+    // Chernobyl decision then found nothing legal and returned an action illegal there.
+    for (uint16_t i = 0; i < ts::FLAT_ACTION_SPACE_SIZE; ++i) {
+        if (i == ts::flat_slots::CONFIRM_DONE) continue;   // prefer a real action
+        if (mask[i]) return i;
     }
-    return 211;
+    return ts::flat_slots::CONFIRM_DONE;
 }
 
 TEST(AutoAdvanceTest, DeterministicEquivalence_FullGame) {

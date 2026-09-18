@@ -183,6 +183,8 @@ the index is the same aliasing in a cheaper place. It gets its own index.
 
 ## 4. Two heads that name real concepts
 
+**DONE.** DEFCON at flat 209..213, region at 214..219, after the repack that closed the merge's 116..118 hole. Summit, How I Learned and Chernobyl are wired; no generic branch slot is offered for any of them. Encoding routes on the resolving card rather than a flag on the action -- a caller building a MicroAction from the per-decision mask has only a type and an index, so a flag it cannot know about made every such choice illegal, which the fuzzer caught immediately.
+
 | choice | representation | why a head rather than a branch |
 |:---|:---|:---|
 | **DEFCON value** — How I Learned, **Summit** | shared 5-slot value head, masked per card | DEFCON is a first-class quantity |

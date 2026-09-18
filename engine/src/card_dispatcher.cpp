@@ -918,19 +918,18 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
-                if (action.primary_id == 0) {
-                    state.defcon = static_cast<uint8_t>(std::min(5, static_cast<int>(state.defcon) + 1));
-                } else if (action.primary_id == 1) {
-                    if (state.defcon > 1) {
-                        state.defcon--;
-                        if (state.defcon == 2) state.defcon_dropped_to_2 = 1;
-                    }
-                    if (state.defcon == 1) {
-                        // The Summit winner chooses to degrade DEFCON; as everywhere else
-                        // the phasing player takes the loss, so lowering DEFCON to 1 while
-                        // your opponent is phasing wins the game rather than losing it.
-                        resolve_defcon_one_loss(state, state.ctx().decision_player);
-                    }
+                // P17 section 4: "set DEFCON to V", not +1/-1. primary_id is the level the mask
+                // offered -- {current-1, current, current+1} clipped to 1..5 -- so choosing the
+                // current level is how "may ... by 1" expresses leaving it alone, which the old
+                // pair of branches could not say at all.
+                const int target = std::clamp(static_cast<int>(action.primary_id), 1, 5);
+                const int before = static_cast<int>(state.defcon);
+                state.defcon = static_cast<uint8_t>(target);
+                if (target < before && target == 2) state.defcon_dropped_to_2 = 1;
+                if (target == 1) {
+                    // As everywhere else the phasing player takes the loss, so lowering DEFCON
+                    // to 1 while your opponent is phasing wins the game rather than losing it.
+                    resolve_defcon_one_loss(state, state.ctx().decision_player);
                 }
                 state.ctx().resolving_card = 0;
                 return true;
@@ -1926,7 +1925,16 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
         if (card == card_ids::HOW_I_LEARNED_TO_STOP_WORRYING) {
             mask_out[0] = 0; mask_out[1] = 1; mask_out[2] = 1; mask_out[3] = 1; mask_out[4] = 1; mask_out[5] = 1;
         } else if (card == card_ids::SUMMIT) {
-            mask_out[0] = 1; mask_out[1] = 1; mask_out[2] = 1;
+            // P17 section 4: DEFCON LEVELS, not branch indices, so this agrees with the flat
+            // mask -- one definition of legality (P14). "may degrade or improve ... by 1" is
+            // {current-1, current, current+1} clipped to 1..5, and choosing the current level
+            // is how "may" says leave it alone. The old 0/1/2 encoding meant improve/degrade/
+            // unchanged, which the flat side has no way to spell.
+            mask_out[0] = 0; mask_out[1] = 0; mask_out[2] = 0;
+            const int d = static_cast<int>(state.defcon);
+            for (int v = d - 1; v <= d + 1; ++v) {
+                if (v >= 1 && v <= 5) mask_out[v] = 1;
+            }
         } else if (card == card_ids::CHERNOBYL) {
             mask_out[2] = 1; mask_out[3] = 1; mask_out[4] = 1; mask_out[5] = 1;
         }

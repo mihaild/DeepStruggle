@@ -611,6 +611,35 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
         }
 
         case DecisionType::CHOOSE_BRANCH:
+            // P17 section 4. Three cards name a concept the game already has rather than a
+            // branch index, and get a head for it. The test a head must pass is that the
+            // concept is first-class: DEFCON and Region are, "participate vs boycott" is not.
+            if (ctx.resolving_card == card_ids::HOW_I_LEARNED_TO_STOP_WORRYING) {
+                // "Set the DEFCON level to any level desired (1-5)."
+                for (uint8_t v = 1; v <= flat_slots::DEFCON_COUNT; ++v) {
+                    mask_212[flat_slots::DEFCON_VALUE + v - 1] = 1;
+                }
+                break;
+            }
+            if (ctx.resolving_card == card_ids::SUMMIT) {
+                // "may degrade or improve the DEFCON level by 1" -- so leaving it alone is a
+                // legal outcome, and the mask says which three values that allows. As a pair of
+                // +1/-1 branches there was no way to express it at all.
+                const int d = static_cast<int>(state.defcon);
+                for (int v = d - 1; v <= d + 1; ++v) {
+                    if (v >= 1 && v <= static_cast<int>(flat_slots::DEFCON_COUNT)) {
+                        mask_212[flat_slots::DEFCON_VALUE + v - 1] = 1;
+                    }
+                }
+                break;
+            }
+            if (ctx.resolving_card == card_ids::CHERNOBYL) {
+                // "designate a single Region" -- every region is always available.
+                for (uint8_t r = 0; r < flat_slots::REGION_COUNT; ++r) {
+                    mask_212[flat_slots::REGION + r] = 1;
+                }
+                break;
+            }
             for (size_t i = 0; i < 8 && i < temp_size; ++i) {
                 if (temp_mask[i]) {
                     mask_212[flat_slots::BRANCH + i] = 1;
@@ -702,7 +731,6 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
 }
 
 int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroAction& action) noexcept {
-    (void)state;
     if (action.is_confirm_done() || action.primary_id == 255) {
         return flat_slots::CONFIRM_DONE;
     }
@@ -741,16 +769,20 @@ int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroA
             }
             return flat_slots::CONFIRM_DONE;
 
-        case DecisionType::CHOOSE_BRANCH:
-            // Three heads land on CHOOSE_BRANCH, told apart by the action's flag rather than by
-            // its index -- a plain branch, "set DEFCON to V", and a region.
-            if (action.has_flag(action_flags::DEFCON_VALUE)) {
+        case DecisionType::CHOOSE_BRANCH: {
+            // Three heads land on CHOOSE_BRANCH and the RESOLVING CARD says which, not a flag on
+            // the action. A flag cannot work here: a caller building a MicroAction from the
+            // per-decision mask has only a decision type and an index, and no way to know a head
+            // is involved -- the fuzzer did exactly that and had every Summit choice refused.
+            // The card is already the thing that decided the head, so ask it.
+            const uint8_t rc = state.ctx().resolving_card;
+            if (rc == card_ids::SUMMIT || rc == card_ids::HOW_I_LEARNED_TO_STOP_WORRYING) {
                 if (action.primary_id >= 1 && action.primary_id <= flat_slots::DEFCON_COUNT) {
                     return static_cast<int16_t>(flat_slots::DEFCON_VALUE + action.primary_id - 1);
                 }
                 return flat_slots::CONFIRM_DONE;
             }
-            if (action.has_flag(action_flags::REGION)) {
+            if (rc == card_ids::CHERNOBYL) {
                 if (action.primary_id < flat_slots::REGION_COUNT) {
                     return static_cast<int16_t>(flat_slots::REGION + action.primary_id);
                 }
@@ -760,6 +792,7 @@ int16_t ActionMask::encode_micro_action_212(const GameState& state, const MicroA
                 return static_cast<int16_t>(flat_slots::BRANCH + action.primary_id);
             }
             return flat_slots::CONFIRM_DONE;
+        }
 
         case DecisionType::NONE:
         default:
