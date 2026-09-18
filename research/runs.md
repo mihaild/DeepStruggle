@@ -417,3 +417,24 @@ measurement that a pooled game is played against ~5 snapshots in sequence
 ([`findings/training/pooling.md`](findings/training/pooling.md) §3b).
 
 Directory: `E3-23-28_20260916_171033`.
+
+### E3-29 … E3-35 — the P15 search-CE arms, and the pool bug under them
+
+**The X4b collapse was opponent-pool starvation, not a property of search-CE.** Full account in
+[`log/P15_X4b_collapse_is_pool_starvation.md`](log/P15_X4b_collapse_is_pool_starvation.md); the
+short version is that `--resume <run-directory>` rebuilt the pool from the *parent* of the
+directory until `266e891`, found no snapshots, and started with a pool of one.
+
+| arm | varied | budget | directory | result |
+|:---|:---|:---|:---|:---|
+| `E3-29-28` | search CE 0.5, 64 sims, all nodes, fast 200k anchor | 0–20M | `E3-29-28_20260917_041110` | the healthy source; +165.6 Elo at 20M |
+| `E3-29-28` cont. | same, resumed | 20–28M | `E3-29-28_20260917_074357` | **VOID — pool of 1.** 24.0% vs `p28_280M` at 25M, opp win rate 0.997, mean turn 3.8 |
+| `E3-30-28` | no search, ref 5M, from scratch | 240M | `E3-30-28_20260917_104226` | control; USSR specialist, US seat ends 13.5% |
+| `E3-31-28` | search CE at the 5M anchor, from scratch | 25M+ | `E3-31-28_20260917_104506` | pool healthy (5) and **still declines**: 80.8% → 57.0% at 25M, USSR-driven, `kl_div` 62.8 — **unexplained** |
+| `E3-32-30` | forced setup exploration | died 53.7M | `E3-32-30_20260917_194158` | NaN; ratio clamp + diagnostics added, relaunch pending |
+| `E3-33-30` | rollout temps `0.8 1.2 0.7 1.1` | 80M | `E3-33-30_20260917_201441`, `…_235834` | **ahead of its control at every point after 10M**; [`log/P15_rollout_temperature.md`](log/P15_rollout_temperature.md) |
+| `E3-34-28` | E3-29-28 cont. replayed, pool fixed, 250k snapshots | 20–28M | `E3-34-28_20260917_222015` | **did not collapse** — 90.0% at 25M, 73–90% throughout |
+| `E3-35-28` | E3-34-28 extended | 28–60M | `E3-35-28_20260918_001501` | running — does search-CE *sustain* with a healthy pool? |
+
+`E3-34-28_20260917_231420` is a byte-identical duplicate of `E3-34-28_20260917_222015`, launched
+by accident and killed at 22.5M; ignore it.
