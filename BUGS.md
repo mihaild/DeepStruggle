@@ -10,7 +10,17 @@ and unfinished work belong in the documentation for the area they concern.
 
 ## ENG-1 — UN Intervention offers companion cards the rules forbid
 
-**Area:** engine · **Severity:** medium · **Status:** open
+**Area:** engine · **Severity:** medium · **Status:** FIXED (P17 6a)
+
+The rule now lives on the reachable path -- a `UN_INTERVENTION` case in
+`CardHandlers::get_event_action_mask`'s `SELECT_CARD` switch, requiring an
+opponent-associated, non-scoring card in hand. The copy in `action_mask.cpp` was left in
+place but made identical, including the non-scoring half it had been missing, so the two
+spellings cannot disagree again. Two spellings of one rule is how this survived: the
+unreachable copy was right, so nobody reading it saw a bug.
+
+Regression test drives `generate_flat_mask_212` rather than the handler directly -- a test
+against the wrong function would have passed throughout the bug's life.
 
 UN Intervention (#32) reads "play this card simultaneously with a card containing your opponent's
 associated Event". The companion must therefore be an opponent-associated, non-scoring card. The

@@ -40,7 +40,13 @@ def rows():
     # held scoring card sooner: 40 games stopped reaching turn 8 and the turn-span check below
     # failed. Widening is what that check's own message asks for, and is the honest fix; lowering
     # the bar would weaken the assertion to match the sample rather than the other way round.
-    obs = collect(num_games=120, seed=99)
+    #
+    # 400, not 120, for the same reason a second time. P17 6a removed the early stop from twelve
+    # cards that state an exact amount, so a random player now has to finish placements it used
+    # to be able to abandon; the board moves faster and games end sooner. The corpus still
+    # converts 300/300, so this is the decision stream changing legitimately, not games ending
+    # wrongly.
+    obs = collect(num_games=400, seed=99)
     assert obs.shape[0] > 3000, f"only {obs.shape[0]} positions; the sample is too thin to judge"
     return audit(obs, v23_features())
 

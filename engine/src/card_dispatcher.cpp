@@ -1897,6 +1897,21 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
                     if (in_hand_of(state.card_locations[i], p)) mask_out[i] = 1;
                 }
                 break;
+            case card_ids::UN_INTERVENTION:
+                // ENG-1. "Play this card simultaneously with a card containing your opponent's
+                // associated Event", so the companion is an opponent-associated, non-scoring
+                // card in hand. This case is the REACHABLE definition: the branch in
+                // action_mask.cpp that had the rule right sits below a `resolving_card != 0`
+                // test that delegates here and returns, so it never ran and the default offered
+                // the player's whole hand -- their own cards and scoring cards included.
+                for (uint8_t i = 1; i <= 110; ++i) {
+                    if (in_hand_of(state.card_locations[i], p) &&
+                        CardData::is_opponent_card(i, p) &&
+                        !CardData::is_scoring_card(i)) {
+                        mask_out[i] = 1;
+                    }
+                }
+                break;
             default:
                 for (uint8_t i = 1; i <= 110; ++i) {
                     if (in_hand_of(state.card_locations[i], p)) mask_out[i] = 1;

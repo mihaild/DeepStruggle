@@ -486,6 +486,30 @@ TEST(EarlyCardsTest, Card32_UNIntervention) {
     ASSERT_EQ(state.card_locations[ts::card_ids::DE_GAULLE], ts::CardLocation::DISCARD_PILE);
 }
 
+// ENG-1. The companion must be an opponent-associated, NON-SCORING card the player holds.
+// Driven through generate_flat_mask_212 on purpose: the rule existed twice and the copy that
+// was right -- in action_mask.cpp -- sat below a `resolving_card != 0` test that delegates to
+// get_event_action_mask and returns, so it never ran. A test against the wrong function would
+// have passed throughout the bug's life.
+TEST(EarlyCardsTest, Card32_UNIntervention_OffersOnlyOpponentNonScoringCards) {
+    ts::GameState state{};
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    // A USSR card (legal), the player's own US card (illegal), and a scoring card (illegal).
+    state.card_locations[ts::card_ids::DE_GAULLE] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::NATO] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::EUROPE_SCORING] = ts::hand_of(ts::Player::US);
+
+    ASSERT_FALSE(ts::CardHandlers::trigger_event(
+        state, ts::card_ids::UN_INTERVENTION, ts::Player::US));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[ts::card_ids::DE_GAULLE - 1], 1);        // opponent card: offered
+    ASSERT_EQ(mask[ts::card_ids::NATO - 1], 0);             // own card: never
+    ASSERT_EQ(mask[ts::card_ids::EUROPE_SCORING - 1], 0);   // scoring card: never
+}
+
 // Card 33: De-Stalinization
 TEST(EarlyCardsTest, Card33_DeStalinization_TwoStages) {
     ts::GameState state{};

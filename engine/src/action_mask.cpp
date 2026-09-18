@@ -63,10 +63,16 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 return;
             }
 
-            // 2. UN Intervention (#32) companion card selection
+            // 2. UN Intervention (#32) companion card selection. Kept identical to the copy in
+            // CardHandlers::get_event_action_mask, which is the one that actually runs once
+            // resolving_card is set -- including the non-scoring half this branch used to omit.
+            // Two spellings of one rule is how ENG-1 survived: the unreachable copy was right,
+            // so nobody looking at it saw a bug.
             if (ctx.pending_op_card == card_ids::UN_INTERVENTION) {
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    if (in_hand_of(state.card_locations[i], p) && CardData::is_opponent_card(i, p)) {
+                    if (in_hand_of(state.card_locations[i], p) &&
+                        CardData::is_opponent_card(i, p) &&
+                        !CardData::is_scoring_card(i)) {
                         mask_out[i] = 1;
                     }
                 }
