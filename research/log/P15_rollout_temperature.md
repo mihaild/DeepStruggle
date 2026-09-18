@@ -395,3 +395,44 @@ and 2.0x on the other, and the seed with the *better* ending mix is the weaker p
 That is a real correction to this document's own mechanism section. The ending mix is **what the
 bands do**, reliably. It is not, on this evidence, **why the strong seed is strong** — something
 else separates the two seeds, and nothing measured here identifies it.
+
+---
+
+## Seed B through the registered window: confirmed (2026-09-18)
+
+The 40M entry above read seed B as a partial replication and said the recommendation should stay
+unactioned. **The rest of the registered window reverses that.**
+
+| steps | control | **seed A** | **seed B** | B vs control |
+|---:|---:|---:|---:|---:|
+| 40.0M | 4.5% | 15.5% | 9.0% | 2.0x, z = 1.79 (n.s.) |
+| 50.0M | 7.2% | 23.0% | **16.5%** | 2.3x, **z = 2.88**, p = 0.004 |
+| 60.0M | 13.8% | 28.0% | **22.5%** | 1.6x, **z = 2.26**, p = 0.024 |
+
+The registration's confirm condition was:
+
+> Landing near 15-28 percent at 40M-60M confirms the effect is not a lucky seed.
+
+Seed B lands at **16.5%** and **22.5%** — inside that band at two of the three points, having
+entered it from below rather than starting there. It is significantly above the control at both.
+
+**So the effect replicates.** Both seeds beat the control at every point from 40M to 60M, seed A
+by 2.0–3.4x and seed B by 1.6–2.3x. The earlier reading — "not significant against the control" —
+was true of the 40M point alone and was reported before the window it belonged to had finished.
+That was over-cautious in the same way an early stop is over-confident: a judgment taken at one
+end of a registered range.
+
+### What that does and does not change
+
+**Changes:** the effect is no longer one seed. Two independent seeds show it, in the same
+direction, within the pre-registered window, both significant by 50M.
+
+**Does not change:** the magnitude disagrees by roughly 1.4–1.7x between seeds, so the *size* of
+the gain is still not pinned; the seat asymmetry still flipped between seeds and so remains a seed
+property; and the ending-mix mechanism still fails to explain the difference between the two seeds
+— seed B has the better ending mix and the smaller gain. There is still **one control seed**, so
+none of this separates the treatment from between-seed variation in the control.
+
+**Recommendation:** the bands `0.8 1.2 0.7 1.1` are now supported well enough to be worth a
+matched control at a second seed, which is the one arm that would settle it. Changing the shipped
+default should wait for that arm rather than for more points on these two.
