@@ -12,9 +12,17 @@ adapter.**
 
 Largest |z| = 0.92 against a two-sided 5% threshold of 1.96. **The merge did not move playing
 strength.** The checkpoints are from `E3-35-28_20260918_001501`; the old engine is `ebfd55d`
-rebuilt from a `git archive` export. (The ladder is inverted — the untrained `0s` snapshot beats
-both trained ones — which is the documented collapse in that arm and irrelevant here. It is
-actually useful: 98% / 2% matchups make the comparison far more sensitive than 50/50 ones would.)
+rebuilt from a `git archive` export.
+
+`snapshot_0s` is **not** untrained, which is how it was first described here and it was wrong.
+`E3-35-28` is a resumed run (`resumed_from: E3-34-28_20260917_222015`, `warmup_checkpoint: None`),
+so its `0s` file is the inherited model — bit-identical across all 101 tensors to `E3-34-28`'s
+final 28.0M snapshot, with the resume chain continuing back to `E3-29-28`. It therefore tops the
+ladder because it is the *pre-collapse* model and the run degraded away from it, not because an
+untrained network beats trained ones. See
+[`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) §"A checkpoint's filename
+is not its provenance". The wide 98% / 2% matchups this produces are useful here regardless: they
+make the comparison far more sensitive than 50/50 ones would.
 
 ## What made it possible
 

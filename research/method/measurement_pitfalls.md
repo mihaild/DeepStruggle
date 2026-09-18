@@ -279,3 +279,36 @@ range it was taken over, and "the decline" is not a range until you have checked
 
 `tools/scripts/` has no helper for this yet; the ad-hoc version is nine lines and is reproduced in
 [`log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md).
+
+## A checkpoint's filename is not its provenance
+
+`snapshot_0s.pt` means **zero steps of the run that wrote it**, which is only "untrained" when
+that run started from scratch. `tools/train.py` supports both `--warmup-checkpoint` and
+`--resume`, so a `0s` snapshot in a resumed run is the *inherited* model: fully trained, and often
+the strongest thing in the directory.
+
+This was caught by the owner, not by the measurement. A seven-agent ladder was reported with
+`snapshot_0s` on top at 85.7% and beating HeuristicBot 98.8%, described as "untrained" on the
+strength of the filename alone. `E3-35-28_20260918_001501/metadata.json` says:
+
+```
+resumed_from       /workspace/data/checkpoints/E3-34-28_20260917_222015
+warmup_checkpoint  None
+```
+
+and its `snapshot_0s.pt` is **bit-identical across all 101 tensors** to `E3-34-28`'s final
+28.0M-step snapshot. The resume chain continues backwards (`E3-35-28 <- E3-34-28 <- E3-29-28`),
+so the cumulative training behind that file is larger still.
+
+The damage was not just a mislabelled row. It produced a *confident wrong explanation*: an earlier
+run where `0s` beat two later snapshots of its own arm was written up as the documented X4b
+collapse "with an untrained network on top". The ladder was never inverted. `0s` is the
+pre-collapse inherited model and the run degraded away from it — the same underlying finding, with
+the mechanism stated backwards.
+
+**Before describing any checkpoint's training state, read the run's `metadata.json`**
+(`resumed_from`, `warmup_checkpoint`), and if it matters to the claim, diff the weights against the
+parent's last snapshot. Both are seconds of work. A plausible-looking number is exactly the
+condition under which nobody checks.
+
+Related: [`One-sidedness of self-play is not evidence that a side is degrading`](#one-sidedness-of-self-play-is-not-evidence-that-a-side-is-degrading).
