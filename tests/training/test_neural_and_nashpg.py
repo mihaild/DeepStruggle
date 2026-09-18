@@ -50,15 +50,26 @@ class TestActionEncoderAndMasks:
         assert a_mode.decision_type == ts.DecisionType.SELECT_PLAY_MODE
         assert a_mode.primary_id == int(ts.Resolution.OPS_INFLUENCE)
 
-        # Timing branch
-        a_timing = ActionEncoder.decode(state, 114 + int(ts.TimingBranch.OPS_FIRST))
-        assert a_timing.decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH
-        assert a_timing.primary_id == int(ts.TimingBranch.OPS_FIRST)
+        # The Ops slots do double duty: [112..114] are the OPS_* resolutions, and the *same*
+        # three are the deferred Ops choice after an event-first event. Which one a slot means
+        # is decided by the state's own decision type, so from a fresh game -- where nothing is
+        # waiting on a deferred Ops choice -- it reads as the resolution.
+        a_op = ActionEncoder.decode(state, ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.COUP))
+        assert a_op.decision_type == ts.DecisionType.SELECT_PLAY_MODE
+        assert a_op.primary_id == int(ts.Resolution.OPS_COUP)
+        assert (ActionEncoder.OP_MODE_OFFSET + int(ts.OpMode.COUP)
+                == ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.OPS_COUP))
 
-        # Op mode
-        a_op = ActionEncoder.decode(state, 116 + int(ts.OpMode.COUP))
-        assert a_op.decision_type == ts.DecisionType.SELECT_OP_MODE
-        assert a_op.primary_id == int(ts.OpMode.COUP)
+        # Roll die got its own index in the merge.
+        a_roll = ActionEncoder.decode(state, ActionEncoder.ROLL_DIE_INDEX)
+        assert a_roll.decision_type == ts.DecisionType.ROLL_DIE
+
+        # [116..118] are unassigned after the merge and are refused rather than decoded to a
+        # neighbouring meaning -- the bug the merge was most likely to introduce.
+        for idx in range(*ActionEncoder.UNASSIGNED_RANGE):
+            refused = ActionEncoder.decode(state, idx)
+            assert refused.decision_type == ts.DecisionType.NONE
+            assert refused.primary_id == 255
 
         # Country node
         a_node = ActionEncoder.decode(state, 119 + 25) # Country #25
@@ -199,10 +210,10 @@ class TestVectorizedEnvironment:
 
         st.set_card_location(5, ts.hand_of(ts.Player.USSR)) # 5op card
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
-        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+        # P17: one resolution node. OPS_COUP on an opponent card is the
+        # ops-first branch the retired CHOOSE_TIMING_BRANCH used to select.
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
+                                          int(ts.Resolution.OPS_COUP), 0, 0))
 
         # Step coup on Iran (primary_id=17 -> flat action 182) in env 0, dummy actions for others
         actions = [182]

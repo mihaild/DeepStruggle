@@ -56,7 +56,15 @@ def model():
 
 def test_returns_a_legal_action_for_every_position(model):
     states = _states(6)
-    picks = BatchedMCTS(model, config=BatchedMCTSConfig(simulations=8)).best_actions(states)
+    # advance_root=False because this test asserts the pick is legal in the state it
+    # handed over. _states() drains chance nodes and nothing else, while the searcher
+    # also settles decisions with no discretion, so under the default the tree roots one
+    # decision further on and returns an action legal there and not here -- exactly what
+    # the flag documents. P17 did not break this, it exposed it: the merge removed a fifth
+    # of the decisions, and these scripted openings now land on a single-legal-action
+    # POINT_NODE that the searcher skips.
+    cfg = BatchedMCTSConfig(simulations=8, advance_root=False)
+    picks = BatchedMCTS(model, config=cfg).best_actions(states)
     assert len(picks) == len(states)
     for st, a in zip(states, picks):
         mask = np.asarray(ActionEncoder.get_legal_mask(st))
@@ -119,7 +127,14 @@ def test_terminal_positions_are_handled_without_evaluation(model):
 def test_determinize_flag_does_not_leak_the_opponent_hand(model):
     """With determinize=True the searched root must differ from the true state."""
     states = _states(3)
-    cfg = BatchedMCTSConfig(simulations=4, determinize=True, seed=5)
+    # advance_root=False because this test asserts the pick is legal in the state it
+    # handed over. _states() drains chance nodes and nothing else, while the searcher
+    # also settles decisions with no discretion, so under the default the tree roots one
+    # decision further on and returns an action legal there and not here -- exactly what
+    # the flag documents. P17 did not break this, it exposed it: the merge removed a fifth
+    # of the decisions, and these scripted openings now land on a single-legal-action
+    # POINT_NODE that the searcher skips.
+    cfg = BatchedMCTSConfig(simulations=4, determinize=True, seed=5, advance_root=False)
     picks = BatchedMCTS(model, config=cfg).best_actions(states)
     assert len(picks) == len(states)
     for st, a in zip(states, picks):

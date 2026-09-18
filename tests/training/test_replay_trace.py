@@ -104,9 +104,13 @@ def test_untraced_replays_carry_nothing_extra(model, tmp_path) -> None:
 
 
 def test_critic_every_decision_skips_the_settled_steps(model, tmp_path) -> None:
+    # The seed is load-bearing: this needs a game holding BOTH a forced step and a chosen one,
+    # and forced steps are rare -- P17 merged the card-play chain and took roughly a fifth of
+    # the decisions with it, mostly ones with little discretion, which left seed 818 with none
+    # inside max_steps and the test asserting against an empty half. Seed 717 has four.
     torch.manual_seed(111)
     doc, _ = generate_self_play_replay(
-        model=model, seed=818, temperature=0.3, trace_critic_every="decision",
+        model=model, seed=717, temperature=0.3, trace_critic_every="decision",
         output_path=str(tmp_path / "dec.tslog.json"),
         device="cpu", verbose=False, max_steps=80)
     forced = [s for s in doc["steps"] if s["policy"]["source"] == "forced"]

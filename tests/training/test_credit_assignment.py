@@ -67,10 +67,10 @@ class TestDefconSuicideCredit:
         # Choose a card with ops for USSR (e.g. Card 5)
         st.set_card_location(5, ts.hand_of(ts.Player.USSR))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
-        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+        # P17: one resolution node. OPS_COUP on an opponent card is the
+        # ops-first branch the retired CHOOSE_TIMING_BRANCH used to select.
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
+                                          int(ts.Resolution.OPS_COUP), 0, 0))
 
         # Coup Panama (70) -> Flat action 189
         _, _, rewards, dones, info = env.step([189])
@@ -97,10 +97,10 @@ class TestDefconSuicideCredit:
 
         st.set_card_location(4, ts.hand_of(ts.Player.US))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
-        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+        # P17: one resolution node. OPS_COUP on an opponent card is the
+        # ops-first branch the retired CHOOSE_TIMING_BRANCH used to select.
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
+                                          int(ts.Resolution.OPS_COUP), 0, 0))
 
         # Coup Panama (70) -> Flat action 189
         _, _, rewards, dones, info = env.step([189])
@@ -327,10 +327,10 @@ class TestCubanMissileCrisisCoupSuicide:
 
         st.set_card_location(5, ts.hand_of(ts.Player.USSR))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 5, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
-        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+        # P17: one resolution node. OPS_COUP on an opponent card is the
+        # ops-first branch the retired CHOOSE_TIMING_BRANCH used to select.
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
+                                          int(ts.Resolution.OPS_COUP), 0, 0))
 
         # Coup Iran (25) -> flat action 119 + 25 = 144
         _, _, rewards, dones, info = env.step([144])
@@ -357,10 +357,10 @@ class TestCubanMissileCrisisCoupSuicide:
 
         st.set_card_location(4, ts.hand_of(ts.Player.US))
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 4, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))  # Ops
-        if st.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
-        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1, 0, 0))    # Coup
+        # P17: one resolution node. OPS_COUP on an opponent card is the
+        # ops-first branch the retired CHOOSE_TIMING_BRANCH used to select.
+        ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE,
+                                          int(ts.Resolution.OPS_COUP), 0, 0))
 
         # Coup Panama (70) -> Flat action 189
         _, _, rewards, dones, info = env.step([189])
