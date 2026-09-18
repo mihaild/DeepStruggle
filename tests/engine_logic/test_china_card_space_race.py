@@ -21,8 +21,9 @@ _CORPUS = str(corpus_dir())
 THE_CHINA_CARD = 6
 DUCK_AND_COVER = 4
 FIVE_YEAR_PLAN = 5
-SPACE = 112     # flat index of the space play mode
-PLAY_MODES = (110, 111, 112)
+# P17: the resolution node is five wide -- event, space, and the three Ops modes.
+SPACE = 111     # flat index of the space resolution
+PLAY_MODES = (110, 111, 112, 113, 114)
 
 
 def _holding_the_china_card(box: int) -> ts.GameState:

@@ -71,7 +71,7 @@ def test_realignment_vietnam_revolts_double_charges_outside_southeast_asia() -> 
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.REALIGN), 0, 0))
 
     assert int(st.ctx().pending_ops_value) == 4, "initial budget should be 4 (3 base + 1 SE Asia)"
@@ -128,7 +128,7 @@ def test_realignment_china_card_under_vietnam_revolts_in_asia_strips_asia_bonus(
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, CHINA_CARD, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.REALIGN), 0, 0))
 
     assert int(st.ctx().pending_ops_value) == 6, "initial offer should be 6 Ops"
@@ -180,7 +180,7 @@ def test_coup_china_card_in_non_se_asia_must_not_receive_vietnam_revolts_bonus()
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, CHINA_CARD, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.COUP), 0, 0))
 
     # Point to Pakistan to execute the coup
@@ -243,7 +243,7 @@ def test_nested_event_granting_ops_under_event_first_must_unwind_to_player_ops()
 
     # USSR plays Five Year Plan for Ops, EVENT_FIRST
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, FIVE_YEAR_PLAN, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 1, 0, 0))  # EVENT_FIRST
 
     # US receives 1 Op from CIA Created event and places influence in Canada

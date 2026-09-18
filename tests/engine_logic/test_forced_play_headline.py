@@ -62,5 +62,5 @@ def test_a_headlined_card_may_still_be_played_as_its_event() -> None:
         ts.DecisionType.SELECT_CARD, PORTUGUESE_EMPIRE_CRUMBLES, 0, 0))
     if state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE:
         mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
-        assert mask[110 + int(ts.PlayMode.EVENT)] == 1, (
+        assert mask[110 + int(ts.Resolution.EVENT)] == 1, (
             "a headlined card resolves as its Event")

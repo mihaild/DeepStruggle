@@ -66,7 +66,7 @@ def _race(state: ts.GameState, card: int, roll: int) -> None:
     mask = np.asarray(ts.ActionMask.generate_flat_mask(state))
     assert mask[SPACE_MODE] == 1, "Space Race must be an available play mode"
     ts.Engine.step(state, ts.MicroAction(
-        ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.SPACE), roll, 0))
+        ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.SPACE), roll, 0))
     ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, roll, 0, 0))
 
 

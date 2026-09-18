@@ -26,11 +26,19 @@ from bindings.action_encoder import ActionEncoder
 CARD_ACTION_START = 0
 PLAY_MODE_START = 110
 
+#: P17: a card play is ONE decision now. `ops` no longer exists on its own -- the Ops mode is
+#: chosen at the same node -- so it is an alias for placement, which is the mode that is always
+#: offered when Ops play is legal at all. Callers that care which mode should name it.
+#:
+#: `pass` is gone: PlayMode::PASS was never set by any mask, so it addressed a permanently dead
+#: slot.
 PLAY_MODE_ACTION: Dict[str, int] = {
-    "event": PLAY_MODE_START + int(ts.PlayMode.EVENT),
-    "ops": PLAY_MODE_START + int(ts.PlayMode.OPS),
-    "space": PLAY_MODE_START + int(ts.PlayMode.SPACE),
-    "pass": PLAY_MODE_START + int(ts.PlayMode.PASS),
+    "event": PLAY_MODE_START + int(ts.Resolution.EVENT),
+    "space": PLAY_MODE_START + int(ts.Resolution.SPACE),
+    "ops": PLAY_MODE_START + int(ts.Resolution.OPS_INFLUENCE),
+    "ops_influence": PLAY_MODE_START + int(ts.Resolution.OPS_INFLUENCE),
+    "ops_coup": PLAY_MODE_START + int(ts.Resolution.OPS_COUP),
+    "ops_realign": PLAY_MODE_START + int(ts.Resolution.OPS_REALIGN),
 }
 
 

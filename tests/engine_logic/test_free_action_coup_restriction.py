@@ -24,7 +24,10 @@ KAL_007 = 89
 SOUTH_KOREA = 44
 BULGARIA = 20
 
-MODE_ACTION = {"influence": 116, "coup": 117, "realign": 118}
+# P17: the Ops modes live at [112..114]. The merged resolution node and the deferred
+# SELECT_OP_MODE node share those slots -- same question, other route -- so this reads
+# correctly at either.
+MODE_ACTION = {"influence": 112, "coup": 113, "realign": 114}
 
 
 def _fresh() -> ts.GameState:
@@ -58,10 +61,16 @@ def _play_for_ops(card: int, player: ts.Player, event_first: bool) -> ts.GameSta
     state.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1, 0, 0))
-    if state.ctx().decision_type == ts.DecisionType.CHOOSE_TIMING_BRANCH:
+    # P17: the Ops mode is chosen AT the resolution node, so "which modes may I use" is asked
+    # here rather than at a second node. For the ops-first case the state is returned still
+    # standing on that decision, which is exactly where the question belongs.
+    #
+    # For event-first, EVENT resolves the opponent's event -- which is what grants the restricted
+    # free Ops these tests are about -- and leaves the deferred SELECT_OP_MODE node. That node
+    # shares the same three slots, so `_modes` reads either without caring which it got.
+    if event_first:
         ts.Engine.step(state, ts.MicroAction(
-            ts.DecisionType.CHOOSE_TIMING_BRANCH, 1 if event_first else 0, 0, 0))
+            ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.EVENT), 0, 0))
     return state
 
 

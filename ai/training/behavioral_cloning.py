@@ -102,9 +102,9 @@ class OldHeuristicPolicy:
 
         # 3. SELECT_PLAY_MODE: Prioritize OPS if opponent card, else EVENT or OPS
         if d_type == ts.DecisionType.SELECT_PLAY_MODE:
-            ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.OPS)
-            event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.EVENT)
-            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.SPACE)
+            ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.OPS_INFLUENCE)
+            event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.EVENT)
+            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.SPACE)
             if ops_idx in legal_indices:
                 return ops_idx
             if event_idx in legal_indices:
@@ -247,9 +247,9 @@ class HeuristicPolicy:
 
         # 3. SELECT_PLAY_MODE: Prioritize OPS if opponent card, else EVENT or OPS
         if d_type == ts.DecisionType.SELECT_PLAY_MODE:
-            ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.OPS)
-            event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.EVENT)
-            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.PlayMode.SPACE)
+            ops_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.OPS_INFLUENCE)
+            event_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.EVENT)
+            space_idx = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.SPACE)
             if ops_idx in legal_indices:
                 return ops_idx
             if event_idx in legal_indices:

@@ -63,7 +63,7 @@ def test_cmc_coup_ends_the_game_without_touching_defcon() -> None:
             break
         pick = int(legal[0])
         if ctx.decision_type == ts.DecisionType.SELECT_OP_MODE:
-            coup = 116 + int(ts.OpMode.COUP)
+            coup = 112 + int(ts.OpMode.COUP)
             if coup in legal.tolist():
                 pick = coup
         elif ctx.decision_type == ts.DecisionType.POINT_NODE and (119 + CUBA) in legal.tolist():

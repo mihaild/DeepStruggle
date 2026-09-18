@@ -531,15 +531,15 @@ def test_fix_defectors_no_vp_on_us_action_round():
     s.ctx().decision_player = ts.Player.US
     s.ctx().pending_op_card = 103
     mask = ts.Engine.get_legal_action_mask(s)
-    assert mask[int(ts.PlayMode.EVENT)] == 0
-    assert mask[int(ts.PlayMode.OPS)] == 1
+    assert mask[int(ts.Resolution.EVENT)] == 0
+    assert mask[int(ts.Resolution.OPS_INFLUENCE)] == 1
 
     flat_mask = ts.Engine.get_flat_action_mask(s)
     assert flat_mask[110] == 0
     assert flat_mask[111] == 1
 
     # 3. StateMachine rejects EVENT play mode
-    step_ok = ts.Engine.try_step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.EVENT), 0, 0))
+    step_ok = ts.Engine.try_step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.EVENT), 0, 0))
     assert not step_ok
 
     # 4. Trigger event directly does not change VP
@@ -581,7 +581,7 @@ def test_fix_card_97_an_evil_empire_not_war_card():
     s.ctx().decision_player = ts.Player.US
     s.ctx().decision_type = ts.DecisionType.SELECT_CARD
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 97))
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.OPS)))
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE)))
 
     # VP should still be 0 (Flower Power did not award 2 VP to USSR)
     assert s.victory_points == 0

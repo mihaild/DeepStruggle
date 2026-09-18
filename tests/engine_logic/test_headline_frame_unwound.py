@@ -93,6 +93,6 @@ def test_the_ops_are_actually_spent_before_the_unwind() -> None:
     state = _headline_missile_envy_against_abm()
     assert int(state.ctx().pending_ops_value) > 0
     ops = int(state.ctx().pending_ops_value)
-    ts.Engine.step_flat(state, 116)                  # influence
+    ts.Engine.step_flat(state, 112)                  # influence (P17 slot)
     assert int(state.ctx().remaining_steps) == ops, (
         "every Op granted is still there to spend")

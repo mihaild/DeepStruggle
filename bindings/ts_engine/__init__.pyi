@@ -150,13 +150,34 @@ class PlayMode(enum.IntEnum):
 
     PASS = 3
 
-EVENT: PlayMode = PlayMode.EVENT
+EVENT: Resolution = Resolution.EVENT
 
 OPS: PlayMode = PlayMode.OPS
 
-SPACE: PlayMode = PlayMode.SPACE
+SPACE: Resolution = Resolution.SPACE
 
 PASS: PlayMode = PlayMode.PASS
+
+class Resolution(enum.IntEnum):
+    EVENT = 0
+
+    SPACE = 1
+
+    OPS_INFLUENCE = 2
+
+    OPS_COUP = 3
+
+    OPS_REALIGN = 4
+
+    COUNT = 5
+
+OPS_INFLUENCE: Resolution = Resolution.OPS_INFLUENCE
+
+OPS_COUP: Resolution = Resolution.OPS_COUP
+
+OPS_REALIGN: Resolution = Resolution.OPS_REALIGN
+
+COUNT: Resolution = Resolution.COUNT
 
 class TimingBranch(enum.IntEnum):
     OPS_FIRST = 0

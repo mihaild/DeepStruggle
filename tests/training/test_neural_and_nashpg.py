@@ -46,9 +46,9 @@ class TestActionEncoderAndMasks:
         assert a_card.primary_id == 11
 
         # Play mode action
-        a_mode = ActionEncoder.decode(state, 110 + int(ts.PlayMode.OPS))
+        a_mode = ActionEncoder.decode(state, 110 + int(ts.Resolution.OPS_INFLUENCE))
         assert a_mode.decision_type == ts.DecisionType.SELECT_PLAY_MODE
-        assert a_mode.primary_id == int(ts.PlayMode.OPS)
+        assert a_mode.primary_id == int(ts.Resolution.OPS_INFLUENCE)
 
         # Timing branch
         a_timing = ActionEncoder.decode(state, 114 + int(ts.TimingBranch.OPS_FIRST))

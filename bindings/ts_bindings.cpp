@@ -84,11 +84,13 @@ static const char* phase_to_str(ts::Phase phase) {
 }
 
 static const char* play_mode_to_str(uint8_t mode) {
+    // P17: a SELECT_PLAY_MODE node carries a Resolution, so this names those.
     switch (mode) {
-        case static_cast<uint8_t>(ts::PlayMode::EVENT): return "EVENT";
-        case static_cast<uint8_t>(ts::PlayMode::OPS): return "OPS";
-        case static_cast<uint8_t>(ts::PlayMode::SPACE): return "SPACE";
-        case static_cast<uint8_t>(ts::PlayMode::PASS): return "PASS";
+        case static_cast<uint8_t>(ts::Resolution::EVENT): return "EVENT";
+        case static_cast<uint8_t>(ts::Resolution::SPACE): return "SPACE";
+        case static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE): return "OPS_INFLUENCE";
+        case static_cast<uint8_t>(ts::Resolution::OPS_COUP): return "OPS_COUP";
+        case static_cast<uint8_t>(ts::Resolution::OPS_REALIGN): return "OPS_REALIGN";
         default: return "UNKNOWN";
     }
 }
@@ -674,11 +676,22 @@ NB_MODULE(ts_engine, m) {
         .value("ROLL_DIE", ts::DecisionType::ROLL_DIE)
         .export_values();
 
+    // P17: `Resolution` is what a SELECT_PLAY_MODE node carries now. `PlayMode` is kept only
+    // because a few call sites still name it; it no longer describes any live decision.
     nb::enum_<ts::PlayMode>(m, "PlayMode", nb::is_arithmetic())
         .value("EVENT", ts::PlayMode::EVENT)
         .value("OPS", ts::PlayMode::OPS)
         .value("SPACE", ts::PlayMode::SPACE)
         .value("PASS", ts::PlayMode::PASS)
+        .export_values();
+
+    nb::enum_<ts::Resolution>(m, "Resolution", nb::is_arithmetic())
+        .value("EVENT", ts::Resolution::EVENT)
+        .value("SPACE", ts::Resolution::SPACE)
+        .value("OPS_INFLUENCE", ts::Resolution::OPS_INFLUENCE)
+        .value("OPS_COUP", ts::Resolution::OPS_COUP)
+        .value("OPS_REALIGN", ts::Resolution::OPS_REALIGN)
+        .value("COUNT", ts::Resolution::COUNT)
         .export_values();
 
     nb::enum_<ts::TimingBranch>(m, "TimingBranch", nb::is_arithmetic())

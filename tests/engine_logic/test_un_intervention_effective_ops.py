@@ -44,7 +44,7 @@ def _ussr_action_round() -> ts.GameState:
 def _name_cia_created(state: ts.GameState) -> None:
     ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, UN_INTERVENTION, 0, 0))
     ts.Engine.step(state, ts.MicroAction(
-        ts.DecisionType.SELECT_PLAY_MODE, int(ts.PlayMode.EVENT), 0, 0))
+        ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.EVENT), 0, 0))
     ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, CIA_CREATED, 0, 0))
 
 

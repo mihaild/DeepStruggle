@@ -42,7 +42,7 @@ DEFAULT_CARDS: Tuple[Tuple[int, ts.Player], ...] = (
     (30, ts.Player.USSR),    # Decolonization -- free placement in Africa/SE Asia
 )
 
-OP_MODE_INFLUENCE = 116      # flat action for SELECT_OP_MODE / INFLUENCE
+OP_MODE_INFLUENCE = 112      # P17: the Ops modes share the resolution node's slots
 COUNTRY_OFFSET = 119
 
 

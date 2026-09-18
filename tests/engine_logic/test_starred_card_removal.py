@@ -158,8 +158,11 @@ def _play_opponent_card_for_ops(card: int, player: ts.Player, flag: int) -> ts.C
     state.set_card_location(card, ts.hand_of(player))
 
     assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, OPS_MODE, 0, 0))
-    assert ts.Engine.try_step(state, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0))
+    # P17: one resolution. These cards are the opponent's, so choosing an OPS_* mode IS ops-first
+    # -- the separate CHOOSE_TIMING_BRANCH step it replaced is gone, and the event fires after
+    # the Ops, which is what the rest of this test checks.
+    assert ts.Engine.try_step(state, ts.MicroAction(
+        ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
     for _ in range(16):
         ctx = state.ctx()
         if ctx.decision_type == ts.DecisionType.SELECT_OP_MODE:
