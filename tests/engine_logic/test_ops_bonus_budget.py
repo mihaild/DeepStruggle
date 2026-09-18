@@ -229,7 +229,6 @@ def test_vietnam_revolts_un_intervention_thailand_vs_controlled_italy() -> None:
     # Play UN Intervention for Operations -> Influence
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, un_intervention, 0, 0))
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE), 0, 0))
 
     assert st.ctx().decision_type == ts.DecisionType.POINT_NODE
     # Initial optimistic offer is 2 Ops (1 base + 1 SE Asia)

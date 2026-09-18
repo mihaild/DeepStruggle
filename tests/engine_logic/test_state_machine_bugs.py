@@ -71,8 +71,7 @@ def test_realignment_vietnam_revolts_double_charges_outside_southeast_asia() -> 
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, card, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.REALIGN), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_REALIGN), 0, 0))
 
     assert int(st.ctx().pending_ops_value) == 4, "initial budget should be 4 (3 base + 1 SE Asia)"
 
@@ -128,8 +127,7 @@ def test_realignment_china_card_under_vietnam_revolts_in_asia_strips_asia_bonus(
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, CHINA_CARD, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.REALIGN), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_REALIGN), 0, 0))
 
     assert int(st.ctx().pending_ops_value) == 6, "initial offer should be 6 Ops"
 
@@ -180,8 +178,7 @@ def test_coup_china_card_in_non_se_asia_must_not_receive_vietnam_revolts_bonus()
     st.ctx().decision_type = ts.DecisionType.SELECT_CARD
 
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, CHINA_CARD, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.COUP), 0, 0))
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_COUP), 0, 0))
 
     # Point to Pakistan to execute the coup
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.POINT_NODE, pak_id, 0, 0))
@@ -241,10 +238,11 @@ def test_nested_event_granting_ops_under_event_first_must_unwind_to_player_ops()
     st.set_card_location(FIVE_YEAR_PLAN, ts.hand_of(ts.Player.USSR))
     st.set_card_location(CIA_CREATED, ts.hand_of(ts.Player.USSR))
 
-    # USSR plays Five Year Plan for Ops, EVENT_FIRST
+    # USSR plays Five Year Plan event-first. P17: EVENT on an opponent's card IS event-first,
+    # so the separate CHOOSE_TIMING_BRANCH step is gone and the Ops are deferred until the
+    # event resolves -- which is exactly what this test is about.
     ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, FIVE_YEAR_PLAN, 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.OPS_INFLUENCE), 0, 0))
-    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.CHOOSE_TIMING_BRANCH, 1, 0, 0))  # EVENT_FIRST
+    ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, int(ts.Resolution.EVENT), 0, 0))
 
     # US receives 1 Op from CIA Created event and places influence in Canada
     assert st.ctx().decision_player == ts.Player.US

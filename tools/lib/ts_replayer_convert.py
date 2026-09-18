@@ -1638,6 +1638,29 @@ _OP_MODE = {"influence": ts.OpMode.INFLUENCE, "coup": ts.OpMode.COUP,
             "realign": ts.OpMode.REALIGN}
 
 
+def _peek_op_mode(e, sections, pq, step_outcomes):
+    """Take the next Ops section and return its mode name, or None.
+
+    P17 folded the Ops-mode choice into the resolution node, so two call sites now need this:
+    the resolution node itself (ops-first, or a friendly card), and the deferred SELECT_OP_MODE
+    that follows an event-first event. Both must consume the section queue the same way -- the
+    point queue and outcome list travel with the section, and reading them out of step is how a
+    coup's roll ends up answering a placement.
+
+    Sections that are not an Ops mode are skipped rather than consumed as one: a space race is
+    settled at the resolution node, so its section is still at the head when the next Ops
+    decision arrives.
+    """
+    while sections and sections[0].mode not in _OP_MODE:
+        sections.pop(0)
+    section = sections.pop(0) if sections else None
+    mode = section.mode if section is not None else e.mode
+    if section is not None:
+        pq[:] = section_queue(section)
+        step_outcomes[:] = section_outcomes(section)
+    return mode if mode in _OP_MODE else None
+
+
 _GOLDEN = 0x9E3779B97F4A7C15
 _UINT64 = 1 << 64
 
@@ -2739,8 +2762,34 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 want = PLAY_MODE_ACTION["event"]
             else:
                 want = None
+            # P17: this node is the WHOLE resolution now -- event / space / and which Ops mode --
+            # so two questions the log used to answer at later nodes are answered here.
+            #
+            # 1. TIMING. On an opponent's card, choosing EVENT is event-first and choosing any
+            #    OPS_* is ops-first; the separate CHOOSE_TIMING_BRANCH decision is gone. The log
+            #    answers by line order, and about the card the engine is actually playing, which
+            #    need not be the entry's own -- the reasoning that used to live in that branch.
+            if want == PLAY_MODE_ACTION["ops"] and opponent_card:
+                played_cid = card_id(e.played_card) if e.played_card else None
+                first = (e.played_event_first
+                         if played_cid is not None and int(ctx.pending_op_card) == played_cid
+                         else e.event_first)
+                if first is not False:
+                    # Event first. The Ops mode is NOT chosen here: a deferred SELECT_OP_MODE
+                    # follows once the event resolves, and it consumes the Ops section. Taking
+                    # one now would leave that node reading the next entry's section.
+                    want = PLAY_MODE_ACTION["event"]
+
+            # 2. WHICH Ops mode, from the same section queue the SELECT_OP_MODE branch reads.
+            #    Consuming it here is correct only because the node that used to consume it no
+            #    longer occurs on this path.
+            if want == PLAY_MODE_ACTION["ops"]:
+                mode_name = _peek_op_mode(e, sections, pq, step_outcomes)
+                if mode_name is not None:
+                    want = PLAY_MODE_ACTION["ops_" + mode_name]
+
             if want is None or not mask[want]:
-                for fallback in ("ops", "event", "space"):
+                for fallback in ("ops_influence", "ops_coup", "ops_realign", "event", "space"):
                     if mask[PLAY_MODE_ACTION[fallback]]:
                         want = PLAY_MODE_ACTION[fallback]
                         break
@@ -2756,23 +2805,14 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                 return False
 
         elif dt == ts.DecisionType.CHOOSE_TIMING_BRANCH:
-            # Playing an opponent's card for Ops asks which resolves first. The log answers by
-            # line order: at turn 1 AR5 of replay 100 "Place Influence" precedes "Event:", so
-            # that one is Ops first. Always choosing event-first mis-sequenced those entries.
-            # ...and about the card the engine is actually playing, which need not be the
-            # entry's own. At turn 5 AR1 of replay 270 Grain Sales To Soviets takes OPEC from
-            # the USSR and the US coups Venezuela with it; OPEC's own "Event:" header comes
-            # after the coup, while Grain Sales' opens the entry. Read from the top, the entry
-            # looked event-first, and OPEC -- which pays the USSR 1 VP for each oil country
-            # they control -- scored Venezuela before the coup took it away.
-            played_cid = card_id(e.played_card) if e.played_card else None
-            first = (e.played_event_first
-                     if played_cid is not None and int(ctx.pending_op_card) == played_cid
-                     else e.event_first)
-            want_branch = 0 if first is False else 1
-            chosen = _find(state, legal, ts.DecisionType.CHOOSE_TIMING_BRANCH,
-                           lambda ma: int(ma.primary_id) == want_branch)
-            informative = chosen is not None
+            # P17: retired. The resolution node carries the timing -- EVENT on an opponent's card
+            # is event-first, any OPS_* is ops-first -- so this node no longer occurs. Left as an
+            # explicit branch so that if one ever arrives it fails loudly here rather than being
+            # answered by the generic search below.
+            raise ConversionFailure(Mismatch(
+                conv.replay_id, e.turn, e.phase, e.player, e.card,
+                "timing branch reached",
+                "CHOOSE_TIMING_BRANCH should not occur after P17"))
 
         elif (dt == ts.DecisionType.SELECT_OP_MODE
                 and int(ctx.pending_op_card) in _FREE_ACTION_CARDS
@@ -2787,8 +2827,10 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # Only where the log describes no Ops. Played for Operations rather than for its
             # event, the card spends them and the log prints a header, which the branch below
             # answers from.
+            # P17: INFLUENCE no longer stands for "decline the free action" -- that was the third
+            # meaning index 116 carried. The decline is the shared confirm/done index.
             chosen = _find(state, legal, ts.DecisionType.SELECT_OP_MODE,
-                           lambda ma: int(ma.primary_id) == int(ts.OpMode.INFLUENCE))
+                           lambda ma: ma.is_confirm_done() or int(ma.primary_id) == 255)
             informative = chosen is not None
 
         elif dt == ts.DecisionType.SELECT_OP_MODE and (sections or e.mode in _OP_MODE):
@@ -2803,14 +2845,8 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             # then places 2 Influence in Chile and asks how to spend its free action, and the
             # space section answered for it -- "space" is not an Ops mode, so nothing was
             # chosen and the coup on Panama the log records never happened.
-            while sections and sections[0].mode not in _OP_MODE:
-                sections.pop(0)
-            section = sections.pop(0) if sections else None
-            mode = section.mode if section is not None else e.mode
+            mode = _peek_op_mode(e, sections, pq, step_outcomes)
             cur_mode = mode
-            if section is not None:
-                pq[:] = section_queue(section)
-                step_outcomes[:] = section_outcomes(section)
             if mode in _OP_MODE:
                 om = int(_OP_MODE[mode])
                 # primary_id only. INFLUENCE is 0 and secondary_id defaults to 0, so matching

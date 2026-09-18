@@ -142,8 +142,7 @@ def test_fix_card_40_cuban_missile_crisis_cancellation():
     s.defcon = 3
     
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 14))
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # OPS
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 1)) # COUP
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 3))  # P17: OPS_COUP
     # Coup Colombia with roll 3 -> removes 2 from Cuba, clears CMC, executes coup
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.POINT_NODE, colombia_id, 0))
     assert s.ctx().decision_type == ts.DecisionType.ROLL_DIE
@@ -396,8 +395,7 @@ def test_fix_china_card_asia_bonus_in_action_round():
 
     # US plays China Card for Ops
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_CARD, 6)) # China Card
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 1)) # Ops
-    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_OP_MODE, 0)) # Influence
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.SELECT_PLAY_MODE, 2))  # P17: OPS_INFLUENCE
 
     # In Asia, pending ops should be 5
     assert s.ctx().pending_ops_value == 5
