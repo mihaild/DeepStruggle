@@ -156,3 +156,46 @@ is the US seat whose points come from the late game, and the late game is what t
 turn-6 nuclear exchanges remove from its training distribution.
 
 Still one seed, and 80M remains the registered judgment point.
+
+---
+
+## The opening, 70M (appended 2026-09-18) — and a tension worth naming
+
+`tools/scripts/setup_placement.py`, 40 games a side, against the owner's stated target: **US 4
+West Germany / 3 Italy** (absent Marshall Plan), **USSR 4 East Germany / 4 Poland / 1 Yugoslavia
+or Austria**.
+
+| checkpoint | US, per game vs target | USSR, per game vs target | ref overlap US / USSR |
+|:---|:---|:---|:---|
+| temperature @70M | **West Germany 0.0/4**, Italy 5.6/3 | **Yugoslavia 5.1/1**, Poland 0.8/4, East Germany 0.1/4 | **33.3% / 31.7%** |
+| `x4b_fixed` @28M | **West Germany 4.0/4**, Italy 2.0/3 | Poland 3.1/4, East Germany 0.0/4 | **66.4% / 51.2%** |
+| `p28_280M` anchor | West Germany 3.7/4, Italy 2.0/3 | Poland 2.4/4, Yugoslavia 1.0/1 | 63.1% / 61.3% |
+
+**The temperature arm has a bad opening and wins anyway.** It never places in West Germany, puts
+5.6 of a 3-point target into Italy, and dumps 5.1 points into Yugoslavia against a target of 1 —
+the exact degenerate shape flagged in the replays earlier (US ignores the contested battleground,
+USSR goes all-in on Yugoslavia). Its reference overlap is roughly **half** the anchor's on both
+seats. Yet at 70M it beats that anchor 44.5% to the control's 14.2%.
+
+Two readings, and this probe does not separate them:
+
+1. **The opening matters less than assumed** for this matchup — the arm recovers in the midgame,
+   which its far longer games (mean turn 8.1 against 6.9) would support.
+2. **The win rate overstates general strength**, because the arm has found something specific to
+   `p28_280M` rather than become a better player. A policy that is 30 pp off the reference opening
+   and still winning is exactly what an anchor-specific exploit looks like.
+
+Reading 2 is the one that would matter, and it is testable cheaply: rate the 70M snapshot against
+a *different* frozen opponent. If the margin survives an anchor it never trained against, the win
+rate is measuring strength; if it collapses, the 40M–70M readings in this entry are measuring an
+exploit.
+
+**Until that is done, the recommendation to change the default rollout bands should not be acted
+on.** The effect on the ending mix is real and mechanically explained; the strength claim resting
+on one anchor and one seed is not yet safe.
+
+Noted in the other direction: the pool-fixed search-CE arm `E3-34-28` has the **best US opening
+measured here**, 4.0/4 into West Germany and the highest reference overlap of the three, at 28M
+against the anchor's 280M — a second, independent sign that the X4b treatment was doing something
+right once its pool was not starved
+([`P15_X4b_collapse_is_pool_starvation.md`](P15_X4b_collapse_is_pool_starvation.md)).
