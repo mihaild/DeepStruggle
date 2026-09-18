@@ -273,6 +273,22 @@ the reconstructed old mask and the real old engine would disagree, the adapter l
 rather than choosing. If the count is zero in practice the tightening is vacuous; if not, those are
 exactly the positions worth reading.
 
+### Two constraints found while building the harness
+
+**`GameState` cannot be serialised through the bindings** — no `to_bytes`, no pickle support. So a
+position cannot be captured on one build and reloaded on another, which rules out the obvious
+"save a corpus of positions, run both mask implementations over it" design. The differential test
+must instead **replay games by semantic action** (card, resolution mode, target country), which
+both representations can interpret, and compare the state fingerprint after every step. That is
+the same technique the ts-replayer already uses to drive human logs through the engine.
+
+**The position corpus must come from policy play, not random play.** Random walks rarely build
+control, rarely reach a contested late war, and rarely produce the board shapes a trained policy
+spends its time in — so a mask defect that only appears in real positions can hide from them
+entirely. `decision_stream_baseline.py` is deliberately random because it is pinning the engine
+action-for-action and must not depend on a policy; the *mask* differential tests take their
+positions from `outcome_distribution.py`-style policy play instead.
+
 **Differential test**, before trusting any of it:
 
 1. over many self-play positions, assert the reconstructed old-style masks match what the current
@@ -281,7 +297,10 @@ exactly the positions worth reading.
    invariant, which this change could otherwise reintroduce;
 3. play old-checkpoint against old-checkpoint through the adapter on the new engine, and check the
    result distribution matches the same pair on the old engine. That is the sanity check the whole
-   adapter exists for.
+   adapter exists for, and `tools/scripts/outcome_distribution.py` is it: the exact stream cannot
+   survive the change (the RNG draws differently once the decision count moves) but the **outcome
+   mix, game length, DEFCON, tracks and ending reasons must not move at all**. Baseline frozen at
+   2,000 games, `/workspace/data/p17/outcome_baseline_f0e5840.json`.
 
 ## 8. Order of work
 
