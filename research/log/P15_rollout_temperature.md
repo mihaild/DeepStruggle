@@ -547,3 +547,62 @@ seed-dependent even though its existence is not.
 `0.15 0.50 0.10 0.35` at two seeds with matched controls, significant at the pre-registered point.
 That is enough to justify changing the default — with the honest caveat that **why** it works is
 unknown, since the ending-mix explanation did not survive its own control.
+
+---
+
+## The complete 2x2, and the final verdict (2026-09-18)
+
+`E3-37-31` finished. Every cell is now treatment against **its own seed's control**, same anchor,
+same protocol, 100 games a side.
+
+| steps | seed A: ctrl → treat | effect A | seed B: ctrl → treat | effect B |
+|---:|:---|---:|:---|---:|
+| 10M | 0.8% → 0.8% | +0.0 | 0.5% → 1.0% | +0.5 |
+| 20M | 0.8% → 7.8% | **+7.0** (z=3.5) | 1.5% → 2.0% | +0.5 |
+| 30M | 3.8% → 11.0% | **+7.3** (z=2.8) | 1.0% → 4.0% | +3.0 (z=1.9) |
+| **40M** | 4.5% → 15.5% | **+11.0** (z=3.7) | 2.0% → 9.0% | **+7.0** (z=3.1) |
+| 50M | 7.2% → 23.0% | **+15.8** (z=4.4) | 8.0% → 16.5% | **+8.5** (z=2.6) |
+| 60M | 13.8% → 28.0% | **+14.3** (z=3.5) | 12.0% → 22.5% | **+10.5** (z=2.8) |
+| 70M | 14.2% → 44.5% | **+30.2** (z=6.6) | 16.0% → 22.5% | +6.5 (n.s.) |
+| **80M** | 17.8% → 46.0% | **+28.3** (z=6.1) | 20.5% → 23.5% | **+3.0 (n.s.)** |
+
+### The result is split, and the registration named both points
+
+> Judge at 40M and 80M against the matched control [...]
+
+**At 40M both seeds pass.** At **80M only seed A does.** Seed B's treatment plateaus at ~23% from
+60M while its control keeps climbing — 12.0 → 16.0 → 20.5 — until the gap is 3.0 pp and gone.
+
+So the effect **exists** at both seeds and **persists** at one. On seed B the bands bought a lead
+of about 20M steps that the control then erased; on seed A they bought a lead that was still
+widening at the budget's end.
+
+### What that supports
+
+**Retracting the recommendation made earlier in this document.** "Supported well enough to change
+the default" was written from the 40M row, before the 70M and 80M rows existed. With the full
+trajectory the honest statement is narrower:
+
+> The bands `0.8 1.2 0.7 1.1` reliably **accelerate** early training — significant at both seeds
+> across 40M–60M. Whether they raise the **ceiling** is seed-dependent: one seed of two kept the
+> gain to 80M and the other lost it entirely.
+
+An acceleration that does not survive to the budget's end is not a reason to change a default that
+governs full-length runs. It *is* a reason to run the third and fourth seeds, because the split is
+1-1 and two seeds cannot break a tie.
+
+**A concrete alternative reading, not excluded by anything here.** The bands may raise the
+learning *rate* without raising the asymptote, with seed A's 46% reflecting a seed that had
+further to climb rather than a ceiling the bands lifted. Distinguishing those needs the controls
+run past 80M — seed A's control reached only 27.8–38.8% by 240M, which argues against it, but that
+is one seed again.
+
+### Method note
+
+Three readings of this arm were published tonight and two were wrong, each corrected by the next
+point: "the effect does not replicate" (from 40M alone, before the window closed), and "seed B's
+effect is growing" (from 40M–60M, one point before it began shrinking). Both were extrapolations
+from the end of the available data — the trap recorded in
+[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md), committed twice more while
+documenting it. The verdict above is stated only for the range measured, and says nothing about
+what happens past 80M.
