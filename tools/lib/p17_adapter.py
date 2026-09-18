@@ -135,6 +135,34 @@ class LegacyPolicyAdapter:
                 deterministic=self.deterministic)
         return int(act.cpu().numpy()[0])
 
+    def _draw_many(self, obs: npt.NDArray[np.float32],
+                   masks: npt.NDArray[np.uint8]) -> List[int]:
+        """One forward pass for a whole batch of (observation, mask) pairs."""
+        import torch
+        if obs.shape[0] == 0:
+            return []
+        obs_t = torch.from_numpy(obs).float().to(self.device)
+        mask_t = torch.from_numpy(masks.astype(np.uint8)).to(self.device)
+        with torch.no_grad():
+            act, _, _, _, _ = self.model.sample_action(
+                obs_t, mask_t, temperature=self.temperature,
+                deterministic=self.deterministic)
+        return [int(a) for a in act.cpu().numpy()]
+
+    def _ask_old_many(self, old_states: List[Any]) -> List[int]:
+        """One draw each, against every old state's OWN observation and mask."""
+        o = self.old
+        if not old_states:
+            return []
+        obs = np.stack([np.asarray(
+            o.extract_observation(st, st.ctx().decision_player), dtype=np.float32)
+            for st in old_states])
+        masks = np.stack([np.asarray(
+            o.Engine.get_flat_action_mask(st), dtype=np.uint8) for st in old_states])
+        empty = ~masks.any(axis=1)
+        picks = self._draw_many(obs, masks)
+        return [-1 if empty[i] else picks[i] for i in range(len(old_states))]
+
     def _ask_old(self, old_state: Any) -> int:
         """One draw, against the OLD engine's own observation and mask at its current node."""
         o = self.old
@@ -146,6 +174,85 @@ class LegacyPolicyAdapter:
         return self._draw(obs, mask)
 
     # -- the merged resolution, walked on the old engine --------------------------------------
+
+    def _resolutions(self, states: List[ts.GameState]) -> List[Optional[int]]:
+        """The merged resolution for a batch, walking the old chain one stage at a time.
+
+        Each stage depends on the previous answer, so the chain itself stays sequential -- but
+        every state currently AT a given stage is asked in one forward pass.
+        """
+        o = self.old
+        n = len(states)
+        res: List[Optional[int]] = [None] * n
+        live: List[int] = []
+        old_states: Dict[int, Any] = {}
+
+        for i, st in enumerate(states):
+            self.transplants += 1
+            try:
+                osx = o.state_from_save_dict(dict(st.to_save_dict()))
+            except Exception:
+                self._note("transplant refused")
+                continue
+            if osx.ctx().decision_type != o.DecisionType.SELECT_PLAY_MODE:
+                self._note("old engine is not at SELECT_PLAY_MODE after transplant")
+                continue
+            old_states[i] = osx
+            live.append(i)
+
+        # stage 1 -- play mode
+        picks = self._ask_old_many([old_states[i] for i in live])
+        still: List[int] = []
+        for i, pick in zip(live, picks):
+            if pick < 0:
+                self._note("old SELECT_PLAY_MODE mask empty")
+                continue
+            pm = pick - OLD_PLAY_MODE
+            if pm == 0:
+                res[i] = NEW_PLAY_MODE + 0
+            elif pm == 2:
+                res[i] = NEW_PLAY_MODE + 1
+            elif pm != 1:
+                self._note("old play mode %d is not one the merge maps" % pm)
+            elif not o.Engine.try_step(old_states[i], o.MicroAction(
+                    o.DecisionType.SELECT_PLAY_MODE, 1, 0, 0)):
+                self._note("old engine refused OPS")
+            else:
+                still.append(i)
+
+        # stage 2 -- timing, only for those the old engine actually asks
+        timing = [i for i in still
+                  if old_states[i].ctx().decision_type == o.DecisionType.CHOOSE_TIMING_BRANCH]
+        picks = self._ask_old_many([old_states[i] for i in timing])
+        for i, pick in zip(timing, picks):
+            if pick < 0:
+                self._note("old timing mask empty")
+                still.remove(i)
+                continue
+            if (pick - OLD_TIMING) == 1:
+                # Event first. The Ops mode is a real deferred node on the new engine.
+                res[i] = NEW_PLAY_MODE + 0
+                still.remove(i)
+            elif not o.Engine.try_step(old_states[i], o.MicroAction(
+                    o.DecisionType.CHOOSE_TIMING_BRANCH, 0, 0, 0)):
+                self._note("old engine refused OPS_FIRST")
+                still.remove(i)
+
+        # stage 3 -- op mode
+        ready = []
+        for i in still:
+            if old_states[i].ctx().decision_type != o.DecisionType.SELECT_OP_MODE:
+                self._note("old engine reached %s, not SELECT_OP_MODE"
+                           % str(old_states[i].ctx().decision_type).split(".")[-1])
+            else:
+                ready.append(i)
+        picks = self._ask_old_many([old_states[i] for i in ready])
+        for i, pick in zip(ready, picks):
+            if pick < 0:
+                self._note("old op-mode mask empty")
+            else:
+                res[i] = NEW_PLAY_MODE + 2 + (pick - OLD_OP_MODE)
+        return res
 
     def _resolution(self, state: ts.GameState) -> Optional[int]:
         """Walk the old card-play chain on a transplanted state; return the merged index.
@@ -212,52 +319,73 @@ class LegacyPolicyAdapter:
     # -- the agent interface ------------------------------------------------------------------
 
     def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
-        out: List[int] = []
-        for st in states:
-            mask = np.asarray(ts.get_flat_action_mask(st), dtype=np.uint8)
-            dt = st.ctx().decision_type
-            self.decisions += 1
+        n = len(states)
+        self.decisions += n
+        masks = [np.asarray(ts.get_flat_action_mask(st), dtype=np.uint8) for st in states]
+        picks: List[Optional[int]] = [None] * n
 
-            pick: Optional[int]
+        res_idx: List[int] = []
+        op_idx: List[int] = []
+        plain_idx: List[int] = []
+        for i, st in enumerate(states):
+            dt = st.ctx().decision_type
             if dt == ts.DecisionType.ROLL_DIE:
                 # A chance node, not a policy decision, and 115 meant EVENT_FIRST in the old
                 # space -- so the old policy must never be asked about it.
-                out.append(NEW_ROLL_DIE)
-                continue
-
-            if dt == ts.DecisionType.SELECT_PLAY_MODE:
-                pick = self._resolution(st)
+                picks[i] = NEW_ROLL_DIE
+            elif dt == ts.DecisionType.SELECT_PLAY_MODE:
+                res_idx.append(i)
             elif dt == ts.DecisionType.SELECT_OP_MODE:
-                # The deferred Ops choice after an event-first event. The NODE exists in both
-                # engines, but NOT at the same index: the merge put it on the OPS_* resolution
-                # slots 112..114, while the old policy's head learned it at 116..118. Asking the
-                # old network on the new mask reads logits that meant SPACE / PASS / OPS_FIRST
-                # to it -- noise in place of a decision, on every event-first play. Remap.
-                obs = np.asarray(ts.extract_observation(st, st.ctx().decision_player),
-                                 dtype=np.float32)
-                old_mask = np.zeros(FLAT, dtype=np.uint8)
-                for i in range(3):
-                    if mask[NEW_PLAY_MODE + 2 + i]:
-                        old_mask[OLD_OP_MODE + i] = 1
-                if not old_mask.any():
-                    self._note("deferred op mode: no Ops mode offered")
-                    pick = None
-                else:
-                    pick = NEW_PLAY_MODE + 2 + (self._draw(obs, old_mask) - OLD_OP_MODE)
-            else:
-                # Everything else -- cards, country nodes, branches, confirm/done -- does occupy
-                # the same index in both spaces AND presents the same observation, verified by
-                # transplant. One draw on the new engine answers it.
-                obs = np.asarray(ts.extract_observation(st, st.ctx().decision_player),
-                                 dtype=np.float32)
-                pick = self._draw(obs, mask) if mask.any() else None
+                op_idx.append(i)
+            elif masks[i].any():
+                plain_idx.append(i)
 
-            if pick is None or not mask[pick]:
-                if pick is not None:
+        for i, r in zip(res_idx, self._resolutions([states[i] for i in res_idx])):
+            picks[i] = r
+
+        # The deferred Ops choice after an event-first event. The NODE exists in both engines,
+        # but NOT at the same index: the merge put it on the OPS_* resolution slots 112..114,
+        # while the old policy's head learned it at 116..118. Asking the old network on the new
+        # mask reads logits that meant SPACE / PASS / OPS_FIRST to it -- noise in place of a
+        # decision, on every event-first play. Remap.
+        if op_idx:
+            usable, obs_l, mk_l = [], [], []
+            for i in op_idx:
+                om = np.zeros(FLAT, dtype=np.uint8)
+                for k in range(3):
+                    if masks[i][NEW_PLAY_MODE + 2 + k]:
+                        om[OLD_OP_MODE + k] = 1
+                if not om.any():
+                    self._note("deferred op mode: no Ops mode offered")
+                    continue
+                usable.append(i)
+                mk_l.append(om)
+                obs_l.append(np.asarray(ts.extract_observation(
+                    states[i], states[i].ctx().decision_player), dtype=np.float32))
+            if usable:
+                got = self._draw_many(np.stack(obs_l), np.stack(mk_l))
+                for i, g in zip(usable, got):
+                    picks[i] = NEW_PLAY_MODE + 2 + (g - OLD_OP_MODE)
+
+        # Everything else -- cards, country nodes, branches, confirm/done -- does occupy the
+        # same index in both spaces AND presents the same observation, verified by transplant.
+        if plain_idx:
+            obs = np.stack([np.asarray(ts.extract_observation(
+                states[i], states[i].ctx().decision_player), dtype=np.float32)
+                for i in plain_idx])
+            got = self._draw_many(obs, np.stack([masks[i] for i in plain_idx]))
+            for i, g in zip(plain_idx, got):
+                picks[i] = g
+
+        out: List[int] = []
+        for i in range(n):
+            p = picks[i]
+            if p is None or not masks[i][p]:
+                if p is not None:
                     self._note("mapped to an index the merged mask refuses")
-                legal = np.flatnonzero(mask)
-                pick = int(legal[0]) if legal.size else 0
-            out.append(int(pick))
+                legal = np.flatnonzero(masks[i])
+                p = int(legal[0]) if legal.size else 0
+            out.append(int(p))
         return out
 
     def select_action(self, state: ts.GameState, player: ts.Player,
