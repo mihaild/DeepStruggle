@@ -15,6 +15,14 @@ decisions. The two conversion regressions the merge introduced, the consumers it
 `advance_root` finding behind search returning illegal actions are written up in
 [`../log/P17_corpus_restoration.md`](../log/P17_corpus_restoration.md).
 
+**Status of section 7:** done and green. The same three checkpoints score the same on the old
+engine and on the new one through the adapter -- largest |z| = 0.92 over 300 games per pair, so
+the merge did not move playing strength. Section 7's premise that `GameState` cannot be
+serialised through the bindings is out of date (`to_save_dict` / `state_from_save_dict` carry the
+ctx_stack and round-trip exactly), which is what let the adapter walk the old chain on a real old
+engine instead of reconstructing it. Write-up:
+[`../log/P17_adapter_validation.md`](../log/P17_adapter_validation.md).
+
 ## Why now
 
 The ladder is being reset anyway. Every checkpoint and `(seed, actions)` dataset is invalidated by
