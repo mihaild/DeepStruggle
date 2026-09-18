@@ -97,3 +97,39 @@ Three things follow, cheapest first:
 
 Neither 2 nor 3 should be done while `E3-33-30` and `E3-35-28` are in flight on the same
 objective.
+
+---
+
+## Appendix: the search_ce spikes, diagnosed (2026-09-18)
+
+Chased while reading this code, and **not** a cause of any collapse — it occurs at the same rate
+in the arm that does not decline, which rules it out cleanly.
+
+`search_ce` exceeds 100 in 30–34% of iterations on every search arm measured (`E3-31-28` 34.3%,
+`E3-34-28` 30.3%, `E3-35-28` from its first row), reaching 351,015. A 212-way softmax cannot
+produce that: its maximum cross-entropy is log(212) = 5.36.
+
+The mask fill is `-1e9`, so target mass *e* on a masked action costs *e* × 10⁹. The observed
+117,306 / 90,744 / 43,244 imply ~1.2e-4 / 9.1e-5 / 4.3e-5 of misplaced mass.
+
+**Cause.** `_search_targets` calls `BatchedMCTS.run()` and wrote visits straight into the target,
+on the strength of a docstring asserting that BatchedMCTS filters against the caller's mask. It
+does — on the *agent* path, not on `run()`. The search is determinized, and `batched_mcts.py`
+says so where it solves this for an acting agent: *"a determinized search can legitimately return
+an action that is illegal in the real state, because in this game the legal SET itself can depend
+on hidden information"*, so there "the search proposes and the true mask disposes". Nothing
+disposed here.
+
+The arithmetic corroborates: one stray visit out of 64 simulations is 0.016 of a row, and diluted
+over the searched rows of a batch that is ~1e5 of mean CE.
+
+**Impact on training: negligible.** The CE gradient is (π − p_target), so a masked action
+contributes ~1e-4, and `search_ce_grad_frac` stays flat through every spike. What it cost was the
+metric — a third of the rows unusable — and what it warns about is the silent case: the identical
+misalignment on an action legal in both the determinization and the real state produces an
+ordinary CE. That is exactly how the earlier search-target off-by-one survived.
+
+Fixed: illegal visits dropped, target renormalised over the survivors, a row with no legal visit
+left untargeted. `search_dropped_visit_frac` and `search_dropped_row_frac` now report what the
+mask rejected — where a **small nonzero value is the correct reading** and zero would mean the
+filter had stopped running. Takes effect from the next launch; `E3-35-28` is running the old code.
