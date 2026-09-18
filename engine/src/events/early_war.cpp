@@ -478,6 +478,9 @@ bool trigger_un_intervention(GameState& state, Player p) noexcept {
 
     state.ctx().decision_player = p;
     state.ctx().decision_type = DecisionType::SELECT_CARD;
+    // P17 6.1: set, not inherited. Having raised this decision the player must name a
+    // companion -- the gate above already established they hold one.
+    state.ctx().allow_early_stop = 0;
     state.ctx().resolving_card = card_ids::UN_INTERVENTION;
     return false;
 }

@@ -194,6 +194,9 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
         state.ctx().decision_player = opp;
         state.ctx().decision_type = DecisionType::SELECT_CARD;
         state.ctx().remaining_steps = 1;
+        // P17 6.1: set, not inherited. "If 2 or more cards are tied, opponent chooses" --
+        // choosing is not optional, and declining is not one of the things they may do.
+        state.ctx().allow_early_stop = 0;
         state.ctx().resolving_card = card_ids::MISSILE_ENVY;
         return false;
     }

@@ -479,11 +479,20 @@ void StateMachine::advance_after_action_round(GameState& state) noexcept {
     // Check NORAD
     if (state.defcon_dropped_to_2 && state.has_flag(effect_bits::NORAD_ACTIVE) &&
         Scoring::is_controlled_by(state, countries::CANADA, Player::US)) {
-        // US gets 1 free influence placement
+        // US gets 1 free influence placement.
         state.defcon_dropped_to_2 = 0;
+        // P17 6.1: a FRESH context, the way every normal path opens a decision. Setting four
+        // fields onto whatever was there left max_per_country, visited_nodes and
+        // node_count_bits carrying over from the decision before this one -- so the same NORAD
+        // placement behaved differently depending on what had just happened.
+        state.ctx() = DecisionContext{};
         state.ctx().decision_player = Player::US;
         state.ctx().decision_type = DecisionType::POINT_NODE;
         state.ctx().remaining_steps = 1;
+        // "Add 1 US Influence to a single country containing US Influence" -- no "may". The
+        // pool cannot run dry either: the event requires US-controlled Canada, which is itself
+        // a country containing US Influence, so this needs no may_fizzle entry.
+        state.ctx().allow_early_stop = 0;
         state.ctx().resolving_card = card_ids::NORAD;
         return;
     }

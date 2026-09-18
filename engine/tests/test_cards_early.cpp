@@ -510,6 +510,27 @@ TEST(EarlyCardsTest, Card32_UNIntervention_OffersOnlyOpponentNonScoringCards) {
     ASSERT_EQ(mask[ts::card_ids::EUROPE_SCORING - 1], 0);   // scoring card: never
 }
 
+// P17 6.1. allow_early_stop is not cleared between decisions, so a site that never sets it
+// inherits whatever the previous one left -- and a mandatory choice becomes optional depending
+// on how the position was reached. The context is poisoned to 1 first on purpose: a test that
+// opened from a clean state would pass whether or not the fix is there.
+TEST(EarlyCardsTest, Card32_UNIntervention_DoesNotInheritAnEarlyStop) {
+    ts::GameState state{};
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.card_locations[ts::card_ids::DE_GAULLE] = ts::hand_of(ts::Player::US);
+    state.ctx().allow_early_stop = 1;          // as a previous, optional decision would leave it
+
+    ASSERT_FALSE(ts::CardHandlers::trigger_event(
+        state, ts::card_ids::UN_INTERVENTION, ts::Player::US));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
+    // Mandatory: naming a companion is the whole card. A 1 here is the inherited value.
+    ASSERT_EQ(state.ctx().allow_early_stop, 0);
+
+    uint8_t mask[212] = {0};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[211], 0);   // the decline is not offered for a mandatory choice
+}
+
 // Card 33: De-Stalinization
 TEST(EarlyCardsTest, Card33_DeStalinization_TwoStages) {
     ts::GameState state{};

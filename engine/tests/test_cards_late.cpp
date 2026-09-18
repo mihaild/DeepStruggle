@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "ts/engine.hpp"
+#include "ts/state_machine.hpp"
 #include "ts/card_data.hpp"
 #include "ts/card_handlers.hpp"
 #include "ts/constants.hpp"
@@ -357,4 +358,29 @@ TEST(LateCardsTest, Card110_AWACS_Sale) {
     ts::CardHandlers::trigger_event(state, ts::card_ids::AWACS_SALE, ts::Player::US);
     ASSERT_EQ(state.countries[ts::countries::SAUDI_ARABIA].us_influence, 2);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::AWACS_PLAYED));
+}
+
+
+// P17 6.1. NORAD's placement set four context fields onto whatever was already there: it never
+// set allow_early_stop, and it skipped the fresh DecisionContext{} every normal path assigns, so
+// max_per_country carried over too. Both halves are poisoned here, because either one alone
+// would let this pass.
+TEST(LateCardsTest, Card106_NORAD_OpensAFreshMandatoryPlacement) {
+    ts::GameState state{};
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.set_flag(ts::effect_bits::NORAD_ACTIVE);
+    state.countries[ts::countries::CANADA].us_influence = 5;   // US-controlled
+    state.defcon_dropped_to_2 = 1;
+
+    state.ctx().allow_early_stop = 1;      // as an optional decision would leave it
+    state.ctx().max_per_country = 2;       // as a placement with a per-country cap would
+
+    ts::StateMachine::advance_after_action_round(state);
+
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::NORAD);
+    // "Add 1 US Influence" is not optional; a 1 here is the previous decision's value.
+    ASSERT_EQ(state.ctx().allow_early_stop, 0);
+    // The context was reset, so no earlier cap is still in force.
+    ASSERT_EQ(state.ctx().max_per_country, 0);
 }
