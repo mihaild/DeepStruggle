@@ -13,6 +13,7 @@ from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import (ColdWarNetV2, check_checkpoint_layout,
                                      create_coldwar_net_v2)
 from bindings.ts_env import check_obs_width
+from tools.lib.checkpoint_id import checkpoint_label
 
 ColdWarModel = Union[ColdWarNet, ColdWarNetV2]
 
@@ -272,7 +273,9 @@ class NeuralAgent:
 
         load_checkpoint_into(model, state_dict)
         model.to(dev)
-        agent_name = name or os.path.splitext(os.path.basename(checkpoint_path))[0]
+        # Run-attributed, not the bare stem: two runs produce identically-named snapshots, so a
+        # basename cannot identify a checkpoint. See tools/lib/checkpoint_id.py.
+        agent_name = name or checkpoint_label(checkpoint_path)
         return cls(model=model, name=agent_name, device=dev)
 
     def select_action(

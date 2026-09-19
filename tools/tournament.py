@@ -136,17 +136,21 @@ def run_massive_tournament(
         agents.append(agent)
         print(f" Loaded Agent: {agent.name:<35s} (from {spec})")
 
+    # Names must be distinct AND attributable. They used to be disambiguated by appending #1 and
+    # #2, which kept the tournament running but made its report unciteable: two runs snapshot at
+    # identical step counts, so a field could report "snapshot_150011904steps#1 beat
+    # snapshot_150011904steps#2" with no way to tell which run either was. Agents are now named
+    # <run>@<steps> by checkpoint_id, so a genuine clash is a mistake and is refused.
     name_counts: Dict[str, int] = {}
     for a in agents:
-        base = a.name
-        name_counts[base] = name_counts.get(base, 0) + 1
-
-    if any(c > 1 for c in name_counts.values()):
-        cur_counts: Dict[str, int] = {}
-        for a in agents:
-            cur_counts[a.name] = cur_counts.get(a.name, 0) + 1
-            if name_counts[a.name] > 1:
-                a.name = f"{a.name}#{cur_counts[a.name]}"
+        name_counts[a.name] = name_counts.get(a.name, 0) + 1
+    clashes = sorted(n for n, c in name_counts.items() if c > 1)
+    if clashes:
+        raise ValueError(
+            "tournament entrants must have distinct names; these are repeated: "
+            + ", ".join(clashes)
+            + ". Each is <run>@<steps>, so a repeat means the same checkpoint was entered twice "
+              "or two runs share a short name.")
 
     M = len(agents)
     model_names = [a.name for a in agents]

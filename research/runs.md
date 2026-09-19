@@ -19,10 +19,23 @@ comparable, so the registry restarts here. The old one, with its findings distil
 Engine baseline: Grain Sales flattened to one decision (`aa5ec64`), Missile Envy starred-card
 removal fixed (`14745cf`), action space repacked 212 → 220, observation v2.3 unchanged at 3,824.
 
+**The attempt number is the intervention, the suffix is the seed.** Fixed for E4 so the pair
+stays legible:
+
+| attempt | what it is |
+|:---|:---|
+| **E4-01** | **unpooled** — `opponent_frac 0.0`, no self-pool |
+| **E4-02** | **pooled** — `opponent_frac 0.3`, self-pool, capacity 12 |
+
+So `E4-01-01` beside `E4-02-01` is visibly the pooled/unpooled comparison at one seed, and
+`E4-02-01` beside `E4-02-02` would be visibly a seed pair. E4-01 began as an accident — the pool
+flags were omitted at launch — and is kept as the unpooled arm because the comparison is worth
+having deliberately.
+
 | arm | varies | budget | directory | writeup |
 |:---|:---|---:|:---|:---|
-| **E4-01-01** | *(accidental)* no opponent pool — `frac 0.0`, `self_pool False` | 240M, aborted at 184M | `E4-01-01_20260919_003959` | [`log/E4_pool_starvation_recurrence.md`](log/E4_pool_starvation_recurrence.md) |
-| **E4-02-01** | baseline: pool `frac 0.3`, self-pool, capacity 12 | 240M | `E4-02-01_20260919_040456` | *in flight* |
+| **E4-01-01** | unpooled: `frac 0.0`, `self_pool False` | 240M, aborted at 184M | `E4-01-01_20260919_003959` | [`log/E4_pool_starvation_recurrence.md`](log/E4_pool_starvation_recurrence.md) |
+| **E4-02-01** | pooled: `frac 0.3`, self-pool, capacity 12 | 240M | `E4-02-01_20260919_040456` | *in flight* |
 
 E4-01-01 is kept deliberately. It is a second independent instance of pool starvation, reached by a
 different route than the X4b `dirname` bug, and its first 105M steps are a healthy 35% → 95% climb

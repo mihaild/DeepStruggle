@@ -45,6 +45,26 @@ steps. A continuation keeps everything and changes the budget: `E3-10-21-160M`.
 The registry is the contract. A short name is only meaningful with it, so it lives in the
 repository and is updated in the same commit as the run.
 
+## A checkpoint is named by its run, never by its filename
+
+Snapshot filenames collide **by construction**. The step counts a run snapshots at are a
+deterministic function of its configuration, so two runs with the same `--snapshot-every-steps`
+and batch shape produce byte-identically named files: `E4-01-01` and `E4-02-01` both contain a
+`snapshot_150011904steps.pt`. The identity of a checkpoint is its **path**.
+
+`tools/lib/checkpoint_id.py` is the one place that turns a path into a name:
+
+    .../E4-02-01_20260919_040456/snapshot_150011904steps.pt  ->  E4-02-01@150M
+
+Every tool that shows a checkpoint uses it, so a tournament row reads `E4-02-01@150M` rather than
+`snapshot_150011904steps#2`. The old behaviour was not a crash -- `tournament.py` disambiguated
+by appending `#1` and `#2` -- which is exactly why it went unnoticed for so long: the reports were
+complete, and unciteable. A result that cannot be attributed to a run is not a measurement.
+
+`unique_labels` **raises** on a genuine clash rather than suffixing. Two checkpoints that still
+collide after being named by their run are the same file entered twice, or two runs sharing a
+short name, and both are mistakes worth stopping for.
+
 ## The directory carries the name
 
 A short name that lives only in a table is one someone has to look up. The directory is what
