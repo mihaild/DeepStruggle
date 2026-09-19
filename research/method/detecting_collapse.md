@@ -4,9 +4,16 @@ Win rate against a frozen opponent is ground truth but arrives only every 5M ste
 balance is not a collapse metric at all** — it cannot distinguish one side collapsing from both
 sides improving unevenly. So: what do the training loop's own metrics say?
 
-**The answer, tested on two independent collapses across two engines: no dynamics metric
-generalises. The opponent-pool instrumentation does, because it measures the cause rather than a
-symptom.**
+**The answer, tested on three collapses across two engines: there is no single detector, because
+there is no single collapse.** Each failure mode has its own clean signature and is invisible to
+the other's instrument — pool starvation shows in `opp_pool_size` and not in `kl_div`; KL
+domination shows in `kl_div` and not in the pool, whose pool was healthier than its control's.
+What does *not* work in any of them is the family people reach for first: critic quality, entropy,
+clip fraction and side balance, all of which either fail to separate or reverse direction between
+datasets.
+
+Watch the two cause-specific instruments. Treat the dynamics metrics as a description of what kind
+of wrong, never as a trigger.
 
 ## The datasets
 
@@ -30,6 +37,40 @@ E3's pair is the stronger evidence: it is the same run replayed
 Three for three, counting the two E3-17 runs that also ran `opponent_frac 0.0` and also have no
 `opp_pool_size` key. A pool of one, or of none, beaten ~96–99% of the time, is the whole
 fingerprint. It is visible at iteration 1 and needs no threshold.
+
+## A pooled run can collapse too, and it has a different signature
+
+The pool check above is necessary, not sufficient. **`E3-31-28` declined with a perfectly healthy
+pool** — size 3.0 against its control's 1.8, `opp_win_rate_mean` 0.64 against 0.90, so its pool was
+*more* diverse than the healthy run's. The pool instrumentation sees nothing.
+
+Its signature is `kl_div`, and it is not subtle. Against `E3-30-28`, launched three minutes earlier
+with identical flags:
+
+```
+kl_div   DECLINED  0.02 0.17 0.20 0.07 0.10 0.02 0.07 0.09 0.08 0.18  47.46  33.32  106.65
+         HEALTHY   0.02 0.14 0.13 0.11 0.13 0.05 0.13 0.15 0.11 0.14   0.05   0.13    0.14
+```
+
+Normal at ~0.1 for most of the run, then a **step change of two to three orders of magnitude**.
+`archive/E3_ladder/log/P15_kl_domination.md` measured the KL term at 300x the policy gradient on
+half that run's iterations; this is the same event seen from the metrics file. Nothing else needs a
+threshold — a `kl_div` above ~1.0 is already a hundred times its own normal.
+
+So there are **at least two collapse modes with two unrelated signatures**:
+
+| mode | seen in | caught by | not caught by |
+|:---|:---|:---|:---|
+| opponent-pool starvation | `E4-01-01`, `E3-29-28`, `E3-17-25/26` | `opp_pool_size`, `opp_win_rate_mean` | `kl_div` (flat: 0.055 vs 0.056 in E4) |
+| KL domination | `E3-31-28` | `kl_div` step change | pool metrics (its pool was fine) |
+
+Both runs that hit the second mode used **search** (`search_ce_coef 0.5`), which the E4 runs do not
+(`search_ce_coef 0.0`) — so whether it reproduces on the post-P17 engine is **untested**. That is
+the open experiment, not a settled result.
+
+One confound to carry: `E3-31-28` ran at 580 steps/s against `E3-30-28`'s 10,274 because the two
+shared a GPU. A KL explosion is a per-iteration event and not obviously a throughput artefact, but
+the pair is not clean on that axis.
 
 ## What did not replicate — including the thing this page previously recommended
 
@@ -75,22 +116,24 @@ Also not health signals, despite topping the raw E4 ranking: `steps_per_sec_avg`
 
 ## The protocol
 
-1. **Iteration 1, and the only check that has ever worked twice** — is `opp_pool_size` in the
-   metrics, and is `opp_win_rate_mean` below ~0.9? Absent, or a pool of 1, is the failure itself.
-2. **Every few snapshots** — the pool growing to capacity, `opp_pool_span_m` rolling forward,
+1. **Iteration 1** — is `opp_pool_size` in the metrics, and is `opp_win_rate_mean` below ~0.9?
+   Absent, or a pool of 1 beaten 96% of the time, is the failure itself. Catches mode 1 only.
+2. **Continuously, and it needs no tuning** — `kl_div` above ~1.0. Normal is ~0.02-0.2, so the
+   collapse reading of 47-107 is a hundred times its own baseline. Catches mode 2.
+3. **Every few snapshots** — the pool growing to capacity, `opp_pool_span_m` rolling forward,
    `opp_win_rate_mean` staying off 1.0.
-3. **Watch the dynamics metrics, but as a *description*, not a trigger.** `entropy`, `clip_frac`,
+4. **Watch the remaining dynamics metrics as a *description*, not a trigger.** `entropy`, `clip_frac`,
    `adv_std_raw`, `kl_div`, `logratio_max` are worth printing because when something does go wrong
    they say *what kind* of wrong — but no threshold on them survived contact with a second
    dataset.
-4. **Never** — critic quality, `critic_base_rate`, side balance, `steps_per_sec`.
-5. **To confirm before acting** — per-seat win rate against a frozen opponent.
+5. **Never** — critic quality, `critic_base_rate`, side balance, `steps_per_sec`.
+6. **To confirm before acting** — per-seat win rate against a frozen opponent.
 
 ## What this still does not establish
 
-**Two collapses, both pool starvation.** The pool check is 3/3 on a single failure mode. A
-collapse from a genuinely different cause — a reward bug, a bad resume that keeps its pool — would
-not be caught by it, and nothing here predicts what would.
+**Two modes found, and there may be more.** The pool check is 3/3 on starvation and blind to KL
+domination; `kl_div` is the reverse. Each was found by having a labelled control to compare
+against. A third cause would likely need a third instrument, and nothing here predicts which.
 
 **The E3 pair is short.** It covers 20–26M steps, because that is where X4b fell over. The E4 pair
 runs to 184M. A metric could in principle separate only over long horizons and be invisible in
