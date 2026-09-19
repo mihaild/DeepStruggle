@@ -24,8 +24,21 @@ stays legible:
 
 | attempt | what it is |
 |:---|:---|
-| **E4-01** | **unpooled** — `opponent_frac 0.0`, no self-pool |
-| **E4-02** | **pooled** — `opponent_frac 0.3`, self-pool, capacity 12 |
+| **E4-01** | **unpooled**, default architecture — `opponent_frac 0.0`, no self-pool |
+| **E4-02** | **pooled**, default architecture — `opponent_frac 0.3`, self-pool, capacity 12 |
+| **E4-03** | **pooled, late-E3 architecture** — `identity_dim 16`, `per_entity_heads 64`, `graph_layers 0`, `self_transform` |
+
+**E4-01 and E4-02 are the new baseline**, owner's decision 2026-09-19, and their architecture is
+*not* E3's. Both were launched with the bare defaults by mistake
+([`findings/training/e4_architecture_discontinuity.md`](findings/training/e4_architecture_discontinuity.md));
+rather than discard 560M steps the discontinuity is accepted and recorded, so no E3 number is
+comparable to an E4 one.
+
+**E4-03 exists because the collapse may belong to the architecture.** E3's collapse appeared only
+on its late architecture, which was also the strongest network E3 produced. E4-02 ran 320M pooled
+on the *default* architecture and did not collapse. So "the pool prevents collapse" and "this
+architecture does not collapse" both fit everything measured, and they are different claims.
+E4-03 holds the pool fixed and puts the network back, which separates them.
 
 So `E4-01-01` beside `E4-02-01` is visibly the pooled/unpooled comparison at one seed, and
 `E4-02-01` beside `E4-02-02` would be visibly a seed pair. E4-01 began as an accident — the pool
