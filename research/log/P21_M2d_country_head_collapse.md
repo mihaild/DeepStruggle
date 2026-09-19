@@ -1,118 +1,93 @@
-# P21 arm M2d — a country-head-only arm collapses, and its rating is unusable
+# P21 — the country head is the whole mechanism, and removing the card head sometimes collapses
 
-**2026-09-19. Seed 1 complete; seeds 3–6 pending.** M2d is M2 with `pe_card` removed and
-`pe_country` kept — otherwise identical, 3.185M parameters against M2's 3.190M, same trunk, same
-seed policy.
+**2026-09-19.** M2 added per-entity heads for both countries and cards and was worth +315 Elo over
+M1. M2d keeps only `pe_country`, M2e only `pe_card`; everything else is identical.
 
-| arm | Elo | steps/s | USSR all | US all | gap |
-|:---|---:|---:|---:|---:|---:|
-| `E4-03-01@80M` — anchor | 2146.1 | 11,732 | 79.0% | 80.7% | −1.7 |
-| `M2@160M` | 2129.0 | 36,210 | 80.3% | 75.7% | +4.7 |
-| `M2@80M` | 2095.2 | 35,744 | 76.8% | 72.2% | +4.7 |
-| `M1@80M` | **1776.3** | 59,561 | 40.2% | 35.8% | +4.3 |
-| **`M2d@80M`** | **1776.0** | 42,059 | 55.0% | **21.0%** | **+34.0** |
-| `E4-04-01@80M` — defaults | 1710.1 | 14,057 | 34.0% | 27.7% | +6.3 |
+## The decomposition
 
-## It rates at M1's level, and that number cannot be used
+Ratings from `data/reports/P21_M2d_uncollapsed.md`, one tournament, 100 games per side, tau=0.0.
 
-M2d rates 1776.0 against M1's 1776.3, while M2 with both heads rates 2095.2. Against M2 directly
-it wins 26.0% as USSR and **2.0% as US**.
+| arm | Elo | steps/s | USSR all | US all | gap | note |
+|:---|---:|---:|---:|---:|---:|:---|
+| `E4-03-01@80M` — anchor | 2125.6 | 11,732 | 78.9% | 83.4% | −4.6 | |
+| **`M2d@80M` seed 3** | **2111.5** | 42,268 | 79.9% | 79.6% | **+0.3** | country head only |
+| `M2@80M` — both heads | 2062.7 | 35,744 | 77.1% | 72.7% | +4.4 | |
+| `M1@80M` | 1770.9 | 59,561 | 42.1% | 39.7% | +2.4 | |
+| `M2d@80M` seed 1 | 1756.1 | 42,059 | 58.9% | 19.4% | +39.4 | **collapsed** |
+| `M2e@80M` — card head only | 1750.2 | 46,313 | 48.0% | 28.9% | +19.1 | |
 
-**None of that measures the country head**, because the arm collapsed — see the correction below.
-The rating is reported for completeness and is not evidence about the mechanism.
+| configuration | verdict |
+|:---|:---|
+| `pe_country` alone | **the whole mechanism** — 2111.5, level with M2's 2062.7 |
+| `pe_card` alone | **nothing** — 1750.2 against M1's 1770.9, and it did *not* collapse |
+| both together | no better than country alone |
 
-### The standing prediction is untested, not refuted
+The +48.8 by which M2d exceeds M2 is inside combined seed spread (~27 each), so the claim is
+**equivalent**, not better. What is established is that removing `pe_card` entirely costs nothing.
+
+## The prediction was right, and was wrongly withdrawn
 
 [`../findings/training/forward_pass_trace.md`](../findings/training/forward_pass_trace.md)
 predicted `pe_country` would carry the gain and `pe_card` would be near-inert, because `pe_card`
-cannot distinguish 95 of 110 cards without identity while a country's dynamic slots separate
-countries in any real position. Against that:
+cannot distinguish 95 of 110 cards without identity while a country's dynamic slots — influence,
+control, both deficits, can-place, can-coup, realignment modifier — separate countries in any real
+position. **That is what the uncollapsed evidence shows.**
 
-* **`pe_card` alone buys nothing** — `M2e` rates 1755.0 against M1's 1773.1 and did **not**
-  collapse. That is consistent with the "near-inert" half of the prediction.
-* **`pe_country` alone is unmeasured.** The prediction implies `M2d` should land near M2's 2095;
-  it landed at 1776 *while collapsing*, which says nothing either way.
+Two intermediate readings were wrong, and are recorded so the reasoning is traceable:
 
-An intermediate write-up claimed this refuted the prediction, then claimed the two heads are
-superadditive. Both rested on the collapsed rating and are withdrawn.
+1. From M2d seed 1 alone: *"the country head buys nothing; the prediction is refuted; type-level
+   card information must be what the mechanism needs."* That explained a **collapsed** arm's
+   rating, which measures the collapse rather than the mechanism.
+2. From M2d seed 1 plus M2e: *"neither head alone works, so the effect is superadditive."* Same
+   defect — one of the two arms was degenerate.
 
-## It is the first collapse observed on E4
+The lesson is narrow and worth keeping: **a collapsed arm's Elo measures nothing but the
+collapse.** Both errors came from using one as evidence.
 
-`us_episode_frac` fell monotonically from 0.68 to 0.0000, finishing at 0.035, with 12% of rows
-below 0.02 — where M2 with both heads never dropped below 0.02 once in 1,221 rows. The result is a
-**+34.0 pp side gap**, the largest anywhere in the ladder, and **−319 Elo** against M2.
+A third hypothesis died separately: that a partial per-entity correction distorts the choice
+*between* playing a card and placing influence. Measured over 25,600 decision points, the legal
+mask offers the card block alone 25.1% of the time, the country block alone 52.9%, neither 22.0%,
+and **both 0.00%** — never once. The blocks are never in competition, so the distortion is
+impossible, not merely unsupported.
 
-The degeneracy signature tracks it:
+## Dropping the card head is a strict simplification — except for stability
 
-| steps | `adv_std_raw` | `explained_variance` | `us_episode_frac` |
-|---:|---:|---:|---:|
-| 0M | 0.507 | −0.105 | 0.678 |
-| 24M | 0.203 | 0.937 | 0.146 |
-| 48M | 0.090 | 0.991 | 0.030 |
-| 60M | 0.108 | 0.987 | 0.015 |
+| | M2 (both) | M2d (country only) |
+|:---|---:|---:|
+| Elo | 2062.7 | **2111.5** |
+| steps/s | 35,744 | **42,268** (+18%) |
+| side gap | +4.4 pp | **+0.3 pp**, the best in the ladder |
+| collapse rate | 0 of 2 seeds | **1 of 3 seeds so far** |
 
-Advantage variance falls as the critic's `explained_variance` climbs to **0.99** — the critic
-looks *excellent* exactly as the policy degenerates, because a one-sided policy is a trivially
-easy prediction problem. That is
-[`../method/detecting_collapse.md`](../method/detecting_collapse.md)'s "critic quality measures the
-critic, not the policy" with a live instance.
+M2d seed 3 is more side-balanced than the anchor itself. The only cost is instability.
 
-The absolute `adv_std_raw < 0.01` threshold never fired (minimum 0.061), so that rejected
-signature stays rejected. But the *direction* — advantage variance down, explained variance to
-1.0, side fraction to 0 — now co-occurs with one-sidedness in a second independent arm.
+## The collapse
 
-## Correction: what this arm can and cannot show
+Seed 1 abandoned the US seat: `us_episode_frac` fell 0.68 to 0.0000, finishing at 0.035, with
+**42%** of its rows below 0.02 against seed 3's **1%**. The two diverge cleanly after ~40M:
 
-An earlier version of this file, and of the M2e write-up, used M2d's 1776.0 as evidence that
-`pe_country` alone is worth nothing, and then concluded that the two heads are **superadditive**.
-**Both claims are withdrawn.** As the owner put it: *"we can't really get any information from
-collapsed arm strength."* A side-collapsed arm's rating measures the collapse, not the mechanism.
+| steps | seed 1 `us_frac` | seed 1 `adv_std` | seed 3 `us_frac` | seed 3 `adv_std` |
+|---:|---:|---:|---:|---:|
+| 30M | 0.057 | 0.173 | 0.217 | 0.255 |
+| 40M | 0.172 | 0.202 | 0.121 | 0.211 |
+| 45M | **0.008** | **0.068** | 0.138 | 0.258 |
+| 75M | **0.000** | **0.036** | — | — |
 
-What survives is only what an *uncollapsed* arm shows:
+Advantage variance collapses as `explained_variance` reaches 0.999 — the critic looking *excellent*
+precisely as the policy degenerates, because a one-sided policy is a trivially easy prediction
+problem. The rejected `adv_std_raw < 0.01` threshold still never fired (minimum 0.036), but the
+direction now co-occurs with one-sidedness in a second independent arm.
 
-| claim | status |
-|:---|:---|
-| M2, both heads, is +315 Elo over M1 | solid |
-| the **card** head alone buys nothing — `M2e` 1755.0 against M1's 1773.1, **no collapse** | solid |
-| the **country** head alone buys nothing | **not established** — M2d collapsed |
-| the two heads are superadditive | **withdrawn** |
+**Rate so far: 1 of 3 seeds.** Seeds 4-6 continue; seed 4 was clean at 56%.
 
-The possibility this had wrongly excluded: `pe_country` may be the whole mechanism, and removing
-`pe_card` may destabilise training for an unrelated reason. An uncollapsed M2d separates that from
-a genuine interaction, which is what the seed sweep is for.
+## Why this configuration is worth keeping
 
-### A dead hypothesis, recorded so it is not re-proposed
+E3's collapses appeared at 200M+ steps in arms too expensive to re-run, so they were studied from
+logs rather than by experiment. **This one reproduces at 80M in about 30 minutes on a
+3.2M-parameter network**, at a rate high enough to catch within a handful of attempts. Every arm
+sets `--seed` explicitly and records it in `metadata.json`, so `E4-08-01` is exactly reproducible
+and `tools/scripts/launch_flags.py` reconstructs its command.
 
-The proposed explanation was that a partial per-entity correction distorts the choice *between*
-playing a card and placing influence, since only one of the two action blocks gets sharpened.
-**There is no such choice.** Measured over 25,600 decision points:
-
-| legal actions at a decision | share |
-|:---|---:|
-| card block only | 25.1% |
-| country block only | 52.9% |
-| neither block | 22.0% |
-| **both blocks** | **0.00%** |
-
-The mask never spans both blocks, so they are never in competition and the distortion cannot
-occur. The explanation is impossible, not merely unsupported.
-
-## The confound, and what resolves it
-
-M2d may sit at M1's level **because the country head is useless**, or **because this seed
-collapsed and the collapse destroyed its rating**. One arm cannot separate them.
-
-Seeds 3–6 at 80M are queued. If all four collapse, removing `pe_card` *causes* it and 1776.0 is
-the mechanism's real value. If some do not, there are uncollapsed country-only arms to rate, which
-separates the two explanations.
-
-## Why this collapse is worth keeping
-
-E3's collapses appeared at 200M+ steps in arms that were expensive to re-run, which is why they
-were studied from logs rather than experiment. **This one reproduces at 80M in about 30 minutes on
-a 3.2M-parameter network.** Every arm sets `--seed` explicitly and records it in `metadata.json`,
-so `E4-08-01` is exactly reproducible and `tools/scripts/launch_flags.py` reconstructs its command.
-
-A collapse that can be summoned on demand for half an hour of GPU is a far better object of study
-than one observed once. If the seed sweep confirms the rate, this configuration becomes the
-repository's first controllable instance of the failure mode.
+That makes country-head-only the repository's first *controllable* instance of the failure mode —
+more useful for studying the mechanism than any of the E3 observations, and independent of whether
+the configuration is ever adopted.
