@@ -493,6 +493,34 @@ block. It reads the tournament's own JSON, and handles the per-side entry being 
 direction — a pair recorded as `B_vs_A` is inverted, with the seats swapped, rather than reported
 as missing.
 
+## Two measured facts that change how the ladder is read
+
+### Seed variance at this budget is tiny, not ~95 Elo
+
+M0's two seeds at 80M, rated in one tournament: **1664.8 and 1664.8 Elo**, playing each other to
+**49.5%** (99W-99L-2D). Per matchup they differ by 3, 6 and 3 games out of 200 -- about 1.5-3 pp
+-- which cancelled exactly in the aggregate.
+
+The ~95 Elo figure this plan budgeted for comes from
+[`seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md) and is an E3 measurement at
+other budgets and architectures. **On this rung, at this budget, it is nowhere near that**, which
+means adjacent rungs can be separated far more finely than feared and the owner's condition for
+the protocol -- effects larger than variance -- is met with room to spare.
+
+Two caveats stay attached: this is M0, a simple architecture that may be more stable than the
+attention rungs, and two seeds is one degree of freedom, so it *bounds* variance rather than
+estimating it. Re-check it on the first rung whose seeds visibly disagree.
+
+### Elo is field-relative; only within-tournament deltas mean anything
+
+The anchor rated **2107.2** in one tournament and **2158.3** in the next, unchanged, purely
+because the entrant field differed. Bradley-Terry fits a rating to the field it is given.
+
+So **every rung must be rated in a tournament that contains both the anchor and the rung below
+it**, and only the deltas inside that tournament may be quoted. A rung's Elo carried across
+tournaments and compared to another rung's is meaningless -- the kind of arithmetic that looks
+rigorous and is not. `ladder_report.py` reads a single tournament's JSON for exactly this reason.
+
 ## Budget
 
 `E4-04-01` ran 80M in ~100 minutes, so an arm is ~1.7 GPU-hours.
