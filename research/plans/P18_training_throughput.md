@@ -29,24 +29,45 @@ is resident, not occupancy.** A stream of small kernels separated by host synchr
 much more work. If that is right, the single arm is **latency-bound, not compute-bound**, and the
 fix is batching and overlap rather than a bigger GPU.
 
-## Hypotheses, each with a test that can refute it
+## Two hypotheses already measured, and H3 is dead
 
-Ordered cheapest first. Stop when one explains the 11%.
+Both taken 2026-09-19 **while the two arms held the machine**, so both are contended lower
+bounds -- the useful direction, since the gaps only widen on an idle box.
 
-**H1 — the batch is too small to fill the device.** 512 envs × 3,824 floats is a small forward pass
-for a 4090. *Test:* sweep `--num-envs` over 256 / 512 / 1024 / 2048 for ~2M steps each and plot
-steps/sec and utilisation. Near-linear scaling refutes saturation and localises the problem to
-underfeeding; a flat line means the device is genuinely busy.
+| | measured | as a share of training's 13,500 st/s |
+|:---|---:|---:|
+| engine, single core (`ts_benchmark`) | **1,439,159 st/s** | **0.94%** |
+| forward pass, batch 512 | 309/sec, 3.23 ms each = 158,311 st/s | **8.5%** |
+| training, actual | 13,500 st/s = 26.4 forwards/sec | — |
+
+**H3 (the engine is the ceiling) is refuted.** The engine is ~107x faster than training needs, on
+one contended core, and accounts for under 1% of the budget. The owner's estimate of >2M st/s
+uncontended is consistent with 1.44M measured under load. Buying CPU would not help.
+
+**H1 (the batch is too small) is refuted as stated.** The device manages 309 forward passes a
+second at batch 512 while already serving two training arms; the loop asks for 26.4. The model and
+batch are not what limits this.
+
+So **~90% of wall time is neither the engine nor the rollout forward pass.** That residue is what
+the investigation is actually about, and it is a real split rather than pure waste: PPO's backward
+and optimiser passes over the rollout buffer are legitimate compute that neither measurement above
+includes. The open question is how much of the 90% is gradient work and how much is overhead.
+
+## Remaining hypotheses, each with a test that can refute it
+
+Ordered cheapest first.
+
+**H0 — the backward and optimiser passes are simply the bulk of the work**, and there is no
+pathology. *Test:* `torch.profiler` over ~50 iterations, split by phase. If backward plus optimiser
+account for most of the 90%, the answer is that training is training and the only lever is a
+cheaper update. This is the null hypothesis and it is tested first so the others are not chased
+for nothing.
 
 **H2 — the loop is serial: step envs, then forward, then step envs.** Nothing overlaps, so the GPU
 waits on the CPU and vice versa. *Test:* read the rollout loop in `nash_pg.py` for a sync point
 between `env.step` and `model.forward`; confirm with a `torch.profiler` trace over ~50 iterations,
 which shows the gaps directly. The fix, if confirmed, is double-buffering: step batch *n+1* on the
 host while batch *n* is on the device.
-
-**H3 — the engine is the ceiling.** The C++ env may simply not produce transitions fast enough.
-*Test:* `./build/release/engine/ts_benchmark` gives the engine's standalone rate. If it is near
-13.5k st/s per worker, the GPU is irrelevant and the work is in the engine or its binding.
 
 **H4 — host-side Python overhead dominates.** Observation assembly, mask handling and the action
 codec run per step in Python. *Test:* `py-spy record` against a live run for 60 s. A flame graph
@@ -57,12 +78,14 @@ that is mostly `ts_env` / `action_encoder` rather than `forward` settles it.
 
 ## What would make this worth acting on
 
-The arms are ~4 hours each at 13.5k st/s. If H1 or H2 holds and the fix is a 2–3x throughput
+The arms are ~4 hours each at 13.5k st/s. If H2, H4 or H5 holds and the fix is a 2–3x throughput
 improvement, every future sweep gets proportionally cheaper — and the immediate plan calls for
 **more seeds and a parameter sweep**, which is exactly the workload that multiplies.
 
-If instead H3 holds, the conclusion is the opposite and useful in its own way: buy CPU, not GPU,
-and run more arms concurrently rather than making one faster.
+The "buy CPU instead" branch is already closed: the engine is under 1% of the budget, so more
+cores would buy nothing for a single arm. Running **more arms concurrently** remains a real option
+regardless of what the profiler says -- two arms already yield 15,000 st/s against one arm's
+13,500 -- but it scales badly, and a 2-3x fix to one arm is worth more than a 1.1x from a second.
 
 ## Method note, so the measurement is not wasted
 
