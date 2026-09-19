@@ -150,3 +150,52 @@ domination anyway, while E4-02-01 ran the fast default for a clean 320M. Neither
 the outcome -- see
 [`../findings/training/ref_update_freq_open_ablation.md`](../findings/training/ref_update_freq_open_ablation.md).
 It is held constant at 200,000 by decision and is a candidate axis for a deliberate sweep.
+
+## The two signatures are mutually blind (47 E3 arms + 5 E4 legs, 2026-09-19)
+
+Watching one metric catches at most one of the two modes:
+
+| arm | pool | max `kl_div` | iters with one side >98% of episodes | mean US share |
+|:---|:---|---:|---:|---:|
+| E3-19-23 | **none** | **0.06** | **32%** | 0.114 |
+| E3-31-28 | healthy | **193.7** | **0%** | 0.462 |
+
+E3-19-23 spent a third of its iterations with one side winning essentially every game while
+`kl_div` stayed at a textbook-healthy 0.06. E3-31-28 reached `kl_div` 193.7 with side balance
+never once flagging. **`kl_div` alone cannot detect the one-sided mode and side balance alone
+cannot detect KL domination**, so `tools/scripts/watch_run.py` watches both and a run is healthy
+only when both are.
+
+Not a small-sample artefact: restricting to iterations with >=100 completed episodes moves
+E3-19-23 from 31.6% to 32.2% and leaves every other arm unchanged (median episodes per iteration
+is 93-224 throughout).
+
+### One-sidedness is a flag, not a verdict
+
+It has a high false-positive rate. **Both** E4 continuations sit at ~13% -- the pooled
+E4-02-01 (13.2%) as well as the unpooled E4-01-01 (13.4%) -- and E4-02-01 is the clean 320M arm
+that the round robin ranks first. One side genuinely improving faster produces the same number as
+one side degenerating, which is why **per-side win rate against a frozen reference remains the
+arbiter**; this metric only says where to look. Its value is that it is internal to self-play and
+needs no external opponent, unlike win rate against HeuristicBot.
+
+### Two candidates that did NOT replicate
+
+* **`adv_std_raw` < 0.01** (with `explained_variance` -> 1.0, the critic trivially perfect because
+  every game ends the same way) marks a contiguous 23-iteration event at ~218-221M in E4-01-01's
+  unpooled continuation, US win fraction 0.00 throughout, and never fires in the pooled arm. But
+  it has **0 hits across all 47 E3 runs**. E4-specific artefact, not a detector.
+* **The entropy gap**, refuted earlier the same way (0.014 on E3, i.e. noise).
+
+Both looked good in-sample and died out-of-sample, which is the standing argument for checking a
+proposed metric against the other lineage before acting on it.
+
+### A measurement trap that produced a false finding here
+
+The first version of this section claimed E3-24-28 was 100% one-sided with healthy KL. **That was
+an artefact.** E3-24-28 logs `episodes_completed = 0.0` on every row, and the sweep computed
+`won_us / max(1, episodes_completed)` -- so "no episodes recorded" was silently read as "the US
+won none of them". Any arm whose episode counters are absent will manufacture a perfect
+one-sidedness score this way. **Require `episodes_completed > 0` and report the excluded rows**,
+rather than defaulting a denominator. E3-24-28 has no usable episode data and cannot be analysed
+for side balance at all.

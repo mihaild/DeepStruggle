@@ -63,7 +63,26 @@ from typing import Any, Dict, Optional, Tuple
 #: degenerate policy is an easy prediction problem. `critic_base_rate` is `max(p, 1-p)` and
 #: carries no direction at all.
 WATCHED = ("opp_pool_size", "opp_win_rate_mean", "entropy", "clip_frac",
-           "adv_std_raw", "kl_div")
+           "adv_std_raw", "kl_div", "us_episode_frac")
+
+
+def us_episode_frac(row: Dict[str, Any]) -> Optional[float]:
+    """Fraction of this iteration's finished episodes the US won, from self-play alone.
+
+    The two known collapse modes are mutually blind (`research/method/detecting_collapse.md`):
+    E3-24-28 ran totally one-sided for its whole 40M with `kl_div` at a healthy 0.06, and
+    E3-31-28 reached `kl_div` 193.7 with side balance never flagging. `opp_pool_size` catches
+    starvation only on a *pooled* run -- E3-24-28 had no pool, so nothing here would have caught
+    it. This closes that hole, and needs no external opponent.
+
+    Not sufficient alone: one side genuinely improving faster looks the same, so a per-side win
+    rate against a frozen reference stays the arbiter. A value pinned at 0.0 or 1.0 is the alarm.
+    """
+    done = row.get("episodes_completed")
+    won = row.get("episodes_completed_won_us")
+    if not isinstance(done, (int, float)) or not isinstance(won, (int, float)) or done <= 0:
+        return None
+    return won / done
 
 
 def emit(line: str) -> None:
@@ -174,7 +193,12 @@ def process_alive(pattern: str) -> bool:
 def summary(row: Optional[Dict[str, Any]]) -> str:
     if not row:
         return ""
-    bits = [f"{k}={row[k]:.4f}" for k in WATCHED if isinstance(row.get(k), (int, float))]
+    derived = {"us_episode_frac": us_episode_frac(row)}
+    bits = []
+    for k in WATCHED:
+        v = derived[k] if k in derived else row.get(k)
+        if isinstance(v, (int, float)):
+            bits.append(f"{k}={v:.4f}")
     return "  " + " ".join(bits) if bits else ""
 
 
