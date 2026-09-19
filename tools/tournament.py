@@ -327,11 +327,30 @@ def run_massive_tournament(
             f.write(report_text)
         print(f"Saved Markdown Tournament Report to: {output_report}")
 
+    # Per-pair, per-seat records. `win_matrix` aggregates the two seats into one number, which is
+    # the wrong shape for the question a round robin over one lineage's snapshots is usually
+    # asked: a seat collapse shows as one side falling while the other holds, and an aggregate
+    # averages exactly that signal away. BatchMatchRunner already computes the split for every
+    # pair -- it was simply never serialised, so every caller that wanted it re-ran the games.
+    per_side = {
+        key: {
+            "a_wins_as_us": m["a_wins_as_us"],
+            "a_wins_as_ussr": m["a_wins_as_ussr"],
+            "win_rate_a_as_us": m["win_rate_a_as_us"],
+            "win_rate_a_as_ussr": m["win_rate_a_as_ussr"],
+            "games_per_side": m["games_per_side"],
+            "draws": m["draws"],
+            "avg_turn": m["avg_turn"],
+        }
+        for key, m in matchup_details.items()
+    }
+
     summary_data = {
         "models": model_names,
         "elo_ratings": elo_ratings,
         "win_matrix": win_matrix.tolist(),
         "total_matrix": total_matrix.tolist(),
+        "per_side": per_side,
         "games_per_side": games_per_side,
         "temperature": temperature,
         "total_time_seconds": total_tournament_time,
