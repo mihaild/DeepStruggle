@@ -134,3 +134,51 @@ bias?" has no single answer
   present regardless of `graph_layers` — and no arm has ever varied it.
 * **Pooling is not a graph-convolution feature.** `board_mean`/`board_max` happen at
   `graph_layers = 0` exactly as they do at 2. Turning the graph off does not turn pooling off.
+
+## What the per-entity observation slots actually are
+
+"26" and "14" appear throughout this record without a definition anywhere. They are the
+hand-designed per-entity feature counts of observation layout v2.3, fixed in
+`engine/src/observation.cpp`.
+
+### 26 per country
+
+| slot | meaning |
+|---:|:---|
+| 0, 1 | my / opponent influence ÷ 10 |
+| 2 | net realignment modifier ÷ 5 — iterates `c_info.neighbors`, ±1 per controlled neighbour, plus influence majority and superpower adjacency |
+| 3 | stability ÷ 5 **(constant)** |
+| 4 | battleground **(constant)** |
+| 5, 6 | controlled by me / by opponent |
+| 7 | couping here would take DEFCON to 1 and lose outright |
+| 8, 9 | superpower-adjacent to me / to opponent |
+| 10–15 | region one-hot, 6 regions **(constant)** |
+| 16–18 | in Western Europe / Eastern Europe / Southeast Asia **(constant)** |
+| 19, 20 | I / opponent can place influence here — iterates the neighbours |
+| 21, 22 | I / opponent can coup here — opponent influence, DEFCON 8.1.5, NATO, The Reformer; **no** adjacency test |
+| 23 | node count ÷ 5 — times this country was acted on in the current op |
+| 24, 25 | influence deficit to my / opponent control ÷ 5, capped at 2.0 |
+
+**Eleven of the 26 are constant per country** (3, 4, 10–18) = 924 of the 2,184 board floats. That
+is what makes `--drop-static` correct for a positional reader and wrong for a shared encoder
+([`country_identity_without_graph_conv.md`](country_identity_without_graph_conv.md)).
+
+### 14 per card
+
+| slot | meaning |
+|---:|:---|
+| 0–7 | location one-hot: deck-or-hidden, my hand, known opponent hand, discard, removed, ongoing, peeked, not in game |
+| 8 | Ops ÷ 4 **(constant)** |
+| 9 | side relative to me: +1 mine, −1 opponent, 0 neutral |
+| 10 | era ÷ 2 **(constant)** |
+| 11 | one-time — removed after its event **(constant)** |
+| 12 | is a scoring card **(constant)** |
+| 13 | active-card marker: 1.0 this decision, 0.6 suspended below it, 0.3 committed next |
+
+Four of the 14 are constant = 440 of the 1,540 card floats.
+
+**The consequence for the ladder.** These are *already engineered* features — control, coup hazard,
+placement and realignment legality and both influence deficits are precomputed. A shared
+`Linear(26 → d)` in front of them is a lossy compression of a designed feature set, not a learned
+encoder discovering structure, which is why P21's M2 was rewritten as a per-entity *lookup* on the
+raw slots rather than a shared projection of them.
