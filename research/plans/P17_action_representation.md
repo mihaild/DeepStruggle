@@ -27,7 +27,7 @@ engine instead of reconstructing it. Write-up:
 
 The ladder is being reset anyway. Every checkpoint and `(seed, actions)` dataset is invalidated by
 an action-space change, which is why this was postponed twice; the search-CE programme has just
-ended negative ([`../log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md)),
+ended negative ([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md)),
 so there is no arm whose ladder this would void.
 
 ## 1. The resolution node — nine slots become five

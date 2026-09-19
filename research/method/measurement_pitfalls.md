@@ -234,7 +234,7 @@ opponent 99.7%, its games collapsed to a mean of 3.8 turns with 60.8% ending in 
 anchor win rate fell to 24.0% where an otherwise identical run reaches 90.0%. That decline was
 investigated as a property of search-CE training, and two mechanisms were tested and correctly
 exonerated before anyone looked at `opp_pool_size`
-([`../log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md)).
+([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md)).
 
 **Three things generalise:**
 
@@ -278,7 +278,7 @@ range it was taken over, and "the decline" is not a range until you have checked
 * prefer a ratio or a fold-change over a difference of two noisy percentages.
 
 `tools/scripts/` has no helper for this yet; the ad-hoc version is nine lines and is reproduced in
-[`log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md).
+[`archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md).
 
 ## A checkpoint's filename is not its provenance
 

@@ -324,7 +324,7 @@ engine for differential testing.
 14. **An RL run needs an opponent pool.** `--opponent-frac 0.3 --opponent-self-pool
     --opponent-pool-size 12`, as every run since E3-30 has used. Without it the policy trains only
     against its own current self, one seat runs away, and the critic loses all skill — twice now,
-    from two different causes (`research/log/P15_X4b_collapse_is_pool_starvation.md`,
+    from two different causes (`research/archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`,
     `research/log/E4_pool_starvation_recurrence.md`). Before launching, diff the intended flags
     against a recent healthy run's `metadata.json` rather than trusting the template above; the
     startup banner must say `[opponent pool] ... frac=0.3`.
