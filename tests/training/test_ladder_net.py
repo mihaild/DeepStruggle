@@ -11,7 +11,7 @@ So these tests pin two things equally: that the rungs work, and that the *refusa
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, Dict, cast
 
 import pytest
 import torch
@@ -20,18 +20,20 @@ from ai.models.coldwar_net_v2 import ColdWarNetV2, create_like
 from ai.models.ladder_net import AGGREGATIONS, INPUT_MODES, LadderNet
 from bindings.action_encoder import ActionEncoder
 
-BASE = dict(hidden_dim=128, num_res_blocks=1, entity_proj_dim=64,
-            num_attn_heads=4, categorical_value=False)
+BASE: Dict[str, Any] = dict(hidden_dim=128, num_res_blocks=1, entity_proj_dim=64,
+                            num_attn_heads=4, categorical_value=False)
 D = 8
 A = ActionEncoder.FLAT_ACTION_SIZE
 
 
 def rung(**over):
-    cfg = dict(input_mode="entity", aggregation="flatten", entity_dim=D,
+    """A rung at the test defaults. Any axis, including a BASE one, may be overridden."""
+    cfg: Dict[str, Any] = dict(BASE)
+    cfg.update(input_mode="entity", aggregation="flatten", entity_dim=D,
                card_self_attention=False, cross_attention=False,
                per_entity_heads=0, identity_dim=0, drop_static=False)
     cfg.update(over)
-    return LadderNet(**BASE, **cfg)
+    return LadderNet(**cfg)
 
 
 RUNGS = {
@@ -215,3 +217,33 @@ def test_the_cli_configuration_builds_a_model_that_round_trips() -> None:
     model = create_ladder_net(torch.device("cpu"), categorical_value=False, **cfg)
     assert model.ladder_config()["input_mode"] == "entity"
     create_like(model).load_state_dict(model.state_dict(), strict=True)
+
+
+# ------------------------------------------------- the frozen-copy path (regression)
+
+def test_a_ladder_model_gets_a_model_derived_frozen_copy() -> None:
+    """The snapshot path must rebuild a LadderNet, not a default-width network.
+
+    `generic_trainer.evaluate_and_log_snapshot` chose the frozen opponent copy with an ALLOW-LIST,
+    `arch in ("v2", "mlp")`. Adding `ladder` to the CLI without adding it there sent a
+    3.18M-parameter ladder model down the v1 branch, which built a 512-wide trunk for a 480-wide
+    checkpoint and died at the first snapshot — hours into the run, not at startup. The guard is
+    now inverted so only the legacy v1 backbone is special-cased.
+
+    This test pins the property that actually matters: a copy made the way the trainer makes one
+    loads the original's weights.
+    """
+    model = rung(input_mode="flat", drop_static=True, hidden_dim=480, entity_proj_dim=320)
+    frozen = create_like(model)
+    assert isinstance(frozen, LadderNet)
+    frozen.load_state_dict(model.state_dict())          # strict by default
+    assert frozen.ladder_config() == model.ladder_config()
+
+
+def test_a_non_default_trunk_width_survives_the_copy() -> None:
+    """The specific shape that failed: 480 rebuilt as 512."""
+    model = rung(hidden_dim=480, entity_proj_dim=320)
+    assert model.ladder_config()["hidden_dim"] == 480
+    twin = create_like(model)
+    assert isinstance(twin, LadderNet)
+    assert twin.ladder_config()["hidden_dim"] == 480

@@ -1015,15 +1015,22 @@ def evaluate_and_log_snapshot(
         f.write("".join(report_entry))
 
     if add_to_opponents_after:
-        if arch in ("v2", "mlp"):
+        if arch == "v1":
+            frozen_net = create_coldwar_net(dev)
+        else:
             # Shaped from the model being evaluated, not from the factory defaults. The card
             # block width and whether the history branch exists are both configurable now, and a
             # frozen copy built at defaults simply fails to load a configured policy -- and it
             # fails at the first snapshot rather than at startup, hours in.
             # Every dimension read off the model. Listing them by hand has failed twice.
+            #
+            # This was an ALLOW-LIST -- `arch in ("v2", "mlp")` -- and adding `ladder` to the CLI
+            # without adding it here sent a 3.18M-parameter ladder model down the v1 branch,
+            # which built a 512-wide trunk for a 480-wide checkpoint and died at the first
+            # snapshot: exactly the failure the paragraph above describes, for the third time.
+            # Inverted, so a new architecture gets the model-derived copy by default and only
+            # the legacy v1 backbone is special-cased.
             frozen_net = create_like(model, dev)
-        else:
-            frozen_net = create_coldwar_net(dev)
         frozen_net.load_state_dict(model.state_dict())
         frozen_net.to(dev)
         frozen_net.eval()

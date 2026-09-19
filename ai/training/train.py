@@ -486,6 +486,13 @@ def main():
             print("Error: --warmup-dataset required for mode=warmup")
             sys.exit(1)
         dev = torch.device(args.device if (torch.cuda.is_available() and args.device == "cuda") else "cpu")
+        if args.arch == "ladder":
+            # Refused rather than silently building a v1: the P21 ladder runs cold starts only,
+            # and this branch is the same allow-list shape that sent a ladder model down the v1
+            # path in generic_trainer and killed a run at its first snapshot.
+            raise SystemExit(
+                "--mode warmup does not support --arch ladder. The P21 ladder is cold-start "
+                "only; see research/plans/P21_architecture_ladder.md.")
         if args.arch == "v2":
             model = create_coldwar_net_v2(dev)
         else:
