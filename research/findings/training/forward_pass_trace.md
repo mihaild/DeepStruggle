@@ -182,3 +182,41 @@ placement and realignment legality and both influence deficits are precomputed. 
 `Linear(26 → d)` in front of them is a lossy compression of a designed feature set, not a learned
 encoder discovering structure, which is why P21's M2 was rewritten as a per-entity *lookup* on the
 raw slots rather than a shared projection of them.
+
+## `pe_card` cannot tell most cards apart, and that is why identity travels with it
+
+Raised by the owner, 2026-09-19: *"does it mean that Voice of America and Colonial Rear Guard
+always get the same correction?"* Measured from `rules/cards.json`:
+
+```
+110 cards, 46 distinct static signatures (ops, side, era, one_time, is_scoring)
+  uniquely identified by their static slots :  15
+  indistinguishable from >=1 other card     :  95
+  largest group                             :   6
+```
+
+`The Voice of America`, `Colonial Rear Guards` and `Grain Sales to Soviets` are one such
+group — all US-sided, 2 Ops, mid-war, recurrent. `pe_card`'s input is the card's own 14 slots
+plus a *global* context vector, and of those 14 only five are static properties, eight are a
+location one-hot and one is the active marker. **So whenever those three sit in the same location
+and none is active, `pe_card` receives an identical input and a shared MLP must emit an identical
+correction.** Six-card groups exist too.
+
+**Countries are much less affected**, and the asymmetry is the point. 54 of 84 countries collide
+on their *static* slots, but a country carries rich *dynamic* slots — influence, control, both
+influence deficits, can-place, can-coup, the realignment modifier — that differ between countries
+in any real position. A card's dynamic slots are its location and whether it is active. So
+`pe_country` can address a specific country; `pe_card` can mostly only address a *type*.
+
+**This is not a defect, it is a factorisation** — and worth stating precisely, because the
+overclaim is tempting. The dense policy head still gives every card its own output row, so card
+identity reaches the decision positionally through `base`; the per-entity term then adds a
+*type-level* correction on top. Identity-aware base plus type-aware correction is a coherent
+design. Whether it earns its parameters is an empirical question, and is what P21's M2 measures.
+
+**It does explain why `identity_dim` and `per_entity_heads` appear together in the bundle that is
+worth 447 Elo.** Identity supplies per-entity distinguishability in the head's *input*; the head
+supplies per-entity addressing in the *output*. On the card side neither is much use without the
+other, which predicts an interaction between them rather than two independent effects — see
+[`country_identity_without_graph_conv.md`](country_identity_without_graph_conv.md) for the same
+complementarity seen from the identity side.
