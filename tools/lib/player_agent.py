@@ -376,4 +376,18 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         return HeuristicAgent()
     if s.lower() in ["heuristic_v2", "heuristicbotv2", "heuristicv2", "heur2"]:
         return HeuristicV2Agent()
+    # heuristic_mcts[:sims] -- MCTS with a rules-derived leaf value and no checkpoint. Registered
+    # here as well as in tools/play_match.py so it can enter a tournament: a reference opponent
+    # that only works in one-off matches cannot anchor a ladder.
+    #
+    # Perfect information: it searches the true state and sees the opponent's hand. Legitimate for
+    # a benchmark, disqualifying for deployment, and a win rate against it is not a claim about
+    # play under the real information set.
+    if s.lower() == "heuristic_mcts" or s.lower().startswith("heuristic_mcts:"):
+        from ai.search.heuristic_mcts import HeuristicMCTSConfig, make_heuristic_mcts_agent
+
+        parts = s.split(":")
+        sims = int(parts[1]) if len(parts) > 1 and parts[1] else 64
+        return make_heuristic_mcts_agent(
+            name=f"HeuristicMCTS{sims}", config=HeuristicMCTSConfig(simulations=sims))
     return NeuralAgent.from_checkpoint(s, device=device)
