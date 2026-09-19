@@ -191,7 +191,7 @@ learns "what does this country's state mean" once instead of 84 times; the flatt
 *which* country it was. M1 has the position but not the sharing; M2 has both.
 
 **This is the rung that decides whether tokens are worth having at all** — and tokens are the
-precondition for M3 and for the entire 2x2 below, so a loss here is informative far beyond its own
+precondition for M3/M4 and for the entire 2x2 below, so a loss here is informative far beyond its own
 row.
 
 **Prediction:** M2 ≥ M1, because the per-entity nonlinearity is a genuine inductive bias that
@@ -202,7 +202,38 @@ affordable; `d=4` would make it trivially cheap and probably too narrow to carry
 state; `d=64` costs 1.38M for the board alone. Screen `d ∈ {8, 16, 32}` at M2 and carry the winner
 up the ladder, recording that later rungs inherit it.
 
-## M3 — card→country cross-attention
+## M3 — card↔card self-attention
+
+```
+h_cards from M2                                              (B,110,d)
+attn_out, _ = MultiheadAttention(embed_dim=d, num_heads=4)(Q=h_cards, K=h_cards, V=h_cards)
+h_cards = LayerNorm(h_cards + attn_out)
+         → flatten (B,110d) → Linear(110d,256) → LN → GELU → e_card
+```
+
+**Isolates:** whether a card can be valued *relative to the rest of the hand*.
+
+**Why it is here at all.** The current architecture has **no attention between cards** — none, of
+any kind. `cross_attn` is cards attending over *countries*; there is no self-attention over the
+110 card tokens anywhere in the model
+([`../findings/training/forward_pass_trace.md`](../findings/training/forward_pass_trace.md)).
+Each card's token is computed independently by the shared `card_fc`, and cards meet each other
+only through symmetric pooling and afterwards in the trunk. So relations like *"this scoring card
+is dangerous **because** I hold no exit for it"*, or *"two high-Ops cards and one opponent event"*,
+have no pathway at all. Hand composition is a first-class Twilight Struggle concept and the
+network currently cannot represent it except as an average.
+
+**Prediction:** this is the rung most likely to produce a real gain, precisely because nothing in
+the current architecture covers it. The behavioural record supports that: the standing blunder
+categories are `spaced_own_or_neutral` and `defcon_suicide_with_alternative` — both *disposal*
+errors, which are exactly about what else is in hand.
+
+**Confound:** the 110 tokens include every card in the deck, discard and removed pile, not only
+the hand. Self-attention over all 110 may be dominated by cards that are not in hand. The location
+one-hot (slots 0–7) distinguishes them, so it is learnable, but if M3 disappoints, masking the
+attention to hand cards only is the obvious retry and should be tried before concluding.
+
+## M4 — card→country cross-attention
 
 ```
 h_board, h_cards from M2
@@ -225,7 +256,7 @@ is a lossy summary of an interaction the trunk could form directly.
 re-run at `d=32` before concluding attention does not help — a null from an undersized attention
 is a null about the size, not the mechanism.
 
-## M4 — replace flatten with pooling  *(the last change, deliberately)*
+## M5 — replace flatten with pooling  *(the last change, deliberately)*
 
 ```
 h_board (B,84,d)  → [mean over 84 ; max over 84] (2d) → Linear(2d,256) → e_board
@@ -258,11 +289,11 @@ if pooling wins only when it is handed the freed capacity, that is a different c
 pooling asks a different question than after, so they get a 2x2 against the pooling axis rather
 than a place on the ladder.
 
-| | flattened (M3) | pooled (M4) |
+| | flattened (M4) | pooled (M5) |
 |:---|:---|:---|
-| neither | M3 | M4 |
-| + per-entity heads | **M3-pe** | **M4-pe** |
-| + country identity | **M3-id** | **M4-id** |
+| neither | M4 | M5 |
+| + per-entity heads | **M4-pe** | **M5-pe** |
+| + country identity | **M4-id** | **M5-id** |
 
 **`per_entity_heads`** adds `pe_country([h_board_i ‖ board_nodes_i ‖ pe_trunk(h)]) → scalar`,
 added to country *i*'s logit, last layer zero-initialised. It exists because "a country's exact
@@ -282,10 +313,10 @@ that position supplies for free.
 
 | outcome | reading |
 |:---|:---|
-| M3-pe ≈ M3 **and** M4-pe > M4 | per-entity heads confirmed as a pooling repair |
-| M3-id ≈ M3 **and** M4-id > M4 | identity confirmed as a pooling repair |
-| M3-pe > M3 | the heads do something pooling-independent — they also see `board_nodes_i` raw, so this is possible |
-| M4 ≥ M3 with both repairs on | pooling plus its repairs is as good as position; the current architecture is vindicated |
+| M4-pe ≈ M4 **and** M5-pe > M5 | per-entity heads confirmed as a pooling repair |
+| M4-id ≈ M4 **and** M5-id > M5 | identity confirmed as a pooling repair |
+| M4-pe > M4 | the heads do something pooling-independent — they also see `board_nodes_i` raw, so this is possible |
+| M5 ≥ M4 with both repairs on | pooling plus its repairs is as good as position; the current architecture is vindicated |
 
 That last row is a real possible outcome and the ladder must be able to report it.
 
@@ -305,6 +336,49 @@ Per [P19](P19_architecture_ab.md), already pre-registered:
   margin exceeds the two arms' own seed spread. A tie carries the simpler variant forward and is
   recorded as *"no detected effect at 80M, 2 seeds"* — never as "no effect".
 
+## Matched by steps or by compute? Both, with steps primary
+
+Raised by the owner: an MLP will likely be faster than the current architecture at the same
+parameter count, so equal parameters is not equal compute.
+
+**It is a real effect, and now measured.** `E4-03-01` and `E4-04-01` differ only in the network,
+so their throughput gap is exactly the architecture's compute cost:
+
+| arm | architecture | steps/s (median, post-warmup) | 80M costs |
+|:---|:---|---:|---:|
+| `E4-04-01` | defaults, `graph_layers=2` | **14,057** | 1.58 h |
+| `E4-03-01` | late-E3: identity + per-entity heads, `graph_layers=0` | **11,756** | 1.89 h |
+
+**20% slower per step**, with under 2% spread across ~1,500 iterations. Note it has *no* graph
+convolution, so the cost is the per-entity heads and identity. An isolated forward-pass benchmark
+put the same pair 18% apart, so **architecture cost passes through to training throughput almost
+1:1** — the network is a dominant share of a step here, not the engine.
+
+**The policy:**
+
+1. **Primary axis: matched steps** (80M). The ladder asks a representation question — does this
+   mechanism extract more from the same experience? That is sample efficiency, and it is the axis
+   that is reproducible across machines. Compute matching is hardware-dependent and this record
+   has already been confounded that way once: `E3-31-28` ran at 580 steps/s against `E3-30-28`'s
+   10,274 purely because they shared a GPU.
+2. **Always record `steps_per_sec_avg` and wall-clock** for every arm, so each mechanism's compute
+   price is visible rather than inferred.
+3. **Compute parity is an adoption *gate*, not the measurement.** If a rung wins at matched steps
+   but is materially slower, it has to beat what the cheaper rung would have done with the same
+   wall clock. Concretely: **if the winner is >10% slower, re-run the loser at matched wall-clock
+   — `N_loser = N_winner x (sps_loser / sps_winner)` — and adopt only if the winner still wins.**
+   Expressing parity in *steps* rather than seconds keeps it reproducible.
+
+One extra arm, and only when the speed gap is material and the slower rung won. At ~1.7 GPU-hours
+per arm that is cheap insurance against adopting a mechanism that is really just spending more
+compute.
+
+**Expect M0 to be the fastest by some margin.** Its 3,824→H first layer is a single large matmul,
+which is far more GPU-efficient per parameter than 84 small per-entity applications plus
+multi-head attention. So the compute gate will bite hardest exactly where the ladder is most
+likely to want to adopt something — which is the reason to fix the rule now rather than after
+seeing the numbers.
+
 **Parameter matching is mandatory**, 3.1M ± 5%, by adjusting `H` and `R`. [P6](P6_attention_backbone.md)
 records that capacity is not v2's bottleneck, so an uncontrolled increase would read "bigger won"
 as "the mechanism won". The realised count goes in each run's `--description`.
@@ -315,11 +389,15 @@ as "the mechanism won". The realised count goes in each run's `--description`.
 
 | stage | arms | GPU-h |
 |:---|---:|---:|
-| screen M0–M4 at 40M, one seed | 5 | ~4 |
+| screen M0–M5 at 40M, one seed | 6 | ~5 |
 | screen `d ∈ {8,16,32}` at M2, 40M | 2 extra | ~2 |
-| confirm the ladder at 80M, two seeds | 10 | ~17 |
+| confirm the ladder at 80M, two seeds | 12 | ~20 |
 | the 2x2 at 80M, two seeds | 8 | ~14 |
-| **total** | **~25** | **~37** |
+| compute-parity re-runs, only where the gate bites | ~3 | ~5 |
+| **total** | **~31** | **~46** |
+
+Rates are the measured ones: 14,057 steps/s for the cheap architecture and 11,756 for the
+expensive one, so an 80M arm is 1.6–1.9 GPU-hours depending on the rung.
 
 ## What has to be built first
 
