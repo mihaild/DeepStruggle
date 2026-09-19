@@ -29,10 +29,36 @@ removed the map graph reverses sign with the seed"*, and `E3-15` rests on one se
 benefit has ever been demonstrated**, including on the arms that paired a graph with identity
 (`E3-15-22` at 2 layers, `E3-16-21` at 1).
 
-What this costs, recorded so it is not forgotten: **adjacency then reaches the network by no route
-at all.** The per-country observation slots carry stability, battleground, region and superpower
-adjacency, but nothing about neighbours, so with no graph layer the model cannot know that Poland
-borders East Germany. If the ladder stalls, this is one of the first things to reconsider.
+**Adjacency still reaches the network without a graph layer** — a correction to an earlier
+version of this plan, which claimed it reached it by no route at all. It is not encoded as
+topology, but it is encoded in exactly the form the *rules* use it, by four derived per-country
+slots (`engine/src/observation.cpp`):
+
+| slot | what it is | how adjacency enters |
+|:---|:---|:---|
+| 2 | `net_realign` | iterates `c_info.neighbors` and **counts controlled neighbours**, ±1 each, plus influence majority and superpower adjacency |
+| 19, 20 | `can_my_place` / `can_opp_place` | `Operations::can_place_influence` iterates the neighbours and is true if **any holds friendly influence** |
+| 21, 22 | `can_my_coup` / `can_opp_coup` | calls `can_place_influence`, so inherits the same test |
+
+`Scoring` also uses `can_place_influence` for the accessible-battleground counts in the global
+block, so it reaches there too.
+
+This makes dropping the graph **better motivated than a bare null**: a graph layer would be
+re-deriving from raw edges what the observation already computes exactly, in the rule-relevant
+aggregate. That is a plausible mechanism for why graph depth never showed a benefit, rather than
+leaving it an unexplained result.
+
+**What the derived slots do not carry**, and what a graph layer would therefore still be for:
+
+* **Multi-hop structure.** Every slot above is one hop. "If I take Poland, East Germany becomes
+  placeable next turn" is two hops and is not represented.
+* **Which** neighbour. The slots are counts and booleans; the network sees *how many* controlled
+  neighbours a country has, never which ones.
+
+So the honest scope is: 1-hop, rule-relevant adjacency is present; topology and planning depth are
+not. If the ladder stalls, multi-hop reachability is the thing to add — and it may be cheaper to
+add it as observation features than as a graph layer, which is the owner's call under the standing
+rule on observation changes.
 
 ## The fixed anchor
 
