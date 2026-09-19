@@ -182,10 +182,28 @@ So M0 is expected to lose, and losing tells us little.
 
 **That is an argument for the middle rungs, not against the ladder.** E3 compared *no structure*
 against *all of it* and learned only that the bundle is worth 110 Elo — not which part. M1, M2, M3
-and the pooling removal were never run, and the 2x2 never existed. M0 is here as the floor and as
-a lineage check, not as an open question. If it loses by roughly 110 Elo again, that is a
-reassuring replication; if it loses by far less, the structure is earning less on this engine than
-it did on E3 and the middle rungs matter more, not less.
+and the pooling removal were never run, and the 2x2 never existed.
+
+### M0's result, 2026-09-19 — and the comparison it must be read against
+
+| comparison | E3 | E4 |
+|:---|---:|---:|
+| MLP vs the **default** architecture | ~110 Elo | **42 Elo** |
+| MLP vs the **late-E3 bundle** | never measured | **455 Elo** |
+
+**`E3-09` vs `E3-01` was the MLP against the defaults**, so the like-for-like number on this
+engine is **42 Elo**, not 455. Stated the other way round and more usefully: the default
+architecture is worth **42 Elo over a plain MLP**, while the late-E3 bundle is worth **455**. The
+engine change did not make structure matter more — it collapsed what the *default* structure was
+worth, from 110 to 42.
+
+Getting this wrong is easy and was got wrong once already: "structure is worth 455 here against
+110 on E3" compares the MLP to a *different architecture* than E3 compared it to. **Always name
+which structured arm the MLP is being measured against.**
+
+The consequence for this ladder is the owner's reading: the default architecture is close to
+worthless, and effectively all of the value sits in the four flags of the bundle. The ladder's
+job is to find which of them carry it.
 
 ## M1 — grouped input projections
 
