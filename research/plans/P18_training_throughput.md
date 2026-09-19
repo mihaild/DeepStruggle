@@ -53,6 +53,46 @@ the investigation is actually about, and it is a real split rather than pure was
 and optimiser passes over the rollout buffer are legitimate compute that neither measurement above
 includes. The open question is how much of the 90% is gradient work and how much is overhead.
 
+## The E3-to-E4 anomaly, which is the sharpest lead
+
+The owner's observation: **before the P17 refactor a single arm ran at ~12k st/s with the GPU at
+100%; after it, ~13.5-14.3k st/s with the GPU at 55%.** More throughput on half the load is not a
+free lunch and wants explaining.
+
+Measured, comparing `E3-22-28` (solo, matching config, 512 envs) against `E4-02-01`:
+
+| | steps/s | mean_turn | steps/episode | **steps/turn** |
+|:---|---:|---:|---:|---:|
+| E3-22-28 | 12,157 | 6.19 | 508 | **82** |
+| E4-02-01 | 14,335 | 6.61 | 458 | **69** |
+
+Games are *longer* in turns yet use fewer steps: **16% fewer decisions per turn.** That is the mode
+head fusion, not Grain Sales -- P17 collapsed `ops/event -> [if ops] placement/coup/realign` into
+one decision, and Grain Sales is a single card by comparison. The owner's ~20% estimate is
+confirmed.
+
+**What a "step" counts, which changes the reading.** `nash_pg.py:562` does
+`total_env_steps += buffer_size * num_envs`, so a counted step is a **policy-query slot**, not an
+engine decision. Auto-advance (`settle=FORCED` -> `auto_advance=True` into `step_flat_all`)
+resolves forced decisions inside C++ without returning for a query, so a single counted step now
+covers more of the game than it did in E3.
+
+Two consequences:
+
+1. **The refactor is worth more than the raw number suggests.** At 1.19x more game per query,
+   E4's 14,335 steps/s is ~17,000 E3-equivalent steps/s -- about **40% more game progress per
+   second**, not 18%.
+2. **It does not explain the GPU load.** Forwards per counted step is 1 in both engines, so GPU
+   work per step should be unchanged. With buffer_size 128 and 512 envs, one update covers 65,536
+   steps, i.e. ~28 rollout forwards a second against a measured capability of 309 -- roughly 9%.
+   The 55% must therefore be dominated by the **update** phase, not rollout.
+
+So the anomaly stands and is the first thing the profiler should settle: **why did the same
+per-step GPU work fall from 100% to 55% load?** Candidates are a genuinely cheaper update phase, a
+measurement taken under different conditions, or a driver change. It is worth resolving because
+55% load with only 11% available from a second arm is the clearest sign that the host, not the
+device, now sets the pace.
+
 ## Remaining hypotheses, each with a test that can refute it
 
 Ordered cheapest first.
