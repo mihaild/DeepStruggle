@@ -18,6 +18,48 @@ from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 
 
+#: The ladder axes that `--arch ladder` requires. Listed once so the error names all of them.
+_LADDER_REQUIRED = ("ladder_input_mode", "ladder_aggregation", "ladder_entity_dim",
+                    "ladder_entity_proj_dim", "ladder_hidden_dim", "ladder_res_blocks")
+
+
+def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
+    """The P21 backbone configuration, or None when another architecture was asked for.
+
+    Every axis is required rather than defaulted. A defaulted variant argument is how a model
+    silently becomes a different architecture from the one the run's metadata claims -- the
+    failure this repository has already had five times with a defaulted observation layout.
+    """
+    if args.arch != "ladder":
+        for name in _LADDER_REQUIRED + ("ladder_card_self_attention", "ladder_cross_attention"):
+            if getattr(args, name, None) is not None:
+                raise SystemExit(
+                    f"--{name.replace('_', '-')} was given but --arch is {args.arch!r}. "
+                    f"The ladder flags only apply to --arch ladder; refused rather than "
+                    f"silently ignored.")
+        return None
+    missing = [n for n in _LADDER_REQUIRED if getattr(args, n, None) is None]
+    if missing:
+        raise SystemExit(
+            "--arch ladder requires every structural axis to be named explicitly. Missing: "
+            + ", ".join("--" + m.replace("_", "-") for m in missing)
+            + ".\nSee research/plans/P21_architecture_ladder.md for the rung definitions.")
+    return dict(
+        input_mode=args.ladder_input_mode,
+        aggregation=args.ladder_aggregation,
+        entity_dim=int(args.ladder_entity_dim),
+        entity_proj_dim=int(args.ladder_entity_proj_dim),
+        card_self_attention=bool(args.ladder_card_self_attention),
+        cross_attention=bool(args.ladder_cross_attention),
+        per_entity_heads=int(args.per_entity_heads),
+        identity_dim=int(args.identity_dim),
+        drop_static=bool(args.drop_static),
+        hidden_dim=int(args.ladder_hidden_dim),
+        num_res_blocks=int(args.ladder_res_blocks),
+        num_attn_heads=4,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The CLI surface, separated from main() so tests can assert on it.
 
@@ -34,9 +76,38 @@ def build_parser() -> argparse.ArgumentParser:
         # `--snapshot-every 600` is silently accepted as --snapshot-every-steps 600 --
         # a 600-STEP cadence instead of 600 seconds. A removed flag has to fail.
         allow_abbrev=False)
-    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp"],
+    parser.add_argument("--arch", type=str, default="v2", choices=["v1", "v2", "mlp", "ladder"],
                         help="Model architecture. v2 is the baseline; v1 is the original\n"
-                             "network, kept because checkpoints that predate v2 still name it.")
+                             "network, kept because checkpoints that predate v2 still name it;\n"
+                             "`ladder` is the P21 configurable backbone, whose structural flags\n"
+                             "are all REQUIRED (see --ladder-*).")
+
+    lad = parser.add_argument_group(
+        "P21 ladder backbone (--arch ladder)",
+        "Every axis is required with --arch ladder. There are no defaults on purpose: a "
+        "defaulted variant argument was the mechanism behind five instances of one bug in this "
+        "repository, because handing a model the wrong variant returns a number instead of "
+        "raising. See research/plans/P21_architecture_ladder.md.")
+    lad.add_argument("--ladder-input-mode", type=str, default=None,
+                     choices=["flat", "grouped", "entity"],
+                     help="flat = M0 MLP; grouped = M1 per-block dense; entity = M2+ tokens.")
+    lad.add_argument("--ladder-aggregation", type=str, default=None,
+                     choices=["flatten", "pool"],
+                     help="How entity tokens become a fixed vector. flatten keeps position; "
+                          "pool is the mean+max the current architecture uses, and is the "
+                          "removal M5 measures.")
+    lad.add_argument("--ladder-entity-dim", type=int, default=None,
+                     help="Per-entity token width d.")
+    lad.add_argument("--ladder-entity-proj-dim", type=int, default=None,
+                     help="Width each block is projected to before the trunk.")
+    lad.add_argument("--ladder-card-self-attention", action="store_true", default=None,
+                     help="M3: cards attend over cards. The current architecture has no "
+                          "attention between cards of any kind.")
+    lad.add_argument("--ladder-cross-attention", action="store_true", default=None,
+                     help="M4: cards attend over countries.")
+    lad.add_argument("--ladder-hidden-dim", type=int, default=None, help="Trunk width.")
+    lad.add_argument("--ladder-res-blocks", type=int, default=None,
+                     help="Number of residual blocks in the trunk.")
     parser.add_argument("--mode", type=str, default="train",
                         choices=["train", "warmup", "eval", "curriculum", "distill"],
                         help="Execution mode. `distill` is P15-X4a: soft cross-entropy "
@@ -355,6 +426,7 @@ def main():
             window_provoked_defcon=args.window_provoked_defcon,
             identity_dim=args.identity_dim,
             drop_static=args.drop_static,
+            ladder_config=_ladder_config(args),
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             seed=args.seed,

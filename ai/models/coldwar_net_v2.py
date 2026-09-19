@@ -869,6 +869,14 @@ def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWar
     the first had been fixed. Reading them from the source removes the class of error rather than
     the instance.
     """
+    # A P21 rung carries its whole structure in `ladder_config()`, so the copy is rebuilt from
+    # the model's own record. Duck-typed rather than imported, to keep `ladder_net` depending on
+    # this module and not the reverse.
+    cfg = getattr(model, "ladder_config", None)
+    if callable(cfg):
+        dev_t = torch.device(device) if isinstance(device, str) else device
+        return type(model)(**cfg()).to(dev_t)  # type: ignore[return-value]
+
     # The backbone is a dimension too. An MLP-trunk model copied as a v2 has a different state
     # dict and fails to load at the first snapshot -- the same failure the paragraph above is
     # about, one level up.

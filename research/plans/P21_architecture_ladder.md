@@ -172,6 +172,19 @@ would have to discover is handed to it.
 parameters it gets the *narrowest* trunk. If M0 loses, check it is not losing on trunk width
 alone — the parameter-matched control for M0 is M0 at a different H/R split.
 
+**This endpoint has been measured before, on E3.** *"Is the structured backbone worth it over an
+MLP?"* is recorded as **settled** — `E3-09` vs `E3-01`, **structure worth ~110 Elo, with the MLP
+carrying 2.6x the parameters** ([`../questions.md`](../questions.md),
+[`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md)).
+So M0 is expected to lose, and losing tells us little.
+
+**That is an argument for the middle rungs, not against the ladder.** E3 compared *no structure*
+against *all of it* and learned only that the bundle is worth 110 Elo — not which part. M1, M2, M3
+and the pooling removal were never run, and the 2x2 never existed. M0 is here as the floor and as
+a lineage check, not as an open question. If it loses by roughly 110 Elo again, that is a
+reassuring replication; if it loses by far less, the structure is earning less on this engine than
+it did on E3 and the middle rungs matter more, not less.
+
 ## M1 — grouped input projections
 
 ```
@@ -456,16 +469,55 @@ One modification = one 80M arm + one 160M arm = **240M steps**, which at the mea
 Rates are measured, not assumed: 14,057 steps/s for the cheap architecture and 11,756 for the
 expensive one. Budget the ladder at the slow rate; the early rungs should beat it comfortably.
 
-## What has to be built first
+## The backbone — built, 2026-09-19
 
-No current model can express M0–M2; `ColdWarNetV2` hard-codes pooling and the token path. This
-needs a configurable backbone with **explicit, non-defaulted** options for the entity encoder
-(`none | shared`) and the aggregation (`flatten | pool`), plus `d`.
+`ai/models/ladder_net.py`. `LadderNet` subclasses `ColdWarNetV2`, so the heads, the value contract
+and the 220-action space are untouched and only `_encode` differs. `create_like` rebuilds a copy
+from the model's own `ladder_config()` rather than from an argument list, which is how two runs
+previously died at their first snapshot.
 
-**No silent defaults.** A defaulted `layout` parameter was the mechanism behind five instances of
-one bug here, because handing a model the wrong variant returns a number instead of raising. Every
-option is required at construction, the realised configuration is written into the checkpoint, and
-loading asserts it — the discipline `check_obs_width` already applies to width.
+**Every axis is required, at construction and at the CLI.** `--arch ladder` refuses to run unless
+each is named, and naming a ladder flag under another `--arch` is refused rather than ignored.
+`tests/training/test_ladder_net.py` pins the rungs *and* the refusals — 37 tests.
+
+Four combinations are refused outright, each encoding something the plan establishes:
+
+| refused | because |
+|:---|:---|
+| per-entity heads with `flat`/`grouped` | there are no tokens for them to read |
+| attention with `flat`/`grouped` | there is nothing to attend over |
+| `identity_dim > 0` with `flat`/`grouped` | position already identifies the entity; identity there is pure redundancy |
+| `drop_static` with `entity` | the static slots are how a *shared*, position-blind encoder knows what it is looking at |
+
+The rungs, as commands:
+
+```bash
+COMMON="--ladder-entity-proj-dim 256 --ladder-hidden-dim 384 --ladder-res-blocks 4"
+# M0  tools/train.py --arch ladder --ladder-input-mode flat    --ladder-aggregation flatten \
+#                    --ladder-entity-dim 16 --drop-static $COMMON
+# M1  ... --ladder-input-mode grouped --ladder-aggregation flatten --drop-static
+# M2  ... --ladder-input-mode entity  --ladder-aggregation flatten
+# M3  ... --ladder-input-mode entity  --ladder-aggregation flatten --ladder-card-self-attention
+# M4  ... M3 plus --ladder-cross-attention
+# M5  ... M4 but --ladder-aggregation pool
+# 2x2 ... add --per-entity-heads 64 or --identity-dim 16 to M4 / M5
+```
+
+**Measured parameter counts** at `d=16`, `H=384`, `p=256`, 4 blocks — note the asymmetry the plan
+warned about:
+
+| rung | params |
+|:---|---:|
+| M0 flat | 2.24M |
+| M1 grouped | 2.36M |
+| M2 entity/flatten | 2.55M |
+| M3 + card self-attention | 2.55M |
+| M4 + cross-attention | 3.10M |
+| **M5 pooled** | **1.88M** |
+
+M5 is **1.2M cheaper than M4** on identical settings, because pooling replaces `Linear(84d, 256)`
+with `Linear(2d, 256)`. Matching total parameters would hand pooling a much wider trunk — which is
+exactly why the plan requires reporting matched *and* unmatched.
 
 ## Risk
 

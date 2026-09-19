@@ -1253,6 +1253,7 @@ def train_pipeline(
     per_entity_heads: int = 0,
     graph_layers: int = 2,
     drop_static: bool = False,
+    ladder_config: Optional[Dict[str, Any]] = None,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
@@ -1432,7 +1433,15 @@ def train_pipeline(
     tb.log_text("run/metadata", "```json\n" + json.dumps(metadata_info, indent=2) + "\n```", 0)
 
     # 1. Initialize Model
-    if arch == "mlp":
+    if arch == "ladder":
+        # The whole structure is in `ladder_config`, which train.py refuses to build unless
+        # every axis was named. Nothing here supplies a default.
+        from ai.models.ladder_net import create_ladder_net
+        if not ladder_config:
+            raise ValueError("--arch ladder requires a ladder configuration; see "
+                             "research/plans/P21_architecture_ladder.md")
+        model = create_ladder_net(dev, categorical_value=categorical_value, **ladder_config)
+    elif arch == "mlp":
         from ai.models.coldwar_net_v2 import create_coldwar_net_mlp
         model = create_coldwar_net_mlp(dev, categorical_value=categorical_value,
                                        drop_static=drop_static)
