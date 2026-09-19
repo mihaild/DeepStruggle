@@ -220,3 +220,20 @@ supplies per-entity addressing in the *output*. On the card side neither is much
 other, which predicts an interaction between them rather than two independent effects — see
 [`country_identity_without_graph_conv.md`](country_identity_without_graph_conv.md) for the same
 complementarity seen from the identity side.
+
+## Card actions and country actions are never legal at the same decision
+
+Measured over 25,600 decision points from engine self-play:
+
+| legal actions at a decision | share |
+|:---|---:|
+| card block only `[0, 110)` | 25.1% |
+| country block only `[116, 200)` | 52.9% |
+| neither block | 22.0% |
+| **both blocks** | **0.00%** |
+
+The game alternates between choosing a card and choosing a target, and the mask reflects that
+exactly — it never offers both. Worth recording because it kills a plausible-sounding class of
+explanation: nothing that depends on the network trading a card action off against a country
+action can be right, since the two never compete. A P21 hypothesis about partial per-entity
+corrections distorting that trade-off died here.
