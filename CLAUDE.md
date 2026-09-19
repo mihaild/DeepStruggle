@@ -186,6 +186,8 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 --train-steps 160000000 --snapshot-every-steps 5000000 \
   --warmup-checkpoint <warmup.pt> \
   --reward-scheme blunder_aware \
+  --opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12 \
+  --run-name E<engine>-<attempt>-<seed> \
   --eval-opponents heuristic random <checkpoint.pt> --eval-games-per-side 50 \
   --post-tournament --post-tournament-models heuristic random <checkpoint.pt> \
   --post-tournament-games 500
@@ -319,6 +321,13 @@ engine for differential testing.
 11. Never change the C++ engine without asking the owner first.
 12. Human replay conversion is never approximated — a decision the log does not determine is diagnosed, not filled in.
 13. Never measure against a stale engine — run `tools/scripts/check_engine_fresh.sh` before generating or consuming any checkpoint, dataset, or benchmark number, and re-take anything measured before a rebuild.
+14. **An RL run needs an opponent pool.** `--opponent-frac 0.3 --opponent-self-pool
+    --opponent-pool-size 12`, as every run since E3-30 has used. Without it the policy trains only
+    against its own current self, one seat runs away, and the critic loses all skill — twice now,
+    from two different causes (`research/log/P15_X4b_collapse_is_pool_starvation.md`,
+    `research/log/E4_pool_starvation_recurrence.md`). Before launching, diff the intended flags
+    against a recent healthy run's `metadata.json` rather than trusting the template above; the
+    startup banner must say `[opponent pool] ... frac=0.3`.
 
 Each of `engine/AGENTS.md`, `bindings/AGENTS.md`, `bot/AGENTS.md`, `web/server/AGENTS.md`, and root
 `AGENTS.md` carries a "keep documentation synchronized" rule — when you change behavior in one of
