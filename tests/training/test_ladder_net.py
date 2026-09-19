@@ -97,13 +97,30 @@ def test_a_wrong_width_observation_raises_rather_than_being_misread() -> None:
 
 # --------------------------------------------------------------- the refusals
 
-def test_per_entity_heads_refused_without_tokens() -> None:
-    with pytest.raises(ValueError, match="no entity tokens"):
+def test_per_entity_heads_refused_on_a_flat_model() -> None:
+    """`flat` never reshapes into entities, so there is nothing per-entity to read."""
+    with pytest.raises(ValueError, match="never reshapes"):
         rung(input_mode="flat", per_entity_heads=16)
 
 
-def test_attention_refused_without_tokens() -> None:
-    with pytest.raises(ValueError, match="no entity tokens"):
+def test_per_entity_heads_work_on_raw_grouped_features() -> None:
+    """The lookup mechanism without a shared encoder in front of it.
+
+    A shared `Linear(26 -> d)` is a LOSSY restriction of the grouped projection, not an addition
+    to it: each country's 26 hand-crafted slots are forced through one rank-d map before anything
+    downstream sees them. `grouped` keeps every slot at a fixed offset, so `pe_country` can read
+    country i's own raw features directly and the lookup is isolated from that compression.
+    """
+    model = rung(input_mode="grouped", drop_static=True, per_entity_heads=16).eval()
+    assert model.raw_tokens is True
+    obs = torch.randn(2, ColdWarNetV2.TOTAL_OBS_SIZE)
+    with torch.no_grad():
+        logits, _, _ = model.forward(obs, torch.ones(2, A, dtype=torch.uint8))
+    assert logits.shape == (2, A) and torch.isfinite(logits).all()
+
+
+def test_attention_refused_without_a_token_space() -> None:
+    with pytest.raises(ValueError, match="no attention tokens"):
         rung(input_mode="grouped", card_self_attention=True)
 
 

@@ -225,34 +225,58 @@ fully preserved in both.
 **Prediction:** small in either direction. The honest reason to run it is that it is the shape V1
 and V2 both use, and it has never been tested against the ungrouped alternative.
 
-## M2 — shared per-entity encoder, flattened
+## M2 — per-entity lookup on raw features
+
+**Revised 2026-09-19 by the owner**, and the revision matters. M2 was first written as a shared
+`Linear(26 -> d)` applied to all 84 countries, then flatten. That is **not "M1 plus weight
+sharing"** — it is a *lossy restriction of M1*:
 
 ```
-board (B,84,26)  → Linear(26,d) shared over all 84  → GELU → h_board (B,84,d)
-                 → flatten (B, 84d) → Linear(84d, 256) → LN → GELU → e_board
-card  (B,110,14) → Linear(14,d) shared over all 110 → GELU → h_cards (B,110,d)
-                 → flatten (B,110d) → Linear(110d, 256) → LN → GELU → e_card
-global (B,100)   → Linear(100,128) → LN → GELU → e_global
-concat (640) → trunk → heads
+M1 board path:   Linear(2184, 256)                          full, 559k params
+M2 (as written): Linear(26, 16) shared, GELU, Linear(1344, 256)
 ```
 
-At `d=16`: encoders are tiny (416 and 224 params) and the flatten projections are 344k and 450k.
+Ignore the GELU and the composite is a constrained factorisation of M1's first layer: every
+country's 26 slots forced through the same rank-16 map before anything downstream sees them.
+**26 -> 16 is lossy**, so that M2 could not represent functions M1 can. On a ladder that adds one
+mechanism per rung, it was a *subtraction* dressed as an addition, and its only genuinely new
+element was the per-country nonlinearity.
 
-**Isolates:** weight sharing across entities, **with position held constant**. The shared encoder
-learns "what does this country's state mean" once instead of 84 times; the flatten preserves
-*which* country it was. M1 has the position but not the sharing; M2 has both.
+The owner's objection is the right one: the observation is **already hand-crafted features at
+fixed positions** — control, stability, battleground, coup hazard, placement and realignment
+legality are all precomputed per country. Compressing them per country buys nothing the flatten
+does not already give. What is actually worth isolating is the **downstream lookup**: country
+*i*'s own slots reaching country *i*'s logit.
 
-**This is the rung that decides whether tokens are worth having at all** — and tokens are the
-precondition for M3/M4 and for the entire 2x2 below, so a loss here is informative far beyond its own
-row.
+That needs no learned token space at all. `pe_country` already reads the raw slots alongside the
+token, so with `input_mode="grouped"` the raw features *are* the tokens.
 
-**Prediction:** M2 ≥ M1, because the per-entity nonlinearity is a genuine inductive bias that
-costs almost nothing. If M2 < M1, the "entities" framing is wrong for this observation.
+```
+board (B,84,26) ── flatten ─→ Linear(2184→256) ─┐
+card  (B,110,14) ─ flatten ─→ Linear(1540→256) ─┼→ trunk (as M1)
+global ─────────────────────→ Linear(100→128) ──┘
+                                                 │
+pe_country([board_nodes_i ‖ pe_trunk(h)]) → scalar added to country i's logit
+pe_card(   [card_nodes_i  ‖ pe_trunk(h)]) → scalar added to card i's logit
+```
 
-**Choice to make explicit:** `d` is a real hyperparameter, not a detail. `d=16` keeps the flatten
-affordable; `d=4` would make it trivially cheap and probably too narrow to carry a country's
-state; `d=64` costs 1.38M for the board alone. Screen `d ∈ {8, 16, 32}` at M2 and carry the winner
-up the ladder, recording that later rungs inherit it.
+**Isolates:** whether a per-entity lookup helps *at all*, with position already preserved and no
+compression in front of it. Against M1 this is exactly one mechanism.
+
+**Prediction:** genuinely uncertain, and that is what makes it worth running. The pooling-bottleneck
+story says `pe_country` exists because the pooled trunk holds ~14% of a country's influence — but
+M1's trunk is *positional* and holds far more, so the head may be redundant here. If it still
+helps, the lookup is doing something beyond routing around pooling.
+
+Configuration: `--ladder-input-mode grouped --per-entity-heads 64 --drop-static`, hidden 480 /
+proj 256 = **3.190M** (+1.3% of the anchor), the same trunk width as M0 and M1 so only the
+mechanism differs.
+
+**The shared encoder is not deleted, only demoted.** It stops being a rung and becomes what it
+actually is: one way of forming a token space, to be chosen only if attention turns out to need
+one at a width other than 26. Attention on raw features is possible — `nn.MultiheadAttention`
+takes `kdim`/`vdim`, so cards (14) can attend over countries (26) directly — and is the cheaper
+thing to try first.
 
 ## M3 — card↔card self-attention
 

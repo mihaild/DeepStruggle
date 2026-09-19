@@ -63,17 +63,25 @@ class LadderNet(ColdWarNetV2):
             raise ValueError(f"aggregation must be one of {AGGREGATIONS}; got {aggregation!r}")
 
         tokenless = input_mode in ("flat", "grouped")
+        # `grouped` keeps every entity's RAW slots at a fixed offset, so a per-entity head can
+        # read country i's own features and reach country i's logit with no learned token space
+        # in between -- `pe_country` already takes the raw slots alongside the token. That is the
+        # lookup mechanism on its own, uncontaminated by the lossy 26->d compression that a
+        # shared encoder imposes.
+        raw_tokens = (input_mode == "grouped") and bool(per_entity_heads)
         if tokenless:
             # Refused rather than ignored. A model built with heads it cannot feed would train
             # happily and silently be a different architecture from the one that was asked for.
-            if per_entity_heads:
+            if per_entity_heads and input_mode == "flat":
                 raise ValueError(
-                    f"input_mode={input_mode!r} forms no entity tokens, so per-entity heads have "
-                    f"nothing to read. Refused rather than silently dropped.")
+                    "input_mode='flat' never reshapes the observation into entities, so "
+                    "per-entity heads have nothing to read. Use 'grouped' for raw-feature "
+                    "per-entity heads.")
             if card_self_attention or cross_attention:
                 raise ValueError(
-                    f"input_mode={input_mode!r} forms no entity tokens, so attention has nothing "
-                    f"to attend over.")
+                    f"input_mode={input_mode!r} forms no attention tokens. Cross-attention "
+                    f"between 14-wide card rows and 26-wide country rows needs kdim/vdim "
+                    f"plumbing and a head count dividing 14; that is a separate rung.")
             if identity_dim:
                 raise ValueError(
                     f"input_mode={input_mode!r} reads each entity at a fixed offset, so position "
@@ -105,6 +113,7 @@ class LadderNet(ColdWarNetV2):
         self.card_self_attention = bool(card_self_attention)
         self.cross_attention = bool(cross_attention)
         self.drop_static = bool(drop_static)
+        self.raw_tokens = bool(raw_tokens)
         self.entity_proj_dim = int(entity_proj_dim)
         self.ladder_num_attn_heads = int(num_attn_heads)
         self.ladder_per_entity_heads = int(per_entity_heads)
@@ -178,9 +187,11 @@ class LadderNet(ColdWarNetV2):
         if self.per_entity_heads:
             k = self.per_entity_heads
             self.pe_trunk = nn.Linear(hidden_dim, k)
-            self.pe_country = nn.Sequential(nn.Linear(d + board_in + k, k), nn.GELU(),
+            # With raw tokens the token IS the raw slot vector, so it is not concatenated twice.
+            tok_w = 0 if self.raw_tokens else d
+            self.pe_country = nn.Sequential(nn.Linear(tok_w + board_in + k, k), nn.GELU(),
                                             nn.Linear(k, 1))
-            self.pe_card = nn.Sequential(nn.Linear(d + card_in + k, k), nn.GELU(),
+            self.pe_card = nn.Sequential(nn.Linear(tok_w + card_in + k, k), nn.GELU(),
                                          nn.Linear(k, 1))
             for head in (self.pe_country, self.pe_card):
                 out = head[-1]
@@ -239,6 +250,15 @@ class LadderNet(ColdWarNetV2):
             e_card = self.lad_card(torch.index_select(
                 card_raw, 1, cast(torch.Tensor, self.card_keep_idx)))
             h = self.fusion_in(torch.cat([e_board, e_card, self.global_proj(glob)], dim=-1))
+            if self.raw_tokens:
+                # The tokens are the raw slots themselves. `_policy_logits` concatenates
+                # (token, raw, trunk context); with raw tokens the first two would be the same
+                # vector, so an empty token slice is passed and the head is sized for it.
+                b_nodes = board_raw.view(b, 84, self.board_features)
+                c_nodes = card_raw.view(b, 110, self.card_features)
+                empty_b = b_nodes.new_zeros(b, 84, 0)
+                empty_c = c_nodes.new_zeros(b, 110, 0)
+                tokens = (empty_b, b_nodes, empty_c, c_nodes)
 
         else:  # entity
             board_nodes = obs[:, :self.BOARD_SIZE].view(b, 84, self.board_features)
