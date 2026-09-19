@@ -1056,8 +1056,18 @@ def run_post_training_tournament(
     print(" LAUNCHING POST-TRAINING MASSIVE TOURNAMENT BENCHMARK", flush=True)
     print("=" * 80 + "\n", flush=True)
 
+    # Snapshots only. `discover_checkpoints` lists every .pt, which is right for
+    # `tools/inspect_checkpoints.py` but wrong here: a run directory also holds `resume_*.pt` and
+    # `resume_state.pt`, which carry optimizer and numpy RNG state rather than a policy. Those
+    # cannot be loaded under `weights_only=True`, so entering one as a tournament model raises
+    # UnpicklingError and takes the whole post-training tournament down with it -- which is how
+    # E4-02-01 lost its tournament after completing all 240M steps.
     ckpts = discover_checkpoints(checkpoint_dir)
-    models_to_evaluate = [c["path"] for c in ckpts]
+    models_to_evaluate = [c["path"] for c in ckpts
+                          if os.path.basename(c["path"]).startswith("snapshot_")]
+    if not models_to_evaluate:
+        print("  no snapshot_*.pt in the run directory; skipping the tournament", flush=True)
+        return
 
     baselines = additional_models or ["heuristic", "random"]
     for b in baselines:
