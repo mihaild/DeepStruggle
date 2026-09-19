@@ -205,9 +205,14 @@ DEFCON pass. "Participate vs boycott" does not.
   **decline** returns it and continues with Grain Sales' own 2 Ops; anything else is the ordinary
   5-way resolution acting on the stack top. No card-specific branch remains. This only works given
   §2, which is the argument for §2.
-  **Attempted, failed and reverted once** (clean baseline: `47f6043`). The detail plan, including
-  the three mechanisms that broke it, is
-  [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md). Still to do.
+  **DONE** in `aa5ec64`, though not by the child frame this line describes. That was attempted,
+  failed and reverted (`47f6043`); what shipped needs **no nesting at all** — the offer is the
+  drawn card's own resolution node on Grain Sales' frame, converted on a decline and replaced on a
+  play. Design: [P17_stack_layout.md](P17_stack_layout.md) §1b. The abandoned child-frame plan,
+  kept for its failure analysis: [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md).
+  Also landed with it: UN Intervention playable on the drawn card, headline draws of UN
+  Intervention restricted to the decline, and a Missile Envy rules fix found on the way
+  ([missile_envy_starred_removal.md](../findings/engine/missile_envy_starred_removal.md)).
 * **South African Unrest** — `CHOOSE_BRANCH{+2 SA, +1 SA then split}` becomes `POINT_NODE` over
   {South Africa, adjacent} with ops counted after.
 

@@ -102,7 +102,7 @@ from card C*. That is not a decision context.
 `card_dispatcher.cpp:770` sets `suppress_op_card_event = 1`, puts `SELECT_OP_MODE` on the current
 frame and pushes nothing. It is already the model the other cards should follow.
 
-### Grain Sales — the plan
+### Grain Sales — LANDED in `aa5ec64`
 
 Grain Sales looked like the hard case because P17 §5's first attempt pushed the child frame
 *before* the US answered, so the parent had to survive a possible decline. **The choice comes
@@ -122,6 +122,24 @@ So §5's goal — `CHOOSE_BRANCH{play, return}` disappears — is reached with *
 depth-7 overflow that made work item 3.0 necessary never arises. If the drawn card is played
 Event-first, the US owes its Ops afterwards: one more owed-Ops record, the same shape as Five Year
 Plan's.
+
+**Two things the implementation taught that this plan did not predict.**
+
+1. **The drawn card must move into the US hand when it is DRAWN, not when it is kept.** Staging it
+   at `PEEKED_TEMP` splits the engine: the mask is generated against a position and `step`
+   validates against it, so every predicate asking where the card is must give both the same
+   answer. With the card staged, ActionMask's Missile Envy forced-play test read `in_hand_of` as
+   false and offered the Event while `step`'s identical test read it as true and refused. The old
+   two-decision shape hid this, because the card moved *between* the two nodes. The fuzzer found
+   it. Fidelity ("shown, not taken") lost to consistency, and nothing is leaked: the USSR is never
+   the decision player anywhere in Grain Sales, so no observation is taken for them in that window.
+2. **A rule written only in the flat mask is enforced but invisible.** `step` validates against the
+   flat mask, so the headline/UN-Intervention restriction appeared to work — while every caller
+   building an action from the *per-decision* mask still offered a play the engine then refused.
+   The fuzzer hit that too. Such rules belong in `generate_mask`, which the flat builder maps.
+
+`step`'s type-match guard also needed one narrow, named exception, since UN Intervention on the
+drawn card is the only card-shaped action legal at a resolution node.
 
 ### Three refinements from the owner
 

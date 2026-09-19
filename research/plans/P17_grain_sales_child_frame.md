@@ -1,5 +1,22 @@
 # P17 §5 — Grain Sales on a child frame
 
+> **SUPERSEDED — kept for the diagnosis, not the design.** The child frame was abandoned. Grain
+> Sales landed in `aa5ec64` with **no nesting at all**: the offer is the drawn card's own
+> resolution node on Grain Sales' frame, converted on a decline and replaced on a play. The
+> owner's card-by-card analysis is what made that possible — once the choice precedes the frame,
+> Grain Sales owes nothing either way and has nothing to come back to. See
+> [P17_stack_layout.md](P17_stack_layout.md) §1b for the design that shipped.
+>
+> Two things here remain true and are worth keeping. §1's failure analysis is what ruled the child
+> frame out, and work item **3.0 (resize `ctx_stack` 6 → 8) is no longer needed**: the depth-7
+> worst case was caused by the child frame, and without it the bound never moves.
+>
+> One prediction below was wrong and the fix is recorded in the shipped design: §3.4 argued for
+> keeping the drawn card at `PEEKED_TEMP` until first use. That splits the mask from `step` —
+> ActionMask and `step` run identical predicates against different positions — and the fuzzer
+> caught it. The card now moves into the US hand when drawn.
+
+
 Detail plan for the half of §5 that was attempted, failed and reverted (commit `47f6043` is the
 clean baseline it must be re-applied to). §5's other half, South African Unrest, is landed.
 
