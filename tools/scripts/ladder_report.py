@@ -1,63 +1,104 @@
 #!/usr/bin/env python3
-"""The standing report for one rung of the P21 architecture ladder.
+"""The standing table for the P21 architecture ladder.
 
-Every rung is reported the same way, so twelve modifications produce twelve comparable blocks
-rather than twelve hand-written summaries that each emphasise something different:
+One table per new arm, so twelve modifications produce twelve comparable reports rather than
+twelve hand-written summaries each emphasising something different. Rows are every arm in the
+tournament -- the ladder rungs so far, plus `E4-03-01@80M`, `E4-04-01@80M` and `HeuristicBot`.
+Columns are:
 
-  1. **Elo**, from the tournament's Bradley-Terry fit.
-  2. **Per-side win rate against the previous rung** — the matched comparison, and the only one
-     that supports a causal claim about the mechanism this rung adds.
-  3. **Per-side win rate against `E4-03-01@80M`** — the anchor, for absolute placement.
+    Elo              from the tournament's Bradley-Terry fit
+    steps/s          the arm's own measured throughput, so the compute price is never implicit
+    USSR / US vs previous   per side against the rung below -- the matched comparison
+    USSR / US vs anchor     per side against E4-03-01@80M -- absolute placement
 
-Per side, not pooled, because a pooled number hides the failure mode this ladder has already
-turned up: M0 beats HeuristicBot 90% as USSR and 59% as US, and the pooled 74.5% shows neither.
+**Per side, never pooled.** A pooled number hides the failure this ladder surfaced on its first
+rung: M0 beats the E4 defaults 80% as USSR and 49% as US, and the pooled 64.5% shows neither.
 
-    tools/scripts/ladder_report.py <tournament.json> --rung <label> [--previous <label>]
+**One tournament per table.** Bradley-Terry ratings are field-relative -- the anchor rated 2107.2
+in one tournament and 2179.5 in another, unchanged, because the entrants differed. Only deltas
+inside a single tournament mean anything, so this reads exactly one JSON.
 
-Labels are the tournament's own entrant names, as `checkpoint_id.checkpoint_label` produces them.
+    tools/scripts/ladder_report.py <tournament.json> --previous <label> [--anchor <label>]
 """
 
 from __future__ import annotations
 
 import argparse
+import glob
 import json
-import sys
+import os
+import re
 from typing import Any, Dict, Optional, Tuple
 
 #: The P21 anchor: best of the first four E4 arms, at 80M and at any budget alike.
 ANCHOR_DEFAULT = "E4-03-01@final"
+CHECKPOINT_ROOT = "/workspace/data/checkpoints"
 
 
-def _per_side(data: Dict[str, Any], a: str, b: str) -> Optional[Tuple[float, float, bool]]:
-    """(a's win rate as USSR, as US, whether the stored pair was reversed)."""
+def per_side(data: Dict[str, Any], a: str, b: str) -> Optional[Tuple[float, float]]:
+    """(a's win rate as USSR, as US) against b, or None if the pair was not played."""
+    if a == b:
+        return None
     ps = data.get("per_side", {})
-    key = f"{a}_vs_{b}"
-    if key in ps:
-        e = ps[key]
-        return float(e["win_rate_a_as_ussr"]), float(e["win_rate_a_as_us"]), False
-    key = f"{b}_vs_{a}"
-    if key in ps:
-        e = ps[key]
+    e = ps.get(f"{a}_vs_{b}")
+    if e is not None:
+        return float(e["win_rate_a_as_ussr"]), float(e["win_rate_a_as_us"])
+    e = ps.get(f"{b}_vs_{a}")
+    if e is not None:
         # Stored from b's perspective: a played US in b's USSR games and vice versa.
-        return 1.0 - float(e["win_rate_a_as_us"]), 1.0 - float(e["win_rate_a_as_ussr"]), True
+        return 1.0 - float(e["win_rate_a_as_us"]), 1.0 - float(e["win_rate_a_as_ussr"])
     return None
 
 
-def _line(label: str, got: Optional[Tuple[float, float, bool]]) -> str:
+def steps_per_sec(entrant: str) -> Optional[float]:
+    """Median post-warmup throughput for the run behind an entrant label, if it is a checkpoint.
+
+    Reported because this ladder's rungs differ by 4-5x in speed -- M0 runs 60,814 steps/s
+    against the anchor's 11,732 -- so an Elo quoted without its compute price is half a result.
+    """
+    m = re.match(r"^(E\d+-\d+-\d+)@", entrant)
+    if not m:
+        return None
+    dirs = [d for d in glob.glob(os.path.join(CHECKPOINT_ROOT, m.group(1) + "_*"))
+            if "_VOID_" not in d]
+    if not dirs:
+        return None
+    vals = []
+    for d in sorted(dirs, key=os.path.getmtime, reverse=True):
+        path = os.path.join(d, "training_metrics.jsonl")
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                v = r.get("steps_per_sec_avg") or r.get("steps_per_sec")
+                # Skip the first 50 iterations: startup, compile and the snapshot@0 evaluation
+                # all distort them.
+                if isinstance(v, (int, float)) and v > 0 and int(r.get("iteration", 0)) > 50:
+                    vals.append(float(v))
+        if vals:
+            break
+    if not vals:
+        return None
+    vals.sort()
+    return vals[len(vals) // 2]
+
+
+def _cell(got: Optional[Tuple[float, float]], which: int) -> str:
     if got is None:
-        return f"  vs {label:26s} — not in this tournament"
-    ussr, us, _ = got
-    pooled = 0.5 * (ussr + us)
-    gap = 100 * (ussr - us)
-    return (f"  vs {label:26s} {100*ussr:5.1f}% as USSR | {100*us:5.1f}% as US "
-            f"| {100*pooled:5.1f}% pooled | side gap {gap:+5.1f} pp")
+        return "—"
+    return f"{100 * got[which]:.1f}%"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("tournament_json")
-    ap.add_argument("--rung", required=True, help="entrant name of the rung being reported")
     ap.add_argument("--previous", default=None,
                     help="entrant name of the rung below. Omit for M0, which is the floor.")
     ap.add_argument("--anchor", default=ANCHOR_DEFAULT)
@@ -65,35 +106,27 @@ def main() -> int:
 
     with open(args.tournament_json, encoding="utf-8") as f:
         data = json.load(f)
-
     elo = data.get("elo_ratings", {})
-    if args.rung not in elo:
-        print(f"'{args.rung}' is not in this tournament. Entrants: {sorted(elo)}",
-              file=sys.stderr)
-        return 1
 
-    print(f"# {args.rung}")
-    print(f"\n## Elo  ({data.get('games_per_side')} games per side, "
-          f"tau={data.get('temperature')})\n")
-    for i, (name, rating) in enumerate(sorted(elo.items(), key=lambda kv: -kv[1]), start=1):
-        mark = "  <-- this rung" if name == args.rung else ""
-        print(f"  {i}. {name:24s} {rating:7.1f}{mark}")
+    prev_label = args.previous or "—"
+    print(f"games per side {data.get('games_per_side')}, tau={data.get('temperature')}   "
+          f"previous rung: {prev_label}   anchor: {args.anchor}\n")
+    head = (f"| {'arm':26s} | {'Elo':>7s} | {'steps/s':>8s} "
+            f"| {'USSR v prev':>11s} | {'US v prev':>9s} "
+            f"| {'USSR v anch':>11s} | {'US v anch':>9s} |")
+    print(head)
+    print("|" + "|".join(["-" * (len(c) + 2) for c in
+                          ["x" * 26, "x" * 7, "x" * 8, "x" * 11, "x" * 9, "x" * 11, "x" * 9]])
+          + "|")
 
-    print("\n## Per side\n")
-    if args.previous:
-        print(_line(f"{args.previous} (previous rung)", _per_side(data, args.rung,
-                                                                  args.previous)))
-    else:
-        print("  vs previous rung             — none; this is the floor of the ladder")
-    print(_line(f"{args.anchor} (anchor)", _per_side(data, args.rung, args.anchor)))
-
-    if args.previous:
-        prev = elo.get(args.previous)
-        if prev is not None:
-            print(f"\n  delta vs previous rung: {elo[args.rung] - prev:+.1f} Elo")
-    anc = elo.get(args.anchor)
-    if anc is not None:
-        print(f"  delta vs anchor:        {elo[args.rung] - anc:+.1f} Elo")
+    for name, rating in sorted(elo.items(), key=lambda kv: -kv[1]):
+        sps = steps_per_sec(name)
+        vp = per_side(data, name, args.previous) if args.previous else None
+        va = per_side(data, name, args.anchor)
+        print(f"| {name:26s} | {rating:7.1f} | "
+              f"{(f'{sps:,.0f}' if sps else '—'):>8s} | "
+              f"{_cell(vp, 0):>11s} | {_cell(vp, 1):>9s} | "
+              f"{_cell(va, 0):>11s} | {_cell(va, 1):>9s} |")
     return 0
 
 

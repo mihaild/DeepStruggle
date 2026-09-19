@@ -473,53 +473,43 @@ as "the mechanism won". The realised count goes in each run's `--description`.
 
 ## How every rung is reported
 
-Fixed by the owner, 2026-09-19. Each rung gets the same three things, so twelve modifications
-produce twelve comparable blocks instead of twelve summaries that each emphasise something
-different:
+Fixed by the owner, 2026-09-19. **One table per new arm**, so twelve modifications produce twelve
+comparable reports instead of twelve summaries that each emphasise something different.
 
-1. **Elo**, from the tournament's Bradley-Terry fit.
-2. **Per-side win rate against the previous rung** — the matched comparison, and the only one
-   supporting a causal claim about the mechanism this rung adds. Not applicable to M0, which is
-   the floor.
-3. **Per-side win rate against `E4-03-01@80M`** — the anchor, for absolute placement.
+**Rows:** every ladder arm so far, plus `E4-03-01@80M`, `E4-04-01@80M` and `HeuristicBot`.
 
-**Per side, never pooled.** A pooled number hides exactly the failure this ladder has already
-surfaced: M0 beats `HeuristicBot` **90% as USSR and 59% as US**, and the pooled 74.5% shows
-neither. Side asymmetry that large is a property of the rung worth knowing before it is carried
-up the ladder.
+**Columns:** Elo | steps/s | USSR and US win rate against the **previous rung** | USSR and US win
+rate against the **anchor**.
 
-`tools/scripts/ladder_report.py <tournament.json> --rung <label> [--previous <label>]` emits the
-block. It reads the tournament's own JSON, and handles the per-side entry being stored in either
-direction — a pair recorded as `B_vs_A` is inverted, with the seats swapped, rather than reported
-as missing.
+```
+| arm                        |     Elo |  steps/s | USSR v prev | US v prev | USSR v anch | US v anch |
+|----------------------------|---------|----------|-------------|-----------|-------------|-----------|
+| E4-03-01@final             |  2179.5 |   11,732 |           — |         — |           — |         — |
+| E4-05-02@final  (M0 @160M) |  1813.3 |   60,814 |           — |         — |        9.0% |      9.0% |
+| E4-04-01@final             |  1706.9 |   14,057 |           — |         — |        3.0% |      9.0% |
+| E4-05-02@80M    (M0 @80M)  |  1666.6 |   60,814 |           — |         — |        3.0% |      7.0% |
+| E4-05-01@final  (M0 @80M)  |  1650.0 |   63,187 |           — |         — |        8.0% |      5.0% |
+| HeuristicBot               |  1500.0 |        — |           — |         — |        1.0% |      1.0% |
+```
 
-## Two measured facts that change how the ladder is read
+`tools/scripts/ladder_report.py <tournament.json> --previous <label> [--anchor <label>]`.
 
-### Seed variance at this budget is tiny, not ~95 Elo
+Three properties of the format, each there because of something already measured:
 
-M0's two seeds at 80M, rated in one tournament: **1664.8 and 1664.8 Elo**, playing each other to
-**49.5%** (99W-99L-2D). Per matchup they differ by 3, 6 and 3 games out of 200 -- about 1.5-3 pp
--- which cancelled exactly in the aggregate.
+* **Per side, never pooled.** M0 beats the E4 defaults **80% as USSR and 49% as US**; the pooled
+  64.5% shows neither. Side asymmetry that large is a property of a rung worth seeing before it is
+  carried upward.
+* **steps/s in every row.** The rungs differ by **4-5x** in throughput — M0 runs 60,814 against
+  the anchor's 11,732 — so an Elo quoted without its compute price is half a result, and the
+  compute-parity gate cannot be applied without it.
+* **One tournament per table.** Bradley-Terry ratings are field-relative: the anchor rated 2107.2,
+  2158.3 and 2179.5 in three tournaments, unchanged, purely because the entrants differed. Only
+  deltas inside a single tournament mean anything, so the tool reads exactly one JSON and a rung
+  is always rated in a field containing both the anchor and the rung below it.
 
-The ~95 Elo figure this plan budgeted for comes from
-[`seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md) and is an E3 measurement at
-other budgets and architectures. **On this rung, at this budget, it is nowhere near that**, which
-means adjacent rungs can be separated far more finely than feared and the owner's condition for
-the protocol -- effects larger than variance -- is met with room to spare.
-
-Two caveats stay attached: this is M0, a simple architecture that may be more stable than the
-attention rungs, and two seeds is one degree of freedom, so it *bounds* variance rather than
-estimating it. Re-check it on the first rung whose seeds visibly disagree.
-
-### Elo is field-relative; only within-tournament deltas mean anything
-
-The anchor rated **2107.2** in one tournament and **2158.3** in the next, unchanged, purely
-because the entrant field differed. Bradley-Terry fits a rating to the field it is given.
-
-So **every rung must be rated in a tournament that contains both the anchor and the rung below
-it**, and only the deltas inside that tournament may be quoted. A rung's Elo carried across
-tournaments and compared to another rung's is meaningless -- the kind of arithmetic that looks
-rigorous and is not. `ladder_report.py` reads a single tournament's JSON for exactly this reason.
+**The anchor is `E4-03-01@80M`.** (The request named `E4-01-01@80M`; that arm is the warm-started
+unpooled one and is not the anchor either anchor rule selects, so this is read as a slip. The
+reference is a `--anchor` flag, so it is one word to change if it was not.)
 
 ## Budget
 
