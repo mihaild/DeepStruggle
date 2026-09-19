@@ -60,6 +60,50 @@ not. If the ladder stalls, multi-hop reachability is the thing to add — and it
 add it as observation features than as a graph layer, which is the owner's call under the standing
 rule on observation changes.
 
+## Static per-entity features only do work when the reader is shared or position-blind
+
+Raised by the owner, 2026-09-19. A slot that never varies contributes a **fixed vector** to the
+first layer's pre-activation. Where each entity has its own weights — a flat MLP, or any flattened
+positional encoder — that vector is exactly a bias, so the weights reading it add **no
+expressivity whatsoever**.
+
+Measured over 25,600 observations from deep random rollouts, the slots that are constant for
+*every* entity are precisely the ones `observation.cpp` derives from static `MapData` / card
+properties:
+
+| block | constant slots | floats |
+|:---|:---|---:|
+| board | 3, 4, 10–18 — stability, battleground, the 6-way region one-hot, WE / EE / SEA | 84 x 11 = **924** |
+| card | 8, 10, 11, 12 — ops, era, one_time, is_scoring | 110 x 4 = **440** |
+| | | **1,364 of 3,824 = 36%** |
+
+(A shallower sample reports 54–68%, but that is contaminated: short rollouts never reach states
+where `REMOVED`, `ONGOING` or `NOT_IN_GAME` fire. Only the figures above are structural.)
+
+**Consequence for the ladder, and it is a confound, not a curiosity.** At `H=384` those 1,364
+inputs consume `1364 x 384 = 524k` parameters that are functionally a bias — **17% of a 3.1M
+budget**. Matching M0 to 3.1M *total* therefore hands it ~2.6M *useful*, and quietly biases the
+comparison against the simplest rung.
+
+**So: strip the 1,364 structurally-constant columns in M0 and M1.** This is
+**expressivity-neutral** — the removed contribution is exactly a constant vector the bias can
+already express — and it frees the 524k for trunk width, making the parameter match honest.
+
+**Do not strip them anywhere else.** From M2 onward the entity encoder is *shared*, and that is
+exactly when a static feature carries information: the shared function needs "is this a
+battleground, and how stable" to compute a useful token, because it cannot know which country it
+is looking at. Under pooling (M4) they are load-bearing for the same reason, plus they are all
+that survives to distinguish country *types* in a symmetric summary.
+
+**This sharpens the M1→M2 prediction.** Part of what weight sharing buys is the ability to *use*
+36% of the observation that a positional dense layer provably cannot. If M2 beats M1, that is a
+candidate mechanism; if M2 does not beat M1 even with 36% more usable input, the entity framing is
+in real trouble.
+
+It is the same complementarity as `country_identity`, from the other side: static features,
+weight sharing and pooling are coupled. A static per-entity feature is informative exactly when
+its reader is position-blind — and `country_identity` is informative exactly when it is not.
+
 ## The fixed anchor
 
 Every rung is rated against **`E4-04-01@80M`** — cold, pooled, default architecture, completed
