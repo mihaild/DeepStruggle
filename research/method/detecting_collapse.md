@@ -30,10 +30,16 @@ numbers.
 own clean signature and is invisible to the other's instrument. Watching one metric and declaring
 a run healthy is the mistake this page exists to prevent.
 
-**2. Opponent-pool starvation is a structural check, not a threshold.** Is `opp_pool_size` present
-in the metrics at all, and is the pool growing toward capacity? A pool that is *absent*, or of
-size one and beaten nearly every game, **is the failure itself** rather than evidence of it. Visible
-at iteration 1. Needs no tuning and no reference run.
+**2. Opponent-pool starvation is a structural check, not a threshold.** Is `opp_pool_size`
+present in the metrics at all, and does the pool *grow*? A pool that is absent, or that never gets
+past a single opponent, **is the failure itself** rather than evidence of it. Needs no tuning and
+no reference run.
+
+**2a. Starvation is the pool failing to grow — not the pool being beaten.** "Beaten more than 90%
+of the time" was the obvious trigger and it is a **false positive**: E3-37-31, one of the
+healthiest arms in the record, sits above 0.9 for 947 of its 1,229 iterations while its pool grows
+to 8. A strong policy beating its own older snapshots is what improvement looks like. Alarm on
+`opp_pool_size` not rising, and treat `opp_win_rate_mean` as description.
 
 **3. KL domination shows as a step change in `kl_div` against that run's own running level.** The
 regularizer overwhelms the policy gradient. The transferable form is *orders of magnitude above
@@ -54,10 +60,14 @@ measures the collapsing run scores *better*. This is not a paradox: a degenerate
 direction at all, so it cannot name a side. E3 recorded that the answer it appeared to give was
 *backwards*; a threshold on it fired three times during E4-02-01 and was wrong every time.
 
-**7. Side balance is a flag, not a verdict.** One side genuinely improving faster produces the same
-reading as one side degenerating. It says where to look; it never settles anything. Its one virtue
-is that it is internal to self-play and needs no external opponent, unlike win rate against
-HeuristicBot — which is itself a bad health metric.
+**7. Side balance is a flag, not a verdict — and not even an alarm.** One side genuinely improving
+faster produces the same reading as one side degenerating. Stronger than that: swept over trailing
+windows of 100/200/300/400 iterations, the pinned fraction **does not separate healthy from
+degenerate at any threshold**. The clean 320M arm the round robin ranks first sustains 0.50–0.72
+pinned; the heavily one-sided arm reaches 0.54–0.87. They overlap, so any latched trigger fires on
+the best run in the record. Transient total pinning is normal in healthy self-play. Print it,
+never alarm on it. Its one virtue is that it is internal to self-play and needs no external
+opponent, unlike win rate against HeuristicBot — which is itself a bad health metric.
 
 **8. Dynamics metrics describe, they do not trigger.** `entropy`, `clip_frac`, `adv_std_raw`,
 `logratio_max` are worth printing because when something *does* go wrong they say what *kind* of
@@ -96,24 +106,31 @@ magnitudes do not — is the whole basis for how this page is organised.
 
 Every trigger is self-relative. None requires a number from another run.
 
-1. **Iteration 1 — structural.** Is `opp_pool_size` in the metrics, and is `opp_win_rate_mean`
-   below ~0.9? Absent, or a pool of one beaten almost every game, is the failure itself. Catches
-   mode 1 only. (This one *is* absolute, because it is a question about presence, not magnitude.)
-2. **Continuously — `kl_div` against its own history.** Alarm on a jump of one or more orders of
-   magnitude above the run's own running median. Catches mode 2.
-3. **Continuously — `us_episode_frac` against 0.0 / 1.0.** Pinned at an extreme means one side is
-   winning everything. A flag for investigation, never a verdict, and it must exclude rows with
-   `episodes_completed == 0` (see [the trap](#a-measurement-trap-that-produced-a-false-finding)).
-   This covers the unpooled case, which `opp_pool_size` structurally cannot.
-4. **Every few snapshots.** Pool growing to capacity, `opp_pool_span_m` rolling forward,
-   `opp_win_rate_mean` staying off 1.0.
-5. **As description only.** `entropy`, `clip_frac`, `adv_std_raw`, `logratio_max` — what kind of
-   wrong, once something else has fired.
-6. **Never.** Critic quality, `critic_base_rate`, side balance alone, `steps_per_sec`, win rate
-   against HeuristicBot.
-7. **To confirm before acting.** Per-seat win rate against a frozen reference.
+**ALARM — `NOPOOL`, structural, iteration 1.** `opp_pool_size` absent from the metrics
+entirely. The run has no opponent pool; that is the failure, not evidence of it.
 
-`tools/scripts/watch_run.py` implements 1–5.
+**ALARM — `POOLSTUCK`, structural.** `opp_pool_size` never exceeding 1 over at least 100
+iterations. The pool is not growing.
+
+**ALARM — `KLSPIKE`, self-relative.** `kl_div` jumping 10x or more above *this run's own* median
+(with an absolute floor, so an early near-zero median cannot fire it). Catches mode 2.
+
+**DESCRIPTION, never an alarm.** `us_episode_frac` (excluding rows with
+`episodes_completed == 0` — see [the trap](#a-measurement-trap-that-produced-a-false-finding)),
+`entropy`, `clip_frac`, `adv_std_raw`, `opp_win_rate_mean`, `logratio_max`. These say what *kind*
+of wrong, once something else has fired.
+
+**NEVER.** Critic quality, `critic_base_rate`, side balance as a trigger, `steps_per_sec`, win
+rate against HeuristicBot.
+
+**TO CONFIRM BEFORE ACTING.** Per-seat win rate against a frozen reference.
+
+`tools/scripts/watch_run.py` implements the three alarms and prints the description metrics.
+Validated by replay over all 54 runs in the record: **23 fire, 31 are silent, and every alarm
+lands on a run already known to be bad** — 20 NOPOOL on the genuinely unpooled arms, POOLSTUCK on
+E3-24-28, and KLSPIKE on exactly the two known KL-domination collapses (56x and 1070x their own
+medians). No false positives. Two triggers were discarded during that validation for firing on
+healthy arms: `opp_win_rate_mean > 0.9` (finding 2a) and any one-sidedness threshold (finding 7).
 
 ---
 

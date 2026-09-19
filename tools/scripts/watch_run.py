@@ -42,7 +42,7 @@ import os
 import subprocess
 import sys
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 #: What a PROGRESS line carries, ordered by how much it is worth.
 #:
@@ -197,6 +197,97 @@ def process_alive(pattern: str) -> bool:
     return False
 
 
+#: Health alarms, implementing the protocol in `research/method/detecting_collapse.md`.
+#:
+#: Until now this watcher alarmed on *process* conditions only -- CRASH, STALL, NOSTART -- and
+#: merely printed the metrics alongside PROGRESS. So the two collapses this repo has diagnosed
+#: were both caught by a human reading the numbers, which is exactly what the protocol exists to
+#: replace.
+#:
+#: Every magnitude trigger is **self-relative**, compared against the run's own history rather
+#: than a constant. Magnitudes do not transfer across a lineage: fitted on E4 and checked on E3,
+#: `clip_frac` and `adv_std_raw` reverse sign and entropy's separation collapses to noise. Only
+#: the pool check is absolute, because it asks whether an instrument is *present*, not how big a
+#: number is.
+KL_SPIKE_FACTOR = 10.0   # times the run's own median
+KL_SPIKE_FLOOR = 1.0     # ...but never alarm below this, so an early tiny median cannot fire
+#: Starvation is the pool failing to *grow*, not the pool being beaten. `opp_win_rate_mean`
+#: above 0.9 was tried first and is a false positive: E3-37-31, one of the healthiest arms in
+#: the record, sits above it for 947 of 1229 iterations while its pool grows to 8. A strong
+#: policy beating its own older snapshots is what improvement looks like.
+POOL_STUCK_SIZE = 1.5    # a pool that never gets past one opponent
+POOL_GROWTH_ROWS = 100   # ...over at least this many iterations
+#: One-sidedness is printed (`us_episode_frac`) but deliberately never alarms. Measured across
+#: the labelled arms at trailing windows of 100/200/300/400 iterations, the pinned fraction does
+#: not separate healthy from degenerate at ANY threshold: the clean 320M arm that the round robin
+#: ranks first sustains 0.50-0.72 pinned, overlapping the heavily one-sided arm's 0.54-0.87.
+#: Transient total pinning is normal in healthy self-play, so any latched trigger would fire on
+#: the best run in the record. It stays a flag for a human to follow up, which is what
+#: `research/method/detecting_collapse.md` means by "a flag, not a verdict".
+ONESIDED_NO_ALARM = True
+
+
+def _median(xs: List[float]) -> float:
+    ys = sorted(xs)
+    n = len(ys)
+    if n == 0:
+        return 0.0
+    return ys[n // 2] if n % 2 else 0.5 * (ys[n // 2 - 1] + ys[n // 2])
+
+
+def health_alarms(run_dir: str, fired: Set[str]) -> List[str]:
+    """Metric-condition alarms, each emitted at most once per run (latched via `fired`)."""
+    path = os.path.join(run_dir, "training_metrics.jsonl")
+    rows: List[Dict[str, Any]] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
+    if not rows:
+        return []
+
+    out: List[str] = []
+
+    def once(key: str, msg: str) -> None:
+        if key not in fired:
+            fired.add(key)
+            out.append(msg)
+
+    # 1. Structural: is there a pool at all, and is it opposition?
+    if not any("opp_pool_size" in r for r in rows):
+        once("nopool", "no `opp_pool_size` in the metrics at all -- this run has no opponent "
+                       "pool, which is the failure itself, not evidence of it")
+    else:
+        sizes = [r["opp_pool_size"] for r in rows
+                 if isinstance(r.get("opp_pool_size"), (int, float))]
+        if len(sizes) >= POOL_GROWTH_ROWS and max(sizes) <= POOL_STUCK_SIZE:
+            once("poolstuck",
+                 f"opp_pool_size never exceeded {max(sizes):.0f} across {len(sizes)} "
+                 f"iterations -- the pool is not growing, which is the starvation signature")
+
+    # 2. Self-relative: kl_div against this run's own median.
+    kls = [r["kl_div"] for r in rows if isinstance(r.get("kl_div"), (int, float))]
+    if len(kls) >= 30:
+        med = _median(kls[:-5] or kls)
+        trigger = max(KL_SPIKE_FACTOR * med, KL_SPIKE_FLOOR)
+        recent = max(kls[-5:])
+        if recent > trigger:
+            once("klspike",
+                 f"kl_div spiked to {recent:.3f} against this run's own median of {med:.4f} "
+                 f"({recent / med:.0f}x) -- the KL-domination signature")
+
+    # 3. One-sidedness is deliberately NOT an alarm -- see the note on ONESIDED_NO_ALARM.
+    return out
+
+
 def summary(row: Optional[Dict[str, Any]]) -> str:
     if not row:
         return ""
@@ -233,6 +324,7 @@ def main() -> int:
     last_move = time.time()
     started = False
     stall_reported = False
+    fired: Set[str] = set()
 
     while True:
         steps, row, iters = read_metrics(args.run_dir)
@@ -270,6 +362,10 @@ def main() -> int:
             stall_reported = True
             emit(f"STALL {run}: alive but stuck at {last_steps:,} steps for "
                  f"{int(now - last_move)}s")
+
+        if started:
+            for msg in health_alarms(args.run_dir, fired):
+                emit(f"HEALTH {run}: {msg}")
 
         if started and steps is not None:
             pct = 100.0 * steps / max(args.target_steps, 1)
