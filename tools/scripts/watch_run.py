@@ -308,6 +308,11 @@ def main() -> int:
                     help="Cumulative step count that means the run is finished. For a RESUMED "
                          "run this includes the steps it inherited, not just the increment.")
     ap.add_argument("--interval", type=int, default=120, help="Seconds between checks")
+    ap.add_argument("--progress-every", type=float, default=10.0,
+                    help="Emit PROGRESS only after completion advances this many percentage "
+                         "points since the last one (0 = every check). Polling stays at "
+                         "--interval so CRASH and STALL keep their responsiveness; this only "
+                         "throttles the routine line, which is pure noise between snapshots.")
     ap.add_argument("--pattern", default="tools/train.py",
                     help="pgrep -f pattern identifying the training process. The run name works; "
                          "this watcher and its shell are excluded from the match, since their own "
@@ -325,6 +330,7 @@ def main() -> int:
     started = False
     stall_reported = False
     fired: Set[str] = set()
+    last_pct_emitted: Optional[float] = None
 
     while True:
         steps, row, iters = read_metrics(args.run_dir)
@@ -369,8 +375,13 @@ def main() -> int:
 
         if started and steps is not None:
             pct = 100.0 * steps / max(args.target_steps, 1)
-            emit(f"PROGRESS {run}: {steps:,}/{args.target_steps:,} ({pct:.1f}%)"
-                 f"{summary(row)}")
+            due = (last_pct_emitted is None
+                   or args.progress_every <= 0
+                   or pct - last_pct_emitted >= args.progress_every)
+            if due:
+                last_pct_emitted = pct
+                emit(f"PROGRESS {run}: {steps:,}/{args.target_steps:,} ({pct:.1f}%)"
+                     f"{summary(row)}")
 
         time.sleep(args.interval)
 
