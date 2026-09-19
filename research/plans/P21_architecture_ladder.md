@@ -542,8 +542,16 @@ comparable reports instead of twelve summaries that each emphasise something dif
 
 **Rows:** every ladder arm so far, plus `E4-03-01@80M`, `E4-04-01@80M` and `HeuristicBot`.
 
-**Columns:** Elo | steps/s | USSR and US win rate against the **previous rung** | USSR and US win
-rate against the **anchor**.
+**Columns:** Elo | steps/s | the arm's **own side balance** across the whole field (USSR, US,
+gap) | USSR and US against the **previous rung** | USSR and US against the **anchor**.
+
+**The own-side-balance columns are not redundant with the others, and answer a different
+question.** A rate *against one opponent* conflates the arm's skill in that seat with the
+opponent's weakness in the other: M1 beats M0 70% as USSR largely because M0 is poor *at US*.
+Averaged across the whole field, `USSR all` / `US all` measure an arm's own per-seat competence.
+They also fill the anchor's row, which is blank in the against-columns because it cannot play
+itself — and the anchor's balance is the target profile: **−1.7 pp**, 91.0% as USSR against 92.8%
+as US.
 
 ```
 | arm                        |     Elo |  steps/s | USSR v prev | US v prev | USSR v anch | US v anch |
@@ -562,7 +570,9 @@ Three properties of the format, each there because of something already measured
 
 * **Per side, never pooled.** M0 beats the E4 defaults **80% as USSR and 49% as US**; the pooled
   64.5% shows neither. Side asymmetry that large is a property of a rung worth seeing before it is
-  carried upward.
+  carried upward — and at M1 it turned out to be the *whole* result: M1's +102 Elo over M0 is
+  **+26 pp in the US seat and +0.8 pp in the USSR seat**. A single pooled number would have
+  reported "M1 is better" and hidden that M0 is close to a one-seat player.
 * **steps/s in every row.** The rungs differ by **4-5x** in throughput — M0 runs 60,814 against
   the anchor's 11,732 — so an Elo quoted without its compute price is half a result, and the
   compute-parity gate cannot be applied without it.

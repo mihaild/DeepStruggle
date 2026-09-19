@@ -50,6 +50,30 @@ def per_side(data: Dict[str, Any], a: str, b: str) -> Optional[Tuple[float, floa
     return None
 
 
+def side_balance(data: Dict[str, Any], arm: str) -> Optional[Tuple[float, float]]:
+    """(arm's win rate as USSR, as US) across EVERY opponent in this tournament.
+
+    The per-arm columns only ever show a rate *against something*, so the anchor's own row is
+    blank there -- it cannot play itself. This is the row that says how an arm is doing from each
+    seat overall, which is how the ladder noticed that M0 is a competent USSR and a poor US while
+    the anchor sits within a point of even.
+    """
+    ussr_w = ussr_n = us_w = us_n = 0
+    for key, e in data.get("per_side", {}).items():
+        a, _, b = key.partition("_vs_")
+        n = int(e["games_per_side"])
+        if a == arm:
+            ussr_w += int(e["a_wins_as_ussr"]); ussr_n += n
+            us_w += int(e["a_wins_as_us"]); us_n += n
+        elif b == arm:
+            # a played USSR in those games, so `arm` played US, and vice versa.
+            us_w += n - int(e["a_wins_as_ussr"]); us_n += n
+            ussr_w += n - int(e["a_wins_as_us"]); ussr_n += n
+    if not ussr_n or not us_n:
+        return None
+    return ussr_w / ussr_n, us_w / us_n
+
+
 def steps_per_sec(entrant: str) -> Optional[float]:
     """Median post-warmup throughput for the run behind an entrant label, if it is a checkpoint.
 
@@ -112,19 +136,23 @@ def main() -> int:
     print(f"games per side {data.get('games_per_side')}, tau={data.get('temperature')}   "
           f"previous rung: {prev_label}   anchor: {args.anchor}\n")
     head = (f"| {'arm':26s} | {'Elo':>7s} | {'steps/s':>8s} "
+            f"| {'USSR all':>8s} | {'US all':>7s} | {'gap':>6s} "
             f"| {'USSR v prev':>11s} | {'US v prev':>9s} "
             f"| {'USSR v anch':>11s} | {'US v anch':>9s} |")
     print(head)
     print("|" + "|".join(["-" * (len(c) + 2) for c in
-                          ["x" * 26, "x" * 7, "x" * 8, "x" * 11, "x" * 9, "x" * 11, "x" * 9]])
-          + "|")
+                          ["x" * 26, "x" * 7, "x" * 8, "x" * 8, "x" * 7, "x" * 6,
+                           "x" * 11, "x" * 9, "x" * 11, "x" * 9]]) + "|")
 
     for name, rating in sorted(elo.items(), key=lambda kv: -kv[1]):
         sps = steps_per_sec(name)
         vp = per_side(data, name, args.previous) if args.previous else None
         va = per_side(data, name, args.anchor)
+        sb = side_balance(data, name)
+        gap = f"{100 * (sb[0] - sb[1]):+.1f}" if sb else "—"
         print(f"| {name:26s} | {rating:7.1f} | "
               f"{(f'{sps:,.0f}' if sps else '—'):>8s} | "
+              f"{_cell(sb, 0):>8s} | {_cell(sb, 1):>7s} | {gap:>6s} | "
               f"{_cell(vp, 0):>11s} | {_cell(vp, 1):>9s} | "
               f"{_cell(va, 0):>11s} | {_cell(va, 1):>9s} |")
     return 0
