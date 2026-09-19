@@ -31,7 +31,8 @@ def rung(**over):
     cfg: Dict[str, Any] = dict(BASE)
     cfg.update(input_mode="entity", aggregation="flatten", entity_dim=D,
                card_self_attention=False, cross_attention=False,
-               per_entity_heads=0, identity_dim=0, drop_static=False)
+               per_entity_heads=0, head_context=True, head_static=True,
+               head_entities="both", identity_dim=0, drop_static=False)
     cfg.update(over)
     return LadderNet(**cfg)
 
@@ -349,3 +350,76 @@ def test_identity_still_refused_where_nothing_shares_weights() -> None:
     """Without a per-entity head there is no shared function, so identity is pure redundancy."""
     with pytest.raises(ValueError, match="only useful"):
         rung(input_mode="grouped", identity_dim=8, per_entity_heads=0)
+
+
+# --------------------------------------------------- the M2 family (head decomposition)
+
+M2_FAMILY = {
+    "M2":     dict(head_context=True,  head_static=True,  head_entities="both",    identity_dim=0),
+    "M2a":    dict(head_context=False, head_static=True,  head_entities="both",    identity_dim=0),
+    "M2b":    dict(head_context=True,  head_static=False, head_entities="both",    identity_dim=0),
+    "M2c":    dict(head_context=False, head_static=False, head_entities="both",    identity_dim=0),
+    "M2d":    dict(head_context=True,  head_static=True,  head_entities="country", identity_dim=0),
+    "M2e":    dict(head_context=True,  head_static=True,  head_entities="card",    identity_dim=0),
+    "M2.5":   dict(head_context=True,  head_static=True,  head_entities="both",    identity_dim=8),
+    "M2.5b":  dict(head_context=True,  head_static=False, head_entities="both",    identity_dim=8),
+}
+
+
+@pytest.mark.parametrize("name", sorted(M2_FAMILY))
+def test_m2_family_builds_runs_and_round_trips(name, tmp_path) -> None:
+    """Each arm decomposes the correction, which is a function of item features and context.
+
+    Both degenerate cases say where the content must live: constants alone are a fixed per-TYPE
+    bias, and context alone is identical for all 84 countries -- a global shift the dense head
+    already supplies. So the mechanism is dynamic per-item features, optionally modulated by
+    context and optionally offset by per-item constants, and each "optionally" is an arm.
+    """
+    from ai.models.ladder_net import ladder_config_from_state_dict
+    from tools.lib.player_agent import NeuralAgent
+
+    model = rung(input_mode="grouped", drop_static=True, per_entity_heads=16,
+                 **M2_FAMILY[name]).eval()
+    obs = torch.randn(2, ColdWarNetV2.TOTAL_OBS_SIZE)
+    with torch.no_grad():
+        logits, _, _ = model.forward(obs, torch.ones(2, A, dtype=torch.uint8))
+    assert logits.shape == (2, A) and torch.isfinite(logits).all()
+
+    assert ladder_config_from_state_dict(dict(model.state_dict())) == model.ladder_config()
+    path = tmp_path / f"{name}.pt"
+    torch.save(model.state_dict(), path)
+    agent = NeuralAgent.from_checkpoint(str(path), device="cpu")
+    assert isinstance(agent.model, LadderNet)
+    assert agent.model.ladder_config() == model.ladder_config()
+
+
+def test_head_widths_match_what_each_arm_claims_to_read() -> None:
+    """The point of the family is that each arm reads exactly one thing less than M2."""
+    def w(**over) -> int:
+        m = rung(input_mode="grouped", drop_static=True, per_entity_heads=16, **over)
+        assert m.pe_country is not None
+        layer = m.pe_country[0]
+        assert isinstance(layer, torch.nn.Linear)
+        return int(layer.in_features)
+
+    full = w(**M2_FAMILY["M2"])
+    assert full == ColdWarNetV2.BOARD_FEATURES + 16              # 26 raw + 16 context
+    assert w(**M2_FAMILY["M2a"]) == ColdWarNetV2.BOARD_FEATURES  # context removed
+    assert w(**M2_FAMILY["M2b"]) == full - 11                    # 11 constant slots removed
+    assert w(**M2_FAMILY["M2c"]) == ColdWarNetV2.BOARD_FEATURES - 11
+    assert w(**M2_FAMILY["M2.5"]) == full + 8                    # identity added
+
+
+def test_switching_a_head_off_leaves_the_other_intact() -> None:
+    country_only = rung(input_mode="grouped", drop_static=True, per_entity_heads=16,
+                        **M2_FAMILY["M2d"])
+    card_only = rung(input_mode="grouped", drop_static=True, per_entity_heads=16,
+                     **M2_FAMILY["M2e"])
+    assert country_only.pe_country is not None and country_only.pe_card is None
+    assert card_only.pe_card is not None and card_only.pe_country is None
+
+
+def test_head_axes_refused_without_heads() -> None:
+    """They are inert without a head, so a non-canonical value means a misunderstanding."""
+    with pytest.raises(ValueError, match="only mean anything"):
+        rung(input_mode="grouped", per_entity_heads=0, head_context=False)

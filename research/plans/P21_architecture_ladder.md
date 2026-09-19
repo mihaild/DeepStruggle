@@ -278,6 +278,57 @@ one at a width other than 26. Attention on raw features is possible — `nn.Mult
 takes `kdim`/`vdim`, so cards (14) can attend over countries (26) directly — and is the cheaper
 thing to try first.
 
+## The M2 family — what the correction is actually made of
+
+**M2 measured +352.8 Elo, the largest single mechanism on the ladder**, and closed 92% of the
+MLP→anchor gap. That makes its internals worth decomposing rather than carrying forward whole.
+
+The head computes, for each entity *i*:
+
+```
+corr_i = MLP( [ raw_i (26 slots) ‖ ctx (64) ] )      ctx = pe_trunk(h), ONE vector per position
+```
+
+and the raw slots split into **15 dynamic** (influence, control, deficits, can-place, can-coup,
+realign modifier, node count) and **11 constant** (stability, battleground, region one-hot, the
+three sub-region flags). The two degenerate cases say where the content must live:
+
+* **constants only** → a fixed per-*type* bias, identical in every position;
+* **context only** → identical for all 84 countries, i.e. a global shift the dense head already
+  supplies.
+
+So the mechanism is *dynamic per-item features*, optionally modulated by context and optionally
+offset by per-item constants. Each of those "optionally"s is an arm.
+
+| arm | head input | question |
+|:---|:---|:---|
+| **M2** ✅ | dynamic + constant + ctx | the full mechanism — **measured, +352.8** |
+| **M2a** | dynamic + constant, **no ctx** | does the head need the trunk at all, or is a context-free per-entity map enough? |
+| **M2b** | dynamic + ctx, **no constants** | are the hand-designed per-type constants pulling weight, or does the trunk already carry them? |
+| **M2c** | dynamic only | both at once — the minimal head |
+| **M2d** | full, **`pe_country` only** | which side carries the +353? |
+| **M2e** | full, **`pe_card` only** | " |
+| **M2.5** | full + **identity** | a learned per-item constant, unique rather than per-type |
+| **M2.5b** | dynamic + ctx + identity, **no constants** | does identity *subsume* the hand-designed constants? |
+
+**M2d/M2e are the split the card-collision finding demands.** `pe_card` cannot distinguish 95 of
+110 cards without identity, while `pe_country` can address a country through its dynamic slots. So
+the prediction is that **`pe_country` carries most of the +353**. If `pe_card` alone is worth a
+lot, that reasoning is wrong and identity matters less than expected.
+
+**M2b and M2.5b are the same question from two sides.** Constants and identity are alternative
+ways to give a *shared* head a per-item offset: the constants are hand-designed and shared by
+type, identity is learned and unique per item. If identity subsumes them, M2.5b ≈ M2.5 and the
+11 constant slots can leave the head entirely.
+
+**M2a is the cheapest possible win if it holds.** `ctx` is the only path from the trunk into the
+correction; without it the head is a pure per-entity function and the whole thing becomes
+embarrassingly parallel. It also costs `pe_trunk` (480×64) plus 64 inputs on each head.
+
+Ordering: **M2d/M2e first** (they split the result that already exists), then **M2a**, then
+**M2b**, then **M2.5** and **M2.5b**. Six arms at the 80M+160M protocol, ~1.4B steps, ~11 GPU-h at
+M2's measured 35,744 steps/s.
+
 ## M2.5 — a trainable identity vector, for the head only
 
 Added by the owner, 2026-09-19, and it is the natural consequence of what M2 exposes.

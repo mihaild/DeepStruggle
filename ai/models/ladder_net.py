@@ -31,16 +31,27 @@ from typing import Any, Dict, Tuple, cast
 import torch
 import torch.nn as nn
 
-from ai.models.coldwar_net_v2 import ColdWarNetV2, static_input_mask
+from ai.models.coldwar_net_v2 import (STATIC_BOARD_SLOTS, STATIC_CARD_SLOTS,
+                                      ColdWarNetV2, static_input_mask)
+from bindings.action_encoder import ActionEncoder
 
 #: How the observation is read before the trunk.
 INPUT_MODES: Tuple[str, ...] = ("flat", "grouped", "entity")
 #: How per-entity tokens become a fixed-size vector. Only meaningful for `input_mode="entity"`.
 AGGREGATIONS: Tuple[str, ...] = ("flatten", "pool")
+#: Which per-entity heads exist. The card-collision finding predicts `country` carries most of
+#: M2's +352.8 Elo, since `pe_card` cannot distinguish 95 of 110 cards without identity.
+HEAD_ENTITIES: Tuple[str, ...] = ("both", "country", "card")
 
 
 class LadderNet(ColdWarNetV2):
     """A P21 rung. All structural axes are explicit; see the module docstring."""
+
+    # The M2 family may switch either head off (`head_entities`) or remove the trunk context
+    # (`head_context`), so these are optional here where the base class always builds them.
+    pe_trunk: nn.Linear | None          # type: ignore[assignment]
+    pe_country: nn.Sequential | None    # type: ignore[assignment]
+    pe_card: nn.Sequential | None       # type: ignore[assignment]
 
     def __init__(self, *,
                  input_mode: str,
@@ -49,6 +60,9 @@ class LadderNet(ColdWarNetV2):
                  card_self_attention: bool,
                  cross_attention: bool,
                  per_entity_heads: int,
+                 head_context: bool,
+                 head_static: bool,
+                 head_entities: str,
                  identity_dim: int,
                  drop_static: bool,
                  hidden_dim: int,
@@ -61,6 +75,14 @@ class LadderNet(ColdWarNetV2):
             raise ValueError(f"input_mode must be one of {INPUT_MODES}; got {input_mode!r}")
         if aggregation not in AGGREGATIONS:
             raise ValueError(f"aggregation must be one of {AGGREGATIONS}; got {aggregation!r}")
+        if head_entities not in HEAD_ENTITIES:
+            raise ValueError(f"head_entities must be one of {HEAD_ENTITIES}; "
+                             f"got {head_entities!r}")
+        if not per_entity_heads and (not head_context or not head_static
+                                     or head_entities != "both"):
+            raise ValueError(
+                "head_context / head_static / head_entities only mean anything with "
+                "--per-entity-heads > 0. Refused rather than silently ignored.")
 
         tokenless = input_mode in ("flat", "grouped")
         # `grouped` keeps every entity's RAW slots at a fixed offset, so a per-entity head can
@@ -118,6 +140,9 @@ class LadderNet(ColdWarNetV2):
         self.cross_attention = bool(cross_attention)
         self.drop_static = bool(drop_static)
         self.raw_tokens = bool(raw_tokens)
+        self.head_context = bool(head_context)
+        self.head_static = bool(head_static)
+        self.head_entities = str(head_entities)
         self.entity_proj_dim = int(entity_proj_dim)
         self.ladder_num_attn_heads = int(num_attn_heads)
         self.ladder_per_entity_heads = int(per_entity_heads)
@@ -192,15 +217,26 @@ class LadderNet(ColdWarNetV2):
         self.per_entity_heads = int(per_entity_heads)
         if self.per_entity_heads:
             k = self.per_entity_heads
-            self.pe_trunk = nn.Linear(hidden_dim, k)
+            # `ctx` is the ONLY path from the trunk into the correction. Without it the head is a
+            # pure per-entity map and the whole mechanism is embarrassingly parallel (arm M2a).
+            ctx_w = k if self.head_context else 0
+            self.pe_trunk = nn.Linear(hidden_dim, k) if self.head_context else None
             # With raw tokens the raw slots arrive in the `raw` slot, so the token slot carries
             # the identity vector instead -- width 0 when there is no identity.
             tok_w = self.identity_dim if self.raw_tokens else d
-            self.pe_country = nn.Sequential(nn.Linear(tok_w + board_in + k, k), nn.GELU(),
-                                            nn.Linear(k, 1))
-            self.pe_card = nn.Sequential(nn.Linear(tok_w + card_in + k, k), nn.GELU(),
-                                         nn.Linear(k, 1))
+            # Dropping the constant slots leaves the dynamic ones, which is where the mechanism's
+            # content has to be: constants alone would be a fixed per-TYPE bias (arm M2b).
+            b_raw = board_in - (0 if self.head_static else len(STATIC_BOARD_SLOTS))
+            c_raw = card_in - (0 if self.head_static else len(STATIC_CARD_SLOTS))
+            self.pe_country = (nn.Sequential(nn.Linear(tok_w + b_raw + ctx_w, k), nn.GELU(),
+                                             nn.Linear(k, 1))
+                               if self.head_entities in ("both", "country") else None)
+            self.pe_card = (nn.Sequential(nn.Linear(tok_w + c_raw + ctx_w, k), nn.GELU(),
+                                          nn.Linear(k, 1))
+                            if self.head_entities in ("both", "card") else None)
             for head in (self.pe_country, self.pe_card):
+                if head is None:
+                    continue
                 out = head[-1]
                 assert isinstance(out, nn.Linear)
                 nn.init.zeros_(out.weight)
@@ -222,6 +258,9 @@ class LadderNet(ColdWarNetV2):
             card_self_attention=self.card_self_attention,
             cross_attention=self.cross_attention,
             per_entity_heads=self.per_entity_heads,
+            head_context=self.head_context,
+            head_static=self.head_static,
+            head_entities=self.head_entities,
             identity_dim=self.identity_dim,
             drop_static=self.drop_static,
             hidden_dim=self.ladder_hidden_dim,
@@ -230,6 +269,51 @@ class LadderNet(ColdWarNetV2):
             num_attn_heads=self.ladder_num_attn_heads,
             categorical_value=bool(self.categorical_value),
         )
+
+
+    # ----------------------------------------------------- the per-entity correction
+
+    #: Kept slot indices when `head_static` is off, as tensors registered lazily in `_encode`.
+    def _dynamic_slice(self, nodes: torch.Tensor, static: Tuple[int, ...]) -> torch.Tensor:
+        keep = [i for i in range(nodes.shape[-1]) if i not in static]
+        return nodes[..., keep]
+
+    def _policy_logits(self, h: torch.Tensor,
+                       tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
+        """The dense logits plus a per-entity correction, honouring the M2-family axes.
+
+        The inherited version assumes both heads exist and that a trunk context is always fed.
+        Here `head_entities` may switch one head off and `head_context` may remove the only path
+        from the trunk into the correction -- so the concatenation is built rather than fixed.
+        """
+        base = self.policy_head(h)
+        if not self.per_entity_heads or tokens is None:
+            return base
+
+        h_board, board_nodes, h_cards, card_nodes = tokens
+        if not self.head_static:
+            board_nodes = self._dynamic_slice(board_nodes, STATIC_BOARD_SLOTS)
+            card_nodes = self._dynamic_slice(card_nodes, STATIC_CARD_SLOTS)
+
+        parts_country = [h_board, board_nodes]
+        parts_card = [h_cards, card_nodes]
+        if self.head_context:
+            assert self.pe_trunk is not None
+            ctx = self.pe_trunk(h).unsqueeze(1)
+            parts_country.append(ctx.expand(-1, 84, -1))
+            parts_card.append(ctx.expand(-1, 110, -1))
+
+        _A = ActionEncoder
+        card_block = base[:, :_A.PLAY_MODE_OFFSET]
+        gap_mid = base[:, _A.PLAY_MODE_OFFSET:_A.NODE_OFFSET] * 0.0
+        country_block = base[:, _A.NODE_OFFSET:_A.BRANCH_OFFSET]
+        gap_end = base[:, _A.BRANCH_OFFSET:] * 0.0
+
+        card_corr = (self.pe_card(torch.cat(parts_card, dim=-1)).squeeze(-1)
+                     if self.pe_card is not None else card_block * 0.0)
+        country_corr = (self.pe_country(torch.cat(parts_country, dim=-1)).squeeze(-1)
+                        if self.pe_country is not None else country_block * 0.0)
+        return base + torch.cat([card_corr, gap_mid, country_corr, gap_end], dim=-1)
 
     # ----------------------------------------------------------------- encoder
 
@@ -378,14 +462,46 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
                 else ColdWarNetV2.BOARD_SIZE + ColdWarNetV2.CARD_SIZE)
         drop_static = (in_width == full - static) and (in_width != full)
 
+    # The M2-family head axes, all recovered from the weights like everything else here.
+    has_country = "pe_country.0.weight" in sd
+    has_card = "pe_card.0.weight" in sd
+    head_entities = ("both" if has_country and has_card
+                     else "country" if has_country
+                     else "card" if has_card else "both")
+    # With no heads at all the three axes are inert, and the constructor refuses anything but
+    # these, so they must be recovered as the canonical values rather than inferred from weights
+    # that were never built.
+    head_context = pe is not None                      # pe_trunk exists only with a context
+    identity_dim = int(ident.shape[1]) if ident is not None else 0
+    per_entity_heads = (int(pe.shape[0]) if pe is not None
+                        else int(sd["pe_country.0.weight"].shape[0]) if has_country
+                        else int(sd["pe_card.0.weight"].shape[0]) if has_card else 0)
+    # head_static from the head's input width: token + raw + context, where the raw part is the
+    # full slot count or the dynamic remainder.
+    head_static = True
+    if not (has_country or has_card):
+        head_entities, head_context, head_static = "both", True, True
+    if has_country or has_card:
+        tok_w = identity_dim if input_mode != "entity" else entity_dim
+        ctx_w = per_entity_heads if head_context else 0
+        if has_country:
+            raw_w = int(sd["pe_country.0.weight"].shape[1]) - tok_w - ctx_w
+            head_static = raw_w == ColdWarNetV2.BOARD_FEATURES
+        else:
+            raw_w = int(sd["pe_card.0.weight"].shape[1]) - tok_w - ctx_w
+            head_static = raw_w == ColdWarNetV2.CARD_FEATURES
+
     return dict(
         input_mode=input_mode,
         aggregation=aggregation,
         entity_dim=entity_dim,
         card_self_attention=any(k.startswith("lad_self_attn.") for k in sd),
         cross_attention=any(k.startswith("lad_cross_attn.") for k in sd),
-        per_entity_heads=int(pe.shape[0]) if pe is not None else 0,
-        identity_dim=int(ident.shape[1]) if ident is not None else 0,
+        per_entity_heads=per_entity_heads,
+        head_context=head_context,
+        head_static=head_static,
+        head_entities=head_entities,
+        identity_dim=identity_dim,
         drop_static=drop_static,
         hidden_dim=hidden_dim,
         num_res_blocks=len(blocks),

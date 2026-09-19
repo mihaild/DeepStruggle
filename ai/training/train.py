@@ -21,6 +21,8 @@ from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 #: The ladder axes that `--arch ladder` requires. Listed once so the error names all of them.
 _LADDER_REQUIRED = ("ladder_input_mode", "ladder_aggregation", "ladder_entity_dim",
                     "ladder_entity_proj_dim", "ladder_hidden_dim", "ladder_res_blocks")
+#: Required in addition, but only when the rung actually has per-entity heads.
+_LADDER_HEAD_REQUIRED = ("ladder_head_context", "ladder_head_static", "ladder_head_entities")
 
 
 def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
@@ -31,14 +33,18 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
     failure this repository has already had five times with a defaulted observation layout.
     """
     if args.arch != "ladder":
-        for name in _LADDER_REQUIRED + ("ladder_card_self_attention", "ladder_cross_attention"):
+        for name in (_LADDER_REQUIRED + _LADDER_HEAD_REQUIRED
+                     + ("ladder_card_self_attention", "ladder_cross_attention")):
             if getattr(args, name, None) is not None:
                 raise SystemExit(
                     f"--{name.replace('_', '-')} was given but --arch is {args.arch!r}. "
                     f"The ladder flags only apply to --arch ladder; refused rather than "
                     f"silently ignored.")
         return None
-    missing = [n for n in _LADDER_REQUIRED if getattr(args, n, None) is None]
+    required = list(_LADDER_REQUIRED)
+    if int(args.per_entity_heads):
+        required += list(_LADDER_HEAD_REQUIRED)
+    missing = [n for n in required if getattr(args, n, None) is None]
     if missing:
         raise SystemExit(
             "--arch ladder requires every structural axis to be named explicitly. Missing: "
@@ -52,6 +58,11 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         card_self_attention=bool(args.ladder_card_self_attention),
         cross_attention=bool(args.ladder_cross_attention),
         per_entity_heads=int(args.per_entity_heads),
+        # Defaulted only when there is no head to configure, where the values are inert and
+        # LadderNet refuses anything but these.
+        head_context=bool(args.ladder_head_context) if args.per_entity_heads else True,
+        head_static=bool(args.ladder_head_static) if args.per_entity_heads else True,
+        head_entities=(args.ladder_head_entities if args.per_entity_heads else "both"),
         identity_dim=int(args.identity_dim),
         drop_static=bool(args.drop_static),
         hidden_dim=int(args.ladder_hidden_dim),
@@ -108,6 +119,26 @@ def build_parser() -> argparse.ArgumentParser:
     lad.add_argument("--ladder-hidden-dim", type=int, default=None, help="Trunk width.")
     lad.add_argument("--ladder-res-blocks", type=int, default=None,
                      help="Number of residual blocks in the trunk.")
+    lad.add_argument("--ladder-head-context", dest="ladder_head_context",
+                     action="store_true", default=None,
+                     help="Feed pe_trunk(h) into the per-entity head. The only path from the "
+                          "trunk into the correction; without it the head is a pure per-entity "
+                          "map (P21 arm M2a).")
+    lad.add_argument("--no-ladder-head-context", dest="ladder_head_context",
+                     action="store_false",
+                     help="Per-entity head reads its entity only, never the trunk.")
+    lad.add_argument("--ladder-head-static", dest="ladder_head_static",
+                     action="store_true", default=None,
+                     help="Include the constant per-entity slots in the head's input. Alone they "
+                          "would be a fixed per-TYPE bias; dropping them leaves the dynamic "
+                          "slots, which is where the mechanism's content must be (arm M2b).")
+    lad.add_argument("--no-ladder-head-static", dest="ladder_head_static",
+                     action="store_false",
+                     help="Per-entity head sees only the dynamic slots.")
+    lad.add_argument("--ladder-head-entities", type=str, default=None,
+                     choices=["both", "country", "card"],
+                     help="Which per-entity heads exist. The card-collision finding predicts "
+                          "`country` carries most of M2's gain (arms M2d/M2e).")
     parser.add_argument("--mode", type=str, default="train",
                         choices=["train", "warmup", "eval", "curriculum", "distill"],
                         help="Execution mode. `distill` is P15-X4a: soft cross-entropy "
