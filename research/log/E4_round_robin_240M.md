@@ -1,89 +1,86 @@
 # E4 round robin at 240M — does the collapse show against a fixed reference?
 
 **Measured 2026-09-19.** 21 entrants: the pooled arm `E4-02-01` at 20M–240M and the unpooled arm
-`E4-01-01` at 20M–180M, every 20M. 210 pairs, 30 games per seat per pair, per-seat recorded.
-`/workspace/data/p17/e4_final_round_robin/`.
+`E4-01-01` at 20M–180M, every 20M. 210 pairs, **100 games per seat** (200 per pair, 42,000 total),
+per-seat recorded. `/workspace/data/p17/e4_final_round_robin_g100/`.
 
 The question is **not** whether the unpooled arm loses to a stronger model — it trained for fewer
 steps, so it must, and an absolute rate against a stronger opponent is not evidence. The question
-is whether a win rate against a **fixed** reference rises and then falls. That shape is a collapse;
-a low flat line is only a weaker model.
+is whether a win rate against a **fixed** reference rises and then falls.
 
-## The headline: no clean rise-then-fall in either arm
+> A first pass at 30 games per seat is kept at `.../e4_final_round_robin/`. Two of its readings did
+> not survive the larger sample and are corrected below. At 30 games a cell carries about ±9pp,
+> which is not enough to rank neighbours; at 100 it is about ±5pp.
 
-Overall win rate against two independent fixed references:
+## The finding: one sharp, isolated US-seat dip at 200M in the pooled arm
 
-| steps | pooled vs `E4-02-01@240M` | pooled vs `E4-01-01@120M` | unpooled vs `E4-02-01@240M` |
+Against `E4-01-01@120M`, an independent reference from the *other* arm:
+
+| steps | as US | as USSR | overall |
 |---:|---:|---:|---:|
-| 20M | 10.0% | 18.3% | 11.7% |
-| 40M | 21.7% | 16.7% | 31.7% |
-| 60M | 23.3% | 33.3% | 43.3% |
-| 80M | 53.3% | 33.3% | 30.0% |
-| 100M | 45.0% | 53.3% | 35.0% |
-| 120M | 38.3% | 38.3% | 53.3% |
-| 140M | 50.0% | 43.3% | 51.7% |
-| 160M | 53.3% | 45.0% | 51.7% |
-| 180M | 56.7% | 50.0% | 45.0% |
-| 200M | **35.0%** | **31.7%** | — |
-| 220M | 46.7% | 51.7% | — |
+| 140M | 35.0% | 64.0% | 49.5% |
+| 160M | 35.0% | 58.0% | 46.5% |
+| 180M | 39.0% | 67.0% | 53.0% |
+| **200M** | **11.0%** | 67.0% | **39.0%** |
+| 220M | 30.0% | 56.0% | 43.0% |
+| 240M | 37.0% | 68.0% | 52.5% |
 
-Both arms climb and then oscillate in a band. Neither shows the monotone decline that would make
-"collapse" the right word for what the round robin can see.
+The US seat falls from 39% to **11%** and back to 30%, while the **USSR seat does not move at all**
+(67% → 67%). It is a single-seat event, roughly 6σ at this sample size, and it **fully recovers** —
+240M is the strongest model in the field.
 
-## The one real event: a US-seat dip at 200M in the pooled arm
+It replicates across both sample sizes and both references (30 games: 36.7% → 6.7% → 43.3%), which
+is what makes it a finding rather than a wobble. But it recovers, so it is an *excursion*, not a
+collapse. Whether this is the same mechanism as a real collapse, caught early and survived, is the
+open question.
 
-It reproduces against both references, which is what makes it more than noise:
+## The unpooled arm declines late, mildly
 
-| reference | 180M | **200M** | 220M |
-|:---|---:|---:|---:|
-| `E4-02-01@240M`, as US | 50.0% | **13.3%** | 36.7% |
-| `E4-01-01@120M`, as US | 36.7% | **6.7%** | 43.3% |
+Against the same reference: 43.5% at 100M, 49.0% at 140M, **55.0% at 160M**, 47.0% at 180M. A peak
+at 160M and an 8pp fall by 180M — right where its self-play `us_win_rate` was beginning to slide.
+That is the shape the question was asking about, but it is one point and 8pp is only ~1.5σ here.
 
-The USSR seat is untouched across the same window (63.3% → 56.7% → 56.7%). So this is a
-single-seat event, it is large — 6.7% against a 30-game denominator is roughly 4σ from 36.7% — and
-it **recovers by 220M**. A transient, not a collapse, but the only thing in the run that looks like
-the beginning of one.
+**The catastrophic part is not in the field.** `E4-01-01`'s self-play US seat reached 0.006 at
+~184M and its last snapshot is 180M, so this stops just before the steep section.
 
-## The seat asymmetry is structural, and belongs to both arms
+## Corrections to the 30-game pass
 
-I previously read the unpooled arm's weak US seat as its collapse signature. Against fixed
-references that reading is wrong: **the USSR seat is stronger in both arms at every budget.**
+**`E4-01-01@120M` does not top the field.** At 30 games it ranked #1 on 1597.7 Elo, ahead of both
+pooled endpoints, and I wrote that the pool had not bought peak strength. At 100 games:
 
-```
-pooled   vs E4-01-01@120M:  US 6.7-43.3%   USSR 23.3-76.7%
-unpooled vs E4-01-01@120M:  US 3.3-36.7%   USSR 23.3-76.7%
-```
+| rank | model | Elo |
+|---:|:---|---:|
+| 1 | **E4-02-01@240M** | 1600.7 |
+| 2 | E4-02-01@180M | 1596.1 |
+| 3 | E4-01-01@160M | 1583.7 |
+| 4 | E4-01-01@120M | 1580.4 |
 
-That matches the ~63/37 self-play lean measured across the whole run and is the game's own
-asymmetry, not a pathology. A seat gap is only evidence of collapse if it *widens* against a fixed
-opponent, and here it does not.
+The pooled arm's final snapshot is first. The earlier ordering was noise, and the claim built on it
+is withdrawn. Ranks within ~25 Elo are still not separated at this sample size, so 1–2 and 3–4 are
+each ties.
 
-## Self-play side split badly overstated the collapse
+**The pooled arm does not keep declining after 200M.** Measured against its own `@240M`, 220M reads
+31.5% and looks like a continuing fall; against the independent reference it reads 43.0% and is
+clearly a recovery. The self-lineage number is the artefact — comparing a snapshot to its own
+near-neighbour endpoint measures how much changed in 20M steps, not strength. **Use a reference
+from the other arm.**
 
-At 180M, `E4-01-01`'s self-play `us_win_rate` was ~0.02 — its US seat almost never beat its own
-USSR seat. Against fixed external references the same checkpoint scored **23.3% and 20.0% as US**,
-and 45%/40% overall. Both are true and they measure different things: the policy's USSR seat had
-run far ahead of its own US seat, which is what self-play reports, while the US seat remained
-ordinarily competent against opponents that were not its own overgrown mirror.
+## What holds from the first pass
 
-This is the concrete case for the owner's standing objection to side balance as a health metric.
-A number that reads 0.006 where an external measurement reads 0.23 is not measuring strength.
+**The seat asymmetry is structural and belongs to both arms.** The USSR seat is stronger at every
+budget in both — pooled US 10–39% against USSR 15–68%, unpooled US 3–43% against USSR 17–67%. This
+matches the ~63/37 self-play lean and is the game's own asymmetry. A seat gap is evidence of
+collapse only if it *widens* against a fixed opponent.
 
-## The unpooled arm's peak is the strongest model in the field
+**Self-play side split badly overstated the collapse.** At 180M `E4-01-01`'s self-play
+`us_win_rate` read ~0.02, while the same checkpoint scored **31% as US** against a fixed external
+reference and 47% overall. Both are true of different things: its USSR seat had run far ahead of
+*its own* US seat, which is what self-play reports, while the US seat stayed ordinarily competent
+against opponents that were not its own overgrown mirror. This is the concrete case against side
+balance as a health metric.
 
-`E4-01-01@120M` ranks **#1 by Elo (1597.7)**, ahead of `E4-02-01@180M` (1594.3) and
-`E4-02-01@240M` (1580.5). Whatever the pool is worth, it is not peak strength at this budget —
-and a 240M pooled run did not beat a 120M unpooled one.
+## Open
 
-Two caveats before that is quoted. The field is dominated by snapshots of these two lineages, so
-the Elo is internal to them and not a claim about absolute strength. And 30 games a seat gives
-roughly ±9pp per cell, so ranks within ~40 Elo of each other are not separated.
-
-## What this does not answer
-
-**The catastrophic part is not in the field.** `E4-01-01`'s self-play US seat fell to 0.006 at
-~184M, and its last snapshot is 180M. The round robin therefore stops just before the steep
-section, which is why it sees an oscillation rather than a fall.
-
-**Whether the 200M pooled dip means anything.** It recovered. Watching whether it recurs in a
-longer or re-seeded run is the follow-up; one transient in one run is not a finding.
+- **Does the 200M excursion recur?** One transient in one run. A re-seeded or longer run would say.
+- **What does the steep section look like?** Needs the unpooled arm re-run past 184M with snapshots
+  kept.

@@ -43,11 +43,13 @@ that stands as evidence the post-P17 engine trains normally.
 
 ## What the 240M round robin showed
 
-[`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md). Neither arm shows a rise-then-fall
-against a fixed reference within the measured range. The pooled arm has one reproducible US-seat
-dip at 200M that recovers by 220M. The USSR seat is stronger in **both** arms at every budget,
-which is the game's asymmetry rather than a pathology. And `E4-01-01@120M` -- from the *unpooled*
-arm -- tops the field by Elo, so the pool did not buy peak strength at this budget.
+[`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md). 42,000 games, 100 per seat per pair.
+The pooled arm has one sharp, isolated **US-seat dip at 200M** -- 39% to 11% against an
+independent reference while the USSR seat does not move -- that fully recovers, with `@240M`
+topping the field. The unpooled arm peaks at 160M and falls 8pp by 180M, which is where its
+self-play slide began, but its last snapshot is 180M so the steep section is not in the field.
+The USSR seat is stronger in **both** arms at every budget, which is the game's asymmetry rather
+than a pathology.
 
 The sharpest result is negative: at 180M the unpooled arm's self-play `us_win_rate` read 0.02
 while the same checkpoint scored 23% as US against fixed external references. Side balance in
