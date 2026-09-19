@@ -278,6 +278,46 @@ one at a width other than 26. Attention on raw features is possible — `nn.Mult
 takes `kdim`/`vdim`, so cards (14) can attend over countries (26) directly — and is the cheaper
 thing to try first.
 
+## M2.5 — a trainable identity vector, for the head only
+
+Added by the owner, 2026-09-19, and it is the natural consequence of what M2 exposes.
+
+`pe_card` receives a card's own 14 slots plus a *global* context. Only five of those are static
+properties, so **95 of 110 cards are indistinguishable from at least one other** — `The Voice of
+America`, `Colonial Rear Guards` and `Grain Sales to Soviets` are all US-sided 2-Ops mid-war
+recurrent cards, and whenever they share a location the shared MLP must give them the identical
+correction. M2.5 gives each entity its own learned vector so the head can tell them apart.
+
+```
+M2    pe input = [ raw(26) ‖ ctx(64) ]              =  90
+M2.5  pe input = [ raw(26) ‖ identity(16) ‖ ctx(64) ] = 106
+```
+
+**Identity goes to the head and nowhere else**, which is a cleaner placement than the current
+architecture uses. Identity is needed exactly where a function is *shared* across entities; with a
+positional trunk that is the per-entity head alone, because the trunk already reads every entity
+at its own offset. `ColdWarNetV2` instead concatenates identity into `board_nodes` *before* the
+shared encoder, so it feeds both the pooled path and the head — one of which does not need it.
+A test asserts the trunk's input width is unchanged, so a leak fails rather than passing quietly.
+
+Two properties make this an unusually clean rung:
+
+* **It costs 0.16% of parameters** — 3,195,233 against M2's 3,190,081, being the two embedding
+  tables plus 16 extra inputs on each head. An Elo difference here **cannot** be a capacity
+  effect, so the parameter-matching caveat does not apply at all.
+* **It makes a split prediction.** The *card* head should gain substantially, since 95 of 110
+  cards are currently indistinguishable to it. The *country* head should gain much less: 54 of 84
+  countries collide on static slots, but a country's dynamic slots — influence, control, both
+  deficits, can-place, can-coup, realignment modifier — differ between countries in any real
+  position, so `pe_country` can already address. If both gain equally, that reasoning is wrong
+  and worth knowing.
+
+This is also the interaction predicted by
+[`../findings/training/forward_pass_trace.md`](../findings/training/forward_pass_trace.md):
+`identity_dim` and `per_entity_heads` travel together in the bundle worth 447 Elo because identity
+gives the head distinguishable input and the head gives identity an addressable output. M2 and
+M2.5 measure the two halves in order.
+
 ## M3 — card↔card self-attention
 
 ```

@@ -307,3 +307,45 @@ def test_a_non_ladder_checkpoint_is_not_claimed_by_the_ladder_detector() -> None
                                identity_dim=16, per_entity_heads=64, graph_layers=0,
                                self_transform=True)
     assert ladder_config_from_state_dict(dict(v2.state_dict())) is None
+
+
+# ------------------------------- M2.5: identity for the head, and only the head
+
+def test_head_identity_reaches_the_head_and_not_the_trunk() -> None:
+    """M2.5 puts a learned per-entity vector into the per-entity head only.
+
+    Identity is needed exactly where a function is SHARED across entities. With a positional
+    trunk that is the per-entity head and nothing else: `pe_card` cannot tell 95 of 110 cards
+    apart (The Voice of America, Colonial Rear Guards and Grain Sales to Soviets are one
+    indistinguishable triple), while the trunk reads every card at its own offset and can.
+
+    So the head's input widens by exactly `identity_dim` and the trunk's does not move at all.
+    """
+    common = dict(input_mode="grouped", drop_static=True, per_entity_heads=16)
+    m2 = rung(**common, identity_dim=0)
+    m25 = rung(**common, identity_dim=8)
+
+    def in_w(model, name) -> int:
+        layer = getattr(model, name)[0]
+        assert isinstance(layer, torch.nn.Linear)
+        return int(layer.in_features)
+
+    assert in_w(m25, "pe_country") == in_w(m2, "pe_country") + 8
+    assert in_w(m25, "pe_card") == in_w(m2, "pe_card") + 8
+    assert in_w(m25, "fusion_in") == in_w(m2, "fusion_in"), \
+        "identity leaked into the trunk, which reads raw slots at fixed offsets and needs none"
+    assert m25.country_identity is not None and m25.card_identity is not None
+
+
+def test_head_identity_is_nearly_free_in_parameters() -> None:
+    """Any Elo difference at this rung cannot be a capacity effect."""
+    common = dict(input_mode="grouped", drop_static=True, per_entity_heads=16)
+    n2 = sum(int(p.numel()) for p in rung(**common, identity_dim=0).parameters())
+    n25 = sum(int(p.numel()) for p in rung(**common, identity_dim=8).parameters())
+    assert 0 < (n25 - n2) / n2 < 0.01, f"identity added {(n25 - n2) / n2:.2%} of parameters"
+
+
+def test_identity_still_refused_where_nothing_shares_weights() -> None:
+    """Without a per-entity head there is no shared function, so identity is pure redundancy."""
+    with pytest.raises(ValueError, match="only useful"):
+        rung(input_mode="grouped", identity_dim=8, per_entity_heads=0)

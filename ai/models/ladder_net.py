@@ -82,10 +82,12 @@ class LadderNet(ColdWarNetV2):
                     f"input_mode={input_mode!r} forms no attention tokens. Cross-attention "
                     f"between 14-wide card rows and 26-wide country rows needs kdim/vdim "
                     f"plumbing and a head count dividing 14; that is a separate rung.")
-            if identity_dim:
+            if identity_dim and not raw_tokens:
                 raise ValueError(
                     f"input_mode={input_mode!r} reads each entity at a fixed offset, so position "
-                    f"already identifies it and an identity embedding is pure redundancy.")
+                    f"already identifies it for the trunk. An identity embedding is only useful "
+                    f"where a function is SHARED across entities -- add --per-entity-heads and "
+                    f"it will be given to that head.")
         else:
             # P21: static per-entity slots are what a *shared* encoder uses to tell its tokens
             # apart. Dropping them is only correct where the reader is positional.
@@ -97,7 +99,9 @@ class LadderNet(ColdWarNetV2):
 
         super().__init__(hidden_dim=hidden_dim, num_res_blocks=num_res_blocks,
                          num_attn_heads=num_attn_heads, categorical_value=categorical_value,
-                         identity_dim=identity_dim if not tokenless else 0,
+                         # Built for a raw-token head too: there the identity vector is the
+                         # head's only way to tell two same-typed entities apart.
+                         identity_dim=(identity_dim if (not tokenless or raw_tokens) else 0),
                          per_entity_heads=0,          # rebuilt below at the right token width
                          graph_layers=0,              # P21 runs without graph convolution
                          self_transform=False,
@@ -133,8 +137,10 @@ class LadderNet(ColdWarNetV2):
 
         d = int(entity_dim)
         p = self.entity_proj_dim
-        board_in = self.board_features + (self.identity_dim if not tokenless else 0)
-        card_in = self.card_features + (self.identity_dim if not tokenless else 0)
+        # The trunk reads raw slots in tokenless modes; identity, when present, goes to the
+        # head alone. In `entity` mode it is concatenated before the shared encoder as usual.
+        board_in = self.board_features + (0 if tokenless else self.identity_dim)
+        card_in = self.card_features + (0 if tokenless else self.identity_dim)
 
         if self.input_mode == "flat":
             keep = ~static_input_mask(self.board_features, self.card_features,
@@ -187,8 +193,9 @@ class LadderNet(ColdWarNetV2):
         if self.per_entity_heads:
             k = self.per_entity_heads
             self.pe_trunk = nn.Linear(hidden_dim, k)
-            # With raw tokens the token IS the raw slot vector, so it is not concatenated twice.
-            tok_w = 0 if self.raw_tokens else d
+            # With raw tokens the raw slots arrive in the `raw` slot, so the token slot carries
+            # the identity vector instead -- width 0 when there is no identity.
+            tok_w = self.identity_dim if self.raw_tokens else d
             self.pe_country = nn.Sequential(nn.Linear(tok_w + board_in + k, k), nn.GELU(),
                                             nn.Linear(k, 1))
             self.pe_card = nn.Sequential(nn.Linear(tok_w + card_in + k, k), nn.GELU(),
@@ -256,9 +263,13 @@ class LadderNet(ColdWarNetV2):
                 # vector, so an empty token slice is passed and the head is sized for it.
                 b_nodes = board_raw.view(b, 84, self.board_features)
                 c_nodes = card_raw.view(b, 110, self.card_features)
-                empty_b = b_nodes.new_zeros(b, 84, 0)
-                empty_c = c_nodes.new_zeros(b, 110, 0)
-                tokens = (empty_b, b_nodes, empty_c, c_nodes)
+                if self.country_identity is not None and self.card_identity is not None:
+                    tok_b = self.country_identity.weight.unsqueeze(0).expand(b, -1, -1)
+                    tok_c = self.card_identity.weight.unsqueeze(0).expand(b, -1, -1)
+                else:
+                    tok_b = b_nodes.new_zeros(b, 84, 0)
+                    tok_c = c_nodes.new_zeros(b, 110, 0)
+                tokens = (tok_b, b_nodes, tok_c, c_nodes)
 
         else:  # entity
             board_nodes = obs[:, :self.BOARD_SIZE].view(b, 84, self.board_features)
