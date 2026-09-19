@@ -44,20 +44,26 @@ import sys
 import time
 from typing import Any, Dict, Optional, Tuple
 
-#: What a PROGRESS line carries. Three of the four this used to print -- `critic_auc`,
-#: `critic_brier_skill`, `critic_base_rate` -- were measured in
-#: `research/method/detecting_collapse.md` to be *useless* for spotting a seat collapse: the
-#: collapsing run's critic scored as well as the healthy run's all the way to 160M, because a
-#: degenerate policy is easy to predict. `critic_base_rate` is worse than neutral, being
-#: `max(p, 1-p)` with no direction at all.
+#: What a PROGRESS line carries, ordered by how much it is worth.
 #:
-#: These are the ones that separated the pair, earliest first. `logratio_max` and
-#: `ratio_negadv_max` fired at 3M steps with no false positive; `entropy` plateauing high instead
-#: of descending is the "policy never sharpened" signature; `clip_frac` is the slower confirmation.
-#: `opp_pool_size` is here because its *absence* is what caused both collapses this project has
-#: seen, and it is visible at iteration 1.
-WATCHED = ("entropy", "logratio_max", "ratio_negadv_max", "clip_frac",
-           "opp_pool_size", "adv_std_raw")
+#: `opp_pool_size` and `opp_win_rate_mean` first, because they are the ONLY things that have
+#: separated a collapsed run from a healthy control twice -- E4-01-01 (no pool at all) and X4b
+#: (pool starved to 1, beaten 96% of the time). They measure the cause rather than a symptom and
+#: are readable at iteration 1.
+#:
+#: The rest are printed as a *description*, not as a trigger. Measured across both collapses
+#: (`research/method/detecting_collapse.md`), no dynamics metric generalises: entropy separated
+#: E4's pair enormously and was noise on E3's, `clip_frac` and `adv_std_raw` reversed direction
+#: between them, and `kl_div` was 115x on E3 and flat on E4. They are worth seeing because when
+#: something goes wrong they say what KIND of wrong -- E4's policy barely moved, E3's moved
+#: violently -- but a threshold on any of them describes one collapse only.
+#:
+#: Deliberately absent: the three critic metrics this used to print. Critic quality never
+#: separated in either pair, and by some measures the collapsing run scored better, because a
+#: degenerate policy is an easy prediction problem. `critic_base_rate` is `max(p, 1-p)` and
+#: carries no direction at all.
+WATCHED = ("opp_pool_size", "opp_win_rate_mean", "entropy", "clip_frac",
+           "adv_std_raw", "kl_div")
 
 
 def emit(line: str) -> None:
