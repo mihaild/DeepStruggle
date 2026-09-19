@@ -12,6 +12,7 @@ when a result looks too good.
 | [`measurement_pitfalls.md`](measurement_pitfalls.md) | the checklist to work through before trusting a number |
 | [`measurement_tiers.md`](measurement_tiers.md) | how much evidence a claim needs before it counts as settled |
 | [`what_survives_an_engine_change.md`](what_survives_an_engine_change.md) | the assumption that relative training results cross an engine revision while absolute ratings do not — stated as an assumption, with its evidence and its gaps |
+| [`detecting_collapse.md`](detecting_collapse.md) | which internal metric sees which failure mode, as self-relative triggers — plus the scope rule that mechanisms transfer across a lineage but magnitudes never do |
 | [`human_play.md`](human_play.md) | playing the workbench by hand, and what to look for |
 | [`references.md`](references.md) | external sources, and the rules texts the engine implements |
 

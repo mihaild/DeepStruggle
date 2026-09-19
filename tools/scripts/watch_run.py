@@ -69,14 +69,21 @@ WATCHED = ("opp_pool_size", "opp_win_rate_mean", "entropy", "clip_frac",
 def us_episode_frac(row: Dict[str, Any]) -> Optional[float]:
     """Fraction of this iteration's finished episodes the US won, from self-play alone.
 
-    The two known collapse modes are mutually blind (`research/method/detecting_collapse.md`):
-    E3-24-28 ran totally one-sided for its whole 40M with `kl_div` at a healthy 0.06, and
-    E3-31-28 reached `kl_div` 193.7 with side balance never flagging. `opp_pool_size` catches
-    starvation only on a *pooled* run -- E3-24-28 had no pool, so nothing here would have caught
-    it. This closes that hole, and needs no external opponent.
+    The two known collapse modes are mutually blind (`research/method/detecting_collapse.md`),
+    and `opp_pool_size` only exists on a *pooled* run -- so an unpooled arm going one-sided has
+    no instrument watching it at all. This closes that hole, and needs no external opponent.
 
     Not sufficient alone: one side genuinely improving faster looks the same, so a per-side win
     rate against a frozen reference stays the arbiter. A value pinned at 0.0 or 1.0 is the alarm.
+
+    Deliberately no threshold from another lineage: magnitudes do not transfer across an engine
+    revision (E3 and E4 disagree on the sign of `clip_frac` and `adv_std_raw`), so this reports
+    the raw fraction and leaves 0.0/1.0 -- which are lineage-independent -- as the only reading
+    that means anything on its own.
+
+    Returns None when the row records no completed episodes, rather than defaulting the
+    denominator: `won_us / max(1, 0)` reads "no data" as "the US won none of them", which once
+    scored an arm with no episode counters as perfectly one-sided.
     """
     done = row.get("episodes_completed")
     won = row.get("episodes_completed_won_us")

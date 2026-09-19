@@ -69,6 +69,17 @@ different game, not a noisier measurement of this one.
 * **Anything about an observation change.** The observation is a third axis. A checkpoint on a
   retired layout does not play a different game, it misreads this one — and at equal width it does
   so silently. Nothing here applies to it.
+* **Comparing training-loop dynamics metrics across revisions.** `entropy`, `clip_frac`,
+  `adv_std_raw`, `kl_div` and the critic metrics are measured *through* the self-play
+  distribution, so the bullet above already covers them -- but they were compared across the
+  E3/E4 boundary anyway, twice, because they feel like properties of the optimiser rather than of
+  the game. They are not. Fitted on E4's collapsed/healthy pair and checked on E3's, `entropy`
+  went from a standardised difference of 5.6 to a gap of 0.014, and `clip_frac` and `adv_std_raw`
+  **reversed direction**. The mechanisms recur across lineages; the magnitudes and sometimes the
+  signs do not. State every trigger relative to the run's own baseline, and build a reference
+  envelope per lineage -- [`detecting_collapse.md`](detecting_collapse.md) is organised around
+  exactly this.
+
 * **Comparing across budgets or without seeds.** The assumption removes one confound; it does not
   touch the two that have actually invalidated results here, which are seed spread (~95 Elo) and
   stopping point (~30 Elo). See [`../findings/training/seed_variance.md`](../findings/training/seed_variance.md).

@@ -88,3 +88,19 @@ E4 200,000). That one is not a defect: 200,000 is the setting 43 of 51 E3 arms u
 that collapsed by KL domination carried 5,000,000. See
 [`ref_update_freq_open_ablation.md`](ref_update_freq_open_ablation.md). A diff tells you a flag
 differs; only a survey tells you whether the difference is a mistake.
+
+## Which of these comparisons are still allowed
+
+The throughput comparison above is a **deliberate engineering measurement** -- the owner asked
+why an arm no longer saturates the GPU -- and it is kept, with its architecture confound stated.
+Wall-clock and utilisation are properties of the implementation, not of the self-play
+distribution.
+
+The **blunder-rate** comparison is not: it is measured through the self-play distribution, which
+[`../../method/what_survives_an_engine_change.md`](../../method/what_survives_an_engine_change.md)
+already rules out across a revision.
+
+And no E3/E4 comparison of **training dynamics** -- `entropy`, `kl_div`, `clip_frac`,
+`adv_std_raw`, critic quality -- is admissible at all. Those magnitudes reverse sign between the
+two lineages; see [`../../method/detecting_collapse.md`](../../method/detecting_collapse.md).
+Health thresholds are self-relative, and E4's reference envelope is built from E4 arms only.
