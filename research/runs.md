@@ -26,7 +26,8 @@ stays legible:
 |:---|:---|
 | **E4-01** | **unpooled**, default architecture — `opponent_frac 0.0`, no self-pool |
 | **E4-02** | **pooled**, default architecture — `opponent_frac 0.3`, self-pool, capacity 12 |
-| **E4-03** | **pooled, late-E3 architecture** — `identity_dim 16`, `per_entity_heads 64`, `graph_layers 0`, `self_transform` |
+| **E4-03** | **pooled, late-E3 architecture, cold** — `identity_dim 16`, `per_entity_heads 64`, `graph_layers 0`, `self_transform` |
+| **E4-04** | **pooled, default architecture, cold** — the control for E4-03; only the network differs |
 
 **E4-01 and E4-02 are the new baseline**, owner's decision 2026-09-19, and their architecture is
 *not* E3's. Both were launched with the bare defaults by mistake
@@ -39,6 +40,17 @@ on its late architecture, which was also the strongest network E3 produced. E4-0
 on the *default* architecture and did not collapse. So "the pool prevents collapse" and "this
 architecture does not collapse" both fit everything measured, and they are different claims.
 E4-03 holds the pool fixed and puts the network back, which separates them.
+
+**E4-03 and E4-04 are an A/B pair at 80M**, both cold-started and both pooled, differing only in
+the network. E4-02-01 cannot serve as E4-03's control: it is warm-started, which biases exactly
+the first tens of millions of steps the comparison covers. 80M first because the precondition for
+hunting a collapse in the late-E3 architecture is that it is actually stronger on this engine --
+which is what E3 reported for it, and what this pair tests.
+
+A third unintended difference surfaced while setting this up: **every late E3 arm was a cold
+start, and both E4-01 and E4-02 were warm-started.** The cause was the same template, whose
+numbered "Phase 0 / Phase 1-3" framing reads as a mandatory pipeline; `CLAUDE.md` now says
+plainly that a warm start is optional and is not what the ladder does.
 
 So `E4-01-01` beside `E4-02-01` is visibly the pooled/unpooled comparison at one seed, and
 `E4-02-01` beside `E4-02-02` would be visibly a seed pair. E4-01 began as an accident — the pool
