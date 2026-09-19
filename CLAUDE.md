@@ -187,6 +187,7 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --warmup-checkpoint <warmup.pt> \
   --reward-scheme blunder_aware \
   --opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12 \
+  --identity-dim 16 --per-entity-heads 64 --graph-layers 0 --self-transform \
   --run-name E<engine>-<attempt>-<seed> \
   --eval-opponents heuristic random <checkpoint.pt> --eval-games-per-side 50 \
   --post-tournament --post-tournament-models heuristic random <checkpoint.pt> \
@@ -328,6 +329,12 @@ engine for differential testing.
     `research/log/E4_pool_starvation_recurrence.md`). Before launching, diff the intended flags
     against a recent healthy run's `metadata.json` rather than trusting the template above; the
     startup banner must say `[opponent pool] ... frac=0.3`.
+15. **Diff the WHOLE `metadata.json`, not the flags you are thinking about.** Invariant 14 was
+    written for the opponent pool and then applied only to the opponent pool: E4 was launched with
+    the bare architecture defaults while all eleven late E3 arms carried `identity_dim 16`,
+    `per_entity_heads 64`, `graph_layers 0`, `self_transform` -- so no E3/E4 comparison is clean
+    (`research/findings/training/e4_architecture_discontinuity.md`). The flags you are not
+    thinking about are the ones that drift.
 
 Each of `engine/AGENTS.md`, `bindings/AGENTS.md`, `bot/AGENTS.md`, `web/server/AGENTS.md`, and root
 `AGENTS.md` carries a "keep documentation synchronized" rule — when you change behavior in one of
