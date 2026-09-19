@@ -1,6 +1,8 @@
 # P19 — is the late-E3 architecture actually stronger on the E4 engine?
 
-**Status: arms running.** `E4-04-01` (control) is in flight; `E4-03-01` is queued behind it on the
+**Status: ANSWERED, 2026-09-19** — see [`../log/E4_architecture_ab_result.md`](../log/E4_architecture_ab_result.md). The bundle is worth **+447 Elo** at matched budget and cold start (94.0% head-to-head, 91% USSR / 97% US), so the decision rule's top row applies: extend `E4-03` to 320M. `E4-03-01@80M` also beats `E4-02-01@320M` (88.5%) and is now the strongest checkpoint in the lineage.
+
+**Original plan follows.** `E4-04-01` (control) is in flight; `E4-03-01` is queued behind it on the
 GPU with a monitor armed. This file is the **pre-registered** analysis: the measurement and the
 decision rule are fixed here *before* the numbers exist, so that the metric cannot be chosen after
 seeing them. Registration of the arms themselves is in [`../runs.md`](../runs.md).

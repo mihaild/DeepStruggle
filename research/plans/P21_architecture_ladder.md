@@ -121,21 +121,23 @@ and must not be conflated.
 construction: same budget, same protocol, same parameter target, one mechanism different. It is
 the only comparison in this plan that supports a causal claim about a mechanism.
 
-**2. Against the best of E4 — absolute placement. This is a yardstick, not a control.** The
-entrant is whichever of `E4-01-01`, `E4-02-01`, `E4-03-01`, `E4-04-01` rates highest in a tournament
-over their best snapshots. On current evidence that is `E4-02-01`, which the 240M round robin
-ranked first; it must be re-determined once `E4-03-01` finishes, which the
-[P19](P19_architecture_ab.md) tournament will do if it is extended to all four arms.
+**2. Against the best of E4 — absolute placement. This is a yardstick, not a control.**
+**Settled 2026-09-19: both anchors are `E4-03-01@80M`.** It is the best of the four arms at 80M
+*and* the best at any budget — it beats `E4-02-01@320M` 88.5% and `E4-01-01@240M` 81.5% despite
+four times fewer steps and no warm start
+([`../log/E4_architecture_ab_result.md`](../log/E4_architecture_ab_result.md)). The
+budget-matched and best-overall anchors the owner asked for therefore coincide, which removes the
+warm-start confound that was expected to attach to the second one.
 
-**Read it with its confounds attached.** The likely anchor ran **320M and was warm-started from a
-BC checkpoint**, against ladder rungs at 80M from cold. A rung losing to it is therefore *expected*
-and says nothing about the mechanism — it says the anchor had four times the steps and a warm
-start. What the anchor is for is a single absolute scale across the whole ladder, so that "M3 beat
-M2" can be placed against "and both are still 200 Elo behind the best thing we have", which the
-rung-to-rung comparison alone can never show.
+**The anchor is a hard target.** `E4-03-01@80M` rates **2149.9** against `HeuristicBot` at 1500
+and beats it 99.0%. Early rungs will lose to it heavily and that is expected — the anchor exists
+to give one absolute scale across the ladder, so "M3 beat M2" can be placed against "and both are
+still far behind the best thing we have", which the rung-to-rung comparison alone can never show.
 
-If a rung ever *beats* the anchor at 80M from cold, that is a major result and the anchor should be
-re-pointed at it.
+Note it is also a *cold 80M* arm, so unlike the warm-started alternatives it is matched to the
+ladder's own budget and start. That makes it a fair target as well as a demanding one.
+
+If a rung ever beats it, that is a major result and the anchor re-points.
 
 ## The input
 
