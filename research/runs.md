@@ -35,11 +35,23 @@ having deliberately.
 | arm | varies | budget | directory | writeup |
 |:---|:---|---:|:---|:---|
 | **E4-01-01** | unpooled: `frac 0.0`, `self_pool False` | 240M, aborted at 184M | `E4-01-01_20260919_003959` | [`log/E4_pool_starvation_recurrence.md`](log/E4_pool_starvation_recurrence.md) |
-| **E4-02-01** | pooled: `frac 0.3`, self-pool, capacity 12 | 240M | `E4-02-01_20260919_040456` | *in flight* |
+| **E4-02-01** | pooled: `frac 0.3`, self-pool, capacity 12 | 240M, **complete** | `E4-02-01_20260919_040456` | [`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md) |
 
 E4-01-01 is kept deliberately. It is a second independent instance of pool starvation, reached by a
 different route than the X4b `dirname` bug, and its first 105M steps are a healthy 35% → 95% climb
 that stands as evidence the post-P17 engine trains normally.
+
+## What the 240M round robin showed
+
+[`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md). Neither arm shows a rise-then-fall
+against a fixed reference within the measured range. The pooled arm has one reproducible US-seat
+dip at 200M that recovers by 220M. The USSR seat is stronger in **both** arms at every budget,
+which is the game's asymmetry rather than a pathology. And `E4-01-01@120M` -- from the *unpooled*
+arm -- tops the field by Elo, so the pool did not buy peak strength at this budget.
+
+The sharpest result is negative: at 180M the unpooled arm's self-play `us_win_rate` read 0.02
+while the same checkpoint scored 23% as US against fixed external references. Side balance in
+self-play is not a measure of strength.
 
 ## What to establish first on this ladder
 
