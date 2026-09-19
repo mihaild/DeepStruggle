@@ -453,6 +453,28 @@ seeing the numbers.
 records that capacity is not v2's bottleneck, so an uncontrolled increase would read "bigger won"
 as "the mechanism won". The realised count goes in each run's `--description`.
 
+## How every rung is reported
+
+Fixed by the owner, 2026-09-19. Each rung gets the same three things, so twelve modifications
+produce twelve comparable blocks instead of twelve summaries that each emphasise something
+different:
+
+1. **Elo**, from the tournament's Bradley-Terry fit.
+2. **Per-side win rate against the previous rung** — the matched comparison, and the only one
+   supporting a causal claim about the mechanism this rung adds. Not applicable to M0, which is
+   the floor.
+3. **Per-side win rate against `E4-03-01@80M`** — the anchor, for absolute placement.
+
+**Per side, never pooled.** A pooled number hides exactly the failure this ladder has already
+surfaced: M0 beats `HeuristicBot` **90% as USSR and 59% as US**, and the pooled 74.5% shows
+neither. Side asymmetry that large is a property of the rung worth knowing before it is carried
+up the ladder.
+
+`tools/scripts/ladder_report.py <tournament.json> --rung <label> [--previous <label>]` emits the
+block. It reads the tournament's own JSON, and handles the per-side entry being stored in either
+direction — a pair recorded as `B_vs_A` is inverted, with the seats swapped, rather than reported
+as missing.
+
 ## Budget
 
 `E4-04-01` ran 80M in ~100 minutes, so an arm is ~1.7 GPU-hours.
