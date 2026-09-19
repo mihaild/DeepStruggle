@@ -124,6 +124,7 @@ moments and a result should not have to be read alongside the doubt about it.
 | [`P7_replayer_conversion.md`](P7_replayer_conversion.md) | how the human corpus is read: score reconciliation, hand reconstruction, what the 300 files contain |
 | [`../../engine/AGENTS.md`](../../engine/AGENTS.md) | engine design and rules defects, including why `CardLocation` encodes hand knowledge (§7) and the free-coup validation bug (§8) |
 | [`E4_architecture_ab_result.md`](E4_architecture_ab_result.md) | — | P19's answer: the late-E3 architecture bundle is worth **+447 Elo** at matched budget and cold start, and `E4-03-01@80M` beats warm-started arms with 4x the steps. Both P21 anchors point at it |
+| [`P21_M0_flat_mlp.md`](P21_M0_flat_mlp.md) | — | the ladder's floor: a flat MLP rates 1650-1666 at 80M, gains **+147 Elo** from 80M to 160M within seed, and at 160M beats the **E4 default architecture 64.5% using 46% of its GPU time** — the defaults are worse than an MLP per unit compute. Seed variance **16.6 Elo**, not the ~95 assumed |
 
 Sections that moved kept their original numbers and left a stub here carrying the part that bears
 on a result. A new entry that turns out to be about an instrument rather than an agent belongs in
