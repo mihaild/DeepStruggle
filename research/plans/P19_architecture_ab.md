@@ -45,6 +45,11 @@ standard error near 9 pp, which is wider than the effect being looked for.
 Entrants: `E4-03-01@80M`, `E4-04-01@80M`, plus `heuristic` and `random` as fixed anchors. Labels
 come from `tools/lib/checkpoint_id.py`, which refuses a name clash.
 
+**Extended to settle P21's anchor.** Add the best snapshots of `E4-01-01` and `E4-02-01`, so the
+same tournament determines which of the four E4 runs rates highest. That arm becomes the absolute
+yardstick for every rung of [P21](P21_architecture_ladder.md) — see *Two comparisons, with
+different jobs* there for why it is a yardstick and not a control.
+
 Two sanity conditions that must hold before the headline number is read at all:
 
 * **Both arms must beat `heuristic` and `heuristic_mcts` decisively.** If a network at 80M is not

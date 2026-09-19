@@ -111,12 +111,31 @@ It is the same complementarity as `country_identity`, from the other side: stati
 weight sharing and pooling are coupled. A static per-entity feature is informative exactly when
 its reader is position-blind — and `country_identity` is informative exactly when it is not.
 
-## The fixed anchor
+## Two comparisons, with different jobs
 
-Every rung is rated against **`E4-04-01@80M`** — cold, pooled, default architecture, completed
-clean — as well as against the rung below it. The anchor gives absolute placement; the rung-to-rung
-comparison gives the increment. Re-point it to `E4-03-01@80M` if
-[P19](P19_architecture_ab.md) finds the late-E3 bundle stronger.
+Fixed by the owner, 2026-09-19: **every modification is measured against the previous one, and
+against whatever comes out best from the current four E4 runs.** These answer different questions
+and must not be conflated.
+
+**1. Against the rung below — the increment. This is what drives adoption.** Matched by
+construction: same budget, same protocol, same parameter target, one mechanism different. It is
+the only comparison in this plan that supports a causal claim about a mechanism.
+
+**2. Against the best of E4 — absolute placement. This is a yardstick, not a control.** The
+entrant is whichever of `E4-01-01`, `E4-02-01`, `E4-03-01`, `E4-04-01` rates highest in a tournament
+over their best snapshots. On current evidence that is `E4-02-01`, which the 240M round robin
+ranked first; it must be re-determined once `E4-03-01` finishes, which the
+[P19](P19_architecture_ab.md) tournament will do if it is extended to all four arms.
+
+**Read it with its confounds attached.** The likely anchor ran **320M and was warm-started from a
+BC checkpoint**, against ladder rungs at 80M from cold. A rung losing to it is therefore *expected*
+and says nothing about the mechanism — it says the anchor had four times the steps and a warm
+start. What the anchor is for is a single absolute scale across the whole ladder, so that "M3 beat
+M2" can be placed against "and both are still 200 Elo behind the best thing we have", which the
+rung-to-rung comparison alone can never show.
+
+If a rung ever *beats* the anchor at 80M from cold, that is a major result and the anchor should be
+re-pointed at it.
 
 ## The input
 
@@ -329,12 +348,48 @@ Per [P19](P19_architecture_ab.md), already pre-registered:
 * **Head-to-head, `tools/tournament.py`, 200 games per pair — 100 per seat**, reported per side.
 * **Sanity gates before any headline is read:** the arm beats `heuristic` and `heuristic_mcts`
   decisively, and is silent under the health alarms (`NOPOOL` / `POOLSTUCK` / `KLSPIKE`).
-* **Two seeds per rung.** Seed spread is ~95 Elo, larger than most architecture effects in this
-  record, and two architecture conclusions have already been withdrawn for exactly that reason.
-  One seed screens; it does not decide.
-* **Adoption:** a rung advances only if it beats the rung below on **both** seeds and the pooled
-  margin exceeds the two arms' own seed spread. A tie carries the simpler variant forward and is
-  recorded as *"no detected effect at 80M, 2 seeds"* — never as "no effect".
+### Two arms per modification: one to 80M, one to 160M
+
+Fixed by the owner, 2026-09-19. **Every modification gets two arms on different seeds — one run to
+80M, one run to 160M.** Snapshots stay at every 5M, so the 160M arm yields its whole curve, not
+two points.
+
+That single choice buys three things at once:
+
+| read | from | why it is clean |
+|:---|:---|:---|
+| **variance at 80M** | arm A @ 80M vs arm B @ 80M | two independent seeds at the same step count |
+| **slope, 80M → 160M** | arm B @ 80M vs arm B @ 160M | **within-seed**, so seed variance cancels out of the slope entirely |
+| **level at 160M** | arm B @ 160M | one seed only — suggestive, not decisive (see below) |
+
+**Intercept versus slope is the point.** A mechanism that lifts the curve and then runs parallel
+has bought a constant; one that changes the slope is still paying off at 160M and would pay more
+at 320M. Those are different findings with different consequences, and no comparison at a single
+budget can tell them apart. This record has already been bitten by the single-budget version of
+this: part of what was credited to interventions turned out to be what longer training does
+anyway — the 240M control matched identity@160M on almost every behavioural line while being
+92–109 Elo weaker.
+
+**Honest limits, recorded now rather than argued later:**
+
+* Two seeds is one degree of freedom. It bounds the variance loosely; it does not estimate it
+  well. The protocol is built for effects that are large relative to spread.
+* **The 160M comparison between rungs is single-seed on each side**, so a difference there is
+  confounded with seed. The *within-seed slope* is the trustworthy quantity at that budget, not
+  the level.
+* Seed spread here is ~95 Elo and two architecture conclusions have already been withdrawn for
+  exactly that reason.
+
+**The owner's stated expectation is that early ablations will be far larger than variance.** If
+they are not — if the first two rungs land inside spread — that is the signal to stop and add
+measures ad hoc rather than to keep climbing. A ladder of inconclusive steps is worse than no
+ladder, because it looks like a result.
+
+* **Adoption:** a rung advances only if it beats the rung below **at 80M on both seeds** and the
+  margin exceeds the two arms' own spread. A tie carries the simpler variant forward and is
+  recorded as *"no detected effect at 80M, 2 seeds"* — never as "no effect". Report the slope
+  alongside, whichever way adoption goes: a rung that ties at 80M but has a clearly steeper
+  within-seed slope is a candidate to re-test at a larger budget, not a dead end.
 
 ## Matched by steps or by compute? Both, with steps primary
 
@@ -387,17 +442,19 @@ as "the mechanism won". The realised count goes in each run's `--description`.
 
 `E4-04-01` ran 80M in ~100 minutes, so an arm is ~1.7 GPU-hours.
 
-| stage | arms | GPU-h |
-|:---|---:|---:|
-| screen M0–M5 at 40M, one seed | 6 | ~5 |
-| screen `d ∈ {8,16,32}` at M2, 40M | 2 extra | ~2 |
-| confirm the ladder at 80M, two seeds | 12 | ~20 |
-| the 2x2 at 80M, two seeds | 8 | ~14 |
-| compute-parity re-runs, only where the gate bites | ~3 | ~5 |
-| **total** | **~31** | **~46** |
+One modification = one 80M arm + one 160M arm = **240M steps**, which at the measured
+11,756–14,057 steps/s is **4.7–5.7 GPU-hours**.
 
-Rates are the measured ones: 14,057 steps/s for the cheap architecture and 11,756 for the
-expensive one, so an 80M arm is 1.6–1.9 GPU-hours depending on the rung.
+| stage | modifications | steps | GPU-h |
+|:---|---:|---:|---:|
+| the ladder, M0–M5 | 6 | 1.44B | ~28 |
+| the 2x2 extras (M4-pe, M4-id, M5-pe, M5-id) | 4 | 0.96B | ~19 |
+| `d ∈ {8, 32}` screen at M2, 80M single arms | 2 | 0.16B | ~3 |
+| compute-parity checks | — | 0 | tournaments only |
+| **total** | **12** | **~2.6B** | **~50** |
+
+Rates are measured, not assumed: 14,057 steps/s for the cheap architecture and 11,756 for the
+expensive one. Budget the ladder at the slow rate; the early rungs should beat it comfortably.
 
 ## What has to be built first
 
