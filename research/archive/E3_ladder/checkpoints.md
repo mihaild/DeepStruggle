@@ -21,7 +21,7 @@ the field and the anchoring differ. Compare within one block below, never across
   the pair, not either side. It was pre-registered as the 4 × 4 primary endpoint and abandoned
   mid-flight for exactly this.
 
-Both are on the checklist in [`method/measurement_pitfalls.md`](method/measurement_pitfalls.md).
+Both are on the checklist in [`../../method/measurement_pitfalls.md`](../../method/measurement_pitfalls.md).
 What *is* usable live: `critic_auc` / `critic_brier_skill` and the blunder rates, neither of which
 depends on an opponent's strength.
 
@@ -123,7 +123,7 @@ against, it has finished protecting by 160M.
 ### `E3-22-28_vs_E3-20-28` — the per-player GAE arm (10 models, 9,000 matches each)
 
 Run 2026-09-16, `data/tournaments/E3-22-28_vs_E3-20-28/`. Every `arm_*` row is
-`--per-player-gae`; see [`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+`--per-player-gae`; see [`findings/value_bootstrap_perspective.md`](findings/value_bootstrap_perspective.md).
 
 | model | directory | steps | Elo |
 |:---|:---|---:|---:|
@@ -142,7 +142,7 @@ illustration on this page of why Elo does not travel between fields.
 ### `E3-23-28_vs_E3-20-28` — the PFSP arm (10 models, 9,000 matches each)
 
 Run 2026-09-16, `data/tournaments/E3-23-28_vs_E3-20-28/`. `arm_*` rows are `--opponent-pfsp`;
-result is a null, see [`findings/training/pooling.md`](findings/training/pooling.md) §3c.
+result is a null, see [`findings/pooling.md`](findings/pooling.md) §3c.
 
 | model | directory | steps | Elo |
 |:---|:---|---:|---:|
@@ -247,7 +247,7 @@ number is where it settles.
 | NOH-armH2 | 1836.4 |
 
 This field contains the **only** number ever recorded for `E3-18-22`, which
-[`findings/training/pooling.md`](findings/training/pooling.md) flags as having no writeup at all:
+[`findings/pooling.md`](findings/pooling.md) flags as having no writeup at all:
 it tops the field at 1978.0.
 
 ### `arena80_160` — retracted
@@ -255,7 +255,7 @@ it tops the field at 1978.0.
 Its three headline claims were withdrawn when a second unpooled seed landed, and two of its arms
 carry confounds (`E3-20-22` ran with `seed=None`; `E3-19-23` resumed from 90M rather than 80M
 because the 80M state had been pruned). Kept for provenance only; see
-[`findings/training/pooling.md`](findings/training/pooling.md) §1.
+[`findings/pooling.md`](findings/pooling.md) §1.
 
 ## Unrated, and worth knowing about
 

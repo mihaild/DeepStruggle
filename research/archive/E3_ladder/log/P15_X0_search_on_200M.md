@@ -51,7 +51,7 @@ one exposes the difference.
   `load_agent` did not pin `advance_root=False`, so the searcher settled its own root and could
   return an action for a decision the caller was not at; and a determinized search can propose a
   move that is illegal in the real world, which nothing filtered
-  ([`../findings/engine/hidden_information_legality.md`](../findings/engine/hidden_information_legality.md)).
+  ([`../../../findings/engine/hidden_information_legality.md`](../../../findings/engine/hidden_information_legality.md)).
   Before `step` validated, both produced a quietly wrong game rather than an error. The 76.7% /
   72.5% figures predate the fix and **have not been re-measured**; this 64.8% is the first search
   number taken on a build where an illegal search action cannot be played.

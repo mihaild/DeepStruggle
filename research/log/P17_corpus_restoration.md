@@ -1,6 +1,6 @@
 # P17: restoring the human corpus after the resolution merge
 
-Companion to [`research/plans/P17_action_representation.md`](../plans/P17_action_representation.md).
+Companion to [`../plans/P17_action_representation.md`](../plans/P17_action_representation.md).
 What the merge broke in the log converter, how each was found, and what the measurement bar is.
 
 ## The bar, and how it was nearly lost
@@ -12,7 +12,7 @@ introduced, and calling it a floor almost retired a check that had been passing.
 
 The rule this is an instance of: **a number that used to be 100% is not a baseline just because
 it is the number you are looking at.** Read what the docs claim before deciding what "expected"
-means. Cross-reference: [`research/method/measurement_pitfalls.md`](../method/measurement_pitfalls.md).
+means. Cross-reference: [`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md).
 
 | stage | converted | guessed | board mismatches |
 |:---|---:|---:|---:|

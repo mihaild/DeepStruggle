@@ -2,8 +2,8 @@
 
 Everything in this repository that bears on *pooled versus non-pooled*, in one place, with the
 current verdict. **Update discipline: rewritten in place.** The experiments themselves stay in
-[`../../log/seed_variance_and_pooling.md`](../../log/seed_variance_and_pooling.md), which is
-append-only; the arms are indexed in [`../../runs.md`](../../runs.md).
+[`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md), which is
+append-only; the arms are indexed in [`../../runs.md`](../runs.md).
 
 This file exists because the question was hard to answer from the record. The evidence was spread
 over one log file, two plan files, three untracked tournament reports and nine `metadata.json`
@@ -14,7 +14,7 @@ descriptions, and the word "pool" names four unrelated things in this project.
 > the run directory, found no snapshots, and started with a pool of **one** — a frozen copy of the
 > current policy, beaten ~99% of the time. The run logs normally and nothing announces it. This
 > produced the entire "X4b collapse":
-> [`../../log/P15_X4b_collapse_is_pool_starvation.md`](../../log/P15_X4b_collapse_is_pool_starvation.md).
+> [`../log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md).
 > `opp_pool_size` and `opp_win_rate_mean` in `training_metrics.jsonl` are the check, and a
 > resumed run now prints a warning when it hits that branch.
 
@@ -24,7 +24,7 @@ descriptions, and the word "pool" names four unrelated things in this project.
 |:---|:---|:---|
 | **opponent pool** — `--opponent-self-pool`, `opponent_self_pool` in metadata, arms E3-19 / E3-20 | a fraction of rollout environments play the current policy against a snapshot of *itself* from earlier in the same run | the subject of this file |
 | **start pool** — `--start-pool-frac`, `ai/training/start_pool.py`, dirs `sp_pool_*` / `sp2_pool_*` | a fraction of episodes *begin* from a saved mid-game position instead of turn 1 | settled negative, [below](#the-start-state-pool-a-different-mechanism-settled-negative) |
-| **pooled head-to-head** — "pooled over sixteen snapshot pairings", "pooled win rate" | an *evaluation* protocol: rate four late snapshots a side and pool the result, to average out where a run stopped | a measurement method, [`../../method/running_experiments.md`](../../method/running_experiments.md) |
+| **pooled head-to-head** — "pooled over sixteen snapshot pairings", "pooled win rate" | an *evaluation* protocol: rate four late snapshots a side and pool the result, to average out where a run stopped | a measurement method, [`../../../method/running_experiments.md`](../../../method/running_experiments.md) |
 | **the pooled trunk** — "pooled 512-float trunk", `data/checkpoints/_pool_stage/` | global average pooling inside the network / the staging directory for the evaluation protocol above | architecture, [`architecture.md`](architecture.md) |
 
 Only the first is what follows. A search for "pool" returns all four, which is most of why this
@@ -70,7 +70,7 @@ after the side imbalance has locked in repairs nothing, and the Elo ordering acr
 **All three were retracted** when a second unpooled seed landed: two no-pool arms differing only
 in seed sat 0.1183 apart on the balance endpoint while pooled minus no-pool was 0.0169, seven
 times smaller, with the pooled arm *between* the two unpooled ones
-([`../../log/seed_variance_and_pooling.md`](../../log/seed_variance_and_pooling.md)).
+([`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md)).
 
 Two confounds compound it. E3-20-22 ran with `seed=None` against E3-17-22's `--seed 20260922`, so
 the original pair differed in the env stream and the network initialisation as well as the pool
@@ -81,7 +81,7 @@ also the one started from a different place.
 ### 2. Self-play balance cannot see what the pool does
 
 Re-measuring the 80M → 160M US decay against **external** opponents, 250 games per pairing
-([`../../log/seed_variance_and_pooling.md`](../../log/seed_variance_and_pooling.md)):
+([`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md)):
 
 | arm | US vs external @80M | @160M | change | self-play said |
 |:---|---:|---:|---:|---:|
@@ -147,7 +147,7 @@ done yet.
 
 **This generalises past pooling.** Any endpoint computed from self-play alone inherits the same
 defect — it can be satisfied by both sides moving together. See
-[`../../method/measurement_pitfalls.md`](../../method/measurement_pitfalls.md).
+[`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md).
 
 ### 3a. The paired comparison the level comparison was hiding
 
@@ -282,7 +282,7 @@ learner's trailing side winnable games and prioritising strips those out. It did
 spiked to 0.82–0.87 for roughly 25M steps around 115–140M and then recovered. Holding side balance
 is the pool's strongest documented effect (§3), so a prioritiser that lets it slip for 25M steps is
 the thread to pull — and it is exactly the oscillation
-[`../../plans/P15_breaking_the_cycle.md`](../../plans/P15_breaking_the_cycle.md) exists to measure.
+[`../plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md) exists to measure.
 
 ### 4. Extending to 320M
 
@@ -306,7 +306,7 @@ The pooled arms are still far better balanced than the unpooled control at 320M,
 survives the extension; what does not survive is the hope that more steps settle it.
 
 **Qualified 2026-09-16 by the frozen-anchor sweep**
-([`../../log/P15_X0_frozen_anchors.md`](../../log/P15_X0_frozen_anchors.md)). The −6.9 pp above is
+([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md)). The −6.9 pp above is
 measured across that tournament's whole field. Against a *fixed* peer anchor the same checkpoint,
 `E3-20-28@320M`, reads **−41.5 pp** — six times larger. Both numbers are correct and they answer
 different questions: a field of the arm's own relatives lets a shared drift cancel, because every
@@ -318,7 +318,7 @@ show.
 ### 5. The pool costs nothing in strength at 80M and the arms are not converged
 
 Three facts that bound how much weight the above can carry, all from
-[`../../log/seed_variance_and_pooling.md`](../../log/seed_variance_and_pooling.md):
+[`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md):
 
 * 160M is **not a converged state** — entropy 1.2–1.3, `clip_frac` 0.11–0.20, KL 0.026–0.035 are
   all healthy at the budget end and two of three arms measured were still recovering.
@@ -333,7 +333,7 @@ Three facts that bound how much weight the above can carry, all from
 
 `--start-pool-frac` resumes a share of self-play episodes from saved mid-game positions. It is
 unrelated to the opponent pool and its verdict is the opposite one
-([`../../log/early_training_signal.md`](../../log/early_training_signal.md) §3).
+([`../../../log/early_training_signal.md`](../../../log/early_training_signal.md) §3).
 
 * The first A/B (`sp_pool_on/off`) was **withdrawn as confounded** — the arms got 67.1M steps
   against 31.0M because the control stalled under evaluation cost.
@@ -345,7 +345,7 @@ unrelated to the opponent pool and its verdict is the opposite one
   for with −17.3 points from the opening.
 * It was then **demoted a second time** for the advantage-collapse problem specifically:
   `is_salvageable` filters on board balance, not on outcome uncertainty, which is the wrong
-  quantity ([`../../plans/restoring_advantage_signal.md`](../../plans/restoring_advantage_signal.md)).
+  quantity ([`../../../plans/restoring_advantage_signal.md`](../../../plans/restoring_advantage_signal.md)).
 
 ## What the record does not say
 
@@ -356,14 +356,14 @@ unrelated to the opponent pool and its verdict is the opposite one
   neither can express a gap the peer tournament separates completely. The training logs contain no
   opponent strong enough to rate these arms, which means there is no in-run instrument for this
   question at all after ~120M. Recorded in
-  [`../../log/measurement_bugs.md`](../../log/measurement_bugs.md).
+  [`../../../log/measurement_bugs.md`](../../../log/measurement_bugs.md).
 * **E3-18-22 has no writeup at all.** It is P10's experiment 1 — continue unchanged, does the
   critic recover on its own — and it is the control that says whether any intervention was needed.
   Its final checkpoint was rated in `arena_heads`, where it **tops the field at 1978.0**
-  ([`../../checkpoints.md`](../../checkpoints.md)); that number is now recorded, but the experiment
+  ([`../../checkpoints.md`](../checkpoints.md)); that number is now recorded, but the experiment
   it belongs to still has no analysis.
 * **E3-19's own question was never answered.** E3-19 was judged on `adv_std_raw` and critic
-  AUC/Brier staying up, per its metadata and [`../../plans/P10_opponent_sampling.md`](../../plans/P10_opponent_sampling.md);
+  AUC/Brier staying up, per its metadata and [`../../../plans/P10_opponent_sampling.md`](../../../plans/P10_opponent_sampling.md);
   the only numbers anyone recorded for it are Elo and side balance from `arena80_160`, which are
   not those instruments.
 * **What fraction, and how big a pool.** Every pooled arm ran frac 0.30 and capacity 12. The

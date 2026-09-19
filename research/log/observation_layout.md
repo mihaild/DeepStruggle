@@ -137,7 +137,7 @@ the expensive part. Then measure game length, not agreement, as the primary read
 
 ### 19.5 Separate locations beat a parallel "known" bit — and this reverses §19.3
 
-**Moved to [`engine/AGENTS.md`](../../engine/AGENTS.md) §7**, which is where someone about to
+**Moved to [`../../engine/AGENTS.md`](../../engine/AGENTS.md) §7**, which is where someone about to
 touch `card_locations` will read it.
 
 The conclusion, since §19.3 and §19.4 above propose the feature and this settles how it was

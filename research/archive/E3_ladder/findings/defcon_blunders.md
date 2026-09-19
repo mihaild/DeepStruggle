@@ -3,14 +3,14 @@
 The provoked DEFCON-1 loss is this project's clearest named failure: the agent plays an opponent
 card for Operations, the event fires, DEFCON falls to 1 on its own turn and it loses. **Update
 discipline: rewritten in place.** The traces, the replays and the arms are in
-[`../../log/P9_architecture.md`](../../log/P9_architecture.md); the queued follow-up is
-[`../../plans/P8_teach_the_defcon_conjunction.md`](../../plans/P8_teach_the_defcon_conjunction.md).
+[`../../../log/P9_architecture.md`](../../../log/P9_architecture.md); the queued follow-up is
+[`../../../plans/P8_teach_the_defcon_conjunction.md`](../../../plans/P8_teach_the_defcon_conjunction.md).
 
 Filed under `training/` — what the critic represents and what a reward window costs — but resting
 on an engine-side taxonomy: the provoked/self-inflicted split is read off the engine's own
 `DEFCON_SUICIDE_PROVOKED` flag, and a sibling ending metric was wrong for a rules reason (a
 turn-10 Wargames counted as final scoring,
-[`../../log/measurement_bugs.md`](../../log/measurement_bugs.md)). If the DEFCON rules move, the
+[`../../../log/measurement_bugs.md`](../../../log/measurement_bugs.md)). If the DEFCON rules move, the
 behavioural percentages move with them; the −68 Elo verdict on windowing does not.
 
 ## The critic never sees it coming, at any node
@@ -77,7 +77,7 @@ about 30% of games reach final scoring against this control's 7%.
 
 The anchor metric disagreed with all of this — the two seeds sit 10.4 anchor points apart and
 straddle the control — which is one of the cases that retired `HeuristicBot` as a rating
-instrument ([`../../method/running_experiments.md`](../../method/running_experiments.md)).
+instrument ([`../../../method/running_experiments.md`](../../../method/running_experiments.md)).
 
 ## Where this leaves the question
 
@@ -85,4 +85,4 @@ The behavioural target is reachable and the current mechanism is too blunt to be
 the turn-scoped window is **5.6× wider than the mistake it credits**, so it penalises every other
 decision in the turn as well. `--window-provoked-defcon` is **not adopted**. The queued step is a
 narrower window plus the auxiliary risk head, which is
-[`../../plans/P8_teach_the_defcon_conjunction.md`](../../plans/P8_teach_the_defcon_conjunction.md).
+[`../../../plans/P8_teach_the_defcon_conjunction.md`](../../../plans/P8_teach_the_defcon_conjunction.md).

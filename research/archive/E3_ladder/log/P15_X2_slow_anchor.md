@@ -43,7 +43,7 @@ sit on top of 200M.
 Every base-rate number below is a **hint, not a result**. One-sidedness of self-play is a fact
 about the pair: 0.80 is equally consistent with one side collapsing and with both sides improving
 at different rates, and it cannot tell those apart
-([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). The question "does a
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)). The question "does a
 slower anchor stop a side being given away" is answered by **per-side win rate against a frozen
 opponent**, which is a tournament measurement, and the table below is not that.
 
@@ -192,7 +192,7 @@ have 200M and 280M steps behind them, and it is climbing faster as USSR than as 
 this file read that rise as "heading toward one-sidedness" and treated it as a warning sign. It
 was measuring the *difference in improvement rates between the two seats* — which is the specific
 thing the statistic cannot distinguish from a side collapsing
-([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). Here the per-seat numbers
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)). Here the per-seat numbers
 say plainly that the answer is uneven improvement, and the base rate would have had this arm
 written off.
 

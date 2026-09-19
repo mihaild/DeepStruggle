@@ -16,7 +16,7 @@ only with a specific flat-probe result to justify it.
 ## League / PFSP
 **Promoted 2026-09-16.** The trigger fired: the stall after 160M with oscillating side balance
 is the cycling this entry was waiting for. The pool, PFSP and the first exploiter are now
-[P15](P15_breaking_the_cycle.md) X1/X3; a full multi-exploiter league remains here, triggered
+[P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md) X1/X3; a full multi-exploiter league remains here, triggered
 by X1 succeeding *and* X3 proving insufficient.
 
 ## PSRO-lite: meta-Nash opponent sampling
@@ -96,7 +96,7 @@ Raise `belief_loss_coef`, or give the belief its own tokens in P6's backbone.
 The 51-atom "VP & end types" head of `ideas_and_plans.md` §3.
 
 ## Entropy / KL-to-π_ref schedule (Ataraxos damping)
-**Partly promoted:** the ref-refresh half is now [P15](P15_breaking_the_cycle.md) X2. What
+**Partly promoted:** the ref-refresh half is now [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md) X2. What
 stays here is the *entropy* schedule (annealing `--entropy-coef` late in training), triggered
 by X2 adopting a slow anchor and entropy then reading as the residual noise floor.
 

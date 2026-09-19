@@ -121,7 +121,7 @@ the opening again 20M later.
 
 ## See also
 
-* [`findings/engine/flattening_card_play.md`](../findings/engine/flattening_card_play.md) — the
+* [`../../../findings/engine/flattening_card_play.md`](../../../findings/engine/flattening_card_play.md) — the
   action-representation refactor this feeds into
 * [`P15_X2_slow_anchor.md`](P15_X2_slow_anchor.md) — `E3-30-28`'s broken US seat, of which the
   frozen opening is one visible piece

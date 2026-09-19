@@ -48,7 +48,7 @@ single network already reaches ~80% on both seats unaided. Every seat collapse m
 therefore a **training-dynamics** problem.
 
 It also settles the sequencing question raised earlier: the action-representation refactor
-([`../findings/engine/flattening_card_play.md`](../findings/engine/flattening_card_play.md)) is a
+([`../../../findings/engine/flattening_card_play.md`](../../../findings/engine/flattening_card_play.md)) is a
 throughput-and-clarity change worth doing on its merits, and **nothing in this evidence suggests
 it would address the collapse**. The 17.5% shorter episodes and the un-aliased decline index are
 real gains; neither is a fix.

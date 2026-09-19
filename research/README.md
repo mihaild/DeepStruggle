@@ -56,19 +56,19 @@ file.
 
 | file | programme |
 |:---|:---|
-| [`early_training_signal.md`](log/early_training_signal.md) | blunder window, decisive-transition priority, start-pool sampling |
-| [`agent_deficiencies_and_decisiveness.md`](log/agent_deficiencies_and_decisiveness.md) | what the control cannot do; length-scaled reward; forced wins |
-| [`engine_reanchor_and_human_control.md`](log/engine_reanchor_and_human_control.md) | re-establishing the ladder after the engine fixes; the human corpus as a strong-player control |
-| [`P7_human_bc_warmup.md`](log/P7_human_bc_warmup.md) | human data as initialisation |
-| [`P7_human_injection_and_its_cost.md`](log/P7_human_injection_and_its_cost.md) | human data as continuous injection, and the ablation that killed it |
-| [`P7_replayer_conversion.md`](log/P7_replayer_conversion.md) | converting the human game logs to engine decisions |
-| [`critic_positional_value.md`](log/critic_positional_value.md) | board and hand perturbation probes on the critic |
-| [`critic_vs_policy_160M.md`](log/critic_vs_policy_160M.md) | counterfactual rollouts; why the run will not invest positionally |
-| [`observation_layout.md`](log/observation_layout.md) | the observation layouts and what each was worth |
-| [`corrected_engine_arms_H_I.md`](log/corrected_engine_arms_H_I.md) | the corrected-engine ladder |
-| [`P9_architecture.md`](log/P9_architecture.md) | identity embeddings → self-transform → per-entity heads → removing the map graph |
-| [`measurement_bugs.md`](log/measurement_bugs.md) | every instrument that reported confident nonsense, in full |
-| [`variance_and_noise.md`](log/variance_and_noise.md) | run-to-run variance, and how much of a rating is just where you stopped |
+| [`log/early_training_signal.md`](log/early_training_signal.md) | blunder window, decisive-transition priority, start-pool sampling |
+| [`log/agent_deficiencies_and_decisiveness.md`](log/agent_deficiencies_and_decisiveness.md) | what the control cannot do; length-scaled reward; forced wins |
+| [`log/engine_reanchor_and_human_control.md`](log/engine_reanchor_and_human_control.md) | re-establishing the ladder after the engine fixes; the human corpus as a strong-player control |
+| [`log/P7_human_bc_warmup.md`](log/P7_human_bc_warmup.md) | human data as initialisation |
+| [`log/P7_human_injection_and_its_cost.md`](log/P7_human_injection_and_its_cost.md) | human data as continuous injection, and the ablation that killed it |
+| [`log/P7_replayer_conversion.md`](log/P7_replayer_conversion.md) | converting the human game logs to engine decisions |
+| [`log/critic_positional_value.md`](log/critic_positional_value.md) | board and hand perturbation probes on the critic |
+| [`log/critic_vs_policy_160M.md`](log/critic_vs_policy_160M.md) | counterfactual rollouts; why the run will not invest positionally |
+| [`log/observation_layout.md`](log/observation_layout.md) | the observation layouts and what each was worth |
+| [`log/corrected_engine_arms_H_I.md`](log/corrected_engine_arms_H_I.md) | the corrected-engine ladder |
+| [`log/P9_architecture.md`](log/P9_architecture.md) | identity embeddings → self-transform → per-entity heads → removing the map graph |
+| [`log/measurement_bugs.md`](log/measurement_bugs.md) | every instrument that reported confident nonsense, in full |
+| [`log/variance_and_noise.md`](log/variance_and_noise.md) | run-to-run variance, and how much of a rating is just where you stopped |
 
 ## findings/ — short, current, cited, and split by what can invalidate it
 
@@ -83,12 +83,12 @@ boundary is not clean.
 
 | file | |
 |:---|:---|
-| [`engine/engine_revisions.md`](findings/engine/engine_revisions.md) | which game each arm was trained on: E1/E2/E3, what each boundary changed, what it invalidated |
-| [`engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md) | P14 changed the legality code and moved no decision in 385,812 steps; how to establish that for the next change |
-| [`training/architecture.md`](findings/training/architecture.md) | what the network is now, and what each change was worth |
-| [`training/pooling.md`](findings/training/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
-| [`training/seed_variance.md`](findings/training/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
-| [`training/defcon_blunders.md`](findings/training/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
+| [`findings/engine/engine_revisions.md`](findings/engine/engine_revisions.md) | which game each arm was trained on: E1/E2/E3, what each boundary changed, what it invalidated |
+| [`findings/engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md) | P14 changed the legality code and moved no decision in 385,812 steps; how to establish that for the next change |
+| [`archive/E3_ladder/findings/architecture.md`](archive/E3_ladder/findings/architecture.md) | what the network is now, and what each change was worth |
+| [`archive/E3_ladder/findings/pooling.md`](archive/E3_ladder/findings/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
+| [`archive/E3_ladder/findings/seed_variance.md`](archive/E3_ladder/findings/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
+| [`archive/E3_ladder/findings/defcon_blunders.md`](archive/E3_ladder/findings/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
 
 **The split rests on an assumption, and the assumption is written down.** The owner's: *engine
 changes make old arms incomparable with new, but after the starred events change they do not
@@ -100,14 +100,14 @@ before carrying any number across an engine revision.
 
 | file | |
 |:---|:---|
-| [`measurement_pitfalls.md`](method/measurement_pitfalls.md) | **read this before trusting a number.** The checklist, distilled from every measurement bug we have made |
-| [`running_experiments.md`](method/running_experiments.md) | how to run an arm and how to rate one |
-| [`measurement_tiers.md`](method/measurement_tiers.md) | which probe runs during training, per snapshot, and once per arm |
-| [`run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`: what each field means and when the engine letter bumps. The arms themselves are [`runs.md`](runs.md) |
-| [`what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md) | **the assumption behind the (A)/(B) split** — what transfers across an engine revision, what does not, and the evidence for and against |
-| [`bookkeeping.md`](method/bookkeeping.md) | **how to record an experiment so it can be found again** — what goes in `runs.md`, `questions.md`, the log and `findings/`, and in what order |
-| [`human_play.md`](method/human_play.md) | the human corpus: game length, side asymmetry, the agreement measure |
-| [`references.md`](method/references.md) | the literature behind the plan ordering |
+| [`method/measurement_pitfalls.md`](method/measurement_pitfalls.md) | **read this before trusting a number.** The checklist, distilled from every measurement bug we have made |
+| [`method/running_experiments.md`](method/running_experiments.md) | how to run an arm and how to rate one |
+| [`method/measurement_tiers.md`](method/measurement_tiers.md) | which probe runs during training, per snapshot, and once per arm |
+| [`method/run_nomenclature.md`](method/run_nomenclature.md) | `<engine>-<attempt>-<seed>-<steps>`: what each field means and when the engine letter bumps. The arms themselves are [`runs.md`](runs.md) |
+| [`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md) | **the assumption behind the (A)/(B) split** — what transfers across an engine revision, what does not, and the evidence for and against |
+| [`method/bookkeeping.md`](method/bookkeeping.md) | **how to record an experiment so it can be found again** — what goes in `runs.md`, `questions.md`, the log and `findings/`, and in what order |
+| [`method/human_play.md`](method/human_play.md) | the human corpus: game length, side asymmetry, the agreement measure |
+| [`method/references.md`](method/references.md) | the literature behind the plan ordering |
 
 ## Two habits that this record exists to enforce
 

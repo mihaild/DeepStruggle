@@ -4,10 +4,10 @@ What is true now about the network's architecture: the recipe line, what each ch
 the representation demonstrably holds, and what is still broken. **Update discipline: current
 conclusions, rewritten when they change.** Nothing here is history — when a number is superseded
 it is replaced, and the run that produced it, the failures on the way, and the retracted readings
-stay in [`../../log/P9_architecture.md`](../../log/P9_architecture.md), which is append-only. Keep this
+stay in [`../../../log/P9_architecture.md`](../../../log/P9_architecture.md), which is append-only. Keep this
 file short: a claim that needs a paragraph of setup to state is a log entry, not a finding. The
-arm names are decoded in [`../../runs.md`](../../runs.md), and the scheme behind them in
-[`../../method/run_nomenclature.md`](../../method/run_nomenclature.md).
+arm names are decoded in [`../../runs.md`](../runs.md), and the scheme behind them in
+[`../../../method/run_nomenclature.md`](../../../method/run_nomenclature.md).
 
 ## The recipe line
 
@@ -83,7 +83,7 @@ specifically per-entity board detail.
 ## What the current network does and does not understand
 
 Probes built against the engine's own answer key, so none needs a human judgement
-([the log](../../log/P9_architecture.md) has the method and the caveats):
+([the log](../../../log/P9_architecture.md) has the method and the caveats):
 
 * **It prices a country for the operation it is performing.** On the same board with the same
   card, E3-15 puts 29–80% of its placement mass on opponent-controlled countries when placement
@@ -116,6 +116,6 @@ Probes built against the engine's own answer key, so none needs a human judgemen
   almost every behavioural line while being 92–109 Elo weaker.
 * **Rate against a strong pooled reference, not `HeuristicBot`**, which systematically overrates
   weaker arms; and read a single snapshot's number against the run's own oscillation
-  ([`../../log/variance_and_noise.md`](../../log/variance_and_noise.md)).
+  ([`../../../log/variance_and_noise.md`](../../../log/variance_and_noise.md)).
 * **A representation probe moving the right way is not evidence a change helped.** The arm that
   most improved the trunk ladder is the one that halved play.

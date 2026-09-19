@@ -159,7 +159,7 @@ is what you would expect if the move is a blunder that the classifier has labell
 
 ### 8.4 The DEFCON-1 "wins" are illegal moves the engine offers — FIXED
 
-**Moved to [`engine/AGENTS.md`](../../engine/AGENTS.md) §8**, an engine rules bug rather than a
+**Moved to [`../../engine/AGENTS.md`](../../engine/AGENTS.md) §8**, an engine rules bug rather than a
 finding about play. Ortega Elected and Che ran their own free-coup target lists without
 consulting `Operations::can_coup`, so they offered coups against countries the opponent had no
 influence in — and couping a battleground took DEFCON 2 → 1 and ended the game against the
@@ -182,7 +182,7 @@ forced wins.
 
 ### 8.6-8.7.5 The engine's score against the log's — SETTLED, and the first measurement was wrong
 
-**Moved to [`experiments_replayer_conversion.md`](P7_replayer_conversion.md).**
+**Moved to [`P7_replayer_conversion.md`](P7_replayer_conversion.md).**
 
 What bears on this file: §8.6 reported that 81.2% of converted games carried VP drift and
 warned that §8's human arc — the evidence that the engine is not USSR-biased — might rest on

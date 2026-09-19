@@ -7,9 +7,9 @@ never reported is a fact about this project, and hiding it behind an empty cell 
 gets re-run.
 
 The naming scheme itself — what `E3-20-28-160M` means, when the engine letter bumps — is
-[`method/run_nomenclature.md`](method/run_nomenclature.md). If you are looking for *what we
+[`../../method/run_nomenclature.md`](../../method/run_nomenclature.md). If you are looking for *what we
 concluded* about some question rather than for a particular arm, start from
-[`questions.md`](questions.md) instead; this file is indexed by arm, and most questions span
+[`../../questions.md`](../../questions.md) instead; this file is indexed by arm, and most questions span
 several.
 
 **Update discipline: rewritten in place.** A row is edited when an arm gains a budget, a seed or
@@ -18,19 +18,19 @@ a run and the outcome recorded against it are history, and those are not edited 
 
 **What the engine letter costs a row.** The tables below are grouped by engine revision because
 that is what decides which numbers may be compared. Two different things are at stake and they are
-filed apart in [`findings/`](findings/README.md):
+filed apart in [`findings/`](../../findings/README.md):
 
 * **Absolute** — a row's Elo, win rate, ending mix or battleground count is a statement about the
   engine it was measured on. Across a letter it is void. What each boundary changed is
-  [`findings/engine/engine_revisions.md`](findings/engine/engine_revisions.md).
+  [`../../findings/engine/engine_revisions.md`](../../findings/engine/engine_revisions.md).
 * **Relative** — what the arm *varied*, measured against its own matched control, is expected to
   carry across a letter. That expectation is an assumption with its evidence written down in
-  [`method/what_survives_an_engine_change.md`](method/what_survives_an_engine_change.md), and the
-  results it licenses are [`findings/training/`](findings/training/README.md).
+  [`../../method/what_survives_an_engine_change.md`](../../method/what_survives_an_engine_change.md), and the
+  results it licenses are [`findings/training/`](../../findings/training/README.md).
 
 So: read the `varied` column across engine revisions, and never the numbers in the writeup cell.
 
-**How to add a row:** [`method/bookkeeping.md`](method/bookkeeping.md).
+**How to add a row:** [`../../method/bookkeeping.md`](../../method/bookkeeping.md).
 
 **Two caveats about the evidence behind this file.**
 
@@ -50,26 +50,26 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 
 | # | arm | varied | seeds | budgets | directory | result written up in |
 |---:|:---|:---|:---|:---|:---|:---|
-| 01 | control | — | 21 | 80M, 160M, 240M | `p1_scalar_nofilter` | [findings/training/architecture.md](findings/training/architecture.md); [log/P9_architecture.md](log/P9_architecture.md) |
-| 02 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a units bug |
-| 03 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a scale bug |
-| 04 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
-| 05 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
-| 06 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` | [findings/training/architecture.md](findings/training/architecture.md) — −28 Elo |
-| 07 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — +25 Elo, +24 at 160M |
-| 08 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` | [findings/training/defcon_blunders.md](findings/training/defcon_blunders.md) |
-| 09 | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` | [log/P9_architecture.md](log/P9_architecture.md) — −110 Elo |
-| 10 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` | [findings/training/architecture.md](findings/training/architecture.md) — +107/+115 Elo |
-| 11 | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` | [log/P9_architecture.md](log/P9_architecture.md) — −40/−0 Elo, not adopted |
-| 12 | `--self-transform` (on identity) | 21, 22 | 80M | `E3-12-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — +53/+83 Elo |
-| 13 | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — −14/−23, rejected |
-| 14 | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — −219 Elo, rejected |
-| 15 | as 14 but **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` | [findings/training/architecture.md](findings/training/architecture.md) — +181 over 12 |
-| 16 | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` | [findings/training/seed_variance.md](findings/training/seed_variance.md) — **withdrawn** |
-| 17 | E3-15 recipe, `--graph-layers 0` | 21, 22, 24, 25, 26 | 80M, 160M, 320M | `E3-17-2*` | [findings/training/seed_variance.md](findings/training/seed_variance.md), [findings/training/pooling.md](findings/training/pooling.md) |
+| 01 | control | — | 21 | 80M, 160M, 240M | `p1_scalar_nofilter` | [findings/training/architecture.md](findings/architecture.md); [log/P9_architecture.md](../../log/P9_architecture.md) |
+| 02 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — died to a units bug |
+| 03 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — died to a scale bug |
+| 04 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) |
+| 05 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) |
+| 06 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` | [findings/training/architecture.md](findings/architecture.md) — −28 Elo |
+| 07 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — +25 Elo, +24 at 160M |
+| 08 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` | [findings/training/defcon_blunders.md](findings/defcon_blunders.md) |
+| 09 | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` | [log/P9_architecture.md](../../log/P9_architecture.md) — −110 Elo |
+| 10 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` | [findings/training/architecture.md](findings/architecture.md) — +107/+115 Elo |
+| 11 | `--arch mlp --drop-static` | 21, 22 | 80M | `p1_mlp_static_seed2026092*` | [log/P9_architecture.md](../../log/P9_architecture.md) — −40/−0 Elo, not adopted |
+| 12 | `--self-transform` (on identity) | 21, 22 | 80M | `E3-12-2*_<ts>` | [findings/training/architecture.md](findings/architecture.md) — +53/+83 Elo |
+| 13 | `--self-transform --attn-readout 64` | 21, 22 | 80M | `E3-13-2*_<ts>` | [findings/training/architecture.md](findings/architecture.md) — −14/−23, rejected |
+| 14 | `--self-transform --per-entity-heads 64` | 21, 22 | 80M | `E3-14-2*_<ts>` | [findings/training/architecture.md](findings/architecture.md) — −219 Elo, rejected |
+| 15 | as 14 but **residual** | 21, 22 | 80M, 160M | `E3-15-2*_<ts>` | [findings/training/architecture.md](findings/architecture.md) — +181 over 12 |
+| 16 | E3-15 recipe, `--graph-layers 1` | 21 | 80M | `E3-16-21_<ts>` | [findings/training/seed_variance.md](findings/seed_variance.md) — **withdrawn** |
+| 17 | E3-15 recipe, `--graph-layers 0` | 21, 22, 24, 25, 26 | 80M, 160M, 320M | `E3-17-2*` | [findings/training/seed_variance.md](findings/seed_variance.md), [findings/training/pooling.md](findings/pooling.md) |
 | 18 | E3-17-22 continued 160M → 240M, unchanged | (22) | 240M | `E3-18-22` | **no writeup** — see note |
-| 19 | pooled opponents from a mid-run resume, frac 0.30 | (22), 23 | 160M | `E3-19-22`, `E3-19-23` | [findings/training/pooling.md](findings/training/pooling.md) — partly; see note |
-| 20 | pooled opponents from scratch (`--opponent-self-pool`, frac 0.3, size 12) | (22), 27, 28, 29 | 160M, 320M | `E3-20-2*` | [findings/training/pooling.md](findings/training/pooling.md), [log/seed_variance_and_pooling.md](log/seed_variance_and_pooling.md) |
+| 19 | pooled opponents from a mid-run resume, frac 0.30 | (22), 23 | 160M | `E3-19-22`, `E3-19-23` | [findings/training/pooling.md](findings/pooling.md) — partly; see note |
+| 20 | pooled opponents from scratch (`--opponent-self-pool`, frac 0.3, size 12) | (22), 27, 28, 29 | 160M, 320M | `E3-20-2*` | [findings/training/pooling.md](findings/pooling.md), [log/seed_variance_and_pooling.md](../../log/seed_variance_and_pooling.md) |
 | 21 | E3-20 recipe + `--same-perspective-bootstrap` | 28 | 160M | *(none on disk)* | **not run** — registered only; see note |
 
 Seed `21` is 20260921, `22` is 20260922, and so on — `28` is 20260928. A seed in parentheses
@@ -88,9 +88,9 @@ cannot leave four directories out of it.
 
 | # | arm | varied | seeds | budgets | directory | result written up in |
 |---:|:---|:---|:---|:---|:---|:---|
-| 01 | arm H | baseline on the corrected engine + v2.3 | — | 160M | `arm_H_v23_corrected` | [log/corrected_engine_arms_H_I.md](log/corrected_engine_arms_H_I.md) |
-| 02 | arm H2 | second seed of H | 21 | 160M, 240M, 480M | `arm_H2_v23_seedB`, `arm_H2_cont_160to240`, `arm_H2_cont_240to480` | [log/corrected_engine_arms_H_I.md](log/corrected_engine_arms_H_I.md) |
-| 03 | arm I | `eta` 0 — NashPG KL penalty off | 21 | 80M | `arm_I_no_kl` | [log/corrected_engine_arms_H_I.md](log/corrected_engine_arms_H_I.md) — −169 Elo |
+| 01 | arm H | baseline on the corrected engine + v2.3 | — | 160M | `arm_H_v23_corrected` | [log/corrected_engine_arms_H_I.md](../../log/corrected_engine_arms_H_I.md) |
+| 02 | arm H2 | second seed of H | 21 | 160M, 240M, 480M | `arm_H2_v23_seedB`, `arm_H2_cont_160to240`, `arm_H2_cont_240to480` | [log/corrected_engine_arms_H_I.md](../../log/corrected_engine_arms_H_I.md) |
+| 03 | arm I | `eta` 0 — NashPG KL penalty off | 21 | 80M | `arm_I_no_kl` | [log/corrected_engine_arms_H_I.md](../../log/corrected_engine_arms_H_I.md) — −169 Elo |
 
 `E2-02-21` is one lineage across four budgets, so the strongest checkpoint in the project is
 **`E2-02-21-480M`**, and it is the standing rating anchor.
@@ -103,13 +103,13 @@ log is written in their names.
 
 | arm | varied | budgets | directory | result written up in |
 |:---|:---|:---|:---|:---|
-| A / B | BC warmup from self-play vs from the human corpus | 80M | `run_v2_20260906_153116_e3_{synth,human}` | [log/P7_human_bc_warmup.md](log/P7_human_bc_warmup.md) |
-| D | legacy layout, cold start, no injection, K=40 | 80M–320M | `arm_D_*` | [log/observation_layout.md](log/observation_layout.md) |
-| D′ | D replicated at a new seed | 80M | `arm_Dp_cold_noinject_seed5` | [log/variance_and_noise.md](log/variance_and_noise.md) |
-| E | observation v2.1 — card tracking, no dead history | 80M–320M | `arm_E_*` | [log/observation_layout.md](log/observation_layout.md) — neutral |
-| F / F2 | observation v2.2 — decision context in | 80M, 160M | `arm_F_v22_cold`, `arm_F2_v22_cold_seedB`, `arm_F_cont_80to160` | [log/observation_layout.md](log/observation_layout.md) — +91.7 Elo |
-| G / G2 | v2.2 + engine flag `staged_cards` | 160M, 320M | `arm_G_v22_staged`, `arm_G2_v22_staged_seedB` | [log/observation_layout.md](log/observation_layout.md) — flag not demonstrated |
-| var A/B/C/C2/C3 | warm start vs cold start vs synth-only, for variance | 80M, 160M | `var_*` | [log/variance_and_noise.md](log/variance_and_noise.md) |
+| A / B | BC warmup from self-play vs from the human corpus | 80M | `run_v2_20260906_153116_e3_{synth,human}` | [log/P7_human_bc_warmup.md](../../log/P7_human_bc_warmup.md) |
+| D | legacy layout, cold start, no injection, K=40 | 80M–320M | `arm_D_*` | [log/observation_layout.md](../../log/observation_layout.md) |
+| D′ | D replicated at a new seed | 80M | `arm_Dp_cold_noinject_seed5` | [log/variance_and_noise.md](../../log/variance_and_noise.md) |
+| E | observation v2.1 — card tracking, no dead history | 80M–320M | `arm_E_*` | [log/observation_layout.md](../../log/observation_layout.md) — neutral |
+| F / F2 | observation v2.2 — decision context in | 80M, 160M | `arm_F_v22_cold`, `arm_F2_v22_cold_seedB`, `arm_F_cont_80to160` | [log/observation_layout.md](../../log/observation_layout.md) — +91.7 Elo |
+| G / G2 | v2.2 + engine flag `staged_cards` | 160M, 320M | `arm_G_v22_staged`, `arm_G2_v22_staged_seedB` | [log/observation_layout.md](../../log/observation_layout.md) — flag not demonstrated |
+| var A/B/C/C2/C3 | warm start vs cold start vs synth-only, for variance | 80M, 160M | `var_*` | [log/variance_and_noise.md](../../log/variance_and_noise.md) |
 
 ## Named A/B pairs from before the scheme
 
@@ -117,19 +117,19 @@ These predate `--run-name` entirely. Their directories are the only names they h
 
 | pair | question | directories | result written up in |
 |:---|:---|:---|:---|
-| blunder window | confine an unprovoked blunder's penalty to its own turn | `abw_window_{on,off}`, `bw_{window,nowindow}_ref_ent` | [log/early_training_signal.md](log/early_training_signal.md) §2.1 — retained, evidence needs re-checking |
-| decisive-transition priority | `--priority-alpha` | `dec_prio_{on,off}` | **no writeup** — [log/early_training_signal.md](log/early_training_signal.md) §2.2 records that the conclusion was never captured |
-| decisiveness K | K=20 vs K=40 length-scaled reward | `dec_turns20`, `dec_turns40` | [log/agent_deficiencies_and_decisiveness.md](log/agent_deficiencies_and_decisiveness.md) |
-| **start-pool A/B (first)** | `--start-pool-frac` — resume self-play from saved mid-game positions | `sp_pool_{on,off}` | [log/early_training_signal.md](log/early_training_signal.md) §3.1 — **withdrawn, confounded** |
-| **start-pool A/B (second)** | the same, step-budgeted at 78M | `sp2_pool_{on,off}` | [log/early_training_signal.md](log/early_training_signal.md) §3.2–3.3 — settled negative |
-| injection dose | human-data injection every 1 / 4 / 16 iterations | `inj_every*`, `inj_none` | [log/P7_human_injection_and_its_cost.md](log/P7_human_injection_and_its_cost.md) |
-| injection × human init | human warm start with and without injection | `hum_inj1`, `hum_none` | [log/P7_human_injection_and_its_cost.md](log/P7_human_injection_and_its_cost.md) |
-| injection weight grid | weight × frequency, 8 cells | `g_control`, `g_w*` | [log/P7_human_injection_and_its_cost.md](log/P7_human_injection_and_its_cost.md) |
+| blunder window | confine an unprovoked blunder's penalty to its own turn | `abw_window_{on,off}`, `bw_{window,nowindow}_ref_ent` | [log/early_training_signal.md](../../log/early_training_signal.md) §2.1 — retained, evidence needs re-checking |
+| decisive-transition priority | `--priority-alpha` | `dec_prio_{on,off}` | **no writeup** — [log/early_training_signal.md](../../log/early_training_signal.md) §2.2 records that the conclusion was never captured |
+| decisiveness K | K=20 vs K=40 length-scaled reward | `dec_turns20`, `dec_turns40` | [log/agent_deficiencies_and_decisiveness.md](../../log/agent_deficiencies_and_decisiveness.md) |
+| **start-pool A/B (first)** | `--start-pool-frac` — resume self-play from saved mid-game positions | `sp_pool_{on,off}` | [log/early_training_signal.md](../../log/early_training_signal.md) §3.1 — **withdrawn, confounded** |
+| **start-pool A/B (second)** | the same, step-budgeted at 78M | `sp2_pool_{on,off}` | [log/early_training_signal.md](../../log/early_training_signal.md) §3.2–3.3 — settled negative |
+| injection dose | human-data injection every 1 / 4 / 16 iterations | `inj_every*`, `inj_none` | [log/P7_human_injection_and_its_cost.md](../../log/P7_human_injection_and_its_cost.md) |
+| injection × human init | human warm start with and without injection | `hum_inj1`, `hum_none` | [log/P7_human_injection_and_its_cost.md](../../log/P7_human_injection_and_its_cost.md) |
+| injection weight grid | weight × frequency, 8 cells | `g_control`, `g_w*` | [log/P7_human_injection_and_its_cost.md](../../log/P7_human_injection_and_its_cost.md) |
 | slice / reference ablation | `abl_slice_ref`, `abl_noslice*` | `abl_*` | **no writeup** — metadata says only "ablation arm <name>" |
 | V4 oracle-critic fine-tunes | privileged oracle critic distillation | `run_v4_2026082*` | **no writeup in `research/`** — predates the log |
 
 `sp_pool_*` and `sp2_pool_*` are the **start-state** pool, not the opponent pool. The two are
-unrelated mechanisms with opposite verdicts; see [`findings/training/pooling.md`](findings/training/pooling.md).
+unrelated mechanisms with opposite verdicts; see [`findings/pooling.md`](findings/pooling.md).
 
 ---
 
@@ -141,7 +141,7 @@ written** — a prediction that failed is the most useful thing on this page.
 ### E3-12 and E3-13 — the graph self-transform and the attention read-out
 
 **E3-12 and E3-13 carry `--identity-dim 16`, and their control is E3-10, not E3-01.** Identity
-is part of the recipe as of the identity arms ([`log/P9_architecture.md`](log/P9_architecture.md)),
+is part of the recipe as of the identity arms ([`../../log/P9_architecture.md`](../../log/P9_architecture.md)),
 so an arm that omitted it would be measuring identity again.
 
 Both target what `log/P9_architecture.md` localised (*exact influence and control, read off the
@@ -241,7 +241,7 @@ field and the sign of the comparison reverses with the seed: matched on seed 21 
 better, matched on seed 22 E3-15 is. Seed spread is ~95 Elo, an order of magnitude above the
 1.8pp binomial error on the pairings. The depth question is **open**, and answering it needs
 more seeds per arm, not more games per pairing. See
-[`findings/training/seed_variance.md`](findings/training/seed_variance.md) and `log/P9_architecture.md`, *seed
+[`findings/seed_variance.md`](findings/seed_variance.md) and `log/P9_architecture.md`, *seed
 variance is ~95 Elo*. The throughput figure is unaffected — it is not a play-strength claim.
 
 E3-17 keeps a per-country encoder, so every country is still encoded from its own observation
@@ -284,7 +284,7 @@ They were written down — in `metadata.json`, which the registry had not been r
   "replicates" are not started from the same place.
 
 E3-19 is the pool applied to a run already in progress; E3-20 is the pool from scratch. They are
-different experiments and were numbered as such. See [`findings/training/pooling.md`](findings/training/pooling.md).
+different experiments and were numbered as such. See [`findings/pooling.md`](findings/pooling.md).
 
 ### E3-20 and the unseeded arms
 
@@ -310,7 +310,7 @@ the result as the player who just moved sees it — instead of negating the next
 value. The negation assumes `V(s, me) = -V(s, opponent)`, which holds under perfect
 information and not here: measured over 227 positions, `v_US + v_USSR` has mean absolute
 0.144 where the identity requires 0. E3-20-28 is therefore a matched baseline at the same
-seed. See [`log/search_cost_and_coverage.md`](log/search_cost_and_coverage.md) §8.
+seed. See [`../../log/search_cost_and_coverage.md`](../../log/search_cost_and_coverage.md) §8.
 
 **E3-21-28 ran and is a negative result.** Three attempts: the first two died at 4,063,232 steps
 on ENG-3, the mask/state-machine disagreement over Missile Envy's forced play; the third ran to
@@ -324,7 +324,7 @@ term leaves δ_t carrying `V(s_{t+1}, p_t)` while δ_{t+1} subtracts `V(s_{t+1},
 residual accumulates instead of cancelling. Return RMSE 0.551 → 0.789 and correlation with the
 realised outcome 0.861 → 0.621, with damage scaling in λ exactly as accumulation predicts. Full
 account in
-[`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+[`findings/value_bootstrap_perspective.md`](findings/value_bootstrap_perspective.md).
 
 Directories: `E3-21-28_20260916_092205` (the 40M run, kept as the artifact) and two voided crashes,
 `..._004620_VOID_refusal_crash` and `..._010023_VOID_eng3_crash`.
@@ -356,7 +356,7 @@ the change that killed this arm twice at ~4M steps in the first place. It was me
 way and more thoroughly — 1,068 games, 385,812 steps, four policies, comparing outcome, game
 length, chosen action **and the legal mask itself** at every step against a build of `a09e15a`,
 with **zero divergences of any kind**. The letter stays E3 and the pairing stands. See
-[`findings/engine/engine_change_decision_stream.md`](findings/engine/engine_change_decision_stream.md).
+[`../../findings/engine/engine_change_decision_stream.md`](../../findings/engine/engine_change_decision_stream.md).
 
 **E3-22-28 ran to 80M and is a decisive negative result.** Two attempts.
 
@@ -393,7 +393,7 @@ The transferable lesson, and the reason this is worth the two runs: **a better o
 estimate is not a better training signal.** Per-player GAE beats the default on every offline
 metric — RMSE 0.551 → 0.481, outcome correlation 0.861 → 0.901, exact telescoping at λ=1 — and
 loses by 520 Elo. Full account in
-[`findings/training/value_bootstrap_perspective.md`](findings/training/value_bootstrap_perspective.md).
+[`findings/value_bootstrap_perspective.md`](findings/value_bootstrap_perspective.md).
 
 ### E3-23 — the PFSP arm
 
@@ -407,21 +407,21 @@ Elo against the matched baseline (`data/tournaments/E3-23-28_vs_E3-20-28/`, 45,0
 inside the 83–221 Elo within-condition seed spread this project has already measured, from one
 seed. Critic metrics are null over all 33 windows and positive only on the base-rate-matched
 subset. Full account in
-[`findings/training/pooling.md`](findings/training/pooling.md) §3c.
+[`findings/pooling.md`](findings/pooling.md) §3c.
 
 PFSP is **postponed**, not refuted: the treatment settled at a 1.1–1.2× reweighting over uniform,
 so the null applies to a mild nudge rather than to prioritisation. The arm did leave two things
 behind that outlast it — the per-opponent win-rate instrument (`opp_win_rate_*`,
 `opp_games_recorded`), which is the first in-run signal for whether the pool does anything, and the
 measurement that a pooled game is played against ~5 snapshots in sequence
-([`findings/training/pooling.md`](findings/training/pooling.md) §3b).
+([`findings/pooling.md`](findings/pooling.md) §3b).
 
 Directory: `E3-23-28_20260916_171033`.
 
 ### E3-29 … E3-35 — the P15 search-CE arms, and the pool bug under them
 
 **The X4b collapse was opponent-pool starvation, not a property of search-CE.** Full account in
-[`archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md); the
+[`log/P15_X4b_collapse_is_pool_starvation.md`](log/P15_X4b_collapse_is_pool_starvation.md); the
 short version is that `--resume <run-directory>` rebuilt the pool from the *parent* of the
 directory until `266e891`, found no snapshots, and started with a pool of one.
 

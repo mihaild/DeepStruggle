@@ -67,12 +67,12 @@ P3 scoped search to card and play-mode decisions as "the decisions that matter",
 inherited it. That is wrong on the merits as well as on this census — where influence goes decides
 which country flips, which battleground is contested and what the opponent can do next, and it is
 not a detail of executing a card. Written up in
-[`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md),
+[`../findings/which_decisions_to_search.md`](../findings/which_decisions_to_search.md),
 along with the offline test of the fix.
 
 ## What this changes
 
-X4b's specification in [`plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md)
+X4b's specification in [`../plans/P15_breaking_the_cycle.md`](../plans/P15_breaking_the_cycle.md)
 says card/play-mode nodes, following P3's argument that those are "the decisions that matter".
 **That argument is wrong twice over.** It is wrong as a claim about where a searcher disagrees
 with this policy, which is what the table above measures. It is also wrong on its own terms:

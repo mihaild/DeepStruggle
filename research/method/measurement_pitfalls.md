@@ -81,7 +81,7 @@ yourself and beating a third party are different quantities. *Shows up as:* an a
 converged on the pre-registered metric and unremarkable on the ladder. *Check:* measure the thing
 against an opponent that does not move. If a metric can be satisfied by both sides changing
 together, it is measuring the pair.
-See [`../findings/training/pooling.md`](../findings/training/pooling.md) §3.
+See [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md) §3.
 
 **A single cell is not a comparison.** Two arms' final snapshots meeting once gave a ~64 Elo seed
 effect where sixteen pairings give ~13. *Check:* pool all pairings of four snapshots a side.
@@ -172,7 +172,7 @@ of a same-feature group is in hand.
 
 A rating is uninterpretable without the temperature it was taken at, and `tools/tournament.py`
 now records it in the report header and the JSON. Measured on `p28_200M`
-([`log/P15_temperature_selfplay.md`](../log/P15_temperature_selfplay.md)): greedy and the old
+([`../archive/E3_ladder/log/P15_temperature_selfplay.md`](../archive/E3_ladder/log/P15_temperature_selfplay.md)): greedy and the old
 default of 0.1 are the **same player** (50.0% over 300 games, 6.9 Elo), 0.25 is still inside
 noise, and then it collapses — 0.5 costs 134 Elo, 1.0 costs 374.
 
@@ -189,7 +189,7 @@ the **majority-class rate**. Two consequences, and both have caught reports in t
 
 * **It has no direction.** It is always ≥ 0.5 and says nothing about *which* side leads, so it can
   never support a claim about a named side.
-  [`log/seed_variance_and_pooling.md`](../log/seed_variance_and_pooling.md) already records this
+  [`../log/seed_variance_and_pooling.md`](../log/seed_variance_and_pooling.md) already records this
   and notes that earlier reports reading it as "US-leaning" were wrong.
 * **It is a fact about the pair, not about either side.** A base rate of 0.96 is equally
   consistent with:
@@ -214,7 +214,7 @@ measurement. It is never the measurement.
 seat against a frozen anchor over the same span, **both seats improved** — USSR 7.7% → 50.0% and
 US 4.7% → 23.0%. The rising base rate was the *gap between two improvement rates*, and on the
 cheap signal alone the arm would have been written off
-([`log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md)).
+([`../archive/E3_ladder/log/P15_X2_slow_anchor.md`](../archive/E3_ladder/log/P15_X2_slow_anchor.md)).
 
 ## The training setup you think you configured is not always the one that ran
 
@@ -278,7 +278,7 @@ range it was taken over, and "the decline" is not a range until you have checked
 * prefer a ratio or a fold-change over a difference of two noisy percentages.
 
 `tools/scripts/` has no helper for this yet; the ad-hoc version is nine lines and is reproduced in
-[`archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md).
+[`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md).
 
 ## A checkpoint's filename is not its provenance
 

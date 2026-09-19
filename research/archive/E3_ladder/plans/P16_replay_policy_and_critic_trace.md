@@ -33,13 +33,13 @@ on each log row, and a per-step panel listing the top legal actions with their p
   Those have different fixes and today they look identical in a replay.
 * The critic trace over a real game is the missing half of the stall diagnosis. "The critic
   degenerates toward the base rate" is currently a training-metric claim
-  ([`README.md`](README.md), the binding constraint). A per-step `v_win` curve over a played game
+  ([`README.md`](../../../plans/README.md), the binding constraint). A per-step `v_win` curve over a played game
   makes it a property of an artefact you can point at, and localises *where* on the board the
   degeneracy shows.
 * The machinery for the critic half already exists but only post-hoc and only offline:
   `ai/eval/replay_critic.py` re-drives a replay from its seed and evaluates both heads from both
   perspectives, with `verify()` guarding the reconstruction. It was used once, by hand, for
-  [`../log/europe_control_and_held_scoring.md`](../log/europe_control_and_held_scoring.md). Making
+  [`../../../log/europe_control_and_held_scoring.md`](../../../log/europe_control_and_held_scoring.md). Making
   the trace part of the replay makes that reading cheap, repeatable and visible.
 * It costs nothing to compute at generation time. `sample_action` already runs the forward pass,
   already has the masked logits and already has both value heads — and throws all but the sampled

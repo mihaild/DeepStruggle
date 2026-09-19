@@ -50,7 +50,7 @@ The three nodes being merged average **2.1, 2.0 and 2.9** legal actions and toge
 **35.6% of all decisions**. They are the decisions with almost nothing to choose between.
 
 The search census says the same thing from another direction
-([`../../log/P15_X4a_where_the_search_signal_is.md`](../../log/P15_X4a_where_the_search_signal_is.md)):
+([`../../archive/E3_ladder/log/P15_X4a_where_the_search_signal_is.md`](../../archive/E3_ladder/log/P15_X4a_where_the_search_signal_is.md)):
 `SELECT_PLAY_MODE` shows 96.6% policy/searcher agreement at KL 0.0192 and
 `CHOOSE_TIMING_BRANCH` 95.7% at 0.0175. A 64-simulation search spends its budget there to confirm
 what the mask already implied. A ~4-way merged node carries strictly more information per decision
@@ -109,7 +109,7 @@ in for the absence of one. Cheap in slots: the merge above frees four.
 
 Opening influence placement is frozen solid in both from-scratch lineages — all six USSR points
 into Yugoslavia, all seven US points into one country, unchanged across 230M steps in `E3-30-28`
-([`../../log/P15_setup_placement.md`](../../log/P15_setup_placement.md)). That is not caused by the
+([`../../archive/E3_ladder/log/P15_setup_placement.md`](../../archive/E3_ladder/log/P15_setup_placement.md)). That is not caused by the
 aliasing, but it is the same theme: the action representation makes some decisions much harder to
 learn than they need to be, and the rare ones never recover.
 

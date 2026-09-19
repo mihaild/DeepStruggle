@@ -1,9 +1,9 @@
 # P10 — Breaking the advantage collapse
 
-**Status:** **absorbed into [P15](P15_breaking_the_cycle.md)** (2026-09-16). Experiment 1 ran
+**Status:** **absorbed into [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md)** (2026-09-16). Experiment 1 ran
 (E3-18-22 — needs its writeup; the one recorded rating, +11 over its parent after +80M, is
 the "no self-recovery" answer), experiment 4 became the pooled arms
-([`../findings/training/pooling.md`](../findings/training/pooling.md)), experiment 2 is
+([`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md)), experiment 2 is
 P15-X1, and experiment 3 folds into P15-X2's screen cells.
 **Needs approval:** experiments 2 and 4 change the rollout loop (trainer only — no engine, no
 observation, no checkpoint invalidation). Experiments 1 and 3 need no code at all.
@@ -205,4 +205,4 @@ above was never computed; what exists is a different instrument.
 
 Results, caveats and what is still missing — including that experiment 1 (E3-18-22) ran and was
 never written up, and that frac 0.15 and 0.50 were never launched — are in
-[`../findings/training/pooling.md`](../findings/training/pooling.md). This plan file stays as written.
+[`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md). This plan file stays as written.

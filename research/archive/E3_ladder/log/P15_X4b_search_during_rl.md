@@ -251,7 +251,7 @@ The X4b arm plays USSR at **61.9%** — 27 points above its own control and 19 a
 they both started from. It improves *both* seats, and the larger US gain is why its USSR − US gap
 still reads −19.1 pp. **The side gap is the wrong instrument here**: a model winning 61.9% and
 81.0% is not "imbalanced" in any sense that matters, which is the argument
-[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) already makes about that
+[`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md) already makes about that
 metric.
 
 So the answer to X4a's USSR finding may be that the weak side was never a balance problem but a
@@ -459,10 +459,10 @@ be reached for afterwards.
 > **Correction: `critic_base_rate` cannot show this, and the wording above was wrong twice over.**
 > It is `max(p, 1 − p)` (`critic_tracker.py:140`), the majority-class rate — so it has **no
 > direction** and cannot name a side at all, a point
-> [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) already records against earlier
+> [`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md) already records against earlier
 > reports that read it as "US-leaning". And as a magnitude it is a fact about the *pair*: 0.96 is
 > equally consistent with one side collapsing and with both sides improving at different rates.
-> See [`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md).
+> See [`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md).
 >
 > The conclusion survives, but on a different instrument. The per-side matrix in
 > [`P15_X4a_distillation.md`](P15_X4a_distillation.md), rated **against a frozen field**, puts this

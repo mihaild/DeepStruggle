@@ -38,14 +38,14 @@ product. The literature behind the ordering is in [`../method/references.md`](..
 runaway side varies by run), the critic degenerates toward the base rate, `adv_std_raw`
 collapses, and strategy keeps changing while strength does not. The opponent pool settles the
 *balance* half decisively and is suggestive on strength, but does not cancel the stall
-([`../findings/training/pooling.md`](../findings/training/pooling.md)). Meanwhile the honest
+([`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md)). Meanwhile the honest
 searcher beats the raw policy ~75% *with the same network*
 ([`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md)), and there is no
 in-run instrument that can rate an arm past ~120M.
 
 Until training converts compute into strength again, no probe-level step (setup, DEFCON,
 value-target refinements) can pay off — an arm that trains into the stall measures the stall.
-So the queue is tiered: **[P15](P15_breaking_the_cycle.md) and its instruments first**,
+So the queue is tiered: **[P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md) and its instruments first**,
 no-GPU work in parallel, everything else behind them, re-ranked once the stall's mechanism is
 known.
 
@@ -55,19 +55,19 @@ known.
 
 | item | what | cost | gate |
 |:---|:---|:---|:---|
-| **P15-X0** | frozen-anchor evals — **backfill measured** ([`../log/P15_X0_frozen_anchors.md`](../log/P15_X0_frozen_anchors.md): peaks at 120M/200M then −56 to −154 Elo; matrix transitive; field tournaments hid 6× of the side gap); in-run wiring + peak selection still to do | eval config only | none |
-| **P15-X1** | **run, did not discriminate** ([`../log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md)): the "unanswered" strategy was already held level at 1,000 games; the run's yield is the mechanism number — a seat with no gradient falls 50% → 7% in 40M steps | spent | — |
-| **P15-X4a** | **run** ([`../log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md)): the edge transfers (+47.7 Elo from 0.033 nats) and does **not** survive RL — a dead heat after 20M; the signal lives in `POINT_NODE` (71.8%), not card/play-mode | spent | — |
+| **P15-X0** | frozen-anchor evals — **backfill measured** ([`../archive/E3_ladder/log/P15_X0_frozen_anchors.md`](../archive/E3_ladder/log/P15_X0_frozen_anchors.md): peaks at 120M/200M then −56 to −154 Elo; matrix transitive; field tournaments hid 6× of the side gap); in-run wiring + peak selection still to do | eval config only | none |
+| **P15-X1** | **run, did not discriminate** ([`../archive/E3_ladder/log/P15_X1_frozen_exploiter.md`](../archive/E3_ladder/log/P15_X1_frozen_exploiter.md)): the "unanswered" strategy was already held level at 1,000 games; the run's yield is the mechanism number — a seat with no gradient falls 50% → 7% in 40M steps | spent | — |
+| **P15-X4a** | **run** ([`../archive/E3_ladder/log/P15_X4a_distillation.md`](../archive/E3_ladder/log/P15_X4a_distillation.md)): the edge transfers (+47.7 Elo from 0.033 nats) and does **not** survive RL — a dead heat after 20M; the signal lives in `POINT_NODE` (71.8%), not card/play-mode | spent | — |
 | **P15-X4c step 1** | the 15M-peak diagnostic: search the X4b arm's own 5/10/15/20M snapshots, read whether the edge was absorbed (benign), the teacher decayed via the student's critic, or the policy over-sharpened — routes the 80M leg | a few GPU-h, no training | none |
 | bookkeeping | write up **E3-18-22** (P10 exp 1, the do-nothing control): its one rating, +11 over its parent after +80M, *is* the "no self-recovery" result | none | none |
 
-### Tier 1 — the stall attack (gated by X1 climbing; details in [P15](P15_breaking_the_cycle.md))
+### Tier 1 — the stall attack (gated by X1 climbing; details in [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md))
 
 | item | what | cost |
 |:---|:---|:---|
-| **P15-X4b** | **works — interim** ([`../log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md)): +224/+250/+254/+166 Elo over the matched control at 5/10/15/20M, one seed, both seats improved (USSR 61.9% vs control 34.7%) — **peaks near 15M and sheds 88 Elo in the last segment**. The 80M two-seed leg runs after X4c step 1 names the peak's mechanism and picks its guard (ce-anneal + stronger teacher / frozen-leaf / entropy floor) | ~14h/seed at measured throughput |
+| **P15-X4b** | **works — interim** ([`../archive/E3_ladder/log/P15_X4b_search_during_rl.md`](../archive/E3_ladder/log/P15_X4b_search_during_rl.md)): +224/+250/+254/+166 Elo over the matched control at 5/10/15/20M, one seed, both seats improved (USSR 61.9% vs control 34.7%) — **peaks near 15M and sheds 88 Elo in the last segment**. The 80M two-seed leg runs after X4c step 1 names the peak's mechanism and picks its guard (ce-anneal + stronger teacher / frozen-leaf / entropy floor) | ~14h/seed at measured throughput |
 | **P15-X2** | anchor timescale: `--ref-update-freq` 200k → {5M, 20M} — the KL anchor currently refreshes every ~16s of wall clock and tracks the cycle it should damp | flags; ~2h/cell |
-| **P15-X3** | pool memory: span-the-run pool with δ-mix (a); ~~PFSP (b)~~ **postponed — ran as E3-23-28 and is a null: +11.6 Elo at 160M against an 83–221 Elo seed spread** ([pooling.md §3c](../findings/training/pooling.md)); one-opponent-per-episode (c, only if a moves) | small trainer change; ~2h/arm |
+| **P15-X3** | pool memory: span-the-run pool with δ-mix (a); ~~PFSP (b)~~ **postponed — ran as E3-23-28 and is a null: +11.6 Elo at 160M against an 83–221 Elo seed spread** ([pooling.md §3c](../archive/E3_ladder/findings/pooling.md)); one-opponent-per-episode (c, only if a moves) | small trainer change; ~2h/arm |
 
 ### Tier 2 — parallel, no GPU
 
@@ -93,10 +93,10 @@ known.
 |:---|:---|
 | [P1](P1_categorical_value_advantage_filtering.md) | **done** — categorical head settled negative (E3-06, −28); advantage filtering settled positive and adopted (E3-07, +25/+24). Verdicts in [`../questions.md`](../questions.md) |
 | [P3](P3_determinized_search_expert_iteration.md) | **absorbed into P15-X4** — its diagnostic half is answered (the search gap is ~75%, large), so its trigger fired |
-| [P6](P6_attention_backbone.md) | **superseded by the P9 programme** — identity embeddings, self-transform and per-entity heads landed as E3-15 and are the baseline ([`../findings/training/architecture.md`](../findings/training/architecture.md)) |
+| [P6](P6_attention_backbone.md) | **superseded by the P9 programme** — identity embeddings, self-transform and per-entity heads landed as E3-15 and are the baseline ([`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md)) |
 | [P9](P9_graph_architecture.md) | its programme ran; record in [`../log/P9_architecture.md`](../log/P9_architecture.md); the open map-layer question sits in [`../questions.md`](../questions.md) |
 | [P10](P10_opponent_sampling.md) | **absorbed** — exp 1 ran (needs the Tier-0 writeup), exp 4 became the pooled arms, exp 2 is P15-X1; exp 3 (seed-resume) folds into X2's screens |
-| [P16](P16_replay_policy_and_critic_trace.md) | **done** — policy probabilities and critic values are recorded on every replay step and shown in the workbench (ribbon, chips, readout panel), with `tools/annotate_replay.py` for replays recorded without them. Live web games were dropped from scope |
+| [P16](../archive/E3_ladder/plans/P16_replay_policy_and_critic_trace.md) | **done** — policy probabilities and critic values are recorded on every replay step and shown in the workbench (ribbon, chips, readout panel), with `tools/annotate_replay.py` for replays recorded without them. Live web games were dropped from scope |
 | [P14](P14_one_definition_of_legality.md) | **done** — landed with zero decision-stream divergence ([`../findings/engine/engine_change_decision_stream.md`](../findings/engine/engine_change_decision_stream.md)) |
 | [restoring_advantage_signal](restoring_advantage_signal.md) | **absorbed** — its final proposal (historical opponent sampling) became the pooled arms; the VP-margin idea is dead by measurement; the aux control head moved to Tier 3 |
 | [reserve](reserve.md) | ideas with triggers — now including PSRO-lite meta-Nash sampling, optimism/extragradient, per-side capacity |
@@ -107,7 +107,7 @@ known.
   decision-stream-neutral). One observation layout; old-layout checkpoints are refused, not
   misread. The observation is not to be changed without asking (`CLAUDE.md`).
 - **Architecture:** the E3-15 recipe — identity embeddings, graph self-transform, per-entity
-  residual heads ([`../findings/training/architecture.md`](../findings/training/architecture.md)).
+  residual heads ([`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md)).
 - **Training recipe / matched control:** **E3-20-28** — pooled opponents (frac 0.30, capacity 12,
   snapshots every 5M), `--snapshot-every-steps 5000000`, adv-filter on. It is the strongest
   measured arm (~2150 in `arena_p12` @160M, flat to 320M) and the registered baseline for new
@@ -125,7 +125,7 @@ figures from metadata are configured budgets, not elapsed time). **Screen** ever
 1–2 seeds × 80M; **confirm** only a screen's winner at 2 seeds at the larger budget; never
 compare across budgets. Seed variance is **~95 Elo between seeds** and effects under **~40 Elo
 are not measurable at affordable seed counts** — do not run an arm whose expected effect is
-smaller ([`../findings/training/seed_variance.md`](../findings/training/seed_variance.md)).
+smaller ([`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md)).
 And read `../log/variance_and_noise.md` before quoting anything:
 
 - rate **four late snapshots** and compare arms by the **pooled head-to-head over all sixteen
@@ -181,6 +181,6 @@ instrument.
 ## Follow-ups (what to queue depending on the outcome)
 ## Runs (filled in while running)
 ```
-- [P15 — Breaking the oscillate-then-stall cycle](P15_breaking_the_cycle.md) — **the active programme**: the standard remedies for self-play cycling mapped to this record — frozen-anchor instrument, the exploiter diagnostic, anchor timescale, pool memory, and search distillation
+- [P15 — Breaking the oscillate-then-stall cycle](../archive/E3_ladder/plans/P15_breaking_the_cycle.md) — **the active programme**: the standard remedies for self-play cycling mapped to this record — frozen-anchor instrument, the exploiter diagnostic, anchor timescale, pool memory, and search distillation
 - [P11 — The experiment programme, and running it in parallel](P11_scaling_out.md) — seeds, phases, and cheap GPU options
 - [Restoring the advantage signal](restoring_advantage_signal.md) / [P10](P10_opponent_sampling.md) — absorbed into P15; kept for the reasoning and the pooled-arm record

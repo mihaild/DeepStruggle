@@ -2,9 +2,9 @@
 
 The error bars every comparison in this project has to clear, and what they have already
 invalidated. **Update discipline: rewritten in place.** The experiments are in
-[`../../log/variance_and_noise.md`](../../log/variance_and_noise.md) and
-[`../../log/P9_architecture.md`](../../log/P9_architecture.md), *seed variance is ~95 Elo*; how to run
-against these bars is [`../../method/running_experiments.md`](../../method/running_experiments.md).
+[`../../../log/variance_and_noise.md`](../../../log/variance_and_noise.md) and
+[`../../../log/P9_architecture.md`](../../../log/P9_architecture.md), *seed variance is ~95 Elo*; how to run
+against these bars is [`../../../method/running_experiments.md`](../../../method/running_experiments.md).
 
 Filed under `training/` because seed spread is a property of the training process and survives an
 engine revision. Three rows below are not: *a tournament is not reproducible from its

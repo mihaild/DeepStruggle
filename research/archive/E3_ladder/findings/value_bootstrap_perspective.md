@@ -125,11 +125,11 @@ it computes information-set values and combines them with a world-state identity
 
 | commit to | means | cost |
 |:---|:---|:---|
-| **world-state value** | a centralised critic that sees the true state, both hands included. Antisymmetry then holds by construction and the telescope is valid. Suphx's oracle guiding; MADDPG/COMA | queued as [`../../plans/P5_oracle_critic.md`](../../plans/P5_oracle_critic.md); old implementation recoverable from `574e04a` |
+| **world-state value** | a centralised critic that sees the true state, both hands included. Antisymmetry then holds by construction and the telescope is valid. Suphx's oracle guiding; MADDPG/COMA | queued as [`../../../plans/P5_oracle_critic.md`](../../../plans/P5_oracle_critic.md); old implementation recoverable from `574e04a` |
 | **information-set value** | per-player trajectories: each player's own GAE over its own decision points, bootstrapping from its next *own* decision, opponent rewards folded in. No cross-perspective bootstrap occurs at all | contained to `compute_gae`, no extra forward passes |
 
 A belief-conditioned value (ReBeL, Student of Games —
-[`../../papers/README.md`](../../papers/README.md)) is the principled third option and much heavier
+[`../../papers/README.md`](../../../papers/README.md)) is the principled third option and much heavier
 than this problem warrants.
 
 **Cheap diagnostic first:** `gae_lambda = 1.0` removes the cross-perspective term from the
@@ -216,6 +216,6 @@ minutes instead of two runs.
 ### What is still open
 
 `gae_lambda = 1.0` remains unrun, and is now the cheapest remaining probe of the bootstrap's
-cost. The oracle critic ([`../../plans/P5_oracle_critic.md`](../../plans/P5_oracle_critic.md)) is
+cost. The oracle critic ([`../../../plans/P5_oracle_critic.md`](../../../plans/P5_oracle_critic.md)) is
 untouched by this result — it removes the asymmetry at its source rather than routing around it,
 and is the row of the table above that has not been tested.

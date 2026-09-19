@@ -1,8 +1,8 @@
 # Restoring the advantage signal
 
-> **Status: absorbed into [P15](P15_breaking_the_cycle.md)** (2026-09-16). The final proposal
+> **Status: absorbed into [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md)** (2026-09-16). The final proposal
 > below (historical opponent sampling) became the pooled arms and their verdict lives in
-> [`../findings/training/pooling.md`](../findings/training/pooling.md); the VP-margin idea is
+> [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md); the VP-margin idea is
 > dead by measurement (95.5% of endings sit at exactly |VP| = 20); the auxiliary per-country
 > control head is Tier 3 in [`README.md`](README.md). Kept for the reasoning.
 

@@ -29,30 +29,30 @@ original file, including its maintenance rules, is preserved verbatim below the 
 | [`search_cost_and_coverage.md`](search_cost_and_coverage.md) | — | what search costs per decision, what fraction of decisions it is worth spending on, and why the +27pp figure does not transfer to a cheaper arm |
 | [`europe_control_and_held_scoring.md`](europe_control_and_held_scoring.md) | — | E3-15 / E3-17: why the USSR takes Europe (West Germany is never contested), what the per-side held-scoring series actually says, and the forced human opening |
 | [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) | — | the seed spread that withdrew the first pooling result, the US decay from 80M to 160M, and the analysis plan fixed before the 4 × 4 landed |
-| [`P15_X0_frozen_anchors.md`](P15_X0_frozen_anchors.md) | — | P15-X0: three runs at 40M intervals to 320M against two frozen peer anchors — the oscillation with an amplitude at last, and why a field-averaged side gap hides five sixths of it |
-| [`P15_X0_round_robin.md`](P15_X0_round_robin.md) | — | the full 24-model field behind P15-X0: Elo, head-to-head and per-side matrices |
-| [`P15_X4a_distillation.md`](P15_X4a_distillation.md) | — | one offline round of expert iteration: +47.7 Elo from distilling a 96-sim searcher at card/play-mode nodes, out of a policy that already agreed with it 93.1% of the time and the two-arm washout test showing the edge decays to a dead heat after 20M steps while RL gives away the USSR side |
-| [`P15_X4a_where_the_search_signal_is.md`](P15_X4a_where_the_search_signal_is.md) | — | a census of all 85,113 decisions in 200 games: top-1 agreement is uninformative (90.5–97.8% for every decision type) while KL varies 7×, and POINT_NODE placements carry 71.8% of the CE signal against card/play-mode's 20.9% |
-| [`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md) | **+165.6 Elo** | the continuous form: an honest searcher supplies CE targets during RL and never acts, matched one-factor against the step-, seed- and cadence-identical control E3-26-28. Clears the pre-registered 25 Elo bar 6.6x, plays USSR at 61.9% against the control's 34.7%, and sheds 88 Elo of its peak in the final 5M — plus the off-by-one that voided two arms first |
-| [`P15_search_play_mode_bias.md`](P15_search_play_mode_bias.md) | — | does the searcher dodge operations because it cannot place influence? No: over 18,097 play-mode decisions it shifts toward ops (+2.16 pp) and away from both EVENT and SPACE, taking each escape route from a placement decision less often than the raw policy |
-| [`P15_X4b_search_headroom.md`](P15_X4b_search_headroom.md) | — | how much search still adds to a policy trained with search targets: flat across 5M-20M at ~58% win rate and KL ~0.036, which is what expert iteration looks like when the teacher improves with the student |
-| [`P15_X2_slow_anchor.md`](P15_X2_slow_anchor.md) | — | does a 25x slower reference anchor prevent the collapse on its own? Interim: from scratch it has not crossed base_rate 0.80 by 72M where the 200k anchor crossed at 44.6M, and holds far more entropy early — one seed each and the seeds differ |
-| [`P15_control_per_seat.md`](P15_control_per_seat.md) | — | which side actually degraded? Rated per seat against frozen anchors, the no-search control's **US** win rate falls 47.0% to 19.3% while USSR stays flat — the opposite of what critic_base_rate and a field-averaged side split appeared to say |
-| [`P15_setup_placement.md`](P15_setup_placement.md) | — | opening influence placement is frozen in both from-scratch lineages — every point into one country, unchanged across 230M steps — and unfroze within 20M of a resume after 155M of nothing |
-| [`P15_two_seat_capacity.md`](P15_two_seat_capacity.md) | — | can one network hold both seats? Yes: a student matches each teacher on its own seat with no interference, and a single checkpoint already plays 83.3% USSR / 79.7% US unaided — so the seat collapses are training dynamics, not capacity |
-| [`P15_arms_2026_09_17.md`](P15_arms_2026_09_17.md) | — | one index for the day's dozen measurements: every arm from p28_200M and from scratch, what each showed against its matched ablation and against frozen snapshots, and what the two running arms decide |
-| [`P15_temperature_selfplay.md`](P15_temperature_selfplay.md) | — | one checkpoint against itself at five sampling temperatures: greedy and T=0.1 are the same player (50.0%, 6.9 Elo), T=0.5 costs 134 Elo and T=1.0 costs 374 — which retires the temperature objection to comparing older tournament numbers with newer ones |
-| [`P15_X1_frozen_exploiter.md`](P15_X1_frozen_exploiter.md) | — | training a USSR counter on purpose against a frozen @280M: +2.1 pp over the warm start (n.s.), and the discovery that the 'unanswered' US strategy was a 200-game artifact — at 1000 games it is level with a model that already existed |
-| [`P15_X0_selfplay_200M.md`](P15_X0_selfplay_200M.md) | — | the strong anchor's own side split: E3-20-28 @200M against itself over 500 games, 51.0% US against 48.6% USSR, no detectable bias |
-| [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md) | — | honest 64-sim MCTS on E3-20-28 @200M against the frozen anchors and against its own base policy: +129.2 Elo, 64.8% over the raw policy, and the first search number taken after the searcher stopped proposing illegal moves |
-| [`P15_X4b_collapse_is_pool_starvation.md`](P15_X4b_collapse_is_pool_starvation.md) | **24.0% -> 90.0%** | the dense replay launched to photograph the X4b collapse did not collapse, and that was the result: the original trained against an opponent pool of ONE, beating it 99.7%, because `--resume <dir>` rebuilt the pool from the parent directory. Severity and timing explained; a real, milder decline arrives at ~30M anyway and plateaus at 58% instead of falling to 24% |
-| [`P15_rollout_temperature.md`](P15_rollout_temperature.md) | **46.0% vs 17.8%** | sampling rollouts AT the policy (0.8 1.2 0.7 1.1) against the default sharpened bands: ahead at every matched point after 10M, general across three lineages, and the mechanism is the ending mix -- 59.7% of control games end in DEFCON 1 against 28.9%, because sharpening makes one systematic blunder universal. Its opening is degenerate and it wins anyway |
-| [`P15_kl_domination.md`](P15_kl_domination.md) | — | the KL regulariser reaching 130-900x the PPO surrogate on half of E3-31-28's iterations, invisible because `policy_loss` logs the surrogate alone; plus the search_ce spike diagnosis and the measurement that kills the CE feedback loop -- search targets stay sharp while the policy flattens away from them |
+| [`../archive/E3_ladder/log/P15_X0_frozen_anchors.md`](../archive/E3_ladder/log/P15_X0_frozen_anchors.md) | — | P15-X0: three runs at 40M intervals to 320M against two frozen peer anchors — the oscillation with an amplitude at last, and why a field-averaged side gap hides five sixths of it |
+| [`../archive/E3_ladder/log/P15_X0_round_robin.md`](../archive/E3_ladder/log/P15_X0_round_robin.md) | — | the full 24-model field behind P15-X0: Elo, head-to-head and per-side matrices |
+| [`../archive/E3_ladder/log/P15_X4a_distillation.md`](../archive/E3_ladder/log/P15_X4a_distillation.md) | — | one offline round of expert iteration: +47.7 Elo from distilling a 96-sim searcher at card/play-mode nodes, out of a policy that already agreed with it 93.1% of the time and the two-arm washout test showing the edge decays to a dead heat after 20M steps while RL gives away the USSR side |
+| [`../archive/E3_ladder/log/P15_X4a_where_the_search_signal_is.md`](../archive/E3_ladder/log/P15_X4a_where_the_search_signal_is.md) | — | a census of all 85,113 decisions in 200 games: top-1 agreement is uninformative (90.5–97.8% for every decision type) while KL varies 7×, and POINT_NODE placements carry 71.8% of the CE signal against card/play-mode's 20.9% |
+| [`../archive/E3_ladder/log/P15_X4b_search_during_rl.md`](../archive/E3_ladder/log/P15_X4b_search_during_rl.md) | **+165.6 Elo** | the continuous form: an honest searcher supplies CE targets during RL and never acts, matched one-factor against the step-, seed- and cadence-identical control E3-26-28. Clears the pre-registered 25 Elo bar 6.6x, plays USSR at 61.9% against the control's 34.7%, and sheds 88 Elo of its peak in the final 5M — plus the off-by-one that voided two arms first |
+| [`../archive/E3_ladder/log/P15_search_play_mode_bias.md`](../archive/E3_ladder/log/P15_search_play_mode_bias.md) | — | does the searcher dodge operations because it cannot place influence? No: over 18,097 play-mode decisions it shifts toward ops (+2.16 pp) and away from both EVENT and SPACE, taking each escape route from a placement decision less often than the raw policy |
+| [`../archive/E3_ladder/log/P15_X4b_search_headroom.md`](../archive/E3_ladder/log/P15_X4b_search_headroom.md) | — | how much search still adds to a policy trained with search targets: flat across 5M-20M at ~58% win rate and KL ~0.036, which is what expert iteration looks like when the teacher improves with the student |
+| [`../archive/E3_ladder/log/P15_X2_slow_anchor.md`](../archive/E3_ladder/log/P15_X2_slow_anchor.md) | — | does a 25x slower reference anchor prevent the collapse on its own? Interim: from scratch it has not crossed base_rate 0.80 by 72M where the 200k anchor crossed at 44.6M, and holds far more entropy early — one seed each and the seeds differ |
+| [`../archive/E3_ladder/log/P15_control_per_seat.md`](../archive/E3_ladder/log/P15_control_per_seat.md) | — | which side actually degraded? Rated per seat against frozen anchors, the no-search control's **US** win rate falls 47.0% to 19.3% while USSR stays flat — the opposite of what critic_base_rate and a field-averaged side split appeared to say |
+| [`../archive/E3_ladder/log/P15_setup_placement.md`](../archive/E3_ladder/log/P15_setup_placement.md) | — | opening influence placement is frozen in both from-scratch lineages — every point into one country, unchanged across 230M steps — and unfroze within 20M of a resume after 155M of nothing |
+| [`../archive/E3_ladder/log/P15_two_seat_capacity.md`](../archive/E3_ladder/log/P15_two_seat_capacity.md) | — | can one network hold both seats? Yes: a student matches each teacher on its own seat with no interference, and a single checkpoint already plays 83.3% USSR / 79.7% US unaided — so the seat collapses are training dynamics, not capacity |
+| [`../archive/E3_ladder/log/P15_arms_2026_09_17.md`](../archive/E3_ladder/log/P15_arms_2026_09_17.md) | — | one index for the day's dozen measurements: every arm from p28_200M and from scratch, what each showed against its matched ablation and against frozen snapshots, and what the two running arms decide |
+| [`../archive/E3_ladder/log/P15_temperature_selfplay.md`](../archive/E3_ladder/log/P15_temperature_selfplay.md) | — | one checkpoint against itself at five sampling temperatures: greedy and T=0.1 are the same player (50.0%, 6.9 Elo), T=0.5 costs 134 Elo and T=1.0 costs 374 — which retires the temperature objection to comparing older tournament numbers with newer ones |
+| [`../archive/E3_ladder/log/P15_X1_frozen_exploiter.md`](../archive/E3_ladder/log/P15_X1_frozen_exploiter.md) | — | training a USSR counter on purpose against a frozen @280M: +2.1 pp over the warm start (n.s.), and the discovery that the 'unanswered' US strategy was a 200-game artifact — at 1000 games it is level with a model that already existed |
+| [`../archive/E3_ladder/log/P15_X0_selfplay_200M.md`](../archive/E3_ladder/log/P15_X0_selfplay_200M.md) | — | the strong anchor's own side split: E3-20-28 @200M against itself over 500 games, 51.0% US against 48.6% USSR, no detectable bias |
+| [`../archive/E3_ladder/log/P15_X0_search_on_200M.md`](../archive/E3_ladder/log/P15_X0_search_on_200M.md) | — | honest 64-sim MCTS on E3-20-28 @200M against the frozen anchors and against its own base policy: +129.2 Elo, 64.8% over the raw policy, and the first search number taken after the searcher stopped proposing illegal moves |
+| [`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md) | **24.0% -> 90.0%** | the dense replay launched to photograph the X4b collapse did not collapse, and that was the result: the original trained against an opponent pool of ONE, beating it 99.7%, because `--resume <dir>` rebuilt the pool from the parent directory. Severity and timing explained; a real, milder decline arrives at ~30M anyway and plateaus at 58% instead of falling to 24% |
+| [`../archive/E3_ladder/log/P15_rollout_temperature.md`](../archive/E3_ladder/log/P15_rollout_temperature.md) | **46.0% vs 17.8%** | sampling rollouts AT the policy (0.8 1.2 0.7 1.1) against the default sharpened bands: ahead at every matched point after 10M, general across three lineages, and the mechanism is the ending mix -- 59.7% of control games end in DEFCON 1 against 28.9%, because sharpening makes one systematic blunder universal. Its opening is degenerate and it wins anyway |
+| [`../archive/E3_ladder/log/P15_kl_domination.md`](../archive/E3_ladder/log/P15_kl_domination.md) | — | the KL regulariser reaching 130-900x the PPO surrogate on half of E3-31-28's iterations, invisible because `policy_loss` logs the surrogate alone; plus the search_ce spike diagnosis and the measurement that kills the CE feedback loop -- search targets stay sharp while the policy flattens away from them |
 
 **Conclusions extracted on 2026-09-16.** Three topics were being looked up on their own and were
 buried inside long journals. Their current verdicts now live in `../findings/` —
-[`pooling.md`](../findings/training/pooling.md), [`seed_variance.md`](../findings/training/seed_variance.md) and
-[`defcon_blunders.md`](../findings/training/defcon_blunders.md) — and each source section here carries a
+[`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md), [`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md) and
+[`../archive/E3_ladder/findings/defcon_blunders.md`](../archive/E3_ladder/findings/defcon_blunders.md) — and each source section here carries a
 one-line pointer under its heading. Nothing was removed: the setups, the predictions and the
 retractions stay where they were written, which is the only property this directory has.
 
@@ -62,7 +62,7 @@ the stubs travelled with their section. `metrics.md` has since been split in tur
 [`P9_architecture.md`](P9_architecture.md), [`../method/running_experiments.md`](../method/running_experiments.md),
 [`../method/human_play.md`](../method/human_play.md),
 [`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) and
-[`../findings/training/architecture.md`](../findings/training/architecture.md); the stubs point at wherever their
+[`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md); the stubs point at wherever their
 entry landed. The verbatim preamble below still names `metrics.md`, and is left as written.
 
 ---
@@ -70,7 +70,7 @@ entry landed. The verbatim preamble below still names `metrics.md`, and is left 
 ## Experiment Log
 
 Running record of experiments actually run against this codebase, what they measured, and
-what the result was. Companion to [`ideas_and_plans.md`](../archive/ideas_and_plans.md), which holds
+what the result was. Companion to [`../archive/ideas_and_plans.md`](../archive/ideas_and_plans.md), which holds
 the design intent; this file holds what happened when it was tried.
 
 Only measurements taken in this repository belong here. An entry states what was compared,
@@ -80,7 +80,7 @@ question from an open one without rerunning anything.
 **Scope.** This file is about how well the agents play, and what the human corpus says about that
 by comparison. How that corpus is *read* -- reconciling the log's score against the engine's,
 reconstructing the hands the log never states in full, and what the 300 files actually contain --
-is [`experiments_replayer_conversion.md`](P7_replayer_conversion.md). Entries that moved
+is [`P7_replayer_conversion.md`](P7_replayer_conversion.md). Entries that moved
 there kept their original section numbers, and each left a stub here with the part that bears on
 play.
 
@@ -121,8 +121,8 @@ moments and a result should not have to be read alongside the doubt about it.
 | [`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) | the checklist: what to verify before trusting a number |
 | [`measurement_bugs.md`](measurement_bugs.md) | every instrument that reported confident nonsense, in full |
 | [`variance_and_noise.md`](variance_and_noise.md) | how much of a rating is just where the run stopped |
-| [`experiments_replayer_conversion.md`](P7_replayer_conversion.md) | how the human corpus is read: score reconciliation, hand reconstruction, what the 300 files contain |
-| [`../engine/AGENTS.md`](../../engine/AGENTS.md) | engine design and rules defects, including why `CardLocation` encodes hand knowledge (§7) and the free-coup validation bug (§8) |
+| [`P7_replayer_conversion.md`](P7_replayer_conversion.md) | how the human corpus is read: score reconciliation, hand reconstruction, what the 300 files contain |
+| [`../../engine/AGENTS.md`](../../engine/AGENTS.md) | engine design and rules defects, including why `CardLocation` encodes hand knowledge (§7) and the free-coup validation bug (§8) |
 
 Sections that moved kept their original numbers and left a stub here carrying the part that bears
 on a result. A new entry that turns out to be about an instrument rather than an agent belongs in

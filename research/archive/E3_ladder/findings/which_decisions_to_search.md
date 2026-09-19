@@ -24,7 +24,7 @@ the game and hands it to the raw policy, unexamined.
 
 ## What the measurement says
 
-[`log/P15_X4a_where_the_search_signal_is.md`](../../log/P15_X4a_where_the_search_signal_is.md)
+[`../log/P15_X4a_where_the_search_signal_is.md`](../log/P15_X4a_where_the_search_signal_is.md)
 censused **all 85,113 decisions of 200 games** with the searcher answering every one:
 
 | type | n | top-1 agree | KL(search ‖ policy) | mean legal |
@@ -81,7 +81,7 @@ one the 71.8% figure predicts.
 The obvious suspect is that the searcher places influence badly, therefore underrates the whole
 ops branch, therefore avoids it — which would make its play-mode targets biased and worthless to
 distil. Measured and **refuted**, in the direction that matters:
-[`log/P15_search_play_mode_bias.md`](../../log/P15_search_play_mode_bias.md). Over 18,097
+[`../log/P15_search_play_mode_bias.md`](../log/P15_search_play_mode_bias.md). Over 18,097
 play-mode decisions with both options legal, search shifts **toward** ops (+2.16 pp) and away from
 EVENT (−1.08 pp) and SPACE (−1.08 pp) — it takes both of the available escape routes from a
 placement decision *less* often than the raw policy does.
@@ -117,6 +117,6 @@ one. The census correctly located the signal; it did not predict the payoff.
 
 ## See also
 
-* [`log/P15_X4a_where_the_search_signal_is.md`](../../log/P15_X4a_where_the_search_signal_is.md) — the census
-* [`log/P15_X4a_distillation.md`](../../log/P15_X4a_distillation.md) — the original card/play-mode round
-* [`log/P15_X4b_search_during_rl.md`](../../log/P15_X4b_search_during_rl.md) — the continuous form
+* [`../log/P15_X4a_where_the_search_signal_is.md`](../log/P15_X4a_where_the_search_signal_is.md) — the census
+* [`../log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md) — the original card/play-mode round
+* [`../log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md) — the continuous form

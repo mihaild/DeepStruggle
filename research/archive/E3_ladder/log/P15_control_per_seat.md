@@ -9,8 +9,8 @@ this question. It cannot, and the answer it appeared to give was **backwards**.
 always ≥ 0.5 and carries **no direction**, so it cannot name a side; and as a magnitude it is a
 fact about the pair, equally consistent with one side collapsing and with both sides improving at
 different rates. Both points are now in
-[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md), and the first was already
-recorded in [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) against earlier reports
+[`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md), and the first was already
+recorded in [`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md) against earlier reports
 that made the same mistake.
 
 The instrument for "is a side degrading" is **win rate as each side against a frozen opponent**.

@@ -27,7 +27,7 @@ budget sets only where each run stops.
 
 100 games a side, 200 a point, identical protocol on both arms — the per-seat split rather than
 the pooled number, since a pooled rate hid a collapsing seat before
-([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)).
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)).
 
 | steps | control US | control USSR | control overall | **temp US** | **temp USSR** | **temp overall** |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -110,14 +110,14 @@ problem as much as the predictor, and the two arms are not predicting the same p
 more balanced games that run to scoring are harder to call than games decided by a turn-5
 nuclear exchange. This is the `critic_base_rate` trap in another costume — a discrimination
 metric compared across two different outcome distributions
-([`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). `explained_variance`,
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)). `explained_variance`,
 which does not depend on class balance the same way, runs the other way: 0.904 vs 0.761 at 30M
 and 0.867 vs 0.788 at 40M, favouring the treatment.
 
 ## What this does not settle
 
 * **One seed per arm.** Seed variance on this lineage is documented and not small
-  ([`seed_variance_and_pooling.md`](seed_variance_and_pooling.md)); a three-fold gap at 40M is
+  ([`../../../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md)); a three-fold gap at 40M is
   well outside it, a seat asymmetry at one point is not obviously so.
 * **Early lead is not a final result.** Both arms climb from cold toward an anchor with 280M
   behind it. The registered second judgment point is 80M and the arm is resuming toward it.
@@ -603,6 +603,6 @@ Three readings of this arm were published tonight and two were wrong, each corre
 point: "the effect does not replicate" (from 40M alone, before the window closed), and "seed B's
 effect is growing" (from 40M–60M, one point before it began shrinking). Both were extrapolations
 from the end of the available data — the trap recorded in
-[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md), committed twice more while
+[`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md), committed twice more while
 documenting it. The verdict above is stated only for the range measured, and says nothing about
 what happens past 80M.

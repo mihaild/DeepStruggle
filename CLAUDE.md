@@ -79,6 +79,7 @@ a backend change is pure noise.
 | `tools/lib/ts_replayer_*` | the above + `tests/replayer` |
 | `ai/`, `bot/`, `tools/` | the above + `tests/training` |
 | `web/**` | **also** `tests/web`, after building the UI (below) |
+| `research/**` | `tests/docs` (fast, no build needed) — every relative link must resolve |
 
 ### The ts-replayer corpus
 
@@ -116,7 +117,7 @@ tools/scripts/check_engine_fresh.sh
 ./build/release/engine/ts_fuzz --steps 5000000 --seed 42
 
 # 2. Backend Python — everything except the web UI. The default suite for backend work.
-PYTHONPATH=. .venv/bin/python -m pytest -q -n auto tests/bindings tests/engine_logic tests/replayer tests/training
+PYTHONPATH=. .venv/bin/python -m pytest -q -n auto tests/bindings tests/engine_logic tests/replayer tests/training tests/docs
 
 #    Narrower loops while iterating:
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/bindings tests/engine_logic
@@ -140,8 +141,10 @@ PYTHONPATH=. .venv/bin/python -m pytest -q tests/web
 
 What each group covers: `bindings/` (nanobind surface), `engine_logic/` (game rules driven through
 the bindings — prefer adding new rule coverage to `engine/tests/*.cpp`), `replayer/` (the
-`ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `web/` (server,
-bot-client, Playwright E2E), `differential/` (cross-engine fuzzing, WIP).
+`ts_replayer` log-conversion pipeline), `training/` (RL/reward/NashPG stack), `docs/` (the
+research record's internal links resolve — archiving the E3 ladder once broke 105 of them
+silently), `web/` (server, bot-client, Playwright E2E), `differential/` (cross-engine fuzzing,
+WIP).
 
 **Run pyrefly with explicit paths, never bare.** pyrefly honours `.git/info/exclude`, so in a
 checkout whose exclude file covers the working directory a bare `pyrefly check` matches **zero**

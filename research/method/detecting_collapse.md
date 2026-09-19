@@ -141,19 +141,19 @@ Kept for *what was learned*, deliberately without carrying the numbers forward.
 **Pool starvation.** Found via a matched pair — the same run replayed from one resume state with
 one accidental difference, a `dirname` bug that starved the pool to a single opponent. The cleanest
 labelled control in the record.
-[`archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md).
+[`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md).
 
 **KL domination.** Found on an arm launched three minutes after its control with identical flags,
 which declined with a *healthier* pool than that control. The KL term was measured at hundreds of
 times the policy gradient on half its iterations.
-[`archive/E3_ladder/log/P15_kl_domination.md`](../archive/E3_ladder/log/P15_kl_domination.md).
+[`../archive/E3_ladder/log/P15_kl_domination.md`](../archive/E3_ladder/log/P15_kl_domination.md).
 Both arms that hit this mode used search (`search_ce_coef 0.5`), which the E4 arms do not — so
 **whether this mode reproduces on E4 is untested**, and is an open experiment rather than a settled
 result.
 
 **Per-seat control.** The record of why `critic_base_rate` was dropped: the answer it appeared to
 give was backwards.
-[`archive/E3_ladder/log/P15_control_per_seat.md`](../archive/E3_ladder/log/P15_control_per_seat.md).
+[`../archive/E3_ladder/log/P15_control_per_seat.md`](../archive/E3_ladder/log/P15_control_per_seat.md).
 
 **`ref_update_freq` is not a signal.** An arm carrying the slow reference anchor collapsed anyway.
 Held at the 200,000 default by decision, as an axis to ablate deliberately later —

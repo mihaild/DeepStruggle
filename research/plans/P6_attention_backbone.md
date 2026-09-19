@@ -2,7 +2,7 @@
 
 **Status:** **superseded by the P9 programme** (2026-09-16) — identity embeddings, the graph
 self-transform and per-entity residual heads landed as the E3-15 baseline
-([`../findings/training/architecture.md`](../findings/training/architecture.md)); the
+([`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md)); the
 full-transformer variant this file proposed stays unrun and would now be a P9 follow-up.
 **Gate:** the §12.1 perturbation probe (`ai/eval/battleground_value.py`) is *still* flat — the
 value does not respond to Poland's influence changing together with Europe Scoring's status —

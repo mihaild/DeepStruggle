@@ -212,7 +212,7 @@ cannot be separated from what the log records.
 **It bounds what the corpus can teach about card selection**, is a plausible contributor to
 §9's negative result, and means any measurement conditioned on hand contents needs the
 log-evidenced restriction §9.4 applies. Detail and method in
-[`experiments_replayer_conversion.md`](P7_replayer_conversion.md).
+[`P7_replayer_conversion.md`](P7_replayer_conversion.md).
 
 ### 9.5 The humans never once chose a dominated trap discard — 9.3 and 9.4 corrected
 
@@ -265,7 +265,7 @@ decision type it was not written for will do most of its damage in the cases tha
 
 ### 9.6-9.10 Hand reconstruction: the dominance clause, the hold cost, and two counterfactuals
 
-**Moved to [`experiments_replayer_conversion.md`](P7_replayer_conversion.md).**
+**Moved to [`P7_replayer_conversion.md`](P7_replayer_conversion.md).**
 How §9.5's result was fed back into the hand solver as a soft clause, why the seven remaining
 apparent mistakes are the log's incompleteness rather than the solver's error, and two
 corrections to the hold cost. Conversion mechanics; the finding about human play they rest on

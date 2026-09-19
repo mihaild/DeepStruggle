@@ -5,7 +5,7 @@
 The problem it solves: **no live training metric can rate an arm after ~120M.** Every arm
 beats `HeuristicBot` above 89% and `RandomBot` above 99% by then, so the anchors that exist
 in-run are saturated and separate nothing
-([`measurement_bugs.md`](measurement_bugs.md)). A *frozen peer* does not
+([`../../../log/measurement_bugs.md`](../../../log/measurement_bugs.md)). A *frozen peer* does not
 saturate, and it does not move, so a win rate against it is comparable across budgets and
 across runs.
 
@@ -22,7 +22,7 @@ lost by stating it from the snapshot's side. `—` is the anchor against itself.
 
 A cell near `50 / 50` means the snapshot is the anchor's equal and even-handed. The gap
 **between** the two numbers in a cell is external side balance against a fixed opponent —
-the endpoint [`../findings/training/pooling.md`](../findings/training/pooling.md) says
+the endpoint [`../findings/pooling.md`](../findings/pooling.md) says
 nothing had computed, now available at every
 budget rather than at a single final checkpoint.
 
@@ -95,7 +95,7 @@ Elo across all 24 models in one field ([`P15_X0_round_robin.md`](P15_X0_round_ro
 This sharpens P15's premise. "No arm progresses after ~160M" is close but generous: the unpooled
 arm's peak is at **120M** and it gives back 154 Elo over the next 200M of training. The pooled arm
 holds longer — peak at 200M, −56 by 320M — which is the same shape as
-[`../findings/training/pooling.md`](../findings/training/pooling.md) §3a, extended past the budget
+[`../findings/pooling.md`](../findings/pooling.md) §3a, extended past the budget
 that finding could see.
 
 ### 2. The oscillation, finally with an amplitude
@@ -141,7 +141,7 @@ cancel, and the imbalance shows at six times the size.
 This is the concrete reason P15 asks for frozen anchors rather than more field tournaments, and it
 is a third entry for the list of endpoints that look fine and measure the wrong thing — after
 self-play side balance and win rate against `HeuristicBot`
-([`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)).
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)).
 
 ### 4. `p29` was never competitive, and it is not a late failure
 
@@ -229,7 +229,7 @@ with no answer, and no USSR strategy in the same position.
   the seat rather than by the 160M steps between them: `p28@320M` and `p28@160M` sit 3.9 Elo apart
   and whichever plays US wins 71–78%. Cross-family it inverts — `p28@320M` beats `n26@240M` 69.5%
   *as USSR* and only 52.0% as US, because what decides a matchup is whose weak seat is exposed.
-  This is [`../findings/training/pooling.md`](../findings/training/pooling.md) §3a in a starker
+  This is [`../findings/pooling.md`](../findings/pooling.md) §3a in a starker
   form, and it is an argument for a second anchor drawn from a *different* run before these
   numbers are used to compare runs rather than budgets.
 * Elo here is not comparable to any other tournament in this project.

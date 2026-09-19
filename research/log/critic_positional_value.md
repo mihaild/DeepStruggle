@@ -352,7 +352,7 @@ seed-7 split **4 of the 56 held-out games (7.1%) were also trained on**.
 **Consequence for this file:** §9.13's 49.33% and every number derived from that split are
 inflated by whatever 7.1% memorisation is worth. The split should be fingerprint-based.
 Fingerprinting method and the duplicate groups are in
-[`experiments_replayer_conversion.md`](P7_replayer_conversion.md).
+[`P7_replayer_conversion.md`](P7_replayer_conversion.md).
 
 ### 14.5 Bearing on injection
 

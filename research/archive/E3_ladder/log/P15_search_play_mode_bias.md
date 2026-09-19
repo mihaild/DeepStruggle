@@ -7,7 +7,7 @@ it. It would then drift toward EVENT — or toward SPACE, the other way to avoid
 distilling it would install a systematically biased play-mode preference. No amount of that builds
 a strong player.
 
-This matters because [`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md)
+This matters because [`../findings/which_decisions_to_search.md`](../findings/which_decisions_to_search.md)
 found that distilling placements offline buys nothing measurable, despite `POINT_NODE` carrying
 71.8% of the CE signal. "The searcher is bad at placements" is a live explanation for that.
 
@@ -77,6 +77,6 @@ room to disagree about a decision with two options.
 
 ## See also
 
-* [`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md)
+* [`../findings/which_decisions_to_search.md`](../findings/which_decisions_to_search.md)
 * [`P15_X4a_where_the_search_signal_is.md`](P15_X4a_where_the_search_signal_is.md)
 * [`P15_X4b_search_during_rl.md`](P15_X4b_search_during_rl.md)

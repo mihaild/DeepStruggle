@@ -82,7 +82,7 @@ different game, not a noisier measurement of this one.
 
 * **Comparing across budgets or without seeds.** The assumption removes one confound; it does not
   touch the two that have actually invalidated results here, which are seed spread (~95 Elo) and
-  stopping point (~30 Elo). See [`../findings/training/seed_variance.md`](../findings/training/seed_variance.md).
+  stopping point (~30 Elo). See [`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md).
 
 ## The evidence, for and against
 

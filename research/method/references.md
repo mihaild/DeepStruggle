@@ -263,4 +263,4 @@ An 80M-step arm is ~1.5 h on the 4090 and gains on the current recipe are still 
 of a screen at 2 seeds × 240M (9 h); rate the last four snapshots and pool all sixteen
 pairings; never compare across budgets or tournaments. A leg's gain carries ±16 Elo
 (`../log/variance_and_noise.md`), so within-lineage trends need that bar. The current ordering and budget
-rule live in [`plans/README.md`](../plans/README.md).
+rule live in [`../plans/README.md`](../plans/README.md).

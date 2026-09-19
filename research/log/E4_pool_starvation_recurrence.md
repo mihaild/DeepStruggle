@@ -39,7 +39,7 @@ pool flags, and I launched from it directly without diffing against a prior run'
 
 ## It is the X4b failure again, by a different route
 
-[P15_X4b_collapse_is_pool_starvation.md](P15_X4b_collapse_is_pool_starvation.md) diagnosed that
+[P15_X4b_collapse_is_pool_starvation.md](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md) diagnosed that
 collapse as an opponent pool shrunk to one by a `dirname` path bug, and recorded a fingerprint.
 Side by side:
 

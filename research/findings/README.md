@@ -31,8 +31,8 @@ expected to outlive the engine it was measured on. Both indexes,
 
 | file | |
 |:---|:---|
-| [`engine_revisions.md`](engine/engine_revisions.md) | which game each arm was trained on: E1/E2/E3, the batch behind each boundary, what each fix invalidated, and the observation as a separate axis |
-| [`engine_change_decision_stream.md`](engine/engine_change_decision_stream.md) | P14 changed the legality code and moved no decision — 1,068 games, 385,812 steps, zero divergences — and how to establish that for the next change |
+| [`engine/engine_revisions.md`](engine/engine_revisions.md) | which game each arm was trained on: E1/E2/E3, the batch behind each boundary, what each fix invalidated, and the observation as a separate axis |
+| [`engine/engine_change_decision_stream.md`](engine/engine_change_decision_stream.md) | P14 changed the legality code and moved no decision — 1,068 games, 385,812 steps, zero divergences — and how to establish that for the next change |
 
 Most engine-side knowledge does not live here, because it was already filed where it is read:
 
@@ -51,22 +51,22 @@ Most engine-side knowledge does not live here, because it was already filed wher
 
 | file | |
 |:---|:---|
-| [`architecture.md`](training/architecture.md) | what the network is now, and what each change was worth |
-| [`pooling.md`](training/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
-| [`seed_variance.md`](training/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
-| [`defcon_blunders.md`](training/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
+| [`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md) | what the network is now, and what each change was worth |
+| [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md) | pooled vs non-pooled opponents: every comparison, the current verdict, and the four unrelated things this project calls "pool" |
+| [`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md) | the error bars a comparison has to clear, and the two results they have withdrawn |
+| [`../archive/E3_ladder/findings/defcon_blunders.md`](../archive/E3_ladder/findings/defcon_blunders.md) | the critic cannot see a provoked DEFCON-1 at any node; what windowing does and what it costs |
 
 ## Where the split is not clean
 
 Naming these is the point of having the split at all; a boundary with no listed exceptions is one
 nobody checked.
 
-* **[`seed_variance.md`](training/seed_variance.md)** is filed under training because seed spread
+* **[`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md)** is filed under training because seed spread
   is a property of the training process. Three of its rows are not: *a tournament is not
   reproducible from its configuration* (~1.5 points of win rate), *Elo is not comparable across
   tournaments* (~±15), and the binomial floor are facts about the measuring apparatus, and they
   hold whatever the engine does.
-* **[`defcon_blunders.md`](training/defcon_blunders.md)** is a training finding — what the critic
+* **[`../archive/E3_ladder/findings/defcon_blunders.md`](../archive/E3_ladder/findings/defcon_blunders.md)** is a training finding — what the critic
   represents, and what a reward window costs — resting on an engine-side taxonomy. The
   provoked/self-inflicted split is computed from the engine's own `DEFCON_SUICIDE_PROVOKED` flag,
   and one of its sibling metrics was wrong for a rules reason (a turn-10 Wargames counted as final
@@ -82,5 +82,5 @@ nobody checked.
   axis.
 * **Human data** — the corpus conversion is an instrument (engine side); *"is BC warmup on human
   games better than on self-play"* is a training question. They are filed apart deliberately.
-- [`training/which_decisions_to_search.md`](training/which_decisions_to_search.md) — searching only card and play-mode nodes excluded 71.8% of the search signal; influence placement is a first-class decision, and the filter spent its budget on nodes averaging 2.1 legal actions
+- [`../archive/E3_ladder/findings/which_decisions_to_search.md`](../archive/E3_ladder/findings/which_decisions_to_search.md) — searching only card and play-mode nodes excluded 71.8% of the search signal; influence placement is a first-class decision, and the filter spent its budget on nodes averaging 2.1 legal actions
 - [`engine/flattening_card_play.md`](engine/flattening_card_play.md) — merging play-mode with op-mode removes 12.6% of decisions, 17.5% with the timing branch, and costs the Elo ladder

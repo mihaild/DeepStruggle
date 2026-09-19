@@ -207,7 +207,7 @@ and only the USSR seat.**
 That is a far more specific target than "the policy declines", and it is only visible per seat: the
 pooled series reads as a vague 77.5% → 54.0% slide and gives no hint that half the policy is
 untouched — the exact failure mode
-[`method/measurement_pitfalls.md`](../method/measurement_pitfalls.md) was written about.
+[`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md) was written about.
 
 **What it suggests to look at.** The search is *determinized*: it resamples the hidden state before
 each search, and in this game the two seats do not hold symmetric hidden information. A

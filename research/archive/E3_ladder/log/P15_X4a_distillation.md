@@ -56,7 +56,7 @@ Against that, [`P15_X0_search_on_200M.md`](P15_X0_search_on_200M.md) measured a 
 alone.
 
 **The scoping was wrong** — see
-[`findings/training/which_decisions_to_search.md`](../findings/training/which_decisions_to_search.md).
+[`../findings/which_decisions_to_search.md`](../findings/which_decisions_to_search.md).
 Redoing this offline round over **all** decisions, games-matched at 400 games each, gives 1572.5
 against the card/play-mode round's 1560.3 and the source's 1529.6, rated at temperature 0
 (`/workspace/data/tournaments/P15_X4a_allnodes/`). Head to head the two filters are a **dead

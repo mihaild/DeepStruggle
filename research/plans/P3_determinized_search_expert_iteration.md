@@ -1,6 +1,6 @@
 # P3 — Determinized search as a diagnostic, then expert iteration if it pays
 
-**Status:** **absorbed into [P15](P15_breaking_the_cycle.md) X4** (2026-09-16). The
+**Status:** **absorbed into [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md) X4** (2026-09-16). The
 diagnostic half is answered: the honest searcher beats the raw policy ~75%
 ([`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md)), so the
 expert-iteration trigger fired; X4 carries the arm with the measured-feasible configuration.

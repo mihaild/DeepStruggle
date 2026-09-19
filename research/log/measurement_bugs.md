@@ -282,7 +282,7 @@ human should read it — the absence of a terminal event is the good news.
 
 Asked whether the training logs show the opponent pool working, I computed external side balance
 and win rate against `HeuristicBot` for all eight 4x4 arms, averaged over the final 40M — the
-analysis [`../findings/training/pooling.md`](../findings/training/pooling.md) lists as never done —
+analysis [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md) lists as never done —
 and got:
 
 | | mean \|gap\| over 120–160M | win rate vs HeuristicBot |

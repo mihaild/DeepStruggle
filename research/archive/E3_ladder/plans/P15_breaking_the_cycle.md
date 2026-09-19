@@ -12,19 +12,19 @@ exist now; the frozen-leaf teacher variant (X4c) is a trainer-only flag if step 
 
 Once one side finds a strategy the other has not answered, outcomes become predictable, the
 critic degenerates to the base rate, `adv_std_raw` collapses ~6×, and both policies freeze
-([`../log/europe_control_and_held_scoring.md`](../log/europe_control_and_held_scoring.md));
+([`../../../log/europe_control_and_held_scoring.md`](../../../log/europe_control_and_held_scoring.md));
 the direction is an accident of the run (E3-14-21 ran away toward the *US*), the strategy
 differs by run, and the imbalance **oscillates rather than converges** — at 320M both extended
 pooled arms moved *away* from balance, in the same direction
-([`../findings/training/pooling.md`](../findings/training/pooling.md) §4). The opponent pool
+([`../findings/pooling.md`](../findings/pooling.md) §4). The opponent pool
 settles balance decisively and is suggestive on strength (pooled 4/4 improve over the second
 80M where unpooled decay, p = 0.057 paired; 61.5% cross-condition), but no arm of any
 configuration progresses after ~160M. Meanwhile the honest searcher over the *same network*
 beats the raw policy ~75% (76.7% at 384 sims, ~72.5% at 96, saturating between —
-[`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md)), so the weights
+[`../../../log/search_cost_and_coverage.md`](../../../log/search_cost_and_coverage.md)), so the weights
 contain ~150–190 Elo the policy does not express. And there is **no in-run instrument that can
 rate an arm after ~120M** — HeuristicBot and RandomBot are saturated
-([`../log/measurement_bugs.md`](../log/measurement_bugs.md)).
+([`../../../log/measurement_bugs.md`](../../../log/measurement_bugs.md)).
 
 This is the textbook behaviour of simultaneous gradient dynamics in a zero-sum game: the
 last iterate *orbits* the equilibrium (best-response cycling) instead of converging, and when
@@ -44,7 +44,7 @@ the current recipe is a weak version of two of them:
 | **average / remember** — play the history, not the latest | fictitious play; NFSP; δ-uniform sampling (OpenAI Five); PFSP + league (AlphaStar); PSRO meta-Nash mixtures | pool = uniform over the **last 12 snapshots ≈ a 60M-step sliding window**, 30% of envs — memory shorter than the oscillation it should damp, and a pooled game faces ~5 snapshots in sequence (pooling.md §3b) |
 | **anchor on a slower timescale** — regularize toward something that does not follow the cycle | R-NaD's two-timescale reward transform; MMD magnet (EMA); NashPG's outer loop; Ataraxos's annealed damping | KL to `π_ref` at η = 0.1 (worth +169 Elo, settled) — but `ref_update_freq` = **200k steps ≈ 16 seconds of wall clock** at 45M steps/h. The anchor is refreshed ~400× per 80M leg: it *tracks* the cycle, so it damps step size but cannot damp the orbit. NashPG's own convergence story assumes the inner loop approaches the regularized fixed point *before* the reference moves |
 | **optimism / extragradient** — anticipate the opponent's update | OGDA, extragradient, optimistic mirror descent | absent; deeper optimizer surgery, kept in reserve |
-| **inject gradient the outcome cannot supply** — a training signal that is non-zero when win/loss is decided | expert iteration (ExIt, AlphaZero); Gumbel policy improvement at 2–16 sims; KataGo's auxiliary targets | absent — search-in-training does not exist (search_cost_and_coverage.md §5); the auxiliary control head is ranked in [restoring_advantage_signal.md](restoring_advantage_signal.md) |
+| **inject gradient the outcome cannot supply** — a training signal that is non-zero when win/loss is decided | expert iteration (ExIt, AlphaZero); Gumbel policy improvement at 2–16 sims; KataGo's auxiliary targets | absent — search-in-training does not exist (search_cost_and_coverage.md §5); the auxiliary control head is ranked in [restoring_advantage_signal.md](../../../plans/restoring_advantage_signal.md) |
 
 The search result changes which family is most promising. Distilling the searcher's decision
 back into the policy (family 4) has gradient *even where the outcome-advantage is exactly
@@ -139,7 +139,7 @@ over the final 40M. Eval-time only; `--eval-opponents` already accepts checkpoin
 
 ### X1 — the frozen exploiter (P10 experiment 2, unrun; the decisive diagnostic)
 
-> **Run 2026-09-17 — [`log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md),
+> **Run 2026-09-17 — [`../log/P15_X1_frozen_exploiter.md`](../log/P15_X1_frozen_exploiter.md),
 > `E3-24-28`. Verdict: did not discriminate — the premise was weaker than 200-game cells made
 > it look.** Re-rated at 1,000 games, the "unbeaten" `@280M` US seat was already held *level*
 > by `@200M` (50.1%), so there was no unanswered strategy to counter; 40M steps of deliberate
@@ -178,7 +178,7 @@ its product is a pool member X3 can use.
 
 ### X2 — slow the anchor (two-timescale regularization, the theory-aligned flag)
 
-> **Running 2026-09-17 — [`log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md).** Two arms
+> **Running 2026-09-17 — [`../log/P15_X2_slow_anchor.md`](../log/P15_X2_slow_anchor.md).** Two arms
 > at `--ref-update-freq 5000000`: `E3-30-28` from scratch with no search, and `E3-31-28` resumed
 > from `p28_200M` with the search-CE term, the latter one factor against the arm that collapsed.
 > Brought forward out of plan order because both of 2026-09-17's collapses are consistent with an
@@ -203,7 +203,7 @@ confirmation decides the adopted schedule (fast-early / slow-late is the expecte
 matching Ataraxos's annealed damping).
 
 > **X4b supplies a concrete failure this predicts, 2026-09-17.** The online-distillation arm
-> ([`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md)) collapsed past ~20M:
+> ([`../log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md)) collapsed past ~20M:
 > 413 Elo lost in 5M steps, with `kl_div` against π_ref spiking to 14.9, 5.8 and 31.99. A KL of 30
 > reached *within a 200k-step window* is this section's thesis made visible — the anchor is
 > refreshed before it can pull anything back, so each excursion is ratified rather than damped,
@@ -309,7 +309,7 @@ already agree, the search edge lives in something a single policy cannot express
 averaging over sampled worlds acting as state-dependent mixing), and CE distillation is the
 wrong extraction — a finding worth a log entry on its own.
 
-> **Run 2026-09-17 — [`log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md).
+> **Run 2026-09-17 — [`../log/P15_X4a_distillation.md`](../log/P15_X4a_distillation.md).
 > Verdict: moves, does not survive → build X4b.**
 >
 > Step 3 **cleared the bar: +47.7 Elo**, from a far smaller re-weighting than expected — the
@@ -327,7 +327,7 @@ wrong extraction — a finding worth a log entry on its own.
 > Two findings came out of it that the plan did not ask for. **RL in this recipe gives away the
 > USSR side** — within-arm, same seed, both arms moved −17.3 pp and −11.6 pp toward US over the
 > identical 20M steps, which bears directly on X1. And the search signal is **not** where this
-> section assumed: [`log/P15_X4a_where_the_search_signal_is.md`](../log/P15_X4a_where_the_search_signal_is.md)
+> section assumed: [`../log/P15_X4a_where_the_search_signal_is.md`](../log/P15_X4a_where_the_search_signal_is.md)
 > censuses all 85,113 decisions of 200 games and finds top-1 agreement uninformative (90.5–97.8%
 > everywhere) while KL varies 7×, with `POINT_NODE` carrying **71.8% of the CE signal** against
 > card/play-mode's 20.9%. **X4b below is therefore run with `--search-node-filter all`**, a
@@ -335,7 +335,7 @@ wrong extraction — a finding worth a log entry on its own.
 
 #### X4b — the continuous form (P3's trainer hook)
 
-> **Run 2026-09-17 — [`log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md),
+> **Run 2026-09-17 — [`../log/P15_X4b_search_during_rl.md`](../log/P15_X4b_search_during_rl.md),
 > `E3-29-28`. Verdict: it works, +165.6 Elo.**
 >
 > One seed at 20M steps, not the 80M x 2 this section specifies — search costs a measured 8.8x
@@ -436,11 +436,11 @@ one seed; nothing is adopted from fewer than two.
 
 X0's traces first (oscillation amplitude, per-side WR vs frozen anchors, `adv_std_raw`,
 `critic/auc`), then endpoint Elo vs the anchors, pooled over four late snapshots per
-[`../method/running_experiments.md`](../method/running_experiments.md). The success criterion
+[`../../../method/running_experiments.md`](../../../method/running_experiments.md). The success criterion
 is **not** "the US recovers" (the runaway is bidirectional): it is that neither side's
 advantage signal dies, oscillation amplitude shrinks, and strength against *frozen* anchors
 resumes rising after 160M. Effects under ~40 Elo are unmeasurable at affordable seeds
-([`../findings/training/seed_variance.md`](../findings/training/seed_variance.md)) — every
+([`../findings/seed_variance.md`](../findings/seed_variance.md)) — every
 adopt decision clears that bar or is dropped.
 
 ## Decision rules
@@ -469,7 +469,7 @@ screen + ~3.6h confirm; X3 two arms ~3.6h each at one seed, confirm winner ~3.6h
 existing snapshots, then the 80M leg at the *measured* 1,609 steps/s with search on —
 **~14h per seed, ~28h for two** — plus the step-3 variants at ~14h each as taken. The search
 slowdown (8.8×) is now the dominant line item; the coverage/sims cost curve in
-[`../log/search_cost_and_coverage.md`](../log/search_cost_and_coverage.md) is what a cheaper
+[`../../../log/search_cost_and_coverage.md`](../../../log/search_cost_and_coverage.md) is what a cheaper
 leg would trade against.
 
 ## Follow-ups

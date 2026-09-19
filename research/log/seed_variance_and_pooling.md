@@ -5,9 +5,9 @@
 > **This is not the whole pooling record, and it stops before the answer.** The 4 × 4 replication
 > whose analysis plan is fixed below, and the 320M extension planned at the end, both landed
 > after this file was last appended to; their results are in
-> [`../findings/training/pooling.md`](../findings/training/pooling.md), together with the earlier `arena80_160`
+> [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md), together with the earlier `arena80_160`
 > comparison and the start-state pool, which is a different mechanism entirely. The variance
-> figures are collected in [`../findings/training/seed_variance.md`](../findings/training/seed_variance.md).
+> figures are collected in [`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md).
 > Nothing below is edited — including the prediction of a null, which was wrong on balance.
 
 ## Summary

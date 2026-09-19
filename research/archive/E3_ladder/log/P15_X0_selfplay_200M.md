@@ -42,7 +42,7 @@ the point of passage.
 Self-play balance is **not** evidence of strength or of general even-handedness — an arm can be
 balanced against itself and lopsided against everyone else, which is exactly why the 4×4
 experiment's self-play endpoint was abandoned
-([`../method/measurement_pitfalls.md`](../method/measurement_pitfalls.md)). Against the whole
+([`../../../method/measurement_pitfalls.md`](../../../method/measurement_pitfalls.md)). Against the whole
 24-model X0 field the same checkpoint reads 76.6% as USSR against 69.0% as US, a +7.6 pp tilt the
 *other* way. Both numbers are correct and they answer different questions. The claim here is only
 the one needed for the anchor: it does not hand a systematic advantage to whichever seat an
