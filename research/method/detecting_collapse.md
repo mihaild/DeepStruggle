@@ -142,3 +142,11 @@ E3's window.
 **`logratio_max` and `ratio_negadv_max` remain untested.** They were the earliest and cleanest
 detectors on E4 — firing at 3M with no false positive — and E3 predates them. They are the first
 thing to check against the next collapse, and should not be trusted until then.
+
+## `ref_update_freq` is not one of the signals
+
+E3-31-28 carried the slow reference anchor (`ref_update_freq = 5000000`) and collapsed by KL
+domination anyway, while E4-02-01 ran the fast default for a clean 320M. Neither setting predicts
+the outcome -- see
+[`../findings/training/ref_update_freq_open_ablation.md`](../findings/training/ref_update_freq_open_ablation.md).
+It is held constant at 200,000 by decision and is a candidate axis for a deliberate sweep.

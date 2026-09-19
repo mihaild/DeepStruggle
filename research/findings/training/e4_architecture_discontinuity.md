@@ -80,3 +80,11 @@ Invariant 14 tells you to diff flags against a recent healthy run before launchi
 for the opponent pool and applied only to the opponent pool. **Diff the whole `metadata.json`, not
 the flags you happen to be thinking about** — the ones you are not thinking about are exactly the
 ones that drift.
+
+## A fourth flag difference, which is NOT a drift
+
+`tools/scripts/launch_flags.py` also reports `ref_update_freq` differing (E3-37-31 5,000,000 vs
+E4 200,000). That one is not a defect: 200,000 is the setting 43 of 51 E3 arms used, and the arm
+that collapsed by KL domination carried 5,000,000. See
+[`ref_update_freq_open_ablation.md`](ref_update_freq_open_ablation.md). A diff tells you a flag
+differs; only a survey tells you whether the difference is a mistake.

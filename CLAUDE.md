@@ -175,6 +175,22 @@ targets are masked on the part of the corpus whose recording stops before the en
 **Never write ad-hoc scripts to invoke training, tournaments, or match simulation directly — always
 go through the unified CLIs below** (invariant "no ad-hoc scripts").
 
+**Derive the command from a run that worked; do not copy the template below.** The template has
+now omitted lineage-critical flags three times running -- the opponent pool, the architecture, and
+a warm start the ladder does not use -- and each fix added the missing flag while the *next* one
+drifted. A fourth (`--ref-update-freq`, 5,000,000 in every late E3 arm against the 200,000
+default) was found only by diffing. Prose cannot fix this: the flags you forget are the ones you
+are not thinking about. So ask:
+
+```bash
+tools/scripts/launch_flags.py <a-recent-healthy-run-dir>                  # what it actually used
+tools/scripts/launch_flags.py <reference-run> --diff <your-new-run>       # what you changed
+```
+
+Defaults are read from `build_parser()`, so a flag added to the CLI tomorrow is covered without
+editing anything. Run the `--diff` form **after** launching too: it reads `metadata.json`, so it
+confirms what the run received rather than what you meant to pass.
+
 **A warm start is optional and is NOT what the ladder does.** Every late E3 arm was a cold start;
 E4-01 and E4-02 were warm-started only because the numbered "Phase 0 / Phase 1-3" framing below
 reads as a mandatory pipeline. It is not one. Omit `--warmup-checkpoint` unless the arm is
@@ -335,12 +351,15 @@ engine for differential testing.
     `research/log/E4_pool_starvation_recurrence.md`). Before launching, diff the intended flags
     against a recent healthy run's `metadata.json` rather than trusting the template above; the
     startup banner must say `[opponent pool] ... frac=0.3`.
-15. **Diff the WHOLE `metadata.json`, not the flags you are thinking about.** Invariant 14 was
-    written for the opponent pool and then applied only to the opponent pool: E4 was launched with
-    the bare architecture defaults while all eleven late E3 arms carried `identity_dim 16`,
-    `per_entity_heads 64`, `graph_layers 0`, `self_transform` -- so no E3/E4 comparison is clean
-    (`research/findings/training/e4_architecture_discontinuity.md`). The flags you are not
-    thinking about are the ones that drift.
+15. **Derive a launch command from a healthy run, never from the template.** Run
+    `tools/scripts/launch_flags.py <reference-run> --diff <your-run>` before launching and again
+    after, and be able to justify every line it prints. Four lineage-critical flags have drifted
+    this way already -- the opponent pool, `identity_dim`/`per_entity_heads`/`graph_layers`/
+    `self_transform`, a warm start the ladder does not use, and `ref_update_freq` at 200,000
+    against E3's 5,000,000 -- and each was found only after the compute was spent
+    (`research/findings/training/e4_architecture_discontinuity.md`). Invariant 14 was written for
+    the pool and then applied only to the pool; a rule you have to remember to apply to each new
+    field is not a rule, which is why this one is a command.
 
 Each of `engine/AGENTS.md`, `bindings/AGENTS.md`, `bot/AGENTS.md`, `web/server/AGENTS.md`, and root
 `AGENTS.md` carries a "keep documentation synchronized" rule — when you change behavior in one of
