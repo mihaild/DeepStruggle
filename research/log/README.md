@@ -126,6 +126,7 @@ moments and a result should not have to be read alongside the doubt about it.
 | [`E4_architecture_ab_result.md`](E4_architecture_ab_result.md) | — | P19's answer: the late-E3 architecture bundle is worth **+447 Elo** at matched budget and cold start, and `E4-03-01@80M` beats warm-started arms with 4x the steps. Both P21 anchors point at it |
 | [`P21_M0_flat_mlp.md`](P21_M0_flat_mlp.md) | — | the ladder's floor: a flat MLP rates 1650-1666 at 80M, gains **+147 Elo** from 80M to 160M within seed, and at 160M beats the **E4 default architecture 64.5% using 46% of its GPU time** — the defaults are worse than an MLP per unit compute. Seed variance **16.6 Elo**, not the ~95 assumed |
 | [`P21_M1_grouped.md`](P21_M1_grouped.md) | — | grouping the input by block is worth **+102 Elo** over a flat MLP and is **adopted** — but the gain is one seat (US +26 pp, USSR +0.8 pp) and it is an **intercept, not a slope**: the margin halves to +44 by 160M because M0's slope is twice M1's |
+| [`P21_M2_lookup.md`](P21_M2_lookup.md) | — | the per-entity lookup is worth **+362 Elo** and **reaches the anchor**: M2@160M ties E4-03-01@80M using **65% of its wall clock**, with no attention, identity, pooling, shared encoder or graph. The bundle's repairs are unnecessary when pooling never destroys the information |
 
 Sections that moved kept their original numbers and left a stub here carrying the part that bears
 on a result. A new entry that turns out to be about an instrument rather than an agent belongs in
