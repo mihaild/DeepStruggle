@@ -56,6 +56,7 @@ known.
 | item | what | cost | status |
 |:---|:---|:---|:---|
 | **[P19](P19_architecture_ab.md)** | is the late-E3 architecture bundle (`identity_dim 16`, `per_entity_heads 64`, `graph_layers 0`, `self_transform`) stronger than the defaults on this engine? `E4-03-01` against its matched control `E4-04-01`, both cold, both pooled, 80M. Measurement and decision rule pre-registered | 2 x 80M, spent/running | **E4-04-01 done clean; E4-03-01 running** |
+| **[P21](P21_architecture_ladder.md)** | build the architecture up from a flat MLP, one mechanism at a time, each rung measured against the rung below AND against the `E4-04-01@80M` anchor — with pooling deliberately last, and `per_entity_heads` / `country_identity` tested as a 2x2 against the pooling axis because they exist to repair it. Simpler architecture wins ties | ~26 arms, ~39 GPU-h | **proposed, not launched** |
 | **[P20](P20_positional_board_encoder.md)** | the board reaches the trunk only through a *symmetric* mean/max pool, which discards which country is which — unmotivated at `graph_layers 0`, where no message passing needs the token form. The probe says the pre-pooling token holds ~89% of a country's influence and the trunk ~14%. A positional board path has never been tried; the attention read-out that was tried (E3-13, −14/−23 Elo) was still pooling | +11% params, 1 arm + a parameter-matched control | **proposed, not launched** |
 
 
