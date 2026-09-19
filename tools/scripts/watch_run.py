@@ -44,7 +44,20 @@ import sys
 import time
 from typing import Any, Dict, Optional, Tuple
 
-WATCHED = ("adv_std_raw", "critic_auc", "critic_brier_skill", "critic_base_rate")
+#: What a PROGRESS line carries. Three of the four this used to print -- `critic_auc`,
+#: `critic_brier_skill`, `critic_base_rate` -- were measured in
+#: `research/method/detecting_collapse.md` to be *useless* for spotting a seat collapse: the
+#: collapsing run's critic scored as well as the healthy run's all the way to 160M, because a
+#: degenerate policy is easy to predict. `critic_base_rate` is worse than neutral, being
+#: `max(p, 1-p)` with no direction at all.
+#:
+#: These are the ones that separated the pair, earliest first. `logratio_max` and
+#: `ratio_negadv_max` fired at 3M steps with no false positive; `entropy` plateauing high instead
+#: of descending is the "policy never sharpened" signature; `clip_frac` is the slower confirmation.
+#: `opp_pool_size` is here because its *absence* is what caused both collapses this project has
+#: seen, and it is visible at iteration 1.
+WATCHED = ("entropy", "logratio_max", "ratio_negadv_max", "clip_frac",
+           "opp_pool_size", "adv_std_raw")
 
 
 def emit(line: str) -> None:
