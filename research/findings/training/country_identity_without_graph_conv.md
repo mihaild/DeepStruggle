@@ -9,26 +9,67 @@ so trained embeddings compare against their own initialisation rather than an as
 does this pathway carry weight at all — is about architecture code shared by both lineages, and
 the configuration is identical. The E4 answer comes from `E4-03-01`.
 
-## There are two country paths, and identity does a different job in each
+## Identity enters at three points, doing a different job in each
 
-With `graph_layers=0` the board tensor `(B, 84, 26)` goes through a **shared** per-node `Linear`
-(`board_fc`), and the result is used twice:
+With `graph_layers=0` the board tensor `(B, 84, 26)` is concatenated with the identity rows and
+passed through a **shared** per-node `Linear` (`board_fc`). The resulting `h_board` is then used
+three ways.
 
-**1. The pooled path — position is destroyed.** `board_mean` and `board_max` are taken over the
-84 nodes and fed to `board_proj` and thence the trunk. **This pooling happens regardless of
-`graph_layers`**; it is not a graph-convolution feature. Mean and max are symmetric, so the
-trunk's view of the board is a *bag* of country tokens. Two countries whose slots happen to match
-are interchangeable here, and the trunk cannot tell which of them contributed what.
+**1. The pooled path — position is destroyed.** `board_mean` and `board_max` over the 84 nodes
+feed `board_proj` and the trunk. **This pooling happens regardless of `graph_layers`**; it is not
+a graph-convolution feature. Mean and max are symmetric, so the trunk sees a *bag* of country
+tokens, and identity is the only thing that lets country-specific information survive it.
 
-**2. The per-entity path — position is preserved.** `pe_country` computes country *i*'s logit from
-country *i*'s token, indexed. Nothing is pooled. Here identity needs to supply no addressing at
-all, because the index already does that: it enters as a **constant per-country vector added to
-the pre-activation of a `Linear`**, i.e. exactly a learned per-country bias — one that shifts a
-GELU rather than merely adding to the output, but a static bias nonetheless.
+**2. `pe_country` — a per-country bias, and the shared bias cannot absorb it.** Country *i*'s
+logit is computed from country *i*'s token by an MLP. The index already does the addressing, so
+identity enters as a constant added to the pre-activation of a `Linear`: a learned per-country
+bias, exactly as it appears.
 
-So "it is just a static bias" is the right reading for `pe_country`, and the wrong one for the
-pooled trunk path, where symmetric pooling makes identity the only way country-specific
-information survives at all.
+The reason that is not redundant is **weight sharing**. `pe_country[0]` is one `Linear` applied to
+all 84 countries, so its bias term is a *single* vector for every country. A neuron cannot "just
+learn the constant", because it has only one constant to learn and 84 countries to spend it on.
+Identity is precisely the mechanism that turns that one shared bias into 84 different ones,
+`bias_eff(i) = b + W_id · id_i` — a rank-≤16 lookup table over countries.
+
+Measured on `E3-30-28`:
+
+| quantity | value |
+|:---|---:|
+| shared bias, ‖b‖ | 1.69 |
+| per-country offset ‖W_id · id_i‖, mean over countries | **5.15** |
+| across-country std of that offset, per unit | 0.620 |
+| ... relative to the shared bias's per-unit scale | **2.94x** |
+| ... relative to the **data-dependent** term's across-country std | **0.80x** |
+| pairwise distance between two countries' offsets, mean | 7.21 |
+| Egypt–Iran / Egypt–Libya / Iran–Libya | 6.32 / 7.38 / 7.85 |
+
+The per-country offset is three times the shared bias in magnitude, and it varies across countries
+**four fifths as much as the entire state-dependent input does**. Egypt, Iran and Libya — identical
+on every static slot — receive offsets 6–8 apart. This is the disambiguation, and no reweighting of
+the shared bias could produce it.
+
+**3. The card→country cross-attention — identity is in the keys.** `cross_attn(h_cards, h_board,
+h_board)` has each of the 110 cards attend over the 84 country tokens, and `h_board` carries
+identity. Two countries with identical state features have keys that differ *only* by identity, so
+it is the only thing that lets a card single one of them out.
+
+It is not decorative. Baseline attention is sharply peaked — mean max weight 0.244 against 0.0119
+for uniform, a factor of 20 — and ablating identity moves the attention mass wholesale:
+
+| ablation | total-variation shift of the attention map (mean / median / p95) |
+|:---|---:|
+| `country_identity` → 0 | 0.558 / 0.636 / 0.772 |
+| `country_identity` → random, same norms | 0.685 / 0.788 / 0.902 |
+
+**More than half the attention mass lands on different countries.**
+
+### A naming trap
+
+`per_entity_heads` is **not** attention despite the name — it is the width of a per-country
+residual MLP. The genuinely attentional read-out is `attn_readout`, and it is **0** in these arms,
+so `ro_country_kv` is never even constructed. The attention identity actually participates in is
+`cross_attn`, which is always present and is governed by `num_attn_heads` (default 4), a flag no
+arm has varied.
 
 ## The static slots do not identify a country
 
