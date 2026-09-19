@@ -936,6 +936,39 @@ def check_checkpoint_layout(state_dict: dict) -> None:
                 f"{ColdWarNetV2.TOTAL_OBS_SIZE}. Checkpoints from the retired layouts cannot "
                 f"be run.")
         return
+    # A P21 ladder rung reads the observation through its own first layer, named `lad_*`, so
+    # like the MLP case above the layout is the input width itself rather than something to
+    # infer from a per-card block it does not have.
+    lad_in = state_dict.get("lad_in.0.weight")
+    if lad_in is not None:                                   # input_mode="flat"
+        width = int(lad_in.shape[1])
+        narrowed = ColdWarNetV2.TOTAL_OBS_SIZE - int(static_input_mask().sum())
+        if width not in (ColdWarNetV2.TOTAL_OBS_SIZE, narrowed):
+            raise ValueError(
+                f"this ladder checkpoint reads {width} floats; layout v2.3 is "
+                f"{ColdWarNetV2.TOTAL_OBS_SIZE} ({narrowed} with --drop-static).")
+        return
+    lad_enc = state_dict.get("lad_card_enc.0.weight")
+    if lad_enc is not None:                                  # input_mode="entity"
+        ident = state_dict.get("card_identity.weight")
+        idim = int(ident.shape[1]) if ident is not None else 0
+        if int(lad_enc.shape[1]) - idim != ColdWarNetV2.CARD_FEATURES:
+            raise ValueError(
+                f"this ladder checkpoint has {int(lad_enc.shape[1]) - idim} card features; "
+                f"layout v2.3 has {ColdWarNetV2.CARD_FEATURES}.")
+        return
+    lad_b = state_dict.get("lad_board.0.weight")
+    lad_c = state_dict.get("lad_card.0.weight")
+    if lad_b is not None and lad_c is not None:              # input_mode="grouped"
+        width = int(lad_b.shape[1]) + int(lad_c.shape[1])
+        full = ColdWarNetV2.BOARD_SIZE + ColdWarNetV2.CARD_SIZE
+        narrowed = full - int(static_input_mask().sum())
+        if width not in (full, narrowed):
+            raise ValueError(
+                f"this ladder checkpoint reads {width} board+card floats; layout v2.3 is "
+                f"{full} ({narrowed} with --drop-static).")
+        return
+
     cards = card_features_of(state_dict)
     g = state_dict.get("global_proj.0.weight")
     globals_ = int(g.shape[1]) if g is not None else ColdWarNetV2.GLOBAL_SIZE

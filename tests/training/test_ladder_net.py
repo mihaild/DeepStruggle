@@ -247,3 +247,46 @@ def test_a_non_default_trunk_width_survives_the_copy() -> None:
     twin = create_like(model)
     assert isinstance(twin, LadderNet)
     assert twin.ladder_config()["hidden_dim"] == 480
+
+
+# --------------------------------- checkpoint round trip through the real loader
+
+@pytest.mark.parametrize("name", sorted(RUNGS))
+def test_every_rung_survives_a_checkpoint_round_trip(name, tmp_path) -> None:
+    """Save a rung, load it the way the tournament does, and get the same architecture back.
+
+    Checkpoints here are bare state dicts and the architecture is detected by weight name. That
+    detection did not know about LadderNet, so the first ladder checkpoint was rebuilt as a
+    ColdWarNetV2 and the tournament died on shape mismatches. Two traps made it worse than a
+    missing branch:
+
+      * `lad_cross_attn.*` contains the substring `cross_attn`, so a cross-attention rung matched
+        the v2 test and would have been rebuilt as v2 — loading most tensors and silently
+        dropping the rest, which rates a different network than the one that trained.
+      * `check_checkpoint_layout` reads the layout off `card_fc.0.weight`, which no ladder rung
+        has, so every rung was refused until it learned to read `lad_*` widths instead.
+    """
+    from ai.models.ladder_net import ladder_config_from_state_dict
+    from tools.lib.player_agent import NeuralAgent
+
+    model = rung(**RUNGS[name], hidden_dim=192, entity_proj_dim=96)
+    sd = model.state_dict()
+
+    recovered = ladder_config_from_state_dict(dict(sd))
+    assert recovered == model.ladder_config(), f"{name}: config not recoverable from weights"
+
+    path = tmp_path / f"{name}.pt"
+    torch.save(sd, path)
+    agent = NeuralAgent.from_checkpoint(str(path), device="cpu")
+    assert isinstance(agent.model, LadderNet), f"{name}: loaded as {type(agent.model).__name__}"
+    assert agent.model.ladder_config() == model.ladder_config()
+
+
+def test_a_non_ladder_checkpoint_is_not_claimed_by_the_ladder_detector() -> None:
+    """The detector must return None for v2, or it would hijack every existing checkpoint."""
+    from ai.models.coldwar_net_v2 import create_coldwar_net_v2
+    from ai.models.ladder_net import ladder_config_from_state_dict
+    v2 = create_coldwar_net_v2(torch.device("cpu"), categorical_value=False,
+                               identity_dim=16, per_entity_heads=64, graph_layers=0,
+                               self_transform=True)
+    assert ladder_config_from_state_dict(dict(v2.state_dict())) is None

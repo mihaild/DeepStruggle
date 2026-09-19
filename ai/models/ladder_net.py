@@ -98,7 +98,10 @@ class LadderNet(ColdWarNetV2):
 
         self.input_mode = str(input_mode)
         self.aggregation = str(aggregation)
-        self.entity_dim = int(entity_dim)
+        # Canonical: the token width is meaningless without tokens, so a tokenless
+        # rung records 0. That makes `ladder_config()` exactly recoverable from the
+        # weights, which is what `ladder_config_from_state_dict` relies on.
+        self.entity_dim = 0 if tokenless else int(entity_dim)
         self.card_self_attention = bool(card_self_attention)
         self.cross_attention = bool(cross_attention)
         self.drop_static = bool(drop_static)
@@ -119,7 +122,7 @@ class LadderNet(ColdWarNetV2):
             if hasattr(self, name):
                 setattr(self, name, None)
 
-        d = self.entity_dim
+        d = int(entity_dim)
         p = self.entity_proj_dim
         board_in = self.board_features + (self.identity_dim if not tokenless else 0)
         card_in = self.card_features + (self.identity_dim if not tokenless else 0)
@@ -290,6 +293,75 @@ def _agg(tokens: torch.Tensor, how: str) -> torch.Tensor:
         return tokens.reshape(tokens.shape[0], -1)
     return torch.cat([tokens.mean(dim=1), tokens.max(dim=1).values], dim=-1)
 
+
+def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Recover a rung's configuration from its weights, or None if this is not a LadderNet.
+
+    Checkpoints in this repository are bare state dicts and the architecture is detected by
+    weight name, never from a recorded config. That is the stronger contract: a saved config can
+    drift from the weights it claims to describe, while shapes cannot.
+
+    **Must be tried before the v2 detection.** `lad_cross_attn.*` contains the substring
+    `cross_attn`, so a cross-attention rung matches v2's test and would be rebuilt as a
+    ColdWarNetV2 -- loading most tensors, silently dropping the rest, and rating a different
+    network than the one that trained.
+    """
+    if "lad_in.0.weight" in sd:
+        input_mode = "flat"
+    elif "lad_board_enc.0.weight" in sd:
+        input_mode = "entity"
+    elif "lad_board.0.weight" in sd:
+        input_mode = "grouped"
+    else:
+        return None
+
+    fusion = sd["fusion_in.0.weight"]
+    hidden_dim = int(fusion.shape[0])
+    blocks = {k.split(".")[1] for k in sd if k.startswith("res_blocks.")}
+    ident = sd.get("country_identity.weight")
+    pe = sd.get("pe_trunk.weight")
+
+    if input_mode == "flat":
+        proj = sd["lad_in.0.weight"]
+        in_width = int(proj.shape[1])
+        entity_dim, aggregation = 0, "flatten"
+    else:
+        proj = sd["lad_board.0.weight"]
+        if input_mode == "grouped":
+            in_width = int(proj.shape[1]) + int(sd["lad_card.0.weight"].shape[1])
+            entity_dim, aggregation = 0, "flatten"
+        else:
+            entity_dim = int(sd["lad_board_enc.0.weight"].shape[0])
+            # 84*d if position was kept, 2*d if mean+max discarded it
+            aggregation = "flatten" if int(proj.shape[1]) == 84 * entity_dim else "pool"
+            in_width = 0
+
+    drop_static = False
+    if input_mode in ("flat", "grouped"):
+        mask = static_input_mask()
+        static = int(mask.sum())
+        # `flat` reads the whole observation; `grouped` reads only board+card, since the global
+        # block goes through `global_proj`. Comparing a grouped width against the full-observation
+        # total reported drop_static=False for a run that had it on.
+        full = (int(mask.numel()) if input_mode == "flat"
+                else ColdWarNetV2.BOARD_SIZE + ColdWarNetV2.CARD_SIZE)
+        drop_static = (in_width == full - static) and (in_width != full)
+
+    return dict(
+        input_mode=input_mode,
+        aggregation=aggregation,
+        entity_dim=entity_dim,
+        card_self_attention=any(k.startswith("lad_self_attn.") for k in sd),
+        cross_attention=any(k.startswith("lad_cross_attn.") for k in sd),
+        per_entity_heads=int(pe.shape[0]) if pe is not None else 0,
+        identity_dim=int(ident.shape[1]) if ident is not None else 0,
+        drop_static=drop_static,
+        hidden_dim=hidden_dim,
+        num_res_blocks=len(blocks),
+        entity_proj_dim=int(proj.shape[0]),
+        num_attn_heads=4,
+        categorical_value=any(k.startswith("value_dist_head") for k in sd),
+    )
 
 def create_ladder_net(device: torch.device | str, **config: Any) -> LadderNet:
     """Build a rung. Every structural axis must be named; see `LadderNet`."""

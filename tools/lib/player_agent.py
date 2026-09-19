@@ -219,6 +219,22 @@ class NeuralAgent:
         # Architecture detection by weight name: V2 carries the cross-attention block, V1 does
         # not. A retired architecture is refused rather than allowed to fall through to V1.
         reject_retired_architecture(state_dict)
+
+        # A P21 ladder rung is checked FIRST. `lad_cross_attn.*` contains the substring
+        # `cross_attn`, so a cross-attention rung matches the v2 test below and would be rebuilt
+        # as a ColdWarNetV2 -- loading most tensors, silently dropping the rest, and rating a
+        # different network than the one that trained. Like everything else here the
+        # configuration is recovered from the weights, not from a recorded config.
+        from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
+        ladder_cfg = ladder_config_from_state_dict(state_dict)
+        if ladder_cfg is not None:
+            check_checkpoint_layout(state_dict)
+            ladder = create_ladder_net(dev, **ladder_cfg)
+            ladder.load_state_dict(state_dict, strict=True)
+            ladder.eval()
+            return cls(model=ladder, device=dev,
+                       name=name or checkpoint_label(checkpoint_path))
+
         is_mlp = any(k.startswith("mlp_in.") for k in state_dict)
         is_v2 = is_mlp or any("cross_attn" in k or "cross_card_proj" in k for k in state_dict)
 
