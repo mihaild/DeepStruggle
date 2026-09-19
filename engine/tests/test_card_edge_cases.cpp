@@ -1292,13 +1292,10 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     ASSERT_EQ(state.defcon, 3);
     ASSERT_TRUE(state.has_flag(ts::effect_bits::WE_WILL_BURY_YOU_PENDING));
 
-    // Stage 2: Grain Sales (2 Ops) resolves -> US is prompted to choose branch for drawn Duck and Cover
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
-    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-
-    // US selects Branch 0: Play drawn card
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
+    // Stage 2: Grain Sales (2 Ops) resolves -> the US is offered the drawn Duck and Cover at
+    // Grain Sales' own resolution node. P17 section 5: one decision, not a branch and then a mode.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
 
     // US plays Duck and Cover for PlayMode::EVENT (0)
@@ -1350,11 +1347,9 @@ TEST(CardEdgeCasesTest, GrainSales_Headline_OpponentCardOpsFirst_StillFiresItsEv
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::WE_WILL_BURY_YOU, 0, 0}));
     const int8_t vp_before = state.victory_points;
 
-    // Grain Sales resolves and offers the US the card it took.
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
-    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
+    // Grain Sales resolves and offers the US the card it took, at its own resolution node.
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::WILLY_BRANDT);
 
     // It is the USSR's own card, so Operations is the only play mode, and the ordering is a
@@ -1431,9 +1426,8 @@ TEST(CardEdgeCasesTest, Defectors_HandedOverByGrainSalesInHeadline_CancelsUSSRHe
                                              {}, {ts::card_ids::DEFECTORS});
     // Grain Sales is 2 Ops and Vietnam Revolts 2, and the US wins ties, so Grain Sales
     // resolves first and offers the US the card it drew.
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0}));
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DEFECTORS);
     // Defectors is a US card, so the US may play it as its Event -- and in a headline it is
     // legal to do so, unlike in an action round.

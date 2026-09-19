@@ -21,8 +21,10 @@ FIVE_YEAR_PLAN = 5
 GRAIN_SALES = 67
 NUCLEAR_TEST_BAN = 34
 PLAY_EVENT = ActionEncoder.PLAY_MODE_OFFSET
-BRANCH_PLAY_DRAWN = ActionEncoder.BRANCH_OFFSET
-BRANCH_RETURN = ActionEncoder.BRANCH_OFFSET + 1
+# P17 section 5: the offer is the drawn card's own resolution node on Grain Sales' frame.
+# Handing the card back is the decline; playing it is an ordinary resolution.
+RETURN_DRAWN = ActionEncoder.CONFIRM_DONE_INDEX
+PLAY_DRAWN_FOR_OPS = ActionEncoder.PLAY_MODE_OFFSET + int(ts.Resolution.OPS_INFLUENCE)
 OP_INFLUENCE = ActionEncoder.OP_MODE_OFFSET
 GOLDEN = 0x9E3779B97F4A7C15
 
@@ -107,8 +109,8 @@ def test_played_directly_with_an_empty_opposing_hand() -> None:
 
 def test_played_directly_and_the_drawn_card_returned() -> None:
     state = _grain_sales_directly([NUCLEAR_TEST_BAN])
-    assert state.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH
-    ts.Engine.step_flat(state, BRANCH_RETURN)
+    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
+    ts.Engine.step_flat(state, RETURN_DRAWN)
     steps, targets = _spend_two_ops(state)
     assert steps == 2 and targets > 0
 
@@ -121,9 +123,9 @@ def test_fired_through_five_year_plan_with_an_empty_opposing_hand() -> None:
 
 def test_fired_through_five_year_plan_and_the_drawn_card_returned() -> None:
     state = _grain_sales_through_five_year_plan([NUCLEAR_TEST_BAN])
-    assert state.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH
+    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
     assert int(state.ctx().resolving_card) == GRAIN_SALES
-    ts.Engine.step_flat(state, BRANCH_RETURN)
+    ts.Engine.step_flat(state, RETURN_DRAWN)
     steps, targets = _spend_two_ops(state)
     assert steps == 2 and targets > 0
 
@@ -131,8 +133,10 @@ def test_fired_through_five_year_plan_and_the_drawn_card_returned() -> None:
 def test_fired_through_five_year_plan_and_the_drawn_card_played() -> None:
     """Playing it asks for that card's play mode, and it is that card, not card 0."""
     state = _grain_sales_through_five_year_plan([NUCLEAR_TEST_BAN])
-    ts.Engine.step_flat(state, BRANCH_PLAY_DRAWN)
     ctx = state.ctx()
     assert ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE
     assert int(ctx.pending_op_card) == NUCLEAR_TEST_BAN
-    assert int(ctx.resolving_card) == 0
+    # P17 section 5: the offer sits on Grain Sales' own frame, so it is still the resolving card
+    # until an answer replaces the frame. What matters is that the node is about the DRAWN card.
+    assert int(ctx.resolving_card) == GRAIN_SALES
+    assert ts.Engine.try_step_flat(state.clone(), PLAY_DRAWN_FOR_OPS)

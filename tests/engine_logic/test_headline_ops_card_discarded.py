@@ -78,9 +78,11 @@ def test_grain_sales_hands_the_drawn_card_to_the_us_to_play() -> None:
     """The setup this rests on: the card really does move into the US hand to be played."""
     state = _grain_sales_headline()
     assert int(state.ctx().resolving_card) == GRAIN_SALES
+    # P17 section 5: drawn straight into the US hand, marked known, so the mask and step agree
+    # about where it is. PEEKED_TEMP is no longer used for this card.
     assert state.get_card_location(MARSHALL_PLAN) in (
-        ts.hand_of(ts.Player.USSR), ts.hand_of(ts.Player.US),
-        ts.CardLocation.PEEKED_TEMP), "the drawn card is Grain Sales' to move"
+        ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.US, True),
+    ), "the drawn card is Grain Sales' to move"
 
 
 def test_the_played_card_does_not_stay_in_hand() -> None:

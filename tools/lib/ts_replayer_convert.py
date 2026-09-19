@@ -1826,15 +1826,22 @@ def _seed_revealed_card(state: ts.GameState, cid: int) -> None:
     Grain Sales takes a random card from the USSR hand and offers it to the US; the log names
     it ("USSR reveals NATO*"), so the draw is not really a chance node for our purposes.
 
-    The drawn card is the one at PEEKED_TEMP -- being looked at is a location, not a note kept
-    beside one -- so seeding it means putting it there and taking whatever the engine drew back
-    out. There should be exactly one, but the sweep is unconditional so a stale peek from an
-    earlier event cannot survive into this one.
+    P17 section 5: the drawn card goes straight into the US hand and is named by the decision's
+    own `pending_op_card`, so that the action mask and `step` agree about where it is. Seeding it
+    therefore means three things, not one: put the engine's pick back in the USSR hand, move the
+    logged card across instead, and repoint the decision at it.
+
+    The PEEKED_TEMP sweep is kept because a *different* event may have staged a card earlier --
+    Our Man in Tehran and Missile Envy both do -- and a stale peek must not survive into this one.
     """
+    drawn = int(state.ctx().pending_op_card)
+    if drawn and drawn != cid and drawn != _GRAIN_SALES:
+        state.set_card_location(drawn, ts.hand_of(ts.Player.USSR))
     for c in range(1, 111):
         if c != cid and state.get_card_location(c) == ts.CardLocation.PEEKED_TEMP:
             state.set_card_location(c, ts.hand_of(ts.Player.USSR))
-    state.set_card_location(cid, ts.CardLocation.PEEKED_TEMP)
+    state.set_card_location(cid, ts.hand_of(ts.Player.US, True))
+    state.ctx().pending_op_card = cid
 
 
 def _seed_peeked_set(state: ts.GameState, discards: List[int], size: int = 5) -> None:
@@ -2512,13 +2519,18 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             seeded_peek = True
             ctx = state.ctx()
         elif (plays_grain_sales and not seeded_reveal and reveal_queue
-                and dt == ts.DecisionType.CHOOSE_BRANCH):
+                and dt == ts.DecisionType.SELECT_PLAY_MODE
+                and int(ctx.resolving_card) == _GRAIN_SALES):
             # Grain Sales takes a card from the USSR hand at random and offers it to the US, so
-            # the branch decision is about a card the engine chose for itself. Correct it to the
-            # one the log reveals before that decision is read. Keying this off resolving_card
-            # missed the headline case, where it is never set: at turn 4's headline of replay
-            # 119 the engine drew Indo-Pakistani War instead of Brezhnev Doctrine, the US then
-            # played *that* for Ops, and the headline never ended.
+            # the decision is about a card the engine chose for itself. Correct it to the one the
+            # log reveals before that decision is read.
+            #
+            # P17 section 5: this is the merged resolution node, not a branch of its own, and
+            # `resolving_card` is now what identifies it. That was previously unusable -- the old
+            # branch left it unset in a headline, which is why this keyed off the decision type
+            # instead -- but the trigger sets it in both phases now, so it is the precise test.
+            # At turn 4's headline of replay 119 the engine drew Indo-Pakistani War instead of
+            # Brezhnev Doctrine, the US then played *that* for Ops, and the headline never ended.
             #
             # The reveal under Grain Sales' own header, not the entry's first: other cards
             # reveal too. At turn 5's headline of replay 304 the USSR headlines SALT
@@ -2733,6 +2745,16 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     "card not selectable",
                     f"card #{cid_target} not among {len(legal)} legal actions"))
                 return False
+
+        elif (dt == ts.DecisionType.SELECT_PLAY_MODE
+                and int(ctx.resolving_card) == _GRAIN_SALES
+                and returned_cid is not None):
+            # P17 section 5: Grain Sales' offer and the drawn card's play are the same node now,
+            # so handing the card back is the decline here rather than a branch of its own. The
+            # log states it outright -- "US returns Brezhnev Doctrine" -- so there is nothing to
+            # search for: at turn 4's headline of replay 119 the branch search had to be told not
+            # to play a card the log said was handed back, and that guesswork is gone with it.
+            chosen = _PASS
 
         elif (dt == ts.DecisionType.SELECT_PLAY_MODE
                 and (int(ctx.pending_op_card) or cid_target or 0) not in mode_picked_for):

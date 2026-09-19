@@ -94,8 +94,26 @@ int main(int argc, char** argv) {
         action.decision_type = state.ctx().decision_type;
         action.primary_id = chosen_action_id;
 
-        // Step engine
-        ASSERT_TRUE(ts::Engine::step(state, action));
+        // Step engine. A refusal here means the mask offered something the engine will not do,
+        // which is the one failure this fuzzer exists to find -- so say which decision it was
+        // rather than only that it happened.
+        const uint8_t before_resolving = state.ctx().resolving_card;
+        const uint8_t before_pending = state.ctx().pending_op_card;
+        const int before_player = static_cast<int>(state.ctx().decision_player);
+        const bool stepped = ts::Engine::step(state, action);
+        if (!stepped) {
+            std::cerr << "Fuzzer: mask offered an action step() refused."
+                      << " game=" << total_games
+                      << " dt=" << static_cast<int>(action.decision_type)
+                      << " primary=" << static_cast<int>(action.primary_id)
+                      << " resolving_card=" << static_cast<int>(before_resolving)
+                      << " pending_op_card=" << static_cast<int>(before_pending)
+                      << " decision_player=" << before_player
+                      << " phase=" << static_cast<int>(state.current_phase)
+                      << " depth=" << static_cast<int>(state.ctx_stack_depth)
+                      << std::endl;
+        }
+        ASSERT_TRUE(stepped);
         total_steps++;
         game_steps++;
         if (game_steps > 20000) {

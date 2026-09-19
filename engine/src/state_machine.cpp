@@ -765,7 +765,21 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     // This rejects nothing legal: every action in the 212-wide legal mask decodes to a
     // MicroAction whose decision_type equals the context's (verified over 177,258 state/action
     // pairs). Callers that construct actions by hand must set the type the context asks for.
-    if (action.decision_type != state.ctx().decision_type) return false;
+    //
+    // P17 section 5 adds the one legitimate exception. UN Intervention played ON the card Grain
+    // Sales drew arrives card-shaped at a resolution node: everywhere else UN Intervention is
+    // the card played and NAMES a companion, but here the companion already exists and UN
+    // Intervention is named as its resolution. It is the only node in the game where a card slot
+    // is legal at a SELECT_PLAY_MODE decision, and the flat-mask check below still has the final
+    // say on whether this particular card is offered.
+    const bool grain_sales_un_intervention =
+        state.ctx().decision_type == DecisionType::SELECT_PLAY_MODE &&
+        state.ctx().resolving_card == card_ids::GRAIN_SALES &&
+        action.decision_type == DecisionType::SELECT_CARD &&
+        action.primary_id == card_ids::UN_INTERVENTION;
+    if (action.decision_type != state.ctx().decision_type && !grain_sales_un_intervention) {
+        return false;
+    }
 
     // ROLL_DIE is the one decision the 212-wide mask cannot constrain: its primary_id and
     // secondary_id are the forced dice themselves (actor's and opponent's) rather than indices
@@ -927,6 +941,26 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     if (state.current_phase == Phase::ACTION_ROUND || state.current_phase == Phase::HEADLINE) {
         DecisionType dt = state.ctx().decision_type;
         Player p = state.ctx().decision_player;
+
+        // P17 section 5: Grain Sales resolves the card it drew on its OWN frame, so a Resolution
+        // here REPLACES the frame instead of nesting. Done before the dispatch below, so the
+        // ordinary SELECT_PLAY_MODE path plays the card -- repeating that logic inside the
+        // handler would be the second definition of legality P14 forbids, and the first attempt
+        // at this card foundered on a child frame that nothing popped when a play completed.
+        //
+        // The decline and UN Intervention are NOT handled here: both are Grain Sales' own
+        // business rather than the drawn card's, so they go to the handler like any other event
+        // sub-decision. Grain Sales' own card is left alone, exactly as before -- whoever played
+        // it relocates it, and that is unchanged by which answer the US gives.
+        if (state.ctx().resolving_card == card_ids::GRAIN_SALES &&
+            state.ctx().decision_type == DecisionType::SELECT_PLAY_MODE &&
+            !action.is_confirm_done() &&
+            action.decision_type != DecisionType::SELECT_CARD) {
+            // Only the frame changes hands. The drawn card is already in the US hand -- the
+            // trigger put it there, so that the mask and this step agree about where it is.
+            // Moving it here instead would reintroduce exactly the split that costs.
+            state.ctx().resolving_card = 0;
+        }
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {

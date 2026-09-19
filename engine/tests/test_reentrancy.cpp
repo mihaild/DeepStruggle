@@ -50,31 +50,30 @@ TEST(ReentrancyTest, 02_Individual_GrainSales) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
     ASSERT_EQ(state.ctx().pending_ops_value, 2);
 
-    // (b) USSR holds Duck and Cover (#4) -> US draws it and chooses Branch 0 (play drawn card)
+    // (b) USSR holds Duck and Cover (#4) -> US draws it and is offered it directly. P17
+    // section 5: the resolution node IS the offer, so there is no branch to answer first.
     state.ctx() = ts::DecisionContext{};
     state.card_locations[ts::card_ids::DUCK_AND_COVER] = ts::hand_of(ts::Player::USSR);
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     ASSERT_FALSE(done);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
-
-    // US selects Branch 0: Play drawn card
-    ts::MicroAction act_play{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act_play);
-
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
 
-    // (c) USSR holds Soviet card (Arab-Israeli War #13) -> US draws and chooses Branch 1 (return card for 2 Ops)
+    // (c) USSR holds a Soviet card (Arab-Israeli War #13) -> US declines and takes Grain Sales'
+    // own 2 Ops. The decline is CONFIRM_DONE, not a branch index.
     state.ctx() = ts::DecisionContext{};
     for (uint8_t i = 1; i <= 110; ++i) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
     state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
 
-    ts::MicroAction act_ops{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0};
+    ts::MicroAction act_ops{ts::DecisionType::SELECT_PLAY_MODE, 255, 0, ts::action_flags::CONFIRM_DONE};
     ts::CardHandlers::handle_event_step(state, act_ops);
 
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
     ASSERT_EQ(state.ctx().pending_ops_value, 2);
+    ASSERT_EQ(state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR],
+              ts::hand_of(ts::Player::USSR, /*known=*/true));
 }
 
 TEST(ReentrancyTest, 03_Individual_StarWars) {
@@ -130,7 +129,8 @@ TEST(ReentrancyTest, 04_Pair_FYP_then_GrainSales) {
     // 2. Grain Sales executes and draws Duck and Cover
     state.ctx() = ts::DecisionContext{};
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    // P17 section 5: the offer IS the resolution node; there is no branch to answer first.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 }
 
 TEST(ReentrancyTest, 05_Pair_GrainSales_then_FYP) {
@@ -145,9 +145,10 @@ TEST(ReentrancyTest, 05_Pair_GrainSales_then_FYP) {
     // 1. Grain Sales draws Five Year Plan
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     
-    // US plays drawn Five Year Plan
-    ts::MicroAction act{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act);
+    // US plays the drawn Five Year Plan. P17 section 5: no branch first -- the resolution
+    // replaces Grain Sales' frame, so the offer already names the card.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIVE_YEAR_PLAN);
 
     // Play as Event
     ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
@@ -219,8 +220,9 @@ TEST(ReentrancyTest, 08_Pair_GrainSales_then_StarWars) {
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
     
     // US selects Branch 0: Play Star Wars as Event
-    ts::MicroAction act{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act);
+    // P17 section 5: Grain Sales offers the drawn card at its own resolution node,
+    // so there is no branch to answer before the card is resolved.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     ts::CardHandlers::trigger_event(state, ts::card_ids::STAR_WARS, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
@@ -247,9 +249,9 @@ TEST(ReentrancyTest, 09_Pair_StarWars_then_GrainSales) {
     ts::MicroAction act{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0};
     ts::CardHandlers::handle_event_step(state, act);
 
-    // Grain Sales now active
+    // Grain Sales now active, offering the card it drew
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 }
 
 // =============================================================================
@@ -273,9 +275,9 @@ TEST(ReentrancyTest, 10_Triple_Order_StarWars_GrainSales_FYP) {
     ts::MicroAction act1{ts::DecisionType::SELECT_CARD, ts::card_ids::GRAIN_SALES, 0, 0};
     ts::CardHandlers::handle_event_step(state, act1);
 
-    // 2. Grain Sales draws FYP -> US plays FYP
-    ts::MicroAction act2{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act2);
+    // 2. Grain Sales draws FYP and offers it directly -- P17 section 5, no branch first.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIVE_YEAR_PLAN);
 
     // 3. FYP triggers and discards Duck and Cover
     ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
@@ -314,8 +316,9 @@ TEST(ReentrancyTest, 12_Triple_Order_GrainSales_StarWars_FYP) {
 
     // 1. Grain Sales draws Star Wars
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ts::MicroAction act1{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act1);
+    // P17 section 5: Grain Sales offers the drawn card at its own resolution node,
+    // so there is no branch to answer before the card is resolved.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     // 2. Play Star Wars -> retrieves FYP
     ts::CardHandlers::trigger_event(state, ts::card_ids::STAR_WARS, ts::Player::US);
@@ -339,8 +342,9 @@ TEST(ReentrancyTest, 13_Triple_Order_GrainSales_FYP_StarWars) {
 
     // Grain Sales draws FYP -> FYP discards Duck and Cover -> DEFCON 4
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ts::MicroAction act1{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act1);
+    // P17 section 5: Grain Sales offers the drawn card at its own resolution node,
+    // so there is no branch to answer before the card is resolved.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
     ts::CardHandlers::trigger_event(state, ts::card_ids::FIVE_YEAR_PLAN, ts::Player::US);
 
     ASSERT_EQ(state.card_locations[ts::card_ids::DUCK_AND_COVER], ts::CardLocation::DISCARD_PILE);
@@ -373,8 +377,9 @@ TEST(ReentrancyTest, 14_Triple_Order_FYP_GrainSales_StarWars) {
     // 2. Grain Sales draws Star Wars
     state.ctx() = ts::DecisionContext{};
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ts::MicroAction act1{ts::DecisionType::CHOOSE_BRANCH, 0, 0, 0};
-    ts::CardHandlers::handle_event_step(state, act1);
+    // P17 section 5: Grain Sales offers the drawn card at its own resolution node,
+    // so there is no branch to answer before the card is resolved.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 
     // 3. Star Wars retrieves Duck and Cover -> DEFCON 4
     ts::CardHandlers::trigger_event(state, ts::card_ids::STAR_WARS, ts::Player::US);
@@ -410,5 +415,6 @@ TEST(ReentrancyTest, 15_Triple_Order_FYP_StarWars_GrainSales) {
     state.card_locations[ts::card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::USSR);
     state.ctx() = ts::DecisionContext{};
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    // P17 section 5: the offer IS the resolution node; there is no branch to answer first.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
 }

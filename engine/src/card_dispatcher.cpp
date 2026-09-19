@@ -1052,35 +1052,62 @@ bool CardHandlers::handle_event_step(GameState& state, const MicroAction& action
         }
 
         case card_ids::GRAIN_SALES: {
-            // The drawn card is the one being looked at, so it is the card at PEEKED_TEMP.
-            uint8_t drawn_card = 0;
-            for (uint8_t c = 1; c <= 110; ++c) {
-                if (state.card_locations[c] == CardLocation::PEEKED_TEMP) { drawn_card = c; break; }
-            }
-            if (drawn_card == 0) {
+            // P17 section 5. Only two answers reach here: a Resolution replaces this frame in
+            // StateMachine::step, before decisions are dispatched to this handler.
+            //
+            // The drawn card is read from pending_op_card, which the trigger recorded. Scanning
+            // for PEEKED_TEMP would find it too, but only while it is still staged -- and it is
+            // the answer to this decision that decides whether it stays there.
+            uint8_t drawn_card = state.ctx().pending_op_card;
+            if (drawn_card < 1 || drawn_card > 110 || drawn_card == card_ids::GRAIN_SALES) {
                 // Nothing staged: the event drew nothing, and there is no choice to answer.
                 state.ctx().resolving_card = 0;
                 return true;
             }
-            if (action.primary_id == 0) {
-                // Play the drawn card. It must leave PEEKED_TEMP before its Event can fire --
-                // if it is Our Man in Tehran, an event that peeks five cards of its own, a card
-                // still sitting there would be inside its own peek and could discard itself.
+
+            if (!action.is_confirm_done() &&
+                action.decision_type == DecisionType::SELECT_CARD &&
+                action.primary_id == card_ids::UN_INTERVENTION &&
+                in_hand_of(state.card_locations[card_ids::UN_INTERVENTION], Player::US)) {
+                // UN Intervention played ON the card Grain Sales drew -- the game's only use of
+                // it in this direction. The drawn card's Event is cancelled and the US takes its
+                // Operations; both cards are spent, because they are played together. Grain
+                // Sales' own 2 Ops are forfeited: the card grants those only when the drawn card
+                // is handed back, and this one was played.
+                //
+                // suppress_op_card_event is what makes the Event not happen AND keeps a starred
+                // card out of the removed pile -- the two questions Missile Envy got wrong by
+                // setting only timing_branch.
+                state.card_locations[card_ids::UN_INTERVENTION] = CardLocation::DISCARD_PILE;
                 state.card_locations[drawn_card] = hand_of(Player::US, /*known=*/true);
                 state.ctx().pending_op_card = drawn_card;
-                state.ctx().resolving_card = 0;
-                state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
-                return false;
-            } else {
-                // Return it and conduct 2 Ops. It goes back to the hand it came from, marked
-                // known: the US has seen it, and that is exactly what the location records.
-                state.card_locations[drawn_card] = hand_of(Player::USSR, /*known=*/true);
-                state.ctx().pending_op_card = card_ids::GRAIN_SALES;
-                state.ctx().pending_ops_value = Operations::grant_ops(state, 2, Player::US);
-                state.ctx().resolving_card = 0;
+                state.ctx().pending_ops_value =
+                    Operations::grant_ops_for_card(state, drawn_card, Player::US);
+                state.ctx().decision_player = Player::US;
                 state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+                state.ctx().timing_branch = 255;
+                state.ctx().suppress_op_card_event = 1;
+                state.ctx().resolving_card = 0;
                 return false;
             }
+
+            // Anything that is neither the decline nor UN Intervention does not belong here: a
+            // Resolution is intercepted in StateMachine::step and never reaches this handler.
+            // Refused rather than folded into the decline, which would turn a caller's mistake
+            // into a quietly different game -- the card handed back and 2 Ops conducted, with
+            // nothing saying so.
+            if (!action.is_confirm_done()) {
+                return false;
+            }
+
+            // The decline: hand it back and conduct 2 Ops. It goes to the hand it came from,
+            // marked known -- the US has seen it, and that is exactly what the location records.
+            state.card_locations[drawn_card] = hand_of(Player::USSR, /*known=*/true);
+            state.ctx().pending_op_card = card_ids::GRAIN_SALES;
+            state.ctx().pending_ops_value = Operations::grant_ops(state, 2, Player::US);
+            state.ctx().resolving_card = 0;
+            state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
+            return false;
         }
 
         case card_ids::WARGAMES: {

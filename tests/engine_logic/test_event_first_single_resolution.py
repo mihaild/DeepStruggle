@@ -48,7 +48,8 @@ def _play_for_ops(timing: int) -> Tuple[int, int]:
         legal = np.flatnonzero(ActionEncoder.get_legal_mask(st))
         if not len(legal):
             break
-        if (ctx.decision_type == ts.DecisionType.CHOOSE_BRANCH
+        # P17 section 5: Grain Sales offers the drawn card at its own resolution node.
+        if (ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE
                 and int(ctx.resolving_card) == GRAIN_SALES):
             offers += 1
             pick = int(legal[1]) if len(legal) > 1 else int(legal[0])

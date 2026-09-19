@@ -225,6 +225,20 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             std::memset(mask_out, 0, static_cast<size_t>(Resolution::COUNT));
             uint8_t card = ctx.pending_op_card;
 
+            // Grain Sales drew UN Intervention during a headline. UN Intervention may not be
+            // played in a headline, so handing the card back is the only legal answer and no
+            // resolution is offered -- the decline is CONFIRM_DONE, added by the flat mask.
+            //
+            // This belongs HERE and not only in the flat builder. `step` validates against the
+            // flat mask, so a rule written there alone is enforced but invisible to every caller
+            // that builds an action from this one: the fuzzer did exactly that and had its
+            // Operations play refused.
+            if (ctx.resolving_card == card_ids::GRAIN_SALES &&
+                state.current_phase == Phase::HEADLINE &&
+                card == card_ids::UN_INTERVENTION) {
+                return;
+            }
+
             // Ops options, shared by every branch below that allows Ops play at all.
             auto set_ops_options = [&]() {
                 mask_out[static_cast<size_t>(Resolution::OPS_INFLUENCE)] = 1;
@@ -554,6 +568,28 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 if (temp_mask[i]) {
                     mask_212[flat_slots::RESOLUTION + i] = 1;
                 }
+            }
+            // Grain Sales resolves the card it drew on this same node, and adds two actions
+            // that exist nowhere else in the action space.
+            if (ctx.resolving_card == card_ids::GRAIN_SALES) {
+                const Player gp = ctx.decision_player;
+                const uint8_t drawn = ctx.pending_op_card;
+                // The headline case needs nothing here: generate_mask already returned no
+                // resolutions, so only the decline below is offered and auto-advance settles it.
+                if (state.current_phase != Phase::HEADLINE &&
+                    in_hand_of(state.card_locations[card_ids::UN_INTERVENTION], gp) &&
+                    CardData::is_opponent_card(drawn, gp) &&
+                    !CardData::is_scoring_card(drawn)) {
+                    // UN Intervention played ON the drawn card. This is the ONLY node in the
+                    // game where a card slot is legal at a resolution decision: everywhere else
+                    // UN Intervention is the card played and it NAMES a companion, but here the
+                    // companion already exists and UN Intervention is named as its resolution.
+                    // decode_flat_action routes the card range without consulting decision_type,
+                    // so the encoding already carries it.
+                    mask_212[card_ids::UN_INTERVENTION - 1] = 1;
+                }
+                // Handing the card back is always available -- it is the card's other half.
+                mask_212[flat_slots::CONFIRM_DONE] = 1;
             }
             break;
 

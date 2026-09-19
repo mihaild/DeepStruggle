@@ -443,12 +443,42 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
     //
     // Both players know it: the USSR watches it leave their hand, and the log records the
     // reveal. Whichever way the US answers, the card leaves PEEKED_TEMP in the same step.
-    state.card_locations[chosen_card] = CardLocation::PEEKED_TEMP;
+    // Into the US hand, marked known, BEFORE the decision rather than after it.
+    //
+    // PEEKED_TEMP would say "shown, not taken", which is the truer picture -- but it splits the
+    // engine in two. The mask is generated against this position and `step` runs against it, and
+    // every predicate that asks where the card IS then disagrees between them: with the card
+    // staged, ActionMask's Missile Envy forced-play test reads `in_hand_of` as false and offers
+    // the Event, and `step`'s identical test reads it as true and refuses. The old two-decision
+    // shape hid this, because the card moved BETWEEN the branch and the play mode, so each mask
+    // was generated against the location its own step would see. Collapsing to one decision
+    // removes that gap, and the card must therefore already be where the resolution expects it.
+    //
+    // Nothing is leaked by moving it early: the USSR is never the decision player anywhere in
+    // Grain Sales, so no observation is taken for them while the card sits in the US hand, and
+    // the decline puts it straight back. It also settles the Our Man in Tehran hazard for free --
+    // a card still at PEEKED_TEMP when that Event peeks five cards of its own would be inside
+    // its own peek.
+    state.card_locations[chosen_card] = hand_of(Player::US, /*known=*/true);
 
-    // US chooses: Branch 0 = Play drawn card, Branch 1 = Return card and conduct Ops with 2 Ops
+    // P17 section 5: the merged resolution node, on Grain Sales' OWN frame. Nothing is pushed.
+    //
+    // The first attempt at this pushed a child frame for the drawn card before the US had
+    // answered, so the parent had to survive a possible decline -- and nothing popped it when a
+    // play completed normally. The choice comes first, and once it is made Grain Sales owes
+    // nothing either way, so there is nothing to come back to:
+    //
+    //   CONFIRM_DONE  -> hand the card back and take Grain Sales' own 2 Ops, on this frame
+    //   any Resolution-> discard Grain Sales and REPLACE this frame with the drawn card's play
+    //
     state.ctx().decision_player = Player::US;
-    state.ctx().decision_type = DecisionType::CHOOSE_BRANCH;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = chosen_card;
     state.ctx().resolving_card = card_ids::GRAIN_SALES;
+    // P17 6.1: set, not inherited. Handing the card back is always one of the answers, and it is
+    // the ONLY one when a headline draws UN Intervention -- so callers that read this rather than
+    // the flat mask still know the decline exists.
+    state.ctx().allow_early_stop = 1;
     return false;
 }
 

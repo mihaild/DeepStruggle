@@ -1004,13 +1004,42 @@ TEST(MidCardsTest, Card67_GrainSales_ReturnForOps) {
     }
     state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);
     ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
-    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::CHOOSE_BRANCH);
+    // P17 section 5: the merged resolution node on Grain Sales' own frame, not a branch.
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIDEL);
+    // Already in the US hand, marked known, so the mask and step agree about where it is.
+    ASSERT_EQ(state.card_locations[ts::card_ids::FIDEL], ts::hand_of(ts::Player::US, /*known=*/true));
 
-    // Branch 1: Return card and conduct 2 Ops
-    bool done = ts::CardHandlers::handle_event_step(state, ts::MicroAction{ts::DecisionType::CHOOSE_BRANCH, 1, 0, 0});
+    // The decline: hand it back and conduct Grain Sales' own 2 Ops.
+    bool done = ts::CardHandlers::handle_event_step(
+        state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, 255, 0, ts::action_flags::CONFIRM_DONE});
     ASSERT_FALSE(done);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
     ASSERT_EQ(state.ctx().pending_ops_value, 2);
+    ASSERT_EQ(state.card_locations[ts::card_ids::FIDEL], ts::hand_of(ts::Player::USSR, /*known=*/true));
+}
+
+// Playing the drawn card is the ordinary resolution, and it replaces Grain Sales' frame rather
+// than nesting -- so the whole play is ONE decision where it used to be a branch and then a mode.
+TEST(MidCardsTest, Card67_GrainSales_PlayDrawnCardIsOneDecision) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (state.card_locations[i] == ts::hand_of(ts::Player::USSR)) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    state.card_locations[ts::card_ids::FIDEL] = ts::hand_of(ts::Player::USSR);
+    ts::CardHandlers::trigger_event(state, ts::card_ids::GRAIN_SALES, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+
+    // One step: spend the drawn card's Operations on Influence.
+    ASSERT_TRUE(ts::Engine::step_flat(
+        state, ts::flat_slots::RESOLUTION + static_cast<int>(ts::Resolution::OPS_INFLUENCE)));
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIDEL);
+    ASSERT_EQ(state.ctx_stack_depth, 0);   // replaced, not nested
+    ASSERT_NE(state.card_locations[ts::card_ids::FIDEL], ts::CardLocation::PEEKED_TEMP);
 }
 
 // Card 68: John Paul II Elected Pope

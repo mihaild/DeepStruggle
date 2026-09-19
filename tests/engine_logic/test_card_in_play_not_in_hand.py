@@ -83,8 +83,11 @@ def test_grain_sales_does_not_offer_back_the_card_being_played() -> None:
 
 def test_grain_sales_still_draws_a_card_the_opponent_really_holds() -> None:
     state = _play_for_ops(ts.Player.USSR, GRAIN_SALES, [NUCLEAR_TEST_BAN])
-    assert state.ctx().decision_type == ts.DecisionType.CHOOSE_BRANCH, (
+    assert state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE, (
         "there is a card to offer, so the US chooses whether to play it")
+    assert int(state.ctx().resolving_card) == GRAIN_SALES
+    assert int(state.ctx().pending_op_card) == NUCLEAR_TEST_BAN, (
+        "and the offer names the card actually drawn from the USSR hand")
 
 
 def test_five_year_plan_discards_the_other_card_and_not_itself() -> None:
