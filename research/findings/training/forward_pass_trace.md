@@ -43,6 +43,35 @@ h_board (B, 84, 64)
          the ONLY unpooled route from country i's state to country i's logit
 ```
 
+## The card path is the same shape — and has no card↔card attention
+
+```
+card_raw (B,110,14) ++ card_identity → card_fc  [ONE shared Linear → 64]  → h_cards (B,110,64)
+ │
+ ├─1─ mean + max over the 110 cards → card_proj → e_card (B,256)
+ │       symmetric: which card is which is destroyed here, exactly as for countries
+ │
+ ├─2─ Q of cross_attn(Q=h_cards, K=h_board, V=h_board)
+ │       → h_cards_cross = LayerNorm(h_cards + attn_out)
+ │       → mean + max over the 110 CARDS → cross_card_proj → e_cross (B,256)
+ │
+ └─3─ pe_card([h_cards_i ++ card_nodes_i ++ pe_trunk(h)]) → one scalar per card
+```
+
+**There is no attention between cards.** `cross_attn` is cards attending over *countries*; no
+self-attention over the 110 card tokens exists anywhere in the model. Each card's token is
+computed independently by the shared `card_fc`, and cards meet each other only through the
+symmetric pooling in routes 1 and 2, and afterwards in the trunk.
+
+Note that route 2 pools **over cards** as well. So the cross-attention output — the one place a
+card's relationship to the board is represented — is itself collapsed to a mean and a max before
+it reaches the trunk. Only `pe_card` sees it per card.
+
+That leaves hand composition unrepresentable except through pooled statistics: "this scoring card
+is dangerous *because* I hold no exit for it", or "I hold two high-Ops cards and one opponent
+event", are card-to-card relations with no pathway. Whether that matters is untested — no arm has
+ever had card self-attention to compare against.
+
 The trunk:
 
 ```

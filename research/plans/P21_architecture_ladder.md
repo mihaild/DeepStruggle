@@ -36,12 +36,19 @@ slots (`engine/src/observation.cpp`):
 
 | slot | what it is | how adjacency enters |
 |:---|:---|:---|
-| 2 | `net_realign` | iterates `c_info.neighbors` and **counts controlled neighbours**, ±1 each, plus influence majority and superpower adjacency |
+| 2 | `net_realign` | `compute_net_realign_mod` iterates `c_info.neighbors` and **counts controlled neighbours**, ±1 each, plus influence majority and superpower adjacency |
 | 19, 20 | `can_my_place` / `can_opp_place` | `Operations::can_place_influence` iterates the neighbours and is true if **any holds friendly influence** |
-| 21, 22 | `can_my_coup` / `can_opp_coup` | calls `can_place_influence`, so inherits the same test |
 
 `Scoring` also uses `can_place_influence` for the accessible-battleground counts in the global
 block, so it reaches there too.
+
+**Correction (owner, 2026-09-19): the coup slots 21/22 do *not* carry adjacency**, and an earlier
+version of this file said they did. `Operations::can_coup` is `can_coup_or_realign` plus The
+Reformer, and `can_coup_or_realign` tests only that the opponent has influence, the DEFCON
+regional restrictions of rule 8.1.5, the US/Japan Pact and NATO protection. Couping needs no
+access. The misreading came from a `can_place_influence` call on line 110 of `ops.cpp`, which is
+inside `place_influence`, not the coup path. **The engine is correct here**; the claim about it
+was not.
 
 This makes dropping the graph **better motivated than a bare null**: a graph layer would be
 re-deriving from raw edges what the observation already computes exactly, in the rule-relevant
