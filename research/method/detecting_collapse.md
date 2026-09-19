@@ -175,7 +175,7 @@ Built from E4 arms only, and the *only* numbers on this page admissible as E4 ba
 | `E4-02-01` leg 2 | warm | yes | 320M | 0.08 | 13.2% | healthy, round-robin #1 |
 | `E4-01-01` leg 1 | warm | **no** | 240M | 0.10 | 0.7% | degenerate by construction |
 | `E4-01-01` leg 2 | warm | **no** | 240M | 0.12 | 13.4% | oscillating, never terminal |
-| `E4-04-01` | **cold** | yes | in flight | — | — | in flight |
+| `E4-04-01` | **cold** | yes | 80M | 0.09 | 0.0% | **healthy, completed** |
 
 Two things this table already establishes **within E4**:
 
@@ -184,11 +184,23 @@ Two things this table already establishes **within E4**:
 * **`us_episode_frac` pinned ~13% does not imply collapse in E4** — the clean 320M arm that the
   round robin ranks first sits there too. It routes attention and nothing more.
 
-**There is no cold-start E4 reference yet.** `E4-01-01` and `E4-02-01` are both warm-started, and a
-warm start holds entropy higher for longer, so neither is a valid comparison for `E4-04-01`'s
-annealing. `E4-03-01` and `E4-04-01` will be the first cold-start pair. Until they land, a
-cold-start E4 entropy trajectory has nothing legitimate to be compared against — and reaching for
-the E3 band instead is precisely the error the scope rule forbids.
+**The first cold-start E4 reference (2026-09-19).** `E4-01-01` and `E4-02-01` are both
+warm-started, and a warm start holds entropy higher for longer, so neither was ever a valid
+comparison for a cold arm's annealing — reaching for E3's band instead, as was briefly done, is
+exactly the error the scope rule forbids. `E4-04-01` is now the first completed cold-start pooled
+arm, and is therefore the reference:
+
+| | `E4-04-01`, cold, pooled, 80M |
+|:---|---:|
+| entropy | min 0.763, max 1.921, final 1.012 |
+| max `kl_div` | 0.095 |
+| `opp_pool_size` | reaches capacity 12 and stays |
+| `us_episode_frac` | mean 0.443, **0.0%** pinned |
+| health alarms | none fired |
+
+Note how much of that is unremarkable: side balance never pinned once across 1,221 iterations,
+and `kl_div` stayed an order of magnitude below anything alarming. `E4-03-01` is the matched
+cold-start arm and will be the second entry.
 
 ---
 
