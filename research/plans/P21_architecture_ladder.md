@@ -1,145 +1,263 @@
 # P21 — build the architecture up from an MLP, one mechanism at a time
 
 **Status: proposed, not launched.** Requested by the owner, 2026-09-19: start from the simplest
-architecture, add features one by one, measure each against the previous rung and against a fixed
-baseline, and leave the dubious pooling until last.
+architecture, add features one by one, measure each against the previous attempt and against the
+newly trained cold-start pooled arm, and leave the dubious pooling until last.
 
-## Why this and not more one-off arms
+## Why build up instead of down
 
-Every architectural choice in `ColdWarNetV2` was added on top of the ones already there, and
-several were measured only against whatever the baseline happened to be at the time. The result
-is a network nobody can currently justify component by component: `attn_readout` is dead code in
-every arm, `num_attn_heads` has never been varied, `per_entity_heads` exists to repair a pooling
-loss, and `country_identity` exists partly to repair the same loss
+Every choice in `ColdWarNetV2` was added on top of the ones already there, several measured only
+against whatever baseline existed at the time. The result is a network nobody can currently
+justify component by component: `attn_readout` is dead code in every arm, `num_attn_heads` has
+never been varied, and both `per_entity_heads` and `country_identity` exist substantially to
+repair a loss that pooling causes
 ([`../findings/training/forward_pass_trace.md`](../findings/training/forward_pass_trace.md)).
 
-Building up instead of down gives every mechanism a matched control by construction, and answers
-a question no existing arm does: **which of these things is actually paying for itself?**
+Building up gives every mechanism a matched control by construction and answers a question no
+existing arm does: **which of these is paying for itself?**
 
-**Governing principle: the simpler architecture wins ties.** A rung is adopted only if it beats
-the rung below it by more than seed spread. Otherwise the simpler variant carries forward. This is
-the opposite of the current default, where complexity accumulated because nothing removed it.
+**Governing rule: the simpler architecture wins ties.** A rung is adopted only if it beats the rung
+below by more than seed spread, on both seeds. Otherwise the simpler variant carries forward. This
+inverts the status quo, where complexity accumulated because nothing removed it.
+
+## Scoping decision: no graph convolution
+
+Dropped from the ladder by the owner, 2026-09-19. The record supports it, with one correction to
+how it is usually stated: graph depth is **open, not settled negative** — *"the comparison that
+removed the map graph reverses sign with the seed"*, and `E3-15` rests on one seed — but
+`--graph-layers 0` has been the backbone of every arm from `E3-17` onward and **no measured
+benefit has ever been demonstrated**, including on the arms that paired a graph with identity
+(`E3-15-22` at 2 layers, `E3-16-21` at 1).
+
+What this costs, recorded so it is not forgotten: **adjacency then reaches the network by no route
+at all.** The per-country observation slots carry stability, battleground, region and superpower
+adjacency, but nothing about neighbours, so with no graph layer the model cannot know that Poland
+borders East Germany. If the ladder stalls, this is one of the first things to reconsider.
 
 ## The fixed anchor
 
 Every rung is rated against **`E4-04-01@80M`** — cold, pooled, default architecture, completed
-2026-09-19 clean ([`../method/detecting_collapse.md`](../method/detecting_collapse.md)) — as well
-as against the rung below it. The anchor gives absolute placement; the rung-to-rung comparison
-gives the increment.
-
-Re-point the anchor to `E4-03-01@80M` if [P19](P19_architecture_ab.md) finds the late-E3 bundle
-stronger.
+clean — as well as against the rung below it. The anchor gives absolute placement; the rung-to-rung
+comparison gives the increment. Re-point it to `E4-03-01@80M` if
+[P19](P19_architecture_ab.md) finds the late-E3 bundle stronger.
 
 ## The input
 
-3,824 floats: board `84 x 26` = 2,184, cards `110 x 14` = 1,540, global 100. History is off
-(`use_history=False`) and is not part of this.
+3,824 floats, fixed: board `84 x 26` = 2,184 at offset 0, cards `110 x 14` = 1,540 at offset 2,184,
+global 100 at offset 3,724. History is off (`use_history=False`). Action space is 220.
 
-## The ladder
+---
 
-Each rung is the one below it plus exactly one mechanism. **Rungs M0–M4 keep position: entity
-tokens are flattened, never pooled.** Pooling enters only at M7.
+# The rungs
 
-| rung | what it adds | what it isolates |
+## M0 — flat MLP
+
+```
+obs (B, 3824)
+  → Linear(3824, H) → LayerNorm → GELU
+  → R residual blocks, each: Linear(H,H) → LN → GELU → Linear(H,H) → +skip → GELU
+  → policy: Linear(H,256) → LN → GELU → Linear(256,220)
+  → value:  the existing scalar heads, unchanged
+```
+
+No structure whatsoever: every one of the 3,824 slots is an independent feature, and the first
+layer may mix any slot with any other. `H` and `R` are set to hit the parameter target; `H=384,
+R=4` lands near 2.8M before heads.
+
+**Isolates:** the floor. Everything above must beat this.
+
+**Why it matters more than it looks.** If M0 matches the current architecture, the entire
+structured backbone is decoration, and that is the single most valuable result this ladder can
+produce. It is not far-fetched: the observation is already engineered — control, stability,
+battleground and coup-hazard are precomputed per country — so much of what a structured encoder
+would have to discover is handed to it.
+
+**Confound to watch:** M0 has by far the largest first layer (1.47M at H=384), so at matched total
+parameters it gets the *narrowest* trunk. If M0 loses, check it is not losing on trunk width
+alone — the parameter-matched control for M0 is M0 at a different H/R split.
+
+## M1 — grouped input projections
+
+```
+board_raw  (B,2184) → Linear(2184,256) → LN → GELU   → e_board  (256)
+card_raw   (B,1540) → Linear(1540,256) → LN → GELU   → e_card   (256)
+global_raw (B,100)  → Linear(100,128)  → LN → GELU   → e_global (128)
+concat (640) → Linear(640,H) → LN → GELU → R residual blocks → heads
+```
+
+Parameters in the input stage: 559k + 394k + 13k = **966k**, against M0's 1.47M — so M1 can afford
+a wider trunk at the same total.
+
+**Isolates:** whether forbidding board↔card mixing in the first layer helps. M0's first layer can
+form any linear combination of any slots; M1 forces each semantic block through its own bottleneck
+first. This is purely an inductive-bias/sparsity question — no weight sharing, no tokens, position
+fully preserved in both.
+
+**Prediction:** small in either direction. The honest reason to run it is that it is the shape V1
+and V2 both use, and it has never been tested against the ungrouped alternative.
+
+## M2 — shared per-entity encoder, flattened
+
+```
+board (B,84,26)  → Linear(26,d) shared over all 84  → GELU → h_board (B,84,d)
+                 → flatten (B, 84d) → Linear(84d, 256) → LN → GELU → e_board
+card  (B,110,14) → Linear(14,d) shared over all 110 → GELU → h_cards (B,110,d)
+                 → flatten (B,110d) → Linear(110d, 256) → LN → GELU → e_card
+global (B,100)   → Linear(100,128) → LN → GELU → e_global
+concat (640) → trunk → heads
+```
+
+At `d=16`: encoders are tiny (416 and 224 params) and the flatten projections are 344k and 450k.
+
+**Isolates:** weight sharing across entities, **with position held constant**. The shared encoder
+learns "what does this country's state mean" once instead of 84 times; the flatten preserves
+*which* country it was. M1 has the position but not the sharing; M2 has both.
+
+**This is the rung that decides whether tokens are worth having at all** — and tokens are the
+precondition for M3 and for the entire 2x2 below, so a loss here is informative far beyond its own
+row.
+
+**Prediction:** M2 ≥ M1, because the per-entity nonlinearity is a genuine inductive bias that
+costs almost nothing. If M2 < M1, the "entities" framing is wrong for this observation.
+
+**Choice to make explicit:** `d` is a real hyperparameter, not a detail. `d=16` keeps the flatten
+affordable; `d=4` would make it trivially cheap and probably too narrow to carry a country's
+state; `d=64` costs 1.38M for the board alone. Screen `d ∈ {8, 16, 32}` at M2 and carry the winner
+up the ladder, recording that later rungs inherit it.
+
+## M3 — card→country cross-attention
+
+```
+h_board, h_cards from M2
+attn_out, _ = MultiheadAttention(embed_dim=d, num_heads=4)(Q=h_cards, K=h_board, V=h_board)
+h_cards_cross = LayerNorm(h_cards + attn_out)                       (B,110,d)
+              → flatten (B,110d) → Linear(110d,256) → LN → GELU → e_cross
+concat [e_board, e_card, e_cross, e_global] (896) → trunk → heads
+```
+
+**Isolates:** whether letting each card attend over the 84 countries adds anything beyond both
+being present in the trunk. This is the mechanism the architecture is named after and it has never
+been ablated.
+
+**Prediction:** genuinely unknown. The case for it is that "how good is this card *here*" is a
+card×country interaction the trunk would otherwise have to learn from the concatenation. The case
+against is that with position preserved the trunk already sees both sides in full, and attention
+is a lossy summary of an interaction the trunk could form directly.
+
+**Confound:** at `d=16` with 4 heads the head dimension is 4, which is very small. If M3 loses,
+re-run at `d=32` before concluding attention does not help — a null from an undersized attention
+is a null about the size, not the mechanism.
+
+## M4 — replace flatten with pooling  *(the last change, deliberately)*
+
+```
+h_board (B,84,d)  → [mean over 84 ; max over 84] (2d) → Linear(2d,256) → e_board
+h_cards (B,110,d) → [mean ; max]                 (2d) → Linear(2d,256) → e_card
+h_cards_cross     → [mean ; max]                 (2d) → Linear(2d,256) → e_cross
+```
+
+Everything else stays at the best configuration found. **This is a removal, not an addition:** it
+takes away positional information every rung below it had, and it is what the current architecture
+does.
+
+**Isolates:** exactly what pooling costs.
+
+**Why it is last:** so that its cost is measured against the best positional architecture rather
+than against whatever happened to exist when pooling was chosen. The existing evidence says the
+cost is large — the pre-pooling token holds ~89% of a country's influence and the 512-float trunk
+~14% — but that was a representation probe, not a strength measurement, and the two have diverged
+before in this record.
+
+**Note the parameter asymmetry:** pooling makes the projection `Linear(2d,256)` — about 8k at
+`d=16` against 344k flattened. Pooling is *much* cheaper. At matched total parameters, M4 gets a
+substantially wider trunk than M3, which **flatters pooling**. Report both matched and unmatched;
+if pooling wins only when it is handed the freed capacity, that is a different claim.
+
+---
+
+# The 2x2: two mechanisms that are not rungs
+
+`per_entity_heads` and `country_identity` exist to repair the pooling loss. Testing them before
+pooling asks a different question than after, so they get a 2x2 against the pooling axis rather
+than a place on the ladder.
+
+| | flattened (M3) | pooled (M4) |
 |:---|:---|:---|
-| **M0** | flat MLP: `obs(3824) → Linear → GELU → residual blocks → heads` | the floor. Everything else must beat this |
-| **M1** | grouped input projections — separate `Linear` for board / card / global, concatenated | does splitting the input by semantic block help at all? |
-| **M2** | shared per-entity encoder, then **flatten** — one `Linear(26→d)` applied to all 84 countries, `Linear(14→d)` to all 110 cards, then flatten | does weight sharing across entities help, **with position held constant**? |
-| **M3** | graph convolution over `norm_adj`, still flattened | does the map's adjacency help? **This is the clean graph test** — E3 only ever varied graph depth *with* pooling, and withdrew the answer anyway |
-| **M3b** | self-transform on the graph layer | E3 measured +53/+83 Elo for this, but with pooling |
-| **M4** | card→country cross-attention | does attention between the two entity sets help? |
-| **M7** | **replace flatten with mean+max pooling** | **what pooling costs**, with everything else held at the best configuration found |
+| neither | M3 | M4 |
+| + per-entity heads | **M3-pe** | **M4-pe** |
+| + country identity | **M3-id** | **M4-id** |
 
-M0–M4 are a strict ladder. M7 is deliberately last, and is a *removal* — it takes away positional
-information that every rung below it had.
+**`per_entity_heads`** adds `pe_country([h_board_i ‖ board_nodes_i ‖ pe_trunk(h)]) → scalar`,
+added to country *i*'s logit, last layer zero-initialised. It exists because "a country's exact
+influence is almost entirely recoverable from its own token and almost entirely absent from the
+pooled trunk".
 
-## Two mechanisms that are NOT ladder rungs
+**`country_identity`** adds a learned 16-dim row per country, concatenated to that country's raw
+slots before the shared encoder. Measured on `E3-30-28`, it is load-bearing in the pooled regime:
+zeroing it moves per-country logits by 1.10x the entire across-country spread, and it disambiguates
+the **54 of 84 countries that are indistinguishable from at least one other** by their static slots
+([`../findings/training/country_identity_without_graph_conv.md`](../findings/training/country_identity_without_graph_conv.md)).
 
-`per_entity_heads` and `country_identity` **exist to repair the pooling loss**. Testing them
-before pooling asks a different question than testing them after, so putting them on the ladder
-would answer neither. They get a 2x2 against the pooling axis instead:
+**The prediction that makes this worth running:** with position preserved, both should be
+**redundant**. `pe_country` routes a country's token to its own logit because the pooled trunk
+cannot — a flattened trunk already can. `country_identity` supplies per-country bias and addressing
+that position supplies for free.
 
-| | flattened (positional) | pooled |
-|:---|:---|:---|
-| no per-entity heads, no identity | M4 | M7 |
-| + per-entity heads | M5f | M5p |
-| + country identity | M6f | M6p |
+| outcome | reading |
+|:---|:---|
+| M3-pe ≈ M3 **and** M4-pe > M4 | per-entity heads confirmed as a pooling repair |
+| M3-id ≈ M3 **and** M4-id > M4 | identity confirmed as a pooling repair |
+| M3-pe > M3 | the heads do something pooling-independent — they also see `board_nodes_i` raw, so this is possible |
+| M4 ≥ M3 with both repairs on | pooling plus its repairs is as good as position; the current architecture is vindicated |
 
-The interesting prediction, and the reason this is worth running: **with position preserved, both
-should be redundant.** `pe_country` routes a country's own token to its own logit because the
-pooled trunk cannot — but a flattened trunk already can. `country_identity` supplies a per-country
-bias and addressing that position supplies for free
-([`country_identity_without_graph_conv.md`](../findings/training/country_identity_without_graph_conv.md)).
-If M5f ≈ M4 and M6f ≈ M4 while M5p > M7 and M6p > M7, then both are confirmed as pooling repairs
-and the architecture simplifies substantially.
+That last row is a real possible outcome and the ladder must be able to report it.
 
-## Parameter matching is mandatory
+---
 
-[`P6`](P6_attention_backbone.md) records that capacity is not v2's bottleneck, so an uncontrolled
-parameter increase would make "bigger won" look like "the mechanism won". **Every arm is matched
-to 3.1M ± 5%** by adjusting the trunk width or the per-entity width `d`, and the realised count
-goes in the run's `metadata.json` description.
+# Protocol
 
-Indicative costs at `d = 16`:
-
-| component | params |
-|:---|---:|
-| flat `Linear(3824, 512)` (M0) | 1.96M |
-| grouped: board 2184→256, card 1540→256, global 100→128 (M1) | 0.97M |
-| shared encoder then flatten: 84x16→256 plus 110x16→256 (M2) | 0.79M |
-| current pooled board path, for reference | 0.04M |
-
-Pooling is *cheap*; that is the trade being measured. A positional path costs real parameters and
-the question is whether it buys more than they would buy elsewhere — hence the matching.
-
-## Measurement
-
-Per [P19](P19_architecture_ab.md)'s protocol, which is already pre-registered:
+Per [P19](P19_architecture_ab.md), already pre-registered:
 
 * **Head-to-head, `tools/tournament.py`, 200 games per pair — 100 per seat**, reported per side.
-* Sanity gates before any headline is read: the arm beats `heuristic` and `heuristic_mcts`
+* **Sanity gates before any headline is read:** the arm beats `heuristic` and `heuristic_mcts`
   decisively, and is silent under the health alarms (`NOPOOL` / `POOLSTUCK` / `KLSPIKE`).
-* **Two seeds per rung.** Seed spread here is ~95 Elo, larger than most architecture effects in
-  this record, and two architecture conclusions have already been withdrawn for exactly that
-  reason. One seed screens; it does not decide.
+* **Two seeds per rung.** Seed spread is ~95 Elo, larger than most architecture effects in this
+  record, and two architecture conclusions have already been withdrawn for exactly that reason.
+  One seed screens; it does not decide.
+* **Adoption:** a rung advances only if it beats the rung below on **both** seeds and the pooled
+  margin exceeds the two arms' own seed spread. A tie carries the simpler variant forward and is
+  recorded as *"no detected effect at 80M, 2 seeds"* — never as "no effect".
 
-**Adoption rule, fixed in advance.** A rung advances only if it beats the rung below on **both**
-seeds and the pooled margin exceeds the two arms' own seed spread. A rung that ties is **not**
-adopted — the simpler variant carries forward, and the tie is recorded as "no detected effect at
-80M, 2 seeds", never as "no effect".
+**Parameter matching is mandatory**, 3.1M ± 5%, by adjusting `H` and `R`. [P6](P6_attention_backbone.md)
+records that capacity is not v2's bottleneck, so an uncontrolled increase would read "bigger won"
+as "the mechanism won". The realised count goes in each run's `--description`.
 
 ## Budget
 
 `E4-04-01` ran 80M in ~100 minutes, so an arm is ~1.7 GPU-hours.
 
-| stage | arms | GPU-hours |
+| stage | arms | GPU-h |
 |:---|---:|---:|
-| screen M0–M4, M7 at 40M, one seed | 6 | ~5 |
-| confirm survivors at 80M, two seeds | ~12 | ~20 |
-| the 2x2 (M5f/M5p/M6f/M6p) at 80M, two seeds | 8 | ~14 |
-| **total** | **~26** | **~39** |
-
-Affordable, and the screening stage can drop rungs before the expensive confirmation.
+| screen M0–M4 at 40M, one seed | 5 | ~4 |
+| screen `d ∈ {8,16,32}` at M2, 40M | 2 extra | ~2 |
+| confirm the ladder at 80M, two seeds | 10 | ~17 |
+| the 2x2 at 80M, two seeds | 8 | ~14 |
+| **total** | **~25** | **~37** |
 
 ## What has to be built first
 
-There is no model that can express M0–M2; `ColdWarNetV2` hard-codes pooling and the token path.
-This needs a configurable backbone with **explicit, non-defaulted** options for the encoder
-(`dense | shared | graph`) and the aggregation (`flatten | pool`).
+No current model can express M0–M2; `ColdWarNetV2` hard-codes pooling and the token path. This
+needs a configurable backbone with **explicit, non-defaulted** options for the entity encoder
+(`none | shared`) and the aggregation (`flatten | pool`), plus `d`.
 
 **No silent defaults.** A defaulted `layout` parameter was the mechanism behind five instances of
-one bug in this repo, because handing a model the wrong variant returns a number instead of
-raising. Every option is required at construction, the realised configuration is written into the
-checkpoint, and loading asserts it — the same discipline `check_obs_width` applies to width.
+one bug here, because handing a model the wrong variant returns a number instead of raising. Every
+option is required at construction, the realised configuration is written into the checkpoint, and
+loading asserts it — the discipline `check_obs_width` already applies to width.
 
-## Ordering and risk
+## Risk
 
-Behind [P19](P19_architecture_ab.md), which is running. Note the dependency: if P19 finds the
-late-E3 bundle stronger, the anchor moves and M3/M3b become more interesting, since that bundle is
-`graph_layers=0` plus identity plus per-entity heads — three of the things this ladder is built to
-separate.
-
-The main risk is that everything ties. At 80M on two seeds, against ~95 Elo of spread, the ladder
-may simply lack the resolution to separate adjacent rungs. If the first two rungs tie, raise the
-budget or the seed count before continuing rather than reading ties as answers — a ladder of
-inconclusive steps is worse than no ladder, because it looks like a result.
+At 80M on two seeds against ~95 Elo of spread, the ladder may lack the resolution to separate
+adjacent rungs. **If the first two rungs tie, raise the budget or the seed count before
+continuing** rather than reading ties as answers: a ladder of inconclusive steps is worse than no
+ladder, because it looks like a result.
