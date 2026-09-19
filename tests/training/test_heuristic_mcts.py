@@ -12,7 +12,8 @@ import numpy as np
 import pytest
 
 import ts_engine as ts
-from ai.search.heuristic_eval import HeuristicWeights, evaluate, explain, region_advantage
+from ai.search.heuristic_eval import (SCORING_CARD_FOR_REGION, HeuristicWeights,
+                                      battleground_counts, evaluate, explain, region_advantage)
 from ai.search.heuristic_mcts import HeuristicLeaf, HeuristicMCTSConfig, make_heuristic_mcts_agent
 from ai.search.pimcts import PIMCTSAgent
 from bot.heuristic_mcts_bot import HeuristicMCTSBot
@@ -50,26 +51,61 @@ class TestEvaluation:
         """`net_delta` is us_score - ussr_score, so the sum inherits that orientation."""
         state = _fresh()
         before = region_advantage(state)
-        # Hand the US a battleground it did not have.
         state.set_country(7, 9, 0)      # West Germany, US 9 / USSR 0
         assert region_advantage(state) > before
 
-    def test_defcon_risk_falls_on_the_phasing_player(self) -> None:
-        """DEFCON 1 loses the game for whoever causes it, so the risk is not symmetric."""
+    def test_a_region_is_worth_less_once_its_scoring_card_is_discarded(self) -> None:
+        """The point of the liveness weighting: standing in a region nobody can score for is
+        worth keeping but not worth paying for."""
         state = _fresh()
-        state.defcon = 2
-        state.phasing_player = ts.Player.US
-        us_to_move = explain(state)["defcon_risk"]
-        state.phasing_player = ts.Player.USSR
-        ussr_to_move = explain(state)["defcon_risk"]
-        assert us_to_move < 0.0 < ussr_to_move
-        assert us_to_move == pytest.approx(-ussr_to_move)
+        # Enough of Europe to put the US clearly ahead there; one battleground only ties it.
+        for cid in (7, 8, 10, 14, 15):
+            state.set_country(cid, 9, 0)
+        europe = SCORING_CARD_FOR_REGION[int(ts.Region.EUROPE)]
+        state.set_card_location(europe, ts.CardLocation.DRAW_DECK)
+        live = region_advantage(state)
+        state.set_card_location(europe, ts.CardLocation.DISCARD_PILE)
+        spent = region_advantage(state)
 
-    def test_no_risk_term_above_defcon_3(self) -> None:
+        # Asserted against Europe's own contribution rather than the board total, which is
+        # USSR-positive at setup and would hide the effect.
+        europe_delta = float(ts.Scoring.evaluate_region(state, ts.Region.EUROPE).net_delta)
+        assert europe_delta > 0, "the fixture should leave the US ahead in Europe"
+        assert spent < live, "a discarded scoring card must reduce the value of standing there"
+        assert live - spent == pytest.approx(0.5 * europe_delta), (
+            "and reduce it by exactly the discarded weighting, not erase it")
+
+    def test_controlled_battlegrounds_are_counted_net(self) -> None:
         state = _fresh()
-        state.defcon = 4
-        state.phasing_player = ts.Player.US
-        assert explain(state)["defcon_risk"] == 0.0
+        ctrl_before, _ = battleground_counts(state)
+        state.set_country(7, 9, 0)                       # West Germany: stability 4, US controls
+        ctrl_after, _ = battleground_counts(state)
+        assert ctrl_after == ctrl_before + 1
+
+    def test_access_counts_a_neighbour_not_just_the_square(self) -> None:
+        """Access is where the next Operation can reach, which includes adjacency."""
+        state = ts.GameState()
+        ts.Engine.init_game(state, 7)
+        for cid in range(84):
+            state.set_country(cid, 0, 0)
+        _, acc_empty = battleground_counts(state)
+        # France (8) neighbours West Germany (7), a battleground.
+        state.set_country(8, 1, 0)
+        _, acc_adj = battleground_counts(state)
+        assert acc_adj > acc_empty
+
+    def test_holding_a_scoring_card_is_penalised_and_bites_harder_late(self) -> None:
+        """Holding one at turn end loses outright, so the term is a countdown, not a preference."""
+        state = _fresh()
+        state.turn = 5
+        asia = SCORING_CARD_FOR_REGION[int(ts.Region.ASIA)]
+        state.set_card_location(asia, ts.hand_of(ts.Player.US))
+        state.action_round = 1
+        early = explain(state)["held_scoring"]
+        state.action_round = 7
+        late = explain(state)["held_scoring"]
+        assert early < 0 and late < 0, "a held scoring card is bad for its holder"
+        assert late < early, "and worse the closer the turn is to ending"
 
     def test_weights_are_not_shared_between_configs(self) -> None:
         """A tuning arm must not mutate every other agent's weights."""

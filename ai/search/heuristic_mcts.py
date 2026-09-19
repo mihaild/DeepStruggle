@@ -34,7 +34,9 @@ from typing import Optional, Tuple
 import numpy as np
 
 import ts_engine as ts
+from ai.eval import dominance
 from ai.search.heuristic_eval import HeuristicWeights, evaluate
+from bindings.action_encoder import ActionEncoder
 from ai.search.pimcts import PIMCTSAgent, PIMCTSConfig, drain_chance_nodes
 
 
@@ -52,6 +54,9 @@ class HeuristicMCTSConfig:
     prior_lookahead_max_actions: int = 16
     #: Softmax temperature over the one-ply values that form the prior. Lower = sharper.
     prior_temperature: float = 0.25
+    #: How much a named mistake costs in the prior. In units of the leaf value, which spans
+    #: (-1, 1), so 0.5 is a large but not absolute bias -- the tree can still overrule it.
+    blunder_penalty: float = 0.5
     #: default_factory, not `= DEFAULT_WEIGHTS`: a dataclass refuses a mutable default, and
     #: sharing one instance across agents would let a tuning arm mutate every other agent's.
     weights: HeuristicWeights = field(default_factory=HeuristicWeights)
@@ -72,6 +77,48 @@ class HeuristicLeaf:
 
     def __init__(self, cfg: HeuristicMCTSConfig) -> None:
         self.cfg = cfg
+
+    def _play_rule_penalties(self, state: ts.GameState, legal: np.ndarray,
+                             mover: ts.Player) -> np.ndarray:
+        """Named mistakes, subtracted from the prior before the softmax.
+
+        A one-ply value cannot see these. Spacing a card removes it without firing its Event, so
+        every space play looks identical to the evaluation -- the question of *which* card to
+        space is invisible to a position score and decided entirely by what the card was worth.
+        Same for the timing of an Event whose value is conditional on DEFCON.
+
+        The rules are not reimplemented here. `ai.eval.blunders` already defines them, is already
+        what the training loop measures against, and `dominance.space_dominance_outcome` already
+        encodes the space comparison -- a second copy would be a second definition, and the one
+        that drifted would be this one.
+
+        A penalty biases the prior; it never removes an action. The search can still play a
+        "blunder" if the tree says the position after it is good, which matters because these
+        rules are position-independent generalisations and the tree is not.
+        """
+        penalties = np.zeros(len(legal), dtype=float)
+        if state.ctx().decision_type != ts.DecisionType.SELECT_PLAY_MODE:
+            return penalties
+
+        card = int(state.ctx().pending_op_card)
+        if not (1 <= card <= 110):
+            return penalties
+
+        space_idx = int(ts.Resolution.SPACE)
+        for i, action in enumerate(legal):
+            resolution = int(action) - ActionEncoder.PLAY_MODE_OFFSET
+            if resolution != space_idx:
+                continue
+            # "Do not spend your own or a neutral card on the track while holding an equal-Ops
+            # opponent card": the track is the one outlet that spends a card without firing its
+            # Event, so spending yours and keeping theirs is backwards.
+            try:
+                outcome = dominance.space_dominance_outcome(state, mover, card)
+            except Exception:
+                outcome = None
+            if outcome is False:
+                penalties[i] += self.cfg.blunder_penalty
+        return penalties
 
     def __call__(self, state: ts.GameState,
                  legal: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -99,6 +146,7 @@ class HeuristicLeaf:
         ctx = state.ctx()
         mover = ctx.decision_player if ctx.decision_player != ts.Player.NONE else state.phasing_player
         oriented = child_values if mover == ts.Player.US else -child_values
+        oriented = oriented - self._play_rule_penalties(state, legal, mover)
 
         finite = np.isfinite(oriented)
         if not finite.any():

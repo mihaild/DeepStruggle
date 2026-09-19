@@ -15,7 +15,8 @@ Invoke it as `heuristic_mcts` or `heuristic_mcts:<sims>` anywhere a bot spec is 
 | simulations | overall | as US | as USSR |
 |---:|---:|---:|---:|
 | 1 | 9/20 (45%) | 1/10 | 8/10 |
-| **16** | **18/20 (90%)** | 9/10 | 9/10 |
+| **16** (first evaluation) | 18/20 (90%) | 9/10 | 9/10 |
+| **16** (owner's evaluation) | **20/20 (100%)** | 10/10 | 10/10 |
 | 96 | 17/20 (85%) | 8/10 | 9/10 |
 | 256 | 18/20 (90%) | 9/10 | 9/10 |
 
@@ -41,16 +42,27 @@ prior would hand more of the decision back to the tree and should re-open the ga
 
 ## What the evaluation measures
 
-From the US perspective throughout, matching `Engine.get_terminal_utility` and `pimcts`:
+From the US perspective throughout, matching `Engine.get_terminal_utility` and `pimcts`.
+
+**The first version weighted regions by a fixed table** — Europe 1.35 down to Africa 0.50 — plus a
+DEFCON risk term and a space term. The owner replaced it with something better, and the
+measurement agrees: 18/20 to 20/20.
 
 * **victory points**, the only term that is not a proxy;
-* **region standing**, as the weighted sum of `Scoring.evaluate_region(...).net_delta` — the
-  engine's own scoring rule, asked rather than reimplemented. `net_delta` is what a scoring card
-  for that region would pay right now, which is the quantity being contested. Europe is weighted
-  highest because Europe Control ends the game;
-* **DEFCON proximity** as an asymmetric risk: DEFCON 1 loses for whoever *causes* it, so at
-  DEFCON 2 the danger belongs to the phasing player;
-* **space race**, small.
+* **region standing weighted by whether its scoring card is live**: `net_delta` from
+  `Scoring.evaluate_region` (the engine's own rule, asked rather than reimplemented) times **1.0**
+  when the scoring card is in a hand or the deck and **0.5** when it is in the discard. This is
+  the substantive improvement. A fixed table says Africa matters less than Europe even when Africa
+  Scoring is in hand and Europe Scoring has already been played; conditioning on liveness says
+  what is actually still winnable;
+* **controlled battlegrounds, 0.2 each** — what scoring pays for, banked;
+* **battlegrounds with access, 0.1 each** — reachable by the next Operation, so potential rather
+  than banked, and worth half;
+* **held scoring cards, penalised on a countdown** — holding one at turn end loses outright, so
+  the penalty rises as the action rounds run out rather than staying flat.
+
+DEFCON risk and the space term are gone. DEFCON moved to the action layer, where it belongs: the
+question is never "is DEFCON 2 bad" but "is *this* card the one to space at DEFCON 2".
 
 Deliberately excluded: hand contents. The search sees hands only because it is a
 perfect-information opponent, and a term unreadable in the deployable case would make the
@@ -58,6 +70,19 @@ evaluation strong in analysis and wrong in play.
 
 Weights are a first cut chosen from the rules, not fitted. `HeuristicWeights` collects them so an
 arm can vary them without touching the logic.
+
+## Play rules live in the prior, not the value
+
+A position score cannot see them. Spacing a card removes it without firing its Event, so every
+space play looks identical to the evaluation -- which card to space is decided entirely by what
+that card was worth, and the board after is the same either way.
+
+So `spaced_own_or_neutral` is applied as a penalty on the prior, reusing
+`dominance.space_dominance_outcome` -- the same predicate `ai/eval/blunders.py` measures against.
+A second copy would be a second definition, and the one that drifted would be the copy.
+
+It biases, never forbids: the tree can still play a "blunder" if the position after it is good.
+These rules are position-independent generalisations and the search is not.
 
 ## Two caveats that limit how this may be quoted
 
