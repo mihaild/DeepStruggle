@@ -91,6 +91,27 @@ STAR_WARS_DISCARD_DANGERS = (OLYMPIC_GAMES, DUCK_AND_COVER, KAL_007, CIA_CREATED
 RULES = ("spaced_own_or_neutral", "olympic_games_at_defcon2", "defcon_suicide_with_alternative")
 
 
+def _play_mode(primary_id: int) -> Optional[str]:
+    """The resolution index a SELECT_PLAY_MODE action carries, as a mode name.
+
+    Derived from `ts.Resolution` rather than written out, because it has already drifted once.
+    P17 merged the play-mode and op-mode nodes and reordered the enum -- SPACE moved from 2 to 1
+    and the single OPS became three -- while this mapping stayed at the pre-P17
+    `{0: EVENT, 1: OPS, 2: SPACE}`. Every Influence play was then scored as a Space Race play and
+    every Space Race play as Ops, which put `spaced_own_or_neutral` at ~90% against E3's ~35% and
+    made the two runs look incomparable when only the measurement had changed. Coup and
+    realignment fell through the map entirely and were never scored at all.
+    """
+    R = ts.Resolution
+    if primary_id == int(R.EVENT):
+        return "EVENT"
+    if primary_id == int(R.SPACE):
+        return "SPACE"
+    if primary_id in (int(R.OPS_INFLUENCE), int(R.OPS_COUP), int(R.OPS_REALIGN)):
+        return "OPS"
+    return None
+
+
 @dataclass
 class Blunder:
     rule: str
@@ -458,7 +479,7 @@ def measure_blunders(
             if dt == 1:
                 last_card[side] = int(ma.primary_id)
             elif dt == 2:
-                mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                mode = _play_mode(int(ma.primary_id))
                 card = last_card.get(side, 0)
                 if mode and 1 <= card <= 110:
                     # Missile Envy forces a card on its recipient, so that play is not theirs.
@@ -531,7 +552,7 @@ def measure_blunders_batched(
                 if dt == 1:
                     last_card[i][side] = int(ma.primary_id)
                 elif dt == 2:
-                    mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                    mode = _play_mode(int(ma.primary_id))
                     card = last_card[i].get(side, 0)
                     if mode and 1 <= card <= 110:
                         forced = (int(getattr(state, "forced_card_id", 0)) == card
