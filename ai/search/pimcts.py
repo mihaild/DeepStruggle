@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -83,19 +83,35 @@ class PIMCTSAgent:
     """PlayerAgent-compatible bot that searches the true state before moving."""
 
     def __init__(self, model, name: str = "PIMCTS", device=None,
-                 config: Optional[PIMCTSConfig] = None) -> None:
+                 config: Optional[PIMCTSConfig] = None,
+                 leaf_fn: Optional[Callable[[ts.GameState, np.ndarray],
+                                            Tuple[np.ndarray, float]]] = None) -> None:
+        """`model` may be None when `leaf_fn` is given -- the search then needs no network."""
         self.model = model
         self.name = name
-        self.device = device or next(model.parameters()).device
         self.cfg = config or PIMCTSConfig()
+        self.leaf_fn = leaf_fn
         self._rng = random.Random(self.cfg.seed)
         self._np_rng = np.random.RandomState(self.cfg.seed)
-        self.model.eval()
+        if model is not None:
+            self.device = device or next(model.parameters()).device
+            self.model.eval()
+        else:
+            if leaf_fn is None:
+                raise ValueError("PIMCTSAgent needs either a model or a leaf_fn")
+            self.device = device
 
     # -- evaluation ---------------------------------------------------------------------
 
     def _evaluate(self, state: ts.GameState) -> "_Node":
-        """Build a node: terminal value if the game is over, else policy prior + v_win."""
+        """Build a node: terminal value if the game is over, else prior + leaf value.
+
+        The prior/value pair is the only model-dependent part of this file, which is why it is
+        the one part that can be replaced. `leaf_fn(state, legal) -> (priors, value_us)` lets a
+        search run with no network at all -- see `heuristic_mcts.py`, which supplies a
+        rules-derived evaluation so a searching baseline can exist before a checkpoint does.
+        Everything below -- PUCT, backup, the sign convention -- is shared.
+        """
         if ts.Engine.is_terminal(state):
             return _Node(state=state, mover=0, terminal=True,
                          value_us=float(ts.Engine.get_terminal_utility(state)))
@@ -105,6 +121,12 @@ class PIMCTSAgent:
         legal = np.flatnonzero(mask)
         if len(legal) == 0:
             return _Node(state=state, mover=mover, terminal=True, value_us=0.0)
+
+        if self.leaf_fn is not None:
+            priors, value_us = self.leaf_fn(state, legal)
+            return _Node(state=state, mover=mover, terminal=False, value_us=float(value_us),
+                         actions=[int(a) for a in legal], priors=np.asarray(priors, dtype=float),
+                         n=np.zeros(len(legal)), w=np.zeros(len(legal)))
 
         obs = ts.extract_observation(state, acting_player(state))
         obs_t = torch.from_numpy(np.asarray(obs, dtype=np.float32)).unsqueeze(0).to(self.device)

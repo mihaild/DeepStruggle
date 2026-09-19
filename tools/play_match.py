@@ -92,6 +92,15 @@ def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: 
     if clean_spec == "exploratory":
         return ExploratoryBot(role), "ExploratoryBot"
 
+    # heuristic_mcts[:sims] -- MCTS with a rules-derived leaf value and NO checkpoint, so it is
+    # available as a reference opponent before any network exists. Difficulty is `sims`.
+    # Searches the true state, so it sees the opponent's hand: a benchmark, not a deployable bot.
+    if clean_spec == "heuristic_mcts" or clean_spec.startswith("heuristic_mcts:"):
+        parts = clean_spec.split(":")
+        sims = int(parts[1]) if len(parts) > 1 and parts[1] else 64
+        from bot.heuristic_mcts_bot import HeuristicMCTSBot
+        return HeuristicMCTSBot(role, simulations=sims), f"HeuristicMCTS{sims}"
+
     # search:<checkpoint>[:sims[:determinize]] -- MCTS over a checkpoint, played through the
     # standard match loop so the replay goes through the same writer as every other game.
     if clean_spec.startswith("search:"):

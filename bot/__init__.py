@@ -7,6 +7,7 @@ from bot.exploratory_bot import ExploratoryBot
 from bot.strategic_bot import StrategicBot
 from bot.event_heavy_bot import EventHeavyBot
 from bot.human_bot import HumanBot
+from bot.heuristic_mcts_bot import HeuristicMCTSBot
 
 try:
     from bot.neural_bot import NeuralBot
@@ -22,4 +23,5 @@ __all__ = [
     "StrategicBot",
     "EventHeavyBot",
     "HumanBot",
+    "HeuristicMCTSBot",
 ]
