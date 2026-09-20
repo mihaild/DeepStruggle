@@ -91,3 +91,55 @@ and `tools/scripts/launch_flags.py` reconstructs its command.
 That makes country-head-only the repository's first *controllable* instance of the failure mode —
 more useful for studying the mechanism than any of the E3 observations, and independent of whether
 the configuration is ever adopted.
+
+## The collapse is a learning-arrest, and it is a bifurcation
+
+Rating the collapsing seed's 5M snapshots against a clean seed's, at matched steps, in one
+tournament (`data/reports/P21_M2d_trajectory.md`):
+
+| steps | seed 1 (collapses) | seed 3 (clean) | Δ |
+|---:|---:|---:|---:|
+| 20M | **1752.4** | 1727.2 | seed 1 *ahead* |
+| 40M | **1820.6** | 1811.4 | seed 1 *ahead* |
+| 60M | 1802.4 | **2004.9** | −202.5 |
+| 80M | 1792.7 | **2167.8** | −375.1 |
+
+Per 20M interval:
+
+```
+seed 1:   +68.2    −18.2     −9.7      flat after 40M
+seed 3:   +84.2   +193.5   +162.9      accelerates after 40M
+```
+
+**Seed 1 does not get worse. It stops improving.** From 40M onward it sits at 1821 → 1802 → 1793,
+flat within noise, while seed 3 climbs 356 Elo over the same span. Before 40M the two are
+indistinguishable and seed 1 is fractionally *ahead* at both 20M and 40M.
+
+That timing coincides with the side-balance divergence, which also separates after ~40M. Strength
+and balance break together, so neither is a lagging symptom of the other.
+
+### This settles bifurcation versus gradient
+
+Two trajectories identical for 40M, after which one enters an absorbing state and the other keeps
+climbing. There is no gradual separation. Together with the bimodal pinned-row distribution —
+41.5% for the collapsed seed against ≤0.5% for every other arm in the ladder, with nothing in
+between — this is evidence **against** the hypothesis that the same mechanism quietly degrades
+results without collapsing them. Clean arms appear genuinely clean rather than partially damaged.
+
+Two caveats keep it from being settled: the ladder has only seven arms, and sub-collapse damage
+could express itself as something other than side imbalance — a shallower slope, or a capability
+gap this field of opponents cannot resolve.
+
+### What it points at
+
+The question is not "what makes training worse" but **"what happens around 40M that stops learning
+entirely"**. A frozen rather than degrading policy suggests a self-play equilibrium it cannot
+leave: if USSR wins essentially every game, the US seat generates no useful gradient, and the
+opponent pool fills with snapshots that confirm the imbalance rather than punishing it.
+
+That is a testable story. `E4-08-07` re-runs seed 1 from the same starting conditions — identical
+initial weights, action-sampling stream, and deals and dice, though not bitwise identical, since
+nothing sets `torch.use_deterministic_algorithms` or `cudnn.deterministic` and GPU reductions are
+non-associative. If the 40M event recurs, the collapse is determined by those starting conditions
+and can be summoned at will for study. If it does not, the configuration sits near a bifurcation
+in float-noise space, and the rate is a property of the configuration rather than of seeds.
