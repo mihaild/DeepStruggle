@@ -270,3 +270,61 @@ misnamed:
 `E4-08-03` … `E4-08-06` are correct: those are seeds 3–6. The directories keep their launched
 names because `metadata.json` records `run_name`, and renaming would leave the two inconsistent;
 the mapping is recorded here instead and the convention is used from now on.
+
+## Twelve seeds overturn the headline: the country head alone is WORSE
+
+The conclusions above were drawn from four clean seeds. Twelve now exist, rated in one field
+(`data/reports/P21_M2d_all_seeds.md`, 18 entrants, 3,400 games each, τ=0.0):
+
+```
+clean M2d seeds: n=12
+  mean 1998.0   sd 79.0   range 269.4 (1849.7 .. 2119.1)   SEM 22.8
+
+references, same field:
+  anchor         2073.2    M2d mean  -75.2
+  M2 both heads  2029.6    M2d mean  -31.7
+  M1             1736.7    M2d mean +261.3
+```
+
+**`pe_country` alone is worse than both heads together, not equivalent to it.** The gap to the
+anchor is ~3.3 standard errors.
+
+### The four-seed result was a near-best draw
+
+Seeds 3–6 average **2059.4** in this field; the eight later seeds average **1967.3** — a 92-point
+difference. Across all 495 possible four-seed subsets the means span 1916.2 to 2068.0, and
+**none** exceeds the anchor's 2073.2. The original four landed at 2059.4, within 9 points of the
+most favourable draw available.
+
+So "M2d reaches the anchor" was produced by the luckiest end of the sampling distribution, and
+reported as if it were the configuration's value. This is the same error as the withdrawn
+variance claim, one level up: **a four-seed mean is not an estimate when the sd is 79.**
+
+### The distribution is not one smooth spread
+
+```
+1849.7, 1860.4     low pair
+        ↕ 114.9
+1975.3 … 2037.4    eight seeds, every internal gap ≤ 21.8
+        ↕  50.2
+2087.6, 2119.1     high pair
+```
+
+The middle eight span 62 points in total, separated from two outlying pairs by 115 and 50. The
+owner's suspicion of multimodality, raised when only four points existed, has more support at
+twelve — though twelve points still cannot establish it.
+
+### Collapse costs more than the mechanism is worth
+
+The two collapsed seeds rate **1719.9** and **1683.4**, both *below* M1's 1736.7. A collapsed arm
+does not merely forfeit the per-entity head's gain; it ends up worse than the rung beneath it.
+
+### Consequence for the ladder
+
+**M2 keeps both heads.** Dropping `pe_card` is worse on average, more variable, and carries
+collapse risk. The earlier reading — "a strict simplification: equal strength, 18% faster, better
+balanced" — is withdrawn in full.
+
+It remains true that `pe_card` alone buys nothing (M2e ≈ M1, uncollapsed). Both heads are needed
+together, which is the interaction hypothesis that an earlier revision proposed from a collapsed
+arm, withdrew as unsupported, and which the twelve-seed evidence now supports on proper grounds.
