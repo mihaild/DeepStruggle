@@ -172,9 +172,31 @@ The two final checkpoints are **byte-identical**, not merely metric-identical. T
 kernel selection is fixed, and this architecture is dense matmuls and GELUs with no
 atomic-scatter operations.
 
-**Reproducibility is therefore a property of this configuration, not a lucky coincidence**, and
-it should be re-verified rather than assumed if the architecture ever gains an operation with
-non-deterministic kernels — scatter-add, some attention backends, or anything using `atomicAdd`.
+### The audit, because the claim is surprising
+
+Byte-identity without any determinism flag set deserves more than one hash of one file. Checked:
+
+| check | result |
+|:---|:---|
+| three **distinct** directories, distinct inodes, mtimes spanning ~4 hours | yes |
+| **five** checkpoints compared — 5M, 20M, 40M, 60M, final | all identical, distinct inodes so not hardlinks |
+| a file that **should** differ — `metadata.json` | **differs across all three**, so the comparison can detect differences |
+| `cudnn.benchmark` / `cudnn.deterministic` / `use_deterministic_algorithms` | **all False** |
+| `CUBLAS_WORKSPACE_CONFIG` | unset |
+| `matmul.allow_tf32` | **False** |
+
+The `metadata.json` row is the control that matters: the same method reports a difference where
+one exists.
+
+**The explanation is mundane.** Those flags do not *create* determinism — they *force* it where a
+non-deterministic kernel would otherwise be selected. This model contains none: dense `Linear`,
+GELU and LayerNorm, no convolutions (the history branch is disabled), no scatter-add, no atomics.
+With `allow_tf32=False` and `benchmark=False` the GEMMs are fixed-algorithm full-FP32. With no
+non-deterministic operation in the graph the flags are moot.
+
+**So this is a property of the current configuration and must be re-verified, not assumed.** The
+ladder's own M3 and M4 rungs add attention, and some scaled-dot-product backends use `atomicAdd`;
+that is the first place determinism could quietly stop holding.
 
 An intermediate check appeared to show divergence at 24M. That was a **bug in the comparison
 script**, which matched rows by nearest step within a 2M tolerance and so compared the replica's
@@ -196,3 +218,55 @@ E3's collapses were observed at 200M+ steps in arms too expensive to re-run, so 
 ever be studied from logs after the fact. This one costs ~30 minutes to reach, arrives on rails,
 and can be branched at any point. It is the first instance in this repository that can be
 *experimented on* rather than merely described.
+
+
+## Corrections to the statistical claims above
+
+Three claims in earlier revisions of this file overstated what five seeds can support.
+
+### "M2d has ~2.5x M2's seed variance" — withdrawn
+
+That compared M2d's four-seed spread (97.5) against M2's **two**-seed spread (27.4). A two-seed
+spread is not an estimate of anything. Every two-seed spread drawable from M2d's own four clean
+seeds:
+
+| pair | spread |
+|:---|---:|
+| s5 + s6 | **9.5** |
+| s3 + s4 | 24.6 |
+| s3 + s6 | 63.4 |
+| s3 + s5 | 72.9 |
+| s4 + s6 | 88.0 |
+| s4 + s5 | **97.5** |
+
+M2's 27.4 is a single draw from a distribution spanning 9.5 to 97.5. Had the two M2d seeds been
+s5 and s6, the same reasoning would have concluded M2d has *less* variance than M2. **No variance
+comparison between these two configurations is currently possible.**
+
+### "The clean arms spread continuously" — mischaracterised
+
+The four clean ratings are **2056.0, 2065.5 | 2128.9, 2153.5**: two tight pairs, 9.5 and 24.6
+apart, separated by 63–98. Reporting this as "sd 47.7" hides that structure. With four points the
+apparent bimodality is not establishable either — the honest statement is that the values do not
+look like draws from one unimodal distribution, and four seeds cannot tell.
+
+### "A 20% collapse rate" — asserts precision that is absent
+
+One collapse in five seeds. Wilson 95% interval: **[3.6%, 62.4%]**. The rate is essentially
+unconstrained; all that is established is that the collapse is neither certain nor vanishingly
+rare in this configuration.
+
+## Note on run naming
+
+The scheme is `<engine>-<attempt>-<seed>`, so the trailing number is the **seed**, and a re-run of
+the same seed appends a replicate index. The two same-seed re-runs on this page were therefore
+misnamed:
+
+| as launched | correct name | what it is |
+|:---|:---|:---|
+| `E4-08-07` | **`E4-08-01-2`** | seed 1, replicate 2 |
+| `E4-08-08` | **`E4-08-01-3`** | seed 1, replicate 3, dense resume states |
+
+`E4-08-03` … `E4-08-06` are correct: those are seeds 3–6. The directories keep their launched
+names because `metadata.json` records `run_name`, and renaming would leave the two inconsistent;
+the mapping is recorded here instead and the convention is used from now on.

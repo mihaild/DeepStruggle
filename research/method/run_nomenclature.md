@@ -142,3 +142,25 @@ Three rules follow, and all three were broken at least once before the scheme ex
 3. **A seed is a field, not a detail.** `E3-07-21` and `E3-07-22` differ only there and landed
    11.8 points apart on anchor win rate while being +3 Elo apart head to head. Giving it its own
    field is what makes that visible without opening the registry.
+
+## Re-running the same seed: append a replicate index
+
+The trailing number is the **seed**, so a re-run of an existing arm is not a new seed and must not
+take the next seed number. It appends a replicate index instead:
+
+```
+E4-08-01        engine E4, attempt 08, seed 1
+E4-08-01-2      the same arm re-run — seed 1, replicate 2
+E4-08-01-3      seed 1, replicate 3
+E4-08-03        a DIFFERENT seed (3), not a replicate
+```
+
+Getting this wrong makes a replicate look like a new seed, which corrupts exactly the statistic a
+seed sweep exists to produce: `E4-08-07` and `E4-08-08` were launched as if they were seeds 7 and
+8 when both were seed 1 re-runs, and read naively that would have reported a collapse rate of 1
+in 7 rather than 1 in 5. They are recorded with their correct names in
+[`../log/P21_M2d_country_head_collapse.md`](../log/P21_M2d_country_head_collapse.md).
+
+A replicate is worth running when the question is reproducibility — whether a trajectory is
+determined by its seeded starting conditions. A new seed is worth running when the question is
+variance or rate. They are different experiments and the names should not blur them.
