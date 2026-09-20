@@ -121,6 +121,30 @@ run's action sampling and minibatch order and only the environment deals differ 
 change, and a seed replicate that understates the variance it exists to measure. The same seed, or
 none, restores the stream as before.
 
+#### Splitting the seed
+
+One `--seed` drives four independent sources at once, which is what makes "seed 1 collapses"
+unattributable -- the same number picks the starting weights, the rollout sampling, the card deals
+and dice, and the opponent draw. Each has an override, and each defaults to `--seed`, so behaviour
+is unchanged unless one is passed:
+
+| flag | what it seeds |
+|:---|:---|
+| `--seed-init` | weight initialisation (and the numpy global stream) |
+| `--seed-sampling` | action sampling and minibatch shuffling |
+| `--seed-env` | the engine's per-game streams: card deals and dice |
+| `--seed-pool` | opponent-pool draws, and which side the learner takes |
+
+`--seed-sampling` works by re-seeding torch immediately *after* the model is built, so everything
+before that point is initialisation and everything after is sampling. All four are recorded
+resolved in `metadata.json`, so a run states which streams it actually used rather than leaving it
+to be inferred from the command.
+
+Note that `--seed-init` also covers `np.random.seed`, but that stream is consumed only by the
+warmup-dataset and behavioural-cloning paths (`np.random.choice` / `np.random.randint`); every
+other numpy RNG in training is an explicit `default_rng`/`RandomState` instance. On a cold start it
+therefore changes nothing.
+
 ### Metrics: JSONL and TensorBoard
 
 Every iteration is logged to `<output-dir>/training_metrics.jsonl` and mirrored to TensorBoard

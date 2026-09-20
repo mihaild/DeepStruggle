@@ -201,6 +201,22 @@ def build_parser() -> argparse.ArgumentParser:
                              "initialisation -- which understates run-to-run variance.\n"
                              "Give distinct seeds to measure that variance; give the same\n"
                              "seed to two runs that differ in one thing, to pair them.")
+    grp = parser.add_argument_group(
+        "seed decomposition",
+        "A single --seed drives four independent sources at once: weight initialisation, "
+        "rollout sampling, the engine's card deals and dice, and the opponent-pool draw. Each "
+        "can be overridden separately so that a seed-dependent outcome can be attributed to one "
+        "of them. Every override defaults to --seed.")
+    grp.add_argument("--seed-init", type=int, default=None,
+                     help="Weight initialisation (and the numpy global stream).")
+    grp.add_argument("--seed-sampling", type=int, default=None,
+                     help="Action sampling and minibatch shuffling. Applied by re-seeding torch "
+                          "immediately after the model is built, so it is independent of "
+                          "--seed-init.")
+    grp.add_argument("--seed-env", type=int, default=None,
+                     help="The engine's per-game streams: card deals and dice.")
+    grp.add_argument("--seed-pool", type=int, default=None,
+                     help="Opponent-pool draws and which side the learner takes.")
     parser.add_argument("--resume-every-steps", type=int, default=40_000_000,
                         help="Write a step-tagged resume_<steps>.pt at most this often. Resume files are 48MB against a snapshot's 13MB, so this is deliberately much coarser than the snapshot interval.")
     parser.add_argument("--snapshot-every-steps", type=int, default=5_000_000,
@@ -458,6 +474,10 @@ def main():
             identity_dim=args.identity_dim,
             drop_static=args.drop_static,
             ladder_config=_ladder_config(args),
+            seed_init=args.seed_init,
+            seed_sampling=args.seed_sampling,
+            seed_env=args.seed_env,
+            seed_pool=args.seed_pool,
             defcon_coef=args.defcon_coef,
             train_steps=args.train_steps,
             seed=args.seed,

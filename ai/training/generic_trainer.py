@@ -1261,6 +1261,10 @@ def train_pipeline(
     graph_layers: int = 2,
     drop_static: bool = False,
     ladder_config: Optional[Dict[str, Any]] = None,
+    seed_init: Optional[int] = None,
+    seed_sampling: Optional[int] = None,
+    seed_env: Optional[int] = None,
+    seed_pool: Optional[int] = None,
     entropy_coef: float = 0.01,
     reward_scheme: str = "blunder_aware",
     output_dir: Optional[str] = None,
@@ -1324,10 +1328,18 @@ def train_pipeline(
     # the same configuration differ only in initialisation and sampling. That understates
     # run-to-run variance, because every run sees the same deals and dice -- so a variance
     # estimate has to vary this, and an arm that wants to be paired with another has to share it.
-    if seed is not None:
-        torch.manual_seed(seed)
-        np.random.seed(seed & 0xFFFFFFFF)
-    env_base_seed = 12345 if seed is None else int(seed)
+    # Each source defaults to `seed`, so behaviour is unchanged unless an override is given.
+    # They are separable because a single seed makes "this seed collapses" unattributable: the
+    # same number picks the starting weights, the rollout sampling, the card deals and dice, and
+    # the opponent draw.
+    _seed_init = seed if seed_init is None else int(seed_init)
+    _seed_sampling = seed if seed_sampling is None else int(seed_sampling)
+    _seed_env = seed if seed_env is None else int(seed_env)
+    _seed_pool = seed if seed_pool is None else int(seed_pool)
+    if _seed_init is not None:
+        torch.manual_seed(int(_seed_init))
+        np.random.seed(int(_seed_init) & 0xFFFFFFFF)
+    env_base_seed = 12345 if _seed_env is None else int(_seed_env)
 
     # The run's short name goes in the directory name, not only in metadata. A free-form
     # directory name does not say which engine the run was trained on or which seed it used --
@@ -1373,6 +1385,18 @@ def train_pipeline(
         # metadata still says which, and so older runs stay readable beside newer ones.
         "obs_layout": OBS_LAYOUT_NAME,
         "seed": seed,
+        # The ladder's whole architecture lives here and nowhere else in metadata: `arch` says
+        # only "ladder", and every structural axis -- input mode, aggregation, widths, which
+        # entities get a per-entity head -- is carried in this dict. Without it
+        # `tools/scripts/launch_flags.py --diff` is blind to exactly the kind of drift invariant
+        # 15 exists to catch, which is how 34 M2d arms were launched with no record of the shape
+        # they trained. None for non-ladder runs.
+        "ladder_config": (dict(ladder_config) if ladder_config else None),
+        # Each defaults to `seed`; recorded resolved so a run says which streams it actually used.
+        "seed_init": (seed if seed_init is None else int(seed_init)),
+        "seed_sampling": (seed if seed_sampling is None else int(seed_sampling)),
+        "seed_env": (seed if seed_env is None else int(seed_env)),
+        "seed_pool": (seed if seed_pool is None else int(seed_pool)),
         "resumed_from": resume,
         "base_commit": git_commit,
         "commit_message": git_message,
@@ -1461,6 +1485,14 @@ def train_pipeline(
                                       graph_layers=graph_layers)
     else:
         model = create_coldwar_net(dev)
+
+    # Everything above consumed the INITIALISATION stream; everything below -- action sampling
+    # via torch.multinomial, minibatch shuffling via torch.randperm -- draws from here. Reseeding
+    # at exactly this point is what separates "unlucky starting weights" from "unlucky rollouts".
+    if _seed_sampling is not None and _seed_sampling != _seed_init:
+        torch.manual_seed(int(_seed_sampling))
+        print(f"[seed] sampling stream reseeded to {_seed_sampling} after initialisation "
+              f"(init used {_seed_init})", flush=True)
 
     # 2. Handle Warm-up
     if warmup_checkpoint and os.path.exists(warmup_checkpoint):
@@ -1665,7 +1697,7 @@ def train_pipeline(
             _seed_nets,
             num_envs=num_envs,
             frac=opponent_frac,
-            seed=(seed or 0),
+            seed=(_seed_pool or 0),
             lock_learner_side=_lock,
             capacity=opponent_pool_size,
             pfsp=bool(opponent_pfsp),
