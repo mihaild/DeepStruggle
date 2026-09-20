@@ -158,9 +158,23 @@ could not be bitwise identical, since the seed sets `torch.manual_seed`, `np.ran
 IDENTICAL on every key across all 672 common iterations   (~44M steps)
 ```
 
-past the 40M bifurcation and into the collapse. Plausibly because `cudnn.benchmark` defaults to
-off, so kernel selection is fixed, and this architecture is dense matmuls and GELUs with no
+**and across the complete 80M run:**
+
+```
+1221 common iterations — IDENTICAL on every key
+E4-08-01  snapshot_final.pt  sha256[:16] = fbfc08d937071163
+E4-08-07  snapshot_final.pt  sha256[:16] = fbfc08d937071163
+```
+
+The two final checkpoints are **byte-identical**, not merely metric-identical. Two independent
+80M runs, launched hours apart with tournaments competing for the same GPU, produced the same
+3.2M-parameter weight file bit for bit. Plausibly because `cudnn.benchmark` defaults to off, so
+kernel selection is fixed, and this architecture is dense matmuls and GELUs with no
 atomic-scatter operations.
+
+**Reproducibility is therefore a property of this configuration, not a lucky coincidence**, and
+it should be re-verified rather than assumed if the architecture ever gains an operation with
+non-deterministic kernels — scatter-add, some attention backends, or anything using `atomicAdd`.
 
 An intermediate check appeared to show divergence at 24M. That was a **bug in the comparison
 script**, which matched rows by nearest step within a 2M tolerance and so compared the replica's
