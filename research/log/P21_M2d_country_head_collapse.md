@@ -143,3 +143,42 @@ nothing sets `torch.use_deterministic_algorithms` or `cudnn.deterministic` and G
 non-associative. If the 40M event recurs, the collapse is determined by those starting conditions
 and can be summoned at will for study. If it does not, the configuration sits near a bifurcation
 in float-noise space, and the rate is a property of the configuration rather than of seeds.
+
+## Training is bitwise reproducible, and so is the collapse
+
+`E4-08-07` re-ran seed 1 from scratch. The expectation — mine and the owner's — was that it
+could not be bitwise identical, since the seed sets `torch.manual_seed`, `np.random.seed` and
+`env_base_seed` but **nothing** sets `torch.use_deterministic_algorithms` or
+`cudnn.deterministic`, leaving GPU reductions non-associative.
+
+**That expectation was wrong.** Comparing every logged key — `entropy`, `kl_div`, `clip_frac`,
+`adv_std_raw`, `loss`, `explained_variance` — across all 672 iterations the two runs share:
+
+```
+IDENTICAL on every key across all 672 common iterations   (~44M steps)
+```
+
+past the 40M bifurcation and into the collapse. Plausibly because `cudnn.benchmark` defaults to
+off, so kernel selection is fixed, and this architecture is dense matmuls and GELUs with no
+atomic-scatter operations.
+
+An intermediate check appeared to show divergence at 24M. That was a **bug in the comparison
+script**, which matched rows by nearest step within a 2M tolerance and so compared the replica's
+22M row against the original's 24M row while the replica had not yet reached 24M. The bitwise
+comparison by iteration index is the correct instrument.
+
+### What this makes possible
+
+A reproducible collapse is useful. A *bitwise* reproducible one is much more so, because it
+supports genuine counterfactuals rather than correlational readings of logs:
+
+* take the **40M snapshot**, immediately before the arrest;
+* branch with exactly one change — reseed only the action sampling, enlarge the opponent pool,
+  perturb the weights, freeze one seat's updates, alter `ref_update_freq`;
+* every branch shares an identical prefix, so any difference in outcome is attributable to the
+  intervention and nothing else.
+
+E3's collapses were observed at 200M+ steps in arms too expensive to re-run, so they could only
+ever be studied from logs after the fact. This one costs ~30 minutes to reach, arrives on rails,
+and can be branched at any point. It is the first instance in this repository that can be
+*experimented on* rather than merely described.
