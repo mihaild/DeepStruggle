@@ -41,18 +41,26 @@ for "architecture vs MLP". On this engine the *default* architecture is worth **
 MLP, while the late-E3 bundle is worth **+438** — and most of that +438 is one mechanism, the
 country lookup.
 
-**2. Card identity matters far less than card properties.** `forward_pass_trace.md` predicted
-`pe_card` would be near-inert because it cannot distinguish 95 of 110 cards without identity, and
-that `pe_country` would carry the result. The prediction held, and the reasoning was incomplete
-rather than wrong: `pe_card` addresses card *types*, and type-level information (ops value,
-is-scoring, era, current location) is most of what card timing needs.
+**2. The card head buys nothing, and why is NOT established.** `forward_pass_trace.md` predicted
+`pe_card` would be near-inert and that `pe_country` would carry the result. The prediction held —
+but the reason it gave (that `pe_card` cannot distinguish 95 of 110 cards without an identity
+vector) does not survive inspection, because only **4 of a card's 14 slots are static**. Ops, era,
+one-time and is-scoring are constant; the other ten — location, playability, and the side slot
+that flips with perspective — move constantly. A card is not a static object in this observation.
+
+An earlier version of this section explained the −12 by saying `pe_card` addresses card *types*
+and that type-level information is most of what card timing needs. That is an argument for why the
+head *would* work, carried over from when seed 1's collapse made `pe_card` look load-bearing, and
+it is incoherent as an explanation for a null result. It is withdrawn. The measurement stands; the
+mechanism is open.
 
 **3. The rung is still improving steeply at 80M: +159.8 Elo from 80M to 160M**, within-seed over
 six seeds, sd 33.7. An 80M measurement understates M2d.
 
 **4. Per GPU-hour, M2d at 160M dominates the anchor at 80M** — +56 to +138 Elo for 46–52% of the
-wallclock. At matched *steps* the anchor is still 54 Elo ahead, and the arm that settles this is
-running (below).
+wallclock, because the architecture is 4.3× cheaper per step. At matched *steps and 80M* the
+anchor is still 54 Elo ahead. At matched steps and 160M the anchor is far behind, but only
+because it fell (see Open, first item) — that margin is not M2d's to claim.
 
 **5. The side collapse is real, costly, and not attributable to any single seed stream.**
 12.5% of seeds by 80M and ~19% by 160M; it costs ~250 Elo against the arm's own 80M self and
@@ -61,10 +69,22 @@ and moving one at a time, in both directions, left all eight arms clean: **no si
 sufficient**, initialisation refuted in both directions. Entering the pinned state and escaping
 costs nothing detectable.
 
+**6. There is a second failure mode, and nothing here detects it.** The anchor's 330 Elo fall came
+with `adv_std_raw` between 0.217 and 0.262 and `us_episode_frac` at 0.301 — every collapse
+indicator healthy and correctly so. The policy became *indecisive*, not one-sided, and Elo tracked
+policy entropy inversely across the whole leg. The side-collapsed M2d arm shows the same sustained
+entropy inflation, so entropy may be the more general indicator.
+[`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md).
+
 ## Open
 
-* **The anchor at 160M.** Running now as `E4-12-01`. Until it exists the claim is "M2d dominates
-  per GPU-hour", not "M2d is stronger than the anchor".
+* ~~**The anchor at 160M.**~~ **Measured, and it changed the question.** `E4-12-01` lost ~330 Elo
+  over its second 80M — see [`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md).
+  So the matched-steps comparison at 160M is +465.8 to M2d, but **the anchor fell rather than M2d
+  pulling ahead**, and that margin must not be quoted as M2d's. The fair statement is M2d at 160M
+  (2203.1) against the anchor's best measured state (2093.3 at 80M): **+110 Elo, at twice the
+  steps and 46% of the wallclock.** Whether the anchor's fall is a property of the architecture or
+  of one seed is unresolved — it is a single arm.
 * **Whether collapse is M2d-specific.** M2 with both heads has never collapsed but has far fewer
   seeds. The remaining rungs answer this for free if collapse rate is recorded per rung.
 * **Side balance.** Every ladder arm is USSR-favouring (+2.5 to +16.9 pp); the anchor is the only
@@ -72,6 +92,11 @@ costs nothing detectable.
   than their 80M selves. Nothing on the ladder currently targets this.
 * **Why escape happens.** Resume states every 5M bracket the window for every arm; no branch
   experiment has been run.
+* **Whether the anchor's fall replicates.** One arm, run with `seed = None`. A second anchor to
+  160M is ~3.9 GPU-h and now outranks the remaining extension arms in value.
+* **Whether `ref_update_freq` drives entropy inflation.** `kl_div` falls while entropy rises,
+  which is the shape of a ratchet through `π_ref` refreshes. That turns the open
+  `ref_update_freq` ablation into a test with a specific prediction.
 
 ## The plan from here
 

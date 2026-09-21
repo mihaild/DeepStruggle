@@ -54,7 +54,17 @@ are, and M2d runs at ~50,000 steps/s against the anchor architecture's 11,732 â€
 Doubling M2d's steps still costs **under half** the anchor's wallclock, because the architecture is
 four times cheaper per step. Every one of the six is strictly better on both axes at once.
 
-**What is missing before the anchor re-points: an anchor arm at 160M.** The comparison above shows
+**Answered 2026-09-21, and not the way this section anticipated.** The anchor was carried to
+160M as `E4-12-01` and **lost ~330 Elo**
+([`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md)). The
+matched-steps gap at 160M is therefore +465.8 to M2d, and that number is misleading on its own:
+M2d did not gain 465, the anchor fell. The defensible comparison is against the anchor's best
+measured state â€” **M2d@160M 2203.1 vs anchor@80M 2093.3, +110 Elo**, at twice the steps and 46%
+of the wallclock. The anchor's instability is a separate finding and is reported as one.
+
+The paragraph below is kept as written because it states the standard the result had to meet.
+
+**What was missing before the anchor could re-point: an anchor arm at 160M.** The comparison above shows
 M2d wins on wallclock, but it does not show M2d wins at matched steps, and the anchor may also
 improve with a second 80M. That arm costs ~3.8 GPU-h and is the obvious next measurement. Until it
 exists, the defensible claim is *"M2d dominates the anchor per GPU-hour"*, not *"M2d is stronger

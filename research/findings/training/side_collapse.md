@@ -138,6 +138,16 @@ US-side collapse as clean), once using pinned *fraction* instead of *terminal st
 recovery as a collapse and stopped a sweep early). Both errors would have silently corrupted the
 statistic the sweep existed to produce.
 
+## A second, different failure mode
+
+The collapse described here is not the only way an arm loses strength.
+[`entropy_inflation.md`](entropy_inflation.md) records the anchor losing ~330 Elo over its second
+80M with **every indicator in this document healthy** -- `adv_std_raw` between 0.217 and 0.262,
+`us_episode_frac` finishing at 0.301, verdict CLEAN and correctly so. The policy there does not
+become one-sided, it becomes indecisive. The side-collapsed arm `E4-11-14` shows the same
+sustained entropy inflation, which suggests entropy is the more general indicator and this
+document's signature catches only one manifestation.
+
 ## What is open
 
 * **Why escape happens.** One instance. The decisive window is the rows just after entry, and
