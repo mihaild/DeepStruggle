@@ -104,17 +104,19 @@ entropy inflation, so entropy may be the more general indicator.
 
 | rung | change | question it answers |
 |:---|:---|:---|
-| **M2a** | head input: dynamic + constants, **no ctx** | does the head need the trunk at all? If not, the correction is embarrassingly parallel and `pe_trunk` (480×64) plus 64 inputs per head disappear |
-| **M2b** | dynamic + ctx, **no constants** | are the 11 hand-designed per-type constants pulling weight, or does the trunk already carry them? |
-| **M2c** | dynamic only | both removals at once — the minimal head |
+| ~~M2a~~ ✅ | dynamic + constants, **no ctx** | **Done: −84 to −146 Elo.** The head does need the trunk; `pe_trunk` stays |
+| ~~M2b~~ ✅ | dynamic + ctx, **no constants** | **Done: −40 to −73 Elo.** They are pulling weight; the trunk does not already carry them |
+| ~~M2c~~ ✅ | dynamic only | **Done: −87 to −189 Elo** — but still +144 to +252 over M1, so the dynamic slots alone are 54–74% of the head |
 | **M2.5** | full + **identity** | a learned per-item constant, unique rather than per-type |
 | **M2.5b** | dynamic + ctx + identity, no constants | does identity *subsume* the hand-designed constants? |
 | **M3** | card↔card self-attention | |
 | **M4** | card→country cross-attention | |
 | **M5** | flatten → pooling | deliberately last: the most dubious mechanism, tested as a *removal* |
 
-**M2e is done and negative, so the card side of the family is closed.** M2a/M2b/M2c now decompose
-the head that actually works — `pe_country` — rather than the full pair.
+**M2e is done and negative, so the card side of the family is closed. M2a/M2b/M2c are now done
+too** — [`P21_M2abc_head_inputs.md`](P21_M2abc_head_inputs.md). **All three lose on both seeds, so
+M2d's full head input stands and no simplification is available.** What remains of the family is
+M2.5 and M2.5b, which *add* rather than remove.
 
 ### Protocol, unchanged
 
