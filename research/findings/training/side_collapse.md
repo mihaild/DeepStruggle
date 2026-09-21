@@ -146,6 +146,15 @@ statistic the sweep existed to produce.
   it has far fewer seeds. The comparison needs a matched sweep.
 * **Whether the pinned phase costs strength even when survived.** Seed 21 finished 23 Elo below
   the clean mean — within noise, and n=1.
+* **Which source of randomness carries it.** Attempted and inconclusive; see
+  [`../../log/E4_collapse_attribution.md`](../../log/E4_collapse_attribution.md). Eight arms split
+  `--seed` into initialisation, sampling, deals/dice and the opponent draw, one at a time in both
+  directions. All eight came back clean, which **conclusively refutes sufficiency** for every
+  single stream -- initialisation in particular, in both directions, so "some seeds just start in a
+  bad place" is wrong. It establishes nothing about necessity: under a 12.5% base rate an
+  all-clean result has probability 0.34, so "every stream is necessary" is simply what that base
+  rate looks like from the inside. Answering it properly needs conditional rates over ~15-50 arms
+  per cell.
 * **Whether intervention can prevent it.** The branch points exist: take the 35M or 45M resume
   state and change exactly one thing — reseed only the sampling, widen the pool, alter
   `ref_update_freq`, restore `pe_card`. Every branch shares a byte-identical prefix, so a
