@@ -179,14 +179,28 @@ export class ActionHud {
       case 2: // SELECT_PLAY_MODE
         const cardName = ctx.pending_op_card_name || `Card #${ctx.pending_op_card}`;
         promptText = `<strong>${player}:</strong> Choose how to play <em>${cardName}</em>:`;
+        // Resolution, NOT the retired PlayMode. Source of truth: `enum class Resolution` in
+        // engine/include/ts/types.hpp, mirrored by `mode_names` in bindings/action_encoder.py.
+        // P17 merged PlayMode -> CHOOSE_TIMING_BRANCH -> SELECT_OP_MODE into this one decision,
+        // and these labels were left on the old enum: 1/2/3 named the wrong action entirely and
+        // 4 had no label, so an opponent card rendered as
+        // "Event / Space Race / Pass-Discard / Mode 4" for EVENT / INFLUENCE / COUP / REALIGN.
+        const ops = ctx.pending_ops_value;
         const modeLabels: Record<number, { title: string; desc: string; class: string }> = {
-          0: { title: "Mode 0: Play as Event", desc: "Trigger printed card event effect", class: "btn-primary" },
-          1: { title: "Mode 1: Play for Operations", desc: `Use Ops for Influence, Coup, or Realignment (${ctx.pending_ops_value} Ops)`, class: "btn-success" },
-          2: { title: "Mode 2: Space Race Attempt", desc: "Attempt to advance on Space Race track", class: "btn-secondary" },
-          3: { title: "Mode 3: Pass / Discard", desc: "Discard without effect", class: "btn-danger" }
+          0: { title: "Resolve the Event", desc: "Trigger the printed event. On an opponent's card this is the event-first branch — you choose how to spend the Ops afterwards.", class: "btn-primary" },
+          1: { title: "Space Race Attempt", desc: `Discard the card to attempt an advance on the Space Race track (${ops} Ops).`, class: "btn-secondary" },
+          2: { title: "Operations: Place Influence", desc: `Spend ${ops} Ops placing influence.`, class: "btn-success" },
+          3: { title: "Operations: Coup Attempt", desc: `Spend ${ops} Ops on a coup — rolls a die.`, class: "btn-danger" },
+          4: { title: "Operations: Realignment", desc: `Spend ${ops} Ops on realignment rolls — opposed dice.`, class: "btn-warning" }
         };
         validIds.forEach(m => {
-          const cfg = modeLabels[m] || { title: `Mode ${m}`, desc: "", class: "btn-secondary" };
+          // Loud, not bland. A silent `Mode ${m}` is what let this drift sit unnoticed; anything
+          // outside Resolution::COUNT means the enum grew and this table did not.
+          const cfg = modeLabels[m] || {
+            title: `⚠ Unlabelled resolution mode ${m}`,
+            desc: "The viewer has no label for this mode — the engine's Resolution enum has changed and web/ui/src/action_hud.ts was not updated.",
+            class: "btn-warning"
+          };
           buttonsHtml += `
             <button class="btn ${cfg.class} btn-block btn-hud-action btn-choice-card" data-primary="${m}" style="margin-bottom: 8px; text-align: left; padding: 8px 12px;">
               <div style="font-weight: bold; font-size: 13px;">${cfg.title}</div>
@@ -194,11 +208,17 @@ export class ActionHud {
             </button>
           `;
         });
-        if ([9, 11].includes(ctx.pending_op_card) || validIds.includes(2)) {
+        // A die is rolled by SPACE(1), OPS_COUP(3) and OPS_REALIGN(4). OPS_INFLUENCE(2) rolls
+        // nothing. This read `validIds.includes(2)`, which was SPACE under the retired PlayMode
+        // enum, so the manual die input appeared for influence and was missing for coups.
+        if ([9, 11].includes(ctx.pending_op_card) || validIds.some(m => m === 1 || m === 3 || m === 4)) {
           showDieSelector = true;
         }
         break;
 
+      // RETIRED by P17 and unreachable: on an opponent card, Resolution::EVENT *is* the
+      // event-first branch, so no separate timing decision is ever emitted. Kept because
+      // a replay recorded before P17 can still contain one.
       case 3: // CHOOSE_TIMING_BRANCH
         const oppCardName = ctx.pending_op_card_name || `Card #${ctx.pending_op_card}`;
         promptText = `<strong>${player}:</strong> Opponent card <em>${oppCardName}</em> played for Ops. Choose execution order:`;

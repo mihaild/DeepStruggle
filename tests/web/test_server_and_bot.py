@@ -238,8 +238,10 @@ async def test_session_handle_action_resolves_die_roll():
     # Play Ops -> Coup
     c_ussr = list(session.state.to_dict()['hands']['USSR'])[0]
     await session.handle_action({"decision_type": 1, "primary_id": c_ussr, "secondary_id": 0, "flags": 0})
-    await session.handle_action({"decision_type": 2, "primary_id": 1, "secondary_id": 0, "flags": 0})
-    await session.handle_action({"decision_type": 4, "primary_id": 1, "secondary_id": 0, "flags": 0})
+    # P17: one decision, not two. Resolution::OPS_COUP == 3. The old chain was
+    # SELECT_PLAY_MODE(OPS=1) then SELECT_OP_MODE(COUP=1); under Resolution, mode 1 is SPACE, so
+    # the old form silently performed a Space Race attempt instead of a coup.
+    await session.handle_action({"decision_type": 2, "primary_id": 3, "secondary_id": 0, "flags": 0})
 
     # Execute Coup in country 40 with manual roll 5
     await session.handle_action({"decision_type": 5, "primary_id": 40, "secondary_id": 5, "flags": 0})
@@ -288,8 +290,10 @@ async def test_an_out_of_range_manual_die_is_refused_without_hanging():
 
     c_ussr = list(session.state.to_dict()["hands"]["USSR"])[0]
     await session.handle_action({"decision_type": 1, "primary_id": c_ussr, "secondary_id": 0, "flags": 0})
-    await session.handle_action({"decision_type": 2, "primary_id": 1, "secondary_id": 0, "flags": 0})
-    await session.handle_action({"decision_type": 4, "primary_id": 1, "secondary_id": 0, "flags": 0})
+    # P17: one decision, not two. Resolution::OPS_COUP == 3. The old chain was
+    # SELECT_PLAY_MODE(OPS=1) then SELECT_OP_MODE(COUP=1); under Resolution, mode 1 is SPACE, so
+    # the old form silently performed a Space Race attempt instead of a coup.
+    await session.handle_action({"decision_type": 2, "primary_id": 3, "secondary_id": 0, "flags": 0})
 
     vp_before = int(session.state.victory_points)
     steps_before = session.step_index
