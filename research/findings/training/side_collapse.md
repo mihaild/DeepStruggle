@@ -144,8 +144,11 @@ statistic the sweep existed to produce.
   resume states every 5M now bracket it for every arm.
 * **Whether it is specific to `pe_card`'s removal.** M2 with both heads has never collapsed, but
   it has far fewer seeds. The comparison needs a matched sweep.
-* **Whether the pinned phase costs strength even when survived.** Seed 21 finished 23 Elo below
-  the clean mean — within noise, and n=1.
+* ~~**Whether the pinned phase costs strength even when survived.**~~ **Answered: no detectable
+  cost.** In [`../../log/P21_M2d_160M_slope.md`](../../log/P21_M2d_160M_slope.md) the three arms
+  that entered and escaped rank 2nd, 3rd and 4th of six at 160M, within 15 Elo of the
+  never-pinned leader, and seed 21 has the largest 80M→160M slope in the set (+205.8). Three arms,
+  so not a population claim — but the worry that a survived episode leaves damage has no support.
 * **Which source of randomness carries it.** Attempted and inconclusive; see
   [`../../log/E4_collapse_attribution.md`](../../log/E4_collapse_attribution.md). Eight arms split
   `--seed` into initialisation, sampling, deals/dice and the opponent draw, one at a time in both
