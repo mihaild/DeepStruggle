@@ -25,8 +25,10 @@ from bindings.settle import SettleMode, settle
 DE_STALINIZATION = 33
 DECOLONIZATION = 30
 
-# ts::PlayMode, from engine/include/ts/types.hpp:112.
-MODE_NAMES = {0: "event", 1: "ops", 2: "space", 3: "pass"}
+# ts::Resolution, from engine/include/ts/types.hpp. NOT the retired PlayMode, whose values these
+# used to be: under PlayMode, 1 was "ops", 2 "space" and 3 "pass", so a probe reported "ops" for a
+# Space Race attempt, "space" for placing influence and "pass" for a coup. Removed with the enum.
+MODE_NAMES = {0: "event", 1: "space", 2: "ops_influence", 3: "ops_coup", 4: "ops_realign"}
 
 
 @dataclass

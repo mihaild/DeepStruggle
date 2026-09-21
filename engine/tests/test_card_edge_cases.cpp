@@ -1234,7 +1234,7 @@ TEST(CardEdgeCasesTest, Defectors_USActionRound_CannotBePlayedAsEvent) {
     ASSERT_EQ(mask[static_cast<uint8_t>(ts::Resolution::EVENT)], 0); // Event is illegal!
     ASSERT_TRUE((mask[static_cast<size_t>(ts::Resolution::OPS_INFLUENCE)] || mask[static_cast<size_t>(ts::Resolution::OPS_COUP)] || mask[static_cast<size_t>(ts::Resolution::OPS_REALIGN)]));   // Ops is legal
 
-    // 3. Attempting to step with PlayMode::EVENT must be rejected by StateMachine
+    // 3. Attempting to step with Resolution::EVENT must be rejected by StateMachine
     bool step_result = ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0});
     ASSERT_FALSE(step_result); // Rejected as illegal move
 }
@@ -1298,7 +1298,7 @@ TEST(CardEdgeCasesTest, GrainSales_HeadlinedByUS_DrawsAndExecutesCard_CleanlyAdv
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::GRAIN_SALES);
     ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
 
-    // US plays Duck and Cover for PlayMode::EVENT (0)
+    // US plays Duck and Cover for Resolution::EVENT (0)
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, 0, 0, 0}));
 
     // Duck and Cover resolves: DEFCON drops to 2, US gets 3 VP

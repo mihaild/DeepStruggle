@@ -32,7 +32,7 @@ engine/
 ├── CMakeLists.txt              // Builds ts_engine_core plus ts_tests, ts_fuzz, ts_fuzz_events, ts_benchmark
 ├── AGENTS.md                   // Developer and agent documentation (this file)
 ├── include/ts/                 // Public and internal engine headers
-│   ├── types.hpp               // Enums: Player, Phase, WarEra, CardLocation, DecisionType, ActionType, Region, SubRegion, PlayMode, TimingBranch, OpMode
+│   ├── types.hpp               // Enums: Player, Phase, WarEra, CardLocation, DecisionType, ActionType, Region, SubRegion, Resolution, TimingBranch, OpMode
 │   ├── constants.hpp           // Country IDs, Card IDs (1..110), 64-bit Effect Flags, Bit Masks
 │   ├── micro_action.hpp        // 4-byte packed MicroAction struct (alignas(4))
 │   ├── game_state.hpp          // Contiguous trivially copyable GameState struct
@@ -102,7 +102,7 @@ The engine splits complex turns into a sequential stream of atomic 4-byte `Micro
 ```cpp
 struct alignas(4) MicroAction {
     DecisionType decision_type; // 1 byte: SELECT_CARD, SELECT_PLAY_MODE, SELECT_OP_MODE, POINT_NODE, CHOOSE_BRANCH, ROLL_DIE
-    uint8_t      primary_id;    // 1 byte: Card ID (1..110), Country ID (0..83), Branch ID (0..7), PlayMode, OpMode, TimingBranch, or CONFIRM_DONE (0x80)
+    uint8_t      primary_id;    // 1 byte: Card ID (1..110), Country ID (0..83), Branch ID (0..7), Resolution, OpMode, TimingBranch, or CONFIRM_DONE (0x80)
     uint8_t      secondary_id;  // 1 byte: Sub-choice / quantity / manual die roll
     uint8_t      flags;         // 1 byte: Additional modifiers / opponent manual die roll
 };

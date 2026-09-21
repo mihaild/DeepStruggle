@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
 
         // Apply Event-Heavy Biasing
         if (d_type == ts::DecisionType::SELECT_PLAY_MODE) {
-            // Check if PlayMode::EVENT (0) is legal
+            // Check if Resolution::EVENT (0) is legal
             bool event_legal = (std::find(legal_indices.begin(), legal_indices.end(), 0) != legal_indices.end());
             uint32_t roll = ts::Prng::random_index(fuzzer_prng, 100);
             if (event_legal && roll < event_bias_pct) {

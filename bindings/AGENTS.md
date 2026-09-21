@@ -8,7 +8,7 @@ This directory contains the Python native extension module (`ts_engine`) built w
 
 - [`CMakeLists.txt`](CMakeLists.txt): Nanobind module build target configuring `ts_engine` compilation and linkage against `ts_engine_core`.
 - [`ts_bindings.cpp`](ts_bindings.cpp): Complete nanobind module definition. Exposes:
-  - Enums: `Player`, `Phase`, `DecisionType`, `PlayMode`, `TimingBranch`, `OpMode`, `CardLocation`, `WarEra`, `Region`, `RegionalStatus`, `RollType`.
+  - Enums: `Player`, `Phase`, `DecisionType`, `Resolution`, `TimingBranch`, `OpMode`, `CardLocation`, `WarEra`, `Region`, `RegionalStatus`, `RollType`.
   - Structs: `MicroAction`, `CountryState`, `DecisionContext`, `GameState`.
   - Static Engine API: `init_game()`, `step()`, `step_flat()`, `try_step()`, `try_step_flat()`,
     `auto_advance_step()`, `is_terminal()`, `get_terminal_utility()`, `get_legal_action_mask()`, `get_flat_action_mask()`, `get_legal_action_indices()`, and the held-scoring predicates.

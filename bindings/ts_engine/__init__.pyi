@@ -141,23 +141,6 @@ CHOOSE_BRANCH: DecisionType = DecisionType.CHOOSE_BRANCH
 
 ROLL_DIE: DecisionType = DecisionType.ROLL_DIE
 
-class PlayMode(enum.IntEnum):
-    EVENT = 0
-
-    OPS = 1
-
-    SPACE = 2
-
-    PASS = 3
-
-EVENT: Resolution = Resolution.EVENT
-
-OPS: PlayMode = PlayMode.OPS
-
-SPACE: Resolution = Resolution.SPACE
-
-PASS: PlayMode = PlayMode.PASS
-
 class Resolution(enum.IntEnum):
     EVENT = 0
 
@@ -170,6 +153,10 @@ class Resolution(enum.IntEnum):
     OPS_REALIGN = 4
 
     COUNT = 5
+
+EVENT: Resolution = Resolution.EVENT
+
+SPACE: Resolution = Resolution.SPACE
 
 OPS_INFLUENCE: Resolution = Resolution.OPS_INFLUENCE
 

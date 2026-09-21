@@ -676,15 +676,10 @@ NB_MODULE(ts_engine, m) {
         .value("ROLL_DIE", ts::DecisionType::ROLL_DIE)
         .export_values();
 
-    // P17: `Resolution` is what a SELECT_PLAY_MODE node carries now. `PlayMode` is kept only
-    // because a few call sites still name it; it no longer describes any live decision.
-    nb::enum_<ts::PlayMode>(m, "PlayMode", nb::is_arithmetic())
-        .value("EVENT", ts::PlayMode::EVENT)
-        .value("OPS", ts::PlayMode::OPS)
-        .value("SPACE", ts::PlayMode::SPACE)
-        .value("PASS", ts::PlayMode::PASS)
-        .export_values();
-
+    // P17: `Resolution` is what a SELECT_PLAY_MODE node carries. The old `PlayMode` enum was
+    // removed 2026-09-21 rather than left exported: its values had silently changed meaning --
+    // `PlayMode.OPS == 1` is `Resolution::SPACE` -- and it produced three separate mislabelling
+    // bugs while it sat here unused.
     nb::enum_<ts::Resolution>(m, "Resolution", nb::is_arithmetic())
         .value("EVENT", ts::Resolution::EVENT)
         .value("SPACE", ts::Resolution::SPACE)

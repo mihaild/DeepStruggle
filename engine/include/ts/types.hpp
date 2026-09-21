@@ -137,7 +137,7 @@ constexpr CardLocation revealed(CardLocation loc) noexcept {
 enum class DecisionType : uint8_t {
     NONE                 = 0,
     SELECT_CARD          = 1, // Select card ID (Hand play, Discard, Escape roll, Search, UN paired)
-    SELECT_PLAY_MODE     = 2, // Choose mode for selected card: EVENT(0), OPS(1), SPACE(2), PASS(3)
+    SELECT_PLAY_MODE     = 2, // How the selected card resolves; the value is a `Resolution` (see below)
     CHOOSE_TIMING_BRANCH = 3, // Choose timing for opponent card: 0 = OPS_FIRST, 1 = EVENT_FIRST
     SELECT_OP_MODE       = 4, // Select Op usage type: 0 = INFLUENCE, 1 = COUP, 2 = REALIGN
     POINT_NODE           = 5, // Select single country node (Influence/Coup/Realign/Event target)
@@ -174,14 +174,6 @@ enum class SubRegion : uint8_t {
     WESTERN_EUROPE  = 1,
     EASTERN_EUROPE  = 2,
     SOUTHEAST_ASIA  = 3
-};
-
-// Play Modes
-enum class PlayMode : uint8_t {
-    EVENT = 0,
-    OPS   = 1,
-    SPACE = 2,
-    PASS  = 3   // never set by any mask; see Resolution below
 };
 
 // P17: the merged card-resolution choice. `SELECT_PLAY_MODE` carries these values now, replacing
