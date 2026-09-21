@@ -51,12 +51,12 @@ Observation v2.3, `blunder_aware`, K=40, `eta` 0.1, 512 envs, cold start unless 
 | # | arm | varied | seeds | budgets | directory | result written up in |
 |---:|:---|:---|:---|:---|:---|:---|
 | 01 | control | — | 21 | 80M, 160M, 240M | `p1_scalar_nofilter` | [findings/training/architecture.md](findings/architecture.md); [log/P9_architecture.md](../../log/P9_architecture.md) |
-| 02 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — died to a units bug |
-| 03 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — died to a scale bug |
-| 04 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) |
-| 05 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) |
+| 02 | categorical head, target in normalised units | 21 | **VOID** | `..._VOID_unscaled_target` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a units bug |
+| 03 | categorical head, `v_vp` in real VP | 21 | **VOID** | `..._VOID_vp_scale` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — died to a scale bug |
+| 04 | categorical head, `--vf-coef` sweep | 21 | **VOID** | `..._VOID_vf_coef` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
+| 05 | categorical head, derived `v_win` | 21 | **VOID** | `..._VOID_derived_baseline` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) |
 | 06 | categorical head, `--value-dist-coef 0.02` | 21 | 80M | `p1_categorical_nofilter` | [findings/training/architecture.md](findings/architecture.md) — −28 Elo |
-| 07 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` | [plans/P1](../../plans/P1_categorical_value_advantage_filtering.md) — +25 Elo, +24 at 160M |
+| 07 | `--adv-filter-quantile 0.5` | 21, 22 | 80M, 160M | `p1_scalar_filter_seed2026092*` | [plans/P1](plans/P1_categorical_value_advantage_filtering.md) — +25 Elo, +24 at 160M |
 | 08 | `--window-provoked-defcon` | 21, 22 | 80M | `p1_window_provoked_seed2026092*` | [findings/training/defcon_blunders.md](findings/defcon_blunders.md) |
 | 09 | `--arch mlp`, backbone control | 21, 22 | 80M | `p1_mlp_backbone_seed2026092*` | [log/P9_architecture.md](../../log/P9_architecture.md) — −110 Elo |
 | 10 | `--identity-dim 16` | 21, 22 | 80M, 160M | `p1_identity_seed2026092*` | [findings/training/architecture.md](findings/architecture.md) — +107/+115 Elo |

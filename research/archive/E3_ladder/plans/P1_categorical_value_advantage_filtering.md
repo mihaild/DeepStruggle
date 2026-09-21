@@ -2,7 +2,7 @@
 
 **Status:** **done** (2026-09-16) — categorical head settled negative (E3-06, −28 Elo);
 advantage filtering settled positive and adopted (E3-07, +25/+24 Elo, two seeds). Verdicts in
-[`../questions.md`](../questions.md); kept for its text. Flags:
+[`../questions.md`](../../../questions.md); kept for its text. Flags:
 `--categorical-value`, `--value-dist-coef`, `--adv-filter-quantile`.
 **Gate:** P0 probes exist (so the arms can be read by something other than Elo). The gate is
 on *reading* the arms, not on running them — the four cells can train while P0 lands.

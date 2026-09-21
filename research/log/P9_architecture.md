@@ -10,7 +10,7 @@ valuable entries in the file and are never removed. The *conclusions* — what t
 now and what each change is worth — are kept current and short in
 [`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md); this file is why they are believed.
 The plan this programme was run from is
-[`../plans/P9_graph_architecture.md`](../plans/P9_graph_architecture.md), and the arm names are
+[`../plans/P9_graph_architecture.md`](../archive/E3_ladder/plans/P9_graph_architecture.md), and the arm names are
 decoded in [`../runs.md`](../runs.md), and the scheme behind them in
 [`../method/run_nomenclature.md`](../method/run_nomenclature.md).
 

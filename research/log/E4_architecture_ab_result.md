@@ -1,6 +1,6 @@
 # P19 result: the late-E3 architecture is worth ~450 Elo on this engine
 
-**2026-09-19.** [P19](../plans/P19_architecture_ab.md) asked whether the late-E3 architecture
+**2026-09-19.** [P19](../archive/E4_ladder/plans/P19_architecture_ab.md) asked whether the late-E3 architecture
 bundle is stronger than the E4 defaults on the post-P17 engine, and pre-registered the
 measurement and the decision rule before the arms finished. Both arms completed clean.
 

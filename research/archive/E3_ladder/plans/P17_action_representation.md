@@ -6,14 +6,14 @@ This plan collapses the chain, gives every "nothing happens" a single index, and
 choices that name real game concepts into their own heads.
 
 Owner-approved 2026-09-18. Supersedes the analysis in
-[`../findings/engine/flattening_card_play.md`](../findings/engine/flattening_card_play.md), which
+[`../findings/engine/flattening_card_play.md`](../../../findings/engine/flattening_card_play.md), which
 proposed the merge and measured its size.
 
 **Status of the corpus check:** restored to 300/300, 0 guessed, 0 board mismatches, 122,056
 decisions. The two conversion regressions the merge introduced, the consumers it had not reached
 (`action_encoder.py`, all six bots, `behavioral_cloning.py` indexing the refused slots), and the
 `advance_root` finding behind search returning illegal actions are written up in
-[`../log/P17_corpus_restoration.md`](../log/P17_corpus_restoration.md).
+[`../log/P17_corpus_restoration.md`](../../../log/P17_corpus_restoration.md).
 
 **Status of section 7:** done and green. The same three checkpoints score the same on the old
 engine and on the new one through the adapter -- largest |z| = 0.92 over 300 games per pair, so
@@ -21,13 +21,13 @@ the merge did not move playing strength. Section 7's premise that `GameState` ca
 serialised through the bindings is out of date (`to_save_dict` / `state_from_save_dict` carry the
 ctx_stack and round-trip exactly), which is what let the adapter walk the old chain on a real old
 engine instead of reconstructing it. Write-up:
-[`../log/P17_adapter_validation.md`](../log/P17_adapter_validation.md).
+[`../log/P17_adapter_validation.md`](../../../log/P17_adapter_validation.md).
 
 ## Why now
 
 The ladder is being reset anyway. Every checkpoint and `(seed, actions)` dataset is invalidated by
 an action-space change, which is why this was postponed twice; the search-CE programme has just
-ended negative ([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md)),
+ended negative ([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../log/P15_X4b_collapse_is_pool_starvation.md)),
 so there is no arm whose ladder this would void.
 
 ## 1. The resolution node — nine slots become five
@@ -212,7 +212,7 @@ DEFCON pass. "Participate vs boycott" does not.
   kept for its failure analysis: [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md).
   Also landed with it: UN Intervention playable on the drawn card, headline draws of UN
   Intervention restricted to the decline, and a Missile Envy rules fix found on the way
-  ([missile_envy_starred_removal.md](../findings/engine/missile_envy_starred_removal.md)).
+  ([missile_envy_starred_removal.md](../../../findings/engine/missile_envy_starred_removal.md)).
 * **South African Unrest** — `CHOOSE_BRANCH{+2 SA, +1 SA then split}` becomes `POINT_NODE` over
   {South Africa, adjacent} with ops counted after.
 

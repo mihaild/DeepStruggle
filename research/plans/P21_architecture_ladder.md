@@ -1,8 +1,25 @@
 # P21 — build the architecture up from an MLP, one mechanism at a time
 
-**Status: proposed, not launched.** Requested by the owner, 2026-09-19: start from the simplest
-architecture, add features one by one, measure each against the previous attempt and against the
-newly trained cold-start pooled arm, and leave the dubious pooling until last.
+**Status: RUNNING — 8 of 13 rungs measured (updated 2026-09-21).** Requested by the owner,
+2026-09-19: start from the simplest architecture, add features one by one, measure each against
+the previous attempt and against the newly trained cold-start pooled arm, and leave the dubious
+pooling until last.
+
+| done | result |
+|:---|:---|
+| **M0** flat MLP | the floor |
+| **M1** grouped projections | **+109** over M0 |
+| **M2** both per-entity heads | the full mechanism |
+| **M2d** country head only | **+282** over M1 — the single largest mechanism on the ladder |
+| **M2e** card head only | **−7** — nothing; the card side of the family is closed |
+| **M2a** no head context | **−84 to −146** vs M2d — the head does need the trunk |
+| **M2b** no per-type constants | **−40 to −73** vs M2d |
+| **M2c** dynamic slots only | **−87 to −189** vs M2d, but still +144 to +252 over M1 |
+
+**Remaining: M2.5, M2.5b, M3, M4, M5.** The record for everything above lives in
+[`../log/P21_ladder_status.md`](../log/P21_ladder_status.md) and the per-rung files beside it —
+this file is the plan for what has *not* run. Two results below were written before the rungs ran
+and are superseded by that record; they are kept because they state what the rung was for.
 
 ## Why build up instead of down
 
@@ -150,6 +167,8 @@ global 100 at offset 3,724. History is off (`use_history=False`). Action space i
 
 ## M0 — flat MLP
 
+> **DONE — this section is design rationale, not a plan.** Result in [`../log/P21_M0_flat_mlp.md`](../log/P21_M0_flat_mlp.md).
+
 ```
 obs (B, 3824)
   → Linear(3824, H) → LayerNorm → GELU
@@ -207,6 +226,8 @@ job is to find which of them carry it.
 
 ## M1 — grouped input projections
 
+> **DONE — +109 Elo over M0.** Result in [`../log/P21_M1_grouped.md`](../log/P21_M1_grouped.md). This rung also answered [P20](../archive/E4_ladder/plans/P20_positional_board_encoder.md), which proposed the same positional path independently and was archived un-run.
+
 ```
 board_raw  (B,2184) → Linear(2184,256) → LN → GELU   → e_board  (256)
 card_raw   (B,1540) → Linear(1540,256) → LN → GELU   → e_card   (256)
@@ -226,6 +247,8 @@ fully preserved in both.
 and V2 both use, and it has never been tested against the ungrouped alternative.
 
 ## M2 — per-entity lookup on raw features
+
+> **DONE.** Result in [`../log/P21_M2_lookup.md`](../log/P21_M2_lookup.md). The split into M2d/M2e showed the **country** head carries essentially all of it.
 
 **Revised 2026-09-19 by the owner**, and the revision matters. M2 was first written as a shared
 `Linear(26 -> d)` applied to all 84 countries, then flatten. That is **not "M1 plus weight
@@ -279,6 +302,8 @@ takes `kdim`/`vdim`, so cards (14) can attend over countries (26) directly — a
 thing to try first.
 
 ## The M2 family — what the correction is actually made of
+
+> **DONE except M2.5 and M2.5b.** M2d is **+282 over M1**, M2e is **−7**, and all three removals lose: M2a −84…−146, M2b −40…−73, M2c −87…−189 ([`../log/P21_M2abc_head_inputs.md`](../log/P21_M2abc_head_inputs.md), [`../log/P21_M2d_country_head_collapse.md`](../log/P21_M2d_country_head_collapse.md)). **M2d's full head input stands — no simplification is available.**
 
 **M2 measured +352.8 Elo, the largest single mechanism on the ladder**, and closed 92% of the
 MLP→anchor gap. That makes its internals worth decomposing rather than carrying forward whole.
@@ -491,7 +516,7 @@ That last row is a real possible outcome and the ladder must be able to report i
 
 # Protocol
 
-Per [P19](P19_architecture_ab.md), already pre-registered:
+Per [P19](../archive/E4_ladder/plans/P19_architecture_ab.md), already pre-registered:
 
 * **Head-to-head, `tools/tournament.py`, 200 games per pair — 100 per seat**, reported per side.
 * **Sanity gates before any headline is read:** the arm beats `heuristic` and `heuristic_mcts`
@@ -582,7 +607,7 @@ multi-head attention. So the compute gate will bite hardest exactly where the la
 likely to want to adopt something — which is the reason to fix the rule now rather than after
 seeing the numbers.
 
-**Parameter matching is mandatory**, 3.1M ± 5%, by adjusting `H` and `R`. [P6](P6_attention_backbone.md)
+**Parameter matching is mandatory**, 3.1M ± 5%, by adjusting `H` and `R`. [P6](../archive/E3_ladder/plans/P6_attention_backbone.md)
 records that capacity is not v2's bottleneck, so an uncontrolled increase would read "bigger won"
 as "the mechanism won". The realised count goes in each run's `--description`.
 

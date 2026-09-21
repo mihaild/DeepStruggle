@@ -61,7 +61,7 @@ the same situation reached by a different route, and only one route sets the fla
 One line: set `suppress_op_card_event = 1` in Missile Envy's use-for-Ops branch, alongside the
 existing `timing_branch = 255`. That makes the two cards agree, and it is exactly the
 "present it as an opponent card with the Event prevented" treatment the flattened-stack design
-calls for — see [P17_stack_layout.md](../../plans/P17_stack_layout.md).
+calls for — see [P17_stack_layout.md](../../archive/E3_ladder/plans/P17_stack_layout.md).
 
 Worth considering separately: `event_occurred_on_ops_play` answering "did the Event occur?" without
 consulting `timing_branch` is the underlying hazard. Any future path that blocks an Event by timing

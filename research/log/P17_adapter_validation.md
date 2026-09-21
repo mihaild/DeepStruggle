@@ -113,7 +113,7 @@ PYTHONPATH=.:build/release python tools/tournament.py \
 
 `legacy:<checkpoint>` is a `load_agent` prefix alongside `temp:` and `search:`, so the comparison
 runs through the same CLI as every other match (invariant 9). Artifacts under `/workspace/data/p17/`.
-Feeds §7 of [`../plans/P17_action_representation.md`](../plans/P17_action_representation.md); see
+Feeds §7 of [`../plans/P17_action_representation.md`](../archive/E3_ladder/plans/P17_action_representation.md); see
 also [`P17_corpus_restoration.md`](P17_corpus_restoration.md).
 
 ---

@@ -1,11 +1,11 @@
 # P19 — is the late-E3 architecture actually stronger on the E4 engine?
 
-**Status: ANSWERED, 2026-09-19** — see [`../log/E4_architecture_ab_result.md`](../log/E4_architecture_ab_result.md). The bundle is worth **+447 Elo** at matched budget and cold start (94.0% head-to-head, 91% USSR / 97% US), so the decision rule's top row applies: extend `E4-03` to 320M. `E4-03-01@80M` also beats `E4-02-01@320M` (88.5%) and is now the strongest checkpoint in the lineage.
+**Status: ANSWERED, 2026-09-19** — see [`../log/E4_architecture_ab_result.md`](../../../log/E4_architecture_ab_result.md). The bundle is worth **+447 Elo** at matched budget and cold start (94.0% head-to-head, 91% USSR / 97% US), so the decision rule's top row applies: extend `E4-03` to 320M. `E4-03-01@80M` also beats `E4-02-01@320M` (88.5%) and is now the strongest checkpoint in the lineage.
 
 **Original plan follows.** `E4-04-01` (control) is in flight; `E4-03-01` is queued behind it on the
 GPU with a monitor armed. This file is the **pre-registered** analysis: the measurement and the
 decision rule are fixed here *before* the numbers exist, so that the metric cannot be chosen after
-seeing them. Registration of the arms themselves is in [`../runs.md`](../runs.md).
+seeing them. Registration of the arms themselves is in [`../runs.md`](../../../runs.md).
 
 ## The question
 
@@ -13,7 +13,7 @@ Every late E3 arm carried `identity_dim 16`, `per_entity_heads 64`, `graph_layer
 `self_transform` — the architecture E3 settled on, and the one E3's collapse appeared on. Both E4
 arms so far ran the bare defaults, because the launch command was copied from a template rather
 than derived from a healthy run
-([`../findings/training/e4_architecture_discontinuity.md`](../findings/training/e4_architecture_discontinuity.md)).
+([`../findings/training/e4_architecture_discontinuity.md`](../../../findings/training/e4_architecture_discontinuity.md)).
 
 So two things are unknown at once, and only one is worth spending 320M on:
 
@@ -27,7 +27,7 @@ P19 answers 1. It does not answer 2.
 
 Both cold-started, both pooled (`--opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12`),
 both 80M, same engine, same seed policy, same `ref_update_freq` (200,000 — held constant by
-decision, [`../findings/training/ref_update_freq_open_ablation.md`](../findings/training/ref_update_freq_open_ablation.md)).
+decision, [`../findings/training/ref_update_freq_open_ablation.md`](../../../findings/training/ref_update_freq_open_ablation.md)).
 **Only the network differs:**
 
 | arm | `identity_dim` | `per_entity_heads` | `graph_layers` | `self_transform` |
@@ -49,7 +49,7 @@ come from `tools/lib/checkpoint_id.py`, which refuses a name clash.
 
 **Extended to settle P21's anchor.** Add the best snapshots of `E4-01-01` and `E4-02-01`, so the
 same tournament determines which of the four E4 runs rates highest. That arm becomes the absolute
-yardstick for every rung of [P21](P21_architecture_ladder.md) — see *Two comparisons, with
+yardstick for every rung of [P21](../../../plans/P21_architecture_ladder.md) — see *Two comparisons, with
 different jobs* there for why it is a yardstick and not a control.
 
 Two sanity conditions that must hold before the headline number is read at all:
@@ -58,7 +58,7 @@ Two sanity conditions that must hold before the headline number is read at all:
   near-dominant over the scripted baselines, something is wrong with the arm or the harness and the
   A/B is meaningless.
 * **Both arms must be silent under the health alarms** (`NOPOOL`, `POOLSTUCK`, `KLSPIKE` —
-  [`../method/detecting_collapse.md`](../method/detecting_collapse.md)). A collapsed arm is not a
+  [`../method/detecting_collapse.md`](../../../method/detecting_collapse.md)). A collapsed arm is not a
   measurement of its architecture.
 
 ## The decision rule, fixed in advance
@@ -74,7 +74,7 @@ error from 200 games (~3.5 pp).
 | seats disagree in sign | one-sided result, not a strength result | report per-seat, extend neither, and treat side asymmetry as the thing to investigate |
 
 **One seed per arm.** Seed spread in this repo has been measured at ~95 Elo
-([`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md)), which is larger
+([`../archive/E3_ladder/findings/seed_variance.md`](../../E3_ladder/findings/seed_variance.md)), which is larger
 than the middle band above. So a result in the 45–55% band is **genuinely inconclusive rather than
 evidence of no effect**, and a result outside it is suggestive rather than settled. Stating that
 here, in advance, is the point: the honest ceiling on what one seed can show is a property of the
@@ -86,7 +86,7 @@ design, not something to be negotiated after the number arrives.
   `clip_frac` and `adv_std_raw` describe *how* a run trained, not how well it plays, and no
   threshold on them has survived a second dataset.
 * Any comparison against an E3 number. Different lineage; magnitudes do not transfer
-  ([`../method/detecting_collapse.md`](../method/detecting_collapse.md), scope rule).
+  ([`../method/detecting_collapse.md`](../../../method/detecting_collapse.md), scope rule).
 * Win rate against `HeuristicBot` as the headline. It is a sanity gate above, not the measurement.
 * The arms' own in-training `--eval-opponents` results, which use a different harness from the
   tournament and are there to catch breakage, not to rank.
@@ -94,7 +94,7 @@ design, not something to be negotiated after the number arrives.
 ## Afterwards
 
 Whatever the outcome, both arms' `us_episode_frac`, `kl_div` and pool trajectories go into the E4
-reference envelope in [`../method/detecting_collapse.md`](../method/detecting_collapse.md). They
+reference envelope in [`../method/detecting_collapse.md`](../../../method/detecting_collapse.md). They
 will be the **first cold-start entries** in it — the existing E4 arms are both warm-started, so
 there is currently no legitimate reference for a cold-start trajectory at all, and the gap is why
 an entropy check on `E4-04-01` was briefly (and wrongly) made against E3's band.

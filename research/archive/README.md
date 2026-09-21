@@ -6,6 +6,12 @@ conclusions cite them and because a withdrawn result is itself part of the recor
 **Do not cite anything in this directory as a live finding.** The current answers live in
 [`../questions.md`](../questions.md), and the arms behind them in [`../runs.md`](../runs.md).
 
+**Two sub-directories are programme buckets rather than retired documents.**
+[`E3_ladder/`](E3_ladder/README.md) holds a whole superseded programme — its numbers predate P17
+and are not comparable to anything current. [`E4_ladder/`](E4_ladder/README.md) is different: E4
+is the *running* programme and those numbers **are** current; it holds only the plans inside E4
+that are finished, so the queue stays a queue.
+
 | file | what it was |
 |:---|:---|
 | [`e1_reanchor_report.md`](e1_reanchor_report.md) | the E1 re-anchor after the first batch of engine fixes |

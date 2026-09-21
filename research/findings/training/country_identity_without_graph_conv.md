@@ -155,7 +155,7 @@ by other means.
 `identity_dim`, `per_entity_heads`, `graph_layers`, `self_transform` — so no strength difference
 can be attributed to identity. Isolating it needs one further arm: `graph_layers=0` with
 `identity_dim=0` against the E4-03 configuration, and it is worth one 80M arm only if the
-architecture proves worth carrying at all ([P19](../../plans/P19_architecture_ab.md)).
+architecture proves worth carrying at all ([P19](../../archive/E4_ladder/plans/P19_architecture_ab.md)).
 
 ## Identity has been trained together with a graph — and graph depth is still open
 

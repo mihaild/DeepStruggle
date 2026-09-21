@@ -28,6 +28,17 @@ stays legible:
 | **E4-02** | **pooled**, default architecture — `opponent_frac 0.3`, self-pool, capacity 12 |
 | **E4-03** | **pooled, late-E3 architecture, cold** — `identity_dim 16`, `per_entity_heads 64`, `graph_layers 0`, `self_transform` |
 | **E4-04** | **pooled, default architecture, cold** — the control for E4-03; only the network differs |
+| **E4-05** | **P21 rung M0** — flat MLP, the ladder's floor |
+| **E4-06** | **P21 rung M1** — grouped positional projections |
+| **E4-07** | **P21 rung M2** — both per-entity heads |
+| **E4-08** | **P21 rung M2d** — country head only. Also the **35-arm seed census** that measured the side collapse |
+| **E4-09** | **P21 rung M2e** — card head only |
+| **E4-10** | **collapse attribution** — `--seed` split into initialisation / sampling / deals / opponent-draw, one moved at a time |
+| **E4-11** | **M2d extensions**, 80M → 160M, continuing each clean `E4-08` arm from its own resume state |
+| **E4-12** | **the anchor continued to 160M** — the matched-steps arm for P21 |
+| **E4-13** | **P21 rung M2a** — head without trunk context |
+| **E4-14** | **P21 rung M2b** — head without the 11 per-type constants |
+| **E4-15** | **P21 rung M2c** — head with dynamic slots only |
 
 **E4-01 and E4-02 are the new baseline**, owner's decision 2026-09-19, and their architecture is
 *not* E3's. Both were launched with the bare defaults by mistake
@@ -61,6 +72,31 @@ having deliberately.
 |:---|:---|---:|:---|:---|
 | **E4-01-01** | unpooled: `frac 0.0`, `self_pool False` | 240M, aborted at 184M | `E4-01-01_20260919_003959` | [`log/E4_pool_starvation_recurrence.md`](log/E4_pool_starvation_recurrence.md) |
 | **E4-02-01** | pooled: `frac 0.3`, self-pool, capacity 12 | 240M, **complete** | `E4-02-01_20260919_040456` | [`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md) |
+| **E4-03-01** | late-E3 architecture, cold, pooled | 80M | `E4-03-01_20260919_140716` | [`log/E4_architecture_ab_result.md`](log/E4_architecture_ab_result.md) |
+| **E4-04-01** | default architecture — E4-03's matched control | 80M | `E4-04-01_20260919_122721` | [`log/E4_architecture_ab_result.md`](log/E4_architecture_ab_result.md) |
+| **E4-05-01** | P21 M0, flat MLP | 80M | `E4-05-01_20260919_164141` | [`log/P21_M0_flat_mlp.md`](log/P21_M0_flat_mlp.md) |
+| **E4-06-01** | P21 M1, grouped projections | 80M | `E4-06-01_20260919_175806` | [`log/P21_M1_grouped.md`](log/P21_M1_grouped.md) |
+| **E4-07-01** | P21 M2, both per-entity heads | 80M | `E4-07-01_20260919_191647` | [`log/P21_M2_lookup.md`](log/P21_M2_lookup.md) |
+| **E4-08-01** | P21 M2d seed 1 — **collapsed**; produced a since-withdrawn conclusion | 80M | `E4-08-01_20260919_211756` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
+| **E4-08-\*** | **sweep, 34 arms / 32 seeds** — the M2d seed census | 80M each | `E4-08-{01..35}_*` | [`findings/training/side_collapse.md`](findings/training/side_collapse.md) |
+| **E4-08-13** | the M2d **rung representative** — median of the rung at both budgets | 80M | `E4-08-13_20260920_080342` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
+| **E4-09-01** | P21 M2e, card head only | 80M | `E4-09-01_20260919_215818` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
+| **E4-10-\*** | **sweep, 8 arms** — one seed stream moved at a time, both directions | 80M each | `E4-10-{01..08}_*` | [`log/E4_collapse_attribution.md`](log/E4_collapse_attribution.md) |
+| **E4-11-\*** | **sweep, 28 arms** — every non-collapsed M2d arm continued to 160M | 80M → 160M | `E4-11-*` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
+| **E4-11-14** | the **late collapse** — clean at 80M, collapsed at 106M, −249 Elo against its own 80M self | 160M | `E4-11-14_20260921_060659` | [`findings/training/side_collapse.md`](findings/training/side_collapse.md) |
+| **E4-12-01** | the anchor to 160M — **lost 356 Elo**, no detector fired | 160M | `E4-12-01_20260921_091750` | [`findings/training/entropy_inflation.md`](findings/training/entropy_inflation.md) |
+| **E4-13-03/05** | P21 M2a — head without trunk context | 160M / 80M | `E4-13-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
+| **E4-14-03/05** | P21 M2b — head without the per-type constants | 160M / 80M | `E4-14-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
+| **E4-15-03/05** | P21 M2c — head with dynamic slots only | 160M / 80M | `E4-15-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
+
+**Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 79
+distinct E4 run directories exist; 62 of them belong to the three sweeps above, and listing each
+would bury every other arm. Individual rows go to rung representatives and to anomalies — the
+collapsed seed, the late collapse, the anchor that fell.
+
+**Seeds 3 and 5 are the ladder's working pair** from E4-13 onward, not seed 1. Both are clean for
+M2d at both budgets and already rated there, so a rung-vs-M2d comparison is seed-matched; seed 1
+is the seed on which M2d collapses.
 
 E4-01-01 is kept deliberately. It is a second independent instance of pool starvation, reached by a
 different route than the X4b `dirname` bug, and its first 105M steps are a healthy 35% → 95% climb

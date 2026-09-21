@@ -345,7 +345,7 @@ unrelated to the opponent pool and its verdict is the opposite one
   for with −17.3 points from the opening.
 * It was then **demoted a second time** for the advantage-collapse problem specifically:
   `is_salvageable` filters on board balance, not on outcome uncertainty, which is the wrong
-  quantity ([`../../../plans/restoring_advantage_signal.md`](../../../plans/restoring_advantage_signal.md)).
+  quantity ([`../../../plans/restoring_advantage_signal.md`](../plans/restoring_advantage_signal.md)).
 
 ## What the record does not say
 
@@ -363,7 +363,7 @@ unrelated to the opponent pool and its verdict is the opposite one
   ([`../../checkpoints.md`](../checkpoints.md)); that number is now recorded, but the experiment
   it belongs to still has no analysis.
 * **E3-19's own question was never answered.** E3-19 was judged on `adv_std_raw` and critic
-  AUC/Brier staying up, per its metadata and [`../../../plans/P10_opponent_sampling.md`](../../../plans/P10_opponent_sampling.md);
+  AUC/Brier staying up, per its metadata and [`../../../plans/P10_opponent_sampling.md`](../plans/P10_opponent_sampling.md);
   the only numbers anyone recorded for it are Elo and side balance from `arena80_160`, which are
   not those instruments.
 * **What fraction, and how big a pool.** Every pooled arm ran frac 0.30 and capacity 12. The

@@ -8,7 +8,7 @@ can show is broken.
 
 Every `§21.x` in this file — the `where` column below and the body — names the section it was
 written under in the retired `metrics.md`. Those entries are now in
-[`../log/P9_architecture.md`](../log/P9_architecture.md), which keeps the old numbers in its
+[`../log/P9_architecture.md`](../../../log/P9_architecture.md), which keeps the old numbers in its
 provenance table.
 
 | finding | where |

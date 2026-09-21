@@ -95,4 +95,4 @@ Classified by a subagent over all 110 cards in `rules/cards.json` plus the handl
 `engine/src/events/{early,mid,late}_war.cpp` and `engine/src/card_dispatcher.cpp`. Spot-checked
 independently: the `action_mask.cpp:596` branch ordering, `allow_early_stop = 1` on Socialist
 Governments / Comecon / Marshall Plan, and the Warsaw Pact clamp. Feeds §6a of
-[`../../plans/P17_action_representation.md`](../../plans/P17_action_representation.md).
+[`../../plans/P17_action_representation.md`](../../archive/E3_ladder/plans/P17_action_representation.md).

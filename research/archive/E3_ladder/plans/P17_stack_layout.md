@@ -1,7 +1,7 @@
 # P17 — what the decision stack actually needs to hold
 
 Companion to [P17_grain_sales_child_frame.md](P17_grain_sales_child_frame.md). Evidence in
-[P17_ctx_stack_census.md](../log/P17_ctx_stack_census.md).
+[P17_ctx_stack_census.md](../../../log/P17_ctx_stack_census.md).
 
 Today every frame is a full 128-byte `DecisionContext`, whether it is the decision being made or a
 card waiting three levels down. The owner's observation is that those are not the same thing:
@@ -81,7 +81,7 @@ right mechanism exists — `suppress_op_card_event`, which UN Intervention sets.
 
 **Missile Envy does not set it today, and that is a bug**: a starred opponent card taken and used
 for Ops is removed from the game though its Event never occurred. Demonstrated with NATO; see
-[missile_envy_starred_removal.md](../findings/engine/missile_envy_starred_removal.md). The proposed
+[missile_envy_starred_removal.md](../../../findings/engine/missile_envy_starred_removal.md). The proposed
 presentation fixes it.
 
 ### Five Year Plan and Star Wars — no frame; at most an owed-Ops record

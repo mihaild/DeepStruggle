@@ -182,5 +182,5 @@ cannot report and silently misreads.
 
 ## Consequence for P17 §5
 
-See [P17_grain_sales_child_frame.md](../plans/P17_grain_sales_child_frame.md). The stack must be
+See [P17_grain_sales_child_frame.md](../archive/E3_ladder/plans/P17_grain_sales_child_frame.md). The stack must be
 resized before §5 lands, not after.

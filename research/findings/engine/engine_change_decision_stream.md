@@ -10,7 +10,7 @@ letter and re-run a baseline at roughly double the compute.
 
 ## What changed
 
-[`../../plans/P14_one_definition_of_legality.md`](../../plans/P14_one_definition_of_legality.md),
+[`../../plans/P14_one_definition_of_legality.md`](../../archive/E3_ladder/plans/P14_one_definition_of_legality.md),
 in two parts:
 
 * **The Missile Envy forced-play rule.** `forced_card_id` only ever holds `MISSILE_ENVY`, so the

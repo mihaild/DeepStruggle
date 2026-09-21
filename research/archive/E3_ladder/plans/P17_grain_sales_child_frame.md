@@ -105,7 +105,7 @@ Three consequences:
 Each step ends with the check that would catch it going wrong. Do not batch them.
 
 **3.0 — Resize `ctx_stack` from 6 to 8, FIRST.** Derived in
-[P17_ctx_stack_census.md](../log/P17_ctx_stack_census.md) §3: the worst legal chain is
+[P17_ctx_stack_census.md](../../../log/P17_ctx_stack_census.md) §3: the worst legal chain is
 Five Year Plan → Star Wars → Missile Envy → Grain Sales → drawn card → its event, which with an
 event-first base reaches depth 6 (seven frames). The array holds six, and `push_context()` failing
 calls `invariant_failed` → `std::abort()`. **Today the engine fits with exactly zero margin and

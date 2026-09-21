@@ -1,9 +1,9 @@
 # P10 — Breaking the advantage collapse
 
-**Status:** **absorbed into [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md)** (2026-09-16). Experiment 1 ran
+**Status:** **absorbed into [P15](P15_breaking_the_cycle.md)** (2026-09-16). Experiment 1 ran
 (E3-18-22 — needs its writeup; the one recorded rating, +11 over its parent after +80M, is
 the "no self-recovery" answer), experiment 4 became the pooled arms
-([`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md)), experiment 2 is
+([`../archive/E3_ladder/findings/pooling.md`](../findings/pooling.md)), experiment 2 is
 P15-X1, and experiment 3 folds into P15-X2's screen cells.
 **Needs approval:** experiments 2 and 4 change the rollout loop (trainer only — no engine, no
 observation, no checkpoint invalidation). Experiments 1 and 3 need no code at all.
@@ -20,7 +20,7 @@ Once one side finds a strategy the other has not answered, outcomes become predi
 degenerates toward the base rate, advantages vanish and both policies freeze. Measured on
 E3-17-22 and reproduced independently on E3-15-22 with a different architecture and a different
 winning strategy. Full evidence in
-[`../log/europe_control_and_held_scoring.md`](../log/europe_control_and_held_scoring.md).
+[`../log/europe_control_and_held_scoring.md`](../../../log/europe_control_and_held_scoring.md).
 
 **The success criterion is not "the US recovers."** The runaway is bidirectional — E3-14-21 ran
 away 29.1% -> 63.4% in the *US's* favour. The target is that neither side's advantage signal dies.
@@ -175,7 +175,7 @@ the runs are this short, 2 is worth extending rather than cutting if its trend i
 
 ## Status 2026-09-14: the motivating result does not survive a second seed
 
-See [`../log/seed_variance_and_pooling.md`](../log/seed_variance_and_pooling.md).
+See [`../log/seed_variance_and_pooling.md`](../../../log/seed_variance_and_pooling.md).
 
 Two no-pool arms differing only in seed are **0.1183** apart on the endpoint (mean
 |ussr_win_rate − 0.5| over the final 40M). Pooled minus the mean of no-pool is **−0.0169** —
@@ -205,4 +205,4 @@ above was never computed; what exists is a different instrument.
 
 Results, caveats and what is still missing — including that experiment 1 (E3-18-22) ran and was
 never written up, and that frac 0.15 and 0.50 were never launched — are in
-[`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md). This plan file stays as written.
+[`../archive/E3_ladder/findings/pooling.md`](../findings/pooling.md). This plan file stays as written.

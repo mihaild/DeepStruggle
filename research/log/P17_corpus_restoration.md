@@ -1,6 +1,6 @@
 # P17: restoring the human corpus after the resolution merge
 
-Companion to [`../plans/P17_action_representation.md`](../plans/P17_action_representation.md).
+Companion to [`../plans/P17_action_representation.md`](../archive/E3_ladder/plans/P17_action_representation.md).
 What the merge broke in the log converter, how each was found, and what the measurement bar is.
 
 ## The bar, and how it was nearly lost

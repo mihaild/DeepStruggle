@@ -1,7 +1,22 @@
 # P20 — the pooled board path is unmotivated without a graph
 
-**Status: proposed, not launched.** Raised by the owner, 2026-09-19: *"Without graph, shouldn't we
-just feed raw country features into trunk?"*
+> **Status: ANSWERED by P21, and archived 2026-09-21 — not by running this plan.** The claim
+> below is that *"a positional (non-pooled) board path into the trunk has never been tried at
+> all"*. That was true when written. P21 then built one as a side effect of a different question:
+> **every rung from M1 upward runs `aggregation="flatten"`**, which is exactly the positional path
+> proposed here, and M5 is scheduled to test pooling directly as a *removal*.
+>
+> The answer is emphatic. M1 — grouped positional projections, no pooling, no identity vector — is
+> worth **+109 Elo** over the flat MLP, and the ladder above it reaches **+391** cumulative while
+> beating the pooled anchor per GPU-hour
+> ([`../../../log/P21_ladder_status.md`](../../../log/P21_ladder_status.md)). The 1,344 parameters
+> `country_identity` spent buying position back are not needed when position is simply kept.
+>
+> Kept for its diagnosis — the pre-pooling/trunk probe numbers and the E3-13 read-out analysis are
+> still the clearest statement of *why* pooling was the bottleneck.
+
+**Original status: proposed, not launched.** Raised by the owner, 2026-09-19: *"Without graph,
+shouldn't we just feed raw country features into trunk?"*
 
 ## The claim
 
@@ -17,7 +32,7 @@ right inductive bias for an *exchangeable, variable-sized* set. The board is nei
 fixed, known, ordered list of 84 countries, and position is free information that the observation
 already encodes perfectly. Pooling throws it away, and `country_identity` then spends 1,344
 parameters buying part of it back
-([`../findings/training/country_identity_without_graph_conv.md`](../findings/training/country_identity_without_graph_conv.md)).
+([`../findings/training/country_identity_without_graph_conv.md`](../../../findings/training/country_identity_without_graph_conv.md)).
 
 With a graph there is at least a reason to work in shared-weight token space: `gconv` needs
 per-node tokens to pass messages over `norm_adj`. **With `graph_layers = 0` that reason is gone**
@@ -33,7 +48,7 @@ and the shared-then-pool structure is left doing the harm without the benefit.
 And the obvious repair was tried *in a form that could not work*:
 
 > **"Can an attention read-out fix the pooled trunk?" — E3-13 — settled negative, −14/−23 Elo; a
-> single-query read-out is still pooling.** ([`../questions.md`](../questions.md))
+> single-query read-out is still pooling.** ([`../questions.md`](../../../questions.md))
 
 That is why `attn_readout` is 0 in every arm. It tested a *different* pooling, not the absence of
 pooling. **A positional (non-pooled) board path into the trunk has never been tried at all** — not
@@ -51,7 +66,7 @@ still reads the ~14% trunk:
 
 That last point deserves an experiment of its own: the standing open finding is that *"the critic
 does not see a provoked DEFCON-1 coming at any node, and no architecture change so far has moved
-that"* ([`../archive/E3_ladder/findings/architecture.md`](../archive/E3_ladder/findings/architecture.md)).
+that"* ([`../archive/E3_ladder/findings/architecture.md`](../../E3_ladder/findings/architecture.md)).
 A critic reading a summary that holds ~14% of per-country influence is a candidate explanation
 that has not been ruled out.
 
@@ -75,7 +90,7 @@ summary is cheap and may still carry useful aggregate signal.
 
 The current whole board path is 36–39k parameters, so this is a real increase — but the model is
 3.1M against architectures that solve comparable games with far more, and
-[`P6`](P6_attention_backbone.md) notes Ataraxos and AlphaStar both encode the board
+[`P6`](../../E3_ladder/plans/P6_attention_backbone.md) notes Ataraxos and AlphaStar both encode the board
 positionally with a transformer for exactly this reason.
 
 **Start with flatten-tokens-at-16 (+11%).** It keeps the per-country nonlinearity — a flat map of
@@ -84,7 +99,7 @@ encoder learns it once — while restoring position.
 
 ## Honest counter-arguments
 
-* **Capacity is reportedly not the bottleneck on v2** ([`P6`](P6_attention_backbone.md)). True, and
+* **Capacity is reportedly not the bottleneck on v2** ([`P6`](../../E3_ladder/plans/P6_attention_backbone.md)). True, and
   this proposal is not about capacity: a pooled summary destroys information that no amount of
   downstream capacity can recover. But it does mean "more parameters helped" would be the wrong
   reading of a positive result, and the control has to be a parameter-matched arm, not the

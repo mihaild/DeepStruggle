@@ -1,12 +1,12 @@
 # Restoring the advantage signal
 
-> **Status: absorbed into [P15](../archive/E3_ladder/plans/P15_breaking_the_cycle.md)** (2026-09-16). The final proposal
+> **Status: absorbed into [P15](P15_breaking_the_cycle.md)** (2026-09-16). The final proposal
 > below (historical opponent sampling) became the pooled arms and their verdict lives in
-> [`../archive/E3_ladder/findings/pooling.md`](../archive/E3_ladder/findings/pooling.md); the VP-margin idea is
+> [`../archive/E3_ladder/findings/pooling.md`](../findings/pooling.md); the VP-margin idea is
 > dead by measurement (95.5% of endings sit at exactly |VP| = 20); the auxiliary per-country
-> control head is Tier 3 in [`README.md`](README.md). Kept for the reasoning.
+> control head is Tier 3 in [`README.md`](../../../plans/README.md). Kept for the reasoning.
 
-The measured problem (see [`../log/europe_control_and_held_scoring.md`](../log/europe_control_and_held_scoring.md)):
+The measured problem (see [`../log/europe_control_and_held_scoring.md`](../../../log/europe_control_and_held_scoring.md)):
 once the USSR finds the Europe-control strategy at ~110M, outcomes become predictable, the critic
 degenerates to the base rate (beating "always predict USSR" by 0.2pp at 160M), and `adv_std_raw`
 falls 6x. Both sides stop learning; only one of them needed to.
