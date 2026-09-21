@@ -80,12 +80,19 @@ class TestTagMapping:
         assert _tb_tag("mean_ply") == "endgame/ply"
         assert _tb_tag("ussr_win_rate") == "endgame/ussr_win_rate"
         assert _tb_tag("loss") == "internal/loss"
-        # The four battleground series share one chart, so they are suppressed as individual
-        # scalars and reach TensorBoard only as lines of `strategy/battlegrounds`.
+        # The four battleground series are ALSO charted individually. They used to be suppressed
+        # on the assumption that the combined `strategy/battlegrounds` chart showed them -- but
+        # add_scalars writes child RUN DIRECTORIES rather than a chart in the run it is called
+        # on, so the names appeared in TensorBoard's runs panel with no plot behind them and the
+        # data was unreachable without knowing to tick four extra runs. This assertion is now
+        # about reachability, which is the property that was actually wanted; asserting the
+        # suppression is what pinned the bug in place.
         from ai.training.generic_trainer import MULTILINE_CHARTS, _TB_SUPPRESSED
 
-        assert "diag/uncontrolled_battlegrounds_turn8" in _TB_SUPPRESSED
-        assert set(MULTILINE_CHARTS["strategy/battlegrounds"].values()) == {
-            "diag/empty_battlegrounds_turn5", "diag/empty_battlegrounds_turn8",
-            "diag/uncontrolled_battlegrounds_turn5", "diag/uncontrolled_battlegrounds_turn8"}
+        bg = {"diag/empty_battlegrounds_turn5", "diag/empty_battlegrounds_turn8",
+              "diag/uncontrolled_battlegrounds_turn5", "diag/uncontrolled_battlegrounds_turn8"}
+        assert not (bg & _TB_SUPPRESSED), "a suppressed diagnostic gets no chart of its own"
+        for key in bg:
+            assert _tb_tag(key).startswith("strategy/"), key
+        assert set(MULTILINE_CHARTS["strategy/battlegrounds"].values()) == bg
         assert _tb_tag("diag/salvageable_frac_turn6") == "strategy/salvageable_frac_turn6"

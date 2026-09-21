@@ -123,6 +123,13 @@ TB_TAGS: Dict[str, str] = {
 
     # --- strategy: is it playing the board well? Measured off probe games at snapshots, not
     # off the training rollouts, and none of it has a human counterpart yet.
+    # The battleground diagnostics. Without an explicit mapping these fell to misc/ as
+    # "misc/diag/empty_battlegrounds_turn8" -- nobody had added one because they were suppressed
+    # from individual charts, so the gap was invisible until the suppression was lifted.
+    "diag/empty_battlegrounds_turn5": "strategy/empty_battlegrounds_turn5",
+    "diag/empty_battlegrounds_turn8": "strategy/empty_battlegrounds_turn8",
+    "diag/uncontrolled_battlegrounds_turn5": "strategy/uncontrolled_battlegrounds_turn5",
+    "diag/uncontrolled_battlegrounds_turn8": "strategy/uncontrolled_battlegrounds_turn8",
     "diag/salvageable_frac_turn6": "strategy/salvageable_frac_turn6",
     "diag/salvageable_given_reached_turn6": "strategy/salvageable_given_reached_turn6",
     "diag/mean_final_turn": "strategy/probe_mean_final_turn",
@@ -327,11 +334,14 @@ _TB_SUPPRESSED: frozenset = frozenset({
     # written to the JSONL.
     "decisive_win_available",
     "decisive_loss_avoidable",
-    # Drawn on the combined strategy/battlegrounds chart instead of four charts of their own.
-    "diag/empty_battlegrounds_turn5",
-    "diag/empty_battlegrounds_turn8",
-    "diag/uncontrolled_battlegrounds_turn5",
-    "diag/uncontrolled_battlegrounds_turn8",
+    # NOT suppressed any more. These were held back on the assumption that the combined
+    # `strategy/battlegrounds` chart would show them -- but SummaryWriter.add_scalars does not
+    # draw a chart in the run it is called on. It writes one CHILD RUN DIRECTORY per series
+    # (tb/strategy_battlegrounds_empty_turn8/, ...), which TensorBoard lists in the left-hand
+    # RUNS panel. So the four names appeared in the sidebar while the parent run had no tag for
+    # them and selecting it showed nothing -- the data was there and unreachable without knowing
+    # to tick four extra runs. They are now written as ordinary scalars as well; the combined
+    # chart still exists for anyone who wants the four overlaid.
 } | {
     f"{_p}_{_r}_{_part}" for _p in (_q for _t, _q in BLUNDER_PROBES)
     for _r in BLUNDER_RULES for _part in ("count", "chances")
