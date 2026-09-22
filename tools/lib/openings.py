@@ -24,6 +24,7 @@ NODE_OFFSET = ActionEncoder.NODE_OFFSET
 SETUP_DECISIONS = 15
 
 WEST_GERMANY, ITALY, EAST_GERMANY, POLAND, YUGOSLAVIA, IRAN = 7, 10, 14, 15, 18, 25
+CANADA, FRANCE, HUNGARY, SOUTH_KOREA = 0, 8, 17, 44
 
 #: The standard human opening, as (country, points) in placement order. The USSR overcontrols
 #: Poland and East Germany by a point each; the US takes West Germany and Italy with a buffer and
@@ -37,8 +38,17 @@ def expand(opening: Sequence[Tuple[int, int]]) -> List[int]:
     return [cid for cid, n in opening for _ in range(n)]
 
 
+#: A symmetric USSR opening that commits nothing to East Germany, so the two US setups below face
+#: the same board and differ only in whether the US holds West Germany.
+USSR_POLAND_HUNGARY: Sequence[Tuple[int, int]] = ((POLAND, 3), (HUNGARY, 3))
+#: The setup M2d s3 settled on from 185M: West Germany left empty, Canada taken instead.
+US_NO_WEST_GERMANY: Sequence[Tuple[int, int]] = (
+    (CANADA, 2), (ITALY, 2), (FRANCE, 3), (IRAN, 1), (SOUTH_KOREA, 1))
+
 OPENINGS: Dict[str, Dict[str, List[int]]] = {
     "human": {"US": expand(US_OPENING), "USSR": expand(USSR_OPENING)},
+    "ph_west_germany": {"US": expand(US_OPENING), "USSR": expand(USSR_POLAND_HUNGARY)},
+    "ph_no_west_germany": {"US": expand(US_NO_WEST_GERMANY), "USSR": expand(USSR_POLAND_HUNGARY)},
 }
 
 

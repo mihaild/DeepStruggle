@@ -38,7 +38,7 @@ In all five 240M games of this scan, the USSR targets West Germany on T1 (AR1 in
   185M the US never places in West Germany, except at 230M, which fully reverts for one snapshot.
 * **It is not indecision.** At every snapshot the policy is near-certain: P(WG) is either ≥0.997
   or ≤0.11. The opening is swapped wholesale between snapshots 5M steps apart, not drifted.
-* **Hypothesis, unverified:** setup is the decision furthest from any reward (about 400 plies to
+* **Hypothesis — superseded by the critic readout below:** setup is the decision furthest from any reward (about 400 plies to
   the end of the game), so its advantage signal is the weakest in the game. A strongly committed
   choice with almost no gradient behind it is free to follow whatever shared-trunk changes push
   it. The 230M reversion fits that reading better than a learned preference.
@@ -46,6 +46,63 @@ In all five 240M games of this scan, the USSR targets West Germany on T1 (AR1 in
   ([`P21_full_field.md`](P21_full_field.md)), but every opponent in that field is from the same
   lineage. Nothing here shows whether an opponent that contests West Germany well would punish the
   open setup.
+
+## What the critic thinks of the two setups
+
+`ai/eval/setup_critic.py`: for 8 deals (seeds 101–108), the USSR is scripted to 3 Poland /
+3 Hungary, and the US to either the standard **West Germany setup** (WG 4, Italy 3, Iran 2) or the
+**240M setup** (Canada 2, Italy 2, France 3, Iran 1, South Korea 1). Both boards come from the same
+deal, and this is checked. The critic is read after the last placement, at every snapshot of the
+lineage. Openings are in `tools/lib/openings.py` (`ph_west_germany`, `ph_no_west_germany`), so
+`play_match.py --opening` produces the same boards. Report:
+`data/reports/P21_setup_critic_west_germany.json`.
+
+Δ is `v_win_us(West Germany) − v_win_us(240M setup)`, from the US's own view; `v_win` is in
+[−1, 1], so 0.1 is about 5 pp of win probability. "Deals" counts the deals on which the West
+Germany setup scored higher.
+
+| steps | Δ, US view | deals preferring WG | Δ, USSR view (sign-flipped) | policy's WG placements (from the scan above) |
+|---:|---:|---:|---:|:---|
+| 160M | **+0.108** | 8/8 | +0.165 | 4 4 4 4 4 |
+| 165M | −0.017 | 2/8 | +0.069 | 2 2 2 2 2 |
+| 170M | +0.027 | 7/8 | +0.073 | 4 4 4 4 4 |
+| 175M | −0.042 | 0/8 | −0.025 | 4 4 2 4 4 |
+| 180M | **−0.120** | 0/8 | −0.063 | 4 4 0 4 4 |
+| 185M | **−0.311** | 0/8 | −0.237 | 0 |
+| 190M | **−0.306** | 0/8 | −0.307 | 0 |
+| 195M | −0.175 | 0/8 | −0.089 | 0 |
+| 200M | −0.030 | 2/8 | +0.024 | 0 |
+| 205M | +0.087 | 8/8 | +0.293 | 0 |
+| 210M | **−0.386** | 0/8 | −0.051 | 0 |
+| 215M | −0.158 | 0/8 | +0.156 | 0 |
+| 220M | −0.133 | 0/8 | −0.048 | 0 |
+| 225M | −0.129 | 0/8 | −0.057 | 0 |
+| 230M | **+0.231** | 8/8 | +0.197 | **4 4 4 4 4** |
+| 235M | +0.049 | 8/8 | +0.013 | 0 |
+| 240M | −0.033 | 0/8 | −0.024 | 0 |
+
+Earlier in the lineage, from 65M to 110M, every snapshot prefers West Germany on 8 of 8 deals.
+From 115M to 155M the preference alternates. Before 65M it is mostly noise.
+
+* **The preference belongs to the checkpoint, not the deal.** 14 of 17 rows are 8/8 or 0/8, so
+  the sign is set by the weights and holds across hands.
+* **It flips every 5–25M steps, by up to 0.6.** The critic has no stable view of which setup is
+  better for the US. At 230M it rates West Germany +0.23; 10M later it is −0.03.
+* **The policy follows the critic's preference.** The sign agrees with the policy's setup in
+  12 of 17 snapshots. That includes the 185M switch, which the critic led at 175–180M, and the
+  one-snapshot return at 230M, which the critic shows as its largest pro-West Germany value in
+  the whole range. Of the disagreements, 175M and 180M are the policy lagging the critic's turn;
+  205M and 235M are brief critic swings the policy did not follow.
+* So the setup is not drifting with nothing behind it, as hypothesised above. It follows an
+  advantage signal, and **that signal itself oscillates**. The absolute post-setup value also
+  swings by ±0.5 between neighbouring snapshots (−0.50 at 200M, +0.17 at 205M), which fits a critic
+  chasing the non-stationary self-play balance rather than evaluating the position.
+
+**Caveats.** V is policy-conditional: "prefers" means "this checkpoint's own continuation does
+better from here". Both boards are partly off-policy — the USSR opening for every snapshot, and
+whichever US setup a snapshot does not play — so part of each value is extrapolation. That
+extrapolation is also what the policy gradient sees, since the actor only explores the setups it
+samples.
 
 **Side note:** the scan's 240M games with seeds 101–105 have different outcomes from the
 `m2d_240M_selfplay_*` games with the same seeds. At temperature 0.1 the same `--seed` does not

@@ -282,11 +282,18 @@ PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py \
 
 **`--opening`** replaces the fifteen setup placements with a named opening from
 `tools/lib/openings.py` and hands control back to the agents once setup is over, so the replay
-shows what a policy does with a board it did not choose. Currently one opening is defined,
-`human`: USSR +1 East Germany, +4 Poland, +1 Yugoslavia; US +4 West Germany, +3 Italy, +2 Iran.
+shows what a policy does with a board it did not choose. Three openings are defined:
+
+| name | USSR | US |
+|:---|:---|:---|
+| `human` | +1 East Germany, +4 Poland, +1 Yugoslavia | +4 West Germany, +3 Italy, +2 Iran |
+| `ph_west_germany` | +3 Poland, +3 Hungary | +4 West Germany, +3 Italy, +2 Iran |
+| `ph_no_west_germany` | +3 Poland, +3 Hungary | +2 Canada, +2 Italy, +3 France, +1 Iran, +1 South Korea |
+
 A scripted placement that is not legal raises rather than falling through to the agent -- a
 partly-forced setup is neither opening, and would be reported as one. The same registry backs
-`ai/eval/forced_setup.py`, so the replays show the opening its numbers were measured on.
+`ai/eval/forced_setup.py` and `ai/eval/setup_critic.py` (the critic's value of two openings on
+the same deal, per checkpoint), so the replays show the openings their numbers were measured on.
 
 **`--trace`** records, on every step of the replay, the distribution the policy drew its move
 from and the critic's reading of the position that move produced — the workbench then shows a
