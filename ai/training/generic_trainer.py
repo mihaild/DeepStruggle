@@ -1318,6 +1318,7 @@ def train_pipeline(
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
     ref_update_freq: int = 200_000,
+    gae_lambda: float = 0.98,
     tensorboard: bool = True,
 ) -> None:
     # Checked first, before a device is resolved or a directory is made: a run whose budget is
@@ -1473,6 +1474,7 @@ def train_pipeline(
         "eval_opponents": list(eval_opponents or []),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
+        "gae_lambda": gae_lambda,
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, budget={train_steps:,} steps.",
     }
     with open(metadata_path, "w", encoding="utf-8") as f:
@@ -1592,7 +1594,7 @@ def train_pipeline(
         adv_filter_quantile=adv_filter_quantile,
         ent_coef=entropy_coef,
         gamma=gamma,
-        gae_lambda=0.98,
+        gae_lambda=gae_lambda,
         num_epochs=4,
         ref_update_freq=ref_update_freq,
         max_grad_norm=1.0,

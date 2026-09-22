@@ -389,6 +389,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
+    parser.add_argument("--gae-lambda", type=float, default=0.98,
+                        help="GAE lambda. Credit decays by lambda per decision over the joint stream of both players' decisions (unless --per-player-gae), so at 0.98 the effective horizon is ~50 decisions, about 1.3 game turns.")
     parser.add_argument("--gamma", type=float, default=1.0,
                         help="Discount factor. Keep at 1.0: the game is zero-sum and decided at the end, so any discount biases against the endgame (0.999 attenuates a terminal reward by ~26%% over a full game).")
     parser.add_argument("--defcon-coef", type=float, default=0.0,
@@ -559,6 +561,7 @@ def main():
             same_perspective_bootstrap=args.same_perspective_bootstrap,
             per_player_gae=args.per_player_gae,
             ref_update_freq=args.ref_update_freq,
+            gae_lambda=args.gae_lambda,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,
