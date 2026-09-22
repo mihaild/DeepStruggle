@@ -62,9 +62,13 @@ wallclock, because the architecture is 4.3× cheaper per step. At matched *steps
 anchor is still 54 Elo ahead. At matched steps and 160M the anchor is far behind, but only
 because it fell (see Open, first item) — that margin is not M2d's to claim.
 
-**5. The side collapse is real, costly, and not attributable to any single seed stream.**
-12.5% of seeds by 80M and ~19% by 160M; it costs ~250 Elo against the arm's own 80M self and
-lands the arm below M1. Splitting `--seed` into initialisation / sampling / deals / opponent-draw
+**5. The side collapse is real and not attributable to any single seed stream — but it is
+recoverable, and mostly free.** Entry reaches ~12.5% of seeds by 80M. It is **not** an outcome:
+5 of 7 arms scored COLLAPSED recover when continued 80M further, and a collapse that recovers
+costs **−1.4 Elo** against arms that never collapsed. One that does not recover costs **−394**.
+The "costs ~250 Elo and lands below M1" reading is withdrawn — it was measured on checkpoints
+taken mid-episode
+([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)). Splitting `--seed` into initialisation / sampling / deals / opponent-draw
 and moving one at a time, in both directions, left all eight arms clean: **no single stream is
 sufficient**, initialisation refuted in both directions. Entering the pinned state and escaping
 costs nothing detectable.
@@ -107,16 +111,18 @@ entropy inflation, so entropy may be the more general indicator.
 | ~~M2a~~ ✅ | dynamic + constants, **no ctx** | **Done: −84 to −146 Elo.** The head does need the trunk; `pe_trunk` stays |
 | ~~M2b~~ ✅ | dynamic + ctx, **no constants** | **Done: −40 to −73 Elo.** They are pulling weight; the trunk does not already carry them |
 | ~~M2c~~ ✅ | dynamic only | **Done: −87 to −189 Elo** — but still +144 to +252 over M1, so the dynamic slots alone are 54–74% of the head |
-| **M2.5** | full + **identity** | a learned per-item constant, unique rather than per-type |
-| **M2.5b** | dynamic + ctx + identity, no constants | does identity *subsume* the hand-designed constants? |
+| ~~M2.5~~ ✅ | full + **identity** | **Done: −47 to −123 Elo.** Rejected |
+| ~~M2.5b~~ ✅ | identity, no constants | **Done: −60 to −178 Elo, and it COLLAPSES** on two seeds where M2d runs clean. Identity does not subsume the constants |
 | **M3** | card↔card self-attention | |
 | **M4** | card→country cross-attention | |
 | **M5** | flatten → pooling | deliberately last: the most dubious mechanism, tested as a *removal* |
 
-**M2e is done and negative, so the card side of the family is closed. M2a/M2b/M2c are now done
-too** — [`P21_M2abc_head_inputs.md`](P21_M2abc_head_inputs.md). **All three lose on both seeds, so
-M2d's full head input stands and no simplification is available.** What remains of the family is
-M2.5 and M2.5b, which *add* rather than remove.
+**The whole M2 family is now measured** —
+[`P21_M2abc_head_inputs.md`](P21_M2abc_head_inputs.md) and
+[`P21_identity_rungs.md`](P21_identity_rungs.md). **Nothing beats M2d.** The three removals lose
+(M2a/M2b/M2c) and so do the three additions (M2.5, M2.5c, M2.5b) — on both seeds, at 80M, which is
+the adoption axis. M2d's head input stands exactly as it is: dynamic slots, per-type constants and
+trunk context, no identity vector, country only. What remains of the ladder is **M3, M4 and M5**.
 
 ### Protocol, unchanged
 
@@ -141,9 +147,16 @@ gives the slope within-seed. A rung advances only if it beats the rung below at 
 ### Expected cost, and the collapse tax
 
 Eight rungs × 2 arms, at M2d-class throughput (~50,000 steps/s), is ~1.9 GPU-h per rung and
-**~15 GPU-h total**. At the observed rates (12.5% collapse by 80M, 19.2% by 160M) about **2.2 of
-those 16 arms will collapse and need re-running** — a ~14% overhead, and the reason for amendment
-1. There is a 91% chance at least one rung is hit.
+**~15 GPU-h total**.
+
+**The collapse tax is far smaller than this section originally claimed.** It said ~2.2 of 16 arms
+would collapse and need re-running, a ~14% overhead. That rested on treating a `COLLAPSED` verdict
+as a failed arm, and it is withdrawn: entry reaches ~12.5% of seeds, but **an arm that enters and
+recovers is worth as much as one that never entered** (−1.4 Elo, 0.05 pooled sd). Only
+non-recovery costs anything, at 2 of 7 observed. Budget roughly **one re-run in twenty arms**, and
+trigger it on `adv_std_raw` failing to return rather than on `us_episode_frac` pinning, which
+flagged four arms that were fine
+([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)).
 
 That overhead is the argument for finishing the ladder before investigating the collapse:
 routing around it costs ~1.5 GPU-h, while a conditional-rate attribution design costs 30–40 and is

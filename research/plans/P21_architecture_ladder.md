@@ -396,6 +396,13 @@ M2.5 measure the two halves in order.
 
 ## M3 — card↔card self-attention
 
+> **BLOCKED, 2026-09-22.** This needs per-card tokens and the adopted lineage has none:
+> `grouped + card_self_attention` is refused because grouped forms no attention tokens, and
+> switching to `entity` would tokenise the *board* too — discarding the positional path that
+> is the ladder's single biggest win (M1, +109). That is two changes at once, which is what
+> this ladder exists to avoid. [P22](P22_card_lookup_attention.md) carries the
+> `board_mode`/`card_mode` split that unblocks it.
+
 ```
 h_cards from M2                                              (B,110,d)
 attn_out, _ = MultiheadAttention(embed_dim=d, num_heads=4)(Q=h_cards, K=h_cards, V=h_cards)
@@ -427,6 +434,8 @@ attention to hand cards only is the obvious retry and should be tried before con
 
 ## M4 — card→country cross-attention
 
+> **BLOCKED, 2026-09-22** — same cause as M3, same fix.
+
 ```
 h_board, h_cards from M2
 attn_out, _ = MultiheadAttention(embed_dim=d, num_heads=4)(Q=h_cards, K=h_board, V=h_board)
@@ -449,6 +458,9 @@ re-run at `d=32` before concluding attention does not help — a null from an un
 is a null about the size, not the mechanism.
 
 ## M5 — replace flatten with pooling  *(the last change, deliberately)*
+
+> **BLOCKED, 2026-09-22** — `aggregation` is only meaningful in entity mode, so this has the
+> same prerequisite as M3 and M4.
 
 ```
 h_board (B,84,d)  → [mean over 84 ; max over 84] (2d) → Linear(2d,256) → e_board

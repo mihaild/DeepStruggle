@@ -1,5 +1,18 @@
 # Side collapse: a reproducible, escapable learning-arrest
 
+> **REVISED 2026-09-22 — the rate and the strength cost below were wrong, and are corrected in
+> place.** Seven arms scored COLLAPSED were each continued by a further 80M steps and **five
+> recovered**, including all four seeds behind the 12.5% headline. Every terminal verdict in the
+> original census was *censored*: no arm had been watched longer after onset than the slowest
+> observed recovery took. A collapse that recovers costs **−1.4 Elo** against arms that never
+> collapsed — nothing. One that does not costs **−394**. Full account:
+> [`../../log/E4_collapse_is_recoverable.md`](../../log/E4_collapse_is_recoverable.md).
+>
+> **What survives unchanged:** entry is real, reproducible and bitwise deterministic; `adv_std_raw`
+> and `explained_variance` separate *entry* cleanly; the state is sticky but not absorbing; and
+> M2.5b enters on 3 of 3 seeds. The sections below are kept because the entry phenomenon is what
+> they actually measured.
+
 **2026-09-20.** Collapse was the dominant failure of the late E3 ladder and was only ever observed
 after the fact, in arms too expensive to re-run. The P21 architecture ladder produced a
 configuration that collapses at **80M steps in about 30 minutes on a 3.2M-parameter network**, so
@@ -39,8 +52,12 @@ collapsing one is fractionally *ahead*.
 | **entered and escaped** | 1 — seed 21 | 3.3% |
 | clean | 25 | 83.3% |
 
-**4 of 30, Wilson 95% CI [5.3%, 29.7%].** Two seed-1 re-runs are excluded: they are replicates,
-not seeds, and counting them would have reported 6 of 32.
+~~**4 of 30, Wilson 95% CI [5.3%, 29.7%].**~~ **Withdrawn 2026-09-22.** All four of those seeds
+recover when continued past 80M — seed 1 to 0.293, seed 12 to 0.434, seed 22 to 0.386, seed 26 to
+0.517. What this table counted was **arms still inside an entry episode when the budget ended**,
+which is a statement about where the cutoff fell, not about an outcome. Read every "terminal
+collapse" row below as "in an episode at 80M". Two seed-1 re-runs are excluded as replicates, and
+that part stands.
 
 ## Entry and persistence are different things
 
@@ -75,12 +92,18 @@ Rated in one 26-entrant field, 200 games per pair, τ=0.0:
 
 References in the same field: anchor 2055.3, M2 with both heads 2016.4, M1 1718.2.
 
-**Collapse is an attractor in strength too.** The four collapsed arms span 38 Elo where the clean
-arms span 299 — they converge to essentially the same place. And all four rate **below M1**, the
-rung beneath: a collapsed arm does not merely forfeit the mechanism's gain, it ends worse than not
-having it.
+~~**Collapse is an attractor in strength too.**~~ **Withdrawn 2026-09-22.** Those four ratings were
+taken on checkpoints captured *mid-episode*. Continued to 160M the same four arms average
+**2224.3** against **2225.7** for four M2d seeds that never collapsed — a difference of **−1.4
+Elo, 0.05 pooled sd**. Seed 1 alone goes from the 1741.6 quoted here to **2222.6**.
 
-The recovered seed lands inside the clean band, near its lower edge.
+So a collapse that recovers costs **compute, not strength**, and the "ends worse than not having
+the mechanism" reading is false. What *is* true, on the one arm that never recovered: seed 14
+rates **1830.3 at 240M**, roughly **−394**, with 80M more compute than either group. Recovery and
+non-recovery are different events, not two points on a scale.
+
+The convergence of the four numbers is explained by their all being snapshots of the same state —
+an arm inside an episode — rather than by an attractor in strength.
 
 ## It is bitwise reproducible
 

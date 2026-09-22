@@ -42,9 +42,12 @@ What E4 has established, collected in
 
 And two failure modes, which together are why nothing here should be read off a single arm:
 
-* **Side collapse** ([`../findings/training/side_collapse.md`](../findings/training/side_collapse.md))
-  — 12.5% of seeds by 80M, ~19% by 160M, costing ~250 Elo. Bitwise reproducible. Not attributable
-  to any single seed stream.
+* **Side collapse** ([`../findings/training/side_collapse.md`](../findings/training/side_collapse.md),
+  revised by [`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)) —
+  **entry** is common (12.5% of seeds are inside an episode at 80M) and bitwise reproducible, but
+  it is **not an outcome**: 5 of 7 arms scored COLLAPSED recover when continued, and a collapse
+  that recovers costs **−1.4 Elo**, i.e. nothing. A collapse that does *not* recover costs
+  **−394**. Nothing measured at onset predicts which follows except `adv_std_raw` returning.
 * **Entropy inflation** ([`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md))
   — the anchor lost **356 Elo** over its second 80M with *every* collapse indicator healthy. One
   arm, no replicate.
@@ -61,7 +64,9 @@ where it was measured and where it is healthy.
 
 | item | what | cost | status |
 |:---|:---|:---|:---|
-| **[P21](P21_architecture_ladder.md)** | the architecture ladder. **8 of 13 rungs done** — M0, M1, M2, M2d, M2e, M2a, M2b, M2c. Remaining: **M2.5** and **M2.5b** (a trainable identity vector for the head, and whether it subsumes the hand-designed constants), then **M3** card↔card self-attention, **M4** card→country cross-attention, **M5** pooling as a *removal*, deliberately last | ~1.3 GPU-h per rung | **running** |
+| **[P22](P22_card_lookup_attention.md)** | identity-keyed card lookup — query from the trunk, keys are learned per-card identity, values are card location. Targets the decisions the ladder has never addressed: *"I hold Europe Scoring and Five Years Plan, Europe is negative, it is AR7"*. Needs the `board_mode`/`card_mode` split, which also unblocks M3/M4/M5 | ~84k params (+2.6%), 2 arms/rung | **proposed; gated on the width probe** |
+| width probe | `E4-23-03/05`: `entity_proj_dim` 256 → 512. Is the card path capacity-limited before a mechanism is added to it? A real capacity change (+26.7% params), so a null is the clean outcome and a positive needs localizing | 2 arms | **running** |
+| **[P21](P21_architecture_ladder.md)** | the architecture ladder. **11 of 14 rungs done** — M0, M1, M2, M2d, M2e, M2a, M2b, M2c, M2.5, M2.5c, M2.5b. **Nothing has beaten M2d**: all three removals lose and all three identity additions lose. M3/M4/M5 remain and are **blocked** on the `board_mode`/`card_mode` split that [P22](P22_card_lookup_attention.md) carries | ~1.3 GPU-h per rung | **M2 family closed** |
 
 ### Queued, unblocked
 
@@ -112,9 +117,12 @@ running any of them.
 - **Do not use seed 1 for a ladder arm.** It is the seed on which M2d collapses, and it already
   produced one published-then-withdrawn conclusion. Seeds 3 and 5 are clean for M2d at both
   budgets and already rated there, which makes a rung-vs-M2d comparison **seed-matched**.
-- **Every arm gets the collapse detector**, and a collapsed arm is re-run on a new seed and never
-  read as a strength measurement. Record the per-rung collapse count — it is the free observable
-  that will say whether the collapse is M2d-specific.
+- **Every arm gets the collapse detector**, but a `COLLAPSED` verdict means *"inside an episode at
+  the budget's end"*, not *"failed"*. Do not re-run on it and do not read the arm's Elo as the
+  rung's strength — extend it instead, or record it as censored. Re-run only when `adv_std_raw`
+  fails to return, which is the case that costs 394 Elo. Record the per-rung **entry** count: it is
+  the free observable, and M2.5b entering on 3 of 3 seeds is the one architecture-linked result it
+  has produced.
 - **Before reading any A/B**, diff the configs with `tools/scripts/launch_flags.py --diff`.
 
 ## Budget rule
@@ -131,8 +139,13 @@ larger budget; never compare across budgets. Seed variance is **~95–100 Elo be
 effects under **~40 Elo are not measurable at affordable seed counts**
 ([`../archive/E3_ladder/findings/seed_variance.md`](../archive/E3_ladder/findings/seed_variance.md)).
 
-Add the **collapse tax** to any estimate: at 12.5% by 80M and 19% by 160M, about **2 arms in 16**
-need re-running, and there is a 91% chance at least one rung in a 7-rung programme is hit.
+**The collapse tax is much smaller than it looked.** Entry happens to ~12.5% of seeds by 80M, but
+an arm that enters and recovers is **worth as much as one that never entered** (−1.4 Elo, 0.05
+pooled sd), so entry is not a reason to re-run. Only a *non-recovering* arm costs anything, and
+that is 2 of 7 observed. Budget for roughly **one re-run in twenty arms**, not one in eight — and
+detect it by `adv_std_raw` failing to return above ~0.05, not by `us_episode_frac` pinning, which
+flagged four arms that were fine
+([`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)).
 
 And read [`../log/variance_and_noise.md`](../log/variance_and_noise.md) before quoting anything:
 
