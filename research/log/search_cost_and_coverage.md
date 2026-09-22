@@ -317,3 +317,27 @@ on both sides at 96 simulations per move from ~137 days into ~6 days". The measu
 that same configuration at ~62 days. The two differ by a factor of ten and the later optimisations
 (`fbeda4d`, `9079e7c`) should have moved it the other way, so one of them is wrong; the tournament
 figure is the one with a 120-game measurement behind it.
+
+## 10. E4: honest search on top of `E4-08-03@240M`
+
+2026-09-22, engine `acf49f66`. The same net with determinized MCTS (96 simulations, one sampled
+world per decision) against itself without search, 100 games per side, temperature 0 on the raw
+side. `tools/tournament.py` with `search:<ckpt>:96:determinize`. Report:
+`data/reports/E4-08-03_240M_search96_vs_raw.md`. It took 568 s for 200 games while an 80M
+training arm shared the CPU.
+
+| searcher seat | search win rate |
+|:---|---:|
+| USSR | 59% (59/100) |
+| US | 69% (69/100) |
+| **both** | **64.0% ± 3.4** (128/200), **+99.5 Elo** |
+
+* **Search still pays on E4, but less than it did on E3**: 64% against E3-20-28@320M's 75.0% ± 4.0
+  (§9). The gap is 11 pp, about 2 standard errors. It is compatible with a stronger raw policy
+  leaving search less to fix, which is the direction expected. One checkpoint each, so that is
+  not established.
+* **More of the gain is on the US seat**: 69% against 59%. The US is the seat that loses at low
+  skill ([`P21_M2d_240M.md`](P21_M2d_240M.md)).
+* This is the headroom a distillation round is working against. On E3, one offline round of
+  distilling a 96-sim searcher bought +47.7 Elo
+  ([`../archive/E3_ladder/log/P15_X4a_distillation.md`](../archive/E3_ladder/log/P15_X4a_distillation.md)).
