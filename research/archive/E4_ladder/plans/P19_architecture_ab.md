@@ -2,7 +2,7 @@
 
 **Status: ANSWERED, 2026-09-19** — see [`../log/E4_architecture_ab_result.md`](../../../log/E4_architecture_ab_result.md). The bundle is worth **+447 Elo** at matched budget and cold start (94.0% head-to-head, 91% USSR / 97% US), so the decision rule's top row applies: extend `E4-03` to 320M. `E4-03-01@80M` also beats `E4-02-01@320M` (88.5%) and is now the strongest checkpoint in the lineage.
 
-**Original plan follows.** `E4-04-01` (control) is in flight; `E4-03-01` is queued behind it on the
+**Original plan follows.** `E4-04-01` (control) is in flight; `E4-03-01@80M` is queued behind it on the
 GPU with a monitor armed. This file is the **pre-registered** analysis: the measurement and the
 decision rule are fixed here *before* the numbers exist, so that the metric cannot be chosen after
 seeing them. Registration of the arms themselves is in [`../runs.md`](../../../runs.md).
@@ -32,7 +32,7 @@ decision, [`../findings/training/ref_update_freq_open_ablation.md`](../../../fin
 
 | arm | `identity_dim` | `per_entity_heads` | `graph_layers` | `self_transform` |
 |:---|---:|---:|---:|:---|
-| `E4-03-01` | 16 | 64 | 0 | yes |
+| `E4-03-01@80M` | 16 | 64 | 0 | yes |
 | `E4-04-01` | 0 | 0 | 2 | no |
 
 `E4-02-01` cannot serve as the control: it is warm-started, which biases precisely the first tens
@@ -63,7 +63,7 @@ Two sanity conditions that must hold before the headline number is read at all:
 
 ## The decision rule, fixed in advance
 
-Let *d* = `E4-03-01`'s win rate against `E4-04-01`, pooled across both seats, with its standard
+Let *d* = `E4-03-01@80M`'s win rate against `E4-04-01`, pooled across both seats, with its standard
 error from 200 games (~3.5 pp).
 
 | outcome | reading | action |

@@ -43,19 +43,19 @@ are, and M2d runs at ~50,000 steps/s against the anchor architecture's 11,732 �
 
 | arm | Elo | steps | steps/s | GPU-h | vs anchor |
 |:---|---:|---:|---:|---:|:---|
-| `E4-11-03` | 2227.2 | 160M | 45,004 | 0.99 | **+137.5 Elo for 52% of the cost** |
-| `E4-11-21` | 2220.3 | 160M | 51,026 | 0.87 | **+130.6 Elo for 46%** |
-| `E4-11-13` | 2216.4 | 160M | 50,643 | 0.88 | **+126.8 Elo for 46%** |
-| `E4-11-09` | 2212.1 | 160M | 50,445 | 0.88 | **+122.4 Elo for 47%** |
-| `E4-11-10` | 2179.0 | 160M | 50,809 | 0.87 | **+89.3 Elo for 46%** |
-| `E4-11-05` | 2145.3 | 160M | 48,550 | 0.92 | **+55.6 Elo for 48%** |
-| `E4-03-01` (anchor) | 2089.7 | 80M | 11,732 | 1.89 | — |
+| `E4-08-03@160M` | 2227.2 | 160M | 45,004 | 0.99 | **+137.5 Elo for 52% of the cost** |
+| `E4-08-21@160M` | 2220.3 | 160M | 51,026 | 0.87 | **+130.6 Elo for 46%** |
+| `E4-08-13@160M` | 2216.4 | 160M | 50,643 | 0.88 | **+126.8 Elo for 46%** |
+| `E4-08-09@160M` | 2212.1 | 160M | 50,445 | 0.88 | **+122.4 Elo for 47%** |
+| `E4-08-10@160M` | 2179.0 | 160M | 50,809 | 0.87 | **+89.3 Elo for 46%** |
+| `E4-08-05@160M` | 2145.3 | 160M | 48,550 | 0.92 | **+55.6 Elo for 48%** |
+| `E4-03-01@80M` (anchor) | 2089.7 | 80M | 11,732 | 1.89 | — |
 
 Doubling M2d's steps still costs **under half** the anchor's wallclock, because the architecture is
 four times cheaper per step. Every one of the six is strictly better on both axes at once.
 
 **Answered 2026-09-21, and not the way this section anticipated.** The anchor was carried to
-160M as `E4-12-01` and **lost ~330 Elo**
+160M as `E4-03-01@160M` and **lost ~330 Elo**
 ([`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md)). The
 matched-steps gap at 160M is therefore +465.8 to M2d, and that number is misleading on its own:
 M2d did not gain 465, the anchor fell. The defensible comparison is against the anchor's best
@@ -88,7 +88,7 @@ pinned episode leaves lasting damage, has no support at all in these numbers.
 
 Seed 14 rates **1762.7**, −249.2 against its own 80M self and about **−409 against its
 counterfactual** (the +159.8 it would have been expected to gain). It lands with the other
-collapsed and low rungs — `E4-08-01` seed 1 at 1741.6, M1 at 1758.1, M2e at 1746.3 — confirming
+collapsed and low rungs — `E4-08-01@80M` seed 1 at 1741.6, M1 at 1758.1, M2e at 1746.3 — confirming
 from a second direction that *a collapsed M2d arm ends up worse than not having the mechanism at
 all*.
 
@@ -117,7 +117,7 @@ recovers essentially all of M2.
   usual: a collapsed arm's policy entropy differs sharply from a healthy one's, and at
   `temperature 0.1` the sharper policy wins partly on temperature rather than on strength.
 * `steps/s` is each run's own median during training, not a tournament measurement, so arms that
-  trained alongside other jobs read low — `E4-08-03`'s 42,268 against its siblings' ~50,800 is
+  trained alongside other jobs read low — `E4-08-03@80M`'s 42,268 against its siblings' ~50,800 is
   contention, not architecture. The anchor's 11,732 was measured the same way and the 4.3× gap is
   far larger than that noise.
 * The 80M rows for seeds 3/5/10/21/9/13/14 are the *source* runs of the corresponding

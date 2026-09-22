@@ -63,3 +63,18 @@ def test_a_name_that_is_not_the_scheme_is_rejected(bad: str) -> None:
     the run is continued."""
     with pytest.raises(ValueError, match="is not <engine>-<attempt>-<seed>"):
         _resolve_run_dir(None, bad, "v2", TS)
+
+
+@pytest.mark.parametrize("good", ["E4-08-01-2", "E4-17-06-50M.11", "E4-17-06-5M.11-90M.07"])
+def test_replicate_and_branch_suffixes_are_accepted(good: str) -> None:
+    """A same-seed replicate appends `-<n>`; a branch resumed under a new seed appends
+    `-<M>M.<seed>` per branch point. A same-seed continuation takes no suffix at all."""
+    assert _resolve_run_dir(None, good, "v2", TS).endswith(f"{good}_{TS}")
+
+
+@pytest.mark.parametrize("bad", ["E4-17-06-50M_11", "E4-17-06-50M", "E4-17-06-M.11"])
+def test_a_malformed_branch_is_rejected(bad: str) -> None:
+    """`_` separates the short name from the timestamp in a directory name, so it may not appear
+    inside the short name; and a branch names both the step it left at and its new seed."""
+    with pytest.raises(ValueError, match="is not <engine>-<attempt>-<seed>"):
+        _resolve_run_dir(None, bad, "v2", TS)

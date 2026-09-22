@@ -85,7 +85,7 @@ direction now co-occurs with one-sidedness in a second independent arm.
 E3's collapses appeared at 200M+ steps in arms too expensive to re-run, so they were studied from
 logs rather than by experiment. **This one reproduces at 80M in about 30 minutes on a
 3.2M-parameter network**, at a rate high enough to catch within a handful of attempts. Every arm
-sets `--seed` explicitly and records it in `metadata.json`, so `E4-08-01` is exactly reproducible
+sets `--seed` explicitly and records it in `metadata.json`, so `E4-08-01@80M` is exactly reproducible
 and `tools/scripts/launch_flags.py` reconstructs its command.
 
 That makes country-head-only the repository's first *controllable* instance of the failure mode —
@@ -137,7 +137,7 @@ entirely"**. A frozen rather than degrading policy suggests a self-play equilibr
 leave: if USSR wins essentially every game, the US seat generates no useful gradient, and the
 opponent pool fills with snapshots that confirm the imbalance rather than punishing it.
 
-That is a testable story. `E4-08-07` re-runs seed 1 from the same starting conditions — identical
+That is a testable story. `E4-08-01-2` re-runs seed 1 from the same starting conditions — identical
 initial weights, action-sampling stream, and deals and dice, though not bitwise identical, since
 nothing sets `torch.use_deterministic_algorithms` or `cudnn.deterministic` and GPU reductions are
 non-associative. If the 40M event recurs, the collapse is determined by those starting conditions
@@ -146,7 +146,7 @@ in float-noise space, and the rate is a property of the configuration rather tha
 
 ## Training is bitwise reproducible, and so is the collapse
 
-`E4-08-07` re-ran seed 1 from scratch. The expectation — mine and the owner's — was that it
+`E4-08-01-2` re-ran seed 1 from scratch. The expectation — mine and the owner's — was that it
 could not be bitwise identical, since the seed sets `torch.manual_seed`, `np.random.seed` and
 `env_base_seed` but **nothing** sets `torch.use_deterministic_algorithms` or
 `cudnn.deterministic`, leaving GPU reductions non-associative.
@@ -162,8 +162,8 @@ IDENTICAL on every key across all 672 common iterations   (~44M steps)
 
 ```
 1221 common iterations — IDENTICAL on every key
-E4-08-01  snapshot_final.pt  sha256[:16] = fbfc08d937071163
-E4-08-07  snapshot_final.pt  sha256[:16] = fbfc08d937071163
+E4-08-01@80M  snapshot_final.pt  sha256[:16] = fbfc08d937071163
+E4-08-01-2  snapshot_final.pt  sha256[:16] = fbfc08d937071163
 ```
 
 The two final checkpoints are **byte-identical**, not merely metric-identical. Two independent
@@ -264,10 +264,10 @@ misnamed:
 
 | as launched | correct name | what it is |
 |:---|:---|:---|
-| `E4-08-07` | **`E4-08-01-2`** | seed 1, replicate 2 |
-| `E4-08-08` | **`E4-08-01-3`** | seed 1, replicate 3, dense resume states |
+| `E4-08-01-2` | **`E4-08-01-2`** | seed 1, replicate 2 |
+| `E4-08-01-3` | **`E4-08-01-3`** | seed 1, replicate 3, dense resume states |
 
-`E4-08-03` … `E4-08-06` are correct: those are seeds 3–6. The directories keep their launched
+`E4-08-03@80M` … `E4-08-06@80M` are correct: those are seeds 3–6. The directories keep their launched
 names because `metadata.json` records `run_name`, and renaming would leave the two inconsistent;
 the mapping is recorded here instead and the convention is used from now on.
 

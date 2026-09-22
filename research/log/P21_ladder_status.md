@@ -22,7 +22,7 @@ Sources: [`P21_M0_flat_mlp.md`](P21_M0_flat_mlp.md), [`P21_M1_grouped.md`](P21_M
 | **M1** grouped projections | board/card/global each get their own dense projection | 1758.1 | 59,561 | 692 |
 | **M2d** country head only | `pe_country`, no `pe_card` | **2040.3** (6 seeds) | ~50,800 | **1266** |
 | **M2** both heads | `pe_country` + `pe_card` | 2050.2 | 35,744 | 885 |
-| **anchor** E4-03-01 | the late-E3 bundle | 2089.7 | 11,732 | 311 |
+| **anchor** E4-03-01@80M | the late-E3 bundle | 2089.7 | 11,732 | 311 |
 | — HeuristicBot | | 1500.0 | — | — |
 
 **The decomposition is now clean.** Against the 438 Elo from M0 to the anchor:
@@ -82,7 +82,7 @@ entropy inflation, so entropy may be the more general indicator.
 
 ## Open
 
-* ~~**The anchor at 160M.**~~ **Measured, and it changed the question.** `E4-12-01` lost ~330 Elo
+* ~~**The anchor at 160M.**~~ **Measured, and it changed the question.** `E4-03-01@160M` lost ~330 Elo
   over its second 80M — see [`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md).
   So the matched-steps comparison at 160M is +465.8 to M2d, but **the anchor fell rather than M2d
   pulling ahead**, and that margin must not be quoted as M2d's. The fair statement is M2d at 160M

@@ -25,13 +25,13 @@ fall relative to an episode.
 
 | arm | rung | onset | post-onset runway | outcome |
 |:---|:---|---:|---:|:---|
-| `E4-21-01` (seed 1) | M2d | 33.3M | 126.7M | **recovered** 0.293 |
-| `E4-21-12` (seed 12) | M2d | 30.4M | 129.6M | **recovered** 0.434 |
-| `E4-21-22` (seed 22) | M2d | 44.6M | 115.4M | **recovered** 0.386 |
-| `E4-21-26` (seed 26) | M2d | 61.2M | 98.8M | **recovered** 0.517 |
-| `E4-22-03` (M2.5b s3) | M2.5b | 110.0M | 130.0M | **recovered** 0.565 |
-| `E4-21-14` (seed 14) | M2d | 106.5M | 133.5M | COLLAPSED 0.013 |
-| `E4-22-04` (M2.5b s4) | M2.5b | 132.0M | 108.0M | COLLAPSED 0.009 |
+| `E4-08-01@160M` (seed 1) | M2d | 33.3M | 126.7M | **recovered** 0.293 |
+| `E4-08-12@160M` (seed 12) | M2d | 30.4M | 129.6M | **recovered** 0.434 |
+| `E4-08-22@160M` (seed 22) | M2d | 44.6M | 115.4M | **recovered** 0.386 |
+| `E4-08-26@160M` (seed 26) | M2d | 61.2M | 98.8M | **recovered** 0.517 |
+| `E4-17-03@240M` (M2.5b s3) | M2.5b | 110.0M | 130.0M | **recovered** 0.565 |
+| `E4-08-14@240M` (seed 14) | M2d | 106.5M | 133.5M | COLLAPSED 0.013 |
+| `E4-17-04@240M` (M2.5b s4) | M2.5b | 132.0M | 108.0M | COLLAPSED 0.009 |
 
 Each keeps its source `--seed`, so torch's stream is restored and sampling continues. The engine
 RNG cannot be carried across a resume, so the deals restart — i.i.d. either way, and a far weaker
@@ -77,9 +77,9 @@ Five candidates tested against the full record, all falsified:
 | candidate | falsifier |
 |:---|:---|
 | depth of `adv_std_raw` | M2.5b s6 reached **0.0020** — deeper than either terminal arm — and recovered |
-| duration pinned | `E4-21-22` held **323 consecutive** pinned rows, the longest ever recorded, and recovered |
+| duration pinned | `E4-08-22@160M` held **323 consecutive** pinned rows, the longest ever recorded, and recovered |
 | exact-zero run length | the longest run at exactly 0.0 in the study, **20 rows**, belongs to an arm that recovered to 0.473 |
-| exact-zero count | `E4-21-22` spent **217 rows** at exactly 0.0 and recovered; seed 26 was called terminal with a longest zero-run of **2** |
+| exact-zero count | `E4-08-22@160M` spent **217 rows** at exactly 0.0 and recovered; seed 26 was called terminal with a longest zero-run of **2** |
 | onset timing | M2.5b s3 entered at **110.0M** and recovered; seed 14 entered at **106.5M** and did not |
 
 **The one quantity that tracks the split is `adv_std_raw` recovery.** Every recovered arm restored
@@ -87,6 +87,30 @@ it to 0.10–0.20; both terminal arms never left 0.001–0.013. Seed 14 spent 80
 repeated partial escapes — reaching `us_frac` 0.055, a third of rows un-pinned — and sliding back
 each time, with the advantage signal never returning. That is the learning signal dying rather
 than the win rate being lopsided, and it is a mechanism rather than a symptom.
+
+## Branching one collapse under new seeds
+
+M2.5b seed 6, `E4-17-06`, is the one collapse with a known window before any censoring question
+arises: `adv_std_raw` sits below 0.0313 (the census's collapsed band) from **45.9M to 73.1M**, then
+the arm recovers on its own and finishes 160M clean. Four branches were resumed from its states
+under **new seeds**, two before the window and two inside it:
+
+| branch | from | seed | budget | `adv_std_raw` < 0.0313 | last 40 rows: `adv_std_raw` / `us_frac` |
+|:---|:---|---:|---:|:---|:---|
+| parent `E4-17-06` | — | 6 | 160M | 45.9M – 73.1M, 74 rows | 0.221 / 0.335 |
+| `E4-17-06-5M.11` | healthy 5M state | 11 | 60M | **never** | 0.224 / 0.152 |
+| `E4-17-06-5M.12` | healthy 5M state | 12 | 60M | **never** | 0.187 / 0.084 |
+| `E4-17-06-50M.11` | inside the pin, 50M | 11 | 110M | 51.9M – 96.1M, 105 rows | 0.233 / 0.475 |
+| `E4-17-06-50M.12` | inside the pin, 50M | 12 | 110M | 52.0M – 76.9M, 63 rows | 0.220 / 0.335 |
+
+* **Entry is not fixed by the 5M state.** Neither branch taken before the window entered it,
+  though both ran past the parent's 45.9M onset. At M2.5b's entry rate (3 of 4 seeds) two misses
+  in a row happen about 1 time in 16 by chance, so this is suggestive, not established.
+* **Once inside, a new seed does not stop escape.** Both in-pin branches left the band; one
+  within 4M of the parent's exit, the other 23M later. Escape timing belongs to the seed stream;
+  escape itself, here, did not.
+
+Measured from `training_metrics.jsonl` only. No branch has been rated in a tournament.
 
 ## What "exactly 0.0" is worth, and what "pinned" measures
 

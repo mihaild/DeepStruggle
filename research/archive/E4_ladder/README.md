@@ -10,7 +10,7 @@ The record for E4 is not here. It lives in [`../../log/`](../../log/README.md) �
 
 | plan | question | answer |
 |:---|:---|:---|
-| [`P19_architecture_ab.md`](plans/P19_architecture_ab.md) | is the late-E3 architecture bundle actually stronger than the defaults on this engine? | **Yes, +447 Elo** — `E4-03-01` against its matched control `E4-04-01`, both cold, both pooled, 80M. Measurement and decision rule were pre-registered ([`../../log/E4_architecture_ab_result.md`](../../log/E4_architecture_ab_result.md)) |
+| [`P19_architecture_ab.md`](plans/P19_architecture_ab.md) | is the late-E3 architecture bundle actually stronger than the defaults on this engine? | **Yes, +447 Elo** — `E4-03-01@80M` against its matched control `E4-04-01`, both cold, both pooled, 80M. Measurement and decision rule were pre-registered ([`../../log/E4_architecture_ab_result.md`](../../log/E4_architecture_ab_result.md)) |
 | [`P20_positional_board_encoder.md`](plans/P20_positional_board_encoder.md) | the board reaches the trunk only through a symmetric pool, which discards which country is which. Does a positional path do better? | **Yes, and P21 answered it without citing it.** Every ladder rung from M1 up runs `aggregation="flatten"` — the positional path this plan proposed. M1 alone is **+109 Elo** over the flat MLP. Archived un-run |
 
 ## Why P20 is worth opening

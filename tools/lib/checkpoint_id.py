@@ -17,20 +17,42 @@ step count rounded to the scale people actually quote.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Dict, Iterable, List
 
 #: A run directory is `<short-name>_<YYYYMMDD>_<HHMMSS>`, e.g. `E4-02-01_20260919_040456`.
 #: The short name is what runs.md indexes by, so it is what a label should carry.
-_RUN_DIR_RE = re.compile(r"^(E\d+-\d{2}-\d{2})_\d{8}_\d{6}$")
+#: The short name may carry a replicate index (`-2`) or branch suffixes (`-50M.11`); see
+#: ai.training.generic_trainer.RUN_NAME_RE. Anchored on the timestamp, never split on `_`.
+_RUN_DIR_RE = re.compile(r"^(E\d+-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*)_\d{8}_\d{6}$")
 _STEPS_RE = re.compile(r"(\d+)steps")
 
 
-def _steps_suffix(filename: str) -> str:
+def _final_steps(run_dir: str) -> str:
+    """The budget of a run, used to label its `snapshot_final.pt`. Empty if unrecorded.
+
+    `@final` names no step count, and one short name now spans several budgets -- `E4-08-03`
+    has finals at 80M, 160M and 240M in three directories -- so `E4-08-03@final` would be
+    ambiguous where `E4-08-03@160M` is not.
+    """
+    try:
+        with open(os.path.join(run_dir, "metadata.json"), encoding="utf-8") as f:
+            steps = int(json.load(f)["train_steps"])
+    except Exception:                              # no metadata, or no budget recorded
+        return ""
+    return f"{steps / 1_000_000:.0f}M" if steps >= 1_000_000 else f"{steps / 1000:.0f}k"
+
+
+def _steps_suffix(filename: str, run_dir: str = "") -> str:
     """`snapshot_150011904steps.pt` -> `150M`. Empty when the name carries no step count."""
     m = _STEPS_RE.search(filename)
     if not m:
+        if run_dir and os.path.splitext(filename)[0] == "snapshot_final":
+            budget = _final_steps(run_dir)
+            if budget:
+                return budget
         stem = os.path.splitext(filename)[0]
         # `snapshot_final`, `resume_state`, a hand-named warmup: keep whatever it says.
         return stem.replace("snapshot_", "").replace("resume_", "") or stem
@@ -55,7 +77,8 @@ def checkpoint_label(path: str) -> str:
 
     m = _RUN_DIR_RE.match(parent)
     if m:
-        return f"{m.group(1)}@{_steps_suffix(filename)}"
+        run_dir = os.path.dirname(os.path.abspath(path))
+        return f"{m.group(1)}@{_steps_suffix(filename, run_dir)}"
 
     stem = os.path.splitext(filename)[0]
     # A run directory that does not match the naming scheme still beats nothing, as long as it is

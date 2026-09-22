@@ -31,7 +31,7 @@ the outcome on the evidence available, which is the definition of no signal.
 > "Keep ref update freq at 200k. Unlike other changes, it didn't gave clear signal, so should stay
 > as experimental option to ablate later."
 
-So it stays at the 200,000 default, and E4-03-01 / E4-04-01 keep it -- which also keeps that pair
+So it stays at the 200,000 default, and E4-03-01@80M / E4-04-01 keep it -- which also keeps that pair
 a clean single-variable architecture A/B. **This flag is deliberately held constant, not
 corrected.** When the collapse sweep gets more seeds it is a candidate axis to vary on purpose,
 with both settings run against the same seeds rather than inferred across lineages.

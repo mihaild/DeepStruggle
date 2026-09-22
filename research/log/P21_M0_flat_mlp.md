@@ -37,7 +37,7 @@ is being beaten from both seats.
 |:---|---:|---:|
 | `M0` | **60,814** | `@160M` = **43.8 min** |
 | `E4-04-01` defaults | 14,057 | `@80M` = 94.9 min |
-| `E4-03-01` anchor | 11,732 | `@80M` = 113.6 min |
+| `E4-03-01@80M` anchor | 11,732 | `@80M` = 113.6 min |
 
 M0 runs **4.3x** the defaults and **5.2x** the anchor. So M0 wins that matchup using **46% of the
 GPU time**, and at the defaults' own 80M wall clock M0 could have run **346M steps** instead of

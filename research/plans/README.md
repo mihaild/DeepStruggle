@@ -112,7 +112,7 @@ running any of them.
 - **Architecture / matched control:** **M2d** — `--arch ladder --ladder-input-mode grouped
   --ladder-aggregation flatten --drop-static --per-entity-heads 64 --ladder-head-entities
   country`, with `--ladder-head-context` and `--ladder-head-static` both on. Its representative is
-  **seed 13** (`E4-08-13` at 80M, `E4-11-13` at 160M), chosen as the rung's median on *both*
+  **seed 13** (`E4-08-13@80M` at 80M, `E4-08-13@160M` at 160M), chosen as the rung's median on *both*
   budgets so it biases later comparisons in neither direction.
 - **Do not use seed 1 for a ladder arm.** It is the seed on which M2d collapses, and it already
   produced one published-then-withdrawn conclusion. Seeds 3 and 5 are clean for M2d at both

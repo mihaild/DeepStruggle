@@ -74,9 +74,11 @@ every later command quotes, so it is where the name has to be:
 
 `tools/train.py --run-name E3-12-21` builds it, validates it against the scheme, and records it
 in `metadata.json` as `run_name`. **The steps field is deliberately absent from the directory**:
-one directory holds every budget of a lineage — `p1_scalar_nofilter` holds 80M, 160M and 240M —
-so a steps field in the directory name is a claim that goes stale the first time the run is
-continued. Each snapshot's own filename carries its budget.
+a lineage's budgets outlive any one directory — `p1_scalar_nofilter` holds 80M, 160M and 240M in
+one, and on E4 each continuation leg is a new directory under the *same* short name (below) — so a
+steps field in the name is a claim that goes stale the first time the run is continued. Each
+snapshot's own filename, or for `snapshot_final.pt` its directory's `metadata.json`, carries its
+budget.
 
 Passing `--run-name` together with an `--output-dir` whose basename does not contain it is an
 error rather than a preference, because the quiet version of that writes one arm's weights into a
@@ -158,9 +160,49 @@ E4-08-03        a DIFFERENT seed (3), not a replicate
 Getting this wrong makes a replicate look like a new seed, which corrupts exactly the statistic a
 seed sweep exists to produce: `E4-08-07` and `E4-08-08` were launched as if they were seeds 7 and
 8 when both were seed 1 re-runs, and read naively that would have reported a collapse rate of 1
-in 7 rather than 1 in 5. They are recorded with their correct names in
+in 7 rather than 1 in 5. Their directories were renamed to `E4-08-01-2` and `E4-08-01-3` on
+2026-09-22, and they are recorded under those names in
 [`../log/P21_M2d_country_head_collapse.md`](../log/P21_M2d_country_head_collapse.md).
 
 A replicate is worth running when the question is reproducibility — whether a trajectory is
 determined by its seeded starting conditions. A new seed is worth running when the question is
 variance or rate. They are different experiments and the names should not blur them.
+
+## Continuing an arm keeps its name; branching it adds a suffix
+
+**A continuation is not a new attempt.** Taking an arm further on its own seed changes only the
+budget, so it keeps the short name and gets a new directory, `<short>_<timestamp>`, beside the
+old one:
+
+```
+E4-08-03_20260919_223012     0 →  80M
+E4-08-03_20260921_023139    80 → 160M   resumed from the 80M state, same seed
+E4-08-03_20260922_202204   160 → 240M
+```
+
+**A snapshot is named by its steps**: `E4-08-03@160M`, never `@final`. A run's last snapshot is
+`snapshot_final.pt` on disk, but "final" names a different budget in each directory of a lineage.
+`tools/lib/checkpoint_id.py` therefore labels it by the budget recorded in that directory's
+`metadata.json`.
+
+**A branch is a resume under a different seed.** It is a different experiment from its parent
+from the resume point onward, so it gets its own name: the parent, then `-<steps>M.<new seed>`.
+The suffix repeats for a branch of a branch:
+
+```
+E4-17-06                seed 6
+E4-17-06-50M.11         resumed from seed 6's 50M state under seed 11
+E4-17-06-5M.11-90M.07   ...and that branch resumed at 90M under seed 7
+```
+
+The separator is `.`, not `_`: the directory is `<short>_<timestamp>`, so an underscore inside the
+short name would make the directory ambiguous. `RUN_NAME_RE` in `ai/training/generic_trainer.py`
+enforces the whole grammar:
+
+```
+E<engine>-<attempt>-<seed>[-<replicate>][-<M>M.<seed>]...
+```
+
+Before this rule was applied, continuations and branches were given fresh attempt numbers
+(E4-11, 12, 19–22, 25). All of them were renamed into their lineages on 2026-09-22. The numbers
+are retired rather than reused, because reports written before the rename still use them.

@@ -12,7 +12,7 @@ Matched on everything except the network: both cold-started, both pooled (`--opp
 
 | arm | `identity_dim` | `per_entity_heads` | `graph_layers` | `self_transform` | steps/s |
 |:---|---:|---:|---:|:---|---:|
-| `E4-03-01` | 16 | 64 | 0 | yes | 11,756 |
+| `E4-03-01@80M` | 16 | 64 | 0 | yes | 11,756 |
 | `E4-04-01` | 0 | 0 | 2 | no | 14,057 |
 
 Both ran to 80,019,456 steps with the pool at capacity 12 and **no health alarm at any point**.
@@ -23,7 +23,7 @@ Round robin, 200 games per pair (100 per seat), τ=0.0, `HeuristicBot` anchored 
 
 | rank | model | Elo | vs `E4-04-01` | vs `HeuristicBot` |
 |---:|:---|---:|---:|---:|
-| 1 | **`E4-03-01`@80M** | **2149.9** | **94.0%** | 99.0% |
+| 1 | **`E4-03-01@80M`@80M** | **2149.9** | **94.0%** | 99.0% |
 | 2 | `E4-01-01`@240M | 1865.7 | 68.5% | 93.0% |
 | 3 | `E4-02-01`@320M | 1831.2 | 68.0% | — |
 | 4 | `E4-04-01`@80M | 1702.4 | — | 73.0% |
@@ -43,7 +43,7 @@ sharper policy win on temperature rather than strength. It made no difference he
 
 ## It also beats arms with four times the steps and a warm start
 
-| `E4-03-01`@80M vs | result |
+| `E4-03-01@80M`@80M vs | result |
 |:---|---:|
 | `E4-02-01`@**320M**, warm-started | **88.5%** |
 | `E4-01-01`@**240M**, warm-started | **81.5%** |
@@ -70,7 +70,7 @@ measurement — and the finding recorded as the arm being weak rather than fault
 
 ## Side balance
 
-`E4-03-01` is the most balanced arm in the record at **−1.0 pp** (95.2% as USSR, 96.2% as US)
+`E4-03-01@80M` is the most balanced arm in the record at **−1.0 pp** (95.2% as USSR, 96.2% as US)
 across all opponents. The others run +5.8 to +13.4 pp toward USSR. Side imbalance was a standing
 problem through the whole E3 ladder, so an architecture that is both much stronger *and* balanced
 is worth noting — but with one seed it is an observation, not a result.

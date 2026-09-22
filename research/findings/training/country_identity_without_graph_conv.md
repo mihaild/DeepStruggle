@@ -1,13 +1,13 @@
 # Country identity without graph convolution: a per-country bias that disambiguates 54 countries
 
 **2026-09-19.** Asked of the configuration `identity_dim=16, per_entity_heads=64,
-graph_layers=0, self_transform` — the one every late E3 arm used and the one `E4-03-01` is queued
+graph_layers=0, self_transform` — the one every late E3 arm used and the one `E4-03-01@80M` is queued
 to train. Measured on `E3-30-28`, which ran exactly that configuration and kept `snapshot_0s.pt`,
 so trained embeddings compare against their own initialisation rather than an assumed scale.
 
 **Lineage note.** Magnitudes below are E3's. They are reported because the mechanism question —
 does this pathway carry weight at all — is about architecture code shared by both lineages, and
-the configuration is identical. The E4 answer comes from `E4-03-01`.
+the configuration is identical. The E4 answer comes from `E4-03-01@80M`.
 
 ## Identity enters at three points, doing a different job in each
 
@@ -151,7 +151,7 @@ weight. It is not vestigial, and a run in that configuration is not equivalent t
 *dependence*, not *usefulness*. A network trained without identity might reach the same strength
 by other means.
 
-**`E4-03-01` vs `E4-04-01` will not settle it.** Those arms differ in **four** flags at once —
+**`E4-03-01@80M` vs `E4-04-01` will not settle it.** Those arms differ in **four** flags at once —
 `identity_dim`, `per_entity_heads`, `graph_layers`, `self_transform` — so no strength difference
 can be attributed to identity. Isolating it needs one further arm: `graph_layers=0` with
 `identity_dim=0` against the E4-03 configuration, and it is worth one 80M arm only if the

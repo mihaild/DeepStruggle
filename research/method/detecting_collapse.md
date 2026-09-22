@@ -199,7 +199,7 @@ arm, and is therefore the reference:
 | health alarms | none fired |
 
 Note how much of that is unremarkable: side balance never pinned once across 1,221 iterations,
-and `kl_div` stayed an order of magnitude below anything alarming. `E4-03-01` is the matched
+and `kl_div` stayed an order of magnitude below anything alarming. `E4-03-01@80M` is the matched
 cold-start arm and will be the second entry.
 
 ---

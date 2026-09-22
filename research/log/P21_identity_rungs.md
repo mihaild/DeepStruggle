@@ -53,10 +53,10 @@ the rating is the arbiter.
 
 | arm | seed | onset | pinned | min `adv_std_raw` |
 |:---|---:|---:|---:|---:|
-| `E4-17-03` | 3 | 109,969,408 | 21.0% | 0.0104 |
-| `E4-17-04` | 4 | 131,989,504 | 13.1% | 0.0223 |
+| `E4-17-03@160M` | 3 | 109,969,408 | 21.0% | 0.0104 |
+| `E4-17-04@160M` | 4 | 131,989,504 | 13.1% | 0.0223 |
 
-Both seeds are ones on which **M2d itself runs clean to 160M** (`E4-11-03`, `E4-11-04`: zero
+Both seeds are ones on which **M2d itself runs clean to 160M** (`E4-08-03@160M`, `E4-08-04@160M`: zero
 pinned rows each). Against a ~19%-by-160M base rate two collapses would be p ≈ 0.036, and that
 overstates the chance, because these are not random draws — they are seeds selected for being
 clean on the base architecture. A third seed (6, also clean for M2d) is running.
@@ -111,8 +111,8 @@ that has explained it at all.
   unchanged. Only deltas inside this JSON mean anything.
 * The 80M point of a cold 160M arm is that arm's own ~80M snapshot, sharing a byte-identical
   prefix with its 160M sibling. M2d's 160M arm is a *continuation*, so its 80M point is
-  `E4-08-03`'s final — the same lineage.
-* `E4-17-03@final` is in the field labelled COLLAPSED and is **not** M2.5b's strength at 160M.
+  `E4-08-03@80M`'s final — the same lineage.
+* `E4-17-03@160M` is in the field labelled COLLAPSED and is **not** M2.5b's strength at 160M.
   Protocol amendment 1 bars reading a collapsed arm as a strength measurement; it does not bar
   rating one to price what a collapse costs, which is what that row is for.
 * The anchor contributes two entrants, not three: it has one lineage and no second seed.

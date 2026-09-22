@@ -56,3 +56,28 @@ class TestUniqueness:
                 "/d/E4-02-01_20260919_040456/snapshot_150011904steps.pt",
                 "/other/E4-02-01_20260919_040456/snapshot_150011904steps.pt",
             ])
+
+
+class TestLineagesAndBranches:
+    def test_a_final_is_labelled_by_its_budget(self, tmp_path) -> None:
+        """One short name spans several budgets once a lineage is continued, so `@final` is
+        ambiguous; the run's recorded budget disambiguates it."""
+        import json
+        d = tmp_path / "E4-08-03_20260921_023139"
+        d.mkdir()
+        (d / "metadata.json").write_text(json.dumps({"train_steps": 160_000_000}))
+        assert checkpoint_label(str(d / "snapshot_final.pt")) == "E4-08-03@160M"
+
+    def test_replicate_and_branch_names_are_kept_whole(self) -> None:
+        assert checkpoint_label(
+            "/d/E4-08-01-2_20260920_004011/snapshot_80019456steps.pt") == "E4-08-01-2@80M"
+        assert checkpoint_label(
+            "/d/E4-17-06-50M.11_20260922_094429/snapshot_110034944steps.pt") \
+            == "E4-17-06-50M.11@110M"
+
+    def test_one_lineage_across_directories_does_not_clash(self) -> None:
+        assert unique_labels([
+            "/d/E4-08-03_20260919_223012/snapshot_80019456steps.pt",
+            "/d/E4-08-03_20260921_023139/snapshot_160038912steps.pt",
+            "/d/E4-08-03_20260922_202204/snapshot_240058368steps.pt",
+        ]) == ["E4-08-03@80M", "E4-08-03@160M", "E4-08-03@240M"]

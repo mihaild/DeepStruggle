@@ -169,7 +169,13 @@ GAME_STEMS: Tuple[str, ...] = (
 #: A run's short name is `<engine>-<attempt>-<seed>`, e.g. `E9-99-01`. A step budget is
 #: deliberately not part of it: one directory holds every budget of a lineage, and the budget is
 #: already in each snapshot's filename.
-RUN_NAME_RE: Final = re.compile(r"^E\d+-\d{2}-\d{2}$")
+#: Optional suffixes, from research/method/run_nomenclature.md:
+#:   -<n>            a same-seed REPLICATE                   E4-08-01-2
+#:   -<M>M.<seed>    a BRANCH resumed under a new seed,      E4-17-06-50M.11
+#:                   repeatable, one per branch point        E4-17-06-50M.11-90M.07
+#: A same-seed CONTINUATION takes no suffix: it keeps its lineage's name, and the budget is
+#: in each snapshot's filename.
+RUN_NAME_RE: Final = re.compile(r"^E\d+-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*$")
 
 
 def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],

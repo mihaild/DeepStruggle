@@ -581,13 +581,13 @@ ladder, because it looks like a result.
 Raised by the owner: an MLP will likely be faster than the current architecture at the same
 parameter count, so equal parameters is not equal compute.
 
-**It is a real effect, and now measured.** `E4-03-01` and `E4-04-01` differ only in the network,
+**It is a real effect, and now measured.** `E4-03-01@80M` and `E4-04-01` differ only in the network,
 so their throughput gap is exactly the architecture's compute cost:
 
 | arm | architecture | steps/s (median, post-warmup) | 80M costs |
 |:---|:---|---:|---:|
 | `E4-04-01` | defaults, `graph_layers=2` | **14,057** | 1.58 h |
-| `E4-03-01` | late-E3: identity + per-entity heads, `graph_layers=0` | **11,756** | 1.89 h |
+| `E4-03-01@80M` | late-E3: identity + per-entity heads, `graph_layers=0` | **11,756** | 1.89 h |
 
 **20% slower per step**, with under 2% spread across ~1,500 iterations. Note it has *no* graph
 convolution, so the cost is the per-entity heads and identity. An isolated forward-pass benchmark
@@ -644,11 +644,11 @@ as US.
 ```
 | arm                        |     Elo |  steps/s | USSR v prev | US v prev | USSR v anch | US v anch |
 |----------------------------|---------|----------|-------------|-----------|-------------|-----------|
-| E4-03-01@final             |  2179.5 |   11,732 |           — |         — |           — |         — |
-| E4-05-02@final  (M0 @160M) |  1813.3 |   60,814 |           — |         — |        9.0% |      9.0% |
-| E4-04-01@final             |  1706.9 |   14,057 |           — |         — |        3.0% |      9.0% |
+| E4-03-01@80M             |  2179.5 |   11,732 |           — |         — |           — |         — |
+| E4-05-02@160M  (M0 @160M) |  1813.3 |   60,814 |           — |         — |        9.0% |      9.0% |
+| E4-04-01@80M             |  1706.9 |   14,057 |           — |         — |        3.0% |      9.0% |
 | E4-05-02@80M    (M0 @80M)  |  1666.6 |   60,814 |           — |         — |        3.0% |      7.0% |
-| E4-05-01@final  (M0 @80M)  |  1650.0 |   63,187 |           — |         — |        8.0% |      5.0% |
+| E4-05-01@80M  (M0 @80M)  |  1650.0 |   63,187 |           — |         — |        8.0% |      5.0% |
 | HeuristicBot               |  1500.0 |        — |           — |         — |        1.0% |      1.0% |
 ```
 

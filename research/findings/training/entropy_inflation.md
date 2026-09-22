@@ -1,6 +1,6 @@
 # Entropy inflation — a second failure mode, and the detector is blind to it
 
-First observed 2026-09-21 in `E4-12-01`, the P21 anchor continued from 80M to 160M. It lost
+First observed 2026-09-21 in `E4-03-01@160M`, the P21 anchor continued from 80M to 160M. It lost
 **~330 Elo** while every collapse indicator this repository has stayed healthy.
 
 Companion to [`side_collapse.md`](side_collapse.md), which describes the *other* failure mode.
@@ -9,7 +9,7 @@ Measurements: `data/reports/P21_anchor_decline_trajectory.json`,
 
 ## What happened
 
-`E4-03-01` rated 2093.3 at 80M. Continued to 160M as `E4-12-01` it rated 1737.3 — level with the
+`E4-03-01@80M` rated 2093.3 at 80M. Continued to 160M as `E4-03-01@160M` it rated 1737.3 — level with the
 collapsed arms and with M1, two rungs below where it started. Rated again in a separate field
 against its own intermediate snapshots, the same fall appears as −330.5.
 
@@ -63,11 +63,11 @@ healthy arms, where a rise is transient:
 
 | arm | entropy start → mid → end | outcome |
 |:---|:---|:---|
-| anchor `E4-03-01`, 0–80M | 1.337 → 1.172 → 1.197 | healthy |
-| **anchor `E4-12-01`, 80–160M** | 1.273 → **1.957** → 1.724 | **−330 Elo** |
-| M2d s13 `E4-11-13`, 80–160M | 1.258 → 1.480 → 1.261 | +160 Elo |
-| M2d s3 `E4-11-03`, 80–160M | 1.197 → 1.343 → 1.331 | +123 Elo |
-| **M2d s14 `E4-11-14`, 80–160M** | 1.346 → 1.682 → **1.874** | **side collapse** |
+| anchor `E4-03-01@80M`, 0–80M | 1.337 → 1.172 → 1.197 | healthy |
+| **anchor `E4-03-01@160M`, 80–160M** | 1.273 → **1.957** → 1.724 | **−330 Elo** |
+| M2d s13 `E4-08-13@160M`, 80–160M | 1.258 → 1.480 → 1.261 | +160 Elo |
+| M2d s3 `E4-08-03@160M`, 80–160M | 1.197 → 1.343 → 1.331 | +123 Elo |
+| **M2d s14 `E4-08-14@160M`, 80–160M** | 1.346 → 1.682 → **1.874** | **side collapse** |
 
 The side-collapsed arm shows the same sustained inflation as the anchor. That suggests entropy
 inflation is the **more general indicator**, with the side collapse as one downstream

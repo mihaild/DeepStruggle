@@ -34,11 +34,21 @@ stays legible:
 | **E4-08** | **P21 rung M2d** — country head only. Also the **35-arm seed census** that measured the side collapse |
 | **E4-09** | **P21 rung M2e** — card head only |
 | **E4-10** | **collapse attribution** — `--seed` split into initialisation / sampling / deals / opponent-draw, one moved at a time |
-| **E4-11** | **M2d extensions**, 80M → 160M, continuing each clean `E4-08` arm from its own resume state |
-| **E4-12** | **the anchor continued to 160M** — the matched-steps arm for P21 |
 | **E4-13** | **P21 rung M2a** — head without trunk context |
 | **E4-14** | **P21 rung M2b** — head without the 11 per-type constants |
 | **E4-15** | **P21 rung M2c** — head with dynamic slots only |
+| **E4-16** | **P21 rung M2.5** — M2d plus a learned per-country identity vector |
+| **E4-17** | **P21 rung M2.5b** — identity replacing the 11 per-type constants; the ladder's reproducible collapse |
+| **E4-18** | **P21 rung M2.5c** — M2.5 plus the card head, with identity |
+| **E4-23** | **P22 width probe** — M2d at `entity_proj_dim` 512 |
+| **E4-24** | **P22-a** — M2d plus the identity-keyed card lookup |
+
+**A continuation is not an attempt.** Taking an arm further on the same seed keeps its name —
+`E4-08-03` covers 0–80M, 80–160M and 160–240M in three directories — so its snapshots read
+`E4-08-03@160M`, `E4-08-03@240M`. Attempt numbers 11, 12, 19, 20, 21, 22 and 25 were spent on
+continuations and branches before that rule was applied, and were **renamed on 2026-09-22** into
+the lineages they continue ([`method/run_nomenclature.md`](method/run_nomenclature.md)). They are
+retired rather than reused, because reports written before the rename still carry them.
 
 **E4-01 and E4-02 are the new baseline**, owner's decision 2026-09-19, and their architecture is
 *not* E3's. Both were launched with the bare defaults by mistake
@@ -72,26 +82,38 @@ having deliberately.
 |:---|:---|---:|:---|:---|
 | **E4-01-01** | unpooled: `frac 0.0`, `self_pool False` | 240M, aborted at 184M | `E4-01-01_20260919_003959` | [`log/E4_pool_starvation_recurrence.md`](log/E4_pool_starvation_recurrence.md) |
 | **E4-02-01** | pooled: `frac 0.3`, self-pool, capacity 12 | 240M, **complete** | `E4-02-01_20260919_040456` | [`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md) |
-| **E4-03-01** | late-E3 architecture, cold, pooled | 80M | `E4-03-01_20260919_140716` | [`log/E4_architecture_ab_result.md`](log/E4_architecture_ab_result.md) |
+| **E4-03-01@80M** | late-E3 architecture, cold, pooled | 80M | `E4-03-01_20260919_140716` | [`log/E4_architecture_ab_result.md`](log/E4_architecture_ab_result.md) |
 | **E4-04-01** | default architecture — E4-03's matched control | 80M | `E4-04-01_20260919_122721` | [`log/E4_architecture_ab_result.md`](log/E4_architecture_ab_result.md) |
 | **E4-05-01** | P21 M0, flat MLP | 80M | `E4-05-01_20260919_164141` | [`log/P21_M0_flat_mlp.md`](log/P21_M0_flat_mlp.md) |
 | **E4-06-01** | P21 M1, grouped projections | 80M | `E4-06-01_20260919_175806` | [`log/P21_M1_grouped.md`](log/P21_M1_grouped.md) |
 | **E4-07-01** | P21 M2, both per-entity heads | 80M | `E4-07-01_20260919_191647` | [`log/P21_M2_lookup.md`](log/P21_M2_lookup.md) |
-| **E4-08-01** | P21 M2d seed 1 — **collapsed**; produced a since-withdrawn conclusion | 80M | `E4-08-01_20260919_211756` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
+| **E4-08-01@80M** | P21 M2d seed 1 — **collapsed**; produced a since-withdrawn conclusion | 80M | `E4-08-01_20260919_211756` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
 | **E4-08-\*** | **sweep, 34 arms / 32 seeds** — the M2d seed census | 80M each | `E4-08-{01..35}_*` | [`findings/training/side_collapse.md`](findings/training/side_collapse.md) |
-| **E4-08-13** | the M2d **rung representative** — median of the rung at both budgets | 80M | `E4-08-13_20260920_080342` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
+| **E4-08-13@80M** | the M2d **rung representative** — median of the rung at both budgets | 80M | `E4-08-13_20260920_080342` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
 | **E4-09-01** | P21 M2e, card head only | 80M | `E4-09-01_20260919_215818` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
 | **E4-10-\*** | **sweep, 8 arms** — one seed stream moved at a time, both directions | 80M each | `E4-10-{01..08}_*` | [`log/E4_collapse_attribution.md`](log/E4_collapse_attribution.md) |
-| **E4-11-\*** | **sweep, 28 arms** — every non-collapsed M2d arm continued to 160M | 80M → 160M | `E4-11-*` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
-| **E4-11-14** | the **late collapse** — clean at 80M, collapsed at 106M, −249 Elo against its own 80M self | 160M | `E4-11-14_20260921_060659` | [`findings/training/side_collapse.md`](findings/training/side_collapse.md) |
-| **E4-12-01** | the anchor to 160M — **lost 356 Elo**, no detector fired | 160M | `E4-12-01_20260921_091750` | [`findings/training/entropy_inflation.md`](findings/training/entropy_inflation.md) |
+| **E4-08-\*@160M** | **sweep, 28 arms** — every non-collapsed M2d arm continued to 160M on its own seed | 80M → 160M | `E4-08-NN_20260921_*` | [`log/P21_M2d_160M_slope.md`](log/P21_M2d_160M_slope.md) |
+| **E4-08-{01,12,22,26}@160M** | collapse censoring test — four arms scored COLLAPSED at 80M, continued to see whether they recover | 80M → 160M | `E4-08-{01,12,22,26}_20260922_*` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
+| **E4-08-01-2**, **E4-08-01-3** | replicates of the collapsing seed 1 — byte-identical flags; `-3` also resumes every 5M | 80M | `E4-08-01-{2,3}_20260920_*` | [`log/P21_M2d_country_head_collapse.md`](log/P21_M2d_country_head_collapse.md) |
+| **E4-08-03@240M** | M2d seed 3 continued 160M → 240M — does plain training still add strength? | 160M → 240M | `E4-08-03_20260922_202204` | [`log/P21_M2d_240M.md`](log/P21_M2d_240M.md) |
+| **E4-08-14@240M** | the late collapse continued — censoring test; **never recovered** | 160M → 240M | `E4-08-14_20260922_123720` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
+| **E4-08-14@160M** | the **late collapse** — clean at 80M, collapsed at 106M, −249 Elo against its own 80M self | 160M | `E4-08-14_20260921_060659` | [`findings/training/side_collapse.md`](findings/training/side_collapse.md) |
+| **E4-03-01@160M** | the anchor to 160M — **lost 356 Elo**, no detector fired | 160M | `E4-03-01_20260921_091750` | [`findings/training/entropy_inflation.md`](findings/training/entropy_inflation.md) |
 | **E4-13-03/05** | P21 M2a — head without trunk context | 160M / 80M | `E4-13-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
 | **E4-14-03/05** | P21 M2b — head without the per-type constants | 160M / 80M | `E4-14-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
 | **E4-15-03/05** | P21 M2c — head with dynamic slots only | 160M / 80M | `E4-15-0{3,5}_*` | [`log/P21_M2abc_head_inputs.md`](log/P21_M2abc_head_inputs.md) |
+| **E4-16-03/05** | P21 M2.5 — M2d plus country identity | 160M / 80M | `E4-16-0{3,5}_*` | [`log/P21_identity_rungs.md`](log/P21_identity_rungs.md) |
+| **E4-18-03/05** | P21 M2.5c — identity plus the card head | 160M / 80M | `E4-18-0{3,5}_*` | [`log/P21_identity_rungs.md`](log/P21_identity_rungs.md) |
+| **E4-17-03/04/05/06** | P21 M2.5b — identity replacing the per-type constants; **entered a collapse on seeds 3, 4 and 6** (6 recovered by 73M) | 160M / 160M / 80M / 160M | `E4-17-0{3,4,5,6}_*` | [`log/P21_identity_rungs.md`](log/P21_identity_rungs.md) |
+| **E4-17-0{3,4}@240M** | censoring test — seed 3 **recovered**, seed 4 did not | 160M → 240M | `E4-17-0{3,4}_20260922_1*` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
+| **E4-17-06-5M.11**, **-5M.12** | branches of seed 6 from its **healthy** 5M state under new seeds 11 and 12 — does it still enter the collapse? **Neither did** | 5M → 60M | `E4-17-06-5M.1{1,2}_*` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
+| **E4-17-06-50M.11**, **-50M.12** | branches of seed 6 from **inside** its pin at 50M under new seeds 11 and 12 — does it escape? **Both did** | 50M → 110M | `E4-17-06-50M.1{1,2}_*` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
+| **E4-23-03/05** | P22 width probe — `entity_proj_dim` 256 → 512 | 160M / 80M | `E4-23-0{3,5}_*` | [`log/P22_width_probe_and_card_lookup.md`](log/P22_width_probe_and_card_lookup.md) |
+| **E4-24-03/05** | P22-a — identity-keyed card lookup | 160M / 80M | `E4-24-0{3,5}_*` | [`log/P22_width_probe_and_card_lookup.md`](log/P22_width_probe_and_card_lookup.md) |
 
-**Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 79
-distinct E4 run directories exist; 62 of them belong to the three sweeps above, and listing each
-would bury every other arm. Individual rows go to rung representatives and to anomalies — the
+**Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 111
+E4 run directories exist, under 75 short names — a continuation adds a directory, not a name — and
+listing each would bury every other arm. Individual rows go to rung representatives and to anomalies — the
 collapsed seed, the late collapse, the anchor that fell.
 
 **Seeds 3 and 5 are the ladder's working pair** from E4-13 onward, not seed 1. Both are clean for

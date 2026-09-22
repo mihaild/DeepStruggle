@@ -88,5 +88,5 @@ rates, but it is the first evidence bearing on whether the collapse is M2d-speci
   unchanged. Only deltas inside this JSON mean anything.
 * The 80M point of each 160M arm is that arm's own ~80M snapshot, so it shares a byte-identical
   prefix with its 160M sibling rather than being a separate run.
-* `E4-08-03`'s 42,268 steps/s is contention from the day it trained, not architecture; its
+* `E4-08-03@80M`'s 42,268 steps/s is contention from the day it trained, not architecture; its
   siblings run ~50,000.
