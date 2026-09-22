@@ -82,6 +82,69 @@ class TestItActuallyLooksUpLocation:
         assert with_id.cl_key.in_features == without.cl_key.in_features + 16
 
 
+class TestBothQuestionShapesAreAddressable:
+    """Keys carry the full row, so a query can match an identity OR a location.
+
+    These check the mechanism at INITIALISATION -- whether a query exists that reaches the
+    intended cards. Whether SGD finds it is what the arm measures. They are here because the
+    first build failed this: identity initialised at 0.02 against 0/1 row slots, ~50x smaller,
+    and a query built from card 12's own identity ranked it 107th of 110.
+    """
+
+    MY_HAND = 1
+    IS_SCORING = 12
+
+    def _rows(self) -> torch.Tensor:
+        rows = torch.zeros(1, 110, 14)
+        rows[0, :, 0] = 1.0                                  # everything in the deck
+        for c in (10, 11, 12):
+            rows[0, c, 0] = 0.0
+            rows[0, c, self.MY_HAND] = 1.0
+        rows[0, 12, self.IS_SCORING] = 1.0
+        return rows
+
+    def _rank(self, m, rows, q_in: torch.Tensor, target: int) -> int:
+        assert m.cl_identity is not None and m.cl_key is not None
+        ident = m.cl_identity.detach()
+        keys = m.cl_key(torch.cat([ident.unsqueeze(0), rows], dim=-1))
+        nh, dk = m.card_lookup_heads, m.card_lookup_dim
+        kh = keys.view(1, 110, nh, dk).transpose(1, 2)
+        qh = m.cl_key(q_in).view(1, 1, nh, dk).transpose(1, 2)
+        w = torch.softmax((qh @ kh.transpose(-2, -1)) / (dk ** 0.5), dim=-1)[0, :, 0, :].mean(0)
+        return int((w > w[target]).sum().item())
+
+    def test_an_identity_query_reaches_its_own_card(self) -> None:
+        """Uniform attention would rank it ~55th of 110."""
+        rows = self._rows()
+        ranks = []
+        for seed in range(8):
+            torch.manual_seed(seed)
+            m = create_ladder_net("cpu", **BASE, **LOOKUP).eval()
+            assert m.cl_identity is not None
+            q = torch.cat([m.cl_identity.detach()[12].view(1, 1, -1), torch.zeros(1, 1, 14)],
+                          dim=-1)
+            ranks.append(self._rank(m, rows, q, 12))
+        assert max(ranks) <= 10, f"identity addressing is not working: ranks {ranks}"
+
+    def test_a_location_query_reaches_the_hand(self) -> None:
+        """This is the question that was impossible before location entered the keys: with it
+        only in the values there is nothing for a location query to match against."""
+        rows = self._rows()
+        ranks = []
+        for seed in range(8):
+            torch.manual_seed(seed)
+            m = create_ladder_net("cpu", **BASE, **LOOKUP).eval()
+            q = torch.zeros(1, 1, 16 + 14)
+            q[0, 0, 16 + self.MY_HAND] = 1.0
+            ranks.append(self._rank(m, rows, q, 12))      # 12 is one of the three hand cards
+        assert max(ranks) <= 4, f"location addressing is not working: ranks {ranks}"
+
+    def test_keys_carry_location(self) -> None:
+        m = create_ladder_net("cpu", **BASE, **LOOKUP)
+        assert m.cl_key is not None
+        assert m.cl_key.in_features == 16 + 14, "keys must carry the FULL row, location included"
+
+
 class TestConfigSurvivesTheCheckpoint:
     def test_config_is_recovered_from_weights(self) -> None:
         """Checkpoints here are bare state dicts and the architecture is detected by weight name.

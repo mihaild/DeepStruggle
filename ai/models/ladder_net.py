@@ -230,16 +230,28 @@ class LadderNet(ColdWarNetV2):
                     f"card_lookup needs positive heads and dim, got "
                     f"{self.card_lookup_heads} and {self.card_lookup_dim}.")
             hk = self.card_lookup_heads * self.card_lookup_dim
-            n_props = self.card_features - len(CARD_LOCATION_SLOTS)      # 14 - 8 = 6
             if self.card_lookup_identity_dim:
                 # Identity is what makes a card addressable. Without it, Europe Scoring and Asia
                 # Scoring are identical on every property -- same ops, same era, both scoring --
                 # so a query retrieves an average over the cards it needed to tell apart. The
                 # identity-free variant is kept reachable because it is the ablation that
                 # attributes the gain, not because it is expected to work.
+                # Scaled to UNIT expected norm, not the usual small embedding init. The keys
+                # concatenate identity with the raw row, whose slots are 0/1 with a norm around
+                # 1.5, so an identity at 0.02 is ~50x smaller and simply invisible beside them:
+                # at that scale a query built from card 12's own identity ranked it 107th of 110.
+                # At 1/sqrt(d) it ranks 1st. Training could in principle grow the embedding, but
+                # starting a mechanism in a regime where it cannot be used is not a fair test of
+                # it.
                 self.cl_identity = nn.Parameter(
-                    torch.randn(110, self.card_lookup_identity_dim) * 0.02)
-            self.cl_key = nn.Linear(self.card_lookup_identity_dim + n_props, hk)
+                    torch.randn(110, self.card_lookup_identity_dim)
+                    / (self.card_lookup_identity_dim ** 0.5))
+            # Keys carry the FULL row, location included, not just the properties. With location
+            # only in the values the query can ask "where is card X" but cannot select BY
+            # location, so "do I hold cards like Y" is inexpressible -- the query has nothing to
+            # match a location against. Both query types need it, so it appears in keys and
+            # values alike.
+            self.cl_key = nn.Linear(self.card_lookup_identity_dim + self.card_features, hk)
             self.cl_value = nn.Linear(self.card_features, hk)
             # Queried from the PRE-fusion vector, not the trunk: the output is concatenated into
             # fusion_in's input, so querying the trunk would be circular.
@@ -285,20 +297,26 @@ class LadderNet(ColdWarNetV2):
                      b: int) -> torch.Tensor:
         """Content-addressed retrieval over the 110 card rows.
 
-        Answers "where is the card I am asking about", where the question is state-dependent: the
-        query comes from `pre`, so the lookup can be conditional -- *Europe is negative, therefore
-        check Europe Scoring* -- rather than computing all 110 lookups unconditionally the way the
-        dense card projection does.
+        Keys and values both carry the full row, so two question shapes are expressible:
+
+          * **where is card X** -- the query matches an identity, and the retrieved value's
+            location slots answer it;
+          * **do I hold cards like Y** -- the query matches a location together with properties,
+            which needs location in the KEYS; with it only in the values there is nothing for a
+            query to select on.
+
+        The query comes from `pre`, so either question is conditional on state -- *Europe is
+        negative, therefore check Europe Scoring* -- where the dense card projection computes
+        every lookup unconditionally.
         """
         assert self.cl_key is not None and self.cl_value is not None
         assert self.cl_query is not None and self.cl_out is not None
         rows = card_raw.view(b, 110, self.card_features)
-        props = rows[:, :, len(CARD_LOCATION_SLOTS):]                 # (B,110,6)
         if self.cl_identity is not None:
             ident = self.cl_identity.unsqueeze(0).expand(b, -1, -1)
-            k_in = torch.cat([ident, props], dim=-1)
+            k_in = torch.cat([ident, rows], dim=-1)
         else:
-            k_in = props
+            k_in = rows
         nh, dk = self.card_lookup_heads, self.card_lookup_dim
         k = self.cl_key(k_in).view(b, 110, nh, dk).transpose(1, 2)    # (B,nh,110,dk)
         v = self.cl_value(rows).view(b, 110, nh, dk).transpose(1, 2)  # (B,nh,110,dk)
