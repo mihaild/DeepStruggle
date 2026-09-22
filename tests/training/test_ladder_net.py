@@ -32,7 +32,11 @@ def rung(**over):
     cfg.update(input_mode="entity", aggregation="flatten", entity_dim=D,
                card_self_attention=False, cross_attention=False,
                per_entity_heads=0, head_context=True, head_static=True,
-               head_entities="both", identity_dim=0, drop_static=False)
+               head_entities="both", identity_dim=0, drop_static=False,
+               # P22. Off here so every existing rung keeps its shape; the lookup has its own
+               # suite in test_card_lookup.py.
+               card_lookup=False, card_lookup_heads=0, card_lookup_dim=0,
+               card_lookup_identity_dim=0)
     cfg.update(over)
     return LadderNet(**cfg)
 

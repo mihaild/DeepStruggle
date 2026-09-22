@@ -23,6 +23,9 @@ _LADDER_REQUIRED = ("ladder_input_mode", "ladder_aggregation", "ladder_entity_di
                     "ladder_entity_proj_dim", "ladder_hidden_dim", "ladder_res_blocks")
 #: Required in addition, but only when the rung actually has per-entity heads.
 _LADDER_HEAD_REQUIRED = ("ladder_head_context", "ladder_head_static", "ladder_head_entities")
+#: Required in addition, but only when the P22 card lookup is switched on.
+_LADDER_LOOKUP_REQUIRED = ("ladder_card_lookup_heads", "ladder_card_lookup_dim",
+                           "ladder_card_lookup_identity_dim")
 
 
 def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
@@ -34,7 +37,9 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
     """
     if args.arch != "ladder":
         for name in (_LADDER_REQUIRED + _LADDER_HEAD_REQUIRED
-                     + ("ladder_card_self_attention", "ladder_cross_attention")):
+                     + ("ladder_card_self_attention", "ladder_cross_attention",
+                        "ladder_card_lookup", "ladder_card_lookup_heads",
+                        "ladder_card_lookup_dim", "ladder_card_lookup_identity_dim")):
             if getattr(args, name, None) is not None:
                 raise SystemExit(
                     f"--{name.replace('_', '-')} was given but --arch is {args.arch!r}. "
@@ -44,6 +49,8 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
     required = list(_LADDER_REQUIRED)
     if int(args.per_entity_heads):
         required += list(_LADDER_HEAD_REQUIRED)
+    if args.ladder_card_lookup:
+        required += list(_LADDER_LOOKUP_REQUIRED)
     missing = [n for n in required if getattr(args, n, None) is None]
     if missing:
         raise SystemExit(
@@ -68,6 +75,11 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         hidden_dim=int(args.ladder_hidden_dim),
         num_res_blocks=int(args.ladder_res_blocks),
         num_attn_heads=4,
+        card_lookup=bool(args.ladder_card_lookup),
+        # Inert when the lookup is off, and LadderNet never reads them in that case.
+        card_lookup_heads=int(args.ladder_card_lookup_heads or 0),
+        card_lookup_dim=int(args.ladder_card_lookup_dim or 0),
+        card_lookup_identity_dim=int(args.ladder_card_lookup_identity_dim or 0),
     )
 
 
@@ -135,6 +147,26 @@ def build_parser() -> argparse.ArgumentParser:
     lad.add_argument("--no-ladder-head-static", dest="ladder_head_static",
                      action="store_false",
                      help="Per-entity head sees only the dynamic slots.")
+    lad.add_argument("--ladder-card-lookup", dest="ladder_card_lookup",
+                     action="store_true", default=None,
+                     help="P22: identity-keyed lookup over the raw card rows. Keys are a learned\n"
+                          "per-card identity plus the six property slots; values are the full row,\n"
+                          "so what is retrieved is the card's LOCATION. The query comes from the\n"
+                          "pre-fusion vector, which makes the lookup conditional -- 'Europe is\n"
+                          "negative, therefore check Europe Scoring' -- where the dense card\n"
+                          "projection computes every lookup unconditionally.")
+    lad.add_argument("--no-ladder-card-lookup", dest="ladder_card_lookup",
+                     action="store_false", help="Disable the card lookup (the default).")
+    lad.add_argument("--ladder-card-lookup-heads", type=int, default=None,
+                     help="Attention heads for the card lookup.")
+    lad.add_argument("--ladder-card-lookup-dim", type=int, default=None,
+                     help="Per-head key/value width for the card lookup.")
+    lad.add_argument("--ladder-card-lookup-identity-dim", type=int, default=None,
+                     help="Learned identity width in the lookup KEYS. 0 addresses cards by\n"
+                          "property alone, which cannot separate Europe Scoring from Asia\n"
+                          "Scoring -- identical ops, era and is_scoring -- so a query returns an\n"
+                          "average over the cards it needed to tell apart. Kept reachable as the\n"
+                          "ablation that attributes the gain, not as a variant expected to work.")
     lad.add_argument("--ladder-head-entities", type=str, default=None,
                      choices=["both", "country", "card"],
                      help="Which per-entity heads exist. The card-collision finding predicts "

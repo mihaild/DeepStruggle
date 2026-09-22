@@ -64,6 +64,10 @@ class LadderNet(ColdWarNetV2):
                  head_static: bool,
                  head_entities: str,
                  identity_dim: int,
+                 card_lookup: bool,
+                 card_lookup_heads: int,
+                 card_lookup_dim: int,
+                 card_lookup_identity_dim: int,
                  drop_static: bool,
                  hidden_dim: int,
                  num_res_blocks: int,
@@ -209,6 +213,40 @@ class LadderNet(ColdWarNetV2):
                 self.lad_cross = _mlp(card_agg, p)
             fused_width = (3 if self.cross_attention else 2) * p + 128
 
+        # P22: identity-keyed card lookup. A parallel path over the RAW card rows -- the trunk's
+        # own card projection is untouched, so this adds a mechanism rather than replacing one.
+        self.card_lookup = bool(card_lookup)
+        self.card_lookup_heads = int(card_lookup_heads)
+        self.card_lookup_dim = int(card_lookup_dim)
+        self.card_lookup_identity_dim = int(card_lookup_identity_dim)
+        self.cl_identity: nn.Parameter | None = None
+        self.cl_key: nn.Linear | None = None
+        self.cl_value: nn.Linear | None = None
+        self.cl_query: nn.Linear | None = None
+        self.cl_out: nn.Linear | None = None
+        if self.card_lookup:
+            if self.card_lookup_heads <= 0 or self.card_lookup_dim <= 0:
+                raise ValueError(
+                    f"card_lookup needs positive heads and dim, got "
+                    f"{self.card_lookup_heads} and {self.card_lookup_dim}.")
+            hk = self.card_lookup_heads * self.card_lookup_dim
+            n_props = self.card_features - len(CARD_LOCATION_SLOTS)      # 14 - 8 = 6
+            if self.card_lookup_identity_dim:
+                # Identity is what makes a card addressable. Without it, Europe Scoring and Asia
+                # Scoring are identical on every property -- same ops, same era, both scoring --
+                # so a query retrieves an average over the cards it needed to tell apart. The
+                # identity-free variant is kept reachable because it is the ablation that
+                # attributes the gain, not because it is expected to work.
+                self.cl_identity = nn.Parameter(
+                    torch.randn(110, self.card_lookup_identity_dim) * 0.02)
+            self.cl_key = nn.Linear(self.card_lookup_identity_dim + n_props, hk)
+            self.cl_value = nn.Linear(self.card_features, hk)
+            # Queried from the PRE-fusion vector, not the trunk: the output is concatenated into
+            # fusion_in's input, so querying the trunk would be circular.
+            self.cl_query = nn.Linear(fused_width, hk)
+            self.cl_out = nn.Linear(hk, hk)
+            fused_width += hk
+
         self.fusion_in = nn.Sequential(
             nn.Linear(fused_width, hidden_dim), nn.LayerNorm(hidden_dim), nn.GELU())
 
@@ -242,6 +280,32 @@ class LadderNet(ColdWarNetV2):
                 nn.init.zeros_(out.weight)
                 nn.init.zeros_(out.bias)
 
+
+    def _card_lookup(self, card_raw: torch.Tensor, pre: torch.Tensor,
+                     b: int) -> torch.Tensor:
+        """Content-addressed retrieval over the 110 card rows.
+
+        Answers "where is the card I am asking about", where the question is state-dependent: the
+        query comes from `pre`, so the lookup can be conditional -- *Europe is negative, therefore
+        check Europe Scoring* -- rather than computing all 110 lookups unconditionally the way the
+        dense card projection does.
+        """
+        assert self.cl_key is not None and self.cl_value is not None
+        assert self.cl_query is not None and self.cl_out is not None
+        rows = card_raw.view(b, 110, self.card_features)
+        props = rows[:, :, len(CARD_LOCATION_SLOTS):]                 # (B,110,6)
+        if self.cl_identity is not None:
+            ident = self.cl_identity.unsqueeze(0).expand(b, -1, -1)
+            k_in = torch.cat([ident, props], dim=-1)
+        else:
+            k_in = props
+        nh, dk = self.card_lookup_heads, self.card_lookup_dim
+        k = self.cl_key(k_in).view(b, 110, nh, dk).transpose(1, 2)    # (B,nh,110,dk)
+        v = self.cl_value(rows).view(b, 110, nh, dk).transpose(1, 2)  # (B,nh,110,dk)
+        q = self.cl_query(pre).view(b, nh, 1, dk)                     # (B,nh,1,dk)
+        w = torch.softmax((q @ k.transpose(-2, -1)) / (dk ** 0.5), dim=-1)
+        return self.cl_out((w @ v).view(b, nh * dk))
+
     # ------------------------------------------------------------------ config
 
     def ladder_config(self) -> Dict[str, Any]:
@@ -262,6 +326,10 @@ class LadderNet(ColdWarNetV2):
             head_static=self.head_static,
             head_entities=self.head_entities,
             identity_dim=self.identity_dim,
+            card_lookup=self.card_lookup,
+            card_lookup_heads=self.card_lookup_heads,
+            card_lookup_dim=self.card_lookup_dim,
+            card_lookup_identity_dim=self.card_lookup_identity_dim,
             drop_static=self.drop_static,
             hidden_dim=self.ladder_hidden_dim,
             num_res_blocks=len(self.res_blocks),
@@ -340,7 +408,10 @@ class LadderNet(ColdWarNetV2):
                 board_raw, 1, cast(torch.Tensor, self.board_keep_idx)))
             e_card = self.lad_card(torch.index_select(
                 card_raw, 1, cast(torch.Tensor, self.card_keep_idx)))
-            h = self.fusion_in(torch.cat([e_board, e_card, self.global_proj(glob)], dim=-1))
+            pre = torch.cat([e_board, e_card, self.global_proj(glob)], dim=-1)
+            if self.card_lookup:
+                pre = torch.cat([pre, self._card_lookup(card_raw, pre, b)], dim=-1)
+            h = self.fusion_in(pre)
             if self.raw_tokens:
                 # The tokens are the raw slots themselves. `_policy_logits` concatenates
                 # (token, raw, trunk context); with raw tokens the first two would be the same
@@ -396,6 +467,12 @@ class LadderNet(ColdWarNetV2):
         if return_attn_weights:
             return h, attn
         return h
+
+
+#: Slots 0..7 of a card row are the location one-hot; 8..13 are ops, rel_side, era, one_time,
+#: is_scoring and ACTIVE_CARD. The split is what makes a lookup natural: 8..13 say what a card IS
+#: (key material), 0..7 say where it currently is (the value being retrieved).
+CARD_LOCATION_SLOTS: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6, 7)
 
 
 def _mlp(in_width: int, out_width: int) -> nn.Sequential:
@@ -472,6 +549,25 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
     # these, so they must be recovered as the canonical values rather than inferred from weights
     # that were never built.
     head_context = pe is not None                      # pe_trunk exists only with a context
+    # P22 card lookup. Recovered from shapes like everything else: cl_key exists iff the lookup
+    # is built, cl_out is square at heads*dim, and the identity width is cl_key's input minus the
+    # six property slots. A saved config could disagree with the weights; shapes cannot.
+    cl_key = sd.get("cl_key.weight")
+    if cl_key is not None:
+        card_lookup = True
+        hk = int(sd["cl_out.weight"].shape[0])
+        cl_ident = sd.get("cl_identity")
+        card_lookup_identity_dim = int(cl_ident.shape[1]) if cl_ident is not None else 0
+        n_props = int(cl_key.shape[1]) - card_lookup_identity_dim
+        # heads*dim is recoverable but not their factorisation; dim is pinned by convention to
+        # the value the ladder uses, and heads follow. Recorded in metadata either way.
+        card_lookup_dim = 32 if hk % 32 == 0 else hk
+        card_lookup_heads = hk // card_lookup_dim
+        del n_props
+    else:
+        card_lookup = False
+        card_lookup_heads = card_lookup_dim = card_lookup_identity_dim = 0
+
     identity_dim = int(ident.shape[1]) if ident is not None else 0
     per_entity_heads = (int(pe.shape[0]) if pe is not None
                         else int(sd["pe_country.0.weight"].shape[0]) if has_country
@@ -502,6 +598,10 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         head_static=head_static,
         head_entities=head_entities,
         identity_dim=identity_dim,
+        card_lookup=card_lookup,
+        card_lookup_heads=card_lookup_heads,
+        card_lookup_dim=card_lookup_dim,
+        card_lookup_identity_dim=card_lookup_identity_dim,
         drop_static=drop_static,
         hidden_dim=hidden_dim,
         num_res_blocks=len(blocks),
