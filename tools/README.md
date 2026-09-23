@@ -205,6 +205,28 @@ and one that ran to turn 7 AR7 are the same number -- and which carries an artef
 its range: `finish_end_turn` increments the turn and only then tests `turn <= 10`, so a completed
 game terminates holding turn **11** where a human replay log calls it turn 10.
 
+**Per-seat signal, for side collapse.** A collapse is one seat losing nearly every self-play
+game. Then its advantages shrink, its policy gradient fades, and the entropy bonus acts almost alone.
+So the advantage statistics are also logged before normalisation, split by acting seat
+(`adv_mean_us/ussr`, `adv_std_us/ussr`, `adv_n_us/ussr`), next to the learner's policy entropy
+per seat (`entropy_us/ussr`). A collapsing seat shows up as its `adv_std_*` falling away from the
+other seat's while its `entropy_*` rises.
+
+Two opt-in levers act on that signal. Both are off by default, and off means the draws and updates
+of a run without them are unchanged:
+
+* `--seat-balance` (with `--seat-balance-max-frac`, default 0.8) tracks the self-play US win share
+  `sp_us`. It sets pressure = min(1, |sp_us - 0.5| / 0.3) and then:
+  * puts the learner on the losing seat with probability 0.5 + 0.4 x pressure;
+  * raises the fraction of pool (mixed) envs toward the max fraction;
+  * draws opponents by PFSP x(1-x) on that seat's own record against each member.
+
+  It logs `opp_seat_sp_us`, `opp_seat_pressure`, `opp_seat_weak_is_us` and
+  `opp_seat_learner_on_weak`, and the startup banner reports `seat-balance=on`.
+* `--per-seat-adv-norm` normalises each seat's advantages by that seat's own mean and std, instead
+  of one shared mean and std. The losing seat's smaller spread then keeps unit scale rather than
+  being divided down by the winning seat's.
+
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and
 position diagnostics. Snapshot *opponents* are deliberately excluded: they are renamed every

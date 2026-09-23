@@ -73,7 +73,8 @@ class OpponentPool:
                  seed: int = 0, lock_learner_side: Optional[int] = None,
                  capacity: int = 12, pfsp: bool = False, pfsp_weighting: str = "var",
                  pfsp_uniform_mix: float = 0.25, pfsp_prior: float = 4.0,
-                 merged: Optional[Sequence[bool]] = None) -> None:
+                 merged: Optional[Sequence[bool]] = None,
+                 seat_balance: bool = False, seat_balance_max_frac: float = 0.8) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -125,6 +126,20 @@ class OpponentPool:
         #: which is what the single-frozen-opponent experiment wants.
         self.lock_learner_side = lock_learner_side
 
+        #: Seat balancing (--seat-balance). A side collapse is a loop with no signal in it: the
+        #: seat that falls behind loses almost every self-play game, its advantages flatten, the
+        #: entropy bonus acts alone and it falls further behind. Under balancing, the further the
+        #: self-play win rate drifts from even, the more games the WEAK seat plays -- as the learner,
+        #: in mixed envs, against pool members it beats about half the time -- so it keeps getting
+        #: winnable games and therefore a gradient. Off by default: everything below is inert.
+        self.seat_balance = bool(seat_balance)
+        self.seat_balance_max_frac = max(float(frac), float(seat_balance_max_frac))
+        #: Moving average of the learner's self-play US win rate; 0.5 is even.
+        self.sp_us = 0.5
+        #: Learner wins and games against each opponent id, per learner side (+1 US, -1 USSR).
+        self.side_wins: Dict[tuple, float] = {}
+        self.side_games: Dict[tuple, float] = {}
+
         n_mixed = int(round(num_envs * frac))
         #: True where the learner faces a frozen opponent rather than itself.
         self.is_mixed = np.zeros(num_envs, dtype=bool)
@@ -156,6 +171,34 @@ class OpponentPool:
         n = self.games.get(oid, 0.0) + 2.0 * self.pfsp_prior
         return w / n
 
+    # ---- seat balancing ------------------------------------------------------------------------
+
+    def observe_selfplay(self, us_wins: float, games: float) -> None:
+        """Fold one iteration's self-play results into the side-balance average."""
+        if games <= 0:
+            return
+        alpha = min(1.0, games / 400.0)  # a few hundred games per iteration moves it quickly
+        self.sp_us = (1.0 - alpha) * self.sp_us + alpha * (us_wins / games)
+
+    def weak_side(self) -> int:
+        """The seat the learner is currently losing with in self-play: +1 US, -1 USSR."""
+        return 1 if self.sp_us < 0.5 else -1
+
+    def pressure(self) -> float:
+        """0 at an even self-play split, rising to 1 at 20/80 or worse."""
+        return min(1.0, abs(self.sp_us - 0.5) / 0.3)
+
+    def side_win_rate(self, oid: int, side: int) -> float:
+        """The learner's smoothed win rate against one opponent while playing `side`."""
+        w = self.side_wins.get((oid, side), 0.0) + self.pfsp_prior
+        n = self.side_games.get((oid, side), 0.0) + 2.0 * self.pfsp_prior
+        return w / n
+
+    def _draw_mixed(self) -> bool:
+        """Whether an env's next episode is learner-vs-pool, under seat balancing."""
+        frac = self.frac + (self.seat_balance_max_frac - self.frac) * self.pressure()
+        return self.rng.random() < frac
+
     def sampling_probs(self) -> List[float]:
         """The draw distribution over the pool, in `self.nets` order.
 
@@ -167,6 +210,18 @@ class OpponentPool:
         m = len(self.nets)
         if m == 0:
             return []
+        if self.seat_balance and self.pressure() > 0.0:
+            # Opponents the weak seat beats about half the time: an easy opponent gives it wins
+            # to learn from, a hard one losses, and x(1-x) prefers the ones where the outcome is
+            # actually in doubt -- the games that carry a gradient. The uniform floor keeps every
+            # member in play, as under PFSP.
+            weak = self.weak_side()
+            raw = [self.side_win_rate(oid, weak) * (1.0 - self.side_win_rate(oid, weak)) for oid in self.ids]
+            total = sum(raw)
+            u = self.pfsp_uniform_mix
+            if total > 0.0:
+                return [(1.0 - u) * (r / total) + u / m for r in raw]
+            return [1.0 / m] * m
         if not self.pfsp:
             return [1.0 / m] * m
         raw: List[float] = []
@@ -182,6 +237,11 @@ class OpponentPool:
     def _draw_side(self) -> int:
         if self.lock_learner_side is not None:
             return int(self.lock_learner_side)
+        if self.seat_balance:
+            # Up to 90% of mixed episodes on the weak seat at full pressure; 50/50 when even.
+            weak = self.weak_side()
+            p_weak = 0.5 + 0.4 * self.pressure()
+            return weak if self.rng.random() < p_weak else -weak
         return 1 if self.rng.random() < 0.5 else -1
 
     def add(self, net: Any, steps: int, merged: bool = False) -> None:
@@ -233,7 +293,7 @@ class OpponentPool:
         whichever snapshot happened to be current when it ended would be wrong most of the time.
         """
         probs = self.sampling_probs()
-        if self.pfsp and probs:
+        if (self.pfsp or (self.seat_balance and self.pressure() > 0.0)) and probs:
             idx = self._weighted_index(probs)
         else:
             idx = self.rng.randrange(len(self.nets))
@@ -281,7 +341,17 @@ class OpponentPool:
                     w = share / total
                     self.games[oid] += w
                     self.wins[oid] += w * score
+                    key = (oid, side)
+                    self.side_games[key] = self.side_games.get(key, 0.0) + w
+                    self.side_wins[key] = self.side_wins.get(key, 0.0) + w * score
         self._exposure[env_index] = {}
+        if self.seat_balance:
+            # Mixed or self-play is re-drawn only at an episode boundary, so a game is never
+            # half one and half the other. A newly mixed env starts its exposure to the current
+            # opponent now rather than at the next iteration.
+            self.is_mixed[env_index] = self._draw_mixed()
+            if self.is_mixed[env_index]:
+                self._exposure[env_index][self.current_id] = 1.0
         self.learner_side[env_index] = self._draw_side()
 
     def state_dict(self) -> Dict[str, Any]:
@@ -303,6 +373,10 @@ class OpponentPool:
             "wins": {int(k): float(v) for k, v in self.wins.items()},
             "games": {int(k): float(v) for k, v in self.games.items()},
             "rng_state": self.rng.getstate(),
+            # Seat balancing's record, as [oid, side, value] rows (tuple keys do not serialise).
+            "sp_us": float(self.sp_us),
+            "side_wins": [[int(o), int(s), float(v)] for (o, s), v in self.side_wins.items()],
+            "side_games": [[int(o), int(s), float(v)] for (o, s), v in self.side_games.items()],
         }
 
     def load_state_dict(self, blob: Dict[str, Any], loaded_steps: Sequence[int]) -> None:
@@ -332,6 +406,9 @@ class OpponentPool:
         for oid in self.ids:
             self.wins.setdefault(oid, 0.0)
             self.games.setdefault(oid, 0.0)
+        self.sp_us = float(blob.get("sp_us", 0.5))
+        self.side_wins = {(int(o), int(s)): float(v) for o, s, v in blob.get("side_wins", []) if int(o) in keep}
+        self.side_games = {(int(o), int(s)): float(v) for o, s, v in blob.get("side_games", []) if int(o) in keep}
         rng = blob.get("rng_state")
         if rng is not None:
             try:
@@ -381,6 +458,13 @@ class OpponentPool:
             ent = -sum(q * math.log(q) for q in probs if q > 0.0)
             out["opp_pfsp_entropy"] = float(ent / math.log(len(probs))) if len(probs) > 1 else 1.0
             out["opp_pfsp_max_prob"] = float(max(probs))
+        if self.seat_balance:
+            out["opp_seat_sp_us"] = float(self.sp_us)
+            out["opp_seat_pressure"] = float(self.pressure())
+            out["opp_seat_weak_is_us"] = float(self.weak_side() == 1)
+            mixed = self.is_mixed
+            if mixed.any():
+                out["opp_seat_learner_on_weak"] = float((self.learner_side[mixed] == self.weak_side()).mean())
         return out
 
 

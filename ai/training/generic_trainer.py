@@ -1321,6 +1321,9 @@ def train_pipeline(
     opponent_pfsp: bool = False,
     opponent_pfsp_weighting: str = "var",
     opponent_pfsp_uniform_mix: float = 0.25,
+    seat_balance: bool = False,
+    seat_balance_max_frac: float = 0.8,
+    per_seat_adv_norm: bool = False,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1502,6 +1505,9 @@ def train_pipeline(
         "eval_opponents": list(eval_opponents or []),
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
+        "seat_balance": bool(seat_balance),
+        "seat_balance_max_frac": float(seat_balance_max_frac),
+        "per_seat_adv_norm": bool(per_seat_adv_norm),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
         "merged_influence_from_step": int(merged_from_step),
@@ -1645,6 +1651,7 @@ def train_pipeline(
         setup_explore_frac=setup_explore_frac,
         rollout_temps=rollout_temps,
         merged_influence=merged_influence,
+        per_seat_adv_norm=per_seat_adv_norm,
         device=dev,
     )
 
@@ -1758,6 +1765,8 @@ def train_pipeline(
             pfsp_weighting=opponent_pfsp_weighting,
             pfsp_uniform_mix=opponent_pfsp_uniform_mix,
             merged=_seed_merged,
+            seat_balance=seat_balance,
+            seat_balance_max_frac=seat_balance_max_frac,
         )
         if any(_seed_merged) or merged_influence:
             print(f"[opponent pool] action views (P23): learner "
@@ -1772,7 +1781,10 @@ def train_pipeline(
               f"self-growing={bool(opponent_self_pool)}, learner side="
               f"{opponent_lock_side or 'alternating'}, "
               f"draw={'PFSP-' + opponent_pfsp_weighting if opponent_pfsp else 'uniform'}"
-              + (f" (uniform floor {opponent_pfsp_uniform_mix})" if opponent_pfsp else ""))
+              + (f" (uniform floor {opponent_pfsp_uniform_mix})" if opponent_pfsp else "")
+              + (f", seat-balance=on (max frac {seat_balance_max_frac})" if seat_balance else ""))
+    if per_seat_adv_norm:
+        print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]
@@ -2007,6 +2019,14 @@ def train_pipeline(
         for _ok, _ov in iteration_metrics.items():
             if _ok.startswith("opp_") and isinstance(_ov, (int, float)):
                 step_metrics[_ok] = float(_ov)
+        # Per-seat learning signal, by name pattern for the same reason: the buffer computed
+        # adv_mean/std/n per seat on every iteration and this list dropped all six, so the
+        # question every collapse raises -- is the losing seat still getting a signal? -- could
+        # not be answered from any run's log.
+        for _sk in ("adv_mean_us", "adv_mean_ussr", "adv_std_us", "adv_std_ussr",
+                    "adv_n_us", "adv_n_ussr", "entropy_us", "entropy_ussr"):
+            if _sk in iteration_metrics:
+                step_metrics[_sk] = float(iteration_metrics[_sk])
         # Auxiliary losses only where the term that produces them is switched on. Logged
         # unconditionally they are a flat zero line for the whole run -- five of them on an
         # ordinary v2 run -- which reads as "trained and converged" rather than "not present".

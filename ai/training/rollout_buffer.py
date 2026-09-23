@@ -48,6 +48,9 @@ class RolloutBuffer:
         self.obs_dim = int(obs_size() if obs_dim is None else obs_dim)
         self.action_dim = action_dim
         self.device = torch.device(device)
+        #: Normalise advantages per seat rather than over both (--per-seat-adv-norm). Off by
+        #: default; set by the trainer after construction.
+        self.per_seat_adv_norm: bool = False
 
         # Storage buffers allocated on device for fast GPU tensor operations
         self.obs = torch.zeros((buffer_size, num_envs, self.obs_dim), dtype=torch.float32, device=self.device)
@@ -360,6 +363,11 @@ class RolloutBuffer:
             self.advantages = torch.where(keep, pp_adv, self.advantages)
             self.returns_win = torch.where(keep, pp_ret, self.returns_win)
 
+        self.normalise_advantages()
+
+    def normalise_advantages(self) -> None:
+        """Normalise the stored advantages in place (per seat under per_seat_adv_norm),
+        recording the per-seat pre-normalisation statistics `diagnostics` reports."""
         # Normalize advantages per rollout batch.
         #
         # This is ONE mean and ONE std over both sides' transitions together. In a game whose
@@ -383,7 +391,25 @@ class RolloutBuffer:
                 "std": float(sel.std()) if sel.numel() > 1 else 0.0,
             }
 
-        self.advantages = (self.advantages - mean_adv) / std_adv
+        if self.per_seat_adv_norm:
+            # Each seat normalised by its own statistics. With one shared divisor, a seat whose
+            # games are nearly all lost -- the collapsing side -- has a small advantage spread that
+            # the winning seat's larger one scales further down, so its policy gradient is weakest
+            # exactly when it most needs one, and the entropy bonus is left acting almost alone.
+            flat = self.advantages.view(-1)
+            fp = self.players.view(-1)
+            normed = torch.empty_like(flat)
+            for code in (1, -1):
+                sel = fp == code
+                if int(sel.sum()) > 1:
+                    s = flat[sel]
+                    normed[sel] = (s - s.mean()) / (s.std() + 1e-8)
+            other = (fp != 1) & (fp != -1)
+            if bool(other.any()):
+                normed[other] = (flat[other] - mean_adv) / std_adv
+            self.advantages = normed.view_as(self.advantages)
+        else:
+            self.advantages = (self.advantages - mean_adv) / std_adv
 
     def _gae_per_player(
         self,

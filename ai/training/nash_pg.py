@@ -187,6 +187,7 @@ class BaseNashPGTrainer:
         setup_explore_frac: float = 0.0,
         rollout_temps: Optional[Sequence[float]] = None,
         merged_influence: bool = False,
+        per_seat_adv_norm: bool = False,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -307,6 +308,7 @@ class BaseNashPGTrainer:
             action_dim=ActionEncoder.FLAT_ACTION_SIZE,
             device=self.device,
         )
+        self.buffer.per_seat_adv_norm = bool(per_seat_adv_norm)
 
         # Rollout temperature bands. The default four are all BELOW 1.0, so sampling is
         # softmax(logits / tau) with tau < 1 -- sharper than the policy itself, in every band.
@@ -410,6 +412,10 @@ class BaseNashPGTrainer:
             self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
         self._apply_views()
         self.buffer.reset()
+        seat_entropy_sum = {1: torch.zeros((), device=self.device), -1: torch.zeros((), device=self.device)}
+        seat_entropy_n = {1: torch.zeros((), device=self.device), -1: torch.zeros((), device=self.device)}
+        sp_games = 0.0
+        sp_us_wins = 0.0
         completed_episodes: List[Dict[str, Any]] = []
 
         for _ in range(self.buffer_size):
@@ -425,8 +431,8 @@ class BaseNashPGTrainer:
 
             # Who is to move in each environment, needed before acting so the batch can be
             # split between the learner and a frozen opponent.
+            _dp = np.asarray(self.env.runner.get_decision_players(), dtype=np.int8)
             if self.opponent_pool is not None:
-                _dp = np.asarray(self.env.runner.get_decision_players(), dtype=np.int8)
                 learner_np = self.opponent_pool.learner_acts(_dp)
             else:
                 learner_np = np.ones(self.num_envs, dtype=bool)
@@ -477,6 +483,17 @@ class BaseNashPGTrainer:
 
                 unscaled_log_probs = F.log_softmax(logits, dim=-1)
                 log_probs_t = unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1)
+
+                # Per-seat policy entropy of the LEARNER's own decisions. Every collapse shows
+                # entropy rising, and the pooled figure cannot say on which seat. Masked logits
+                # are finite (-1e9), so p * log p is exactly zero there. Kept on the device: one
+                # reduction per seat per step, no host sync.
+                _ent = -(unscaled_log_probs.exp() * unscaled_log_probs).sum(dim=-1)
+                _dp_t = torch.from_numpy(_dp).to(self.device)
+                for _code in (1, -1):
+                    _sel = learner_t & (_dp_t == _code)
+                    seat_entropy_sum[_code] += (_ent * _sel).sum()
+                    seat_entropy_n[_code] += _sel.sum()
 
             actions_np = actions_t.cpu().numpy()
 
@@ -559,6 +576,8 @@ class BaseNashPGTrainer:
                 if self._selfplay_mask[_i]:
                     _vp = float(self._info["victory_points"][_i])
                     self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+                    sp_games += 1.0
+                    sp_us_wins += 1.0 if _vp > 0 else (0.5 if _vp == 0 else 0.0)
                 else:
                     # Clear the pending samples without recording an outcome, or they would be
                     # attached to whatever the next episode in this slot produces.
@@ -569,6 +588,11 @@ class BaseNashPGTrainer:
                     # and no basis for a PFSP draw.
                     self.opponent_pool.on_episode_end(
                         _i, victory_points=float(self._info["victory_points"][_i]))
+                    if self.opponent_pool.seat_balance:
+                        # Balancing may have turned this env mixed or back to self-play for its
+                        # next episode; the self-play mask must follow, or the next game's result
+                        # is filed under the wrong kind.
+                        self._selfplay_mask[_i] = not bool(self.opponent_pool.is_mixed[_i])
                     # The learner's side was just redrawn, so this env's views may have swapped.
                     self._apply_view_env(_i)
 
@@ -613,6 +637,9 @@ class BaseNashPGTrainer:
                 self.buffer.masks.reshape(-1, self.buffer.action_dim),
             )
 
+        if self.opponent_pool is not None and self.opponent_pool.seat_balance:
+            self.opponent_pool.observe_selfplay(sp_us_wins, sp_games)
+
         steps_collected = self.buffer_size * self.num_envs
         self.total_env_steps += steps_collected
         self.steps_since_ref_update += steps_collected
@@ -625,6 +652,10 @@ class BaseNashPGTrainer:
             "completed_episodes": completed_episodes,
         }
         metrics.update(self.buffer.diagnostics())
+        for _code, _tag in ((1, "us"), (-1, "ussr")):
+            _n = float(seat_entropy_n[_code].item())
+            if _n > 0:
+                metrics[f"entropy_{_tag}"] = float(seat_entropy_sum[_code].item()) / _n
         metrics.update(self.critic_tracker.metrics())
         # Pool size and span, so a pool that silently stops growing is visible as a flat line
         # rather than being invisible. Without this the mechanism cannot be verified from a run.
