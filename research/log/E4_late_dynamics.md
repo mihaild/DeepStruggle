@@ -151,3 +151,33 @@ Against the seed-11 baseline at matched steps:
 * **The slow π_ref is the only late change with a clean lead.** It beats both baselines on both
   seats at 240M. The seed-5 replicate (`E4-31-05`) and the earlier switch point (`E4-34-03`, from
   80M) are running.
+
+## The switch at 80M: E4-34-03, interim at 160M
+
+`E4-08-03@80M` resumed with `--ref-update-freq 5000000` (`E4-34-03_20260923_095214`), rated against
+the plain 80→160M leg (`data/reports/e4_34_at160M.{md,json}`). That leg has no dip in this range,
+so it is a fair baseline.
+
+| # | model | Elo | vs E4-08-03@160M | vs E4-08-03@80M | vs E4-03-01@80M |
+|---:|:---|---:|---:|---:|---:|
+| 1 | E4-31-03@200M | 2276.5 | 76 / 62 | 79 / 79 | 75 / 82 |
+| 2 | **E4-34-03@160M** | **2221.2** | 60 / 36 | 72 / 82 | 64 / 71 |
+| 3 | E4-08-03@160M | 2169.9 | — | 68 / 66 | 70 / 69 |
+| 4 | E4-34-03@120M | 2128.7 | 50 / 36 | 71 / 67 | 71 / 65 |
+| 5 | E4-08-03@120M | 2086.2 | 51 / 32 | 72 / 52 | 57 / 61 |
+| 6 | E4-03-01@80M | 2037.9 | 31 / 30 | 42 / 60 | — |
+| 7 | E4-08-03@80M | 2020.0 | 34 / 32 | — | 40 / 58 |
+
+**+42.5 at 120M and +51.3 at 160M** against the plain leg at matched steps, about the size of the
+160M switch at the same distance from its switch point (+38 at 40M in). At 160M the head-to-head is
+split by seat: 60% as USSR, 36% as US. The 80M switch is not clearly better or worse than the
+160M one. It continues to 240M, and whether the gain keeps growing, as the 160M switch's did,
+decides between them.
+
+## Seed 5: the plain continuation collapses on its own
+
+`E4-08-05_20260923_095214`, the plain seed-5 160→240M leg, collapsed without any change applied.
+Self-play US share was 1% at 209M, and the learner won 42% against its own pool. It was recovering by
+225M (US share 12%, `adv_std_raw` 0.20). It is therefore a poor sole baseline for `E4-31-05`, and a
+second one, `E4-08-05-160M.11` (same state, seed 11), was launched; both are used. The late
+collapses are not confined to the loosened arms: an unmodified run does it too.
