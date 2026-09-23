@@ -1,6 +1,6 @@
 # P23 — E4.1: the first influence placement replaces the influence op-choice
 
-**Status:** planned, not started.
+**Status:** running -- stages 1-4 done (implementation `d6c89ad`), stage 5 A/B from scratch in progress; see Runs.
 **Gate:** the owner approves this plan (it touches `engine/` and `bindings/`, invariant 11).
 **Needs approval:** engine and bindings changes, as below; no change to `GameState`, the rules or
 the observation. Stage 5 is a separate observation proposal, per the owner's standing rule.
