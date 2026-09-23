@@ -1,4 +1,69 @@
-# Training throughput: the CPU goes to PyTorch's thread pool, the step rate to the main thread
+# Training throughput: where the time and the CPU go, measured cleanly
+
+> **Revised 2026-09-23.** The first version of this log (kept below as "First reading") had two
+> errors. It said the engine and batch runner are single-threaded; the runner parallelises over envs
+> with OpenMP (`bindings/ts_bindings.cpp:1243`, `:1252`). The throughput figures in its first
+> follow-up were also taken while another session was loading the machine: that baseline read
+> 27–32k steps/s against a clean 39–40k, and the masked_fill fix read +45–65% against a clean +9%.
+> Everything in "Clean measurements" was taken with no other training or tournament process
+> running (checked before every run), old and new code alternating.
+
+## Clean measurements
+
+`/workspace/data/logs/perf/perf_run.sh`: M2d as on the P25 bench, 512 envs, 3M steps from
+scratch, no snapshots. Steady steps/s is measured on the training clock from 1M steps on. The old
+code was run from a detached worktree at `e67fbe5`. Run-to-run noise is about ±5% when clean.
+
+| code | CPU threads | steps/s | wall | CPU-s |
+|:---|:---|---:|---:|---:|
+| old (`e67fbe5`) | default (16) | 39,322 / 40,124 | 92–95 s | 808–855 |
+| + masked_fill | default | 43,691 / 42,741 | 85–91 s | 743–811 |
+| + masked_fill | 1 / 2 / 4 | 26,569 / 35,747 / 40,960–43,691 | — | 131 / 163 / 228–244 |
+| **+ masked_fill + targeted refresh** | **default** | **49,152 / 46,811** | **76–79 s** | 636–654 |
+| + both | 4 | 43,691 / 42,741 | 85–86 s | 220–221 |
+| + both | 8 | 44,684 / 47,953 | 78–83 s | 360–382 |
+
+### Where the time went
+
+* **`torch.tensor(-1e9, device=cuda)` in every forward pass.** The masked logits were filled with
+  `torch.where(mask, logits, torch.tensor(-1e9, device=...))`. Building that scalar is a blocking
+  host-to-device copy, so the CPU waited for the GPU at every forward pass. The fix is
+  `logits.masked_fill(~mask, -1e9)`, with identical values (`tests/training/test_masked_logits.py`),
+  in both `ColdWarNet` and `ColdWarNetV2` and therefore in `LadderNet`. Clean gain: **+9%**.
+* **Observations built twice per step.** Per env and single-threaded, measured on the runner:
+  * a game step takes **~0.8 µs** (the engine benchmark gives 1.5M steps/s);
+  * a mask takes 0.67 µs;
+  * an **observation takes 7.9 µs**.
+
+  `step_flat_all` already rebuilds each env it steps, and `reset_game` each env it resets. Yet
+  `TsVectorizedEnv.step` called `refresh_all()` whenever any game ended, which is nearly every step
+  at 512 envs, rebuilding all 512 again. That was ~4.4 ms of single-threaded work per step. Now
+  the refresh runs only when a start position was injected through `set_state`. Clean gain: a
+  further **~+11%**, and **~+20% in total** over the old code.
+* **The CPU threads.** Both PyTorch and the runner use OpenMP. With 16 threads, idle workers spin,
+  but the runner's parallel loops over envs are real work on the critical path, which is why one
+  thread is 40% slower. After both fixes, 8 threads give full speed at ~43% less CPU. 4 threads
+  cost ~10% of speed for two-thirds less CPU.
+
+### Found on the way: start positions were injected without a refresh
+
+`reset_all` refreshed **before** injecting start positions, and `reset_env` injected without
+refreshing at all. An injected env therefore kept the old observation and mask. On the old code,
+`tests/training/test_env_refresh.py` fails on `reset_all` and hits an engine refusal when every env
+starts injected ("the cache is stale on 13 entries"). No P25 or late-dynamics run uses start
+positions (`--start-pool-frac`), so no result in this record is affected.
+
+### What is left
+
+* **Observation building** is now the largest engine-side cost, at ~10× a game step. Making it
+  cheaper is an engine change and needs the owner's approval.
+* **The main thread** still launches many small kernels per forward pass (608k `linear` and 434k
+  `layer_norm` calls in a 3M-step profile). The PPO update is ~45% of the time. CUDA graphs or
+  `torch.compile` are the usual remedies.
+* **Thread count:** 8 threads are proposed as a default. It is a setting, not yet applied.
+
+## First reading (superseded; kept for the record)
+
 
 **2026-09-23. A diagnosis only; nothing has been changed yet.** The owner noticed that `tools/train.py`
 uses far more CPU than an engine running at more than 1M steps/s on one core can explain.

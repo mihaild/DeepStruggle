@@ -298,8 +298,13 @@ class TsVectorizedEnv:
                                                  [bool(x) for x in self.merged_ussr])
         else:
             self.runner.refresh_all()
+        injected = False
         for _i in range(self.num_envs):
-            self._apply_start_position(_i)
+            injected |= self._apply_start_position(_i)
+        if injected:
+            # Injected states replaced the ones the runner had just refreshed. The refresh above
+            # used to run before the injection and left those envs with stale buffers.
+            self.runner.refresh_all()
         self.ep_lengths.fill(0)
         self.ep_rewards.fill(0.0)
         if hasattr(self.reward_calc, "on_all_reset"):
@@ -308,22 +313,30 @@ class TsVectorizedEnv:
         masks = np.array(self.runner.get_action_masks(), copy=False)
         return obs, masks, self._get_batch_info()
 
-    def _apply_start_position(self, env_idx: int) -> None:
+    def _apply_start_position(self, env_idx: int) -> bool:
+        """Inject a start position into a freshly reset env. True when the state was replaced.
+
+        `set_state` does not rebuild the runner's cached observation and mask (`reset_game` and
+        `step_flat_all` do, per env), so a caller that gets True must refresh before reading them.
+        """
         self.env_start_turn[env_idx] = 1
         if self.start_provider is None:
-            return
+            return False
         state = self.start_provider(env_idx)
-        if state is not None:
-            self.runner.set_state(env_idx, state)
-            # Positions are stored pre-deal, one turn before the turn they target, so the
-            # episode's effective start turn is the next one.
-            self.env_start_turn[env_idx] = int(state.turn) + 1
+        if state is None:
+            return False
+        self.runner.set_state(env_idx, state)
+        # Positions are stored pre-deal, one turn before the turn they target, so the
+        # episode's effective start turn is the next one.
+        self.env_start_turn[env_idx] = int(state.turn) + 1
+        return True
 
     def reset_env(self, env_idx: int, seed: Optional[int] = None) -> None:
         """Reset a single environment by index."""
         s = seed if seed is not None else int(np.random.randint(1, 1_000_000_000))
         self.runner.reset_game(env_idx, s)
-        self._apply_start_position(env_idx)
+        if self._apply_start_position(env_idx):
+            self.runner.refresh_all()
         self.ep_lengths[env_idx] = 0
         self.ep_rewards[env_idx] = 0.0
 
@@ -462,6 +475,7 @@ class TsVectorizedEnv:
         self.ep_rewards += rewards
 
         completed_episodes: List[Dict[str, Any]] = []
+        injected = False
         if self.auto_reset:
             for i in range(self.num_envs):
                 if dones[i]:
@@ -481,13 +495,17 @@ class TsVectorizedEnv:
                     self.runner.reset_game(i, new_seed)
                     # Inject before on_env_reset so the reward calculator sees the position
                     # the episode actually begins from, not the discarded fresh deal.
-                    self._apply_start_position(i)
+                    injected |= self._apply_start_position(i)
                     if hasattr(self.reward_calc, "on_env_reset"):
                         self.reward_calc.on_env_reset(i, self.runner.get_state(i))
                     self.ep_lengths[i] = 0
                     self.ep_rewards[i] = 0.0
 
-            if completed_episodes:
+            # `reset_game` and `step_flat_all` already rebuild every env they touch, so a refresh is
+            # needed only where `set_state` injected a start position. Refreshing all 512 envs
+            # whenever any game ended cost ~4.4 ms of single-threaded observation building per
+            # step (research/log/training_throughput_cpu.md).
+            if injected:
                 self.runner.refresh_all()
 
         obs = np.array(self.runner.get_observations(), copy=False)

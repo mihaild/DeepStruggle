@@ -74,6 +74,18 @@ is the one `step_flat` reads.
   The same values are exposed per-env as `info["terminal_turns"]` / `info["terminal_plies"]` /
   `info["ending_reasons"]`.
 
+  **The runner's cached observation and mask.** `VectorizedBatchRunner` keeps one observation and
+  mask per env, and three things keep them current:
+  * `step_flat_all` rebuilds each env it steps;
+  * `reset_game` rebuilds the env it resets;
+  * `set_state` rebuilds nothing, so whoever calls it must refresh.
+
+  `TsVectorizedEnv` refreshes only after `_apply_start_position` actually injects a start position
+  through `set_state`. That applies in `step`'s auto-reset, in `reset_env` and in `reset_all`.
+  Building an observation costs ~7.9 µs per env against ~0.8 µs for a game step. Refreshing all envs
+  whenever any game ended doubled that cost on most steps, while `reset_env` and `reset_all`
+  injected without any refresh. `tests/training/test_env_refresh.py` pins both halves.
+
 ---
 
 ## 2. Mandatory Documentation Maintenance Rule for Agents

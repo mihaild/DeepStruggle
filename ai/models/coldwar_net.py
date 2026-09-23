@@ -215,7 +215,11 @@ class ColdWarNet(nn.Module):
         if mask is not None:
             # Mask illegal actions with -1e9
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
-            masked_logits = torch.where(mask_bool, raw_logits, torch.tensor(-1e9, device=raw_logits.device, dtype=raw_logits.dtype))
+            # masked_fill, not torch.where against torch.tensor(-1e9, device=...): building
+            # that scalar is a blocking host-to-device copy, which stalled the CPU on the GPU
+            # at every forward pass -- 14.4 s of a 115 s profiled run
+            # (research/log/training_throughput_cpu.md). The values are identical.
+            masked_logits = raw_logits.masked_fill(~mask_bool, -1e9)
         else:
             masked_logits = raw_logits
 
@@ -235,10 +239,11 @@ class ColdWarNet(nn.Module):
         raw_logits = self.policy_head(h)
         if mask is not None:
             mask_bool = mask.bool() if mask.dtype != torch.bool else mask
-            masked_logits = torch.where(
-                mask_bool, raw_logits,
-                torch.tensor(-1e9, device=raw_logits.device, dtype=raw_logits.dtype),
-            )
+            # masked_fill, not torch.where against torch.tensor(-1e9, device=...): building
+            # that scalar is a blocking host-to-device copy, which stalled the CPU on the GPU
+            # at every forward pass -- 14.4 s of a 115 s profiled run
+            # (research/log/training_throughput_cpu.md). The values are identical.
+            masked_logits = raw_logits.masked_fill(~mask_bool, -1e9)
         else:
             masked_logits = raw_logits
         return (masked_logits, self.val_win_head(h), self.val_vp_head(h),
