@@ -2,9 +2,7 @@
 
 **Status:** running. The step-3 bench is done ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)). No lever passes on both seeds with a gain:
 * seat balancing: +151 and no collapse on seed 5, level on seed 3;
-* WoLF seat weights as built (surrogate only): no collapse on either seed, +131 on seed 3, −105 on seed 5, because it held entropy up.
-
-WoLF on the whole per-seat policy objective (step 3c, E4-39) also fails: it is no better than the surrogate-only version, and seed 5 is −110.
+* WoLF seat weights, both scopes (E4-38 surrogate only, E4-39 whole policy objective): no collapse on either seed, but up to +131 on seed 3 and down to −110 on seed 5, where both seats are weak. The scope made no difference, and the entropy explanation offered for E4-38 is withdrawn.
 **Needs approval:** none of it touches `engine/` or the observation. The later steps (4–6) come
 back for approval with the bench's result.
 
