@@ -39,6 +39,14 @@ Each snapshot is rated in its own small field against the control at the same st
 
 **Four of four snapshots beat the step-matched control on both seats**, by +54 to +70 Elo.
 
+## Headroom left after 20M
+
+96-sim honest search on top of `E4-28-03@180M` still wins **59.0%** (+63 Elo), against 64.0% on
+top of the undistilled `E4-08-03@240M` ([`search_cost_and_coverage.md`](search_cost_and_coverage.md)
+§10). The overall drop is within noise; the US-seat gain fell from 69% to 56% while the USSR seat
+held. Most of the headroom remains, so a longer leg or a second round has something to take,
+which fits a gain that arrived within 5M and then plateaued at this coefficient.
+
 ## Seed 5: a second replicate, from 80M
 
 `E4-28-05` repeats the arm on seed 5 from `E4-08-05`'s 80M resume state (`E4-28-05_20260923_031034`);

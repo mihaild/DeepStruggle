@@ -341,3 +341,19 @@ training arm shared the CPU.
 * This is the headroom a distillation round is working against. On E3, one offline round of
   distilling a 96-sim searcher bought +47.7 Elo
   ([`../archive/E3_ladder/log/P15_X4a_distillation.md`](../archive/E3_ladder/log/P15_X4a_distillation.md)).
+
+### After distillation: search on top of `E4-28-03@180M`
+
+Same protocol against the search-distilled arm ([`E4_search_distillation.md`](E4_search_distillation.md)),
+20M steps into its leg. Report `data/reports/E4-28-03_180M_search96_vs_raw.md`.
+
+| searcher seat | on E4-08-03@240M | on E4-28-03@180M |
+|:---|---:|---:|
+| USSR | 59% | 62% |
+| US | 69% | **56%** |
+| both | 64.0% ± 3.4 | **59.0% ± 3.5** (118/200), +63.0 Elo |
+
+Search still pays on the distilled net. The 5 pp drop overall is within noise (difference ~1 SE),
+so **most of the headroom is still there**, and a second round of distillation, or a longer leg,
+has something to take. The split by seat is sharper: the US-seat gain fell from 69% to 56% while
+the USSR seat did not move, so distillation took most of what search offered the US seat first.
