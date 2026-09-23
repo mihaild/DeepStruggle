@@ -1333,6 +1333,7 @@ def train_pipeline(
     wolf_power: float = 1.0,
     wolf_ema_games: float = 2000.0,
     wolf_scope: str = "surrogate",
+    cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1521,6 +1522,7 @@ def train_pipeline(
         "wolf_power": float(wolf_power),
         "wolf_ema_games": float(wolf_ema_games),
         "wolf_scope": str(wolf_scope),
+        "cuda_graphs": bool(cuda_graphs),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
         "merged_influence_from_step": int(merged_from_step),
@@ -1669,6 +1671,7 @@ def train_pipeline(
         wolf_power=wolf_power,
         wolf_ema_games=wolf_ema_games,
         wolf_scope=wolf_scope,
+        cuda_graphs=cuda_graphs,
         device=dev,
     )
 

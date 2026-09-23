@@ -39,6 +39,21 @@ flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps agains
 baseline's ~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
 `--opponent-frac 0.3` that made it a two-factor experiment. It was thrown away.
 
+### Throughput and CPU
+
+`tools/train.py` and `tools/tournament.py` set `OMP_WAIT_POLICY=PASSIVE` before PyTorch or the
+engine load OpenMP. With the default policy, idle workers spin: a training run used ~8.5 cores for
+the throughput passive waiting gives on ~1.6. An explicit `OMP_WAIT_POLICY` in the environment
+still wins.
+
+The rollout forwards run as CUDA-graph replays (`ai/training/graphed_forward.py`). Each replays
+the same kernels as eager, so its outputs are bitwise identical, but with one launch instead of
+~317. The learner's graph and the pool opponent's graph overlap on two streams. `--no-cuda-graphs`
+falls back to eager.
+
+Measurements, and what was changed and why, are in
+[`research/log/training_throughput_cpu.md`](../research/log/training_throughput_cpu.md).
+
 ### Before spending a run on a new advantage estimator
 
 `tools/scripts/advantage_variance_probe.py <checkpoint.pt>` computes every estimator over **one

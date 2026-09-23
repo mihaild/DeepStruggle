@@ -78,11 +78,49 @@ keep a core busy depends on the scheduler. That is the likely explanation, uncon
 the old kernel cannot be booted here. Passive waiting makes the question moot either way.
 
 
-* **Observation building** is now the largest engine-side cost, at ~10× a game step. Making it
+### Main-thread throughput, 2026-09-23 (late)
+
+Clean runs as above, two each. The harness's steps/s is quantised, because `elapsed_seconds` has
+whole-second resolution: 65,536 means one 65,536-step iteration per second. Wall time for the
+same 3M steps is given alongside.
+
+| commit | change | steps/s | wall |
+|:---|:---|---:|---:|
+| `31810cc` | passive OpenMP waiting (baseline for this section) | 45,723–47,953 | 78–81 s |
+| `4124562` | no CPU-GPU syncs in the PPO minibatch loop | 49,152 / 53,137 | 71–76 s |
+| `7766e3d` | two rollout forwards instead of three | 56,174 / 56,174 | 67–69 s |
+| `7766e3d` | pi_ref log-probs once per update, not per minibatch | 65,536 / 65,536 | 59–60 s |
+| next commit | rollout forwards as CUDA-graph replays, learner and opponent overlapped | **70,217 / 70,217** | 57–59 s |
+
+Against the clean start of this log (old code, 39–40k steps/s, 808–855 CPU-s), that is **~1.8×
+the throughput on ~1/8 of the CPU**. Equivalence was checked with one seeded collect-and-update
+step on CUDA against the previous commit, using `/workspace/data/logs/perf/train_step_equivalence.py`:
+
+* **No syncs in the minibatch loop:** weights bitwise identical, with or without a pool. Metrics
+  identical without a pool, and within 1e-8 relative with one.
+* **pi_ref once per update:** weights and metrics bitwise identical, over 8 shuffled minibatches
+  and 2 chunks.
+* **Two forwards instead of three:** the learner's logits come from the full-batch pass, so the
+  weights differ by at most 9e-7 after one update. It computes the same function.
+* **CUDA graphs:** per network, bitwise equal to eager at the same batch, including after
+  in-place optimiser steps. In a seeded rollout the buffers are identical without a pool. With a
+  pool the actions, observations and values are identical and the log-probs agree within 1e-5
+  (`tests/training/test_graphed_forward.py`).
+* **A bug caught on the way:** two graphs captured on the shared default capture stream record
+  the same cuBLAS workspace, and replayed concurrently they race on it. Probabilities were off by
+  up to 0.89. Each graph now captures on its own stream, and a test covers concurrent replay.
+
+### What is left
+
+* **The update is compute-bound**, at ~0.52 s per iteration against ~0.53 s for the rollout
+  (instrumented, before graphs): 64 minibatches of 4,096 at ~8 ms each. Going further needs a
+  numerics change, such as TF32, bf16 or `torch.compile` (P11's gates), and that is the owner's
+  decision.
+* **Observation building** is the largest engine-side cost, at ~10× a game step. Making it
   cheaper is an engine change and needs the owner's approval.
-* **The main thread** still launches many small kernels per forward pass (608k `linear` and 434k
-  `layer_norm` calls in a 3M-step profile). The PPO update is ~45% of the time. CUDA graphs or
-  `torch.compile` are the usual remedies.
+* **Rollout host work:** `env.step` is ~1.0 ms per step and the observation copy to the GPU
+  ~0.5 ms. Pinned host memory for the runner's observation buffer would make the copy
+  asynchronous.
 * **Thread count:** superseded by passive waiting, which takes the CPU down further (~1.6 cores)
   at full speed, without capping the threads the parallel loops can use.
 

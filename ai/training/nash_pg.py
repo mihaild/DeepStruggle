@@ -27,6 +27,7 @@ from bindings.ts_env import TsVectorizedEnv
 from bindings.action_encoder import ActionEncoder
 from .rollout_buffer import RolloutBuffer
 from .critic_tracker import CriticTracker
+from .graphed_forward import GraphCache
 
 # Fixed-probe entropy: number of (observation, mask) pairs frozen at the start of
 # training, and how often (in iterations) the probe is re-evaluated.
@@ -217,6 +218,7 @@ class BaseNashPGTrainer:
         wolf_power: float = 1.0,
         wolf_ema_games: float = 2000.0,
         wolf_scope: str = "surrogate",
+        cuda_graphs: bool = True,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -357,6 +359,15 @@ class BaseNashPGTrainer:
         if wolf_scope not in ("surrogate", "policy"):
             raise ValueError(f"wolf_scope must be 'surrogate' or 'policy', got {wolf_scope!r}")
         self.wolf_scope = str(wolf_scope)
+        #: Rollout forwards replayed as CUDA graphs (ai/training/graphed_forward.py): bitwise the
+        #: same kernels as eager, one launch instead of ~317, and the learner and pool-opponent
+        #: graphs overlap on two streams. CUDA only; --no-cuda-graphs falls back to eager.
+        self._graphs: Optional[GraphCache] = None
+        self._opp_stream: Optional[torch.cuda.Stream] = None
+        if cuda_graphs and self.device.type == "cuda":
+            self._graphs = GraphCache(self.num_envs, self.buffer.obs_dim,
+                                      ActionEncoder.FLAT_ACTION_SIZE, self.device)
+            self._opp_stream = torch.cuda.Stream(device=self.device)
         #: The USSR's smoothed self-play win share. Starts even, and is carried in the resume
         #: state so a resumed run does not relearn it.
         self.wolf_sp_ussr = 0.5
@@ -452,10 +463,43 @@ class BaseNashPGTrainer:
         us, ussr = self._side_views(env_idx)
         self.env.set_merged_influence_env(env_idx, us, ussr)
 
+    def _graphed_forward(self, obs_t: torch.Tensor, masks_t: torch.Tensor,
+                         learner_np: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """The rollout forward as CUDA-graph replays: the learner over every env, and in a mixed
+        batch the pool opponent over every env too, on its own stream so the two overlap. The
+        opponent's rows are then copied into the learner's logits. Values always come from the
+        learner (see the eager branch in collect_rollouts for why)."""
+        assert self._graphs is not None and self._opp_stream is not None
+        g_l = self._graphs.get(self.active_net)
+        g_l.load(obs_t, masks_t)
+        mixed = self.opponent_pool is not None and not bool(learner_np.all())
+        if not mixed:
+            g_l.replay()
+            logits, v_win_t, v_vp_t = g_l.outputs()
+            return logits, v_win_t, v_vp_t
+        assert self.opponent_pool is not None
+        g_o = self._graphs.get(self.opponent_pool.current)
+        main = torch.cuda.current_stream(self.device)
+        self._opp_stream.wait_stream(main)
+        with torch.cuda.stream(self._opp_stream):
+            g_o.load(obs_t, masks_t)
+            g_o.replay()
+        g_l.replay()
+        main.wait_stream(self._opp_stream)
+        logits, v_win_t, v_vp_t = g_l.outputs()
+        logits = logits.float()
+        opp_idx = torch.from_numpy(np.flatnonzero(~learner_np)).to(self.device)
+        logits.index_copy_(0, opp_idx, g_o.static_out[0].index_select(0, opp_idx).float())
+        return logits, v_win_t, v_vp_t
+
     def collect_rollouts(self) -> Dict[str, Any]:
         """Collects on-policy rollouts across all parallel environments."""
         t0 = time.time()
         self.active_net.eval()
+        if self._graphs is not None:
+            # Release the graphs of pool members evicted since the last rollout.
+            self._graphs.retain([self.active_net] + (list(self.opponent_pool.nets)
+                                                     if self.opponent_pool is not None else []))
         if self.opponent_pool is not None:
             self.opponent_pool.start_iteration()
             self._selfplay_mask = ~self.opponent_pool.is_mixed
@@ -490,7 +534,9 @@ class BaseNashPGTrainer:
             learner_t = torch.from_numpy(learner_np).to(self.device)
 
             with torch.no_grad():
-                if self.opponent_pool is None or bool(learner_np.all()):
+                if self._graphs is not None:
+                    logits, v_win_t, v_vp_t = self._graphed_forward(obs_t, masks_t, learner_np)
+                elif self.opponent_pool is None or bool(learner_np.all()):
                     logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
                 else:
                     # One learner pass over the whole batch gives the learner's logits AND the

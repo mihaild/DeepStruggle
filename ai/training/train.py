@@ -416,6 +416,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "then pushes the down-weighted seat toward uniform. 'policy' weights "
                              "the seat's whole policy objective -- surrogate, entropy bonus and KL "
                              "to pi_ref -- a per-seat learning rate, as WoLF is defined.")
+    parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
+                        help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
+                             "replays execute the same kernels (bitwise-identical outputs per network); "
+                             "this is a fallback for debugging, and for devices where capture fails.")
     parser.add_argument("--wolf-ema-games", type=float, default=2000.0,
                         help="Memory of --wolf-seat-weight's average, in self-play games: each "
                              "iteration moves it by alpha = min(1, games / this).")
@@ -607,6 +611,7 @@ def main():
             wolf_power=args.wolf_power,
             wolf_ema_games=args.wolf_ema_games,
             wolf_scope=args.wolf_scope,
+            cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,
