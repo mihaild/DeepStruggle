@@ -24,7 +24,7 @@ are not directly comparable with it.
 | E4-32-03 | 160 → 240M | π_ref 100k (fast) | 180–195M | 175M | 200M | 0.135 |
 | E4-33-03 | 160 → 240M | η 0.05 | 185–190M, 205M | 180M | 195M, 210M | 0.158 |
 | E4-08-05 | 160 → 240M | none (control) | 195–240M | 180M | **not out** | 0.086 |
-| E4-08-05-160M.11 | 160 → 240M | none, seed 11 | 215M– | 205M | **not out** (running) | 0.144 |
+| E4-08-05-160M.11 | 160 → 240M | none, seed 11 | 215–240M | 205M | **not out** (run ended) | 0.089 |
 | E4-31-05 | 160 → 240M | π_ref 5M (slow) | 235–240M | 190M | **not out** (run ended) | 0.084 |
 | E4.1-01-03 | 0 → 80M | E4.1 view | 25–80M | 5M | **not out** | 0.089 |
 | E4.1-01-05 | 0 → 30M (stopped) | E4.1 view | 30M | 15M | **not out** | 0.185 |
@@ -39,7 +39,7 @@ are not directly comparable with it.
 | E4-26-03 | 0–80M | π_ref 5M (slow) |
 | E4-26-05 | 0–160M | π_ref 5M (slow) |
 | E4-31-03 | 160–240M | π_ref 5M (slow) |
-| E4-34-03 | 80–220M so far | π_ref 5M (slow) |
+| E4-34-03 | 80–240M | π_ref 5M (slow) |
 | E4-30-03 | 160–240M | λ 0.97 |
 | E4-28-03 | 160–200M | search distillation |
 | E4-28-05 | 80–105M | search distillation |
@@ -61,7 +61,7 @@ are not directly comparable with it.
 
    *Corrected on 2026-09-23:* the first version of this log counted E4-31-05 as clean "through
    220M" and read 0 of 5 as prevention. Its last 20M collapsed. The other four slow-π_ref arms had
-   no episode: E4-26-03/05 from scratch, E4-31-03, and E4-34-03 through 220M. On seed 3 none of the
+   no episode: E4-26-03/05 from scratch, E4-31-03, and E4-34-03 to 240M. On seed 3 none of the
    late runs with default settings collapsed either, so they do not discriminate.
 4. **E4.1 collapsed early on both seeds, and E4 did not on the same seeds.** That is 2 of 2
    against 0 of 2 over the first 80M, so it is suggestive only.
