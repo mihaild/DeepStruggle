@@ -53,14 +53,38 @@ refreshing at all. An injected env therefore kept the old observation and mask. 
 starts injected ("the cache is stale on 13 entries"). No P25 or late-dynamics run uses start
 positions (`--start-pool-frac`), so no result in this record is affected.
 
-### What is left
+### The excess CPU is OpenMP spin-waiting, and passive waiting removes it
+
+Both PyTorch and the batch runner use OpenMP. With the default wait policy, idle workers spin
+between parallel regions. Same current code, clean, two runs each:
+
+| `OMP_WAIT_POLICY` | steps/s | CPU-s | mean cores |
+|:---|---:|---:|---:|
+| default (spin) | 46,811 / 49,152 | 636–724 | ~8.5 |
+| **passive** | **45,723 / 46,811** | **129–130** | **~1.6** |
+
+**About 80% of a training process's CPU was idle workers spinning, at no throughput cost to
+remove.** `tools/train.py` and `tools/tournament.py` now set `OMP_WAIT_POLICY=PASSIVE` before torch
+or `ts_engine` load libgomp, and an explicit value in the environment still wins. With no variable
+set, the training harness now gives 47,953 steps/s on 123 CPU-s. A 5-player, 2,000-game tournament
+goes from 139.6 games/s on 235 CPU-s (spin) to **167.1 games/s on 22 CPU-s** (passive).
+
+**Why it used to cost less CPU.** The code is not the cause. The 09-20 code (`d8aa324c`, which the
+E4-08 seed sweep ran at ~51k steps/s), built from its own sources and run on the same harness today,
+spins just as hard: 34,493 / 41,831 steps/s on 926 / 768 CPU-s. No commit ever set a thread count
+or a wait policy. What did change is the kernel, from 7.1.8 to 7.2.6 at the first reboot on
+09-23. The high CPU was first noticed after that reboot, and how long libgomp's spinning workers
+keep a core busy depends on the scheduler. That is the likely explanation, unconfirmed, because
+the old kernel cannot be booted here. Passive waiting makes the question moot either way.
+
 
 * **Observation building** is now the largest engine-side cost, at ~10× a game step. Making it
   cheaper is an engine change and needs the owner's approval.
 * **The main thread** still launches many small kernels per forward pass (608k `linear` and 434k
   `layer_norm` calls in a 3M-step profile). The PPO update is ~45% of the time. CUDA graphs or
   `torch.compile` are the usual remedies.
-* **Thread count:** 8 threads are proposed as a default. It is a setting, not yet applied.
+* **Thread count:** superseded by passive waiting, which takes the CPU down further (~1.6 cores)
+  at full speed, without capping the threads the parallel loops can use.
 
 ## First reading (superseded; kept for the record)
 
