@@ -71,7 +71,7 @@ end, rated together (`data/reports/E4-28-03_leg.{md,json}`):
 * In this field the control's 240M snapshot ranks below its own 165–180M snapshots. The 160→240M
   leg is flat within ~30 Elo outside the dip. The +31.9 of [`P21_M2d_240M.md`](P21_M2d_240M.md)
   was 240M against 160M in a smaller field. Field-relative ratings move by tens of Elo; head-to-head
-  (240M beats 160M 53% / 61% in both fields) is the steadier read.
+  (240M beats 160M 61% as USSR / 53% as US, identically in both fields) is the steadier read.
 
 ## Training-side observations
 
