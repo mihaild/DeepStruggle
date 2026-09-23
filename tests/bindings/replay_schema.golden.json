@@ -72,6 +72,7 @@
     "persistent_effects": "int",
     "phase_name": "str",
     "phasing_player": "str",
+    "position": "str",
     "removed_pile": "list[int]",
     "space": "dict[str, int]",
     "space_turns_used": "dict[str, int]",
@@ -137,6 +138,7 @@
     "players": "dict[str, str]",
     "result": "NoneType | ReplayResultDict",
     "seed": "int",
+    "start_position": "str",
     "total_steps": "int",
     "trace": "ReplayTraceMetaDict"
   },

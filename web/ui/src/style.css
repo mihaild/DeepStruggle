@@ -1829,3 +1829,127 @@ body {
   font-size: 10px;
   border-top: 1px solid var(--border-color);
 }
+
+/* Live model analysis panel (analysis_view.ts). */
+.analysis-panel {
+  border-color: rgba(124, 58, 237, 0.45);
+}
+.analysis-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+.analysis-select {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 3px 4px;
+}
+.analysis-snapshot { flex: 0 1 110px; }
+#btn-play-favourite { flex: 1 1 auto; }
+.analysis-autoplay {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.analysis-autoplay .analysis-select { flex: 0 0 auto; }
+.analysis-autoplay.active { color: var(--warning); }
+.analysis-autoplay.active .analysis-select { border-color: var(--warning); }
+.analysis-auto-tag {
+  margin-left: 6px;
+  color: var(--warning);
+  font-weight: 700;
+}
+#btn-play-favourite:disabled { opacity: 0.45; cursor: not-allowed; }
+.analysis-error {
+  color: var(--danger);
+  font-size: 11px;
+  word-break: break-word;
+}
+.analysis-value { margin-bottom: 8px; }
+.analysis-value-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--ussr-red);
+}
+.analysis-value-us {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--us-blue);
+  transition: width 0.25s ease;
+}
+.analysis-value-mid {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.analysis-value-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.analysis-value-text .us { color: var(--us-blue-light); }
+.analysis-value-text .ussr { color: var(--ussr-red-light); }
+.analysis-who.us { color: var(--us-blue-light); }
+.analysis-who.ussr { color: var(--ussr-red-light); }
+.analysis-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.analysis-choice {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg-card);
+  cursor: pointer;
+  overflow: hidden;
+  font-size: 10.5px;
+}
+.analysis-choice:hover { outline: 1px solid var(--text-muted); }
+.analysis-choice.favourite { outline: 1px solid var(--warning); }
+.analysis-choice-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  opacity: 0.18;
+  pointer-events: none;
+}
+.analysis-choice-name {
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.analysis-choice-p {
+  position: relative;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* Panels shown only in one mode (the replay readout, the value ribbon, live analysis) toggle
+   this class. Without a generic rule it did nothing: only the modal and the tooltip had one, so
+   the replay readout sat empty on screen during live play. */
+.hidden { display: none !important; }

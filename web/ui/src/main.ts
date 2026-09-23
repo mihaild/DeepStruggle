@@ -6,6 +6,10 @@ import { ActionHud } from "./action_hud";
 import { ReplayControls, ReplayStep } from "./replay_controls";
 import { DebugPanel } from "./debug_panel";
 import { decorateChoices, loadActionSpace, policyChipHtml, renderTracePanel, renderValueRibbon } from "./trace_view";
+import { AnalysisPanel, AutoSide, LiveAnalysis } from "./analysis_view";
+
+/** Pause before an auto-played move, long enough to see each one land. */
+const AUTO_PLAY_DELAY_MS = 350;
 
 export class TSApp {
   private state: GameState | null = null;
@@ -23,6 +27,18 @@ export class TSApp {
   private actionHud: ActionHud;
   public replayControls: ReplayControls;
   private debugPanel: DebugPanel;
+  private analysisPanel: AnalysisPanel;
+
+  /** The latest live position and its readout, kept while a replay is on screen. */
+  private liveState: GameState | null = null;
+  private liveAnalysis: LiveAnalysis | undefined = undefined;
+  /** A position named by the address bar (a shared link), to be put on the board at boot. */
+  private urlPosition: string | null = null;
+  private urlModel: string | null = null;
+  private urlAuto: AutoSide = "";
+  /** A pending auto-play move, and whether a Cancel is still unwinding auto-played moves. */
+  private autoPlayTimer: number | null = null;
+  private undoingAutoMoves: boolean = false;
 
   constructor() {
     this.parseQueryParams();
@@ -48,6 +64,7 @@ export class TSApp {
         replayBtn.textContent = "Live Mode";
         replayBtn.className = "btn btn-warning btn-sm";
       }
+      this.analysisPanel?.show(false);
       this.state = replayState;
       this.replaySteps = allSteps;
       this.replayCurrentStep = stepIndex;
@@ -55,8 +72,50 @@ export class TSApp {
       this.renderTrace();
     });
 
+    this.analysisPanel = new AnalysisPanel(
+      (rel: string | null) => {
+        this.liveAnalysis = undefined;
+        this.sendWs({ type: "SET_ANALYSIS_MODEL", model: rel });
+        this.syncUrl();
+      },
+      (flatIdx: number) => this.sendFlatAction(flatIdx),
+      () => {
+        this.syncUrl();
+        this.maybeAutoPlay();
+      },
+    );
+    this.analysisPanel.setModel(this.urlModel);
+    this.analysisPanel.setAutoSide(this.urlAuto);
+    this.analysisPanel.show(!this.isReplayMode);
+    this.actionHud.onRerender = () => this.redecorate();
+
     this.setupGlobalControls();
     this.setupBottomResizer();
+    this.boot();
+  }
+
+  /**
+   * Put a shared position on the board before connecting, so the first STATE_UPDATE is already
+   * that position. The server ignores a position the game already holds, which is what makes a
+   * plain reload keep the game's history.
+   */
+  private async boot() {
+    if (this.urlPosition && !this.isReplayMode) {
+      try {
+        const res = await fetch(`/api/games/${encodeURIComponent(this.gameId)}/position`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: this.urlPosition }),
+        });
+        if (!res.ok) {
+          const detail = await res.json().catch(() => ({}));
+          throw new Error(detail.detail || `HTTP ${res.status}`);
+        }
+      } catch (e) {
+        console.warn("Could not open the position in the link:", e);
+        window.alert(`Could not open the position in the link -- showing the current game instead.\n\n${e}`);
+      }
+    }
     this.connectWebSocket();
   }
 
@@ -75,6 +134,8 @@ export class TSApp {
         const cardsData = await cardsRes.json();
         this.cardsView.setCardsMetadata(cardsData);
       }
+      // Both views re-render themselves once their metadata lands, dropping any badges.
+      this.redecorate();
     } catch (e) {
       console.warn("loadGlobalMetadata failed:", e);
     }
@@ -90,6 +151,32 @@ export class TSApp {
     }
     if (params.has("replay")) {
       this.isReplayMode = true;
+    }
+    this.urlPosition = params.get("pos");
+    this.urlModel = params.get("model");
+    const auto = (params.get("auto") || "").toUpperCase();
+    this.urlAuto = auto === "US" || auto === "USSR" ? auto : "";
+  }
+
+  /**
+   * Keep the address bar naming the board on screen -- game, role, analysis model and the
+   * position itself -- so it can be copied and shared at any moment. `replaceState`, never
+   * `pushState`: every move would otherwise add a history entry, and Back would walk the game
+   * move by move instead of leaving the page.
+   */
+  private syncUrl() {
+    if (this.isReplayMode || !this.liveState?.position) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("game_id", this.gameId);
+    if (this.role !== "OBSERVER") params.set("role", this.role);
+    const model = this.analysisPanel.model;
+    if (model) params.set("model", model); else params.delete("model");
+    const auto = this.analysisPanel.autoSide;
+    if (auto) params.set("auto", auto.toLowerCase()); else params.delete("auto");
+    params.set("pos", this.liveState.position);
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, "", next);
     }
   }
 
@@ -107,15 +194,27 @@ export class TSApp {
     this.ws.onopen = () => {
       statusBadge.textContent = "CONNECTED";
       statusBadge.className = "status-badge connected";
+      // Analysis is per connection, so a reconnect has to ask again.
+      if (this.analysisPanel.model) {
+        this.sendWs({ type: "SET_ANALYSIS_MODEL", model: this.analysisPanel.model });
+      }
     };
 
     this.ws.onmessage = (evt) => {
       const data = JSON.parse(evt.data);
       if (data.type === "STATE_UPDATE") {
+        this.liveState = data.state;
+        // A readout for a model this page has since switched away from is dropped by the panel.
+        this.liveAnalysis = data.analysis;
         if (!this.isReplayMode) {
           this.state = data.state;
           this.renderState();
+          this.syncUrl();
+          if (!this.continueAutoUndo(data.state)) this.maybeAutoPlay();
         }
+      } else if (data.type === "ANALYSIS_ERROR") {
+        this.analysisPanel.setError(data.message || "analysis failed");
+        this.syncUrl();
       }
     };
 
@@ -138,6 +237,20 @@ export class TSApp {
     this.cardsView.render(this.state);
     this.actionHud.render(this.state);
     this.renderLogStream();
+    if (!this.isReplayMode) {
+      this.analysisPanel.render(this.liveAnalysis, this.state);
+      this.analysisPanel.decorate(this.state);
+    }
+  }
+
+  /** Re-apply the probability badges after part of the board re-rendered on its own. */
+  private redecorate() {
+    if (this.isReplayMode) {
+      const next = this.replaySteps[this.replayCurrentStep + 1];
+      decorateChoices(next?.policy, this.state);
+    } else {
+      this.analysisPanel.decorate(this.state);
+    }
   }
 
   private getFilteredIndices(
@@ -423,9 +536,68 @@ export class TSApp {
     }));
   }
 
+  /**
+   * Play a flat action in the analysis model's own action view (the favourite button, or a row
+   * of the panel's list). The server decodes it, so a composed E4.1 action needs no client code.
+   */
+  private sendFlatAction(flatIdx: number, forcedDie: number = this.actionHud.selectedDieRoll) {
+    if (this.isReplayMode) return;
+    // The position it was chosen in: the server ignores it if the board has moved on, since the
+    // same index at the next node can be legal and mean something else.
+    this.sendWs({ type: "PLAY_FLAT", flat_idx: flatIdx, forced_die: forcedDie,
+                  expect_position: this.liveState?.position });
+  }
+
+  /**
+   * Auto-play: when the side to move is the auto-play side, play the model's favourite after a
+   * short pause (so a person can follow the moves). Re-armed on every live update; a pending
+   * move is dropped if the position changes before it fires.
+   */
+  private maybeAutoPlay() {
+    if (this.autoPlayTimer !== null) {
+      window.clearTimeout(this.autoPlayTimer);
+      this.autoPlayTimer = null;
+    }
+    if (this.isReplayMode || this.undoingAutoMoves) return;
+    const idx = this.analysisPanel.autoPlayMove();
+    const pos = this.liveState?.position;
+    if (idx === null || !pos) return;
+    this.autoPlayTimer = window.setTimeout(() => {
+      this.autoPlayTimer = null;
+      if (this.isReplayMode || this.liveState?.position !== pos) return;
+      // Always the engine's own die: the manual die selector is for the moves you make.
+      this.sendFlatAction(idx, 0);
+    }, AUTO_PLAY_DELAY_MS);
+  }
+
+  /**
+   * While undoing with auto-play on, keep undoing until the decision is yours again --
+   * otherwise auto-play would immediately replay the move just taken back, and Cancel could
+   * never get past it. Returns true while the chain is still running.
+   */
+  private continueAutoUndo(state: GameState): boolean {
+    if (!this.undoingAutoMoves) return false;
+    const auto = this.analysisPanel.autoSide;
+    if (auto && state.decision_context?.decision_player === auto && state.can_undo) {
+      this.sendWs({ type: "CANCEL_ACTION" });
+      return true;
+    }
+    this.undoingAutoMoves = false;
+    return false;
+  }
+
+  private sendWs(msg: Record<string, unknown>) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify(msg));
+  }
+
   private cancelAction() {
     if (this.isReplayMode) return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.analysisPanel.autoSide) {
+      this.undoingAutoMoves = true;
+      this.maybeAutoPlay();  // disarms any pending auto move
+    }
 
     this.ws.send(JSON.stringify({
       type: "CANCEL_ACTION"
@@ -488,6 +660,13 @@ export class TSApp {
         this.cancelAction();
       } else if (e.key === "Escape") {
         this.cancelAction();
+      } else if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const t = e.target as HTMLElement | null;
+        const typing = t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+        if (!typing && !this.isReplayMode) {
+          e.preventDefault();
+          this.analysisPanel.playFavourite();
+        }
       }
     });
 
@@ -505,7 +684,11 @@ export class TSApp {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ game_id: this.gameId, seed })
         });
-        window.location.reload();
+        // Not a plain reload: the address bar names the old position, and booting from it
+        // would put that position straight back on the new game's board.
+        const params = new URLSearchParams(window.location.search);
+        params.delete("pos");
+        window.location.assign(`${window.location.pathname}?${params.toString()}`);
       } catch (e) {
         console.error(e);
       }
@@ -522,6 +705,16 @@ export class TSApp {
       this.isReplayMode = !this.isReplayMode;
       replayBtn.textContent = this.isReplayMode ? "Live Mode" : "Replay Mode";
       replayBtn.className = this.isReplayMode ? "btn btn-warning btn-sm" : "btn btn-primary btn-sm";
+      this.analysisPanel.show(!this.isReplayMode);
+      if (!this.isReplayMode && this.liveState) {
+        // Back to the live game: the board still shows the replay's last position.
+        this.state = this.liveState;
+        renderTracePanel(undefined, undefined, 0);
+        this.renderState();
+        this.syncUrl();
+        this.maybeAutoPlay();
+        return;
+      }
       this.renderLogStream();
     });
 

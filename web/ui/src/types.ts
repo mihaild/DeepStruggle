@@ -112,6 +112,8 @@ export interface GameState {
   can_undo?: boolean;
   action_logs?: ActionLogItem[];
   players?: { US: string; USSR: string };
+  /** URL-safe token for this exact position (the server's encode_position). */
+  position?: string;
 }
 
 export interface CardMetadata {

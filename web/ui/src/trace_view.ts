@@ -77,7 +77,7 @@ function flatIndex(decisionType: number, primaryId: number, flags: number): numb
 }
 
 /** Colour for a probability: the redder, the less the policy expected that move. */
-function probColor(p: number): string {
+export function probColor(p: number): string {
   if (p >= 0.5) return "var(--success)";
   if (p >= 0.2) return "var(--warning)";
   if (p >= 0.05) return "#f97316";
@@ -85,7 +85,7 @@ function probColor(p: number): string {
 }
 
 /** Three decimals, but never a bare "0.000" for something that is merely unlikely. */
-function fmtP(p: number): string {
+export function fmtP(p: number): string {
   if (p >= 0.0005) return p.toFixed(3);
   return p > 0 ? "<.001" : "0";
 }
@@ -201,23 +201,32 @@ export function renderValueRibbon(
 
 // -- probabilities on the things you would click ----------------------------------------------
 
-function clearDecorations(): void {
+export function clearDecorations(): void {
   document.querySelectorAll(".trace-choice-badge").forEach(el => el.remove());
   document.querySelectorAll(".trace-choice-played").forEach(el =>
     el.classList.remove("trace-choice-played"));
 }
 
-function htmlBadge(p: number, played: boolean): HTMLElement {
+/**
+ * How a badge is singled out: `played` is the move a replay went on to make (◀), `favourite`
+ * the live model's own most likely move (★). Both get the same highlight -- it is the one to
+ * compare everything else against -- and a different glyph, because they are different claims.
+ */
+export type BadgeMark = "played" | "favourite" | null;
+
+export function htmlBadge(p: number, mark: BadgeMark, note?: string): HTMLElement {
   const span = document.createElement("span");
-  span.className = "trace-choice-badge" + (played ? " played" : "");
+  span.className = "trace-choice-badge" + (mark ? " played" : "");
   span.style.color = probColor(p);
   span.style.borderColor = probColor(p);
-  span.textContent = fmtP(p) + (played ? " ◀" : "");
-  span.title = `policy probability ${p} (temperature 1)` + (played ? " -- the move it played" : "");
+  span.textContent = fmtP(p) + (mark === "played" ? " ◀" : mark === "favourite" ? " ★" : "");
+  span.title = `policy probability ${p} (temperature 1)`
+    + (mark === "played" ? " -- the move it played" : mark === "favourite" ? " -- the model's favourite" : "")
+    + (note ? `\n${note}` : "");
   return span;
 }
 
-function svgBadge(g: Element, p: number, played: boolean): void {
+export function svgBadge(g: Element, p: number, played: boolean, note?: string): void {
   const rect = g.querySelector("rect.country-card-bg");
   if (!rect) return;
   const bx = parseFloat(rect.getAttribute("x") || "0");
@@ -250,6 +259,11 @@ function svgBadge(g: Element, p: number, played: boolean): void {
   text.setAttribute("font-size", "3.4");
   text.setAttribute("font-weight", "bold");
   text.textContent = fmtP(p);
+  if (note) {
+    const title = document.createElementNS(NS, "title");
+    title.textContent = `${fmtP(p)} -- ${note}`;
+    text.appendChild(title);
+  }
   g.appendChild(text);
 }
 
@@ -284,7 +298,7 @@ export function decorateChoices(policy: PolicyTrace | undefined, state: GameStat
     const prob = p.get(idx)!;
     const played = idx === chosen;
     if (played) btn.classList.add("trace-choice-played");
-    btn.appendChild(htmlBadge(prob, played));
+    btn.appendChild(htmlBadge(prob, played ? "played" : null));
   });
 
   // Cards in hand, when a card is what is being chosen.
@@ -296,7 +310,7 @@ export function decorateChoices(policy: PolicyTrace | undefined, state: GameStat
       const prob = p.get(idx)!;
       const played = idx === chosen;
       if (played) el.classList.add("trace-choice-played");
-      el.appendChild(htmlBadge(prob, played));
+      el.appendChild(htmlBadge(prob, played ? "played" : null));
     });
   }
 
@@ -316,7 +330,7 @@ export function decorateChoices(policy: PolicyTrace | undefined, state: GameStat
 
 // -- the right-rail panel ---------------------------------------------------------------------
 
-function criticTableHtml(critic: CriticTrace): string {
+export function criticTableHtml(critic: CriticTrace): string {
   return `
     <table class="trace-critic">
       <tr><th>prediction</th><th>v_win</th><th>v_vp</th></tr>

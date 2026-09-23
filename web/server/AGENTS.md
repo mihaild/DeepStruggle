@@ -57,8 +57,46 @@ Two rules follow:
     onto the card, mode button or country it belongs to. **Every reader must treat both
     keys as absent by default** — a heuristic bot has no distribution, a human game has no
     model, and replays predating the trace have neither. The live server never puts a trace in a
-    `STATE_UPDATE`: a distribution over a bot's legal actions is a read on its hand, which is
-    what the per-role `observation_b64` exists to withhold.
+    `STATE_UPDATE` unasked: a distribution over a bot's legal actions is a read on its hand,
+    which is what the per-role `observation_b64` exists to withhold. The one exception is the
+    opt-in live analysis below, sent only to the socket that requested it.
+  - `start_position` in the metadata marks a game begun from a loaded position (a shared link)
+    rather than from the seed; such a replay cannot be re-driven from the seed alone.
+
+- [`analysis.py`](analysis.py): **live model analysis** for the workbench.
+  - `list_models()` / `resolve_model_path()`: checkpoints are named relative to the checkpoints
+    tree (`$TS_CHECKPOINTS_DIR`, else the shared `data/checkpoints`); `resume_*.pt` and anything
+    outside the tree are refused, so a URL cannot point the server at an arbitrary file.
+  - `MODEL_CACHE`: a few `NeuralAgent`s loaded via `NeuralAgent.from_checkpoint`, which detects
+    the architecture from the weights and the **action view** (E4 / E4.1 merged-influence) from
+    the run directory. Device from `$TS_ANALYSIS_DEVICE`, default `cpu` (a position costs a few
+    ms; the GPU usually belongs to a training run).
+  - `analyze()`: the policy over every legal action **in the model's own view** (`read_policy`,
+    `deterministic=True`, so the torch RNG is untouched) and the critic from both perspectives
+    (`read_critic`). Each choice carries the MicroAction a click would send, so the UI attaches
+    probabilities by matching what a button/card/country sends, never by flat offsets. A
+    *composed* E4.1 choice ("Ops → Influence, first point in X") names the commit half.
+  - `flat_to_steps()`: how "play favourite" applies a flat action. A composed E4.1 action is
+    applied as the two E4 steps it is defined as (as `Engine::step_flat` composes it), each
+    logged and undoable like a click; half of one is never left applied.
+  - `encode_position()` / `decode_position()`: the address-bar token — `to_save_dict` JSON,
+    zlib, base64url, ~1 KB mid-game. A token that does not round-trip through
+    `state_from_save_dict` exactly is refused rather than opened approximately.
+
+  WebSocket messages (in `main.py`): `SET_ANALYSIS_MODEL {model: <rel path> | null}` opts this
+  socket in or out (errors come back as `ANALYSIS_ERROR {message}`); every later `STATE_UPDATE`
+  to that socket carries `analysis` (a `LiveAnalysisDict`) for the same position as its `state`,
+  and `analysis_model`. `PLAY_FLAT {flat_idx, forced_die, expect_position?}` plays a flat action
+  in the socket's model's view; with `expect_position` it is ignored unless the game still holds
+  that position (auto-play, a click and a second tab can all race for the same node). Every `state` now carries `position`, the token for the board it describes.
+  `GameSession.version` is bumped on every change of position; a readout is cached per
+  (model, version) and a superseded broadcast is dropped rather than sent late.
+
+- **`POST /api/games/{game_id}/position`** `{position}`: put a shared position on the board.
+  Returns `changed: false` (and does nothing) when the game already holds exactly that
+  position, which is what lets a page reload keep the game's undo history; otherwise the
+  history and log restart there. A malformed token is a 400.
+- **`GET /api/analysis/models`**: every loadable checkpoint, grouped by run, newest run first.
   - `ReplayManager`: Discovers and loads those files.
   - `replays_dir()` resolves the location per call — `$TS_REPLAYS_DIR` if set, else `data/replays`
     — so a test fixture can point the server at a directory it has just generated a replay into.
