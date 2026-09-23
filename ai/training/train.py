@@ -410,6 +410,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wolf-power", type=float, default=1.0,
                         help="p in --wolf-seat-weight. 1.0 gives w_us = 2x, w_ussr = 2(1-x); "
                              "below 1 softens the ratio (x/(1-x))^p between the seats.")
+    parser.add_argument("--wolf-scope", choices=["surrogate", "policy"], default="surrogate",
+                        help="What --wolf-seat-weight scales. 'surrogate' (the first version, "
+                             "E4-38) weights the PPO surrogate only; the unweighted entropy bonus "
+                             "then pushes the down-weighted seat toward uniform. 'policy' weights "
+                             "the seat's whole policy objective -- surrogate, entropy bonus and KL "
+                             "to pi_ref -- a per-seat learning rate, as WoLF is defined.")
     parser.add_argument("--wolf-ema-games", type=float, default=2000.0,
                         help="Memory of --wolf-seat-weight's average, in self-play games: each "
                              "iteration moves it by alpha = min(1, games / this).")
@@ -600,6 +606,7 @@ def main():
             wolf_seat_weight=args.wolf_seat_weight,
             wolf_power=args.wolf_power,
             wolf_ema_games=args.wolf_ema_games,
+            wolf_scope=args.wolf_scope,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,

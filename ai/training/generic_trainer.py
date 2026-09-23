@@ -1332,6 +1332,7 @@ def train_pipeline(
     wolf_seat_weight: bool = False,
     wolf_power: float = 1.0,
     wolf_ema_games: float = 2000.0,
+    wolf_scope: str = "surrogate",
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1519,6 +1520,7 @@ def train_pipeline(
         "wolf_seat_weight": bool(wolf_seat_weight),
         "wolf_power": float(wolf_power),
         "wolf_ema_games": float(wolf_ema_games),
+        "wolf_scope": str(wolf_scope),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
         "merged_influence_from_step": int(merged_from_step),
@@ -1666,6 +1668,7 @@ def train_pipeline(
         wolf_seat_weight=wolf_seat_weight,
         wolf_power=wolf_power,
         wolf_ema_games=wolf_ema_games,
+        wolf_scope=wolf_scope,
         device=dev,
     )
 
@@ -1800,8 +1803,9 @@ def train_pipeline(
     if per_seat_adv_norm:
         print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
     if wolf_seat_weight:
-        print(f"[wolf] per-seat surrogate weights from the self-play USSR share: power={wolf_power}, "
-              f"memory={wolf_ema_games:g} games (--wolf-seat-weight)", flush=True)
+        print(f"[wolf] per-seat weights from the self-play USSR share on the {wolf_scope} "
+              f"objective: power={wolf_power}, memory={wolf_ema_games:g} games "
+              f"(--wolf-seat-weight --wolf-scope {wolf_scope})", flush=True)
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]

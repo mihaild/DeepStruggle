@@ -232,7 +232,13 @@ of a run without them are unchanged:
     `--wolf-ema-games`, 2000 games by default.
   * The weights are w_us = 2x^p / (x^p + (1−x)^p) and w_ussr = 2(1−x)^p / (x^p + (1−x)^p),
     with p = `--wolf-power`. At p = 1 that is simply 2x and 2(1−x).
-  * The entropy bonus, the KL to π_ref and the value loss are not weighted.
+  * `--wolf-scope` sets what the weights scale:
+    * `surrogate` (the default, and E4-38) scales the PPO surrogate only. The unweighted entropy
+      bonus then pushes the down-weighted seat toward uniform: E4-38's entropy stayed ~1.75 for
+      60M.
+    * `policy` scales the seat's whole policy objective: surrogate, entropy bonus and KL to π_ref.
+      That is a per-seat learning rate, which is how WoLF is defined.
+  * The value loss is never weighted.
   * Logged as `wolf_sp_ussr`, `wolf_w_us` and `wolf_w_ussr`, and carried in the resume state.
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side

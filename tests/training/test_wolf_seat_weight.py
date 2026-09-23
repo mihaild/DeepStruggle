@@ -47,3 +47,14 @@ def test_get_batches_carries_the_acting_seat_last() -> None:
     batch = next(buf.get_batches(batch_size=6))
     assert len(batch) == 12
     assert sorted(batch[11].tolist()) == [-1, -1, -1, 1, 1, 1]
+
+
+def test_the_cli_offers_both_scopes_and_defaults_to_the_first_version() -> None:
+    """E4-38 ran before the scope existed, so the default must keep its meaning."""
+    from ai.training.train import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args([]).wolf_scope == "surrogate"
+    assert parser.parse_args(["--wolf-scope", "policy"]).wolf_scope == "policy"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--wolf-scope", "everything"])

@@ -216,6 +216,7 @@ class BaseNashPGTrainer:
         wolf_seat_weight: bool = False,
         wolf_power: float = 1.0,
         wolf_ema_games: float = 2000.0,
+        wolf_scope: str = "surrogate",
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -348,6 +349,14 @@ class BaseNashPGTrainer:
         #: Games of memory in the average: each iteration's self-play games move it by
         #: alpha = min(1, games / wolf_ema_games).
         self.wolf_ema_games = float(wolf_ema_games)
+        #: What the per-seat weights scale. "surrogate" (the first version, E4-38) scales the PPO
+        #: surrogate alone; the unweighted entropy bonus then outweighs the down-weighted seat's
+        #: policy gradient and pushes that seat toward uniform, and E4-38's entropy stayed ~1.75
+        #: for 60M. "policy" scales the seat's whole policy objective -- surrogate, entropy bonus
+        #: and KL to pi_ref together -- which is a per-seat learning rate, WoLF as published.
+        if wolf_scope not in ("surrogate", "policy"):
+            raise ValueError(f"wolf_scope must be 'surrogate' or 'policy', got {wolf_scope!r}")
+        self.wolf_scope = str(wolf_scope)
         #: The USSR's smoothed self-play win share. Starts even, and is carried in the resume
         #: state so a resumed run does not relearn it.
         self.wolf_sp_ussr = 0.5
@@ -1044,7 +1053,8 @@ class NashPGTrainer(BaseNashPGTrainer):
 
                 cur_p = F.softmax(cur_logits, dim=-1)
                 cur_log_p = F.log_softmax(cur_logits, dim=-1)
-                kl_div = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1).mean()
+                kl_per = torch.sum(cur_p * (cur_log_p - ref_log_p), dim=-1)
+                kl_div = kl_per.mean()
 
                 # Entropy over the learner's own actions only, for the same reason as the
                 # surrogate: an entropy bonus on a frozen opponent's choices would push
@@ -1100,7 +1110,18 @@ class NashPGTrainer(BaseNashPGTrainer):
                         search_illegal_rows_accum += int((_row > 1e-9).sum())
                         search_rows_seen_accum += int(_row.numel())
 
-                policy_loss = (ppo_loss + self.eta * kl_div - self.ent_coef * own_entropy
+                kl_term = kl_div
+                ent_term = own_entropy
+                if self.wolf_seat_weight and self.wolf_scope == "policy":
+                    # WoLF as a per-seat learning rate: the entropy bonus and the KL to pi_ref are
+                    # scaled with the surrogate, so a seat's own balance between them is unchanged
+                    # and only its speed is. The logged kl_div and entropy stay unweighted.
+                    _w = wolf_sample_weights(b_players, wolf_w_us, wolf_w_ussr).to(kl_per.dtype)
+                    kl_term = (kl_per * _w).mean()
+                    _own = b_learner > 0.5
+                    ent_term = ((cur_entropy * _w)[_own].mean() if bool(_own.any())
+                                else cur_entropy.sum() * 0.0)
+                policy_loss = (ppo_loss + self.eta * kl_term - self.ent_coef * ent_term
                                + self.search_ce_coef * search_ce)
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
