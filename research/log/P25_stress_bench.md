@@ -200,16 +200,21 @@ and 60M, plus E4-08-0s@60M. 21 players, 100 games per side per pair, temperature
 
 | seed | step | E4-39 − E4-27 | E4-39 − E4-38 | E4-39 vs E4-27 (as USSR / as US) | E4-39 vs λ 0.98 @60M (as USSR / as US) |
 |---:|:---|---:|---:|---:|---:|
-| 3 | 50M | +27 | −49 | 83 / 37 | 18 / 15 |
-| 3 | 55M | +94 | +26 | 88 / 24 | 18 / 20 |
-| 3 | 60M | +54 | −75 | 93 / 24 | 9 / 8 |
-| 5 | 50M | −78 | −24 | 68 / 15 | 5 / 4 |
-| 5 | 55M | −74 | +30 | 70 / 7 | 5 / 8 |
-| 5 | 60M | **−110** | +11 | 53 / 8 | 7 / 7 |
+| 3 | 50M | +27 | −47 | 83 / 37 | 18 / 15 |
+| 3 | 55M | +91 | +28 | 88 / 24 | 18 / 20 |
+| 3 | 60M | +49 | −73 | 93 / 24 | 9 / 8 |
+| 5 | 50M | −79 | −24 | 68 / 15 | 5 / 4 |
+| 5 | 55M | −75 | +28 | 70 / 7 | 5 / 8 |
+| 5 | 60M | **−114** | +8 | 53 / 8 | 7 / 7 |
+
+*This round was run twice. The second run, after the machine restart, overwrote the report file
+the first had written. The Elo differences above are from the file on disk, the second run. The
+first run's numbers differed by at most 5 Elo per row (seed 3: +27/+94/+54, seed 5:
+−78/−74/−110), and the win-rate cells are identical.*
 
 **Verdict: fails, like E4-38.** Scaling the whole policy objective changed neither result:
-* seed 3 is modestly ahead of its collapsed control, +27 to +94;
-* seed 5 is weak on both seats, −74 to −110, winning 4–8% against the λ 0.98 recipe.
+* seed 3 is modestly ahead of its collapsed control, +27 to +91;
+* seed 5 is weak on both seats, −75 to −114, winning 4–8% against the λ 0.98 recipe.
 
 The entropy explanation for E4-38 is therefore **withdrawn**. It was not the unweighted entropy
 bonus. Both WoLF variants hold the self-play split near even, and both keep entropy at ~1.75. On
