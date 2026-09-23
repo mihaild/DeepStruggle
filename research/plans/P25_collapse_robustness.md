@@ -83,8 +83,15 @@ The bench changed before launch, after the first per-seat collapse was read (Res
 * it is not weaker than E4-27-0s at matched steps in a head-to-head, per seat.
 
 A lever that stops the collapse only by holding both seats at 50% while playing worse has failed.
-Under `--seat-balance` the self-play share is also partly the lever's own doing, so the per-seat
-head-to-head decides, not the share.
+
+**Which share to read.** Under `--seat-balance` the logged `ussr_win_rate` is not a self-play
+measure. It includes the pool games, and at full pressure the lever puts the learner on the weak
+seat in ~90% of those, against older snapshots it usually beats. So the logged share is pulled
+toward 50% by the lever itself: E4-36-03 logged 0.31–0.66 USSR at 26–30M, while its pure
+self-play share was 0.84–0.90. For the seat-balanced arms, read the pool's own pure self-play
+estimate, `opp_seat_sp_us`. The controls' logged share is diluted too, by their 30% pool games,
+but symmetrically, so it *understates* their extremity. That makes the pure-self-play test on the
+E4-36 arms the stricter of the two. The per-seat head-to-head decides in the end, not the share.
 
 If more than one lever passes, the next arm combines them. If none passes, the mechanism below is
 wrong or incomplete, and the auto-rewind of step 5 carries the plan.
