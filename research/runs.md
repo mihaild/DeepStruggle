@@ -115,8 +115,8 @@ having deliberately.
 | **E4-24-03/05** | P22-a — identity-keyed card lookup | 160M / 80M | `E4-24-0{3,5}_*` | [`log/P22_width_probe_and_card_lookup.md`](log/P22_width_probe_and_card_lookup.md) |
 | **E4-26-03/05** | `--ref-update-freq 5000000` | 80M / 160M (s5 from scratch) | `E4-26-0{3,5}_*` | [`log/E4_dynamics_ref_lambda.md`](log/E4_dynamics_ref_lambda.md) |
 | **E4-27-03/05** | `--gae-lambda 0.99` | 80M / 160M (s5 from scratch) | `E4-27-0{3,5}_*` | [`log/E4_dynamics_ref_lambda.md`](log/E4_dynamics_ref_lambda.md) |
-| **E4-28-03** | online search distillation, resumed from `E4-08-03@160M` on seed 3 — its control is E4-08-03's own 160→240M leg | 160M → ~190M | `E4-28-03_20260923_001303` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
-| **E4-28-05** | the same, seed-5 replicate, resumed from `E4-08-05@80M` — its control is E4-08-05's own 80→160M leg | 80M → ~97M | `E4-28-05_20260923_031034` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
+| **E4-28-03** | online search distillation, resumed from `E4-08-03@160M` on seed 3 — its control is E4-08-03's own 160→240M leg | 160M → 200M | `E4-28-03_20260923_001303` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
+| **E4-28-05** | the same, seed-5 replicate, resumed from `E4-08-05@80M` — its control is E4-08-05's own 80→160M leg | 80M → ~108M (stopped at 07:00) | `E4-28-05_20260923_031034` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
 
 **Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 111
 E4 run directories exist, under 75 short names — a continuation adds a directory, not a name — and

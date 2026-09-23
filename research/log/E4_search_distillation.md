@@ -1,7 +1,7 @@
 # E4-28 — online search distillation on M2d
 
-Two arms, `E4-28-03` (seed 3, from 160M) and `E4-28-05` (seed 5, from 80M), run overnight
-2026-09-22/23 and still training when this was written. P15-X4b, re-run on E4: an honest searcher answers 1 in 8 of
+Two arms, run overnight 2026-09-22/23: `E4-28-03` (seed 3, 160M → 200M, finished) and
+`E4-28-05` (seed 5, from 80M, stopped at 07:00 near 108M). P15-X4b, re-run on E4: an honest searcher answers 1 in 8 of
 all decisions during RL, and its visit distribution enters the loss as a cross-entropy term.
 **Search produces targets and never acts**, so rollouts are the policy's own.
 
@@ -24,7 +24,7 @@ all decisions during RL, and its visit distribution enters the loss as a cross-e
   on both seats. The archive's verdict is that search CE at coefficient 0.5 with a 200k reference
   anchor *"collapses completely, with or without a healthy opponent pool. The pool changes when."*
   [`../questions.md`](../questions.md) had it right. **The collapse window is 30–36M into the
-  leg, and E4-28-03 reached it overnight**; see *The E3 collapse window* below.
+  leg; E4-28-03 went through it to 40M without declining**; see *The E3 collapse window* below.
 * **Why now:** honest 96-sim search beats `E4-08-03@240M` 64% ([`search_cost_and_coverage.md`](search_cost_and_coverage.md) §10),
   and the training-dynamics levers both failed ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)).
 * **Cost:** ~1,200 steps/s while sharing the GPU, against ~45,000 without search. Search is
@@ -48,8 +48,9 @@ Each snapshot is rated in its own small field against the control at the same st
 | 185M | 2241.3 | 2116.0 | **+125.3** | 74 / 70 | 71 / 64 | 80 / 83 |
 | 190M | 2239.1 | 2044.9 | **+194.2** | 77 / 75 | 80 / 67 | 82 / 68 |
 | 195M | 2228.7 | 2060.4 | **+168.3** | 72 / 73 | 77 / 63 | 75 / 85 |
+| 200M | 2231.6 | 2035.9 | **+195.7** | 75 / 63 | 77 / 58 | 86 / 79 |
 
-**Seven of seven snapshots beat the step-matched control on both seats.** The 185–190M gaps are wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
+**Eight of eight snapshots beat the step-matched control on both seats.** The 185–190M gaps are wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
 start. Against the fixed 160M start the arm holds or improves, 77 / 64 at 165M and 80 / 67 at 190M.
 Search distillation rides through the control's dip.
 
@@ -63,10 +64,13 @@ at the same distance, against its fixed 160M start (which, unlike the control, d
 | 25M | 185M | 71 / 64 |
 | 30M | 190M | 80 / 67 |
 | 35M | 195M | 77 / 63 |
+| **40M** | **200M** | **77 / 58** |
 
-**No decline yet at 35M.** But E3's arm went from its peak to ~11% in about 6M steps, and this
-arm stops at 07:00 at ~196M, before 36.5M. The window is reached but not cleared. Extending
-E4-28-03 is the single most important next step.
+**No collapse through 40M, past the point where E3's arm was at ~11%.** The arm finished its
+200M budget at 06:50. The US seat against the start eases from 63% to 58% over the last 5M,
+within the ±5 pp of 100 games a seat, and `kl_div` stayed at 0.012–0.03 where E3's rose to 2.4–7.5.
+One seed has cleared E3's window; that is evidence the collapse is not inherent to the
+configuration on E4, not proof, and a longer extension is still the first next step.
 
 ## Headroom left after 20M
 
@@ -151,8 +155,8 @@ Proposals, not decisions:
 
 1. **Extend E4-28-03 past E3's collapse window before adopting anything.** It is the first
    intervention on E4 that beats plain M2d, on two seeds and on both seats, but E3's identical
-   configuration collapsed completely 30–36M into its leg with a healthy pool, and E4-28-03 stopped
-   at ~36M, inside that window. Rate it against the fixed 160M start every 2.5M from 195M to ~220M.
+   configuration collapsed completely 30–36M into its leg with a healthy pool. E4-28-03 cleared that
+   window without a decline (40M, finished at 200M), which is one seed. Rate it against the fixed 160M start every 2.5M from 195M to ~220M.
    If it holds, adopt it, priced in GPU-hours: ~40x per step (~1,200 against ~45,000 steps/s), with
    20M search steps (~4.6 h) beating 80M plain ones (~0.5 h). If it collapses, the gain is a
    transient worth harvesting by distilling for ~20M and stopping — the E3 record's shape too.
