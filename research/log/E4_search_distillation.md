@@ -50,7 +50,10 @@ Each snapshot is rated in its own small field against the control at the same st
 | 195M | 2228.7 | 2060.4 | **+168.3** | 72 / 73 | 77 / 63 | 75 / 85 |
 | 200M | 2231.6 | 2035.9 | **+195.7** | 75 / 63 | 77 / 58 | 86 / 79 |
 
-**Eight of eight snapshots beat the step-matched control on both seats.** The 185–190M gaps are wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
+**Eight of eight snapshots beat the step-matched control on both seats.** **Caution added later:**
+the control's 185–200M dip turned out to be seed 3's alone. `E4-08-03-160M.11`, the same state
+continued under seed 11, does not dip ([`E4_late_dynamics.md`](E4_late_dynamics.md)). So the
++125 to +196 margins at 185–200M overstate the gain; the +54 to +70 at 165–180M is its fair size. The 185–190M gaps are wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
 start. Against the fixed 160M start the arm holds or improves, 77 / 64 at 165M and 80 / 67 at 190M.
 Search distillation rides through the control's dip.
 
