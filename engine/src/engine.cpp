@@ -60,6 +60,12 @@ bool Engine::step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
     const GameState before = state;
     const MicroAction commit = ActionMask::decode_flat_action_212(state, flat_slots::OPS_INFLUENCE);
     if (!StateMachine::step(state, commit)) { state = before; return false; }
+    if (is_terminal(state)) {
+        // The commit ended the game (the merged mask offers only OPS_INFLUENCE then): the E4
+        // action is complete, with nothing left to compose.
+        if (action_idx != flat_slots::OPS_INFLUENCE) { state = before; return false; }
+        return true;
+    }
     const uint16_t second = (action_idx == flat_slots::OPS_INFLUENCE) ? flat_slots::CONFIRM_DONE
                                                                       : action_idx;
     const MicroAction place = ActionMask::decode_flat_action_212(state, second);

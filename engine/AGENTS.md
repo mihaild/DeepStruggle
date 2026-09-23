@@ -106,8 +106,10 @@ of the state after `OPS_INFLUENCE`, and a composed step is applied atomically. S
 `GameState` field and no observation slot changes; the view is the deciding agent's, not the game's,
 and with it off everything is bit-identical to E4 (checked against a frozen decision stream).
 `tests/bindings/test_merged_influence.py` pins the definition: mask equality and byte-identical states.
-Where E4 offers `OPS_INFLUENCE` but it does not lead to the mover's placement (see §9a), the merged
-view offers no influence and calls `report_anomaly` -- it composes, it never substitutes.
+Where the commit itself ends the game (a We Will Bury You penalty falling due, §9a) the merged view
+offers `OPS_INFLUENCE` as that bare commit -- there is nothing to compose. Anywhere else the commit
+does not reach the mover's placement, it offers no influence and calls `report_anomaly`; it
+composes, it never substitutes. Over 96,010 influence-legal op-choice nodes that has not happened.
 
 The engine splits complex turns into a sequential stream of atomic 4-byte `MicroAction` structures:
 
@@ -403,12 +405,19 @@ granted, so the player loses a whole action round with no error reported.
 than a second copy of the rule, and a regression test pinning the companion mask to opponent
 non-scoring cards. It changes the decision stream, so it is an engine change under §2.
 
-## 9a. Known issue: UN Intervention for Ops can dead-end the game (found by the P23 census)
+## 9a. Not an issue: "UN Intervention for Ops dead-ends the game" (retracted 2026-09-23)
 
-In random legal play (2,000 games, seed base 230,000, `numpy` rng 23 over the flat mask), one of
-55,455 `OPS_INFLUENCE` choices at a `SELECT_PLAY_MODE` node led nowhere: game seed 231357, turn 4,
-AR 5, the US resolving card 32 (UN Intervention) with legal `[EVENT, OPS_INFLUENCE, OPS_COUP,
-OPS_REALIGN]`. `OPS_INFLUENCE` is accepted, and the next decision is `SELECT_PLAY_MODE` again with an
-**empty** mask, so the game can never advance. Probably the same companion machinery as §9. **Unfixed,
-reported to the owner 2026-09-23**; an engine change under §2. The E4.1 merged view does not offer
-influence at such a node (it cannot be composed) and reports it through `report_anomaly`.
+The P23 census reported, and an earlier version of this section recorded, that choosing
+`OPS_INFLUENCE` for UN Intervention (seed 231357, turn 4, AR 5, US at -18 VP) left the game on a
+`SELECT_PLAY_MODE` node with an empty mask. **The game had ended.** The USSR had played We Will Bury
+You (`WE_WILL_BURY_YOU_PENDING`), whose text is "unless #32 UN Intervention is played **as an
+Event** on the US's next action round, the USSR receives 3 VP". Any Ops play -- influence, coup or
+realignment -- pays those 3 VP, which takes -18 to -20, and the USSR wins; EVENT cancels the
+penalty. The engine is correct. The census had checked the next decision's type and mask but not
+`is_terminal`, and a finished game offers nothing. Nothing about UN Intervention or 1-Op cards is
+special here: any card but UN Intervention-as-Event would do the same.
+
+What it did expose was a P23 defect, fixed in the same change: the merged view treated "the commit
+ends the game" as a failed composition and dropped influence, removing a legal E4 option. It now
+offers `OPS_INFLUENCE` there as the bare commit (`tests/bindings/test_merged_influence.py`, pinned to
+this position in `p23_wwby_pending_position.json`).

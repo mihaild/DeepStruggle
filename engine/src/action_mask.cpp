@@ -716,16 +716,29 @@ bool is_node_slot(uint16_t idx) noexcept {
     return idx >= flat_slots::NODE && idx < flat_slots::NODE + flat_slots::NODE_COUNT;
 }
 
-// The position after OPS_INFLUENCE, and whether it is the placement the merged view composes
-// with. Anything else -- a refused step, a different decision, another player -- means the
-// composition does not exist here, and the caller offers no merged influence at all.
-bool after_influence(const GameState& state, GameState& after) noexcept {
+// What OPS_INFLUENCE leads to, which decides what the merged view can compose with it.
+enum class AfterInfluence : uint8_t {
+    PLACEMENT,  // the mover's first placement: compose NODE X and "place nothing" with it
+    GAME_OVER,  // the commit itself ended the game (e.g. We Will Bury You's 3 VP falling due):
+                // there is nothing to compose, so OPS_INFLUENCE is just the commit
+    OTHER,      // anything else: no composition exists, and it is reported rather than guessed
+};
+
+bool is_game_over(const GameState& s) noexcept {
+    return s.current_phase == Phase::GAME_OVER || s.victory_points >= 20 || s.victory_points <= -20;
+}
+
+AfterInfluence after_influence(const GameState& state, GameState& after) noexcept {
     after = state;  // trivially copyable: one memcpy
     const MicroAction commit =
         ActionMask::decode_flat_action_212(state, flat_slots::OPS_INFLUENCE);
-    if (!StateMachine::step(after, commit)) return false;
-    return after.ctx().decision_type == DecisionType::POINT_NODE &&
-           after.ctx().decision_player == state.ctx().decision_player;
+    if (!StateMachine::step(after, commit)) return AfterInfluence::OTHER;
+    if (is_game_over(after)) return AfterInfluence::GAME_OVER;
+    if (after.ctx().decision_type == DecisionType::POINT_NODE &&
+        after.ctx().decision_player == state.ctx().decision_player) {
+        return AfterInfluence::PLACEMENT;
+    }
+    return AfterInfluence::OTHER;
 }
 
 } // namespace
@@ -739,11 +752,19 @@ void ActionMask::generate_flat_mask_merged(const GameState& state, uint8_t* mask
     mask[flat_slots::OPS_INFLUENCE] = 0;
 
     GameState after;
-    if (!after_influence(state, after)) {
-        // E4 offers influence here and it does not lead to a placement. Not composed, not papered
-        // over: reported, and influence simply is not offered in this view.
-        report_anomaly("P23: OPS_INFLUENCE offered but does not lead to the mover's placement", state);
-        return;
+    switch (after_influence(state, after)) {
+        case AfterInfluence::PLACEMENT:
+            break;
+        case AfterInfluence::GAME_OVER:
+            // The commit ends the game, so there is no placement to fold in and nothing to
+            // choose between: the E4 option survives as itself, under its own index.
+            mask[flat_slots::OPS_INFLUENCE] = 1;
+            return;
+        case AfterInfluence::OTHER:
+            // E4 offers influence here and it leads neither to the mover's placement nor to the
+            // end of the game. Not composed, not papered over: reported, and not offered.
+            report_anomaly("P23: OPS_INFLUENCE leads neither to a placement nor to game over", state);
+            return;
     }
     uint8_t post[FLAT_ACTION_SPACE_SIZE];
     generate_flat_mask_212(after, post);

@@ -147,6 +147,34 @@ def test_a_refused_merged_step_leaves_the_state_untouched(nodes: List[ts.GameSta
     assert refused > 100
 
 
+def test_an_influence_commit_that_ends_the_game_keeps_its_index() -> None:
+    """We Will Bury You pending, the US at -18 VP holding UN Intervention: any Ops play pays the
+    USSR 3 VP and ends the game (only UN Intervention as an Event avoids it -- the card's text).
+    E4 offers OPS_INFLUENCE there. The merged view must too, as the bare commit: there is no
+    placement to fold in. It used to drop the option and report an anomaly, which removed a legal
+    E4 move. Position from the P23 census, game seed 231357, turn 4 AR 5."""
+    import json
+    import pathlib
+
+    save = json.loads((pathlib.Path(__file__).parent / "p23_wwby_pending_position.json").read_text())
+    s = ts.state_from_save_dict(save)
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE and s.victory_points == -18
+
+    e4 = np.asarray(ts.Engine.get_flat_action_mask(s))
+    merged = np.asarray(ts.Engine.get_flat_action_mask(s, merged_influence=True))
+    assert e4[INFL] and merged[INFL]
+    assert not merged[NODE:NODE_END].any()
+    others = np.ones(len(e4), dtype=bool)
+    others[INFL] = False
+    assert np.array_equal(merged[others], e4[others])
+
+    composed, reference = s.clone(), s.clone()
+    ts.Engine.step_flat(composed, INFL, False, merged_influence=True)
+    ts.Engine.step_flat(reference, INFL, False)
+    assert ts.Engine.is_terminal(composed) and composed.victory_points == -20
+    assert composed.raw_bytes() == reference.raw_bytes()
+
+
 def test_a_mixed_game_runs_to_the_end_in_the_batch_runner() -> None:
     """US decides in the merged view, USSR in E4's, in the same games."""
     n = 16

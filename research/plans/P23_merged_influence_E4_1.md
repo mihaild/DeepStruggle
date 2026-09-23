@@ -136,9 +136,12 @@ The validation arms cost ~2 × 80M warm-started steps, about 1–2 GPU-hours.
 * **Census (2,000 random games):** after `OPS_INFLUENCE` the next decision is the same player's
   placement in 61,862 of 61,863 cases, always with at least one country. `CONFIRM_DONE` (an early
   stop) is offered there **every time**, so the merged view keeps "influence, place nothing" as
-  `OPS_INFLUENCE` rather than losing it. The exception is a pre-existing E4 dead end, UN
-  Intervention played for Ops (`engine/AGENTS.md` §9a), reported and unfixed. The merged view does
-  not offer influence there and calls `report_anomaly`; it fires a few times a minute in training.
+  `OPS_INFLUENCE` rather than losing it. The one exception was first
+  reported as an engine dead end. **Retracted:** the commit had ended the game (a pending We Will
+  Bury You paid the USSR 3 VP at -18; `engine/AGENTS.md` §9a), and the census did not check
+  `is_terminal`. It exposed a P23 defect instead: the merged view dropped influence where the commit
+  ends the game. Fixed to offer the bare commit there; re-census in the merged view: 96,010
+  influence-legal op-choice nodes, **0** lost, 0 refused, 0 anomalies.
 * **Implementation `d6c89ad`:**
   * `tests/bindings/test_merged_influence.py`: mask equality, and byte-identical states for more
     than 5,000 composed actions.
@@ -157,5 +160,5 @@ existing checkpoints waits on the verdict.
 
 | arm | directory | status |
 |:---|:---|:---|
-| E4.1-01-03 | `E4.1-01-03_20260923_104252` | running |
+| E4.1-01-03 | `E4.1-01-03_20260923_104252_VOID_pre_wwby_terminal_fix` | **void**: ~20 min on the pre-fix definition, stopped and relaunched |
 | E4.1-01-05 | — | queued behind it |
