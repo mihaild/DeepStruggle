@@ -1,6 +1,6 @@
 # E4-29..33 — training-dynamics changes applied only after 160M
 
-**Running; updated as snapshots are rated.** The from-scratch arms
+**Done, 2026-09-23.** The final rating of every arm is the full-field round at the end, [240M, the full field](#240m-the-full-field-every-late-arm-both-seeds-e41). The from-scratch arms
 ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)) rejected both a slow π_ref and λ 0.99.
 The question here is whether a parameter matters only early in training. Each arm resumes
 `E4-08-03`'s 160M state on seed 3 and runs to 240M with **one** change. `launch_flags.py --diff`
@@ -181,3 +181,82 @@ Self-play US share was 1% at 209M, and the learner won 42% against its own pool.
 225M (US share 12%, `adv_std_raw` 0.20). It is therefore a poor sole baseline for `E4-31-05`, and a
 second one, `E4-08-05-160M.11` (same state, seed 11), was launched; both are used. The late
 collapses are not confined to the loosened arms: an unmodified run does it too.
+
+## 240M, the full field: every late arm, both seeds, E4.1
+
+`data/reports/everything_2026-09-23.{md,json}`: 26 players, 100 games per side per pair, 65,000
+games, temperature 0, HeuristicBot anchored at 1500. Head-to-head cells are the row's win rate
+**as USSR / as US**. This field is larger than the earlier rounds, so absolute Elo shifts between
+reports; compare within this table.
+
+| # | model | Elo | vs E4-08-03@160M | vs E4-08-03-160M.11@240M | vs E4-08-05@160M |
+|---:|:---|---:|---:|---:|---:|
+| 1 | **E4-31-03@240M** (slow π_ref from 160M) | **2236.7** | 76 / 65 | 62 / 64 | 81 / 74 |
+| 2 | **E4-34-03@240M** (slow π_ref from 80M) | **2233.3** | 69 / 75 | 65 / 60 | 76 / 74 |
+| 3 | E4-28-03@200M (search distillation) | 2225.4 | 77 / 58 | 57 / 53 | 82 / 68 |
+| 4 | E4-30-03@240M (λ 0.97) | 2194.3 | 73 / 62 | 48 / 65 | 74 / 66 |
+| 5 | E4-34-03@200M | 2186.7 | 68 / 48 | 68 / 46 | 85 / 69 |
+| 6 | E4-08-03-160M.11@240M (seed-3 baseline, seed 11) | 2155.0 | 62 / 53 | — | 73 / 70 |
+| 7 | E4-33-03@240M (η 0.05) | 2134.2 | 68 / 41 | 57 / 43 | 84 / 50 |
+| 8 | E4-34-03@160M | 2130.5 | 60 / 36 | 57 / 43 | 80 / 55 |
+| 9 | E4-08-03@240M (seed-3 control) | 2128.6 | 61 / 53 | 45 / 43 | 72 / 63 |
+| 10 | E4-31-05@200M (slow π_ref from 160M, seed 5) | 2112.3 | 64 / 47 | 51 / 35 | 86 / 56 |
+| 11 | E4-08-03@160M | 2092.4 | — | 47 / 38 | 73 / 51 |
+| 12 | E4-29-03@240M (λ 0.99) | 2081.8 | 65 / 43 | 37 / 46 | 71 / 63 |
+| 13 | E4-32-03@240M (π_ref 100k) | 2071.4 | 42 / 49 | 32 / 35 | 60 / 47 |
+| 14 | E4-08-03@200M | 2024.2 | 45 / 32 | 31 / 32 | 62 / 28 |
+| 15 | E4-08-05@160M (seed-5 start) | 2021.6 | 49 / 27 | 30 / 27 | — |
+| 16 | E4-03-01@80M (anchor) | 1986.0 | 31 / 30 | 19 / 37 | 37 / 39 |
+| 17 | E4-08-03@80M | 1956.1 | 34 / 32 | 20 / 27 | 45 / 37 |
+| 18 | E4-31-05@240M *(collapsed at 235M)* | 1947.9 | 66 / **8** | 51 / **9** | 81 / **6** |
+| 19 | E4-08-05@80M | 1908.1 | 31 / 23 | 15 / 22 | 41 / 26 |
+| 20 | E4-08-05@200M *(collapsed from 195M)* | 1842.2 | 53 / **1** | 25 / **6** | 48 / **8** |
+| 21 | E4-08-05@240M *(collapsed)* | 1790.9 | 20 / **1** | 19 / **2** | 43 / **1** |
+| 22 | E4-08-05-160M.11@240M *(collapsed from 215M)* | 1778.3 | 34 / **0** | 26 / **0** | 40 / **1** |
+| 23 | E4.1-01-03@80M *(collapsed from 25M)* | 1696.9 | 5 / 1 | 1 / 1 | 14 / 2 |
+| 24 | E4-33-03@200M *(inside its episode)* | 1681.9 | 12 / 1 | 2 / 0 | 12 / 0 |
+| 25 | E4-08-05-160M.11@200M *(USSR-weak swing)* | 1680.7 | **0** / 29 | **0** / 23 | **0** / 18 |
+| 26 | HeuristicBot | 1500.0 | 6 / 0 | 1 / 1 | 2 / 4 |
+
+### Strength of each change, at 240M unless stated
+
+Against the seed-3 control at the same step (E4-08-03@240M, 2128.6) and against the second seed-3
+baseline (E4-08-03-160M.11@240M, 2155.0):
+
+| change | vs control | vs seed-11 baseline | note |
+|:---|---:|---:|:---|
+| slow π_ref from 160M (E4-31-03) | **+108** | **+82** | best in the field |
+| slow π_ref from 80M (E4-34-03) | **+105** | **+78** | ties the 160M switch; +163 over the control at 200M, where the control dips |
+| search distillation, 160→200M (E4-28-03@200M) | +201 at 200M | — | against the dipped 200M control; +133 over the 160M start |
+| λ 0.97 (E4-30-03) | +66 | +39 | |
+| η 0.05 (E4-33-03) | +6 | −21 | 1682 at 200M, inside its collapse episode |
+| λ 0.99 (E4-29-03) | −47 | −73 | collapsed at 185–205M |
+| π_ref 100k (E4-32-03) | −57 | −84 | collapsed at 180–195M |
+| E4.1 view, from scratch, at 80M (E4.1-01-03) | −259 against E4-08-03@80M | — | collapsed from 25M; see [`P23_E4_1_ab.md`](P23_E4_1_ab.md) |
+
+Seed 5, against its 160M start (E4-08-05@160M, 2021.6), because every seed-5 continuation
+collapsed before 240M:
+
+| run | 200M | 240M |
+|:---|---:|---:|
+| plain continuation (E4-08-05) | −179 | −231 |
+| seed-11 branch (E4-08-05-160M.11) | −341 (the USSR seat was losing) | −243 |
+| slow π_ref from 160M (E4-31-05) | **+91** | −74 (collapsed at 235M) |
+
+### Reading
+
+* **Slow π_ref switched on late is the one change that helps on both seeds.**
+  * On seed 3, it is worth about +80 over the better baseline, and switching at 80M is as good as
+    switching at 160M.
+  * On seed 5, it was the only continuation still stronger than its start at 200M (+91), while
+    both baselines had lost 180–340.
+  * It did not prevent the collapse, though; it only delayed it
+    ([`E4_collapse_census_per_seat.md`](E4_collapse_census_per_seat.md)).
+* **A collapse is the largest effect in the table.** The collapsed snapshots win 0–9% as the US
+  against every healthy reference. One seat going wrong takes 180–340 Elo off a run, several times
+  what any training change here adds. That is the case for P25 before anything else.
+* **Loosening the update late loses** (λ 0.99, π_ref 100k), through the collapse each one caused.
+  **λ 0.97 is a modest gain**, +39 to +66, and has not been replicated.
+* **Search distillation at 200M is the third-strongest player**, over only 40M of training. Its
+  control at the same step is the dipped E4-08-03@200M, so the fair size is its margin over the
+  160M start, **+133**. The earlier estimate of +54..+84 came from a smaller field.
