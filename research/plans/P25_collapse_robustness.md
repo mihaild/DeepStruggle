@@ -1,7 +1,6 @@
 # P25 — a training process that gives the same quality on any seed
 
-**Status:** running. Steps 0–2 are implemented (`9c49329`), and the stress bench (step 3) is
-queued behind the late-dynamics arms.
+**Status:** running. Steps 0–2 are implemented (`9c49329`). The stress bench (step 3) is running: E4-36-03 since 14:44, and the other four arms start when the late-dynamics arms finish. It is the project's current focus; P23 (E4.1) is paused behind it.
 **Needs approval:** none of it touches `engine/` or the observation. The later steps (4–6) come
 back for approval with the bench's result.
 
@@ -49,7 +48,7 @@ Recovery happens when something restores the losing seat's advantage spread. Tha
 | 0 | **Log the per-seat signal**: pre-normalisation `adv_mean/std/n` by acting seat, and learner entropy by seat. This splits the pooled `adv_std_raw`, which averages the seat that has signal with the one that has lost it. | done (`9c49329`) |
 | 1 | **`--seat-balance`**: steer toward the losing seat. The pool tracks the self-play US win share and computes pressure = min(1, \|sp_us − 0.5\| / 0.3). Under pressure it puts the learner on the losing seat with probability 0.5 + 0.4·pressure, raises the pool-game fraction toward 0.8, and draws opponents by PFSP x(1−x) on that seat's own record, which favours opponents the losing seat can still beat about half the time. That feeds the loop the non-constant returns it lacks. | done (`9c49329`), untested in training |
 | 2 | **`--per-seat-adv-norm`**: normalise each seat by its own statistics, which removes step 3 of the loop directly. | done (`9c49329`), untested in training |
-| 3 | **Stress bench**: λ 0.99 from scratch, which collapsed on 2 of 2 seeds (below). Each lever is run alone on seeds 3 and 5 to 60M. | queued |
+| 3 | **Stress bench**: λ 0.99 from scratch, which collapsed on 2 of 2 seeds (below). Each lever is run alone to 60M. Step 4's slow π_ref is pulled forward into it. | running |
 | 4 | Slow π_ref as a schedule (5M after a switch point). It won late and lost from scratch ([`../log/E4_late_dynamics.md`](../log/E4_late_dynamics.md)). | after 3 |
 | 5 | An auto-rewind supervisor: roll back to the last healthy snapshot under a new seed when a collapse does not recover within N steps. Branches from inside a pin escape 2 of 2 times ([`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)). | a safety net, after 3 |
 | 6 | **Acceptance**: the chosen recipe on 6 seeds, unattended, to 160M, with the Elo spread across seeds reported. | after 3–5 |
@@ -71,8 +70,13 @@ The arms:
 
 | run | lever | seeds | steps |
 |:---|:---|:---|:---|
-| **E4-35** | `--per-seat-adv-norm` | 3, 5 | 0 → 60M |
 | **E4-36** | `--seat-balance` | 3, 5 | 0 → 60M |
+| **E4-37** | `--ref-update-freq 5000000` (slow π_ref) | 3, 5 | 0 → 60M |
+| **E4-35** | `--per-seat-adv-norm` | 3 only | 0 → 60M |
+
+The bench changed before launch, after the first per-seat collapse was read (Results):
+* **E4-37 added.** Slow π_ref has had 0 collapse episodes in 5 arms, against 2 of 2 for the seed-5 controls from 160M ([`../log/E4_collapse_census_per_seat.md`](../log/E4_collapse_census_per_seat.md)). So step 4's lever is tested now, on the same bench. From scratch it cost Elo in E4-26 (−168 and −68 at 80M); that is the price the bench measures it against.
+* **E4-35 cut to one seed.** It is now predicted to do nothing, and seed 3 collapses fastest.
 
 **A lever passes** only if both of these hold on both seeds:
 * the self-play win share of neither seat stays above 0.9 for a 5M bucket by 60M;
@@ -82,45 +86,19 @@ A lever that stops the collapse only by holding both seats at 50% while playing 
 Under `--seat-balance` the self-play share is also partly the lever's own doing, so the per-seat
 head-to-head decides, not the share.
 
-If both levers pass, the next arm combines them. If neither passes, the no-signal hypothesis is
-wrong or incomplete, and steps 4–5 carry the plan.
+If more than one lever passes, the next arm combines them. If none passes, the mechanism below is
+wrong or incomplete, and the auto-rewind of step 5 carries the plan.
 
 ## Results
 
-### The first collapse seen with the per-seat signal contradicts step 2's premise
+### The first collapse logged per seat contradicts step 2's premise
 
-`E4.1-01-05` is the P23 A/B arm on seed 5, launched after step 0 went in, so it logs the per-seat
-signal. It collapsed with the **US** losing. Figures are 1M buckets:
-
-| step | USSR self-play share | `adv_std_us` / `_ussr` | `adv_mean_us` / `_ussr` | `entropy_us` / `_ussr` | explained var. |
-|---:|---:|---:|---:|---:|---:|
-| 15M | 0.39 | 0.288 / 0.283 | −0.010 / +0.004 | 1.95 / 2.03 | 0.85 |
-| 18M | 0.52 | 0.300 / 0.298 | −0.007 / +0.011 | 2.07 / 1.87 | 0.84 |
-| 21M | 0.84 | 0.220 / 0.229 | +0.008 / −0.006 | 2.43 / 1.49 | 0.93 |
-| 24M | 0.92 | 0.197 / 0.202 | +0.010 / −0.007 | 2.67 / 1.86 | 0.95 |
-| 28M | 0.82 | 0.223 / 0.234 | +0.012 / 0.000 | 2.54 / 1.88 | 0.91 |
-
-* **The two seats' advantage spreads stay equal.** The spread shrinks for both seats together,
-  because the critic gets *better* as the outcome becomes predictable: explained variance rises
-  from 0.85 to 0.95. This looks structural. Under zero-sum GAE a TD error on one seat's decision is
-  mirrored on the other's, so in the same games one seat cannot have a much smaller spread than
-  the other.
-* **The per-seat means are ~0**, at ±0.01 against a std of ~0.2. The losing seat is not being fed
-  a negative bias.
-* **What does separate the seats is entropy:** the losing seat's rises from 1.9 to 2.7 while the
-  winning seat's falls.
-
-So step 3 of the loop as written above ("the shared divisor scales the loser down further") does
-not happen. The shared normalisation already re-inflates both seats' shrinking spread to unit
-scale.
-
-The mechanism the data fits better is **signal made of noise**. Once the losing seat loses nearly
-every game, its advantages measure the critic's residual error rather than the quality of its
-moves. Normalisation scales that noise up to unit size, and the entropy bonus is the only
-consistent term left in its update.
+In `E4.1-01-05`'s collapse the two seats' advantage spreads stayed equal (0.197 / 0.202 at the peak), and the per-seat means stayed ~0. Only the losing seat's entropy separated, rising from 1.9 to 2.7. The critic got *better* as the outcome became predictable. The reading that fits is "signal made of noise" rather than "signal scaled away". The table and the argument are in [`../log/E4_collapse_census_per_seat.md`](../log/E4_collapse_census_per_seat.md).
 
 **Predictions for the bench:**
-* **E4-35** (`--per-seat-adv-norm`) should behave like E4-27, since the spreads it would equalise
-  are already equal. It stays in the bench as the test of that prediction.
-* **E4-36** (`--seat-balance`) acts on the cause: it gives the losing seat games whose outcome is
-  in doubt.
+* E4-35 (`--per-seat-adv-norm`) behaves like E4-27.
+* E4-36 (`--seat-balance`) and E4-37 (slow π_ref) are the live levers.
+
+### The census
+
+Across the late-dynamics and E4.1 runs, all 10 collapse episodes have the **US** as the losing seat. Loosening the update late (λ 0.99, π_ref 100k, η 0.05) brings one on in 15–25M. No slow-π_ref arm has had one. Same log.

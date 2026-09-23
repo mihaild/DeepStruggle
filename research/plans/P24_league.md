@@ -1,6 +1,6 @@
 # P24 — an AlphaStar-style league, without a supervised starting point
 
-**Status:** proposed, not started. Gated on the E4.1 verdict (P23) and the slow-π_ref replicate.
+**Status:** proposed, not started. Gated on [P25](P25_collapse_robustness.md) (a collapse-robust recipe) and the slow-π_ref replicate; P23 (E4.1) is paused.
 **Needs approval:** none of it touches `engine/` or the observation. It needs one trainer change
 (a pool that grows from other runs' directories) and a driver built on `tools/train.py`.
 

@@ -53,6 +53,7 @@ stays legible:
 | **E4-34** | **slow π_ref from 80M** — an earlier switch point for E4-31's change |
 | **E4-35** | **P25 bench, per-seat advantage norm** — E4-27 (λ 0.99) plus `--per-seat-adv-norm` |
 | **E4-36** | **P25 bench, seat balancing** — E4-27 (λ 0.99) plus `--seat-balance` |
+| **E4-37** | **P25 bench, slow π_ref** — E4-27 (λ 0.99) plus `--ref-update-freq 5000000` |
 
 **A continuation is not an attempt.** Taking an arm further on the same seed keeps its name —
 `E4-08-03` covers 0–80M, 80–160M and 160–240M in three directories — so its snapshots read
@@ -127,7 +128,8 @@ having deliberately.
 | **E4-29-03, E4-30-03, E4-31-03, E4-32-03, E4-33-03** | one change each (λ 0.99, λ 0.97, π_ref 5M, π_ref 100k, η 0.05), all resumed from `E4-08-03@160M` on seed 3 — E4-08-03's own 160→240M leg is the step-matched control for all five | 160M → 240M | `E4-{29..33}-03_20260923_*` | *running* |
 | **E4-31-05** | seed-5 replicate of E4-31-03: `E4-08-05@160M` run to 240M with `--ref-update-freq 5000000`. Baseline: E4-08-05's own 160→240M continuation (`E4-08-05_20260923_095214`) | 160M → 240M | `E4-31-05_*` | *queued* |
 | **E4-34-03** | `E4-08-03@80M` run to 240M with `--ref-update-freq 5000000`: is 80M a better or worse switch point than 160M? | 80M → 240M | `E4-34-03_20260923_095214` | *running* |
-| **E4-35-03/05, E4-36-03/05** | P25 collapse stress bench: E4-27's flags (λ 0.99 from scratch, collapsed on both seeds) plus one lever each — `--per-seat-adv-norm` (E4-35) or `--seat-balance` (E4-36). Control: E4-27-0{3,5} at matched steps | 0 → 60M | `E4-3{5,6}-0{3,5}_*` | *queued* — [`plans/P25_collapse_robustness.md`](plans/P25_collapse_robustness.md) |
+| **E4-36-03/05, E4-37-03/05, E4-35-03** | P25 collapse stress bench: E4-27's flags (λ 0.99 from scratch, collapsed on both seeds) plus one lever each — `--seat-balance` (E4-36), slow π_ref `--ref-update-freq 5000000` (E4-37), `--per-seat-adv-norm` (E4-35, seed 3 only, predicted null). Control: E4-27-0{3,5} at matched steps | 0 → 60M | `E4-36-03_20260923_144424`; the rest queued | *running* — [`plans/P25_collapse_robustness.md`](plans/P25_collapse_robustness.md) |
+| **E4.1-01-03/05** | P23 A/B: M2d in the E4.1 merged-influence view, from scratch. Both collapsed (US) early; level with E4 before, −105 / −360 inside. Paused | 80M / 30M (stopped) | `E4.1-01-0{3,5}_20260923_*` | [`log/P23_E4_1_ab.md`](log/P23_E4_1_ab.md) |
 | **E4-08-05-160M.11** | seed branch of seed 5: `E4-08-05@160M` continued to 240M under seed 11, a second seed-5 baseline because the plain seed-5 continuation (`E4-08-05_20260923_095214`) collapsed (US 1% of self-play at 209M) | 160M → 240M | `E4-08-05-160M.11_*` | *queued* |
 | **E4-08-03-160M.11** | seed branch: `E4-08-03@160M` continued to 240M under seed 11, otherwise identical to E4-08-03's 160→240M leg. Is that leg's 200M dip seed 3's or M2d's? Also a second baseline for E4-29..33 | 160M → 240M | `E4-08-03-160M.11_20260923_072049` | *running* |
 | **E4-28-05** | the same, seed-5 replicate, resumed from `E4-08-05@80M` — its control is E4-08-05's own 80→160M leg | 80M → ~108M (stopped at 07:00) | `E4-28-05_20260923_031034` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |

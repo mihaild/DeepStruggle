@@ -1,6 +1,6 @@
 # P23 — E4.1: the first influence placement replaces the influence op-choice
 
-**Status:** running -- stages 1-4 done (implementation `d6c89ad`), stage 5 A/B from scratch in progress; see Runs.
+**Status:** **paused** -- stages 1-4 done (implementation `d6c89ad`). The stage-5 A/B collapsed on both seeds, so it has no verdict on the merits; it is to be re-run under the recipe [P25](P25_collapse_robustness.md) adopts. See [`../log/P23_E4_1_ab.md`](../log/P23_E4_1_ab.md).
 **Gate:** the owner approves this plan (it touches `engine/` and `bindings/`, invariant 11).
 **Needs approval:** engine and bindings changes, as below; no change to `GameState`, the rules or
 the observation. Stage 5 is a separate observation proposal, per the owner's standing rule.
@@ -161,4 +161,7 @@ existing checkpoints waits on the verdict.
 | arm | directory | status |
 |:---|:---|:---|
 | E4.1-01-03 | `E4.1-01-03_20260923_104252_VOID_pre_wwby_terminal_fix` | **void**: ~20 min on the pre-fix definition, stopped and relaunched |
-| E4.1-01-05 | — | queued behind it |
+| E4.1-01-03 | `E4.1-01-03_20260923_105559` | 0 → 80M; collapsed (US) from 25M, never out |
+| E4.1-01-05 | `E4.1-01-05_20260923_133846` | 0 → 30M, stopped; collapsed (US) at 30M |
+
+**Stage 5 result, 2026-09-23 ([`../log/P23_E4_1_ab.md`](../log/P23_E4_1_ab.md)).** Before collapse, E4.1 is level with E4 at matched steps or slightly ahead (+28 at 5M on seed 3, +51 at 15M on seed 5). Inside its collapse it loses on the US seat alone (−105 at 30M, −360 at 80M). Both E4.1 arms collapsed early and the E4 arms on the same seeds did not, which is 2 of 2 against 0 of 2: suggestive, not decisive. **Paused** until P25 has a collapse-robust recipe.
