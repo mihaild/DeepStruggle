@@ -38,10 +38,12 @@ Each snapshot is rated in its own small field against the control at the same st
 | 180M | 2222.6 | 2156.6 | **+66.0** | 66 / 62 | 70 / 61 | 80 / 72 |
 
 | 185M | 2241.3 | 2116.0 | **+125.3** | 74 / 70 | 71 / 64 | 80 / 83 |
+| 190M | 2239.1 | 2044.9 | **+194.2** | 77 / 75 | 80 / 67 | 82 / 68 |
 
-**Five of five snapshots beat the step-matched control on both seats.** The 185M gap is wider
-because the control is sliding into its 200M dip. Against the fixed 160M start the arm is flat
-from 170M on (75 / 64, 75 / 54, 70 / 61, 71 / 64).
+**Six of six snapshots beat the step-matched control on both seats.** The 185–190M gaps are
+wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
+start. Against the fixed 160M start the arm holds or improves, 77 / 64 at 165M and 80 / 67 at 190M.
+Search distillation rides through the control's dip.
 
 ## Headroom left after 20M
 
@@ -62,6 +64,7 @@ both are at ~1,000–1,200 steps/s.
 |---:|---:|---:|---:|---:|---:|---:|
 | 85M | 2179.5 | 2022.7 | **+156.8** | 71 / 72 | 79 / 74 | 62 / 55 |
 | 90M | 2207.0 | 1976.7 | **+230.3** | 82 / 77 | 85 / 73 | 66 / 59 |
+| 95M | 2222.8 | 2012.8 | **+210.0** | 81 / 79 | 88 / 72 | 52 / 66 |
 
 At 90M part of the margin is the control's own dip: `E4-08-05@90M` rates below its 80M start
 (47 / 37 against it). Against the shared 80M start, which is not a moving reference, the arm
