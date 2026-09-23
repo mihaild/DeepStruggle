@@ -34,6 +34,7 @@ Each snapshot is rated in its own small field against the control at the same st
 |---:|---:|---:|---:|---:|---:|---:|
 | 165M | 2238.9 | 2178.6 | **+60.3** | 69 / 58 | 77 / 64 | 72 / 73 |
 | 170M | 2225.6 | 2155.8 | **+69.8** | 61 / 62 | 75 / 64 | 77 / 66 |
+| 175M | 2248.7 | 2194.8 | **+53.9** | 59 / 61 | 75 / 54 | 83 / 74 |
 
 ## Training-side observations
 
