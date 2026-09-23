@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import numpy as np
 import torch
@@ -39,7 +39,7 @@ INFL, CONFIRM = 112, 208
 OP_CHOICE = (ts.DecisionType.SELECT_PLAY_MODE, ts.DecisionType.SELECT_OP_MODE)
 
 
-def collect(model: torch.nn.Module, games: int, device: torch.device) -> List[ts.GameState]:
+def collect(model: Any, games: int, device: torch.device) -> List[ts.GameState]:
     """Op-choice states with influence legal, from the model's own E4 self-play."""
     env = TsVectorizedEnv(num_envs=games, base_seed=424_242)
     obs, masks, _ = env.reset_all()
@@ -62,7 +62,7 @@ def collect(model: torch.nn.Module, games: int, device: torch.device) -> List[ts
     return out
 
 
-def policy(model: torch.nn.Module, states: List[ts.GameState], masks: np.ndarray,
+def policy(model: Any, states: List[ts.GameState], masks: np.ndarray,
            device: torch.device) -> np.ndarray:
     obs = np.stack([np.asarray(ts.extract_observation(s, s.ctx().decision_player), np.float32)
                     for s in states])
@@ -71,7 +71,7 @@ def policy(model: torch.nn.Module, states: List[ts.GameState], masks: np.ndarray
         return F.softmax(logits.float(), dim=-1).cpu().numpy()
 
 
-def compare(model: torch.nn.Module, states: List[ts.GameState], device: torch.device) -> Tuple[np.ndarray, ...]:
+def compare(model: Any, states: List[ts.GameState], device: torch.device) -> Tuple[np.ndarray, ...]:
     e4_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(s)) for s in states])
     mv_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(s, True)) for s in states])
     afters: List[ts.GameState] = []
