@@ -493,22 +493,21 @@ class BaseNashPGTrainer:
                 if self.opponent_pool is None or bool(learner_np.all()):
                     logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
                 else:
-                    # Two passes on *complementary* subsets, so the total work is the same as
-                    # the single full-batch pass it replaces -- one extra kernel launch, not
-                    # twice the FLOPs. The opponent's logits are used only to act; its values
-                    # are taken from the learner's critic, which is what GAE must bootstrap
-                    # with (a frozen opponent's critic is a different function and mixing the
-                    # two would corrupt the recursion).
-                    logits = torch.empty((self.num_envs, ActionEncoder.FLAT_ACTION_SIZE), device=self.device,
-                                         dtype=torch.float32)
+                    # One learner pass over the whole batch gives the learner's logits AND the
+                    # values at every state (GAE must bootstrap with the learner's critic, opponent-
+                    # chosen states included), and the opponent runs on its own rows only. This
+                    # used to be three passes -- opponent rows, learner rows, then the learner again
+                    # over everything for values -- about twice the work of a full batch.
+                    #
+                    # The opponent's rows are selected by index, computed on the host from
+                    # `learner_np`, which is already there: a boolean mask on the device needs a
+                    # nonzero() and so a CPU-GPU sync each time it is used.
+                    logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
+                    logits = logits.float()
+                    opp_idx = torch.from_numpy(np.flatnonzero(~learner_np)).to(self.device)
                     opp_logits, _, _ = self.opponent_pool.current(
-                        obs_t[~learner_t], masks_t[~learner_t])
-                    logits[~learner_t] = opp_logits.float()
-                    own_logits, _, _ = self.active_net(obs_t[learner_t], masks_t[learner_t])
-                    logits[learner_t] = own_logits.float()
-                    # One learner-critic pass over the whole batch: values must come from the
-                    # policy being trained at every state, opponent-chosen ones included.
-                    _, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
+                        obs_t.index_select(0, opp_idx), masks_t.index_select(0, opp_idx))
+                    logits.index_copy_(0, opp_idx, opp_logits.float())
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
 
@@ -975,10 +974,24 @@ class NashPGTrainer(BaseNashPGTrainer):
         val_loss_t, kl_t, entropy_t, clip_frac_t, risk_loss_t = _z(), _z(), _z(), _z(), _z()
         logratio_max_t, old_lp_min_t, ratio_negadv_max_t = _z(-1e30), _z(1e30), _z()
 
+        # pi_ref's log-probabilities over the whole buffer, once. pi_ref is frozen for the whole
+        # update (it is refreshed after train_step, in train_iteration) and always in eval mode,
+        # and the rollout data does not change across epochs -- so recomputing them for every
+        # minibatch of every epoch did num_epochs times the work for the same numbers. Chunked at
+        # the minibatch size, so each forward has the shape the per-minibatch one had.
+        _n_all = self.buffer.buffer_size * self.num_envs
+        _all_obs = self.buffer.obs.view(_n_all, self.buffer.obs_dim)
+        _all_masks = self.buffer.masks.view(_n_all, self.buffer.action_dim)
+        with torch.no_grad():
+            ref_log_p_all = torch.cat([
+                F.log_softmax(self.reference_net(_all_obs[i:i + self.batch_size],
+                                                 _all_masks[i:i + self.batch_size])[0], dim=-1)
+                for i in range(0, _n_all, self.batch_size)])
+
         for _ in range(self.num_epochs):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
                  b_defcon_risk, b_learner, b_search_pi, b_has_search,
-                 b_players) in self.buffer.get_batches(
+                 b_players, b_idx) in self.buffer.get_batches(
                      self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
@@ -1063,9 +1076,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                     clip_frac_t += ((ratio < 1.0 - self.clip_eps)
                                     | (ratio > 1.0 + self.clip_eps)).float().mean()
 
-                with torch.no_grad():
-                    ref_logits, _, _ = self.reference_net(b_obs, b_mask)
-                    ref_log_p = F.log_softmax(ref_logits, dim=-1)
+                ref_log_p = ref_log_p_all.index_select(0, b_idx)
 
                 cur_p = F.softmax(cur_logits, dim=-1)
                 cur_log_p = F.log_softmax(cur_logits, dim=-1)

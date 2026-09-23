@@ -559,6 +559,10 @@ class RolloutBuffer:
 
         Element 12 is the acting seat (+1 US, -1 USSR), for per-seat loss weighting
         (--wolf-seat-weight). Appended last for the same reason.
+
+        Element 13 is the minibatch's flat indices into the buffer, so a caller can gather
+        per-sample quantities it computed once for the whole buffer (the trainer's pi_ref
+        log-probabilities).
         """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
@@ -591,5 +595,6 @@ class RolloutBuffer:
                 flat_search_pi[batch_idx],
                 flat_has_search[batch_idx],
                 flat_players[batch_idx],
+                batch_idx,
             )
 

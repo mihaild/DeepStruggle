@@ -45,7 +45,7 @@ def test_get_batches_carries_the_acting_seat_last() -> None:
     buf = RolloutBuffer(buffer_size=2, num_envs=3, obs_dim=4, device="cpu")
     buf.players = torch.tensor([[1, -1, 1], [-1, 1, -1]], dtype=torch.int8)
     batch = next(buf.get_batches(batch_size=6))
-    assert len(batch) == 12
+    assert len(batch) == 13
     assert sorted(batch[11].tolist()) == [-1, -1, -1, 1, 1, 1]
 
 

@@ -73,7 +73,7 @@ def test_batches_carry_the_target_after_the_learner_mask() -> None:
                   last_dones=torch.zeros(N, dtype=torch.bool),
                   last_players=torch.ones(N, dtype=torch.int8))
     batch = next(b.get_batches(batch_size=8))
-    assert len(batch) == 12, "search target and flag are elements 10 and 11, the seat is 12th"
+    assert len(batch) == 13, "search target and flag are elements 10 and 11, then seat, indices"
     b_search_pi, b_has_search = batch[9], batch[10]
     assert b_search_pi.shape == (8, ACT)
     assert b_has_search.shape == (8,)
