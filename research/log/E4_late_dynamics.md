@@ -64,3 +64,51 @@ on both seats. **It also bears on search distillation**: `E4-28-03`'s +168 to +1
 were against the same dipping control, and its +54 to +70 at 165–180M, before the dip began, is the
 fair size ([`E4_search_distillation.md`](E4_search_distillation.md)). Every late arm will be rated
 against both baselines.
+
+## 240M, both baselines in one field
+
+`data/reports/late_round1_240M.{md,json}`. Both baselines at 200M and 240M, the shared 160M start,
+and search distillation at 200M. Win rates are the row's **as USSR / as US**.
+
+| # | model | Elo | vs seed-11@240M | vs seed-3@240M | vs 160M start |
+|---:|:---|---:|---:|---:|---:|
+| 1 | **E4-31-03@240M** (π_ref 5M) | **2375.7** | **62 / 64** | **67 / 67** | 76 / 65 |
+| 2 | E4-28-03@200M (search distillation) | 2359.0 | 57 / 53 | 76 / 59 | 77 / 58 |
+| 3 | E4-31-03@200M | 2312.9 | 58 / 46 | 63 / 54 | 74 / 61 |
+| 4 | E4-08-03-160M.11@240M (seed-11 baseline) | 2292.6 | — | 56 / 55 | 62 / 53 |
+| 5 | E4-08-03-160M.11@200M | 2274.6 | 42 / 43 | 54 / 53 | 77 / 53 |
+| 6 | E4-08-03@240M (seed-3 control) | 2252.7 | 45 / 44 | — | 61 / 53 |
+| 7 | E4-29-03@240M (λ 0.99) | 2220.1 | 37 / 45 | 34 / 50 | 65 / 43 |
+| 8 | E4-08-03@160M (start) | 2211.1 | 47 / 38 | 47 / 39 | — |
+| 9 | E4-08-03@200M | 2154.3 | 32 / 33 | 45 / 32 | 45 / 32 |
+| 10 | E4-03-01@80M | 2110.8 | 19 / 38 | 19 / 38 | 31 / 30 |
+| 11 | E4-29-03@200M | 1674.2 | 4 / 0 | 4 / 3 | 11 / 1 |
+| 12 | HeuristicBot | 1500.0 | 1 / 1 | 0 / 2 | 6 / 0 |
+
+Matched-step Elo against the non-dipping seed-11 baseline:
+
+| | 200M | 240M |
+|:---|---:|---:|
+| E4-31-03, π_ref 5M from 160M | +38.4 | **+83.0** (+123.0 against seed 3) |
+| E4-28-03, search distillation | **+84.4** | — (stopped at 200M) |
+| E4-29-03, λ 0.99 from 160M | −600.4 | −72.5 (−32.5 against seed 3) |
+
+* **A slow π_ref applied after 160M is the strongest E4 checkpoint rated so far.** At 240M it
+  beats *both* same-config baselines on both seats, 62% / 64% and 67% / 67%, and its margin grows
+  from 200M to 240M while the baselines flatten. It costs nothing per step. From scratch the same
+  flag lost on both seeds, so **the parameter's effect depends on when it is applied**. One seed.
+* **Search distillation's fair size is +84 at 200M**, against the baseline that does not dip.
+  Head-to-head at 200M it beats the slow-π_ref arm 62% as USSR / 55% as US; the slow anchor's 240M snapshot
+  plays search's 200M one at 52% / 40%. Their relative strength at equal steps past 200M is
+  unmeasured.
+* **λ 0.99 from 160M collapses and recovers inside the leg**: −600 at 200M, −72 at 240M. Its
+  damage is not confined to early training, and neither is its recovery.
+
+### Reading
+
+The simplest account is that **a slow anchor suits a policy that is already good and hurts one
+that is still learning fast**. Early on a stale π_ref holds the policy back toward where it was
+5M steps ago; late, when the policy moves less, it damps the oscillation measured in
+[`P21_M2d_setup_west_germany.md`](P21_M2d_setup_west_germany.md) without costing learning speed.
+That is a hypothesis. It predicts that a schedule — 200k early, 5M late — beats both, and that the
+switch point matters.
