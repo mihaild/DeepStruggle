@@ -15,8 +15,16 @@ all decisions during RL, and its visit distribution enters the loss as a cross-e
 * **Configuration is E3's X4b exactly**: coef 0.5, 64 simulations, every decision type eligible,
   subsample 0.125, determinized. It is the one configuration with a measured gain, +165.6 Elo over
   its control within 20M ([`../archive/E3_ladder/log/P15_X4b_search_during_rl.md`](../archive/E3_ladder/log/P15_X4b_search_during_rl.md)).
-  E3's later collapse of that arm was opponent-pool starvation from a resume path bug, not the CE
-  term ([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md)).
+* **Correction (written 06:20, after the arms were launched): E3's configuration collapsed even
+  with a healthy pool.** When choosing it I read only the first half of
+  [`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md),
+  where the *early* collapse is attributed to pool starvation from a resume path bug. Its appended
+  sections retract the rest. `E3-35-28`, the same configuration with a working pool, peaked at 90%
+  against a frozen anchor ~25M into its leg, began declining at ~30M, and reached ~11% by 36.5M,
+  on both seats. The archive's verdict is that search CE at coefficient 0.5 with a 200k reference
+  anchor *"collapses completely, with or without a healthy opponent pool. The pool changes when."*
+  [`../questions.md`](../questions.md) had it right. **The collapse window is 30–36M into the
+  leg, and E4-28-03 reached it overnight**; see *The E3 collapse window* below.
 * **Why now:** honest 96-sim search beats `E4-08-03@240M` 64% ([`search_cost_and_coverage.md`](search_cost_and_coverage.md) §10),
   and the training-dynamics levers both failed ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)).
 * **Cost:** ~1,200 steps/s while sharing the GPU, against ~45,000 without search. Search is
@@ -41,10 +49,24 @@ Each snapshot is rated in its own small field against the control at the same st
 | 190M | 2239.1 | 2044.9 | **+194.2** | 77 / 75 | 80 / 67 | 82 / 68 |
 | 195M | 2228.7 | 2060.4 | **+168.3** | 72 / 73 | 77 / 63 | 75 / 85 |
 
-**Seven of seven snapshots beat the step-matched control on both seats.** The 185–190M gaps are
-wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
+**Seven of seven snapshots beat the step-matched control on both seats.** The 185–190M gaps are wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
 start. Against the fixed 160M start the arm holds or improves, 77 / 64 at 165M and 80 / 67 at 190M.
 Search distillation rides through the control's dip.
+
+### The E3 collapse window
+
+E3's healthy-pool arm was at 90% ~25M into its leg, declining by ~30M and gone by 36.5M. E4-28-03
+at the same distance, against its fixed 160M start (which, unlike the control, does not move):
+
+| steps into the leg | snapshot | vs 160M start (USSR / US) |
+|---:|:---|---:|
+| 25M | 185M | 71 / 64 |
+| 30M | 190M | 80 / 67 |
+| 35M | 195M | 77 / 63 |
+
+**No decline yet at 35M.** But E3's arm went from its peak to ~11% in about 6M steps, and this
+arm stops at 07:00 at ~196M, before 36.5M. The window is reached but not cleared. Extending
+E4-28-03 is the single most important next step.
 
 ## Headroom left after 20M
 
@@ -126,11 +148,13 @@ end, rated together (`data/reports/E4-28-03_leg.{md,json}`):
 
 Proposals, not decisions:
 
-1. **Adopt search distillation as the training default for the next ladder leg**, and pay for it
-   deliberately. It is the first intervention on E4 that beats plain M2d, on two seeds and on
-   both seats. The cost is ~40x per step (~1,200 against ~45,000 steps/s), so a leg is priced in
-   GPU-hours, not steps. 20M search steps beat 80M plain ones, and those cost roughly 4.6 h against
-   0.5 h.
+1. **Extend E4-28-03 past E3's collapse window before adopting anything.** It is the first
+   intervention on E4 that beats plain M2d, on two seeds and on both seats, but E3's identical
+   configuration collapsed completely 30–36M into its leg with a healthy pool, and E4-28-03 stopped
+   at ~36M, inside that window. Rate it against the fixed 160M start every 2.5M from 195M to ~220M.
+   If it holds, adopt it, priced in GPU-hours: ~40x per step (~1,200 against ~45,000 steps/s), with
+   20M search steps (~4.6 h) beating 80M plain ones (~0.5 h). If it collapses, the gain is a
+   transient worth harvesting by distilling for ~20M and stopping — the E3 record's shape too.
 2. **Find out why the gain plateaus while headroom remains.** Search still beats the distilled
    net 59%, yet the arm stops improving after ~5M at this coefficient. Candidates to vary one at
    a time: the searched fraction (1 in 8), simulations (64, while play saturates at 96), and the
@@ -138,6 +162,7 @@ Proposals, not decisions:
 3. **Make it cheaper before making it bigger.** Search is the entire bottleneck. The searched
    fraction and the node filter trade cost against signal directly, and E3 found most of the
    signal outside card/play-mode nodes, so which decisions to search is a measurable choice.
-4. **Watch for the E3 failure.** No tripwire fired in ~30M search steps across two arms, and the
-   pool stayed at 10–12 members, but E3's arm ran ~26M before its (pool-starvation) collapse, so
-   a long leg should keep the tripwires armed.
+4. **Lower coefficient or a KL-guarded anneal**, which E3's X4b log proposed and never ran, are
+   the obvious hedges if the extension collapses. None of the three tripwires fired in ~50M search
+   steps across both arms, and E3's collapse was also missed by live instruments until it showed
+   against a frozen anchor, so frozen-anchor ratings are the monitor that matters.
