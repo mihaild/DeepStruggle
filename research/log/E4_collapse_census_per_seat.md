@@ -25,6 +25,7 @@ are not directly comparable with it.
 | E4-33-03 | 160 → 240M | η 0.05 | 185–190M, 205M | 180M | 195M, 210M | 0.158 |
 | E4-08-05 | 160 → 240M | none (control) | 195–240M | 180M | **not out** | 0.086 |
 | E4-08-05-160M.11 | 160 → 240M | none, seed 11 | 215M– | 205M | **not out** (running) | 0.144 |
+| E4-31-05 | 160 → 240M | π_ref 5M (slow) | 235–240M | 190M | **not out** (run ended) | 0.084 |
 | E4.1-01-03 | 0 → 80M | E4.1 view | 25–80M | 5M | **not out** | 0.089 |
 | E4.1-01-05 | 0 → 30M (stopped) | E4.1 view | 30M | 15M | **not out** | 0.185 |
 
@@ -38,7 +39,6 @@ are not directly comparable with it.
 | E4-26-03 | 0–80M | π_ref 5M (slow) |
 | E4-26-05 | 0–160M | π_ref 5M (slow) |
 | E4-31-03 | 160–240M | π_ref 5M (slow) |
-| E4-31-05 | 160–220M so far | π_ref 5M (slow) |
 | E4-34-03 | 80–220M so far | π_ref 5M (slow) |
 | E4-30-03 | 160–240M | λ 0.97 |
 | E4-28-03 | 160–200M | search distillation |
@@ -46,25 +46,31 @@ are not directly comparable with it.
 
 ## What it shows
 
-1. **The US is the losing seat in all 10 episodes, across 9 runs.** Nothing here collapsed the
+1. **The US is the losing seat in all 11 episodes, across 10 runs.** Nothing here collapsed the
    other way. The seed-5 E4.1 run did swing to 21% USSR at 10M, but it recovered within 5M and
    then collapsed toward the US.
 2. **Loosening the update late brings on a collapse.** From E4-08-03's 160M state on seed 3:
    * λ 0.99, π_ref 100k and η 0.05 each had an episode within 15–25M;
    * the control leg, the seed-11 branch and λ 0.97 had none.
-3. **No slow-π_ref arm has had an episode: 0 of 5**, over 520M steps in total. The sharpest
-   contrast is seed 5 from its 160M state: the control collapsed at 195M and the seed-11 branch at
-   215M, while the π_ref-5M arm (E4-31-05) is clean through 220M. That is one seed pair, and
-   E4-31-05 still has 20M to run. From scratch the evidence is weaker, because the E4-08 controls
-   had no episode in their first 80M either.
+3. **Slow π_ref delays a collapse, but does not prevent one: 1 of 5 arms had an episode.** All
+   three seed-5 runs from the 160M state collapsed:
+   * the control at 195M;
+   * the seed-11 branch at 215M;
+   * the π_ref-5M arm (E4-31-05) at 235M, with its drift starting at 190M and ending as deep as
+     the control's (`adv_std_raw` 0.084).
+
+   *Corrected on 2026-09-23:* the first version of this log counted E4-31-05 as clean "through
+   220M" and read 0 of 5 as prevention. Its last 20M collapsed. The other four slow-π_ref arms had
+   no episode: E4-26-03/05 from scratch, E4-31-03, and E4-34-03 through 220M. On seed 3 none of the
+   late runs with default settings collapsed either, so they do not discriminate.
 4. **E4.1 collapsed early on both seeds, and E4 did not on the same seeds.** That is 2 of 2
    against 0 of 2 over the first 80M, so it is suggestive only.
    [`P23_E4_1_ab.md`](P23_E4_1_ab.md) has the strength side.
-5. **Two collapses never came out:** E4-08-05 from 195M, and E4.1-01-03 from 25M. Both had the
-   lowest `adv_std_raw` in the table, 0.086 and 0.089. The earlier finding that
-   `adv_std_raw` returning is what marks a recovery
-   ([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)) is consistent with this. So
-   is the reading that depth matters: the deepest collapses are the ones that stick.
+5. **The deepest collapses are the ones still unresolved when their runs ended.** These are
+   E4-08-05 (from 195M), E4.1-01-03 (from 25M) and E4-31-05 (from 235M, 5M before its run
+   ended). They had the lowest `adv_std_raw` in the table: 0.086, 0.089 and 0.084. That fits the
+   earlier finding that `adv_std_raw` returning is what marks a recovery
+   ([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)).
 
 ## The first collapse logged per seat
 
@@ -96,7 +102,8 @@ Normalisation scales that up to full size, and the only consistent pressure left
 policy is the entropy bonus.
 
 That predicts `--per-seat-adv-norm` alone does nothing, and that the levers that work are ones that
-give the losing seat games it can win (`--seat-balance`) or slow the policy's drift (slow π_ref).
+give the losing seat games it can win (`--seat-balance`). Slow π_ref (point 3) delayed the
+collapse on seed 5 without preventing it.
 The P25 bench is built to test those predictions.
 
 ## Data

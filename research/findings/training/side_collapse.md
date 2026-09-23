@@ -13,7 +13,7 @@
 > M2.5b enters on 3 of 3 seeds. The sections below are kept because the entry phenomenon is what
 > they actually measured.
 >
-> **2026-09-23:** in the late-dynamics and E4.1 runs, all 10 episodes lose the **US** seat, loosening the update late brings one on, no slow-π_ref arm has had one, and the first collapse logged per seat shows equal advantage spreads on both seats, with only the losing seat's entropy rising: [`../../log/E4_collapse_census_per_seat.md`](../../log/E4_collapse_census_per_seat.md).
+> **2026-09-23:** in the late-dynamics and E4.1 runs, all 11 episodes lose the **US** seat, loosening the update late brings one on, a slow π_ref delays one on seed 5 but does not prevent it, and the first collapse logged per seat shows equal advantage spreads on both seats, with only the losing seat's entropy rising: [`../../log/E4_collapse_census_per_seat.md`](../../log/E4_collapse_census_per_seat.md).
 
 **2026-09-20.** Collapse was the dominant failure of the late E3 ladder and was only ever observed
 after the fact, in arms too expensive to re-run. The P21 architecture ladder produced a

@@ -75,7 +75,7 @@ The arms:
 | **E4-35** | `--per-seat-adv-norm` | 3 only | 0 → 60M |
 
 The bench changed before launch, after the first per-seat collapse was read (Results):
-* **E4-37 added.** Slow π_ref has had 0 collapse episodes in 5 arms, against 2 of 2 for the seed-5 controls from 160M ([`../log/E4_collapse_census_per_seat.md`](../log/E4_collapse_census_per_seat.md)). So step 4's lever is tested now, on the same bench. From scratch it cost Elo in E4-26 (−168 and −68 at 80M); that is the price the bench measures it against.
+* **E4-37 added.** It tests step 4's lever on the same bench. When it was added, no slow-π_ref arm had collapsed. *Corrected at 15:08:* E4-31-05 then collapsed at 235M, 20–40M later than the two seed-5 controls from 160M, so slow π_ref delays a collapse rather than preventing it ([`../log/E4_collapse_census_per_seat.md`](../log/E4_collapse_census_per_seat.md)). E4-37 stays on the bench to measure the delay on a fast-collapsing recipe. From scratch it cost Elo in E4-26 (−168 and −68 at 80M).
 * **E4-35 cut to one seed.** It is now predicted to do nothing, and seed 3 collapses fastest.
 
 **A lever passes** only if both of these hold on both seeds:
@@ -97,8 +97,9 @@ In `E4.1-01-05`'s collapse the two seats' advantage spreads stayed equal (0.197 
 
 **Predictions for the bench:**
 * E4-35 (`--per-seat-adv-norm`) behaves like E4-27.
-* E4-36 (`--seat-balance`) and E4-37 (slow π_ref) are the live levers.
+* E4-36 (`--seat-balance`) is the live lever.
+* E4-37 (slow π_ref) is expected to delay the collapse rather than prevent it.
 
 ### The census
 
-Across the late-dynamics and E4.1 runs, all 10 collapse episodes have the **US** as the losing seat. Loosening the update late (λ 0.99, π_ref 100k, η 0.05) brings one on in 15–25M. No slow-π_ref arm has had one. Same log.
+Across the late-dynamics and E4.1 runs, all 11 collapse episodes have the **US** as the losing seat. Loosening the update late (λ 0.99, π_ref 100k, η 0.05) brings one on in 15–25M. Slow π_ref delayed one on seed 5 (235M against 195M and 215M), but did not prevent it. Same log.
