@@ -112,3 +112,42 @@ that is still learning fast**. Early on a stale π_ref holds the policy back tow
 [`P21_M2d_setup_west_germany.md`](P21_M2d_setup_west_germany.md) without costing learning speed.
 That is a hypothesis. It predicts that a schedule — 200k early, 5M late — beats both, and that the
 switch point matters.
+
+## λ 0.97 and π_ref 100k, rated against both baselines
+
+`data/reports/late_round2_240M.{md,json}`. Win rates are the row's **as USSR / as US**.
+
+| # | model | Elo | vs seed-11@240M | vs seed-3@240M | vs 160M start |
+|---:|:---|---:|---:|---:|---:|
+| 1 | E4-31-03@240M (π_ref 5M) | 2295.0 | 62 / 64 | 67 / 67 | 76 / 65 |
+| 2 | **E4-30-03@240M** (λ 0.97) | **2244.3** | 48 / 63 | 58 / 67 | 72 / 62 |
+| 3 | E4-30-03@200M | 2233.9 | 51 / 51 | 51 / 60 | 69 / 67 |
+| 4 | E4-08-03-160M.11@240M | 2205.8 | — | 56 / 55 | 62 / 53 |
+| 5 | E4-08-03-160M.11@200M | 2173.1 | 42 / 43 | 54 / 53 | 77 / 53 |
+| 6 | E4-08-03@240M | 2167.1 | 45 / 44 | — | 61 / 53 |
+| 7 | E4-08-03@160M | 2128.9 | 47 / 38 | 47 / 39 | — |
+| 8 | **E4-32-03@240M** (π_ref 100k) | **2120.9** | 30 / 35 | 31 / 53 | 40 / 47 |
+| 9 | E4-08-03@200M | 2055.2 | 32 / 33 | 45 / 32 | 45 / 30 |
+| 10 | E4-03-01@80M | 2009.9 | 19 / 38 | 19 / 38 | 31 / 30 |
+| 11 | **E4-32-03@200M** | **1714.1** | 9 / 3 | 6 / 5 | 12 / 1 |
+| 12 | HeuristicBot | 1500.0 | 1 / 1 | 0 / 2 | 6 / 0 |
+
+Against the seed-11 baseline at matched steps:
+
+| arm, from 160M | 200M | 240M |
+|:---|---:|---:|
+| π_ref 5M (E4-31-03) | +38.4 (first field) | **+89.2** |
+| λ 0.97 (E4-30-03) | +60.8 | +38.5 |
+| π_ref 100k (E4-32-03) | **−459.0** | −84.9 |
+| λ 0.99 (E4-29-03) | −600.4 (first field) | −72.5 (first field) |
+
+* **Both knobs point the same way, late.** A slower reference helps and a faster one collapses:
+  E4-32-03's self-play US share rose to ~95% by 170M, and at 200M it wins 1–12% against frozen
+  opponents. A shorter credit horizon (λ 0.97) is mildly positive, a longer one (0.99) collapses.
+  The settings that damp the update help past 160M; the ones that loosen it break it. Both
+  collapses recover by 240M, as every E4 collapse followed this far has.
+* **λ 0.97 is within seed noise.** It is split by seat against the healthy baseline (48% as USSR,
+  63% as US), and its lead shrinks from 200M to 240M. One seed; not a result to adopt on.
+* **The slow π_ref is the only late change with a clean lead.** It beats both baselines on both
+  seats at 240M. The seed-5 replicate (`E4-31-05`) and the earlier switch point (`E4-34-03`, from
+  80M) are running.
