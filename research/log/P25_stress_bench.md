@@ -173,3 +173,27 @@ WoLF proper is a per-agent **learning rate**. The fix that matches it is to scal
 policy objective by its weight: surrogate, entropy bonus and KL to π_ref together. Then the
 winning seat learns more slowly without its balance tipping toward entropy. Implementing that as
 an option, and testing it on the same bench, needs the owner's go-ahead.
+
+## Step 3c: WoLF as a per-seat learning rate (E4-39), 2026-09-23
+
+E4-38's flags plus `--wolf-scope policy`: each seat's whole policy objective (surrogate, entropy
+bonus and KL to π_ref) is scaled by its weight. `launch_flags.py --diff` against E4-38 on each seed
+shows `--wolf-scope` only. Both runs ran 0 → 60M and exited cleanly.
+
+### Collapse half: passes on both seeds
+
+| run | 0–60M, by 5M (logged USSR share) | peak | buckets ≥ 0.9 | entropy by 10M |
+|:---|:---|---:|:---|:---|
+| E4-39-03 | .47 .42 .46 .63 .57 .63 .46 .56 .62 .74 .79 .58 | 0.79 | none | 1.62 1.70 1.84 1.73 1.70 1.72 |
+| E4-39-05 | .44 .41 .57 .63 .41 .49 .67 .61 .53 .52 .62 .55 | 0.67 | none | 1.73 1.76 1.72 1.73 1.80 1.77 |
+
+Seed 5 swung less than under the surrogate-only scope, 0.41–0.67 against E4-38-05's 0.35–0.71.
+**Entropy still does not fall.** It stays at ~1.7–1.8 on both seeds, as it did in E4-38. So
+scaling the entropy bonus with the surrogate did not bring back the sharpening that the controls
+and the λ 0.98 recipe show. The explanation given for E4-38, that the unweighted entropy bonus
+pushed the braked seat toward uniform, is therefore at best incomplete.
+
+### Strength half: not yet measured
+
+Held back for a machine restart. The next step is the same two rounds as for E4-38: the 60M bench
+field, and 50/55/60M against E4-27 and E4-38.
