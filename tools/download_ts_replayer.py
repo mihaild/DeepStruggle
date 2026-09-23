@@ -76,8 +76,12 @@ def main() -> int:
              "data tree (tools/lib/data_root.py: the main checkout's data/), so the corpus is "
              "downloaded once rather than once per checkout or git worktree.")
     ap.add_argument("--start", type=int, default=1)
-    ap.add_argument("--end", type=int, default=340,
-                    help="inclusive; ids beyond the live range simply 404")
+    # 324 is the last id of the validated corpus: 300 files, 266 distinct games, the set every
+    # replayer test and the human dataset were built on. The site has since grown (ids 325-340
+    # existed on 2026-09-23); those are not validated by the converter, so a default download
+    # must not pull them in silently. Pass --end explicitly to fetch past it.
+    ap.add_argument("--end", type=int, default=324,
+                    help="inclusive; 324 is the last id of the validated 300-file corpus")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds between requests")
     ap.add_argument("--timeout", type=float, default=60.0)
     args = ap.parse_args()
