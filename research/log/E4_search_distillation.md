@@ -115,3 +115,23 @@ end, rated together (`data/reports/E4-28-03_leg.{md,json}`):
 * Self-play side balance sits near 0.5, and games run longer than at the resume point (mean turn
   ~7.7).
 * `adv_std_raw` 0.21–0.23 and `kl_div` 0.014–0.03 throughout; no tripwire has fired.
+
+## What this suggests next
+
+Proposals, not decisions:
+
+1. **Adopt search distillation as the training default for the next ladder leg**, and pay for it
+   deliberately. It is the first intervention on E4 that beats plain M2d, on two seeds and on
+   both seats. The cost is ~40x per step (~1,200 against ~45,000 steps/s), so a leg is priced in
+   GPU-hours, not steps. 20M search steps beat 80M plain ones, and those cost roughly 4.6 h against
+   0.5 h.
+2. **Find out why the gain plateaus while headroom remains.** Search still beats the distilled
+   net 59%, yet the arm stops improving after ~5M at this coefficient. Candidates to vary one at
+   a time: the searched fraction (1 in 8), simulations (64, while play saturates at 96), and the
+   coefficient (0.5; the CE term is ~55% of the gradient).
+3. **Make it cheaper before making it bigger.** Search is the entire bottleneck. The searched
+   fraction and the node filter trade cost against signal directly, and E3 found most of the
+   signal outside card/play-mode nodes, so which decisions to search is a measurable choice.
+4. **Watch for the E3 failure.** No tripwire fired in ~30M search steps across two arms, and the
+   pool stayed at 10–12 members, but E3's arm ran ~26M before its (pool-starvation) collapse, so
+   a long leg should keep the tripwires armed.
