@@ -1,6 +1,6 @@
 # P25 — a training process that gives the same quality on any seed
 
-**Status:** running. Steps 0–2 are implemented (`9c49329`). The stress bench (step 3) is running: E4-36-03 since 14:44, and the other four arms start when the late-dynamics arms finish. It is the project's current focus; P23 (E4.1) is paused behind it.
+**Status:** running. Steps 0–2 are implemented (`9c49329`). The step-3 stress bench is done ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)): no lever passes on both seeds with a gain. Seat balancing is partial: +151 and no collapse on seed 5, level and borderline (0.89) on seed 3. Next is a lever that acts on the winning seat directly (per-seat gradient weights, WoLF-style), awaiting the owner's go-ahead.
 **Needs approval:** none of it touches `engine/` or the observation. The later steps (4–6) come
 back for approval with the bench's result.
 
@@ -48,7 +48,7 @@ Recovery happens when something restores the losing seat's advantage spread. Tha
 | 0 | **Log the per-seat signal**: pre-normalisation `adv_mean/std/n` by acting seat, and learner entropy by seat. This splits the pooled `adv_std_raw`, which averages the seat that has signal with the one that has lost it. | done (`9c49329`) |
 | 1 | **`--seat-balance`**: steer toward the losing seat. The pool tracks the self-play US win share and computes pressure = min(1, \|sp_us − 0.5\| / 0.3). Under pressure it puts the learner on the losing seat with probability 0.5 + 0.4·pressure, raises the pool-game fraction toward 0.8, and draws opponents by PFSP x(1−x) on that seat's own record, which favours opponents the losing seat can still beat about half the time. That feeds the loop the non-constant returns it lacks. | done (`9c49329`), untested in training |
 | 2 | **`--per-seat-adv-norm`**: normalise each seat by its own statistics, which removes step 3 of the loop directly. | done (`9c49329`), untested in training |
-| 3 | **Stress bench**: λ 0.99 from scratch, which collapsed on 2 of 2 seeds (below). Each lever is run alone to 60M. Step 4's slow π_ref is pulled forward into it. | running |
+| 3 | **Stress bench**: λ 0.99 from scratch, which collapsed on 2 of 2 seeds (below). Each lever is run alone to 60M. Step 4's slow π_ref is pulled forward into it. | done: seat balancing partial, the other two fail ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)) |
 | 4 | Slow π_ref as a schedule (5M after a switch point). It won late and lost from scratch ([`../log/E4_late_dynamics.md`](../log/E4_late_dynamics.md)). | after 3 |
 | 5 | An auto-rewind supervisor: roll back to the last healthy snapshot under a new seed when a collapse does not recover within N steps. Branches from inside a pin escape 2 of 2 times ([`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)). | a safety net, after 3 |
 | 6 | **Acceptance**: the chosen recipe on 6 seeds, unattended, to 160M, with the Elo spread across seeds reported. | after 3–5 |
@@ -110,3 +110,17 @@ In `E4.1-01-05`'s collapse the two seats' advantage spreads stayed equal (0.197 
 ### The census
 
 Across the late-dynamics and E4.1 runs, all 11 collapse episodes have the **US** as the losing seat. Loosening the update late (λ 0.99, π_ref 100k, η 0.05) brings one on in 15–25M. Slow π_ref delayed one on seed 5 (235M against 195M and 215M), but did not prevent it. Same log.
+
+### The bench, 2026-09-23
+
+[`../log/P25_stress_bench.md`](../log/P25_stress_bench.md).
+
+| lever | collapse half | strength half, against E4-27 at 60M |
+|:---|:---|:---|
+| `--seat-balance` | passes on both seeds; seed 3 is borderline (pure self-play 0.85–0.89 over 25–60M) | seed 5 **+151**, better on both seats; seed 3 +10, level |
+| slow π_ref from scratch | seed 3 passes, seed 5 fails (matches its control) | +9 and +8, level |
+| `--per-seat-adv-norm` | fails, collapsing at 15M against the control's 30M | +24, level |
+
+Two lessons carry forward:
+* **Balanced self-play is not health.** E4-37-03 was balanced because both of its seats were weak.
+* **Changing which games are played does not slow the winning seat,** which kept sharpening in E4-36-03.
