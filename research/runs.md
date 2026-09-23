@@ -122,6 +122,7 @@ having deliberately.
 | **E4-27-03/05** | `--gae-lambda 0.99` | 80M / 160M (s5 from scratch) | `E4-27-0{3,5}_*` | [`log/E4_dynamics_ref_lambda.md`](log/E4_dynamics_ref_lambda.md) |
 | **E4-28-03** | online search distillation, resumed from `E4-08-03@160M` on seed 3 — its control is E4-08-03's own 160→240M leg | 160M → 200M | `E4-28-03_20260923_001303` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
 | **E4-29-03, E4-30-03, E4-31-03, E4-32-03, E4-33-03** | one change each (λ 0.99, λ 0.97, π_ref 5M, π_ref 100k, η 0.05), all resumed from `E4-08-03@160M` on seed 3 — E4-08-03's own 160→240M leg is the step-matched control for all five | 160M → 240M | `E4-{29..33}-03_20260923_*` | *running* |
+| **E4-08-03-160M.11** | seed branch: `E4-08-03@160M` continued to 240M under seed 11, otherwise identical to E4-08-03's 160→240M leg. Is that leg's 200M dip seed 3's or M2d's? Also a second baseline for E4-29..33 | 160M → 240M | `E4-08-03-160M.11_20260923_072049` | *running* |
 | **E4-28-05** | the same, seed-5 replicate, resumed from `E4-08-05@80M` — its control is E4-08-05's own 80→160M leg | 80M → ~108M (stopped at 07:00) | `E4-28-05_20260923_031034` | [`log/E4_search_distillation.md`](log/E4_search_distillation.md) |
 
 **Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 111
