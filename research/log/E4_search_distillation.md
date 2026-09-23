@@ -39,6 +39,20 @@ Each snapshot is rated in its own small field against the control at the same st
 
 **Four of four snapshots beat the step-matched control on both seats**, by +54 to +70 Elo.
 
+## Seed 5: a second replicate, from 80M
+
+`E4-28-05` repeats the arm on seed 5 from `E4-08-05`'s 80M resume state (`E4-28-05_20260923_031034`);
+E4-08-05's 80→160M leg (`E4-08-05_20260921_033333`) is its step-matched control. `launch_flags.py
+--diff` shows only the search flags and `--resume-every-steps`. It runs alongside E4-28-03, so
+both are at ~1,000–1,200 steps/s.
+
+| steps | E4-28-05 Elo | control Elo | Δ | vs control | vs 80M start | vs anchor |
+|---:|---:|---:|---:|---:|---:|---:|
+| 85M | 2179.5 | 2022.7 | **+156.8** | 71 / 72 | 79 / 74 | 62 / 55 |
+
+A larger gain than seed 3's at the same 5M into the leg, from an earlier and weaker starting point.
+It is the first seed-5 M2d snapshot to beat the anchor on both seats.
+
 ## The whole leg in one field
 
 All four E4-28-03 snapshots and the control at every step, including its 200M dip and its 240M
