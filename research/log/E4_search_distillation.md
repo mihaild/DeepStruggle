@@ -37,7 +37,11 @@ Each snapshot is rated in its own small field against the control at the same st
 | 175M | 2248.7 | 2194.8 | **+53.9** | 59 / 61 | 75 / 54 | 83 / 74 |
 | 180M | 2222.6 | 2156.6 | **+66.0** | 66 / 62 | 70 / 61 | 80 / 72 |
 
-**Four of four snapshots beat the step-matched control on both seats**, by +54 to +70 Elo.
+| 185M | 2241.3 | 2116.0 | **+125.3** | 74 / 70 | 71 / 64 | 80 / 83 |
+
+**Five of five snapshots beat the step-matched control on both seats.** The 185M gap is wider
+because the control is sliding into its 200M dip. Against the fixed 160M start the arm is flat
+from 170M on (75 / 64, 75 / 54, 70 / 61, 71 / 64).
 
 ## Headroom left after 20M
 
