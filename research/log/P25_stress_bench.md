@@ -193,7 +193,26 @@ scaling the entropy bonus with the surrogate did not bring back the sharpening t
 and the λ 0.98 recipe show. The explanation given for E4-38, that the unweighted entropy bonus
 pushed the braked seat toward uniform, is therefore at best incomplete.
 
-### Strength half: not yet measured
+### Strength half: no better than E4-38; seed 5 still weak on both seats
 
-Held back for a machine restart. The next step is the same two rounds as for E4-38: the 60M bench
-field, and 50/55/60M against E4-27 and E4-38.
+`data/reports/p25_wolf_policy_50_60M.{md,json}`: E4-39, E4-38 and E4-27 on both seeds at 50, 55
+and 60M, plus E4-08-0s@60M. 21 players, 100 games per side per pair, temperature 0.
+
+| seed | step | E4-39 − E4-27 | E4-39 − E4-38 | E4-39 vs E4-27 (as USSR / as US) | E4-39 vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|
+| 3 | 50M | +27 | −49 | 83 / 37 | 18 / 15 |
+| 3 | 55M | +94 | +26 | 88 / 24 | 18 / 20 |
+| 3 | 60M | +54 | −75 | 93 / 24 | 9 / 8 |
+| 5 | 50M | −78 | −24 | 68 / 15 | 5 / 4 |
+| 5 | 55M | −74 | +30 | 70 / 7 | 5 / 8 |
+| 5 | 60M | **−110** | +11 | 53 / 8 | 7 / 7 |
+
+**Verdict: fails, like E4-38.** Scaling the whole policy objective changed neither result:
+* seed 3 is modestly ahead of its collapsed control, +27 to +94;
+* seed 5 is weak on both seats, −74 to −110, winning 4–8% against the λ 0.98 recipe.
+
+The entropy explanation for E4-38 is therefore **withdrawn**. It was not the unweighted entropy
+bonus. Both WoLF variants hold the self-play split near even, and both keep entropy at ~1.75. On
+seed 5 both are weak. What the two variants share is that they slow whichever seat is ahead. One
+reading, untested, is that in a game whose equilibrium favours one side, slowing the winner also
+slows the policy's approach to it, which would make "balanced self-play" the wrong target.
