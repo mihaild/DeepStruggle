@@ -62,10 +62,15 @@ web/ui/
      (merged-influence) model the composed placements go on the countries and the influence
      button carries their sum. The favourite is marked ★ (the replay's played move stays ◀).
    - *★ Play favourite* / key `F` / clicking a row in the panel sends `PLAY_FLAT`; manual clicks
-     keep working as before. `ActionHud.onRerender` re-applies badges after the HUD redraws
+     keep working as before. Every `PLAY_FLAT` carries `expect_position`, so a move read from a
+     position the game has since left is ignored rather than applied to the next node.
+   - **Auto-play** (none / USSR / US, `auto=` in the URL): whenever the chosen side is to move,
+     `maybeAutoPlay()` plays the model's favourite after `AUTO_PLAY_DELAY_MS`, with the engine's
+     own die. With auto-play on, *Cancel* keeps undoing (`continueAutoUndo`) until the decision
+     is the other side's again -- otherwise it would immediately replay the move just taken back. `ActionHud.onRerender` re-applies badges after the HUD redraws
      itself (the die selector).
-   - **The address bar is the share link.** `syncUrl()` writes `game_id`, `role`, `model` and
-     `pos` (the server's position token) on every live update with `history.replaceState`, never
+   - **The address bar is the share link.** `syncUrl()` writes `game_id`, `role`, `model`, `auto`
+     and `pos` (the server's position token) on every live update with `history.replaceState`, never
      `pushState`, so moves do not pile up in Back. At boot a `pos` is POSTed to
      `/api/games/{id}/position` before the WebSocket opens; *New Game* drops `pos` so it does not
      reload the old board.

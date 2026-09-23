@@ -534,13 +534,22 @@ class GameSession:
 
     async def handle_flat_action(self, flat_idx: int, forced_die: int = 0,
                                  websocket: Optional[WebSocket] = None,
-                                 sender_role: str = "OBSERVER") -> bool:
+                                 sender_role: str = "OBSERVER",
+                                 expect_position: Optional[str] = None) -> bool:
         """Play a flat action in the action view of the socket's analysis model -- the
         workbench's "play the model's favourite". Without an analysis model it is the E4 view.
 
         A composed E4.1 action is applied as the two E4 steps it is defined as, each logged and
         undoable on its own, exactly as `Engine::step_flat` composes it.
+
+        `expect_position` is the position token the action was chosen in. When the board has
+        moved on since -- another tab auto-playing the same side, a click racing the auto-play
+        timer -- the action is ignored: a flat index is only meaningful at the node it was read
+        from, and at the next node the same index can be legal and mean something else.
         """
+        if expect_position is not None and expect_position != encode_position(self.state):
+            logger.info(f"[{self.game_id}] PLAY_FLAT from {sender_role} ignored: chosen for a position the game has left")
+            return False
         rel = self.analysis_models.get(websocket) if websocket is not None else None
         merged = False
         if rel is not None:

@@ -128,3 +128,50 @@ def test_pick_model_play_favourite_and_share_the_link(browser, analysis_server):
     other.select_option("#analysis-run-select", "")
     other.wait_for_function("document.querySelectorAll('.trace-choice-badge').length === 0")
     other.wait_for_function("!new URLSearchParams(location.search).has('model')")
+
+
+def _state(page, expr: str):
+    return page.evaluate(f"window.__wb.state.{expr}")
+
+
+def test_auto_play_moves_one_side_and_cancel_unwinds_past_it(browser, analysis_server):
+    """auto=ussr: the USSR plays the model's favourite by itself, stops whenever the US is to
+    move, and a Cancel takes back the US move together with the USSR replies to it."""
+    game_id = "e2e-autoplay"
+    requests.post(f"{analysis_server}/api/games/new", json={"game_id": game_id, "seed": 57})
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    page.goto(f"{analysis_server}/?game_id={game_id}&model={RUN}/{SNAPSHOT}&auto=ussr")
+    page.wait_for_function("window.__wb && window.__wb.state && window.__wb.state.position")
+    assert page.input_value("#analysis-autoplay-select") == "USSR", "auto side restored from the URL"
+
+    # The USSR setup is played without anyone touching it; the US setup then waits for us.
+    page.wait_for_function("window.__wb.state.step_index > 0 && "
+                           "window.__wb.state.decision_context.decision_player === 'US'", timeout=20000)
+    parked = _state(page, "position")
+    page.wait_for_timeout(1000)
+    assert _state(page, "position") == parked, "auto-play must not move for the US"
+    assert parse_qs(urlparse(page.url).query)["auto"] == ["ussr"]
+
+    # Play US favourites by hand until one of them is answered by USSR auto-play.
+    before_us_move = None
+    for _ in range(40):
+        before_us_move = _state(page, "position")
+        s0 = _state(page, "step_index")
+        page.keyboard.press("f")
+        page.wait_for_function(f"window.__wb.state.step_index > {s0}")
+        page.wait_for_function("window.__wb.state.is_terminal || "
+                               "window.__wb.state.decision_context.decision_player === 'US'", timeout=20000)
+        if _state(page, "step_index") > s0 + 1:
+            break
+    else:
+        pytest.fail("the USSR never got a move to auto-play")
+
+    # One Cancel: back to the position before our US move, and it stays there.
+    page.click("#btn-undo-action")
+    page.wait_for_function(f"window.__wb.state.position === {json.dumps(before_us_move)}", timeout=10000)
+    page.wait_for_timeout(1000)
+    assert _state(page, "position") == before_us_move, "auto-play replayed the move just taken back"
+
+    # Switching auto-play off drops it from the link.
+    page.select_option("#analysis-autoplay-select", "")
+    page.wait_for_function("!new URLSearchParams(location.search).has('auto')")

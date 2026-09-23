@@ -75,6 +75,14 @@
             <select id="analysis-run-select" class="analysis-select" title="Training run"></select>
             <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" disabled></select>
             <button id="btn-play-favourite" class="btn btn-primary btn-sm" title="Play the model's most likely move (F)" disabled>★ Play favourite</button>
+            <label class="analysis-autoplay" title="This side plays the model's favourite automatically; you play the other">
+              Auto-play
+              <select id="analysis-autoplay-select" class="analysis-select">
+                <option value="">none</option>
+                <option value="USSR">USSR</option>
+                <option value="US">US</option>
+              </select>
+            </label>
           </div>
           <div id="analysis-body" class="trace-body"></div>
         </div>

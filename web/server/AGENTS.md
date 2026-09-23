@@ -86,8 +86,9 @@ Two rules follow:
   WebSocket messages (in `main.py`): `SET_ANALYSIS_MODEL {model: <rel path> | null}` opts this
   socket in or out (errors come back as `ANALYSIS_ERROR {message}`); every later `STATE_UPDATE`
   to that socket carries `analysis` (a `LiveAnalysisDict`) for the same position as its `state`,
-  and `analysis_model`. `PLAY_FLAT {flat_idx, forced_die}` plays a flat action in the socket's
-  model's view. Every `state` now carries `position`, the token for the board it describes.
+  and `analysis_model`. `PLAY_FLAT {flat_idx, forced_die, expect_position?}` plays a flat action
+  in the socket's model's view; with `expect_position` it is ignored unless the game still holds
+  that position (auto-play, a click and a second tab can all race for the same node). Every `state` now carries `position`, the token for the board it describes.
   `GameSession.version` is bumped on every change of position; a readout is cached per
   (model, version) and a superseded broadcast is dropped rather than sent late.
 

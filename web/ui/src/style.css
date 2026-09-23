@@ -1851,7 +1851,25 @@ body {
   padding: 3px 4px;
 }
 .analysis-snapshot { flex: 0 1 110px; }
-#btn-play-favourite { flex: 1 0 100%; }
+#btn-play-favourite { flex: 1 1 auto; }
+.analysis-autoplay {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.analysis-autoplay .analysis-select { flex: 0 0 auto; }
+.analysis-autoplay.active { color: var(--warning); }
+.analysis-autoplay.active .analysis-select { border-color: var(--warning); }
+.analysis-auto-tag {
+  margin-left: 6px;
+  color: var(--warning);
+  font-weight: 700;
+}
 #btn-play-favourite:disabled { opacity: 0.45; cursor: not-allowed; }
 .analysis-error {
   color: var(--danger);

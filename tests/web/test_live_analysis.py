@@ -254,6 +254,27 @@ def test_merged_view_model_paints_and_plays_composed_actions(checkpoints: str, c
         assert decode_position(back["state"]["position"]).to_save_dict() == origin.to_save_dict()
 
 
+def test_flat_action_chosen_in_a_stale_position_is_ignored(client: TestClient) -> None:
+    """Auto-play and a click (or two tabs) can race: a move read from a position the game has
+    already left must not be applied to the next one, where the same index can be legal."""
+    game_id = "analysis-stale"
+    client.post("/api/games/new", json={"game_id": game_id, "seed": 13})
+    with client.websocket_connect(f"/ws/game/{game_id}") as ws:
+        msg = _receive_state(ws)
+        pos0 = msg["state"]["position"]
+        first = ActionEncoder.get_legal_indices(decode_position(pos0))[0]
+        ws.send_json({"type": "PLAY_FLAT", "flat_idx": first, "expect_position": pos0})
+        moved = _receive_state(ws)["state"]
+        assert moved["step_index"] == 1
+
+        # Legal again at the new node, but chosen for the old one.
+        assert first in ActionEncoder.get_legal_indices(decode_position(moved["position"]))
+        ws.send_json({"type": "PLAY_FLAT", "flat_idx": first, "expect_position": pos0})
+        ws.send_json({"type": "PING"})
+        assert ws.receive_json()["type"] == "PONG", "a stale move broadcasts nothing"
+    assert client.get(f"/api/games/{game_id}").json()["step_index"] == 1
+
+
 def test_illegal_flat_action_changes_nothing(checkpoints: str, client: TestClient) -> None:
     game_id = "analysis-illegal"
     client.post("/api/games/new", json={"game_id": game_id, "seed": 8})

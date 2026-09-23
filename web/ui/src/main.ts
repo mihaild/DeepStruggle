@@ -6,7 +6,10 @@ import { ActionHud } from "./action_hud";
 import { ReplayControls, ReplayStep } from "./replay_controls";
 import { DebugPanel } from "./debug_panel";
 import { decorateChoices, loadActionSpace, policyChipHtml, renderTracePanel, renderValueRibbon } from "./trace_view";
-import { AnalysisPanel, LiveAnalysis } from "./analysis_view";
+import { AnalysisPanel, AutoSide, LiveAnalysis } from "./analysis_view";
+
+/** Pause before an auto-played move, long enough to see each one land. */
+const AUTO_PLAY_DELAY_MS = 350;
 
 export class TSApp {
   private state: GameState | null = null;
@@ -32,6 +35,10 @@ export class TSApp {
   /** A position named by the address bar (a shared link), to be put on the board at boot. */
   private urlPosition: string | null = null;
   private urlModel: string | null = null;
+  private urlAuto: AutoSide = "";
+  /** A pending auto-play move, and whether a Cancel is still unwinding auto-played moves. */
+  private autoPlayTimer: number | null = null;
+  private undoingAutoMoves: boolean = false;
 
   constructor() {
     this.parseQueryParams();
@@ -72,8 +79,13 @@ export class TSApp {
         this.syncUrl();
       },
       (flatIdx: number) => this.sendFlatAction(flatIdx),
+      () => {
+        this.syncUrl();
+        this.maybeAutoPlay();
+      },
     );
     this.analysisPanel.setModel(this.urlModel);
+    this.analysisPanel.setAutoSide(this.urlAuto);
     this.analysisPanel.show(!this.isReplayMode);
     this.actionHud.onRerender = () => this.redecorate();
 
@@ -142,6 +154,8 @@ export class TSApp {
     }
     this.urlPosition = params.get("pos");
     this.urlModel = params.get("model");
+    const auto = (params.get("auto") || "").toUpperCase();
+    this.urlAuto = auto === "US" || auto === "USSR" ? auto : "";
   }
 
   /**
@@ -157,6 +171,8 @@ export class TSApp {
     if (this.role !== "OBSERVER") params.set("role", this.role);
     const model = this.analysisPanel.model;
     if (model) params.set("model", model); else params.delete("model");
+    const auto = this.analysisPanel.autoSide;
+    if (auto) params.set("auto", auto.toLowerCase()); else params.delete("auto");
     params.set("pos", this.liveState.position);
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
@@ -194,6 +210,7 @@ export class TSApp {
           this.state = data.state;
           this.renderState();
           this.syncUrl();
+          if (!this.continueAutoUndo(data.state)) this.maybeAutoPlay();
         }
       } else if (data.type === "ANALYSIS_ERROR") {
         this.analysisPanel.setError(data.message || "analysis failed");
@@ -523,9 +540,50 @@ export class TSApp {
    * Play a flat action in the analysis model's own action view (the favourite button, or a row
    * of the panel's list). The server decodes it, so a composed E4.1 action needs no client code.
    */
-  private sendFlatAction(flatIdx: number) {
+  private sendFlatAction(flatIdx: number, forcedDie: number = this.actionHud.selectedDieRoll) {
     if (this.isReplayMode) return;
-    this.sendWs({ type: "PLAY_FLAT", flat_idx: flatIdx, forced_die: this.actionHud.selectedDieRoll });
+    // The position it was chosen in: the server ignores it if the board has moved on, since the
+    // same index at the next node can be legal and mean something else.
+    this.sendWs({ type: "PLAY_FLAT", flat_idx: flatIdx, forced_die: forcedDie,
+                  expect_position: this.liveState?.position });
+  }
+
+  /**
+   * Auto-play: when the side to move is the auto-play side, play the model's favourite after a
+   * short pause (so a person can follow the moves). Re-armed on every live update; a pending
+   * move is dropped if the position changes before it fires.
+   */
+  private maybeAutoPlay() {
+    if (this.autoPlayTimer !== null) {
+      window.clearTimeout(this.autoPlayTimer);
+      this.autoPlayTimer = null;
+    }
+    if (this.isReplayMode || this.undoingAutoMoves) return;
+    const idx = this.analysisPanel.autoPlayMove();
+    const pos = this.liveState?.position;
+    if (idx === null || !pos) return;
+    this.autoPlayTimer = window.setTimeout(() => {
+      this.autoPlayTimer = null;
+      if (this.isReplayMode || this.liveState?.position !== pos) return;
+      // Always the engine's own die: the manual die selector is for the moves you make.
+      this.sendFlatAction(idx, 0);
+    }, AUTO_PLAY_DELAY_MS);
+  }
+
+  /**
+   * While undoing with auto-play on, keep undoing until the decision is yours again --
+   * otherwise auto-play would immediately replay the move just taken back, and Cancel could
+   * never get past it. Returns true while the chain is still running.
+   */
+  private continueAutoUndo(state: GameState): boolean {
+    if (!this.undoingAutoMoves) return false;
+    const auto = this.analysisPanel.autoSide;
+    if (auto && state.decision_context?.decision_player === auto && state.can_undo) {
+      this.sendWs({ type: "CANCEL_ACTION" });
+      return true;
+    }
+    this.undoingAutoMoves = false;
+    return false;
   }
 
   private sendWs(msg: Record<string, unknown>) {
@@ -536,6 +594,10 @@ export class TSApp {
   private cancelAction() {
     if (this.isReplayMode) return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.analysisPanel.autoSide) {
+      this.undoingAutoMoves = true;
+      this.maybeAutoPlay();  // disarms any pending auto move
+    }
 
     this.ws.send(JSON.stringify({
       type: "CANCEL_ACTION"
@@ -650,6 +712,7 @@ export class TSApp {
         renderTracePanel(undefined, undefined, 0);
         this.renderState();
         this.syncUrl();
+        this.maybeAutoPlay();
         return;
       }
       this.renderLogStream();

@@ -40,6 +40,9 @@ export interface LiveAnalysis {
   choices: AnalysisChoice[];
 }
 
+/** Which side auto-play moves for; "" is off. */
+export type AutoSide = "" | "US" | "USSR";
+
 interface ModelList {
   root: string;
   runs: Array<{ run: string; snapshots: string[] }>;
@@ -83,11 +86,19 @@ export class AnalysisPanel {
   private body: HTMLElement;
   private badge: HTMLElement;
   private lastAnalysis: LiveAnalysis | null = null;
+  private autoSelect: HTMLSelectElement;
+  private auto: AutoSide = "";
 
   constructor(
     private onSelectModel: (rel: string | null) => void,
     private onPlayFlat: (flatIdx: number) => void,
+    private onAutoSideChange: (side: AutoSide) => void = () => {},
   ) {
+    this.autoSelect = document.getElementById("analysis-autoplay-select") as HTMLSelectElement;
+    this.autoSelect.addEventListener("change", () => {
+      this.setAutoSide(this.autoSelect.value as AutoSide);
+      this.onAutoSideChange(this.auto);
+    });
     this.runSelect = document.getElementById("analysis-run-select") as HTMLSelectElement;
     this.snapSelect = document.getElementById("analysis-snapshot-select") as HTMLSelectElement;
     this.favButton = document.getElementById("btn-play-favourite") as HTMLButtonElement;
@@ -135,6 +146,30 @@ export class AnalysisPanel {
   public playFavourite(): void {
     const idx = this.favourite();
     if (idx !== null) this.onPlayFlat(idx);
+  }
+
+  /** The side that plays the model's favourite by itself ("" = nobody). */
+  public get autoSide(): AutoSide {
+    return this.auto;
+  }
+
+  /** Set the auto-play side programmatically (from the URL); does not notify. */
+  public setAutoSide(side: AutoSide): void {
+    this.auto = side === "US" || side === "USSR" ? side : "";
+    this.autoSelect.value = this.auto;
+    this.autoSelect.closest(".analysis-autoplay")?.classList.toggle("active", this.auto !== "");
+    this.renderBody();
+  }
+
+  /**
+   * The move auto-play should make in the position on screen: the favourite, when a decision
+   * is open and it belongs to the auto-play side. Null otherwise -- including when no model is
+   * chosen, since there is then nothing to play.
+   */
+  public autoPlayMove(): number | null {
+    const a = this.lastAnalysis;
+    if (!this.auto || !a || a.decision_player !== this.auto) return null;
+    return this.favourite();
   }
 
   public show(visible: boolean): void {
@@ -226,7 +261,8 @@ export class AnalysisPanel {
     }
     if (!this.selected) {
       this.badge.textContent = "off";
-      this.body.innerHTML = `<div class="trace-empty">Choose a checkpoint to see its policy on every decision and its critic on every position. You can still play any move yourself.</div>`;
+      this.body.innerHTML = `<div class="trace-empty">Choose a checkpoint to see its policy on every decision and its critic on every position. You can still play any move yourself.</div>`
+        + (this.auto ? `<div class="analysis-error">Auto-play ${this.auto} needs a model to play with.</div>` : "");
       return;
     }
     if (!a) {
@@ -245,7 +281,8 @@ export class AnalysisPanel {
       parts.push(`<div class="trace-empty">${state?.is_terminal ? "Game over." : "No decision is open."}</div>`);
     } else {
       const who = a.decision_player ?? "";
-      parts.push(`<div class="trace-section-label">NEXT DECISION — <span class="analysis-who ${who.toLowerCase()}">${who}</span> to choose</div>`);
+      const autoTag = this.auto && this.auto === who ? `<span class="analysis-auto-tag">· auto-playing</span>` : "";
+      parts.push(`<div class="trace-section-label">NEXT DECISION — <span class="analysis-who ${who.toLowerCase()}">${who}</span> to choose${autoTag}</div>`);
       parts.push(`
         <div class="trace-head">
           <span class="trace-head-item" title="probability of its most likely move, temperature 1">best <b style="color:${probColor(pol.p_max ?? 0)}">${(pol.p_max ?? 0).toFixed(3)}</b></span>

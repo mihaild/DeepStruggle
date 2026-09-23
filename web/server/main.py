@@ -200,8 +200,10 @@ async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERV
                 except (TypeError, ValueError):
                     logger.warning(f"WebSocket: malformed PLAY_FLAT {data}")
                     continue
+                expect = data.get("expect_position")
                 await session.handle_flat_action(flat_idx, forced_die=forced_die,
-                                                 websocket=websocket, sender_role=role)
+                                                 websocket=websocket, sender_role=role,
+                                                 expect_position=str(expect) if expect else None)
             elif msg_type == "SET_ANALYSIS_MODEL":
                 model = data.get("model")
                 await session.set_analysis_model(websocket, str(model) if model else None)
