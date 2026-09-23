@@ -134,7 +134,38 @@ seat collapse by the per-seat test, not uneven improvement.
 So **λ 0.99 induces a US-seat collapse on 2 of 2 seeds**, which M2d at λ 0.98 does on ~12.5% of
 seeds and mostly recovers from ([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)).
 It is the most reliable collapse reproduction the project has, and one the `adv_std_raw`
-detector does not see. It is continuing to 160M to show whether it recovers.
+detector does not see.
+
+### …and it recovers by 160M
+
+`E4-27-05` continued to 160M (`data/reports/E4_dynamics_27_05_to160M.{md,json}`, own field):
+
+| # | model | Elo | vs E4-08-05@160M | vs E4-08-05@80M | vs anchor E4-03-01@80M |
+|---:|:---|---:|---:|---:|---:|
+| 1 | E4-08-05@160M | 2179.0 | — | 74 / 59 | 60 / 63 |
+| 2 | **E4-27-05@160M** | **2130.4** | 51 / 26 | 65 / 55 | 45 / **61** |
+| 3 | E4-08-05@120M | 2123.6 | 46 / 30 | 64 / 52 | 49 / 57 |
+| 4 | E4-03-01@80M | 2123.0 | 37 / 40 | 52 / 65 | — |
+| 5 | E4-08-05@80M | 2058.0 | 41 / 26 | — | 35 / 48 |
+| 6 | E4-27-05@120M | 1985.0 | 37 / 20 | 49 / 28 | 18 / **34** |
+| 7 | E4-27-05@80M | 1779.8 | 26 / 4 | 40 / 3 | 17 / **1** |
+| 8 | HeuristicBot | 1500.0 | 2 / 4 | 6 / 0 | 1 / 1 |
+
+Against seed-matched M2d: **−278.2 at 80M, −138.6 at 120M, −48.6 at 160M.** The US seat's rate
+against the anchor goes 1% → 34% → 61%, and self-play `us_win_rate` was back to ~0.31 by 135M.
+Its 80→160M slope is **+350.6** against the control's +121.0.
+
+This is the recovery [`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md) describes,
+now seen on an arm that entered the collapse deterministically. It enters by ~35–45M, stays for
+~50M steps, and exits with most of the lost ground recovered. The advantage signal is the
+discriminator again: `adv_std_raw` dipped to ~0.12 at the bottom and was 0.33 by 135M, as the
+recovered census arms returned to 0.10–0.20. Two things this arm adds:
+
+* **The collapse costs time, not final strength, here too**, but it is not free by 160M: −48.6 is
+  within M2d's seed spread, and the head-to-head is still split, 51% as USSR and 26% as US.
+* **A reproducible, detector-invisible entry is now available on demand**: λ 0.99, seeds 3 and 5,
+  collapse within ~40M. That is the instrument the collapse-mechanism question lacked
+  ([`../questions.md`](../questions.md), *What causes the side collapse?*).
 
 ## Reading
 
