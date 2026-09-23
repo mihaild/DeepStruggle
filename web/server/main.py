@@ -1,4 +1,5 @@
-from web.server.replay_types import ReplaySummaryDict, ReplayLogDict, GameStateDict
+from web.server.replay_types import (AnalysisModelListDict, ReplaySummaryDict, ReplayLogDict,
+                                     GameStateDict)
 import os
 import sys
 import json
@@ -13,6 +14,8 @@ from pydantic import BaseModel
 
 from web.server.session import GameSession
 from web.server.replay import ReplayManager
+from web.server.analysis import AnalysisError, list_models
+from tools.lib.game_step import IllegalActionError
 
 def setup_server_logging(log_file: Optional[str] = None, log_level_name: str = "DEBUG"):
     """Configures detailed logging using Python's standard logging module."""
@@ -89,6 +92,27 @@ async def cancel_action(game_id: str):
     session = active_sessions[game_id]
     success = await session.handle_cancel_action()
     return {"success": success, "state": session.get_state_dict()}
+
+class LoadPositionRequest(BaseModel):
+    position: str
+
+@app.post("/api/games/{game_id}/position")
+async def load_position(game_id: str, req: LoadPositionRequest):
+    """Put the board a shared link names into this game. A no-op (`changed: false`) when the
+    game already holds that exact position, so reloading a page keeps its history."""
+    if game_id not in active_sessions:
+        active_sessions[game_id] = GameSession(game_id)
+    session = active_sessions[game_id]
+    try:
+        changed = await session.load_position(req.position)
+    except (AnalysisError, IllegalActionError) as e:
+        raise HTTPException(status_code=400, detail=f"Cannot load position: {e}")
+    return {"changed": changed, "state": session.get_state_dict()}
+
+@app.get("/api/analysis/models", response_model=None)
+async def list_analysis_models() -> AnalysisModelListDict:
+    """Checkpoints the workbench can analyse with, named relative to the checkpoints tree."""
+    return list_models()
 
 @app.get("/api/replays", response_model=None)
 async def list_replays() -> List[ReplaySummaryDict]:
@@ -167,6 +191,20 @@ async def websocket_game(websocket: WebSocket, game_id: str, role: str = "OBSERV
             if msg_type == "PLAY_ACTION":
                 action_data = data.get("action", {})
                 await session.handle_action(action_data, sender_role=role)
+            elif msg_type == "PLAY_FLAT":
+                # A flat action in the action view of this socket's analysis model: the
+                # workbench's "play the model's favourite".
+                try:
+                    flat_idx = int(data.get("flat_idx"))
+                    forced_die = int(data.get("forced_die", 0) or 0)
+                except (TypeError, ValueError):
+                    logger.warning(f"WebSocket: malformed PLAY_FLAT {data}")
+                    continue
+                await session.handle_flat_action(flat_idx, forced_die=forced_die,
+                                                 websocket=websocket, sender_role=role)
+            elif msg_type == "SET_ANALYSIS_MODEL":
+                model = data.get("model")
+                await session.set_analysis_model(websocket, str(model) if model else None)
             elif msg_type in ("CANCEL_ACTION", "UNDO_ACTION"):
                 logger.info(f"WebSocket: Received {msg_type} from role '{role}' for game '{game_id}'")
                 await session.handle_cancel_action()

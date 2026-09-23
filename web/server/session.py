@@ -1,11 +1,12 @@
-from web.server.replay_types import GameStateDict, ReplayActionDict
+from web.server.replay_types import GameStateDict, LiveAnalysisDict, ReplayActionDict
+import asyncio
 import os
 import sys
 import json
 import random
 import logging
 import base64
-from typing import Dict, List, Optional, Set, Any, cast
+from typing import Dict, List, Optional, Set, Any, Tuple, cast
 
 import numpy as np
 from fastapi import WebSocket
@@ -18,6 +19,8 @@ except ImportError:
         sys.path.insert(0, _build)
     import ts_engine
 from web.server.replay import ReplayLogger
+from web.server.analysis import (MODEL_CACHE, AnalysisError, analyze, decode_position,
+                                 encode_position, flat_to_steps)
 from tools.lib.game_step import IllegalActionError, drain_chance, step_checked
 from tools.lib.tournament_evaluator import classify_game_ending_reason
 
@@ -290,6 +293,14 @@ class GameSession:
             "USSR": set(),
             "OBSERVER": set()
         }
+        #: Bumped on every change of position (action, undo, debug override, loaded position),
+        #: so a readout computed for one position is never sent next to another.
+        self.version = 0
+        #: Live analysis is opt-in per socket: SET_ANALYSIS_MODEL names a checkpoint (relative to
+        #: the checkpoints tree) and only that socket receives the readout. A bot client never
+        #: asks, so it is never handed a distribution over the other side's legal actions.
+        self.analysis_models: Dict[WebSocket, str] = {}
+        self._analysis_cache: Dict[str, Tuple[int, LiveAnalysisDict]] = {}
 
         logger.info(f"[{self.game_id}] Game session initialized with seed {self.seed}. US: '{us_player}', USSR: '{ussr_player}'")
 
@@ -317,6 +328,7 @@ class GameSession:
         obs = self._observation_for(for_role)
         if obs is not None:
             d["observation_b64"] = obs
+        d["position"] = encode_position(self.state)
         return cast(GameStateDict, d)
 
     def _observation_for(self, role: Optional[str]) -> Optional[str]:
@@ -370,38 +382,139 @@ class GameSession:
 
     def disconnect(self, websocket: WebSocket):
         self.connections.discard(websocket)
+        self.analysis_models.pop(websocket, None)
         for r_set in self.role_connections.values():
             r_set.discard(websocket)
         logger.info(f"[{self.game_id}] Client disconnected. Remaining connections: {len(self.connections)}")
 
+    async def _analysis(self, rel: str) -> Optional[LiveAnalysisDict]:
+        """The readout for the current position from checkpoint `rel`, cached per position.
+
+        Runs off the event loop -- a first load takes seconds -- on a copy of the state, so an
+        action arriving meanwhile cannot change the position under the forward pass.
+        """
+        cached = self._analysis_cache.get(rel)
+        if cached is not None and cached[0] == self.version:
+            return cached[1]
+        version, state = self.version, self.state.clone()
+
+        def work() -> LiveAnalysisDict:
+            return analyze(MODEL_CACHE.get(rel), state, rel)
+
+        try:
+            result = await asyncio.to_thread(work)
+        except AnalysisError as e:
+            logger.warning(f"[{self.game_id}] analysis with {rel}: {e}")
+            return None
+        self._analysis_cache[rel] = (version, result)
+        return result if version == self.version else None
+
+    async def send_state(self, websocket: WebSocket) -> None:
+        """One STATE_UPDATE to one socket, with its analysis if it asked for one."""
+        role = self._role_of(websocket)
+        msg: Dict[str, Any] = {"type": "STATE_UPDATE"}
+        rel = self.analysis_models.get(websocket)
+        if rel is not None:
+            analysis = await self._analysis(rel)
+            msg["analysis_model"] = rel
+            if analysis is not None:
+                msg["analysis"] = analysis
+        msg["state"] = self.get_state_dict(for_role=role)
+        await websocket.send_json(msg)
+
     async def broadcast_state(self):
         if not self.connections:
             return
+        # Readouts first: they may await a forward pass, and the state dicts built after it must
+        # describe the same position the readouts do.
+        version = self.version
+        analyses: Dict[str, Optional[LiveAnalysisDict]] = {}
+        for rel in sorted(set(self.analysis_models.values())):
+            analyses[rel] = await self._analysis(rel)
+        if version != self.version:
+            return  # superseded; the change that moved the position broadcasts its own update
         # Built per role, since the observation is perspective-specific and must not be
         # sent to the opponent.
         by_role: Dict[Optional[str], Dict[str, Any]] = {}
         dead_sockets = set()
-        for ws in self.connections:
+        for ws in list(self.connections):
             role = self._role_of(ws)
             if role not in by_role:
                 by_role[role] = {
                     "type": "STATE_UPDATE",
                     "state": self.get_state_dict(for_role=role),
                 }
+            msg = by_role[role]
+            rel = self.analysis_models.get(ws)
+            if rel is not None:
+                msg = {**msg, "analysis_model": rel}
+                analysis = analyses.get(rel)
+                if analysis is not None:
+                    msg["analysis"] = analysis
             try:
-                await ws.send_json(by_role[role])
+                await ws.send_json(msg)
             except Exception as e:
                 logger.debug(f"[{self.game_id}] Error broadcasting to client: {e}")
                 dead_sockets.add(ws)
         for ws in dead_sockets:
             self.disconnect(ws)
 
+    async def set_analysis_model(self, websocket: WebSocket, rel: Optional[str]) -> Optional[str]:
+        """Point this socket's analysis at checkpoint `rel` (None or "" turns it off).
+
+        Returns an error message, or None on success; either way the socket gets a fresh
+        STATE_UPDATE so its panel reflects the outcome.
+        """
+        error: Optional[str] = None
+        if rel:
+            try:
+                await asyncio.to_thread(MODEL_CACHE.get, rel)
+                self.analysis_models[websocket] = rel
+                logger.info(f"[{self.game_id}] Analysis model for a client: {rel}")
+            except AnalysisError as e:
+                error = str(e)
+                self.analysis_models.pop(websocket, None)
+        else:
+            self.analysis_models.pop(websocket, None)
+        if error is not None:
+            await websocket.send_json({"type": "ANALYSIS_ERROR", "message": error, "model": rel})
+        await self.send_state(websocket)
+        return error
+
+    async def load_position(self, token: str) -> bool:
+        """Replace the board with the position a token names (a shared link).
+
+        Returns False when the session already holds that exact position -- the common case of a
+        page reload, which must not wipe the game's history. Raises `AnalysisError` for a token
+        that does not decode to a position.
+        """
+        new_state = decode_position(token)
+        drain_chance(new_state, context=f"GameSession {self.game_id} loaded position")
+        if new_state.to_save_dict() == self.state.to_save_dict():
+            return False
+        self.state = new_state
+        self.version += 1
+        self.history_snapshots.clear()
+        self.step_index = 0
+        # A loaded position is not reachable from the seed, so the replay starts afresh and
+        # says where it started; re-driving it from the seed alone would be a different game.
+        self.replay_logger = ReplayLogger(self.game_id, self.seed, self.us_player, self.ussr_player)
+        self.replay_logger.start_position = token
+        self.action_logs = [{
+            "step_index": 0,
+            "turn": self.state.turn,
+            "ar": self.state.action_round,
+            "phase": str(self.state.to_dict().get("current_phase_name", "")),
+            "player": "SYSTEM",
+            "text": "Position loaded from a shared link (undo history starts here).",
+        }]
+        logger.info(f"[{self.game_id}] Loaded position from token ({len(token)} chars): "
+                    f"turn {self.state.turn} AR {self.state.action_round}")
+        await self.broadcast_state()
+        return True
+
     async def handle_action(self, action_dict: dict, sender_role: str = "OBSERVER") -> bool:
         """Executes a micro-action on the simulation engine, saves state snapshot for undo, and broadcasts."""
-        if ts_engine.Engine.is_terminal(self.state):
-            logger.warning(f"[{self.game_id}] Ignored action on terminal game state.")
-            return False
-
         try:
             d_type = ts_engine.DecisionType(action_dict["decision_type"])
             primary = int(action_dict.get("primary_id", 0))
@@ -411,10 +524,72 @@ class GameSession:
             logger.warning(f"[{self.game_id}] Invalid action payload {action_dict}: {e}")
             return False
 
-        ctx = self.state.ctx()
-        logger.info(f"[{self.game_id}] Action from {sender_role}: decision_type={int(ctx.decision_type)} ({int(d_type)}), primary={primary}, secondary={secondary}, flags={flags}")
+        logger.info(f"[{self.game_id}] Action from {sender_role}: decision_type={int(self.state.ctx().decision_type)} ({int(d_type)}), primary={primary}, secondary={secondary}, flags={flags}")
+        # `secondary_id` carries the UI's manual-roll selection (0 = auto, 1..6 = forced), which
+        # is a deliberate workbench affordance for testing the engine.
+        if not self._apply(ts_engine.MicroAction(d_type, primary, secondary, flags), forced_die=secondary):
+            return False
+        await self.broadcast_state()
+        return True
+
+    async def handle_flat_action(self, flat_idx: int, forced_die: int = 0,
+                                 websocket: Optional[WebSocket] = None,
+                                 sender_role: str = "OBSERVER") -> bool:
+        """Play a flat action in the action view of the socket's analysis model -- the
+        workbench's "play the model's favourite". Without an analysis model it is the E4 view.
+
+        A composed E4.1 action is applied as the two E4 steps it is defined as, each logged and
+        undoable on its own, exactly as `Engine::step_flat` composes it.
+        """
+        rel = self.analysis_models.get(websocket) if websocket is not None else None
+        merged = False
+        if rel is not None:
+            try:
+                merged = MODEL_CACHE.get(rel).merged_influence
+            except AnalysisError as e:
+                logger.warning(f"[{self.game_id}] PLAY_FLAT: {e}")
+                return False
+        if ts_engine.Engine.is_terminal(self.state):
+            return False
+        try:
+            first, second_slot = flat_to_steps(self.state, int(flat_idx), merged)
+        except AnalysisError as e:
+            logger.warning(f"[{self.game_id}] PLAY_FLAT from {sender_role}: {e}")
+            return False
+        logger.info(f"[{self.game_id}] PLAY_FLAT from {sender_role}: flat={flat_idx} merged={merged}")
+
+        if second_slot is None:
+            ok = self._apply(first, forced_die=forced_die)
+        else:
+            ok = self._apply(first, forced_die=0)
+            if ok and not ts_engine.Engine.is_terminal(self.state):
+                second = ts_engine.decode_flat_action(self.state, second_slot)
+                if not self._apply(second, forced_die=forced_die):
+                    # Never leave half a composed action applied.
+                    self._undo_last()
+                    ok = False
+        if ok:
+            await self.broadcast_state()
+        return ok
+
+    def _apply(self, action: ts_engine.MicroAction, forced_die: int = 0) -> bool:
+        """Step the engine by one MicroAction, drain chance, log it, and record it for undo.
+
+        Does not broadcast; the caller does, once, after however many steps it applies.
+        """
+        if ts_engine.Engine.is_terminal(self.state):
+            logger.warning(f"[{self.game_id}] Ignored action on terminal game state.")
+            return False
+
+        d_type = action.decision_type
+        primary = int(action.primary_id)
+        secondary = int(action.secondary_id)
+        flags = int(action.flags)
+        action_dict = {"decision_type": int(d_type), "primary_id": primary,
+                       "secondary_id": secondary, "flags": flags}
 
         # Validate decision type against active context
+        ctx = self.state.ctx()
         if ctx.decision_type != d_type:
             logger.warning(f"[{self.game_id}] Decision type mismatch: expected {int(ctx.decision_type)}, got {int(d_type)}")
             return False
@@ -426,14 +601,12 @@ class GameSession:
         self.history_snapshots.append(snapshot)
 
         state_before = self.state.to_dict()
-        action = ts_engine.MicroAction(d_type, primary, secondary, flags)
 
         try:
             step_checked(self.state, action, context=f"GameSession {self.game_id}")
             # The action may land on a chance node -- a coup's die, a realignment, a space race,
-            # a war event. `secondary_id` carries the UI's manual-roll selection (0 = auto,
-            # 1..6 = forced), which is a deliberate workbench affordance for testing the engine.
-            drain_chance(self.state, forced_die=secondary,
+            # a war event -- resolved with the manual die when one is forced.
+            drain_chance(self.state, forced_die=forced_die,
                          context=f"GameSession {self.game_id} chance node")
         except IllegalActionError as e:
             # Roll back rather than leaving the game parked mid-chance-node. Before the shared
@@ -442,6 +615,7 @@ class GameSession:
             self.state = self.history_snapshots.pop()
             return False
 
+        self.version += 1
         self.step_index += 1
         state_after = cast(GameStateDict, self.state.to_dict())
         delta_lines = describe_action_and_deltas(state_before, state_after, action)
@@ -500,8 +674,19 @@ class GameSession:
                 "text": f"Game Over! Winner: {winner} (VP: {self.state.victory_points}, Turn: {self.state.turn})"
             })
 
-        await self.broadcast_state()
         return True
+
+    def _undo_last(self) -> str:
+        """Roll back one applied step. Returns the popped log line's text."""
+        self.state = self.history_snapshots.pop()
+        self.version += 1
+        if self.step_index > 0:
+            self.step_index -= 1
+        last_desc = ""
+        if self.action_logs:
+            popped = self.action_logs.pop()
+            last_desc = popped.get("text", "")
+        return last_desc
 
     async def handle_cancel_action(self) -> bool:
         """Cancels/undoes the last action and rolls back to previous state snapshot."""
@@ -509,14 +694,7 @@ class GameSession:
             logger.warning(f"[{self.game_id}] Cannot cancel action: snapshot history is empty.")
             return False
 
-        self.state = self.history_snapshots.pop()
-        if self.step_index > 0:
-            self.step_index -= 1
-
-        last_desc = ""
-        if self.action_logs:
-            popped = self.action_logs.pop()
-            last_desc = popped.get("text", "")
+        last_desc = self._undo_last()
 
         logger.info(f"[{self.game_id}] Action cancelled: '{last_desc}'. Rolled back to step {self.step_index}.")
 
@@ -572,4 +750,5 @@ class GameSession:
                 "text": f"[DEBUG] Set VP -> {self.state.victory_points}"
             })
 
+        self.version += 1
         await self.broadcast_state()

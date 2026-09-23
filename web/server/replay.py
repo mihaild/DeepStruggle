@@ -48,6 +48,10 @@ class ReplayLogger:
         self.steps: List[ReplayStepDict] = []
         self.result: Optional[ReplayResultDict] = None
         self.trace: Optional[ReplayTraceMetaDict] = None
+        #: Set when the game began from a loaded position (a workbench link) rather than from
+        #: the seed; the token is `web.server.analysis.encode_position`'s. Such a replay cannot
+        #: be re-driven from the seed, and says so by carrying this.
+        self.start_position: Optional[str] = None
 
     def log_step(
         self,
@@ -106,6 +110,8 @@ class ReplayLogger:
         }
         if self.trace is not None:
             metadata["trace"] = self.trace
+        if self.start_position is not None:
+            metadata["start_position"] = self.start_position
         return {
             "version": "1.0",
             "metadata": metadata,

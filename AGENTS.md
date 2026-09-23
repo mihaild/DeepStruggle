@@ -367,6 +367,14 @@ PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR \
 # http://localhost:8000/?game_id=game-1&role=US
 ```
 
+**Analysis mode** (no bot needed): open `http://localhost:8000/?game_id=game-1`, pick a run and
+snapshot in the *Model Analysis* panel, and every position shows that checkpoint's probability on
+each card, button and country plus its critic for both sides; *★ Play favourite* (or `F`) plays its
+argmax in the model's own action view, and any move can still be made by hand. The address bar
+always carries `game_id`, `model` and `pos` (the position itself), updated with `replaceState`, so
+copying it shares the exact board. `$TS_ANALYSIS_DEVICE` (default `cpu`) picks the device; see
+`web/server/analysis.py` and `web/server/AGENTS.md`.
+
 ### 3.5 Reusable Agent CLI Tools (`tools/`)
 
 #### Standard CLI Tools (`tools/`)

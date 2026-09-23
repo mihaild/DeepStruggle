@@ -98,6 +98,8 @@ export class ActionHud {
   private container: HTMLElement;
   private onAction: (action: MicroAction) => void;
   public selectedDieRoll: number = 0; // 0 = auto
+  /** Called when the HUD re-renders itself (die selector), so decorations can be re-applied. */
+  public onRerender: (() => void) | null = null;
 
   constructor(onAction: (action: MicroAction) => void) {
     this.container = document.getElementById("decision-body")!;
@@ -421,6 +423,8 @@ export class ActionHud {
         const roll = parseInt((e.currentTarget as HTMLElement).getAttribute("data-roll") || "0", 10);
         this.selectedDieRoll = roll;
         this.render(state);
+        // The re-render dropped any probability badges painted on the buttons.
+        this.onRerender?.();
       });
     });
 

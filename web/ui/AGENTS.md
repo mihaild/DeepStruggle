@@ -20,6 +20,8 @@ web/ui/
 │   ├── tracks_view.ts          # Turn, Action Round, DEFCON, Mil Ops, Space Race, and Victory Points tracks
 │   ├── action_hud.ts           # Decision HUD, human-readable branch catalog (CARD_BRANCHES), and dice selector
 │   ├── replay_controls.ts      # Replay timeline scrubber, playback engine, and server replay picker
+│   ├── trace_view.ts           # Replay trace: value ribbon, log chips, readout panel, probability badges
+│   ├── analysis_view.ts        # Live model analysis panel: model picker, critic bar, top choices, badges
 │   ├── debug_panel.ts          # State inspector and engine override tools
 │   ├── style.css               # Theme tokens, dark mode palette, animations, layout styles
 │   └── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
@@ -52,7 +54,24 @@ web/ui/
 5. **Interactive Action Stream & Replay Timeline (`replay_controls.ts`, `main.ts`)**:
    - Timeline scrubber with play/pause, step forward/backward, and server replay loading.
    - The bottom Action Stream lists recorded game events with active-step highlighting (`.active-replay-step`) and click-to-scrub navigation.
-6. **Autonomous metadata pipeline**:
+6. **Live model analysis (`analysis_view.ts`, `main.ts`)**:
+   - The *Model Analysis* panel picks a run and snapshot from `/api/analysis/models` and sends
+     `SET_ANALYSIS_MODEL`; each `STATE_UPDATE` then carries the readout for that exact position.
+   - Every legal action's probability is painted on the card, HUD button or country that sends
+     it, matched by the MicroAction the server attaches to each choice. For an E4.1
+     (merged-influence) model the composed placements go on the countries and the influence
+     button carries their sum. The favourite is marked ★ (the replay's played move stays ◀).
+   - *★ Play favourite* / key `F` / clicking a row in the panel sends `PLAY_FLAT`; manual clicks
+     keep working as before. `ActionHud.onRerender` re-applies badges after the HUD redraws
+     itself (the die selector).
+   - **The address bar is the share link.** `syncUrl()` writes `game_id`, `role`, `model` and
+     `pos` (the server's position token) on every live update with `history.replaceState`, never
+     `pushState`, so moves do not pile up in Back. At boot a `pos` is POSTed to
+     `/api/games/{id}/position` before the WebSocket opens; *New Game* drops `pos` so it does not
+     reload the old board.
+   - A generic `.hidden { display: none }` rule backs every mode-specific panel; before it only
+     the modal and tooltip had one, so the replay readout panel sat empty during live play.
+7. **Autonomous metadata pipeline**:
    - Views load `/api/metadata/map` and `/api/metadata/cards` themselves and cache `lastState`, so they refresh as soon as metadata arrives.
 
 ---

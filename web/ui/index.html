@@ -64,6 +64,21 @@
           </div>
         </div>
 
+        <!-- Section 1a: Live analysis. A chosen checkpoint's policy over the open decision and
+             its critic on the position, recomputed on every move (analysis_view.ts). -->
+        <div class="panel analysis-panel" id="analysis-panel">
+          <div class="panel-header">
+            <h3>MODEL ANALYSIS</h3>
+            <span id="analysis-status" class="badge">off</span>
+          </div>
+          <div class="analysis-controls">
+            <select id="analysis-run-select" class="analysis-select" title="Training run"></select>
+            <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" disabled></select>
+            <button id="btn-play-favourite" class="btn btn-primary btn-sm" title="Play the model's most likely move (F)" disabled>★ Play favourite</button>
+          </div>
+          <div id="analysis-body" class="trace-body"></div>
+        </div>
+
         <!-- Section 1b: What the model believed here, and what its critic thinks of the
              position. Present only for replays that carry a trace; hidden otherwise. -->
         <div class="panel trace-panel hidden" id="trace-panel">
