@@ -164,5 +164,8 @@ Proposals, not decisions:
    signal outside card/play-mode nodes, so which decisions to search is a measurable choice.
 4. **Lower coefficient or a KL-guarded anneal**, which E3's X4b log proposed and never ran, are
    the obvious hedges if the extension collapses. None of the three tripwires fired in ~50M search
-   steps across both arms, and E3's collapse was also missed by live instruments until it showed
-   against a frozen anchor, so frozen-anchor ratings are the monitor that matters.
+   steps across both arms. E3's collapse *was* visible live: `kl_div` rose from ~0.07 to 2.4–7.5
+   in the healthy-pool arm (62.8 in the starved one) with entropy climbing
+   ([`../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md)),
+   which the `kl_div > 1.0` tripwire would catch. E4-28-03 held `kl_div` at 0.012–0.03 through 35M,
+   so it shows none of that signature yet, which is the one piece of evidence on durability so far.
