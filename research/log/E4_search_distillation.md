@@ -89,8 +89,9 @@ both are at ~1,000–1,200 steps/s.
 | 90M | 2207.0 | 1976.7 | **+230.3** | 82 / 77 | 85 / 73 | 66 / 59 |
 | 95M | 2222.8 | 2012.8 | **+210.0** | 81 / 79 | 88 / 72 | 52 / 66 |
 | 100M | 2145.6 | 1913.5 | **+232.1** | 89 / 77 | 80 / 77 | 56 / 59 |
+| 105M | 2208.8 | 1946.4 | **+262.4** | 87 / 71 | 79 / 73 | 71 / 65 |
 
-**Four of four seed-5 snapshots beat the control on both seats.** The control sits below its own
+**Five of five seed-5 snapshots beat the control on both seats.** The control sits below its own
 80M start at 90M and 100M, which inflates the margin; against the fixed 80M start the arm holds
 at 79–88% as USSR and 72–77% as US from 85M on.
 
