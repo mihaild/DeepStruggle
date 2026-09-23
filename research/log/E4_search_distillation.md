@@ -57,6 +57,11 @@ both are at ~1,000–1,200 steps/s.
 | steps | E4-28-05 Elo | control Elo | Δ | vs control | vs 80M start | vs anchor |
 |---:|---:|---:|---:|---:|---:|---:|
 | 85M | 2179.5 | 2022.7 | **+156.8** | 71 / 72 | 79 / 74 | 62 / 55 |
+| 90M | 2207.0 | 1976.7 | **+230.3** | 82 / 77 | 85 / 73 | 66 / 59 |
+
+At 90M part of the margin is the control's own dip: `E4-08-05@90M` rates below its 80M start
+(47 / 37 against it). Against the shared 80M start, which is not a moving reference, the arm
+goes 79 / 74 at 85M to 85 / 73 at 90M.
 
 A larger gain than seed 3's at the same 5M into the leg, from an earlier and weaker starting point.
 It is the first seed-5 M2d snapshot to beat the anchor on both seats.
