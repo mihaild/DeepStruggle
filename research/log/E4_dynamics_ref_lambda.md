@@ -75,6 +75,24 @@ The setup-critic probe (`ai/eval/setup_critic.py`, reports `data/reports/E4-2{6,
   0.12–0.20 throughout, above the collapsed band (0.004–0.031), so the collapse detector did not
   and should not call it; this is a third shape, a sustained one-sided state with a live signal.
 
+## Seed 5 at 80M: the slow anchor loses there too
+
+`E4-26-05` passed 80M on its way to 160M and was rated in its own field
+(`data/reports/E4_dynamics_s5_80M.{md,json}`):
+
+| # | model | Elo | vs E4-08-05@80M | vs anchor E4-03-01@80M |
+|---:|:---|---:|---:|---:|
+| 1 | E4-08-05@160M | 2223.4 | 74 / 59 | 60 / 63 |
+| 2 | E4-03-01@80M | 2173.6 | 52 / 65 | — |
+| 3 | **E4-08-05@80M** | **2071.7** | — | 35 / 48 |
+| 4 | **E4-26-05@80M** | **2003.5** | 47 / 40 | 14 / 31 |
+| 5 | E4-26-05@40M | 1819.0 | 32 / 19 | 4 / 9 |
+| 6 | HeuristicBot | 1500.0 | 6 / 0 | 1 / 1 |
+
+**−68.2 Elo at 80M, losing both seats.** With seed 3's −168.0 the slow anchor loses at 80M on
+both seeds, which rejects it under the adoption rule outright. Only its 160M snapshot is still to
+come.
+
 ## Reading
 
 Both levers hurt at 80M, and the one-flag framing makes that a clean statement about this seed.
