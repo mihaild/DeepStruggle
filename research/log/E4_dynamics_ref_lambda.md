@@ -113,6 +113,29 @@ Against seed-matched M2d: **−93.3 at 80M, −37.0 at 120M, −58.6 at 160M**. 
 head-to-head is split by seat: it wins 56% as USSR and only 25% as US.
 The slow anchor's one open outcome, ending higher after starting slower, does not happen by 160M.
 
+## Seed 5: λ 0.99 reproduces the stuck US seat, and it is a real collapse
+
+`E4-27-05` at 80M (`data/reports/E4_dynamics_27_05_at80M.{md,json}`):
+
+| # | model | Elo | vs E4-08-05@80M | vs anchor E4-03-01@80M |
+|---:|:---|---:|---:|---:|
+| 1 | E4-08-05@160M | 2215.4 | 74 / 59 | 60 / 63 |
+| 2 | E4-03-01@80M | 2174.5 | 52 / 65 | — |
+| 3 | **E4-08-05@80M** | **2106.7** | — | 35 / 48 |
+| 4 | **E4-27-05@80M** | **1820.6** | 40 / **3** | 17 / **1** |
+| 5 | E4-27-05@40M | 1726.2 | 5 / 3 | 5 / 1 |
+| 6 | HeuristicBot | 1500.0 | 6 / 0 | 1 / 1 |
+
+**−286.1 Elo at 80M**, after seed 3's −242.0: λ 0.99 is rejected on both seeds. The shape repeats.
+Self-play `us_win_rate` fell to 0.015 by 70M, as seed 3's fell to 0.02–0.04. `adv_std_raw` sat at
+~0.12, above the collapsed band. Against frozen opponents the US seat wins **1–3%**, a genuine
+seat collapse by the per-seat test, not uneven improvement.
+
+So **λ 0.99 induces a US-seat collapse on 2 of 2 seeds**, which M2d at λ 0.98 does on ~12.5% of
+seeds and mostly recovers from ([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)).
+It is the most reliable collapse reproduction the project has, and one the `adv_std_raw`
+detector does not see. It is continuing to 160M to show whether it recovers.
+
 ## Reading
 
 Both levers hurt at 80M, and the one-flag framing makes that a clean statement about this seed.
