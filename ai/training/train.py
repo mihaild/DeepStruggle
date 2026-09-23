@@ -416,6 +416,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "then pushes the down-weighted seat toward uniform. 'policy' weights "
                              "the seat's whole policy objective -- surrogate, entropy bonus and KL "
                              "to pi_ref -- a per-seat learning rate, as WoLF is defined.")
+    parser.add_argument("--wolf-dead-zone", type=float, default=0.0,
+                        help="--wolf-seat-weight leaves both weights at 1 while the USSR's self-play "
+                             "share is within 0.5 +- this, and outside it shifts the share toward 0.5 "
+                             "by this much before weighting, so the weights leave 1 continuously. "
+                             "0 is the plain rule.")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -611,6 +616,7 @@ def main():
             wolf_power=args.wolf_power,
             wolf_ema_games=args.wolf_ema_games,
             wolf_scope=args.wolf_scope,
+            wolf_dead_zone=args.wolf_dead_zone,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

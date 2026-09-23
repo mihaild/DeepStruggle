@@ -58,3 +58,20 @@ def test_the_cli_offers_both_scopes_and_defaults_to_the_first_version() -> None:
     assert parser.parse_args(["--wolf-scope", "policy"]).wolf_scope == "policy"
     with pytest.raises(SystemExit):
         parser.parse_args(["--wolf-scope", "everything"])
+
+
+def test_the_dead_zone_leaves_weights_at_one_inside_and_is_continuous_at_the_edge() -> None:
+    for x in (0.36, 0.5, 0.64):
+        assert wolf_seat_weights(x, 1.0, dead_zone=0.15) == pytest.approx((1.0, 1.0))
+    # At the edge the weights are 1; just past it they have barely moved.
+    assert wolf_seat_weights(0.65, 1.0, dead_zone=0.15) == pytest.approx((1.0, 1.0))
+    w_us, w_ussr = wolf_seat_weights(0.66, 1.0, dead_zone=0.15)
+    assert w_us == pytest.approx(1.02) and w_ussr == pytest.approx(0.98)
+    # Outside the zone it is the plain rule on the shifted share: 0.9 -> 0.75.
+    assert wolf_seat_weights(0.9, 1.0, dead_zone=0.15) == pytest.approx(wolf_seat_weights(0.75, 1.0))
+    assert wolf_seat_weights(0.1, 1.0, dead_zone=0.15) == pytest.approx(wolf_seat_weights(0.25, 1.0))
+
+
+def test_a_zero_dead_zone_is_the_plain_rule() -> None:
+    for x in (0.2, 0.5, 0.83):
+        assert wolf_seat_weights(x, 0.5, dead_zone=0.0) == wolf_seat_weights(x, 0.5)
