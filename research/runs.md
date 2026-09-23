@@ -42,6 +42,9 @@ stays legible:
 | **E4-18** | **P21 rung M2.5c** — M2.5 plus the card head, with identity |
 | **E4-23** | **P22 width probe** — M2d at `entity_proj_dim` 512 |
 | **E4-24** | **P22-a** — M2d plus the identity-keyed card lookup |
+| **E4-26** | **slow π_ref** — M2d with `--ref-update-freq 5000000` |
+| **E4-27** | **longer credit horizon** — M2d with `--gae-lambda 0.99` |
+| **E4-28** | **online search distillation** — M2d with E3's X4b search CE (coef 0.5, 64 sims, all nodes, 1 in 8) |
 
 **A continuation is not an attempt.** Taking an arm further on the same seed keeps its name —
 `E4-08-03` covers 0–80M, 80–160M and 160–240M in three directories — so its snapshots read
@@ -110,6 +113,9 @@ having deliberately.
 | **E4-17-06-50M.11**, **-50M.12** | branches of seed 6 from **inside** its pin at 50M under new seeds 11 and 12 — does it escape? **Both did** | 50M → 110M | `E4-17-06-50M.1{1,2}_*` | [`log/E4_collapse_is_recoverable.md`](log/E4_collapse_is_recoverable.md) |
 | **E4-23-03/05** | P22 width probe — `entity_proj_dim` 256 → 512 | 160M / 80M | `E4-23-0{3,5}_*` | [`log/P22_width_probe_and_card_lookup.md`](log/P22_width_probe_and_card_lookup.md) |
 | **E4-24-03/05** | P22-a — identity-keyed card lookup | 160M / 80M | `E4-24-0{3,5}_*` | [`log/P22_width_probe_and_card_lookup.md`](log/P22_width_probe_and_card_lookup.md) |
+| **E4-26-03/05** | `--ref-update-freq 5000000` | 80M / 160M (s5 from scratch) | `E4-26-0{3,5}_*` | [`log/E4_dynamics_ref_lambda.md`](log/E4_dynamics_ref_lambda.md) |
+| **E4-27-03/05** | `--gae-lambda 0.99` | 80M / 160M (s5 from scratch) | `E4-27-0{3,5}_*` | [`log/E4_dynamics_ref_lambda.md`](log/E4_dynamics_ref_lambda.md) |
+| **E4-28-03** | online search distillation, resumed from `E4-08-03@160M` on seed 3 — its control is E4-08-03's own 160→240M leg | 160M → 200M | `E4-28-03_20260923_001303` | *no writeup yet — running* |
 
 **Sweeps are one row each** (maintenance rule 7 in [`plans/README.md`](plans/README.md)). 111
 E4 run directories exist, under 75 short names — a continuation adds a directory, not a name — and
