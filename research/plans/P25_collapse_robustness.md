@@ -36,6 +36,9 @@ The hypothesis is a **no-signal loop**:
 4. With almost no policy gradient left, the entropy bonus acts almost alone.
 5. The rising entropy makes the losing seat lose more, and the loop closes.
 
+**Step 3 of this loop is contradicted by the first collapse logged per seat** (Results, below):
+the two seats' spreads stay equal. The rest of the loop stands.
+
 Recovery happens when something restores the losing seat's advantage spread. That is why
 `adv_std_raw` returning is the only thing measured at onset that predicts recovery.
 
@@ -84,4 +87,40 @@ wrong or incomplete, and steps 4–5 carry the plan.
 
 ## Results
 
-*(pending)*
+### The first collapse seen with the per-seat signal contradicts step 2's premise
+
+`E4.1-01-05` is the P23 A/B arm on seed 5, launched after step 0 went in, so it logs the per-seat
+signal. It collapsed with the **US** losing. Figures are 1M buckets:
+
+| step | USSR self-play share | `adv_std_us` / `_ussr` | `adv_mean_us` / `_ussr` | `entropy_us` / `_ussr` | explained var. |
+|---:|---:|---:|---:|---:|---:|
+| 15M | 0.39 | 0.288 / 0.283 | −0.010 / +0.004 | 1.95 / 2.03 | 0.85 |
+| 18M | 0.52 | 0.300 / 0.298 | −0.007 / +0.011 | 2.07 / 1.87 | 0.84 |
+| 21M | 0.84 | 0.220 / 0.229 | +0.008 / −0.006 | 2.43 / 1.49 | 0.93 |
+| 24M | 0.92 | 0.197 / 0.202 | +0.010 / −0.007 | 2.67 / 1.86 | 0.95 |
+| 28M | 0.82 | 0.223 / 0.234 | +0.012 / 0.000 | 2.54 / 1.88 | 0.91 |
+
+* **The two seats' advantage spreads stay equal.** The spread shrinks for both seats together,
+  because the critic gets *better* as the outcome becomes predictable: explained variance rises
+  from 0.85 to 0.95. This looks structural. Under zero-sum GAE a TD error on one seat's decision is
+  mirrored on the other's, so in the same games one seat cannot have a much smaller spread than
+  the other.
+* **The per-seat means are ~0**, at ±0.01 against a std of ~0.2. The losing seat is not being fed
+  a negative bias.
+* **What does separate the seats is entropy:** the losing seat's rises from 1.9 to 2.7 while the
+  winning seat's falls.
+
+So step 3 of the loop as written above ("the shared divisor scales the loser down further") does
+not happen. The shared normalisation already re-inflates both seats' shrinking spread to unit
+scale.
+
+The mechanism the data fits better is **signal made of noise**. Once the losing seat loses nearly
+every game, its advantages measure the critic's residual error rather than the quality of its
+moves. Normalisation scales that noise up to unit size, and the entropy bonus is the only
+consistent term left in its update.
+
+**Predictions for the bench:**
+* **E4-35** (`--per-seat-adv-norm`) should behave like E4-27, since the spreads it would equalise
+  are already equal. It stays in the bench as the test of that prediction.
+* **E4-36** (`--seat-balance`) acts on the cause: it gives the losing seat games whose outcome is
+  in doubt.
