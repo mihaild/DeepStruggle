@@ -65,8 +65,8 @@ where it was measured and where it is healthy.
 | item | what | cost | status |
 |:---|:---|:---|:---|
 | **[P23](P23_merged_influence_E4_1.md)** | **E4.1**: "influence, first point in X" as one decision, defined as the composition of the two E4 steps it replaces, so it is opt-in per agent and bit-identical to E4 when off. ~11% fewer decisions per game; then the ops budget in the observation (separate approval) before any long run | ~1 day of engineering + ~2 GPU-h of A/B | **running** -- implemented (`d6c89ad`), A/B from scratch in progress |
-| **[P22](P22_card_lookup_attention.md)** | identity-keyed card lookup — query from the trunk, keys are learned per-card identity, values are card location. Targets the decisions the ladder has never addressed: *"I hold Europe Scoring and Five Years Plan, Europe is negative, it is AR7"*. Needs the `board_mode`/`card_mode` split, which also unblocks M3/M4/M5 | ~84k params (+2.6%), 2 arms/rung | **proposed; gated on the width probe** |
-| width probe | `E4-23-03/05`: `entity_proj_dim` 256 → 512. Is the card path capacity-limited before a mechanism is added to it? A real capacity change (+26.7% params), so a null is the clean outcome and a positive needs localizing | 2 arms | **running** |
+| **[P22](P22_card_lookup_attention.md)** | identity-keyed card lookup — P22-a | ~84k params | **done, rejected**: −154 / −72 at 80M ([`../log/P22_width_probe_and_card_lookup.md`](../log/P22_width_probe_and_card_lookup.md)); archive with the next reorganisation |
+| width probe | `E4-23-03/05`: `entity_proj_dim` 256 → 512 | 2 arms | **done, rejected**: −129 to −291 ([`../log/P22_width_probe_and_card_lookup.md`](../log/P22_width_probe_and_card_lookup.md)) |
 | **[P21](P21_architecture_ladder.md)** | the architecture ladder. **11 of 14 rungs done** — M0, M1, M2, M2d, M2e, M2a, M2b, M2c, M2.5, M2.5c, M2.5b. **Nothing has beaten M2d**: all three removals lose and all three identity additions lose. M3/M4/M5 remain and are **blocked** on the `board_mode`/`card_mode` split that [P22](P22_card_lookup_attention.md) carries | ~1.3 GPU-h per rung | **M2 family closed** |
 
 ### Queued, unblocked
@@ -74,7 +74,7 @@ where it was measured and where it is healthy.
 | item | what | why now |
 |:---|:---|:---|
 | **anchor replicate** | a second anchor arm to 160M | the 356 Elo fall is one arm with `seed = None`. ~3.9 GPU-h, and it gates whether "the late-E3 architecture degrades" can be said at all |
-| **`ref_update_freq` ablation** | 200k → {5M, 20M} | no longer a general curiosity: `kl_div` *falls* while entropy *rises*, the shape of a ratchet through π_ref refreshes. [`../findings/training/ref_update_freq_open_ablation.md`](../findings/training/ref_update_freq_open_ablation.md) |
+| **`ref_update_freq` ablation** | run: 5M from scratch **loses** (E4-26, −168 / −68 at 80M); 5M from 160M **wins** (E4-31-03, +83 over the seed-11 baseline at 240M, one seed); 100k from 160M rated in `late_round2_240M`; 5M from 80M (E4-34-03) and the seed-5 replicate (E4-31-05) running | [`../log/E4_dynamics_ref_lambda.md`](../log/E4_dynamics_ref_lambda.md), [`../log/E4_late_dynamics.md`](../log/E4_late_dynamics.md) |
 | **[P18](P18_training_throughput.md)** | why one training arm cannot fill the GPU | its stated gate (E4-01-01's continuation) passed long ago, and throughput is now a *first-class* ladder axis — the 4.3× gap between architectures is most of why M2d wins |
 | **[P0](P0_instruments.md)** | the remaining probes | needs a status pass first: several instruments it proposes now exist (`watch_run.py` health alarms, the collapse detector, `ladder_report.py`) |
 
