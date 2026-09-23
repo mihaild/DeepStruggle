@@ -85,14 +85,14 @@ a backend change is pure noise.
 
 `tests/replayer` (and a few tests in `tests/engine_logic`) run against the **real** human corpus,
 not synthetic data — that is the point of them, so it cannot be generated. It is ~5 MB,
-git-ignored, and downloaded once per **machine** into `~/.cache/ts_ai/ts_replayer`
-(`$XDG_CACHE_HOME` honoured), **not** under `data/`, so every checkout and worktree shares one
-copy instead of re-fetching 300 throttled requests. `tools/lib/corpus_paths.py` resolves the
-location. **A missing corpus fails these tests; it does not skip them** — a `skipif` on missing
+git-ignored, and downloaded once into `datasets/ts_replayer` in the **shared data tree** — the
+main checkout's `data/`, which `tools/lib/data_root.py` finds from git even inside a worktree — so
+every checkout and worktree shares one copy instead of re-fetching 300 throttled requests.
+`tools/lib/corpus_paths.py` resolves the location (`$TS_REPLAYER_CORPUS` overrides it). **A missing corpus fails these tests; it does not skip them** — a `skipif` on missing
 input passes on every machine while checking nothing.
 
 ```bash
-PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py
+PYTHONPATH=.:build/release .venv/bin/python tools/download_ts_replayer.py
 ```
 
 `pytest-xdist` is installed; `-n auto` takes the backend suite from minutes to about a minute. The

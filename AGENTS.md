@@ -521,14 +521,14 @@ not synthetic data — that is the point of them, so it cannot be generated. It 
 git-ignored, and downloaded once per **machine**:
 
 ```bash
-PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py
+PYTHONPATH=.:build/release .venv/bin/python tools/download_ts_replayer.py
 ```
 
-It is cached in `~/.cache/ts_ai/ts_replayer` (`$XDG_CACHE_HOME` honoured), **not** under `data/`,
-so every checkout and every git worktree shares one copy instead of re-fetching 300 throttled
-requests for bytes already on the machine. `tools/lib/corpus_paths.py` resolves the location:
-`$TS_REPLAYER_CORPUS` first, then an in-repo corpus directory for checkouts that predate the
-shared cache, then the cache. **A missing corpus fails these tests; it does not skip them** — a
+It is stored in `datasets/ts_replayer` in the **shared data tree** — the main checkout's `data/`,
+which `tools/lib/data_root.py` finds from git even inside a worktree — so every checkout and every
+git worktree shares one copy instead of re-fetching 300 throttled requests for bytes already on the
+machine. `tools/lib/corpus_paths.py` resolves the location: `$TS_REPLAYER_CORPUS` first, then the
+shared data tree. **A missing corpus fails these tests; it does not skip them** — a
 `skipif` would turn the whole group green on every machine that does not have it, which is the
 opposite of what these tests are for.
 

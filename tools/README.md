@@ -374,14 +374,14 @@ islands once, throttles to one request a second, and skips anything already on d
 costs nothing.
 
 ```bash
-PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py
+PYTHONPATH=.:build/release .venv/bin/python tools/download_ts_replayer.py
 ```
 
-It caches into `~/.cache/ts_ai/ts_replayer` (`$XDG_CACHE_HOME` honoured), **not** into the
-repository, so every checkout and every git worktree shares one copy -- a worktree has its own
-empty data directory, and a corpus kept there would be re-fetched in full for bytes already on the
-machine. `tools/lib/corpus_paths.py` resolves the location: `$TS_REPLAYER_CORPUS` first, then an
-existing in-repo copy for checkouts that predate this, then the shared cache. `--out` overrides it.
+It stores into `datasets/ts_replayer` in the shared data tree (`tools/lib/data_root.py`: the main
+checkout's `data/`, found from git even inside a worktree), so every checkout and every git
+worktree shares one copy -- a worktree has its own empty data directory, and a corpus kept there
+would be re-fetched in full for bytes already on the machine. `tools/lib/corpus_paths.py` resolves
+the location: `$TS_REPLAYER_CORPUS` first, then the shared data tree. `--out` overrides it.
 
 ts-replayer serves some games under several replay ids, so `distinct_corpus_files()` deduplicates
 on content before any split: a duplicate carries several times its weight in behaviour cloning,

@@ -72,9 +72,9 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
         "--out", default=None,
-        help="Where to cache the replays. Defaults to the shared per-user cache "
-             "(~/.cache/ts_ai/ts_replayer), so the corpus is downloaded once per machine "
-             "rather than once per checkout or git worktree.")
+        help="Where to store the replays. Defaults to datasets/ts_replayer in the shared "
+             "data tree (tools/lib/data_root.py: the main checkout's data/), so the corpus is "
+             "downloaded once rather than once per checkout or git worktree.")
     ap.add_argument("--start", type=int, default=1)
     ap.add_argument("--end", type=int, default=340,
                     help="inclusive; ids beyond the live range simply 404")

@@ -31,7 +31,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 #: The P21 anchor: best of the first four E4 arms, at 80M and at any budget alike.
-ANCHOR_DEFAULT = "E4-03-01@final"
+ANCHOR_DEFAULT = "E4-03-01@80M"
 CHECKPOINT_ROOT = "/workspace/data/checkpoints"
 
 

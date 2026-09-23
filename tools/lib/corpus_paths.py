@@ -1,18 +1,19 @@
 """Where the ts-replayer corpus lives, resolved in one place.
 
 The corpus is ~5 MB of downloaded human games and is git-ignored, so it is not repository
-content and must not be re-fetched per checkout. Every checkout and every git worktree gets its
-own empty `data/`, so a corpus stored there would be downloaded again for each one -- 300
-requests at one per second, every time, for bytes already on the machine. It therefore defaults
-to a shared per-user cache.
+content and must not be re-fetched per checkout. It lives in the **shared data tree**
+(`tools.lib.data_root`, which finds the main checkout's `data/` even from inside a worktree), so
+every checkout and worktree reads one copy. A worktree's own `data/` is empty, and a corpus stored
+there would be downloaded again for each one -- 300 requests at one per second.
 
 Resolution order:
 
 1. ``$TS_REPLAYER_CORPUS`` -- an explicit override, for CI or a scratch copy.
-2. ``<repo>/data/datasets/ts_replayer`` -- only if it already exists, so checkouts that
-   downloaded the corpus before this module keep working.
-3. ``$XDG_CACHE_HOME/ts_ai/ts_replayer`` (or ``~/.cache/ts_ai/ts_replayer``) -- the default,
-   and where the downloader writes.
+2. ``<shared data root>/datasets/ts_replayer`` -- the default, and where the downloader writes.
+   With ``$TS_DATA_ROOT`` unset that is the main checkout's ``data/``.
+
+It used to default to ``~/.cache/ts_ai/ts_replayer``. All project data belongs in the shared data
+tree (owner's rule), so the per-user cache is no longer read.
 """
 
 from __future__ import annotations
@@ -23,23 +24,18 @@ from typing import Dict, List, Optional, Tuple
 
 CORPUS_ENV: str = "TS_REPLAYER_CORPUS"
 
-_REPO_ROOT: pathlib.Path = pathlib.Path(__file__).resolve().parents[2]
-
-#: How to obtain the corpus, quoted verbatim wherever its absence is reported.
+#: How to obtain the corpus, quoted verbatim wherever its absence is reported. `build/release` is
+#: on the path because importing `tools.lib` imports the engine.
 DOWNLOAD_HINT: str = (
-    "PYTHONPATH=. .venv/bin/python tools/download_ts_replayer.py"
+    "PYTHONPATH=.:build/release .venv/bin/python tools/download_ts_replayer.py"
 )
 
 
-def shared_cache_dir() -> pathlib.Path:
-    """The per-user location every checkout and worktree shares."""
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(pathlib.Path.home(), ".cache")
-    return pathlib.Path(base) / "ts_ai" / "ts_replayer"
+def shared_corpus_dir() -> pathlib.Path:
+    """The corpus inside the shared data tree, the same place from every checkout and worktree."""
+    from tools.lib.data_root import data_path
 
-
-def in_repo_dir() -> pathlib.Path:
-    """The legacy in-repo location, kept working for checkouts that already use it."""
-    return _REPO_ROOT / "data" / "datasets" / "ts_replayer"
+    return pathlib.Path(data_path("datasets", "ts_replayer"))
 
 
 def corpus_dir() -> pathlib.Path:
@@ -47,10 +43,7 @@ def corpus_dir() -> pathlib.Path:
     override = os.environ.get(CORPUS_ENV)
     if override:
         return pathlib.Path(override)
-    legacy = in_repo_dir()
-    if legacy.is_dir() and any(legacy.glob("*.json.gz")):
-        return legacy
-    return shared_cache_dir()
+    return shared_corpus_dir()
 
 
 def corpus_files() -> List[pathlib.Path]:
