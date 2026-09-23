@@ -247,6 +247,7 @@ def profile_self_play_batched(
     base_seed: int = 820_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
+    merged_influence: bool = False,
 ) -> Dict[str, Any]:
     """Same profile, driven through the vectorized runner instead of one state at a time.
 
@@ -284,6 +285,9 @@ def profile_self_play_batched(
     check_obs_width(model)
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
     obs, masks, _ = env.reset_all()
+    if merged_influence:
+        # The model plays in its own action view (P23); the board it reads is the same.
+        env.set_merged_influence(True, True)
 
     reach: collections.Counter = collections.Counter()
     salvageable: collections.Counter = collections.Counter()

@@ -55,19 +55,24 @@ def probe(path: str, device: str, setup_games: int, position_games: int, blunder
           decisive_games: int) -> Dict[str, float]:
     from tools.lib.player_agent import NeuralAgent
 
-    model = NeuralAgent.from_checkpoint(path, device=device).model
+    agent = NeuralAgent.from_checkpoint(path, device=device)
+    model = agent.model
     model.eval()
-    row: Dict[str, float] = {}
+    # Each checkpoint plays in the action view it was trained in (P23). Setup has no op-choice
+    # node, so only the three game-playing probes need it.
+    mv = agent.merged_influence
+    row: Dict[str, float] = {"view/merged_influence": float(mv)}
     row.update(setup_row(setup_probe.measure(
         setup_probe.torch_policy(model, device=device, temperature=0.1), num_games=setup_games)))
-    prof = profile_self_play_batched(model, num_envs=position_games)
+    prof = profile_self_play_batched(model, num_envs=position_games, merged_influence=mv)
     row.update({k: float(v) for k, v in prof["scalars"].items()})
     for temperature in (0.1, 1.0):
-        counts = measure_blunders_batched(model, num_games=blunder_games, temperature=temperature)
+        counts = measure_blunders_batched(model, num_games=blunder_games, temperature=temperature,
+                                          merged_influence=mv)
         for rule in BLUNDER_RULES:
             row[f"blunder@{temperature:g}/{rule}"] = counts.rate(rule)
             row[f"blunder@{temperature:g}/{rule}/chances"] = float(counts.opportunities.get(rule, 0))
-    dec = measure_decisive_batched(model, num_envs=decisive_games)
+    dec = measure_decisive_batched(model, num_envs=decisive_games, merged_influence=mv)
     row["decisive/forced wins taken"] = dec.win_take_rate
     row["decisive/avoidable losses avoided"] = dec.loss_avoid_rate
     return row

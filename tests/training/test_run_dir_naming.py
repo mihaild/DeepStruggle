@@ -78,3 +78,16 @@ def test_a_malformed_branch_is_rejected(bad: str) -> None:
     inside the short name; and a branch names both the step it left at and its new seed."""
     with pytest.raises(ValueError, match="is not <engine>-<attempt>-<seed>"):
         _resolve_run_dir(None, bad, "v2", TS)
+
+
+@pytest.mark.parametrize("good", ["E4.1-01-03", "E4.1-01-05", "E4.1-02-03-160M.11"])
+def test_a_minor_engine_version_is_accepted(good: str) -> None:
+    """P23: E4.1 is E4 with an opt-in action view -- same rules and state -- so it is a minor
+    version of the engine letter rather than a new letter."""
+    assert _resolve_run_dir(None, good, "v2", TS).endswith(f"{good}_{TS}")
+
+
+@pytest.mark.parametrize("bad", ["E4.-01-03", "E4.1.2-01-03", "E4_1-01-03"])
+def test_a_malformed_engine_version_is_rejected(bad: str) -> None:
+    with pytest.raises(ValueError, match="is not <engine>-<attempt>-<seed>"):
+        _resolve_run_dir(None, bad, "v2", TS)

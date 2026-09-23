@@ -186,10 +186,19 @@ class BaseNashPGTrainer:
         temperature_schedule: bool = True,
         setup_explore_frac: float = 0.0,
         rollout_temps: Optional[Sequence[float]] = None,
+        merged_influence: bool = False,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
         self.active_net = active_net.to(self.device)
+        # P23 / E4.1: the learner decides in the merged-influence view. Pool opponents decide in
+        # their own (OpponentPool.merged), so each env's two sides are set per iteration; see
+        # `_apply_views`. The searcher builds E4 masks for its targets, so the two are not
+        # combined until it learns the other view -- refused here rather than mis-targeted.
+        self.merged_influence = bool(merged_influence)
+        if self.merged_influence and search_ce_coef > 0.0:
+            raise ValueError("--merged-influence with search CE is not supported: the searcher's "
+                             "targets are built in the E4 view (P23)")
 
         if reference_net is not None:
             self.reference_net = reference_net.to(self.device)
@@ -347,6 +356,49 @@ class BaseNashPGTrainer:
         self.reference_net.eval()
         print(f"\n[NashPG Outer Loop] Updated reference policy π_ref at {self.total_env_steps:,} total steps (Round {self.total_iterations})", flush=True)
 
+    def _side_views(self, env_idx: int) -> Tuple[bool, bool]:
+        """(US decides merged, USSR decides merged) for one env this iteration."""
+        mine = self.merged_influence
+        pool = self.opponent_pool
+        if pool is None or not pool.is_mixed[env_idx]:
+            return mine, mine
+        theirs = bool(pool.current_merged)
+        return (mine, theirs) if int(pool.learner_side[env_idx]) == 1 else (theirs, mine)
+
+    def _uniform_view(self) -> Optional[bool]:
+        """The single view every side of every env is in, or None when they differ."""
+        pool = self.opponent_pool
+        if pool is None or not pool.is_mixed.any() or bool(pool.current_merged) == self.merged_influence:
+            return self.merged_influence
+        return None
+
+    def _apply_views(self) -> None:
+        """P23: point every env's two sides at the right action view for this iteration.
+
+        A no-op for an all-E4 run, so E4 training is untouched. The env skips a runner call when
+        nothing changed, and a uniform view is set in one call.
+        """
+        if self.env is None:
+            return
+        uniform = self._uniform_view()
+        if uniform is not None:
+            if uniform or self.env.merged_us.any() or self.env.merged_ussr.any():
+                if not (np.all(self.env.merged_us == uniform) and np.all(self.env.merged_ussr == uniform)):
+                    self.env.set_merged_influence(uniform, uniform)
+            return
+        us = np.zeros(self.num_envs, dtype=bool)
+        ussr = np.zeros(self.num_envs, dtype=bool)
+        for i in range(self.num_envs):
+            us[i], ussr[i] = self._side_views(i)
+        self.env.set_merged_influence(us, ussr)
+
+    def _apply_view_env(self, env_idx: int) -> None:
+        if self.env is None or (not self.merged_influence and self.opponent_pool is not None
+                                and not any(self.opponent_pool.merged)):
+            return
+        us, ussr = self._side_views(env_idx)
+        self.env.set_merged_influence_env(env_idx, us, ussr)
+
     def collect_rollouts(self) -> Dict[str, Any]:
         """Collects on-policy rollouts across all parallel environments."""
         t0 = time.time()
@@ -356,6 +408,7 @@ class BaseNashPGTrainer:
             self._selfplay_mask = ~self.opponent_pool.is_mixed
         else:
             self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
+        self._apply_views()
         self.buffer.reset()
         completed_episodes: List[Dict[str, Any]] = []
 
@@ -516,6 +569,8 @@ class BaseNashPGTrainer:
                     # and no basis for a PFSP draw.
                     self.opponent_pool.on_episode_end(
                         _i, victory_points=float(self._info["victory_points"][_i]))
+                    # The learner's side was just redrawn, so this env's views may have swapped.
+                    self._apply_view_env(_i)
 
             if "completed_episodes" in self._info and self._info["completed_episodes"]:
                 # Win rate, ending mix and game length describe how the policy plays. Games

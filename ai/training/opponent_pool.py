@@ -72,7 +72,8 @@ class OpponentPool:
     def __init__(self, nets: Sequence[Any], num_envs: int, frac: float = 0.25,
                  seed: int = 0, lock_learner_side: Optional[int] = None,
                  capacity: int = 12, pfsp: bool = False, pfsp_weighting: str = "var",
-                 pfsp_uniform_mix: float = 0.25, pfsp_prior: float = 4.0) -> None:
+                 pfsp_uniform_mix: float = 0.25, pfsp_prior: float = 4.0,
+                 merged: Optional[Sequence[bool]] = None) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -105,6 +106,12 @@ class OpponentPool:
         #: Step count each net was captured at, parallel to self.nets. Seeds get 0 so that a
         #: pool started from the initial policy keeps that policy as its earliest point.
         self.steps: List[int] = [0] * len(self.nets)
+        #: P23 / E4.1: whether each member decides in the merged-influence view, parallel to
+        #: self.nets. A member trained in the E4 view must keep being offered E4 masks, or it
+        #: plays its untrained composed actions and becomes an artificially weak opponent.
+        if merged is not None and len(merged) != len(self.nets):
+            raise ValueError("merged must give one flag per seed net")
+        self.merged: List[bool] = [bool(x) for x in merged] if merged is not None else [False] * len(self.nets)
         for n in self.nets:
             n.eval()
             for p in n.parameters():
@@ -128,6 +135,7 @@ class OpponentPool:
             self.learner_side[i] = self._draw_side()
         self.current: Any = self.nets[0]
         self.current_id: int = self.ids[0]
+        self.current_merged: bool = self.merged[0]
 
     def _register(self) -> int:
         """Give the newest net a stable id and zeroed statistics."""
@@ -176,7 +184,7 @@ class OpponentPool:
             return int(self.lock_learner_side)
         return 1 if self.rng.random() < 0.5 else -1
 
-    def add(self, net: Any, steps: int) -> None:
+    def add(self, net: Any, steps: int, merged: bool = False) -> None:
         """Add a snapshot taken at `steps`, evicting to stay within capacity.
 
         The net is frozen in place. Callers pass a freshly loaded copy, not the live training
@@ -188,6 +196,7 @@ class OpponentPool:
             p.requires_grad_(False)
         self.nets.append(net)
         self.steps.append(int(steps))
+        self.merged.append(bool(merged))
         self._register()
 
         while len(self.nets) > self.capacity:
@@ -205,6 +214,7 @@ class OpponentPool:
                 victim = order[0]
             self.nets.pop(victim)
             self.steps.pop(victim)
+            self.merged.pop(victim)
             dead = self.ids.pop(victim)
             self.wins.pop(dead, None)
             self.games.pop(dead, None)
@@ -229,6 +239,7 @@ class OpponentPool:
             idx = self.rng.randrange(len(self.nets))
         self.current = self.nets[idx]
         self.current_id = self.ids[idx]
+        self.current_merged = self.merged[idx]
         for i in range(self.num_envs):
             if self.is_mixed[i]:
                 env = self._exposure[i]
@@ -284,6 +295,9 @@ class OpponentPool:
         """
         return {
             "steps": list(self.steps),
+            # Informational: on resume each member's view is re-derived from its run directory
+            # (tools/lib/action_view.py), which cannot disagree with the snapshot it describes.
+            "merged": list(self.merged),
             "ids": list(self.ids),
             "next_id": int(self._next_id),
             "wins": {int(k): float(v) for k, v in self.wins.items()},
@@ -326,6 +340,7 @@ class OpponentPool:
                 pass
         self.current = self.nets[0]
         self.current_id = self.ids[0]
+        self.current_merged = self.merged[0]
 
     def learner_acts(self, decision_players: np.ndarray) -> np.ndarray:
         """Per environment: is the learner the one to move?

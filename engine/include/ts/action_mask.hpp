@@ -24,6 +24,9 @@ namespace flat_slots {
     constexpr uint16_t REGION        = 214;  //   6 wide: Europe..South America (Chernobyl)
     constexpr uint16_t SIZE          = 220;
 
+    // OPS_INFLUENCE at the resolution node; OP_MODE's first slot is the same index.
+    constexpr uint16_t OPS_INFLUENCE = RESOLUTION + 2;  // 112
+
     constexpr uint16_t CARD_COUNT    = 110;
     constexpr uint16_t NODE_COUNT    = 84;
     constexpr uint16_t OP_MODE_COUNT = 3;
@@ -50,6 +53,23 @@ public:
 
     // Encodes a MicroAction into its flat action index [0..211]
     static int16_t encode_micro_action_212(const GameState& state, const MicroAction& action) noexcept;
+
+    // P23 / E4.1: the merged-influence view of the flat mask. Identical to generate_flat_mask_212
+    // everywhere except the two op-choice nodes (SELECT_PLAY_MODE, SELECT_OP_MODE), where the
+    // influence choice is folded into its first placement:
+    //
+    //   NODE slot X  = "ops for influence, first point in X"  :=  step(OPS_INFLUENCE); step(X)
+    //   OPS_INFLUENCE = "ops for influence, place nothing"      :=  step(OPS_INFLUENCE); step(CONFIRM_DONE)
+    //
+    // Both are DEFINED as the E4 steps they compose, and the mask is read off a copy of the state
+    // after OPS_INFLUENCE, so no influence rule is re-implemented and the resulting positions are
+    // exactly positions E4 reaches. Every E4 option keeps exactly one index. Nothing in GameState
+    // records the choice of view: it belongs to whoever is deciding.
+    static void generate_flat_mask_merged(const GameState& state, uint8_t* mask) noexcept;
+
+    // True when a flat index at this state is one of the composed actions above -- i.e. it must
+    // go through Engine::step_flat's merged path rather than a single decode.
+    static bool is_merged_influence_action(const GameState& state, uint16_t action_idx) noexcept;
 };
 
 } // namespace ts

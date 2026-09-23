@@ -496,8 +496,13 @@ def measure_blunders_batched(
     base_seed: int = 830_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
+    merged_influence: bool = False,
 ) -> BlunderCounts:
     """`measure_blunders` over parallel environments, with one forward pass per batch.
+
+    `merged_influence` plays the model in the E4.1 view (P23). A composed influence action at the
+    play-mode node is then an OPS play and is checked as one; decoded naively it reads as a
+    placement and the play would silently go unchecked.
 
     Same counting rule, same detection point. The difference is only where the policy is asked:
     the single-state version hands the network one state at a time, which measured **90 of the
@@ -521,6 +526,8 @@ def measure_blunders_batched(
 
     env = TsVectorizedEnv(num_envs=num_games, base_seed=base_seed)
     obs, masks, _ = env.reset_all()
+    if merged_influence:
+        env.set_merged_influence(True, True)
 
     counts = BlunderCounts()
     last_card: List[Dict[str, int]] = [{} for _ in range(num_games)]
@@ -549,10 +556,13 @@ def measure_blunders_batched(
                     player = state.phasing_player
                 side = "US" if player == ts.Player.US else "USSR"
                 dt = int(ma.decision_type)
+                composed = (merged_influence
+                            and state.ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE
+                            and ts.ActionMask.is_merged_influence_action(state, int(acts[i])))
                 if dt == 1:
                     last_card[i][side] = int(ma.primary_id)
-                elif dt == 2:
-                    mode = _play_mode(int(ma.primary_id))
+                elif dt == 2 or composed:
+                    mode = "OPS" if composed else _play_mode(int(ma.primary_id))
                     card = last_card[i].get(side, 0)
                     if mode and 1 <= card <= 110:
                         forced = (int(getattr(state, "forced_card_id", 0)) == card

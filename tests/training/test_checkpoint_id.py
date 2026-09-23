@@ -81,3 +81,11 @@ class TestLineagesAndBranches:
             "/d/E4-08-03_20260921_023139/snapshot_160038912steps.pt",
             "/d/E4-08-03_20260922_202204/snapshot_240058368steps.pt",
         ]) == ["E4-08-03@80M", "E4-08-03@160M", "E4-08-03@240M"]
+
+
+def test_a_minor_engine_version_labels_like_any_run() -> None:
+    """P23: an E4.1 run's snapshots are labelled `E4.1-..@<steps>`."""
+    from tools.lib.checkpoint_id import checkpoint_label
+    assert checkpoint_label(
+        "/workspace/data/checkpoints/E4.1-01-03_20260923_120000/snapshot_165019648steps.pt"
+    ) == "E4.1-01-03@165M"

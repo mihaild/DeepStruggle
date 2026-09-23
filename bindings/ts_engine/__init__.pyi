@@ -621,6 +621,11 @@ class GameState:
 
     def to_json(self) -> str: ...
 
+    def raw_bytes(self) -> bytes:
+        """
+        The GameState's memory, for exact equality tests. It is trivially copyable, so two states reached from copies of one origin by the same steps compare equal byte for byte (padding included) -- which is how P23 checks a composed step against the two E4 steps.
+        """
+
 def has_held_scoring_card(arg0: GameState, arg1: Player, /) -> bool: ...
 
 def is_held_scoring_game_over(arg: GameState, /) -> bool: ...
@@ -676,18 +681,21 @@ class Engine:
     def get_legal_action_indices(arg: GameState, /) -> list: ...
 
     @staticmethod
-    def get_flat_action_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+    def get_flat_action_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]:
+        """
+        The flat legal mask. merged_influence=True is the E4.1 view (P23): at an op-choice node, NODE slot X means 'influence, first point in X'.
+        """
 
     @staticmethod
-    def try_step_flat(state: GameState, action_idx: int, auto_advance: bool = False) -> bool:
+    def try_step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False) -> bool:
         """
         Advance one flat action, returning False if the engine refuses it. For probing only.
         """
 
     @staticmethod
-    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False) -> None:
+    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False) -> None:
         """
-        Advance one flat action, raising RuntimeError if the engine refuses it.
+        Advance one flat action, raising RuntimeError if the engine refuses it. merged_influence=True applies a composed E4.1 action as the two E4 steps it names.
         """
 
     @staticmethod
@@ -804,7 +812,7 @@ def state_from_save_dict(arg: dict, /) -> GameState:
     Rebuild a position from to_save_dict output, mid-game included. Missing keys take their default, so a save written before a field existed still loads, and an unknown key is ignored, so a save from a newer build opens minus what it cannot use. Restores the decision-context stack; does not restore action_history or turn_aggregates, which are diagnostics that no rule and no observation reads.
     """
 
-def get_flat_action_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+def get_flat_action_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
 
 def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction: ...
 
@@ -820,7 +828,10 @@ OBS_SIZE: int = 3824
 
 class ActionMask:
     @staticmethod
-    def generate_flat_mask(arg: GameState, /) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+    def generate_flat_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+
+    @staticmethod
+    def is_merged_influence_action(arg0: GameState, arg1: int, /) -> bool: ...
 
     @staticmethod
     def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction: ...
@@ -837,6 +848,16 @@ class VectorizedBatchRunner:
     def reset_game(self, arg0: int, arg1: int, /) -> None: ...
 
     def refresh_all(self) -> None: ...
+
+    def set_merged_influence(self, us: Sequence[bool], ussr: Sequence[bool]) -> None:
+        """
+        P23 / E4.1: per env and side, whether that side decides in the merged-influence view. Rebuilds the cached masks.
+        """
+
+    def set_merged_influence_env(self, env_index: int, us: bool, ussr: bool) -> None:
+        """
+        P23 / E4.1: the same for one env; rebuilds only that env's cached mask.
+        """
 
     def step_flat_all(self, actions: Sequence[int], auto_advance: bool = False) -> list[int]: ...
 

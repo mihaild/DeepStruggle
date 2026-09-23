@@ -21,11 +21,21 @@ public:
     // Writes 212-element flat legal action mask
     static void get_flat_action_mask(const GameState& state, uint8_t* mask_212) noexcept;
 
+    // P23 / E4.1: the same, in the merged-influence view when `merged_influence` is set. See
+    // ActionMask::generate_flat_mask_merged. `false` is exactly the E4 mask.
+    static void get_flat_action_mask(const GameState& state, uint8_t* mask, bool merged_influence) noexcept;
+
     // Advances game state by 1 validated micro-action. Returns true on success.
     [[nodiscard]] static bool step(GameState& state, const MicroAction& action, bool auto_advance = false) noexcept;
 
     // Advances game state by 1 flat action index [0..211].
     [[nodiscard]] static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance = false) noexcept;
+
+    // P23 / E4.1: in the merged-influence view a composed action is applied as the two E4 steps
+    // that define it, atomically -- on refusal of either, the state is restored and false returned.
+    // `merged_influence == false` is exactly step_flat above.
+    [[nodiscard]] static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
+                                        bool merged_influence) noexcept;
 
     // Automatically advances deterministic decisions (chance rolls, single valid action,
     // and deterministic event targets) until a choice requiring player discretion is reached.

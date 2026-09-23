@@ -97,6 +97,18 @@ engine/
 
 ## 4. Micro-Decision Pipeline & Action Representation
 
+**P23 / E4.1: the merged-influence view.** `ActionMask::generate_flat_mask_merged` and the
+`merged_influence` overloads of `Engine::get_flat_action_mask` / `Engine::step_flat` offer, at the two
+op-choice nodes (`SELECT_PLAY_MODE`, `SELECT_OP_MODE`), "ops for influence, first point in X" as the
+NODE slot X, and "ops for influence, place nothing" as `OPS_INFLUENCE`. Both are **defined** as the
+two E4 steps they name (`OPS_INFLUENCE` then X, or then `CONFIRM_DONE`), the mask is read off a copy
+of the state after `OPS_INFLUENCE`, and a composed step is applied atomically. So no rule, no
+`GameState` field and no observation slot changes; the view is the deciding agent's, not the game's,
+and with it off everything is bit-identical to E4 (checked against a frozen decision stream).
+`tests/bindings/test_merged_influence.py` pins the definition: mask equality and byte-identical states.
+Where E4 offers `OPS_INFLUENCE` but it does not lead to the mover's placement (see §9a), the merged
+view offers no influence and calls `report_anomaly` -- it composes, it never substitutes.
+
 The engine splits complex turns into a sequential stream of atomic 4-byte `MicroAction` structures:
 
 ```cpp
@@ -390,3 +402,13 @@ granted, so the player loses a whole action round with no error reported.
 `SELECT_CARD` switch mirroring the resolver's own test, deletion of the shadowed branch rather
 than a second copy of the rule, and a regression test pinning the companion mask to opponent
 non-scoring cards. It changes the decision stream, so it is an engine change under §2.
+
+## 9a. Known issue: UN Intervention for Ops can dead-end the game (found by the P23 census)
+
+In random legal play (2,000 games, seed base 230,000, `numpy` rng 23 over the flat mask), one of
+55,455 `OPS_INFLUENCE` choices at a `SELECT_PLAY_MODE` node led nowhere: game seed 231357, turn 4,
+AR 5, the US resolving card 32 (UN Intervention) with legal `[EVENT, OPS_INFLUENCE, OPS_COUP,
+OPS_REALIGN]`. `OPS_INFLUENCE` is accepted, and the next decision is `SELECT_PLAY_MODE` again with an
+**empty** mask, so the game can never advance. Probably the same companion machinery as §9. **Unfixed,
+reported to the owner 2026-09-23**; an engine change under §2. The E4.1 merged view does not offer
+influence at such a node (it cannot be composed) and reports it through `report_anomaly`.

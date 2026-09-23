@@ -335,7 +335,7 @@ engine for differential testing.
 ## Key invariants (see `AGENTS.md` §4 for full detail)
 
 1. `ts::GameState` must stay trivially copyable and ≤ 4 KB — no heap allocation in the engine core.
-2. Action space is always the 212-dim flat space (`ActionEncoder` / `generate_flat_mask_212`) — don't introduce parallel encodings.
+2. Action space is always the flat space (`ActionEncoder` / `generate_flat_mask_212`; 220 wide since P17, the name is historical) — don't introduce parallel encodings. The E4.1 merged-influence view (P23) is not one: same 220 slots, and its composed actions are *defined* as the E4 steps they name. A checkpoint's view is read from its run directory (`tools/lib/action_view.py`); every harness must build masks in the deciding agent's view.
 3. NashPG regularizes the active policy against a frozen `π_ref` snapshot with fixed η; don't couple the reference update to the active policy's gradient step.
 4. All simulation randomness must go through `state.rng_state` (SplitMix64) for reproducibility.
 5. All Python must be fully type-annotated (`TypedDict`s in `web/server/replay_types.py` for serialized JSON); run `pyrefly check` with explicit paths after any Python change and keep it at 0 errors.

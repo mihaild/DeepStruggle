@@ -265,6 +265,26 @@ class TsVectorizedEnv:
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
+        # P23 / E4.1: per env and side, whether that side decides in the merged-influence view.
+        # Held here as well as in the runner because `reset_all(base_seed)` builds a new runner,
+        # which would otherwise silently return every side to the E4 view.
+        self.merged_us = np.zeros(num_envs, dtype=bool)
+        self.merged_ussr = np.zeros(num_envs, dtype=bool)
+
+    def set_merged_influence(self, us: np.ndarray | bool, ussr: np.ndarray | bool) -> None:
+        """Set every env's per-side view at once (a bool applies to all envs)."""
+        self.merged_us[:] = us
+        self.merged_ussr[:] = ussr
+        self.runner.set_merged_influence([bool(x) for x in self.merged_us],
+                                         [bool(x) for x in self.merged_ussr])
+
+    def set_merged_influence_env(self, env_idx: int, us: bool, ussr: bool) -> None:
+        """One env's per-side view; only that env's cached mask is rebuilt."""
+        if bool(self.merged_us[env_idx]) == us and bool(self.merged_ussr[env_idx]) == ussr:
+            return
+        self.merged_us[env_idx] = us
+        self.merged_ussr[env_idx] = ussr
+        self.runner.set_merged_influence_env(env_idx, us, ussr)
 
     def reset_all(self, base_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         """Reset all environments."""
@@ -273,6 +293,9 @@ class TsVectorizedEnv:
         if base_seed is not None:
             self.base_seed = base_seed
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed)
+            if self.merged_us.any() or self.merged_ussr.any():
+                self.runner.set_merged_influence([bool(x) for x in self.merged_us],
+                                                 [bool(x) for x in self.merged_ussr])
         else:
             self.runner.refresh_all()
         for _i in range(self.num_envs):
@@ -339,7 +362,10 @@ class TsVectorizedEnv:
             # Without this the message names neither, and the first occurrence cost a run.
             was_legal = bool(0 <= act < len(prev_masks[bad]) and prev_masks[bad][act])
             n_legal = int(prev_masks[bad].sum())
-            fresh = np.asarray(ActionEncoder.get_legal_mask(st))
+            # In the view of whoever acted: a composed E4.1 action is not in the E4 mask.
+            actor_merged = bool(self.merged_us[bad] if int(acting_players[bad]) == int(ts.Player.US)
+                                else self.merged_ussr[bad])
+            fresh = np.asarray(ActionEncoder.get_legal_mask(st, actor_merged))
             fresh_legal = bool(0 <= act < len(fresh) and fresh[act])
             stale = int((fresh != prev_masks[bad]).sum())
             raise IllegalActionError(

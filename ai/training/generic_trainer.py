@@ -34,6 +34,7 @@ from bindings.ts_env import ENDING_REASON_KEYS
 from ai.eval.blunders import RULES as BLUNDER_RULES
 from ai.itsc_reference import ITSC_GAMES, ITSC_REFERENCE, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
+from tools.lib.action_view import checkpoint_merged_influence, run_view
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.tournament_evaluator import TournamentEvaluator
 from bindings.action_encoder import ActionEncoder
@@ -175,7 +176,7 @@ GAME_STEMS: Tuple[str, ...] = (
 #:                   repeatable, one per branch point        E4-17-06-50M.11-90M.07
 #: A same-seed CONTINUATION takes no suffix: it keeps its lineage's name, and the budget is
 #: in each snapshot's filename.
-RUN_NAME_RE: Final = re.compile(r"^E\d+-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*$")
+RUN_NAME_RE: Final = re.compile(r"^E\d+(?:\.\d+)?-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*$")
 
 
 def _resolve_run_dir(output_dir: Optional[str], run_name: Optional[str],
@@ -923,10 +924,13 @@ def evaluate_and_log_snapshot(
     blunder_games: int = 32,
     num_baselines: int = 0,
     max_snapshot_opponents: int = 4,
+    merged_influence: bool = False,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
-    current_agent = NeuralAgent(model=model, device=dev, name=snap_name)
+    # The model is evaluated in the action view it trains in (P23), probes included.
+    current_agent = NeuralAgent(model=model, device=dev, name=snap_name,
+                                merged_influence=merged_influence)
 
     # Decisive-decision rates. These move long before win rate does, because a forced win
     # or avoidable forced loss arises at well under 1% of decisions -- rare enough to be
@@ -936,7 +940,8 @@ def evaluate_and_log_snapshot(
         from ai.eval.decisive_probe import measure_decisive_batched
         # Batched: the single-state loop spends 96.9% of its time in the policy forward,
         # so handing the GPU one state at a time was the whole cost.
-        stats = measure_decisive_batched(model, num_envs=decisive_games)
+        stats = measure_decisive_batched(model, num_envs=decisive_games,
+                                         merged_influence=merged_influence)
         decisive_metrics = stats.as_metrics()
         print(f"  decisive: takes {stats.win_take_rate * 100:.0f}% of {stats.win_available} forced wins | "
               f"avoids {stats.loss_avoid_rate * 100:.0f}% of {stats.loss_avoidable} avoidable losses",
@@ -961,7 +966,8 @@ def evaluate_and_log_snapshot(
             from ai.eval.blunders import measure_blunders_batched
 
             counts = measure_blunders_batched(
-                model, num_games=blunder_games, temperature=_temperature)
+                model, num_games=blunder_games, temperature=_temperature,
+                merged_influence=merged_influence)
             blunder_metrics.update(counts.metrics(prefix=_prefix))
             print(f"  blunders (tau={_temperature}):\n" + counts.summary(), flush=True)
         except Exception as e:
@@ -972,7 +978,8 @@ def evaluate_and_log_snapshot(
         from ai.eval.position_diagnostics import format_report, profile_self_play_batched
         # Batched: ~106k decisions/sec against ~890 for the one-state-at-a-time loop, so
         # this costs seconds rather than minutes of every snapshot evaluation.
-        profile = profile_self_play_batched(model, num_envs=position_games)
+        profile = profile_self_play_batched(model, num_envs=position_games,
+                                            merged_influence=merged_influence)
         position_metrics = profile["scalars"]
         print(f"  positions: {profile['scalars']['diag/empty_battlegrounds_turn8']:.1f} empty / "
               f"{profile['scalars']['diag/uncontrolled_battlegrounds_turn8']:.1f} uncontrolled "
@@ -1319,6 +1326,7 @@ def train_pipeline(
     start_pool_episodes: int = 600,
     ref_update_freq: int = 200_000,
     gae_lambda: float = 0.98,
+    merged_influence: bool = False,
     tensorboard: bool = True,
 ) -> None:
     # Checked first, before a device is resolved or a directory is made: a run whose budget is
@@ -1390,6 +1398,26 @@ def train_pipeline(
         git_dirty = bool(status_out)
     except Exception:
         pass
+
+    # P23 / E4.1: the step from which this run decides in the merged-influence view. Recorded so
+    # every later consumer can tell, per snapshot, which view the weights were trained in
+    # (tools/lib/action_view.py). An E4 lineage continued as E4.1 switches at its resume step;
+    # an E4.1 run resumed as E4.1 keeps its source's switch step.
+    merged_from_step = 0
+    if resume:
+        _res_file = resolve_resume(resume)
+        _src_merged, _src_from = run_view(os.path.dirname(os.path.abspath(_res_file)))
+        if _src_merged and not merged_influence:
+            raise ValueError(
+                "resuming an E4.1 (--merged-influence) run without --merged-influence is not "
+                "supported: its composed actions would be absent from every mask it is shown")
+        if merged_influence:
+            if _src_merged:
+                merged_from_step = _src_from
+            else:
+                _rb = torch.load(_res_file, map_location="cpu", weights_only=False)
+                merged_from_step = int(_rb["total_env_steps"])
+                del _rb
 
     metadata_path = os.path.join(out_dir, "metadata.json")
     metadata_info = {
@@ -1475,6 +1503,8 @@ def train_pipeline(
         "ent_coef": entropy_coef,
         "ref_update_freq": ref_update_freq,
         "gae_lambda": gae_lambda,
+        "merged_influence": bool(merged_influence),
+        "merged_influence_from_step": int(merged_from_step),
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, budget={train_steps:,} steps.",
     }
     with open(metadata_path, "w", encoding="utf-8") as f:
@@ -1614,6 +1644,7 @@ def train_pipeline(
         temperature_schedule=True,
         setup_explore_frac=setup_explore_frac,
         rollout_temps=rollout_temps,
+        merged_influence=merged_influence,
         device=dev,
     )
 
@@ -1631,6 +1662,7 @@ def train_pipeline(
         _seed_steps: List[int] = []
         if opponent_checkpoints:
             _seed_nets = load_pool(opponent_checkpoints, dev)
+            _seed_merged = [checkpoint_merged_influence(p) for p in opponent_checkpoints]
             _src = f"{len(opponent_checkpoints)} fixed snapshot(s)"
         else:
             # On RESUME, rebuild the pool from the snapshots this run already wrote. The resume
@@ -1687,6 +1719,9 @@ def train_pipeline(
 
             if _seed_paths:
                 _seed_nets = load_pool(_seed_paths, dev)
+                # Each member keeps the action view it was trained in (P23): E4-era snapshots of
+                # a lineage continued as E4.1 go on being shown E4 masks.
+                _seed_merged = [checkpoint_merged_influence(p) for p in _seed_paths]
                 _span = _seed_steps[-1] - _seed_steps[0]
                 _how = "restored" if _saved_pool else "rebuilt"
                 _src = (f"{len(_seed_nets)} snapshot(s) of this run, spanning "
@@ -1696,6 +1731,7 @@ def train_pipeline(
                 # seeded with a frozen copy of the starting policy -- the run's own past self,
                 # which is exactly what the pool is made of thereafter.
                 _seed_nets = [_copy.deepcopy(model).to(dev)]
+                _seed_merged = [bool(merged_influence)]
                 _src = "self (seeded from the initial policy)"
                 if resume and not reset_opponent_pool:
                     # For a RESUMED run this branch is never what anyone wanted: the run has a
@@ -1721,7 +1757,12 @@ def train_pipeline(
             pfsp=bool(opponent_pfsp),
             pfsp_weighting=opponent_pfsp_weighting,
             pfsp_uniform_mix=opponent_pfsp_uniform_mix,
+            merged=_seed_merged,
         )
+        if any(_seed_merged) or merged_influence:
+            print(f"[opponent pool] action views (P23): learner "
+                  f"{'E4.1' if merged_influence else 'E4'}, members "
+                  f"{sum(_seed_merged)} E4.1 / {len(_seed_merged) - sum(_seed_merged)} E4", flush=True)
         if opponent_self_pool and not opponent_checkpoints and _saved_pool:
             trainer.opponent_pool.load_state_dict(_saved_pool, _seed_steps)
         if reset_opponent_pool and resume:
@@ -1807,6 +1848,7 @@ def train_pipeline(
     torch.save(model.state_dict(), snap_0_path)
     evaluate_and_log_snapshot(
         model=model,
+        merged_influence=merged_influence,
         opponents=opponents,
         elapsed_seconds=0,
         out_dir=out_dir,
@@ -2037,7 +2079,8 @@ def train_pipeline(
                     _opp = _copy.deepcopy(model)
                     _opp.load_state_dict(torch.load(snap_path, map_location=dev,
                                                     weights_only=True))
-                    trainer.opponent_pool.add(_opp.to(dev), total_env_steps)
+                    trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
+                                              merged=bool(merged_influence))
                 except Exception as _e:
                     # A pool that fails to grow is a degraded experiment, not a dead one --
                     # say so loudly and keep training rather than losing the run.
@@ -2063,6 +2106,7 @@ def train_pipeline(
                 last_tagged_resume = total_env_steps
             decisive = evaluate_and_log_snapshot(
                 model=model,
+                merged_influence=merged_influence,
                 opponents=opponents,
                 elapsed_seconds=int(elapsed),
                 out_dir=out_dir,
@@ -2095,6 +2139,7 @@ def train_pipeline(
                       time.time() - t_start - overhead_seconds, seed=seed)
     evaluate_and_log_snapshot(
         model=model,
+        merged_influence=merged_influence,
         opponents=opponents,
         elapsed_seconds=int(time.time() - t_start),
         out_dir=out_dir,

@@ -5,6 +5,7 @@
 #include "ts/card_handlers.hpp"
 #include "ts/ops.hpp"
 #include "ts/space_race.hpp"
+#include "ts/state_machine.hpp"
 #include <cstring>
 
 namespace ts {
@@ -703,6 +704,59 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
     // An empty mask now means what it says. `StateMachine::step` validates against this mask, so
     // a position that offers nothing refuses everything -- loudly, at the point of the mistake,
     // rather than by inventing a move.
+}
+
+namespace {
+
+bool is_op_choice(DecisionType t) noexcept {
+    return t == DecisionType::SELECT_PLAY_MODE || t == DecisionType::SELECT_OP_MODE;
+}
+
+bool is_node_slot(uint16_t idx) noexcept {
+    return idx >= flat_slots::NODE && idx < flat_slots::NODE + flat_slots::NODE_COUNT;
+}
+
+// The position after OPS_INFLUENCE, and whether it is the placement the merged view composes
+// with. Anything else -- a refused step, a different decision, another player -- means the
+// composition does not exist here, and the caller offers no merged influence at all.
+bool after_influence(const GameState& state, GameState& after) noexcept {
+    after = state;  // trivially copyable: one memcpy
+    const MicroAction commit =
+        ActionMask::decode_flat_action_212(state, flat_slots::OPS_INFLUENCE);
+    if (!StateMachine::step(after, commit)) return false;
+    return after.ctx().decision_type == DecisionType::POINT_NODE &&
+           after.ctx().decision_player == state.ctx().decision_player;
+}
+
+} // namespace
+
+void ActionMask::generate_flat_mask_merged(const GameState& state, uint8_t* mask) noexcept {
+    generate_flat_mask_212(state, mask);
+    if (!mask || !is_op_choice(state.ctx().decision_type) || !mask[flat_slots::OPS_INFLUENCE]) {
+        return;
+    }
+    // OPS_INFLUENCE changes meaning in this view, so it is cleared and re-derived below.
+    mask[flat_slots::OPS_INFLUENCE] = 0;
+
+    GameState after;
+    if (!after_influence(state, after)) {
+        // E4 offers influence here and it does not lead to a placement. Not composed, not papered
+        // over: reported, and influence simply is not offered in this view.
+        report_anomaly("P23: OPS_INFLUENCE offered but does not lead to the mover's placement", state);
+        return;
+    }
+    uint8_t post[FLAT_ACTION_SPACE_SIZE];
+    generate_flat_mask_212(after, post);
+    for (uint16_t i = flat_slots::NODE; i < flat_slots::NODE + flat_slots::NODE_COUNT; ++i) {
+        if (post[i]) mask[i] = 1;
+    }
+    // "Influence, place nothing": legal exactly when stopping before the first point is.
+    if (post[flat_slots::CONFIRM_DONE]) mask[flat_slots::OPS_INFLUENCE] = 1;
+}
+
+bool ActionMask::is_merged_influence_action(const GameState& state, uint16_t action_idx) noexcept {
+    return is_op_choice(state.ctx().decision_type) &&
+           (is_node_slot(action_idx) || action_idx == flat_slots::OPS_INFLUENCE);
 }
 
 MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t action_idx) noexcept {

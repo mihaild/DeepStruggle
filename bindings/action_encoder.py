@@ -55,14 +55,18 @@ class ActionEncoder:
         return ts.decode_flat_action(state, action_idx)
 
     @staticmethod
-    def get_legal_mask(state: ts.GameState) -> np.ndarray:
-        """Return binary legal action mask shape (212,) with dtype uint8."""
-        return ts.get_flat_action_mask(state)
+    def get_legal_mask(state: ts.GameState, merged_influence: bool = False) -> np.ndarray:
+        """Return binary legal action mask shape (220,) with dtype uint8.
+
+        `merged_influence` selects the E4.1 view (P23), in which a NODE slot at an op-choice node
+        means "ops for influence, first point here"; the default is the E4 mask.
+        """
+        return ts.get_flat_action_mask(state, merged_influence)
 
     @staticmethod
-    def get_legal_indices(state: ts.GameState) -> List[int]:
+    def get_legal_indices(state: ts.GameState, merged_influence: bool = False) -> List[int]:
         """Return list of legal action indices."""
-        mask = ts.get_flat_action_mask(state)
+        mask = ts.get_flat_action_mask(state, merged_influence)
         return [int(i) for i in np.where(mask > 0)[0]]
 
     @staticmethod

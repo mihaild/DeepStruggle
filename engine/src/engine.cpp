@@ -37,6 +37,37 @@ bool Engine::step_flat(GameState& state, uint16_t action_idx, bool auto_advance)
     return ok;
 }
 
+void Engine::get_flat_action_mask(const GameState& state, uint8_t* mask, bool merged_influence) noexcept {
+    if (merged_influence) {
+        ActionMask::generate_flat_mask_merged(state, mask);
+    } else {
+        ActionMask::generate_flat_mask_212(state, mask);
+    }
+}
+
+bool Engine::step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
+                       bool merged_influence) noexcept {
+    if (!merged_influence || !ActionMask::is_merged_influence_action(state, action_idx)) {
+        return step_flat(state, action_idx, auto_advance);
+    }
+    // The composed actions are not in the E4 mask StateMachine::step validates against (a NODE
+    // slot at an op-choice node), or mean something else there (OPS_INFLUENCE), so validate
+    // against the merged view first.
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_merged(state, mask);
+    if (action_idx >= FLAT_ACTION_SPACE_SIZE || !mask[action_idx]) return false;
+
+    const GameState before = state;
+    const MicroAction commit = ActionMask::decode_flat_action_212(state, flat_slots::OPS_INFLUENCE);
+    if (!StateMachine::step(state, commit)) { state = before; return false; }
+    const uint16_t second = (action_idx == flat_slots::OPS_INFLUENCE) ? flat_slots::CONFIRM_DONE
+                                                                      : action_idx;
+    const MicroAction place = ActionMask::decode_flat_action_212(state, second);
+    if (!StateMachine::step(state, place)) { state = before; return false; }
+    if (auto_advance) auto_advance_step(state);
+    return true;
+}
+
 size_t Engine::auto_advance_step(GameState& state, size_t max_steps) noexcept {
     size_t advanced = 0;
     while (advanced < max_steps && !is_terminal(state)) {

@@ -26,7 +26,7 @@ from typing import Dict, Iterable, List
 #: The short name is what runs.md indexes by, so it is what a label should carry.
 #: The short name may carry a replicate index (`-2`) or branch suffixes (`-50M.11`); see
 #: ai.training.generic_trainer.RUN_NAME_RE. Anchored on the timestamp, never split on `_`.
-_RUN_DIR_RE = re.compile(r"^(E\d+-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*)_\d{8}_\d{6}$")
+_RUN_DIR_RE = re.compile(r"^(E\d+(?:\.\d+)?-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*)_\d{8}_\d{6}$")
 _STEPS_RE = re.compile(r"(\d+)steps")
 
 

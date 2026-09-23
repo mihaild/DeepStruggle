@@ -924,7 +924,12 @@ NB_MODULE(ts_engine, m) {
              "position of whole games, comparing the pending decision, the legal mask and the "
              "observation. Does NOT carry action_history or turn_aggregates, which nothing reads "
              "for rules or for the observation; they are diagnostics.")
-        .def("to_json", [](const ts::GameState& s) { return ts::Serializer::to_json(s); });
+        .def("to_json", [](const ts::GameState& s) { return ts::Serializer::to_json(s); })
+        .def("raw_bytes", [](const ts::GameState& s) {
+            return nb::bytes(reinterpret_cast<const char*>(&s), sizeof(ts::GameState));
+        }, "The GameState's memory, for exact equality tests. It is trivially copyable, so two "
+           "states reached from copies of one origin by the same steps compare equal byte for byte "
+           "(padding included) -- which is how P23 checks a composed step against the two E4 steps.");
 
     // Engine class
         m.def("has_held_scoring_card", &ts::Engine::has_held_scoring_card);
@@ -976,21 +981,30 @@ NB_MODULE(ts_engine, m) {
             }
             return res;
         })
-        .def_static("get_flat_action_mask", [](const ts::GameState& state) {
+        .def_static("get_flat_action_mask", [](const ts::GameState& state, bool merged_influence) {
             size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
             uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
-            ts::ActionMask::generate_flat_mask_212(state, data);
+            ts::Engine::get_flat_action_mask(state, data, merged_influence);
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
-        })
-        .def_static("try_step_flat", &ts::Engine::step_flat, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
-                    "Advance one flat action, returning False if the engine refuses it. For probing only.")
-        .def_static("step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance) {
-            if (!ts::Engine::step_flat(state, action_idx, auto_advance)) {
+        }, nb::arg("state"), nb::arg("merged_influence") = false,
+           "The flat legal mask. merged_influence=True is the E4.1 view (P23): at an op-choice "
+           "node, NODE slot X means 'influence, first point in X'.")
+        .def_static("try_step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance,
+                                        bool merged_influence) {
+            return ts::Engine::step_flat(state, action_idx, auto_advance, merged_influence);
+        }, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
+           nb::arg("merged_influence") = false,
+           "Advance one flat action, returning False if the engine refuses it. For probing only.")
+        .def_static("step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance,
+                                    bool merged_influence) {
+            if (!ts::Engine::step_flat(state, action_idx, auto_advance, merged_influence)) {
                 throw_illegal_action(state, "flat action " + std::to_string(static_cast<int>(action_idx)));
             }
         }, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
-           "Advance one flat action, raising RuntimeError if the engine refuses it.")
+           nb::arg("merged_influence") = false,
+           "Advance one flat action, raising RuntimeError if the engine refuses it. "
+           "merged_influence=True applies a composed E4.1 action as the two E4 steps it names.")
         .def_static("auto_advance_step", &ts::Engine::auto_advance_step, nb::arg("state"), nb::arg("max_steps") = 128);
 
     // Map Metadata helpers
@@ -1095,13 +1109,13 @@ NB_MODULE(ts_engine, m) {
 
 
     // Flat Action Mask & Codec exports
-    m.def("get_flat_action_mask", [](const ts::GameState& state) {
+    m.def("get_flat_action_mask", [](const ts::GameState& state, bool merged_influence) {
         size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
         uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
-        ts::ActionMask::generate_flat_mask_212(state, data);
+        ts::Engine::get_flat_action_mask(state, data, merged_influence);
         nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
         return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
-    });
+    }, nb::arg("state"), nb::arg("merged_influence") = false);
 
     m.def("decode_flat_action", &ts::ActionMask::decode_flat_action_212);
     m.def("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
@@ -1131,13 +1145,14 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_SIZE") = static_cast<int>(ts::OBS_SIZE_V23);
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
-        .def_static("generate_flat_mask", [](const ts::GameState& state) {
+        .def_static("generate_flat_mask", [](const ts::GameState& state, bool merged_influence) {
             size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
             uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
-            ts::ActionMask::generate_flat_mask_212(state, data);
+            ts::Engine::get_flat_action_mask(state, data, merged_influence);
             nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
-        })
+        }, nb::arg("state"), nb::arg("merged_influence") = false)
+        .def_static("is_merged_influence_action", &ts::ActionMask::is_merged_influence_action)
         .def_static("decode_flat_action", &ts::ActionMask::decode_flat_action_212)
         .def_static("encode_micro_action", &ts::ActionMask::encode_micro_action_212);
 
@@ -1146,14 +1161,51 @@ NB_MODULE(ts_engine, m) {
         std::vector<ts::GameState> states;
         std::vector<float> obs_buffer;
         std::vector<uint8_t> mask_buffer;
+        // P23 / E4.1: which action view each side of each env decides in. Per side, not per env,
+        // because a tournament puts an E4 agent and an E4.1 agent in the same game. The cached mask
+        // is built for whoever decides next, and a step is applied in the view of whoever made it.
+        // All zero is exactly E4.
+        std::vector<uint8_t> merged_us;
+        std::vector<uint8_t> merged_ussr;
         size_t num_envs;
         const size_t obs_width = ts::OBS_SIZE_V23;
+
+        bool merged_for(size_t idx, ts::Player p) const {
+            if (p == ts::Player::US) return merged_us[idx] != 0;
+            if (p == ts::Player::USSR) return merged_ussr[idx] != 0;
+            return false;
+        }
+
+        ts::Player decider(size_t idx) const {
+            return (states[idx].ctx().decision_player != ts::Player::NONE)
+                ? states[idx].ctx().decision_player : states[idx].phasing_player;
+        }
+
+        void set_merged_influence(const std::vector<bool>& us, const std::vector<bool>& ussr) {
+            if (us.size() != num_envs || ussr.size() != num_envs) {
+                throw std::invalid_argument("set_merged_influence: one flag per env for each side");
+            }
+            for (size_t i = 0; i < num_envs; ++i) {
+                merged_us[i] = us[i] ? 1 : 0;
+                merged_ussr[i] = ussr[i] ? 1 : 0;
+            }
+            refresh_all();  // cached masks were built in the previous view
+        }
+
+        void set_merged_influence_env(size_t idx, bool us, bool ussr) {
+            if (idx >= num_envs) throw std::out_of_range("set_merged_influence_env: env index");
+            merged_us[idx] = us ? 1 : 0;
+            merged_ussr[idx] = ussr ? 1 : 0;
+            refresh_single(idx);
+        }
 
         VectorizedBatchRunner(size_t n, uint64_t base_seed)
             : num_envs(n) {
             states.resize(n);
             obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * ts::FLAT_ACTION_SPACE_SIZE);
+            merged_us.assign(n, 0);
+            merged_ussr.assign(n, 0);
             for (size_t i = 0; i < n; ++i) {
                 ts::StateMachine::init_new_game(states[i], base_seed + i * 10007 + 1);
             }
@@ -1183,7 +1235,8 @@ NB_MODULE(ts_engine, m) {
             ts::Observation::extract(states[idx], p, &ob);
             std::memcpy(&obs_buffer[idx * obs_width], reinterpret_cast<const float*>(&ob),
                         obs_width * sizeof(float));
-            ts::ActionMask::generate_flat_mask_212(states[idx], &mask_buffer[idx * ts::FLAT_ACTION_SPACE_SIZE]);
+            ts::Engine::get_flat_action_mask(states[idx], &mask_buffer[idx * ts::FLAT_ACTION_SPACE_SIZE],
+                                             merged_for(idx, p));
         }
 
         void refresh_all() {
@@ -1205,8 +1258,16 @@ NB_MODULE(ts_engine, m) {
                     results[i] = 2; // Terminal
                     continue;
                 }
-                ts::MicroAction ma = ts::ActionMask::decode_flat_action_212(states[i], actions[i]);
-                bool ok = ts::StateMachine::step(states[i], ma);
+                bool ok;
+                if (merged_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))) &&
+                    ts::ActionMask::is_merged_influence_action(states[i], actions[i])) {
+                    // A composed E4.1 action: both E4 steps, atomically. Chance nodes are drained
+                    // below exactly as for any other action.
+                    ok = ts::Engine::step_flat(states[i], actions[i], false, true);
+                } else {
+                    ts::MicroAction ma = ts::ActionMask::decode_flat_action_212(states[i], actions[i]);
+                    ok = ts::StateMachine::step(states[i], ma);
+                }
                 if (ok) {
                     if (auto_advance) {
                         ts::Engine::auto_advance_step(states[i]);
@@ -1308,6 +1369,12 @@ NB_MODULE(ts_engine, m) {
         .def_ro("obs_width", &VectorizedBatchRunner::obs_width)
         .def("reset_game", &VectorizedBatchRunner::reset_game)
         .def("refresh_all", &VectorizedBatchRunner::refresh_all)
+        .def("set_merged_influence", &VectorizedBatchRunner::set_merged_influence, nb::arg("us"), nb::arg("ussr"),
+             "P23 / E4.1: per env and side, whether that side decides in the merged-influence view. "
+             "Rebuilds the cached masks.")
+        .def("set_merged_influence_env", &VectorizedBatchRunner::set_merged_influence_env,
+             nb::arg("env_index"), nb::arg("us"), nb::arg("ussr"),
+             "P23 / E4.1: the same for one env; rebuilds only that env's cached mask.")
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)
         .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
         .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)

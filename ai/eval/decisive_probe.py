@@ -15,7 +15,7 @@ Two exclusions matter for the numbers to mean anything, both learned by getting 
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import ts_engine as ts
@@ -121,14 +121,55 @@ def measure_decisive(
             steps += 1
     return st_out
 
+INFLUENCE_SLOT = 112
+CONFIRM_SLOT = 208
+
+
+def classify_in_view(state: ts.GameState, player: ts.Player,
+                     merged_influence: bool = False) -> Dict[int, str]:
+    """`classify_legal_actions`, in the action view the player decides in.
+
+    In the E4.1 view (P23) a composed action is `OPS_INFLUENCE` followed by one placement, so its
+    class is the commit's when the commit is decisive -- the DEFCON cases hang on spending the
+    card for Ops, not on where the first point goes -- and otherwise the class of that placement
+    in the position after the commit. The same rule gives the merged view's OPS_INFLUENCE ("place
+    nothing") the class of stopping there.
+    """
+    kinds = classify_legal_actions(state, player)
+    if not merged_influence or state.ctx().decision_type not in (
+            ts.DecisionType.SELECT_PLAY_MODE, ts.DecisionType.SELECT_OP_MODE):
+        return kinds
+    merged = np.asarray(ts.Engine.get_flat_action_mask(state, True))
+    commit_kind = kinds.get(INFLUENCE_SLOT)
+    out = {a: k for a, k in kinds.items() if a != INFLUENCE_SLOT}
+    if commit_kind is None:
+        return out
+    after = state.clone()
+    if not ts.Engine.try_step_flat(after, INFLUENCE_SLOT, False):
+        return out
+    post = classify_legal_actions(after, player)
+    for a in np.flatnonzero(merged):
+        a = int(a)
+        if not ts.ActionMask.is_merged_influence_action(state, a):
+            continue
+        if commit_kind in ("win", "loss"):
+            out[a] = commit_kind
+        else:
+            out[a] = post.get(CONFIRM_SLOT if a == INFLUENCE_SLOT else a, "normal")
+    return out
+
+
 def measure_decisive_batched(
     model: Any,
     num_envs: int = 128,
     base_seed: int = 77_000,
     temperature: float = 0.1,
     max_iters: int = 20_000,
+    merged_influence: bool = False,
 ) -> DecisiveStats:
     """measure_decisive over parallel environments, with one forward pass per batch.
+
+    `merged_influence` plays and classifies in the E4.1 view (P23); see `classify_in_view`.
 
     Nearly all of the single-state cost is the network, not the probing: over a full game
     the split is 96.9% policy forward, 3.0% classify_legal_actions, 0.1% engine step. So
@@ -158,6 +199,8 @@ def measure_decisive_batched(
     check_obs_width(model)
     env = TsVectorizedEnv(num_envs=num_envs, base_seed=base_seed)
     obs, masks, _ = env.reset_all()
+    if merged_influence:
+        env.set_merged_influence(True, True)
 
     out = DecisiveStats()
     pending: List[List[tuple]] = [[] for _ in range(num_envs)]
@@ -206,7 +249,7 @@ def measure_decisive_batched(
                     continue  # no choice is being made at a chance node
                 player = (ctx.decision_player if ctx.decision_player != ts.Player.NONE
                           else state.phasing_player)
-                kinds = classify_legal_actions(state, player)
+                kinds = classify_in_view(state, player, merged_influence)
                 if not kinds:
                     continue
                 n_wins = sum(1 for k in kinds.values() if k == "win")

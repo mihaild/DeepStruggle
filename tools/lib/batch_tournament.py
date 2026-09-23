@@ -177,6 +177,15 @@ class BatchMatchRunner:
                     runner.reset_game(i, paired_seed)
                     runner.reset_game(i + cur_half, paired_seed)
             runner.refresh_all()
+            # P23 / E4.1: each side decides in its own agent's action view. Envs < cur_half seat
+            # A as USSR and B as US; the rest the reverse. Only neural agents trained in the
+            # merged view use it -- bots and searchers act in E4 terms.
+            mv_a = bool(getattr(agent_a, "merged_influence", False))
+            mv_b = bool(getattr(agent_b, "merged_influence", False))
+            if mv_a or mv_b:
+                first = np.arange(cur_games) < cur_half
+                runner.set_merged_influence([bool(x) for x in np.where(first, mv_b, mv_a)],
+                                            [bool(x) for x in np.where(first, mv_a, mv_b)])
             active = np.ones(cur_games, dtype=bool)
             steps = 0
 

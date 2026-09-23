@@ -111,6 +111,14 @@ The first draft of this file numbered them globally, which put the E3 control at
 nothing before it on that engine — and made the letter redundant, since a global `03` already
 implies E3. Restarting per engine keeps both halves of the name carrying information.
 
+## A minor version: same game, another way of deciding
+
+`E4.1` (P23) is E4 with an **opt-in action view**: the rules, `GameState` and observation are E4's,
+and only how an agent may express one choice differs. A run in that view is named
+`E4.1-<attempt>-<seed>`, with attempts numbered from 01 within `E4.1`. Because the game is the
+same, **E4 and E4.1 numbers compare directly**, even in one tournament, without the cross-engine
+label a letter bump needs. A change to the game itself still bumps the letter.
+
 ## When the letter does *not* bump
 
 A commit that touches `engine/` bumps the letter only if it changes the decision stream the

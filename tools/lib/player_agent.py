@@ -189,7 +189,12 @@ class NeuralAgent:
         model: Union[ColdWarModel, nn.Module],
         name: str = "NeuralBot",
         device: Optional[Union[torch.device, str]] = None,
+        merged_influence: bool = False,
     ):
+        #: P23 / E4.1: whether this network decides in the merged-influence view. Every harness
+        #: that builds masks for it must use this view (tools/lib/action_view.py). Set from the
+        #: checkpoint's run directory by `from_checkpoint`.
+        self.merged_influence = bool(merged_influence)
         self.device = resolve_device(device) if device is not None else next(model.parameters()).device
         self.model = cast(ColdWarModel, model.to(self.device))
         # There is one observation layout, so there is nothing to select -- but a model whose
@@ -201,6 +206,21 @@ class NeuralAgent:
 
     @classmethod
     def from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        name: Optional[str] = None,
+        device: Union[torch.device, str] = "cuda",
+    ) -> "NeuralAgent":
+        """Loads a NeuralAgent from checkpoint, with its architecture detected from the weights
+        and its action view (P23) from the run directory."""
+        from tools.lib.action_view import checkpoint_merged_influence
+
+        agent = cls._load_checkpoint(checkpoint_path, name=name, device=device)
+        agent.merged_influence = checkpoint_merged_influence(checkpoint_path)
+        return agent
+
+    @classmethod
+    def _load_checkpoint(
         cls,
         checkpoint_path: str,
         name: Optional[str] = None,

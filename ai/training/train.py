@@ -389,6 +389,13 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
+    parser.add_argument("--merged-influence", action="store_true", default=False,
+                        help="P23 / E4.1: decide in the merged-influence view, where 'ops for "
+                             "influence, first point in X' is one decision (the two E4 steps it "
+                             "names, applied together). ~11%% fewer decisions per game; rules, "
+                             "state and observation are unchanged. Recorded in metadata.json with "
+                             "the step it starts from, so pool members and later evaluations use "
+                             "each checkpoint's own view.")
     parser.add_argument("--gae-lambda", type=float, default=0.98,
                         help="GAE lambda. Credit decays by lambda per decision over the joint stream of both players' decisions (unless --per-player-gae), so at 0.98 the effective horizon is ~50 decisions, about 1.3 game turns.")
     parser.add_argument("--gamma", type=float, default=1.0,
@@ -562,6 +569,7 @@ def main():
             per_player_gae=args.per_player_gae,
             ref_update_freq=args.ref_update_freq,
             gae_lambda=args.gae_lambda,
+            merged_influence=args.merged_influence,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,
