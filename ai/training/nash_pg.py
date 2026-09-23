@@ -964,6 +964,16 @@ class NashPGTrainer(BaseNashPGTrainer):
         ratio_negadv_max_accum = 0.0    # the dangerous combination, on its own
         num_updates = 0
         wolf_w_us, wolf_w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power)
+        # Per-minibatch diagnostics accumulate ON THE DEVICE and are read once, after the loop.
+        # Reading each with .item()/float()/bool() inside the loop forced ~14 CPU-GPU syncs per
+        # minibatch, each stalling the queue until the GPU caught up
+        # (research/log/training_throughput_cpu.md).
+        def _z(v: float = 0.0) -> torch.Tensor:
+            # float64, as the Python floats these replace were.
+            return torch.full((), v, dtype=torch.float64, device=self.device)
+        loss_t, policy_loss_t, policy_loss_total_t = _z(), _z(), _z()
+        val_loss_t, kl_t, entropy_t, clip_frac_t, risk_loss_t = _z(), _z(), _z(), _z(), _z()
+        logratio_max_t, old_lp_min_t, ratio_negadv_max_t = _z(-1e30), _z(1e30), _z()
 
         for _ in range(self.num_epochs):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
@@ -991,7 +1001,10 @@ class NashPGTrainer(BaseNashPGTrainer):
                 cur_v_win = cur_v_win.squeeze(-1)
                 cur_v_vp = cur_v_vp.squeeze(-1)
 
-                cur_dist = torch.distributions.Categorical(logits=cur_logits)
+                # validate_args=False: the logits come straight from the network, and validation ran a
+                # support check that forced a CPU-GPU sync on every minibatch -- ~17% of the update
+                # (research/log/training_throughput_cpu.md). The distribution itself is unchanged.
+                cur_dist = torch.distributions.Categorical(logits=cur_logits, validate_args=False)
                 cur_lp = cur_dist.log_prob(b_act)
                 cur_entropy = cur_dist.entropy()
                 # Masked with the policy loss below; the KL to pi_ref is deliberately
@@ -1010,12 +1023,11 @@ class NashPGTrainer(BaseNashPGTrainer):
                 log_ratio = cur_lp - b_old_lp
                 ratio = torch.exp(torch.clamp(log_ratio, -20.0, 20.0))
                 with torch.no_grad():
-                    logratio_max_accum = max(logratio_max_accum, float(log_ratio.max()))
-                    old_lp_min_accum = min(old_lp_min_accum, float(b_old_lp.min()))
-                    neg = b_adv < 0
-                    if bool(neg.any()):
-                        ratio_negadv_max_accum = max(
-                            ratio_negadv_max_accum, float(ratio[neg].max()))
+                    logratio_max_t = torch.maximum(logratio_max_t, log_ratio.max().double())
+                    old_lp_min_t = torch.minimum(old_lp_min_t, b_old_lp.min().double())
+                    ratio_negadv_max_t = torch.maximum(
+                        ratio_negadv_max_t,
+                        torch.where(b_adv < 0, ratio, torch.zeros_like(ratio)).max().double())
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)
@@ -1042,10 +1054,14 @@ class NashPGTrainer(BaseNashPGTrainer):
                         # exactly these states, and the filter would drop the ones whose
                         # outcome-advantage is small -- which late in a run is most of them.
                         keep = keep & ((b_adv.abs() >= thresh) | (b_has_search > 0.5))
-                ppo_loss = (surrogate[keep].mean() if bool(keep.any())
-                            else surrogate.sum() * 0.0)
+                # Mean over the kept samples as sum / count, which needs no host round trip; with
+                # nothing kept it is 0, as before.
+                _keep_f = keep.to(surrogate.dtype)
+                ppo_loss = (surrogate * _keep_f).sum() / _keep_f.sum().clamp(min=1.0)
 
-                clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean().item()
+                with torch.no_grad():
+                    clip_frac_t += ((ratio < 1.0 - self.clip_eps)
+                                    | (ratio > 1.0 + self.clip_eps)).float().mean()
 
                 with torch.no_grad():
                     ref_logits, _, _ = self.reference_net(b_obs, b_mask)
@@ -1059,8 +1075,9 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # Entropy over the learner's own actions only, for the same reason as the
                 # surrogate: an entropy bonus on a frozen opponent's choices would push
                 # the learner's policy toward states it did not choose to be in.
-                own_entropy = (cur_entropy[b_learner > 0.5].mean()
-                               if bool((b_learner > 0.5).any()) else cur_entropy.sum() * 0.0)
+                _own_f = (b_learner > 0.5).to(cur_entropy.dtype)
+                _own_n = _own_f.sum().clamp(min=1.0)
+                own_entropy = (cur_entropy * _own_f).sum() / _own_n
                 # P15-X4b: pull the policy toward the searcher, on searched decisions only.
                 # Soft cross-entropy against the visit distribution.
                 #
@@ -1118,9 +1135,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                     # and only its speed is. The logged kl_div and entropy stay unweighted.
                     _w = wolf_sample_weights(b_players, wolf_w_us, wolf_w_ussr).to(kl_per.dtype)
                     kl_term = (kl_per * _w).mean()
-                    _own = b_learner > 0.5
-                    ent_term = ((cur_entropy * _w)[_own].mean() if bool(_own.any())
-                                else cur_entropy.sum() * 0.0)
+                    ent_term = (cur_entropy * _w * _own_f).sum() / _own_n
                 policy_loss = (ppo_loss + self.eta * kl_term - self.ent_coef * ent_term
                                + self.search_ce_coef * search_ce)
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
@@ -1137,7 +1152,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                         cur_risk, b_defcon_risk, pos_weight=pos_weight
                     )
                     loss = loss + self.defcon_coef * risk_loss
-                    risk_loss_accum += risk_loss.item()
+                    risk_loss_t += risk_loss.detach()
 
                 self.optimizer.zero_grad()
                 if self.search_ce_coef > 0.0 and float(search_ce) != 0.0:
@@ -1154,11 +1169,13 @@ class NashPGTrainer(BaseNashPGTrainer):
                 else:
                     ce_norm = None
                 loss.backward()
-                _tot_sq = [(q.grad.detach() ** 2).sum()
-                           for q in self.active_net.parameters() if q.grad is not None]
-                total_norm = (torch.sqrt(torch.stack(_tot_sq).sum()) if _tot_sq
-                              else torch.zeros((), device=self.device))
                 if ce_norm is not None:
+                    # Only the search-CE diagnostics read the whole-model gradient norm, so it is
+                    # not computed (a few hundred small kernels) on every minibatch otherwise.
+                    _tot_sq = [(q.grad.detach() ** 2).sum()
+                               for q in self.active_net.parameters() if q.grad is not None]
+                    total_norm = (torch.sqrt(torch.stack(_tot_sq).sum()) if _tot_sq
+                                  else torch.zeros((), device=self.device))
                     search_ce_accum += float(search_ce)
                     search_ce_frac_accum += float(ce_norm / total_norm.clamp(min=1e-9))
                     search_rows_accum += 1
@@ -1173,20 +1190,26 @@ class NashPGTrainer(BaseNashPGTrainer):
                 nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
                 self.optimizer.step()
 
-                total_loss_accum += loss.item()
+                loss_t += loss.detach()
                 # NOTE: this is the PPO surrogate ALONE, not the assembled policy_loss. Kept as
                 # it is so the series stays comparable across every run ever logged; the
                 # assembled objective and the regulariser's share are logged separately below,
                 # because their absence is how a KL term reaching 300x the surrogate stayed
                 # invisible for two days. See research/log/P15_kl_domination.md.
-                policy_loss_accum += ppo_loss.item()
-                policy_loss_total_accum += policy_loss.item()
-                kl_term_accum += float(self.eta) * kl_div.item()
-                val_loss_accum += val_loss.item()
-                kl_accum += kl_div.item()
-                entropy_accum += cur_entropy.mean().item()
-                clip_frac_accum += clip_frac
+                policy_loss_t += ppo_loss.detach()
+                policy_loss_total_t += policy_loss.detach()
+                val_loss_t += val_loss.detach()
+                kl_t += kl_div.detach()
+                entropy_t += cur_entropy.mean().detach()
                 num_updates += 1
+
+        # One host read for everything accumulated on the device.
+        (total_loss_accum, policy_loss_accum, policy_loss_total_accum, val_loss_accum, kl_accum,
+         entropy_accum, clip_frac_accum, risk_loss_accum, logratio_max_accum, old_lp_min_accum,
+         ratio_negadv_max_accum) = torch.stack([
+            loss_t, policy_loss_t, policy_loss_total_t, val_loss_t, kl_t, entropy_t, clip_frac_t,
+            risk_loss_t, logratio_max_t, old_lp_min_t, ratio_negadv_max_t]).tolist()
+        kl_term_accum = float(self.eta) * kl_accum
 
         return {
             "loss": total_loss_accum / max(1, num_updates),
