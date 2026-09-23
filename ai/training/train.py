@@ -401,6 +401,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--per-seat-adv-norm", action="store_true", default=False,
                         help="Normalise advantages per seat instead of over both, so a losing "
                              "seat's small spread is not scaled away by the winning seat's.")
+    parser.add_argument("--wolf-seat-weight", action="store_true", default=False,
+                        help="WoLF-style per-seat learning rates: scale each seat's PPO surrogate "
+                             "by w_us = 2x^p/(x^p+(1-x)^p) and w_ussr = 2(1-x)^p/(x^p+(1-x)^p), with "
+                             "x the USSR's smoothed win share in pure self-play. The winning seat "
+                             "learns slowly and the losing seat fast. The entropy bonus, the KL to "
+                             "pi_ref and the value loss are not weighted.")
+    parser.add_argument("--wolf-power", type=float, default=1.0,
+                        help="p in --wolf-seat-weight. 1.0 gives w_us = 2x, w_ussr = 2(1-x); "
+                             "below 1 softens the ratio (x/(1-x))^p between the seats.")
+    parser.add_argument("--wolf-ema-games", type=float, default=2000.0,
+                        help="Memory of --wolf-seat-weight's average, in self-play games: each "
+                             "iteration moves it by alpha = min(1, games / this).")
     parser.add_argument("--merged-influence", action="store_true", default=False,
                         help="P23 / E4.1: decide in the merged-influence view, where 'ops for "
                              "influence, first point in X' is one decision (the two E4 steps it "
@@ -585,6 +597,9 @@ def main():
             seat_balance=args.seat_balance,
             seat_balance_max_frac=args.seat_balance_max_frac,
             per_seat_adv_norm=args.per_seat_adv_norm,
+            wolf_seat_weight=args.wolf_seat_weight,
+            wolf_power=args.wolf_power,
+            wolf_ema_games=args.wolf_ema_games,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,

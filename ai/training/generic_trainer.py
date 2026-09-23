@@ -1202,6 +1202,9 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         # not suffered.
         "opponent_pool": (trainer.opponent_pool.state_dict()
                           if getattr(trainer, "opponent_pool", None) is not None else None),
+        # --wolf-seat-weight's running self-play share; a resumed run would otherwise restart it
+        # at an even split and weight both seats equally until it relearned the imbalance.
+        "wolf_sp_ussr": float(getattr(trainer, "wolf_sp_ussr", 0.5)),
     }, path)
 
 
@@ -1225,6 +1228,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
     trainer.total_env_steps = int(blob["total_env_steps"])
     if hasattr(trainer, "total_iterations"):
         trainer.total_iterations = int(blob.get("total_iterations", 0))
+    if hasattr(trainer, "wolf_sp_ussr"):
+        trainer.wolf_sp_ussr = float(blob.get("wolf_sp_ussr", 0.5))
     recorded_seed = blob.get("seed", None)
     reseed = seed is not None and (recorded_seed is None or int(recorded_seed) != int(seed))
     if reseed:
@@ -1324,6 +1329,9 @@ def train_pipeline(
     seat_balance: bool = False,
     seat_balance_max_frac: float = 0.8,
     per_seat_adv_norm: bool = False,
+    wolf_seat_weight: bool = False,
+    wolf_power: float = 1.0,
+    wolf_ema_games: float = 2000.0,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
@@ -1508,6 +1516,9 @@ def train_pipeline(
         "seat_balance": bool(seat_balance),
         "seat_balance_max_frac": float(seat_balance_max_frac),
         "per_seat_adv_norm": bool(per_seat_adv_norm),
+        "wolf_seat_weight": bool(wolf_seat_weight),
+        "wolf_power": float(wolf_power),
+        "wolf_ema_games": float(wolf_ema_games),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
         "merged_influence_from_step": int(merged_from_step),
@@ -1652,6 +1663,9 @@ def train_pipeline(
         rollout_temps=rollout_temps,
         merged_influence=merged_influence,
         per_seat_adv_norm=per_seat_adv_norm,
+        wolf_seat_weight=wolf_seat_weight,
+        wolf_power=wolf_power,
+        wolf_ema_games=wolf_ema_games,
         device=dev,
     )
 
@@ -1785,6 +1799,9 @@ def train_pipeline(
               + (f", seat-balance=on (max frac {seat_balance_max_frac})" if seat_balance else ""))
     if per_seat_adv_norm:
         print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
+    if wolf_seat_weight:
+        print(f"[wolf] per-seat surrogate weights from the self-play USSR share: power={wolf_power}, "
+              f"memory={wolf_ema_games:g} games (--wolf-seat-weight)", flush=True)
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]
@@ -2024,7 +2041,8 @@ def train_pipeline(
         # question every collapse raises -- is the losing seat still getting a signal? -- could
         # not be answered from any run's log.
         for _sk in ("adv_mean_us", "adv_mean_ussr", "adv_std_us", "adv_std_ussr",
-                    "adv_n_us", "adv_n_ussr", "entropy_us", "entropy_ussr"):
+                    "adv_n_us", "adv_n_ussr", "entropy_us", "entropy_ussr",
+                    "wolf_sp_ussr", "wolf_w_us", "wolf_w_ussr"):
             if _sk in iteration_metrics:
                 step_metrics[_sk] = float(iteration_metrics[_sk])
         # Auxiliary losses only where the term that produces them is switched on. Logged

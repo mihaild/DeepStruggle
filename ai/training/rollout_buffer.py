@@ -556,6 +556,9 @@ class RolloutBuffer:
 
         Elements 10 and 11 are P15-X4b's search target and the flag for where it exists. They are
         appended rather than inserted so that positional unpacking of the first nine is unchanged.
+
+        Element 12 is the acting seat (+1 US, -1 USSR), for per-seat loss weighting
+        (--wolf-seat-weight). Appended last for the same reason.
         """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
@@ -571,6 +574,7 @@ class RolloutBuffer:
         flat_learner = self.learner.view(total_steps)
         flat_search_pi = self.search_pi.view(total_steps, self.action_dim)
         flat_has_search = self.has_search.view(total_steps)
+        flat_players = self.players.view(total_steps)
 
         for start_idx in range(0, total_steps, batch_size):
             batch_idx = indices[start_idx : start_idx + batch_size]
@@ -586,5 +590,6 @@ class RolloutBuffer:
                 flat_learner[batch_idx],
                 flat_search_pi[batch_idx],
                 flat_has_search[batch_idx],
+                flat_players[batch_idx],
             )
 

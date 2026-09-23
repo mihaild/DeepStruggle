@@ -226,6 +226,14 @@ of a run without them are unchanged:
 * `--per-seat-adv-norm` normalises each seat's advantages by that seat's own mean and std, instead
   of one shared mean and std. The losing seat's smaller spread then keeps unit scale rather than
   being divided down by the winning seat's.
+* `--wolf-seat-weight` ("win or learn fast") scales each seat's PPO surrogate so the winning seat
+  learns slowly and the losing seat fast:
+  * x is an exponential average of the USSR's win share in pure self-play games. Its memory is
+    `--wolf-ema-games`, 2000 games by default.
+  * The weights are w_us = 2x^p / (x^p + (1−x)^p) and w_ussr = 2(1−x)^p / (x^p + (1−x)^p),
+    with p = `--wolf-power`. At p = 1 that is simply 2x and 2(1−x).
+  * The entropy bonus, the KL to π_ref and the value loss are not weighted.
+  * Logged as `wolf_sp_ussr`, `wolf_w_us` and `wolf_w_ussr`, and carried in the resume state.
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and

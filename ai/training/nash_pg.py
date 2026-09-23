@@ -75,6 +75,31 @@ def filter_search_visits(
     return pairs, dropped
 
 
+def wolf_seat_weights(sp_ussr: float, power: float = 1.0) -> Tuple[float, float]:
+    """Per-seat policy-gradient weights (w_us, w_ussr) from the USSR's self-play win share.
+
+    "Win or learn fast" (Bowling & Veloso, 2002): the seat that is winning learns slowly, and the
+    seat that is losing learns fast. With x the USSR's share, the USSR's weight goes as
+    (1 - x)^p and the US's as x^p, normalised so the two average 1:
+
+        w_us = 2 x^p / (x^p + (1-x)^p),   w_ussr = 2 (1-x)^p / (x^p + (1-x)^p)
+
+    At p = 1 this is exactly w_us = 2x and w_ussr = 2(1 - x). At an even split both are 1. The
+    ratio between the seats is (x / (1-x))^p, so p < 1 softens it. x is clipped to [0.01, 0.99]
+    only so that neither weight reaches exactly zero.
+    """
+    x = min(0.99, max(0.01, float(sp_ussr)))
+    a = x ** float(power)
+    b = (1.0 - x) ** float(power)
+    return 2.0 * a / (a + b), 2.0 * b / (a + b)
+
+
+def wolf_sample_weights(players: torch.Tensor, w_us: float, w_ussr: float) -> torch.Tensor:
+    """Each sample's surrogate weight from its acting seat: +1 US, -1 USSR, anything else 1."""
+    ones = torch.ones(players.shape, dtype=torch.float32, device=players.device)
+    return torch.where(players == 1, ones * w_us, torch.where(players == -1, ones * w_ussr, ones))
+
+
 class FixedEntropyProbe:
     """A frozen pool of (observation, action-mask) pairs for drift-free entropy tracking.
 
@@ -188,6 +213,9 @@ class BaseNashPGTrainer:
         rollout_temps: Optional[Sequence[float]] = None,
         merged_influence: bool = False,
         per_seat_adv_norm: bool = False,
+        wolf_seat_weight: bool = False,
+        wolf_power: float = 1.0,
+        wolf_ema_games: float = 2000.0,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -309,6 +337,20 @@ class BaseNashPGTrainer:
             device=self.device,
         )
         self.buffer.per_seat_adv_norm = bool(per_seat_adv_norm)
+        #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
+        #: an exponential average of the USSR's win share in pure self-play games (both seats the
+        #: current policy). The entropy bonus, the KL to pi_ref and the value loss are left
+        #: unweighted, so on the losing seat the policy gradient gains on the entropy bonus, and
+        #: the winning seat is held closer to pi_ref. Off by default, and off leaves the update
+        #: untouched.
+        self.wolf_seat_weight = bool(wolf_seat_weight)
+        self.wolf_power = float(wolf_power)
+        #: Games of memory in the average: each iteration's self-play games move it by
+        #: alpha = min(1, games / wolf_ema_games).
+        self.wolf_ema_games = float(wolf_ema_games)
+        #: The USSR's smoothed self-play win share. Starts even, and is carried in the resume
+        #: state so a resumed run does not relearn it.
+        self.wolf_sp_ussr = 0.5
 
         # Rollout temperature bands. The default four are all BELOW 1.0, so sampling is
         # softmax(logits / tau) with tau < 1 -- sharper than the policy itself, in every band.
@@ -639,6 +681,10 @@ class BaseNashPGTrainer:
 
         if self.opponent_pool is not None and self.opponent_pool.seat_balance:
             self.opponent_pool.observe_selfplay(sp_us_wins, sp_games)
+        if self.wolf_seat_weight and sp_games > 0:
+            _alpha = min(1.0, sp_games / self.wolf_ema_games)
+            self.wolf_sp_ussr = ((1.0 - _alpha) * self.wolf_sp_ussr
+                                 + _alpha * (1.0 - sp_us_wins / sp_games))
 
         steps_collected = self.buffer_size * self.num_envs
         self.total_env_steps += steps_collected
@@ -652,6 +698,11 @@ class BaseNashPGTrainer:
             "completed_episodes": completed_episodes,
         }
         metrics.update(self.buffer.diagnostics())
+        if self.wolf_seat_weight:
+            _w_us, _w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power)
+            metrics["wolf_sp_ussr"] = self.wolf_sp_ussr
+            metrics["wolf_w_us"] = _w_us
+            metrics["wolf_w_ussr"] = _w_ussr
         for _code, _tag in ((1, "us"), (-1, "ussr")):
             _n = float(seat_entropy_n[_code].item())
             if _n > 0:
@@ -903,10 +954,12 @@ class NashPGTrainer(BaseNashPGTrainer):
         old_lp_min_accum = 1e30         # how negative a stored log-prob actually gets
         ratio_negadv_max_accum = 0.0    # the dangerous combination, on its own
         num_updates = 0
+        wolf_w_us, wolf_w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power)
 
         for _ in range(self.num_epochs):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
-                 b_defcon_risk, b_learner, b_search_pi, b_has_search) in self.buffer.get_batches(
+                 b_defcon_risk, b_learner, b_search_pi, b_has_search,
+                 b_players) in self.buffer.get_batches(
                      self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
@@ -957,6 +1010,11 @@ class NashPGTrainer(BaseNashPGTrainer):
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)
+                if self.wolf_seat_weight:
+                    # WoLF: the winning seat's surrogate is scaled down and the losing seat's
+                    # up (see wolf_seat_weights). Only the surrogate; see __init__.
+                    surrogate = surrogate * wolf_sample_weights(
+                        b_players, wolf_w_us, wolf_w_ussr).to(surrogate.dtype)
                 # A frozen opponent's actions are part of the environment, not of the policy
                 # being trained: they are stored so GAE stays a recursion over consecutive
                 # steps, but they must not pull on the policy. Without a pool this is all ones
