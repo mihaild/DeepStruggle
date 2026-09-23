@@ -1,4 +1,6 @@
-# P25 stress bench: three anti-collapse levers on the λ 0.99 recipe
+# P25 stress bench: anti-collapse levers on the λ 0.99 recipe
+
+> **Step 3b (WoLF seat weights, E4-38) is at the end.** It is the only lever with no collapse on either seed, but as built it fails on strength on seed 5 (−105), because it held the policy's entropy up.
 
 **2026-09-23. No lever passes on both seeds with a real gain.** Seat balancing is the only one that
 helped at all: on seed 5 it both held the collapse off and was much stronger, +151, but on seed 3
@@ -97,3 +99,77 @@ E4-36-03 the USSR sharpened while the US kept learning: USSR entropy fell from 1
 US entropy held at ~1.75. The next lever should act on the winning seat directly. The owner's
 proposal of per-seat gradient weights driven by the self-play win rate, a WoLF-style
 variable-rate rule, does that.
+
+## Step 3b: WoLF seat weights (E4-38), 2026-09-23
+
+`--wolf-seat-weight` at power 1, on the same recipe: each seat's PPO surrogate is scaled by
+w_us = 2x and w_ussr = 2(1−x), with x the USSR's smoothed pure-self-play share. **As built, only
+the surrogate was weighted**, not the entropy bonus, the KL to π_ref or the value loss.
+`launch_flags.py --diff` against E4-27 on each seed shows `--wolf-seat-weight` and `--train-steps`
+only.
+
+### Collapse half: passes on both seeds, with the widest margin on the bench
+
+| run | 0–60M, by 5M (logged USSR share) | peak | buckets ≥ 0.9 |
+|:---|:---|---:|:---|
+| E4-38-03 | .49 .46 .40 .68 .67 .57 .57 .58 .65 .61 .60 .47 | 0.68 | none |
+| E4-38-05 | .52 .66 .71 .52 .47 .35 .64 .67 .69 .71 .62 .46 | 0.71 | none |
+
+The seats' entropies stayed level throughout, and `adv_std_raw` held at 0.32–0.35, where the
+controls fell to 0.15–0.25. Seed 5 swung between the seats, from 0.35 to 0.71 USSR, as the
+weights flipped between 1.43/0.57 and 0.66/1.34.
+
+### Strength half: +62..+131 on seed 3, −45..−105 on seed 5
+
+Two rounds, both at 100 games per side per pair, temperature 0:
+* `data/reports/p25_bench_60M_wolf.{md,json}`: the whole bench plus the references at 60M, 13
+  players.
+* `data/reports/p25_wolf_50_60M.{md,json}`: both WoLF runs and both controls at 50, 55 and 60M,
+  so that one snapshot cannot decide it.
+
+The second round:
+
+| seed | step | WoLF Elo | control Elo | Δ | WoLF vs control (as USSR / as US) | WoLF vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|---:|
+| 3 | 50M | 1801 | 1739 | +62 | 81 / 43 | 19 / 14 |
+| 3 | 55M | 1789 | 1725 | +64 | 88 / 42 | 16 / 22 |
+| 3 | 60M | 1840 | 1709 | **+131** | 89 / 48 | 12 / 29 |
+| 5 | 50M | 1626 | 1672 | −45 | 72 / 14 | 5 / 11 |
+| 5 | 55M | 1633 | 1715 | −82 | 52 / 22 | 4 / 9 |
+| 5 | 60M | 1638 | 1743 | **−105** | 70 / 3 | 2 / 7 |
+
+In the 13-player field, E4-38-03@60M rates +82 over E4-27-03@60M and E4-38-05@60M rates −115
+under E4-27-05@60M. Seat balancing (E4-36-05) is the strongest bench run in both fields.
+
+### Why: the brake became an entropy push
+
+Mean policy entropy by 10M bucket, 0–60M, and the fixed-probe entropy over 50–60M:
+
+| run | entropy by 10M bucket | fixed probe |
+|:---|:---|---:|
+| E4-38-03 (WoLF) | 1.70 1.71 1.74 1.71 1.74 1.81 | 1.33 |
+| E4-38-05 (WoLF) | 1.77 1.70 1.68 1.76 1.80 1.75 | **1.55** |
+| E4-27-03 (control) | 1.74 1.70 1.69 1.64 1.53 1.55 | 1.01 |
+| E4-27-05 (control) | 1.80 1.77 1.78 1.75 1.66 1.60 | 1.24 |
+| E4-36-03 (seat balancing) | 1.65 1.59 1.48 1.32 1.23 1.08 | 0.84 |
+| E4-36-05 (seat balancing) | 1.74 1.72 1.70 1.48 1.39 1.15 | 0.55 |
+| E4-08-03 (λ 0.98) | 1.56 1.41 1.37 1.51 1.50 1.39 | 1.12 |
+| E4-08-05 (λ 0.98) | 1.65 1.43 1.45 1.39 1.36 1.40 | 0.80 |
+
+**The WoLF runs never sharpen.** Their entropy is flat at ~1.75 for all 60M, where every other run's
+falls.
+
+The cause is the design choice to weight the surrogate alone. On the down-weighted seat, the
+unweighted entropy bonus gains on the policy gradient, so that seat is not merely slowed but pushed
+toward uniform. When the weights oscillate, as on seed 5, both seats spend time in that role.
+Their self-play stays balanced because both are held near random, and E4-38-05 is weak on both
+seats: 2–5% as USSR and 7–11% as US against the λ 0.98 recipe. It is the E4-37-03 pattern again.
+Balanced self-play is not health.
+
+### Verdict
+
+**Fails as built:** the collapse half passes on both seeds, and the strength half fails on seed 5.
+WoLF proper is a per-agent **learning rate**. The fix that matches it is to scale each seat's whole
+policy objective by its weight: surrogate, entropy bonus and KL to π_ref together. Then the
+winning seat learns more slowly without its balance tipping toward entropy. Implementing that as
+an option, and testing it on the same bench, needs the owner's go-ahead.
