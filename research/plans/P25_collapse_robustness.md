@@ -1,6 +1,6 @@
 # P25 — a training process that gives the same quality on any seed
 
-**Status:** running. Steps 0–2 are implemented (`9c49329`). The step-3 stress bench is done ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)): no lever passes on both seeds with a gain. Seat balancing is partial: +151 and no collapse on seed 5, level and borderline (0.89) on seed 3. Next is a lever that acts on the winning seat directly: per-seat gradient weights, WoLF-style (step 3b), on the bench as E4-38.
+**Status:** running. Steps 0–2 are implemented (`9c49329`). The step-3 stress bench is done ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)): no lever passes on both seeds with a gain. Seat balancing is partial: +151 and no collapse on seed 5, level and borderline (0.89) on seed 3. Next is a lever that acts on the winning seat directly: per-seat gradient weights, WoLF-style (step 3b), on the bench as E4-38. **Added 2026-09-23:** three levers that act on the loop itself — an advantage-normaliser floor (3c), a per-seat entropy target (3d) and a KL target with per-seat early stopping (3e) — a seat-gated rescue distillation (3f), and step 5 rewritten as a codified rewind-and-gating rule. Rationale in *The mechanism, revised*.
 **Needs approval:** none of it touches `engine/` or the observation. The later steps (4–6) come
 back for approval with the bench's result.
 
@@ -41,6 +41,27 @@ the two seats' spreads stay equal. The rest of the loop stands.
 Recovery happens when something restores the losing seat's advantage spread. That is why
 `adv_std_raw` returning is the only thing measured at onset that predicts recovery.
 
+### The mechanism, revised after the per-seat reading (2026-09-23)
+
+What the per-seat census actually shows is not a *starved* signal but a **signal made of
+noise**, and the code says where it is made. `rollout_buffer.normalise_advantages`
+(`ai/training/rollout_buffer.py:382`) divides every rollout's advantages by
+`(std + 1e-8)` — a per-batch normaliser with no floor. When the losing seat's games all end
+the same way, both seats' raw spread falls together (0.30 → 0.20; the critic gets *better*,
+explained variance 0.85 → 0.95), and what remains is the critic's residual error. The
+normaliser rescales that residual to unit variance and PPO consumes it at full weight, while
+the fixed entropy bonus (`ent_coef` 0.01) is the only *coherent* pressure left on the seat —
+which is why the losing seat's entropy is the one series that separates (1.9 → 2.7), and why
+`--per-seat-adv-norm` collapsed **earlier** than its control: it normalises harder.
+
+That reading changes which levers are mechanism-matched. Anything that gives the losing seat
+winnable games (step 1) or slows the winning seat (step 3b) works around the loop; steps 3c–3e
+below act on the loop itself, at the two places it closes — the normaliser and the entropy
+bonus — plus the update size that the late-dynamics arms showed brings a collapse on. They
+are the standard remedies for the same failure in adversarial training: the GAN
+vanishing-gradient literature's non-saturating losses and two-time-scale updates, and the
+PPO practice of a KL target. None has been run here.
+
 ## Steps
 
 | # | what | status |
@@ -50,9 +71,27 @@ Recovery happens when something restores the losing seat's advantage spread. Tha
 | 2 | **`--per-seat-adv-norm`**: normalise each seat by its own statistics, which removes step 3 of the loop directly. | done (`9c49329`); bench: fails (E4-35) |
 | 3 | **Stress bench**: λ 0.99 from scratch, which collapsed on 2 of 2 seeds (below). Each lever is run alone to 60M. Step 4's slow π_ref is pulled forward into it. | done: seat balancing partial, the other two fail ([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md)) |
 | 3b | **`--wolf-seat-weight`** (the owner's proposal; "win or learn fast", Bowling & Veloso 2002): scale each seat's PPO surrogate by w_us = 2x, w_ussr = 2(1−x) at power 1, with x the USSR's smoothed pure-self-play share. It acts on the *winning* seat, which the bench showed seat balancing leaves at full speed. Only the surrogate is weighted, so the losing seat's gradient gains on the entropy bonus and the winning seat is held closer to π_ref. Scaling a seat's gradient changes its speed, not where it stops, so it does not bias a game whose equilibrium is not 50/50. | implemented; E4-38-03/05 on the bench |
+| 3c | **`--adv-norm-floor`**: floor the advantage normaliser. Divide by `max(batch_std, c · EMA_std)` with the EMA taken over the run (c ≈ 0.5 as the first cell; a fixed minimum is the fallback cell), so a vanished signal stays *small* instead of being rescaled to unit noise. The opposite direction from step 2, which is why that one collapsed earlier. Post-normalisation `adv_std` is then allowed to fall below 1, and `adv_std_raw` keeps its meaning. Alternative form, same intent: normalise returns (PopArt) and leave advantages raw — second cell only if the floor is null. | queued for the bench |
+| 3d | **`--entropy-target`**: replace the fixed bonus by an auto-tuned coefficient toward a per-seat target entropy (SAC-style dual variable; bonus becomes a penalty above target). Target from the run's own healthy window (~1.9–2.1 nats on the bench). Breaks steps 4–5 of the loop directly — the losing seat cannot inflate to 2.7 — and is the same lever the *other* failure mode, entropy inflation ([`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md)), calls for. A cheaper variant if the dual is unstable: scale `ent_coef` by the batch's pre-normalisation advantage magnitude, so the bonus cannot dominate a dead signal. | queued for the bench |
+| 3e | **`--target-kl`** with per-seat early stopping: stop a seat's PPO epochs when its approximate KL to the rollout policy exceeds the target (adaptive β is the alternative). `nash_pg.py` has `clip_eps` and η but no KL target; every late collapse in the census followed a looser update (λ 0.99, π_ref 100k, η 0.05), and the late arms showed damping helps. This makes tightness respond to the seat that is moving too fast instead of being a global schedule. Complements 3b: WoLF scales the surrogate, this bounds the step. | queued for the bench |
+| 3f | **Rescue distillation**: search CE targets *only* for the losing seat's decisions and *only* while that seat's frozen-anchor win rate is below a threshold. Search distillation is the one intervention with zero episodes in 2 of 2 arms across the collapse window ([`../log/E4_search_distillation.md`](../log/E4_search_distillation.md)) at ~40× per-step cost; gating it by seat and by alarm bounds the cost to the episode. Run only if 3b–3e leave a seed collapsing. | after 3c–3e |
 | 4 | Slow π_ref as a schedule (5M after a switch point). It won late and lost from scratch ([`../log/E4_late_dynamics.md`](../log/E4_late_dynamics.md)). | after 3 |
-| 5 | An auto-rewind supervisor: roll back to the last healthy snapshot under a new seed when a collapse does not recover within N steps. Branches from inside a pin escape 2 of 2 times ([`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)). | a safety net, after 3 |
+| 5 | **Codified rewind + pool gating** — a *rule*, not a safety net. (a) Trigger on the arbiter, not on the share: the losing seat's win rate against the frozen anchor pair below θ for N consecutive snapshots **and** `adv_std_raw` not recovered to the run's healthy band (the census shows the λ 0.99 collapses sit at 0.12, invisible to a fixed `adv_std_raw` threshold alone). (b) Action: resume from the last snapshot that passed, with `--seed-sampling` advanced by a fixed rule; branches from inside a pin escaped 2 of 2 ([`../log/E4_collapse_is_recoverable.md`](../log/E4_collapse_is_recoverable.md)). (c) **Pool gating**: a snapshot is admitted to the opponent pool only if it passes the same per-seat check, so the pool never fills with copies of the collapsed self (AlphaZero-style gating). Because trigger, action and cadence are fixed in advance and driven by the seed, the run stays reproducible and no data is discarded by hand — the objection to "watching seeds" is answered by making the selection part of the algorithm (PBT's exploit step, OpenAI Five's rollback), not by removing it. | implement after 3; on by default for step 6 |
 | 6 | **Acceptance**: the chosen recipe on 6 seeds, unattended, to 160M, with the Elo spread across seeds reported. | after 3–5 |
+
+**Bench cost.** M2d runs at ~50,000 steps/s, so a 60M bench arm is ~20 minutes and a full 3c–3e
+screen (three levers × two seeds) is about two hours of GPU, plus the combined cell. The order
+is 3c and 3d first (each acts on a closing point of the loop), 3e alongside 3b, and the
+combination of whatever passes.
+
+**Predictions, written before the bench.** 3c: the losing seat's per-seat entropy stops rising
+and its post-normalisation `adv_std` reads well below 1 during the episode; collapse depth
+shallower, recovery earlier, no strength cost on the winning seat. 3d: entropy pinned near
+target on both seats; if the collapse still enters, the loop is not entropy-driven and 3d is
+kept only for the inflation mode. 3e: fewer episodes on the λ 0.99 bench specifically, since
+that bench is a loosened update. If 3c and 3d both pass, the P25 hypothesis as revised above is
+confirmed; if neither moves anything, the noise-amplification reading is wrong and 3f/step 5
+carry the plan.
 
 This comes before [P24](P24_league.md) and before any long run. A league trained on a process
 that collapses would inherit its seed lottery.

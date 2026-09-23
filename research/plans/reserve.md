@@ -32,11 +32,23 @@ last-iterate-convergent update rules; deeper surgery than a flag, so it waits fo
 that the anchor family is the right one but insufficient.
 
 ## Per-side capacity
-**Trigger:** P15-X1 shows a response exists but side-conditioned policy quality keeps
-collapsing on one side while the capability is measurably in the weights (the P10
-observation: 0.15 vs 0.04 mass on the same contested-battleground play depending on
-perspective). Options: side-specific adapters or heads, or a side-conditioned trunk film
-layer — an architecture change, so it queues behind the dynamics fixes.
+**Trigger, revised 2026-09-23:** the P25 bench shows the winning seat sharpening inside the
+shared network while the losing seat is still learning (E4-36-03), every E4 collapse loses the
+same seat, and E3 X1 measured a seat with no gradient decaying 50% → 7% in 40M. Promoted into
+[P24](P24_league.md) as the *per-seat main agents* design question; what stays here is the
+standalone arm — side-specific adapters or heads on the shared trunk, or a side-conditioned
+film layer — triggered if P25's signal-side levers (3c–3e) leave a seed collapsing *and* P24 is
+not yet running. An architecture change, so behind the dynamics fixes.
+
+## Board handicap curriculum for the weak seat
+**Trigger:** P25 steps 3–5 and P24 all leave the US seat unable to hold 50% against frozen
+anchors from scratch. The textbook asymmetric-game answer (KataGo's handicap training): give
+the weak seat a small *board* handicap at setup — extra influence, never VP, since 95.5% of
+endings sit at |VP| = 20 and a scoreboard komi does not port
+([restoring_advantage_signal](../archive/E3_ladder/plans/restoring_advantage_signal.md)) — and
+anneal it to zero as that seat's frozen-anchor win share rises. It shifts the state
+distribution while on and is an **engine change**, so it is last and needs approval; the
+E3 start-pool result (−115 Elo from a bad allocation) is the caution on how it is metered.
 
 ## Voice of America exposure probe
 **Trigger:** the agent contests battlegrounds — empty battlegrounds at turn 8 down from 6.2 of 29
