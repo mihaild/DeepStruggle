@@ -39,8 +39,9 @@ Each snapshot is rated in its own small field against the control at the same st
 | 180M | 2222.6 | 2156.6 | **+66.0** | 66 / 62 | 70 / 61 | 80 / 72 |
 | 185M | 2241.3 | 2116.0 | **+125.3** | 74 / 70 | 71 / 64 | 80 / 83 |
 | 190M | 2239.1 | 2044.9 | **+194.2** | 77 / 75 | 80 / 67 | 82 / 68 |
+| 195M | 2228.7 | 2060.4 | **+168.3** | 72 / 73 | 77 / 63 | 75 / 85 |
 
-**Six of six snapshots beat the step-matched control on both seats.** The 185–190M gaps are
+**Seven of seven snapshots beat the step-matched control on both seats.** The 185–190M gaps are
 wider because the control is sliding into its 200M dip: `E4-08-03@190M` rates below its own 160M
 start. Against the fixed 160M start the arm holds or improves, 77 / 64 at 165M and 80 / 67 at 190M.
 Search distillation rides through the control's dip.
