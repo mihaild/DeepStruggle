@@ -128,3 +128,34 @@ P17 went from plan to validated strength in one day on a larger change.
 The validation arms cost ~2 × 80M warm-started steps, about 1–2 GPU-hours.
 
 ## Runs (filled in while running)
+
+**2026-09-23, stages 1–4 done.**
+
+* **Frozen stream:** 200 games, 27,325 decisions (`/workspace/data/p23_e4_baseline.jsonl.gz`,
+  digest `1c609f72`). With the view off, the E4.1 build reproduces it with **0 divergences**.
+* **Census (2,000 random games):** after `OPS_INFLUENCE` the next decision is the same player's
+  placement in 61,862 of 61,863 cases, always with at least one country. `CONFIRM_DONE` (an early
+  stop) is offered there **every time**, so the merged view keeps "influence, place nothing" as
+  `OPS_INFLUENCE` rather than losing it. The exception is a pre-existing E4 dead end, UN
+  Intervention played for Ops (`engine/AGENTS.md` §9a), reported and unfixed. The merged view does
+  not offer influence there and calls `report_anomaly`; it fires a few times a minute in training.
+* **Implementation `d6c89ad`:**
+  * `tests/bindings/test_merged_influence.py`: mask equality, and byte-identical states for more
+    than 5,000 composed actions.
+  * 378 C++ tests, 2,000 fuzz games and 1,772 backend tests pass; pyrefly 0 errors.
+* **Warm start measured (`tools/scripts/merged_view_warmstart.py`):** on E4-08-03@160M the raw
+  merged-view policy puts **1.00** of its op-choice mass on influence, against the **0.38** its own
+  E4 policy implies. KL 16.4, top-1 agreement 22%. The owner predicted this.
+
+**Change to stage 5: the A/B runs from scratch, not warm-started.** Warm-started, the arm would
+first have to recover from that initial policy, and the comparison would measure the recovery as
+much as the view. A distillation fix means a new target source in the trainer (no side scripts,
+invariant 9). From scratch needs no new code and is the ladder's standard adoption test:
+`E4.1-01-03` against `E4-08-03@80M` and `E4.1-01-05` against `E4-08-05@80M`. Their flags differ
+only in `--merged-influence`, plus the explicitly recorded seeds and resume cadence. Converting
+existing checkpoints waits on the verdict.
+
+| arm | directory | status |
+|:---|:---|:---|
+| E4.1-01-03 | `E4.1-01-03_20260923_104252` | running |
+| E4.1-01-05 | — | queued behind it |
