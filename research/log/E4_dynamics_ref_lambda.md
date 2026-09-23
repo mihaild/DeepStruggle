@@ -90,8 +90,28 @@ The setup-critic probe (`ai/eval/setup_critic.py`, reports `data/reports/E4-2{6,
 | 6 | HeuristicBot | 1500.0 | 6 / 0 | 1 / 1 |
 
 **−68.2 Elo at 80M, losing both seats.** With seed 3's −168.0 the slow anchor loses at 80M on
-both seeds, which rejects it under the adoption rule outright. Only its 160M snapshot is still to
-come.
+both seeds, which rejects it under the adoption rule outright.
+
+### …and does not catch up by 160M
+
+`E4-26-05` finished 160M (`data/reports/E4_dynamics_s5_160M.{md,json}`, a separate field, so its
+80M rating differs from the table above):
+
+| # | model | Elo | vs E4-08-05@160M | vs E4-08-05@80M | vs anchor E4-03-01@80M |
+|---:|:---|---:|---:|---:|---:|
+| 1 | E4-08-05@160M | 2194.3 | — | 74 / 59 | 60 / 63 |
+| 2 | **E4-26-05@160M** | **2135.7** | 56 / 25 | 76 / 71 | 34 / 71 |
+| 3 | E4-08-05@120M | 2133.6 | 46 / 30 | 64 / 52 | 49 / 57 |
+| 4 | E4-03-01@80M | 2114.3 | 37 / 40 | 52 / 65 | — |
+| 5 | E4-26-05@120M | 2096.6 | 43 / 22 | 57 / 65 | 39 / 59 |
+| 6 | E4-08-05@80M | 2028.7 | 41 / 26 | — | 35 / 48 |
+| 7 | E4-26-05@80M | 1935.4 | 27 / 11 | 47 / 40 | 14 / 31 |
+| 8 | HeuristicBot | 1500.0 | 2 / 4 | 6 / 0 | 1 / 1 |
+
+Against seed-matched M2d: **−93.3 at 80M, −37.0 at 120M, −58.6 at 160M**. Its 80→160M slope is
++200.3 against the control's +165.6, so it closes some of the gap, but not all of it. At 160M the
+head-to-head is split by seat: it wins 56% as USSR and only 25% as US.
+The slow anchor's one open outcome, ending higher after starting slower, does not happen by 160M.
 
 ## Reading
 
