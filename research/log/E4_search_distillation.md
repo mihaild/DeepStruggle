@@ -1,6 +1,7 @@
-# E4-28-03 — online search distillation on M2d
+# E4-28 — online search distillation on M2d
 
-**Running; updated per snapshot.** P15-X4b, re-run on E4: an honest searcher answers 1 in 8 of
+Two arms, `E4-28-03` (seed 3, from 160M) and `E4-28-05` (seed 5, from 80M), run overnight
+2026-09-22/23 and still training when this was written. P15-X4b, re-run on E4: an honest searcher answers 1 in 8 of
 all decisions during RL, and its visit distribution enters the loss as a cross-entropy term.
 **Search produces targets and never acts**, so rollouts are the policy's own.
 
@@ -36,7 +37,6 @@ Each snapshot is rated in its own small field against the control at the same st
 | 170M | 2225.6 | 2155.8 | **+69.8** | 61 / 62 | 75 / 64 | 77 / 66 |
 | 175M | 2248.7 | 2194.8 | **+53.9** | 59 / 61 | 75 / 54 | 83 / 74 |
 | 180M | 2222.6 | 2156.6 | **+66.0** | 66 / 62 | 70 / 61 | 80 / 72 |
-
 | 185M | 2241.3 | 2116.0 | **+125.3** | 74 / 70 | 71 / 64 | 80 / 83 |
 | 190M | 2239.1 | 2044.9 | **+194.2** | 77 / 75 | 80 / 67 | 82 / 68 |
 
