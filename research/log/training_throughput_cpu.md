@@ -124,6 +124,32 @@ step on CUDA against the previous commit, using `/workspace/data/logs/perf/train
 * **Thread count:** superseded by passive waiting, which takes the CPU down further (~1.6 cores)
   at full speed, without capping the threads the parallel loops can use.
 
+### Open issue: a two-process stall at ~76M (E4-42), not reproduced
+
+**2026-09-24, 01:08–01:52.** E4-42-03 and E4-42-05 ran concurrently: WoLF on the λ 0.98 recipe,
+CUDA graphs on, 80M budget.
+* **The slowdown:** right after its 75M snapshot, E4-42-05 dropped from ~40k to a steady 13k steps/s.
+  In the same minutes E4-42-03 rose from ~40k to 60–70k, as if given more of the GPU.
+* **The stall:** E4-42-03 then stopped writing at 01:09:57 (77.59M) and E4-42-05 at 01:11:52
+  (~76.2M). Both processes were alive, with the main thread running and the GPU at 100%
+  utilisation but only 94 W. Neither logged a warning or an error.
+* **The loss:** they were stopped at 01:52.
+
+What is known:
+* **Not deterministic in the state.** E4-42-03 resumed from its 75M state ran to 90M without
+  stalling, once with CUDA graphs and once with `--no-cuda-graphs`, concurrently, in ~7 minutes
+  each (`/workspace/data/logs/perf/stall/`).
+* **CUDA graphs are cleared only by that one run.** E4-40/41 also ran with graphs, two at a time,
+  to 60M without trouble. The graphs are still the newest change, so a rare interaction is not
+  excluded.
+* **No stack was captured.** `ptrace_scope` = 1 blocks py-spy on a process it did not start, and
+  gdb is not installed.
+
+What is in place: from the v2 queue (`/workspace/data/logs/p25/launch_v2.sh`) every run starts
+with `PYTHONFAULTHANDLER=1`, and a watchdog SIGABRTs a run whose log is silent for 600 s. A repeat
+therefore leaves every thread's Python stack in its log and costs at most one 5M resume interval.
+Load at the time was two training runs, idle queue scripts and one finished tournament (00:33–00:46).
+
 ## First reading (superseded; kept for the record)
 
 
