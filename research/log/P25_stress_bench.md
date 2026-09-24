@@ -331,3 +331,33 @@ is too soft and comes too late. With the shift, a 0.90 split gets 3:1 instead of
 and on seed 5 the drift from 0.67 to 0.96 took 15M steps against that. The next variant keeps the
 dead zone but applies the full rule once outside it, a jump instead of a shift. A narrower zone is
 the other option.
+
+## Step 3e: WoLF on the normal recipe (E4-42), 2026-09-24
+
+E4-08's flags (M2d, λ 0.98, from scratch) plus `--wolf-seat-weight --wolf-scope policy` at power 1,
+seeds 3 and 5, to 80M. `launch_flags.py --diff` against E4-08-0s shows the WoLF flags only.
+
+**The legs.** Both runs stalled together at ~76–77.6M, a two-process hang that did not reproduce
+(see [`training_throughput_cpu.md`](training_throughput_cpu.md), "Open issue"). Each was then
+continued 75M → 80M from its own 75M resume state, in `E4-42-0s_20260924_02*`. On resume the pool
+dropped its initial-policy seed member, which has no snapshot on disk; the other 11 were restored.
+
+**Self-play.** The split swung more than the control's did. E4-42-03 went 0.72 → 0.81 → 0.33 → 0.29
+→ 0.66 over 10–60M, where E4-08-03 moved 0.83 → 0.89 → 0.44 on its own. It settled by 80M:
+0.60 and 0.61 USSR, with entropy 1.20 and 1.26 on level seats.
+
+**Strength:** `data/reports/p25_e442_60_80M.{md,json}`, E4-42 against E4-08 at 60, 70 and 80M on
+both seeds, plus the anchor. 100 games per side per pair.
+
+| seed | step | Δ Elo vs E4-08 | E4-42 vs E4-08 at the same step (as USSR / as US) |
+|---:|:---|---:|---:|
+| 3 | 60M | +34 | 64 / 47 |
+| 3 | 70M | −36 | 47 / 44 |
+| 3 | 80M | −5 | 40 / 48 |
+| 5 | 60M | −105 | 26 / 43 |
+| 5 | 70M | −10 | 60 / 40 |
+| 5 | 80M | +33 | 63 / 53 |
+
+**WoLF is strength-neutral on the normal recipe by 80M:** −5 and +33, and level per seat. There was
+no early collapse to prevent on these seeds, so this measures only its cost, and at 80M there is
+none. The −105 on seed 5 at 60M closed by 70M.
