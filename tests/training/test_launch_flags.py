@@ -74,3 +74,12 @@ def test_every_training_setting_is_recorded_by_the_trainer() -> None:
         written |= set(lf._LADDER.values())
     missing = sorted(set(lf._defaults()) - written - set(lf.UNCHECKED_BY_DESIGN))
     assert not missing, f"train.py flags the trainer never records in metadata.json: {missing}"
+
+
+def test_runs_before_tf32_and_the_pool_interval_were_fp32_and_pooled_per_snapshot(tmp_path) -> None:
+    import json
+    from tools.scripts.launch_flags import recorded, unrecorded
+    (tmp_path / "metadata.json").write_text(json.dumps({"snapshot_every_steps": 5_000_000}))
+    rec = recorded(str(tmp_path))
+    assert rec["tf32"] is False and rec["pool_every_steps"] == 5_000_000
+    assert "tf32" not in unrecorded(str(tmp_path))

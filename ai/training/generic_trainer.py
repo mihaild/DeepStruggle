@@ -1365,7 +1365,7 @@ def train_pipeline(
     max_snapshot_opponents: int = 4,
     snapshot_every_steps: int = 10_000_000,
     pool_every_steps: int = 5_000_000,
-    tf32: bool = False,
+    tf32: bool = True,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
     num_envs: int = 512,

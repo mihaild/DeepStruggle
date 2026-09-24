@@ -266,9 +266,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "the lineage's rate; it used to be tied to the snapshot interval, "
                              "and E3-22-28's first attempt snapshotted every 26.7M steps against "
                              "its baseline's 5M and had to be thrown away.")
-    parser.add_argument("--tf32", action="store_true",
-                        help="TF32 matmuls (P26): ~+15%% steps/s on M2d, mean KL 1e-7 to fp32 at "
-                             "inference. Off until its A/B passes.")
+    parser.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
+                        help="TF32 matmuls (P26; default on since 2026-09-24): +15%% steps/s on "
+                             "M2d, solo or paired, with mean KL 1e-7 to fp32 at inference and no "
+                             "strength cost in a 3-seed A/B (research/log/P26_quick_screen.md). "
+                             "--no-tf32 for fp32, as every run before E4-57.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
                              "RL. A BC warmup washes out early in training; this keeps the "

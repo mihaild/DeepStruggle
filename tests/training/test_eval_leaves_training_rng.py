@@ -60,7 +60,12 @@ def test_snapshot_evaluation_is_wrapped() -> None:
     assert getattr(evaluate_and_log_snapshot, "__wrapped__", None) is not None
 
 
-def test_snapshots_every_10m_and_the_pool_every_5m_by_default() -> None:
+def test_snapshots_every_10m_the_pool_every_5m_and_tf32_by_default() -> None:
     from ai.training.train import build_parser
     a = build_parser().parse_args([])
-    assert (a.snapshot_every_steps, a.pool_every_steps, a.tf32) == (10_000_000, 5_000_000, False)
+    assert (a.snapshot_every_steps, a.pool_every_steps, a.tf32) == (10_000_000, 5_000_000, True)
+
+
+def test_tf32_can_be_turned_off() -> None:
+    from ai.training.train import build_parser
+    assert build_parser().parse_args(["--no-tf32"]).tf32 is False

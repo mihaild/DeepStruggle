@@ -47,7 +47,7 @@ pool member that falls between snapshots is written as `pool_<N>steps.pt`. A res
 files the way it finds snapshots. Tournaments, which read `snapshot_*`, ignore them. Snapshots
 moved from 5M to 10M on 2026-09-24, because at 5M evaluation cost ~17% of a run's wall time.
 
-`--tf32` turns on TF32 matmuls (P26), about +15% steps/s on M2d. It is off until its A/B passes.
+TF32 matmuls are on by default since 2026-09-24 (P26): +15% steps/s on M2d, solo or paired, and no strength cost in a 3-seed A/B (`research/log/P26_quick_screen.md`). `--no-tf32` gives fp32, which is what every run before E4-57 used. The setting is recorded in `metadata.json` as `tf32`.
 
 ### Throughput and CPU
 

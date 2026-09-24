@@ -77,10 +77,23 @@ UNCHECKED_BY_DESIGN = frozenset({
 })
 
 
+#: Settings added after runs that lack them, and the value every such run had: all training before
+#: `tf32` was recorded ran in fp32, and before `pool_every_steps` existed the pool grew at each
+#: snapshot. Filled in rather than reported as unrecorded, so a diff against an older run shows
+#: these as the real differences they are.
+_BEFORE_RECORDED = {
+    "tf32": lambda meta: False,
+    "pool_every_steps": lambda meta: meta.get("snapshot_every_steps"),
+}
+
+
 def recorded(run_dir: str) -> dict:
     """{dest: value} for every CLI setting the run's metadata records, under the CLI's own names."""
     meta, dflt = _metadata(run_dir), _defaults()
     out = {}
+    for k, known in _BEFORE_RECORDED.items():
+        if k not in meta and known(meta) is not None:
+            out[k] = known(meta)
     for k, v in meta.items():
         if k in _NOT_FLAGS:
             continue
