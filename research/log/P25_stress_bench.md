@@ -547,3 +547,47 @@ Recorded separately in [`P25_pool_resume_bug.md`](P25_pool_resume_bug.md). A res
 recent end (fixed in `3803d5d`). Rerun on a fixed pool, all three seed-5 continuations from 160M
 avoid the pin their drained twins hit. The two rated ones finish 170–390 Elo above their twins. The bench is from scratch
 and never resumes, so nothing above is affected.
+
+## Step 3j–3l, part 0: the controls, and why the bench stopped pinning (2026-09-24)
+
+The 3j–3l bench (E4-49..53, λ 0.99 from scratch, seeds 10–13, 80M) opened with its four controls.
+None pinned. Two more controls followed on seeds 3 and 5 (E4-49-03/05). These are the seeds whose
+first λ 0.99 controls, E4-27-03/05, pinned for 6 and 4 five-million-step buckets. The question was
+whether the code had changed the collapse rate.
+
+| run | 0–80M, by 5M (self-play USSR share) | peak | buckets ≥ 0.95 |
+|:---|:---|---:|---:|
+| E4-49-03 | .52 .61 .77 .75 .63 .66 .82 .87 .88 .86 .94 .92 .85 .88 .85 .76 | 0.94 | 0 |
+| E4-49-05 | .51 .61 .61 .66 .85 .69 .74 .64 .72 .63 .66 .34 .51 .70 .52 .52 | 0.85 | 0 |
+| E4-49-10 | .64 .54 .66 .69 .72 .79 .55 .65 .50 .59 .54 .62 .75 .63 .70 .50 | 0.79 | 0 |
+| E4-49-11 | .55 .40 .51 .40 .64 .55 .76 .61 .71 .77 .67 .65 .76 .88 .88 .88 | 0.88 | 0 |
+| E4-49-12 | .61 .66 .68 .73 .74 .74 .72 .77 .78 .70 .46 .48 .65 .50 .55 .59 | 0.78 | 0 |
+| E4-49-13 | .59 .52 .42 .51 .72 .67 .45 .58 .67 .47 .64 .65 .74 .63 .71 .70 | 0.74 | 0 |
+
+Seed 3 went through a long episode (40–75M at 0.86–0.94) and recovered without pinning. The
+original seed-3 control sat at 0.95–0.97 for 30M steps.
+
+**No code change caused this.** The check (`data/logs/p25b/check_commit.sh`) runs E4-27-05's
+flags for 10 iterations at a commit and compares every logged value with E4-27-05's own log:
+
+| commit | against E4-27-05 |
+|:---|:---|
+| 318f01f (E4-27-05's own) | bit-identical, so training is deterministic on this machine |
+| d6c89ad, bfbb789 (E4.1 engine), 9c49329 (per-seat signals), bfb7ace (dropped sync/refresh) | bit-identical |
+| 4124562 (masked means as sum/count) | rounding: 3.7e-9 at iteration 1, 8e-5 by iteration 3 |
+| 7766e3d (π_ref log-probs once per update) | rounding: 8.7e-10 at iteration 1 |
+| a5a8e87, 7e260ab, 2a9b5a4 (graphs, serial replay, levers off) | bit-identical to 7766e3d |
+
+Two commits change the arithmetic, both at 1e-9. The rollouts (USSR win rates) are identical
+through iteration 3, so no commit changed the game or the update. Training is chaotic: rounding
+of that size makes a different run by the third iteration.
+
+**The pin rate is a property of the recipe, and it is low.** Across all plain λ 0.99 controls:
+* pinned: 2 of 10 (E4-27-03, E4-27-05);
+* not pinned: E4-27-06/07 (to 60M); E4-49-03, 05 and 10–13 (to 80M).
+
+The old seeds pinned because of those two exact trajectories. Neither the seed number nor the
+code decides it. At about 20% per run, four seeds per arm expect about 0.8 pins in the control,
+so this bench cannot show a lever *preventing* a pin. It can measure a lever's strength cost or
+gain, and the depth and length of the episodes (such as E4-49-03's). Testing prevention needs
+about 10–15 seeds per arm, or a bench that pins more often.
