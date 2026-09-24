@@ -1435,6 +1435,7 @@ def train_pipeline(
     entropy_ceiling: float = 0.0,
     target_kl: float = 0.0,
     entropy_normalize: bool = False,
+    compile_update: str = "off",
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1638,6 +1639,7 @@ def train_pipeline(
         "entropy_ceiling": float(entropy_ceiling),
         "target_kl": float(target_kl),
         "entropy_normalize": bool(entropy_normalize),
+        "compile_update": str(compile_update),
         "cuda_graphs": bool(cuda_graphs),
         # The optimisation settings, under their CLI names so tools/scripts/launch_flags.py can
         # diff them. Until 2026-09-24 none of these was recorded, so a run launched with a
@@ -1812,6 +1814,7 @@ def train_pipeline(
         entropy_ceiling=entropy_ceiling,
         target_kl=target_kl,
         entropy_normalize=entropy_normalize,
+        compile_update=compile_update,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1967,6 +1970,9 @@ def train_pipeline(
         print(f"[P25 3k] per-seat entropy ceiling {entropy_ceiling:g} nats, one-sided: coefficient in "
               f"[-0.02, ent_coef], lr 0.01 per nat per iteration, from 5M steps (--entropy-ceiling)",
               flush=True)
+    if compile_update != "off":
+        print(f"[P26] the update's forwards run under torch.compile ({compile_update}); the "
+              f"rollout stays eager with CUDA graphs (--compile-update)", flush=True)
     if entropy_normalize:
         print(f"[entropy] the bonus rewards entropy / log(legal) per decision (--entropy-normalize), "
               f"coefficient {entropy_coef:g}", flush=True)

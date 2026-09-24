@@ -15,7 +15,7 @@ Implements:
 import copy
 import os
 import time
-from typing import Dict, List, Optional, Any, Sequence, Tuple
+from typing import Dict, List, Optional, Any, Sequence, Tuple, cast
 import numpy as np
 import torch
 import torch.nn as nn
@@ -32,6 +32,9 @@ from .graphed_forward import GraphCache
 # Fixed-probe entropy: number of (observation, mask) pairs frozen at the start of
 # training, and how often (in iterations) the probe is re-evaluated.
 ENTROPY_PROBE_SIZE = 2000
+#: --compile-update choices and the torch.compile mode each one uses (P26).
+COMPILE_UPDATE_MODES: Dict[str, str] = {"off": "", "default": "default",
+                                        "max-autotune": "max-autotune-no-cudagraphs"}
 ENTROPY_PROBE_INTERVAL = 10
 
 
@@ -265,6 +268,7 @@ class BaseNashPGTrainer:
         target_kl: float = 0.0,
         entropy_normalize: bool = False,
         cuda_graphs: bool = True,
+        compile_update: str = "off",
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -416,6 +420,17 @@ class BaseNashPGTrainer:
         self.target_kl = float(target_kl)
         #: --entropy-normalize: the bonus rewards entropy / log(legal) per decision; see bonus_entropy.
         self.entropy_normalize = bool(entropy_normalize)
+        #: P26: torch.compile for the update's forwards only (the learner's per-minibatch pass and
+        #: the pi_ref log-probs). The rollout keeps its CUDA graphs of the eager network, so dynamo
+        #: never runs inside a rollout; parameters are shared, so checkpoints are the eager
+        #: module's. Compilation reorders arithmetic: off by default until an A/B passes.
+        #: "max-autotune" is inductor's max-autotune-no-cudagraphs -- the cudagraph modes crashed
+        #: with an illegal memory access beside this trainer's own graphs.
+        if compile_update not in COMPILE_UPDATE_MODES:
+            raise ValueError(f"compile_update must be one of {sorted(COMPILE_UPDATE_MODES)}, "
+                             f"got {compile_update!r}")
+        self.compile_update = str(compile_update)
+        self._compiled_nets: Dict[int, nn.Module] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
         #: an exponential average of the USSR's win share in pure self-play games (both seats the
         #: current policy). The entropy bonus, the KL to pi_ref and the value loss are left
@@ -494,6 +509,17 @@ class BaseNashPGTrainer:
 
     def set_slice_turn_boundaries(self, slice_boundaries: bool) -> None:
         self.slice_turn_boundaries = slice_boundaries
+
+    def _update_net(self, net: nn.Module) -> nn.Module:
+        """`net` as the update calls it: compiled under --compile-update, else itself. Compiled
+        lazily and keyed by identity, so a network swapped in later is compiled on its own."""
+        if self.compile_update == "off":
+            return net
+        c = self._compiled_nets.get(id(net))
+        if c is None or getattr(c, "_orig_mod", None) is not net:
+            c = cast(nn.Module, torch.compile(net, mode=COMPILE_UPDATE_MODES[self.compile_update]))
+            self._compiled_nets[id(net)] = c
+        return c
 
     def update_reference_policy(self) -> None:
         """Updates the frozen reference anchor: π_ref^(k+1) ← π_θ^(k)."""
@@ -1149,9 +1175,11 @@ class NashPGTrainer(BaseNashPGTrainer):
         _n_all = self.buffer.buffer_size * self.num_envs
         _all_obs = self.buffer.obs.view(_n_all, self.buffer.obs_dim)
         _all_masks = self.buffer.masks.view(_n_all, self.buffer.action_dim)
+        _ref_fwd = self._update_net(self.reference_net)
+        _act_fwd = self._update_net(self.active_net)
         with torch.no_grad():
             ref_log_p_all = torch.cat([
-                F.log_softmax(self.reference_net(_all_obs[i:i + self.batch_size],
+                F.log_softmax(_ref_fwd(_all_obs[i:i + self.batch_size],
                                                  _all_masks[i:i + self.batch_size])[0], dim=-1)
                 for i in range(0, _n_all, self.batch_size)])
 
@@ -1176,7 +1204,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                         forward_with_value_logits(b_obs, b_mask))
                     cur_risk = None
                 else:
-                    cur_logits, cur_v_win, cur_v_vp = self.active_net(b_obs, b_mask)
+                    cur_logits, cur_v_win, cur_v_vp = _act_fwd(b_obs, b_mask)
                     cur_risk = None
                 cur_v_win = cur_v_win.squeeze(-1)
                 cur_v_vp = cur_v_vp.squeeze(-1)

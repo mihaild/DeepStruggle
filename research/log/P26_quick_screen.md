@@ -209,3 +209,65 @@ speeds up the two-at-a-time workload.
 1. **Inference drift:** KL 1e-7 against fp32.
 2. **Matched A/B:** level or better on 3 of 3 seeds, per seat.
 3. **Checkpoint round-trip:** TF32-trained checkpoints load and play in fp32.
+
+## TF32 is the default (`72db935`), and where throughput stands (2026-09-24)
+
+Every figure here is measured through `tools/train.py`, using `data/logs/perf/perf_run.sh`: M2d,
+512 envs, 3M steps, the opponent pool, and the median per-iteration steps/s after 0.5M steps.
+"Paired" means two runs at once, which is how the programme runs; each arm is measured.
+
+| level | code | solo steps/s | paired steps/s per arm |
+|:---|:---|---:|---:|
+| L0: before P26 | `3dcb2f2`, fp32 | 64.4k (64.9 / 63.9 / 64.3) | 39.2k (39.1 / 39.3) |
+| L1: bit-identical rollout changes | `bea6311`, `--no-tf32` | 69.7k (66.9 / 70.1 / 72.3), +8% | 41.3k (40.5 / 40.6 / 41.8 / 42.1), +5% |
+| **L2: + TF32, now the default** | `72db935` | **86.4k** (86.3 / 85.3 / 87.7), **+34%** | **48.2k** (48.3 / 48.4 / 47.9 / 48.1), **+23%** |
+| L3: + `--compile-update max-autotune` (opt-in) | this commit | 95.5k (97.3 / 93.7), +48% | 52.2k (52.2 / 52.2), +33% |
+| L3': + `--compile-update default` (opt-in) | this commit | 91.5k (92.7 / 90.3), +42% | 51.9k (51.6 / 52.2), +32% |
+
+**Evaluation overhead**, as a share of wall time in real paired runs:
+
+| snapshot interval | runs | overhead |
+|:---|:---|---:|
+| 5M | E4-08-36 | 20% |
+| 10M | E4-56/57, six runs | 7–10% |
+
+**An 80M paired run, end to end:**
+* before P26: 80M / 39.2k / 0.80, about 42.5 min;
+* now (L2 at 10M): 80M / 48.2k / 0.915, about 30 min, which is 1.41× faster;
+* with compile (L3): about 28 min, 1.52× faster.
+
+The TF32 ablation pairs themselves took 1,901–1,923 s of wall. Those were mixed pairs, one fp32
+and one TF32 run.
+
+## `torch.compile`, examined
+
+* **The "erratic rollout" was never compile.** Timed per iteration, the eager rollout is bimodal
+  as well, at 0.26 or 0.43 s. In a slow rollout every piece of CPU work doubles (buffer adds, the
+  Python loop, env stepping), while the GPU forward does not. The bench scripts omitted
+  `OMP_WAIT_POLICY=PASSIVE`, which `tools/train.py` sets before torch loads. With it unset, idle
+  OpenMP workers spin, and when one spins on the main thread's hyperthread sibling, the main
+  thread halves. Production per-iteration throughput is unimodal. Once warm, compile has 3 graphs
+  and no recompiles (`TORCH_LOGS=recompiles`).
+* **Compile belongs on the update only.** `--compile-update` compiles the learner's
+  per-minibatch forward and the π_ref log-probs, lazily and keyed by the network's identity. The
+  rollout keeps its CUDA graphs of the eager network, and the bootstrap forward stays eager, so
+  dynamo never runs inside a rollout. Parameters are shared, so checkpoints are the eager module's
+  (no `_orig_mod.` prefix).
+* **`reduce-overhead` (inductor's CUDA graphs) is out.** It raised a CUDA illegal memory access
+  beside the trainer's own graphs. `max-autotune` means `max-autotune-no-cudagraphs`.
+* **Update-phase bench** (TF32, passive OpenMP): eager 0.398 s, compile `default` 0.356 s,
+  `max-autotune` 0.341 s.
+* **Gate 1, numerics** (`data/logs/perf/p26_compile_numerics.py`, E4-08-36@80M, 4,096 real
+  observations, TF32):
+  * forward, eval mode: KL 6.5e-8 mean and 4.7e-6 max; max |Δ log p| median 1.7e-3; argmax agrees
+    on 99.98%;
+  * gradients: relative L2 difference 8.8e-4 (cos 0.9999996). That is smaller than the TF32 vs
+    fp32 difference in the same measurement (2.0e-3), which the TF32 A/B found harmless.
+  * **The comparison has to be made in eval mode.** In train mode two passes of even the *same*
+    eager network differ by ~17%, so something in the forward is stochastic in training. Any
+    train-mode comparison measures that noise, not compilation.
+* **Compile time:** the first iteration took 3–8 s here, with inductor's cache warm on this
+  machine. A cold cache costs more once, most for `max-autotune`.
+
+**Status:** compile is opt-in and passes gate 1 (numerics). Gate 2, a matched A/B like TF32's,
+has not run. Gate 3, checkpoints, holds by construction.

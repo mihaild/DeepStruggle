@@ -458,6 +458,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "more room than a few-option one (P23: E4.1's ~50-option op-mode nodes). "
                              "Same average bonus as the raw one at ~2.1x --entropy-coef on E4's "
                              "decision mix. Logged entropy stays raw.")
+    parser.add_argument("--compile-update", choices=["off", "default", "max-autotune"],
+                        default="off",
+                        help="torch.compile the PPO update's forwards (P26); the rollout keeps "
+                             "its CUDA graphs of the eager network. Reorders arithmetic, so off "
+                             "until an A/B passes. max-autotune is inductor's "
+                             "max-autotune-no-cudagraphs: longer first compile, faster kernels.")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -661,6 +667,7 @@ def main():
             entropy_ceiling=args.entropy_ceiling,
             target_kl=args.target_kl,
             entropy_normalize=args.entropy_normalize,
+            compile_update=args.compile_update,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

@@ -49,6 +49,12 @@ moved from 5M to 10M on 2026-09-24, because at 5M evaluation cost ~17% of a run'
 
 TF32 matmuls are on by default since 2026-09-24 (P26): +15% steps/s on M2d, solo or paired, and no strength cost in a 3-seed A/B (`research/log/P26_quick_screen.md`). `--no-tf32` gives fp32, which is what every run before E4-57 used. The setting is recorded in `metadata.json` as `tf32`.
 
+`--compile-update {off,default,max-autotune}` (default off) runs the PPO update's forwards under
+`torch.compile`. The rollout keeps its CUDA graphs of the eager network. It measured +10% solo
+and +9% paired with `max-autotune`, and its outputs and gradients differ from eager by less than
+TF32 does. It is opt-in until its A/B runs (`research/log/P26_quick_screen.md`). Do not use
+inductor's CUDA-graph modes: `reduce-overhead` crashed beside the trainer's own graphs.
+
 ### Throughput and CPU
 
 `tools/train.py` and `tools/tournament.py` set `OMP_WAIT_POLICY=PASSIVE` before PyTorch or the
