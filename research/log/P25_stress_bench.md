@@ -221,3 +221,70 @@ bonus. Both WoLF variants hold the self-play split near even, and both keep entr
 seed 5 both are weak. What the two variants share is that they slow whichever seat is ahead. One
 reading, untested, is that in a game whose equilibrium favours one side, slowing the winner also
 slows the policy's approach to it, which would make "balanced self-play" the wrong target.
+
+## Step 3d, part 1: WoLF at power 0.5 (E4-40), 2026-09-24
+
+E4-39's flags (λ 0.99 from scratch, `--wolf-seat-weight --wolf-scope policy`) with `--wolf-power
+0.5`: the seat ratio is (x/(1−x))^0.5, so a 90/10 split weights 3:1 instead of 9:1.
+`launch_flags.py --diff` against E4-39 on each seed shows `--wolf-power` only.
+
+### Collapse half: passes on both seeds, but swings wider
+
+| run | 0–60M, by 5M (logged USSR share) | peak | lowest after 15M | buckets ≥ 0.9 |
+|:---|:---|---:|---:|:---|
+| E4-40-03 | .52 .55 .42 .29 .37 .53 .74 .80 .78 .60 .59 .51 | 0.80 | 0.29 | none |
+| E4-40-05 | .49 .52 .51 .59 .35 .41 .67 .54 .62 .82 .75 .51 | 0.82 | 0.35 | none |
+
+The softer brake lets the lead run further before pulling it back: E4-40 spans 0.29–0.82, where
+E4-39 spanned 0.41–0.79.
+
+### Strength half: the seeds swap
+
+`data/reports/p25_e440_50_60M.{md,json}`: E4-40, E4-39 and E4-27 at 50, 55 and 60M on both seeds,
+plus E4-08-0s@60M. 20 players, 100 games per side per pair, temperature 0.
+
+| seed | step | E4-40 − E4-27 | E4-40 − E4-39 | E4-40 vs E4-27 (as USSR / as US) | E4-40 vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|
+| 3 | 50M | −169 | −194 | 41 / 8 | 8 / 6 |
+| 3 | 55M | −123 | −206 | 77 / 9 | 3 / 3 |
+| 3 | 60M | −148 | −192 | 65 / 4 | 4 / 4 |
+| 5 | 50M | +160 | +243 | 84 / 52 | 13 / 15 |
+| 5 | 55M | +109 | +195 | 86 / 43 | 16 / 25 |
+| 5 | 60M | +36 | +149 | 75 / 26 | 6 / 26 |
+
+At power 1 (E4-38, E4-39), seed 3 gained (+27 to +131) and seed 5 lost (−45 to −114). At power 0.5
+it is the other way round. **Which seed comes out ahead under WoLF looks like chance, not a property
+of the seed.** That is the seed lottery P25 exists to remove, not a cure for it.
+
+## An in-run strength signal: fixed-probe entropy
+
+The strong run of each WoLF pair is the one whose **fixed-probe entropy** fell:
+* E4-39-03 1.01 against E4-39-05 1.79;
+* E4-40-05 1.07 against E4-40-03 1.75.
+
+Fixed-probe entropy is the policy's entropy on 2,000 positions frozen at the start of the run.
+Across all 11 bench runs, strength against the control at 60M (from each run's own rating round)
+against fixed-probe entropy over 50–60M, measured relative to the same seed's control:
+
+| run | Δ Elo vs control | probe entropy | probe − control | on-policy entropy |
+|:---|---:|---:|---:|---:|
+| E4-36-05 | +151 | 0.55 | −0.69 | 1.15 |
+| E4-38-03 | +131 | 1.33 | +0.32 | 1.81 |
+| E4-39-03 | +49 | 1.01 | +0.00 | 1.72 |
+| E4-40-05 | +36 | 1.07 | −0.16 | 1.69 |
+| E4-35-03 | +24 | 0.99 | −0.02 | 1.38 |
+| E4-36-03 | +10 | 0.84 | −0.17 | 1.08 |
+| E4-37-03 | +9 | 1.39 | +0.38 | 1.79 |
+| E4-37-05 | +8 | 1.31 | +0.08 | 1.68 |
+| E4-38-05 | −105 | 1.55 | +0.31 | 1.75 |
+| E4-39-05 | −114 | 1.79 | +0.55 | 1.77 |
+| E4-40-03 | −148 | 1.75 | +0.74 | 1.84 |
+
+**Correlation −0.74** between Δ Elo and probe entropy above the control, against −0.43 for on-policy
+entropy. The one clear exception is E4-38-03 (+131 at +0.32). The on-policy figure is weaker
+because it mixes in which positions the run happens to reach. The fixed probe holds the positions
+constant.
+
+This matters for P25 beyond WoLF. **A run that has stopped sharpening on the fixed probe is a weak
+run**, and that can be read during training with no tournament. It is a candidate trigger for step
+5's auto-rewind, next to the self-play split, which catches collapses but not this failure.
