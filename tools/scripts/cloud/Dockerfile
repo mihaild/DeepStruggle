@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.14 python3.14-dev python3.14-venv \
-        build-essential cmake git rsync openssh-client ca-certificates curl \
+        build-essential clang cmake git rsync openssh-client ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/ts

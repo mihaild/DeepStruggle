@@ -26,9 +26,20 @@ pip install -r requirements.txt
 cd web/ui && npm install && npm run build && cd ../..
 
 # C++ engine + nanobind extension (root CMake orchestrates engine/ and bindings/)
+# Needs clang: apt-get install clang   (no root: tools/scripts/install_clang_userspace.sh)
 cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 ```
+
+**The engine is built with clang, and CMake refuses any other compiler.** Same sources and
+flags, clang 21 against GCC 15: about +20% on the batch runner's step + observation path and on
+raw stepping, with bit-identical games. CMake finds `clang++` by itself (including the
+`~/.local/bin` wrapper the userspace installer writes); a build directory created under GCC is
+reconfigured with clang by `tools/scripts/check_engine_fresh.sh`. The batch runner's parallel
+loops call GCC's `libgomp` directly rather than through `#pragma omp`, so the process keeps the
+one OpenMP thread pool it shares with torch -- clang's own OpenMP would add a second pool and was
+measured 5-7% *slower* on a rollout loop. `tests/bindings/test_build_toolchain.py` fails on a
+non-clang engine, on a second pool, and on loops that silently run serially.
 
 Three requirements degrade rather than break if absent: `z3-solver` (the human-log converter then
 falls back to per-turn heuristics and no longer reproduces the corpus), `tensorboard` (training
@@ -58,12 +69,16 @@ old checkpoints keep loading and running forward passes, so nothing announces th
 
 Sanitizer build (AddressSanitizer + UBSan), for engine work:
 ```bash
-cmake -B build_san -S . -DCMAKE_BUILD_TYPE=Debug \
+cmake -B build_san -S . -DCMAKE_BUILD_TYPE=Debug -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3 \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined -shared-libasan"
 cmake --build build_san -j
+ASAN_OPTIONS=detect_leaks=0 ./build_san/engine/ts_tests
+tools/scripts/run_asan.sh .venv/bin/python -m pytest -q tests/bindings   # preloads clang's ASan runtime
 ```
+`-shared-libasan` on the extension only: Python is not instrumented, so the extension uses
+compiler-rt's shared runtime, which `run_asan.sh` preloads. The executables keep the static one.
 
 ## Tests & type checking
 

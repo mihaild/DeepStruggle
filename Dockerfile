@@ -2,7 +2,7 @@ FROM nvidia/cuda:13.3.1-cudnn-runtime-ubuntu26.04
 
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-venv curl git \
-    build-essential cmake nodejs npm zsh
+    build-essential clang cmake nodejs npm zsh
 
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code

@@ -137,6 +137,8 @@ graph TD
 │   └── ...                     # random, heuristic, exploratory, strategic (DEFCON-2 containment),
 │                               # event_heavy, and human (interactive CLI) baselines
 │
+├── deploy/web/                 # Dockerfile (+ compose, README) deploying the workbench from GitHub
+│
 ├── web/                        # Web Workbench (UI + Backend Server + Bot Client)
 │   ├── bot_client.py           # WebSocket network bot runner for browser matches
 │   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (map view, HUD, tracks,
@@ -176,7 +178,8 @@ graph TD
 │       ├── check_engine_fresh.sh   # Refuses to proceed against a stale build (see 3.2)
 │       ├── train_and_tournament.sh # Unified training & tournament bash runner
 │       ├── train_direct_rl.sh  # Direct RL self-play runner
-│       └── run_asan.sh         # AddressSanitizer execution script
+│       ├── install_clang_userspace.sh  # clang without root (apt-get download + dpkg -x)
+│       └── run_asan.sh         # runs a command against build_san with clang's ASan runtime
 │
 ├── data/                       # [GIT IGNORED] Working artifacts: model checkpoints, saved
 │                               # .tslog.json game logs, and demonstration datasets
@@ -236,10 +239,16 @@ tests, together with `python -m playwright install chromium`). For a CUDA build 
 
 ### 3.2 Build C++ Engine & Nanobind Extension
 ```bash
+# Needs clang (apt-get install clang; without root: tools/scripts/install_clang_userspace.sh)
 # Standard Release Build
 cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 ```
+
+The engine is built with **clang**: the root `CMakeLists.txt` finds it and refuses any other
+compiler, and `tools/scripts/check_engine_fresh.sh` reconfigures a build directory created under
+GCC. The batch runner calls GCC's libgomp directly so it shares torch's OpenMP pool under clang
+(`bindings/AGENTS.md` §3); `tests/bindings/test_build_toolchain.py` guards both.
 
 `cmake --build` produces `build/release/ts_engine.cpython-*.so`, which is what
 `PYTHONPATH=.:build/release` imports as `ts_engine`. Note the output path: the module lands in
@@ -375,6 +384,10 @@ argmax in the model's own action view, and any move can still be made by hand. *
 other seat. The address bar always carries `game_id`, `model`, `auto` and `pos` (the position itself), updated with `replaceState`, so
 copying it shares the exact board. `$TS_ANALYSIS_DEVICE` (default `cpu`) picks the device; see
 `web/server/analysis.py` and `web/server/AGENTS.md`.
+
+**Deployment:** `deploy/web/Dockerfile` builds the server, engine and UI from the GitHub
+repository (`main` by default, `--build-arg REF=` for another ref) with a portable `-march`, CPU
+torch, and checkpoints mounted at `/data/checkpoints`; see `deploy/web/README.md`.
 
 ### 3.5 Reusable Agent CLI Tools (`tools/`)
 

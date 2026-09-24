@@ -1,0 +1,20 @@
+# docker compose -f deploy/web/compose.yaml up -d --build
+#
+# CHECKPOINTS points at a checkpoints tree laid out like data/checkpoints (<run>/snapshot_*.pt);
+# the analysis panel lists whatever is there. It is mounted read-only: the server never writes it.
+services:
+  web:
+    build:
+      context: .
+      args:
+        REF: ${DEEPSTRUGGLE_REF:-main}
+    image: deepstruggle-web
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ${CHECKPOINTS:-./checkpoints}:/data/checkpoints:ro
+      - replays:/data/replays
+    restart: unless-stopped
+
+volumes:
+  replays:

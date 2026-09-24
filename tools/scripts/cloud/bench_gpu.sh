@@ -133,10 +133,11 @@ set -euo pipefail
 cd /workspace/ts
 export DEBIAN_FRONTEND=noninteractive
 python -c 'import sys; assert sys.version_info >= (3,12), f"python {sys.version} <3.12: this codebase uses PEP 701 f-strings"'
-# Both, not just cmake: the pytorch runtime image ships cmake through conda but has no compiler.
-if ! command -v cmake >/dev/null || ! command -v g++ >/dev/null; then
+# All three, not just cmake: the pytorch runtime image ships cmake through conda but has no
+# compiler. clang because the engine is built with clang (the root CMakeLists.txt refuses others).
+if ! command -v cmake >/dev/null || ! command -v clang++ >/dev/null; then
     apt-get update -qq
-    apt-get install -y -qq cmake build-essential >/dev/null 2>&1
+    apt-get install -y -qq cmake build-essential clang >/dev/null 2>&1
 fi
 # --break-system-packages: the image's python is PEP 668 externally-managed. Not suppressed --
 # a missing nanobind makes CMake skip the bindings target silently while still exiting 0.

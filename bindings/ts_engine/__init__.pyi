@@ -826,6 +826,8 @@ OBS_SIZE_V23: int = 3824
 
 OBS_SIZE: int = 3824
 
+BUILD_COMPILER: str
+
 class ActionMask:
     @staticmethod
     def generate_flat_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...

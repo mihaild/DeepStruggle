@@ -19,9 +19,28 @@ if(nanobind_FOUND)
     nanobind_add_module(ts_engine ts_bindings.cpp)
     target_include_directories(ts_engine PRIVATE ${CMAKE_SOURCE_DIR}/engine/include)
     target_link_libraries(ts_engine PRIVATE ts_engine_core)
-    if(OpenMP_CXX_FOUND)
-        target_link_libraries(ts_engine PRIVATE OpenMP::OpenMP_CXX)
+    # GCC's OpenMP runtime, linked by exact file rather than `-fopenmp`: the batch runner calls
+    # GOMP_parallel itself (see the comment above gomp_parallel_for in ts_bindings.cpp), so under
+    # any compiler the process shares torch's libgomp and its one thread pool. The runtime file
+    # `libgomp.so.1` is named, not `-lgomp`: on a machine with LLVM's libomp-dev installed,
+    # clang's library path holds a `libgomp.so` that is an alias for libomp -- exactly the second
+    # runtime this exists to avoid -- and it would be linked without a word.
+    find_library(TS_LIBGOMP NAMES libgomp.so.1
+                 HINTS ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES}
+                 PATHS /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 /usr/lib)
+    if(NOT TS_LIBGOMP)
+        message(FATAL_ERROR "ts_engine needs GCC's OpenMP runtime, libgomp.so.1 "
+                            "(Debian/Ubuntu: apt-get install libgomp1).")
     endif()
+    get_filename_component(TS_LIBGOMP_REAL "${TS_LIBGOMP}" REALPATH)
+    get_filename_component(TS_LIBGOMP_NAME "${TS_LIBGOMP_REAL}" NAME)
+    if(NOT TS_LIBGOMP_NAME MATCHES "^libgomp")
+        message(FATAL_ERROR "${TS_LIBGOMP} resolves to ${TS_LIBGOMP_REAL}, which is not GCC's "
+                            "libgomp (LLVM's libomp installs a libgomp alias). The engine must "
+                            "share torch's libgomp; point TS_LIBGOMP at the real libgomp.so.1.")
+    endif()
+    message(STATUS "ts_engine OpenMP runtime: ${TS_LIBGOMP_REAL}")
+    target_link_libraries(ts_engine PRIVATE "${TS_LIBGOMP}")
     # Output to both binary root and bindings dir for python import convenience
     set_target_properties(ts_engine PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"

@@ -63,6 +63,46 @@ if [[ "$want" == "$have" && -n "$have" ]] && built_extension_exists; then
 fi
 
 echo "check_engine_fresh: engine build is stale or unstamped -- rebuilding" >&2
+
+# The engine is built with clang (root CMakeLists.txt). A build directory's compiler is fixed
+# when it is first configured, so one created under GCC would fail the new check on every
+# reconfigure; it is configured afresh instead, keeping the settings it was made with.
+cached() {
+    sed -n "s/^$1:[A-Z]*=//p" "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | head -n 1
+}
+compiler_id="$(sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\(.*\)")$/\1/p' \
+    "$BUILD_DIR"/CMakeFiles/*/CMakeCXXCompiler.cmake 2>/dev/null | head -n 1)"
+# A cache can also name an interpreter that is not on this machine -- a build directory copied
+# from another one does -- and every reconfigure then fails. Configured afresh as well, with the
+# interpreter this script uses.
+cached_python="$(cached Python_EXECUTABLE)"
+python_missing=0
+[[ -n "$cached_python" && ! -x "$cached_python" ]] && python_missing=1
+if [[ -f "$BUILD_DIR/CMakeCache.txt" && ( "$compiler_id" != *Clang* || $python_missing == 1 ) ]]; then
+    if [[ "$compiler_id" != *Clang* ]]; then
+        echo "check_engine_fresh: $BUILD_DIR was configured with ${compiler_id:-an unknown compiler};" \
+             "reconfiguring it with clang" >&2
+    else
+        echo "check_engine_fresh: $BUILD_DIR names a Python that does not exist here" \
+             "($cached_python); reconfiguring it with $PY_BIN" >&2
+    fi
+    fresh_args=(--fresh -B "$BUILD_DIR" -S "$ROOT")
+    if [[ $python_missing == 1 || -z "$cached_python" ]]; then
+        fresh_args+=("-DPython_EXECUTABLE=$(command -v "$PY_BIN")")
+    else
+        fresh_args+=("-DPython_EXECUTABLE=$cached_python")
+    fi
+    for var in CMAKE_BUILD_TYPE CMAKE_CXX_FLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS; do
+        value="$(cached "$var")"
+        [[ -n "$value" ]] && fresh_args+=("-D$var=$value")
+    done
+    if ! env -u CXX cmake "${fresh_args[@]}" >&2; then
+        echo "check_engine_fresh: reconfiguring with clang FAILED (is clang installed? without" >&2
+        echo "  root: tools/scripts/install_clang_userspace.sh)" >&2
+        exit 2
+    fi
+fi
+
 if ! cmake --build "$BUILD_DIR" -j >&2; then
     echo "check_engine_fresh: rebuild FAILED" >&2
     exit 2

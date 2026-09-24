@@ -98,8 +98,19 @@ is the one `step_flat` reads.
 
 ## 3. How to Compile & Test
 
+**Threads: one OpenMP pool per process, torch's.** The batch runner's parallel loops go through
+`gomp_parallel_for` in `ts_bindings.cpp`, which calls libgomp's `GOMP_parallel` directly, and
+the extension links GCC's `libgomp.so.1` by exact file. Torch ships libgomp and the loader shares
+it by soname, so the engine and torch use one runtime and one thread pool (and one
+`OMP_WAIT_POLICY`, which `tools/train.py` and `tools/tournament.py` set to PASSIVE). Do **not** go back to
+`#pragma omp`: under clang it links LLVM's libomp, a second pool of spinning workers beside
+torch's (measured 5-7% slower on a rollout loop), and clang's `-fopenmp=libgomp` compiles the
+loops *serially* without a warning. `tests/bindings/test_build_toolchain.py` catches all three:
+a non-clang engine (`ts_engine.BUILD_COMPILER`), a thread pool added beside torch's, and loops
+that do not spread across threads.
+
 ```bash
-cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
+cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3   # clang, found by CMake
 cmake --build build/release -j
 
 # Run Python binding tests. Invoke pytest as a module, never via .venv/bin/pytest:
