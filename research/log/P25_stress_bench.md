@@ -288,3 +288,46 @@ constant.
 This matters for P25 beyond WoLF. **A run that has stopped sharpening on the fixed probe is a weak
 run**, and that can be read during training with no tournament. It is a candidate trigger for step
 5's auto-rewind, next to the self-play split, which catches collapses but not this failure.
+
+## Step 3d, part 2: WoLF with a dead zone (E4-41), 2026-09-24
+
+E4-39's flags with `--wolf-dead-zone 0.15`. The weights stay 1 while the USSR share is within
+0.35–0.65. Outside that band, the share is shifted toward 0.5 by 0.15 before the plain rule, so a
+0.90 split weights like 0.75 did (3:1). `launch_flags.py --diff` against E4-39 on each seed shows
+`--wolf-dead-zone` only.
+
+### Collapse half: seed 3 passes, seed 5 fails at the end
+
+| run | 0–60M, by 5M (logged USSR share) | peak | buckets ≥ 0.9 | entropy by 10M | probe 50–60M |
+|:---|:---|---:|:---|:---|---:|
+| E4-41-03 | .52 .61 .74 .75 .61 .71 .84 .81 .67 .57 .75 .66 | 0.84 | none | 1.72 1.68 1.62 1.62 1.58 1.57 | 0.79 |
+| E4-41-05 | .51 .57 .74 .76 .68 .57 .55 .58 .67 .73 .90 .96 | 0.96 | 50M, 55M | 1.74 1.56 1.50 1.52 1.57 1.55 | 0.89 |
+
+**This is the first WoLF variant whose policy sharpens.** Fixed-probe entropy is 0.79 and 0.89,
+below both controls (1.01, 1.24) and far below E4-38/39/40 (1.01–1.79).
+
+### Strength half: ahead of the control on both seeds
+
+`data/reports/p25_e441_50_60M.{md,json}`: E4-41, E4-39 and E4-27 at 50, 55 and 60M, E4-40 at 60M,
+and E4-08-0s@60M. 100 games per side per pair, temperature 0.
+
+| seed | step | E4-41 − E4-27 | E4-41 − E4-39 | E4-41 vs E4-27 (as USSR / as US) | E4-41 vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|
+| 3 | 50M | +145 | +127 | 93 / 53 | 31 / 29 |
+| 3 | 55M | +81 | +19 | 92 / 37 | 31 / 13 |
+| 3 | 60M | +147 | +124 | 92 / 32 | 26 / 19 |
+| 5 | 50M | +168 | +258 | 94 / 48 | 29 / 22 |
+| 5 | 55M | +161 | +246 | 92 / 39 | 45 / 15 |
+| 5 | 60M | +46 | +171 | 90 / 14 | 39 / 11 |
+
+**The best strength on the bench, and the closest any run has come to the λ 0.98 recipe.** The
+drop on seed 5 at 60M (+46, and US 14% against the control) is the collapse in its last 10M.
+
+### Reading
+
+The dead zone leaves the dynamics alone near an even split, which is where plain WoLF kept
+trading the lead back and forth and never sharpened. That part works. Outside the zone the brake
+is too soft and comes too late. With the shift, a 0.90 split gets 3:1 instead of plain WoLF's 9:1,
+and on seed 5 the drift from 0.67 to 0.96 took 15M steps against that. The next variant keeps the
+dead zone but applies the full rule once outside it, a jump instead of a shift. A narrower zone is
+the other option.
