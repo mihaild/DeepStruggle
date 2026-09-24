@@ -272,3 +272,66 @@ and one TF32 run.
 
 **Status:** compile is opt-in and passes gate 1 (numerics). Gate 2, a matched A/B like TF32's,
 has not run. Gate 3, checkpoints, holds by construction.
+
+## The compile A/B (E4-58, `--compile-update max-autotune`), 2026-09-24
+
+**Setup:** E4-58-40..42 is the E4-57 recipe (TF32) plus `--compile-update max-autotune`, 80M from
+scratch. The flag diff against E4-57 shows only `--compile-update`. The controls are E4-57-40..42.
+All three runs finished without a crash.
+
+**Self-play balance** (USSR share by 5M):
+
+| run | 0–80M | peak |
+|:---|:---|---:|
+| E4-58-40 | .51 .42 .67 .66 .69 .72 .55 .65 .80 .56 .60 .58 .49 .41 .49 .63 | 0.80 |
+| E4-58-41 | .55 .68 .65 .67 .57 .56 .66 .50 .74 .87 .76 .66 .74 .72 .59 .68 | 0.87 |
+| E4-58-42 | .49 .55 .59 .62 .63 .64 .53 .82 .82 .75 .70 .70 .92 .99 .99 .95 | 0.99, pinned 65–80M and still in the episode at the end |
+
+**One field for all three variants:** `data/reports/p26_compile_80M.{md,json}`, 47 players, 100
+games per side per pair, temperature 0, HeuristicBot at 1500.
+
+| run | 40M | 50M | 60M | 70M | 80M | mean 50–80M |
+|:---|---:|---:|---:|---:|---:|---:|
+| E4-56-40 fp32 | 1771 | 1864 | 1951 | 2005 | 2031 | 1963 |
+| E4-56-41 fp32 | 1816 | 1886 | 1863 | 1746 | 1741 | 1809 |
+| E4-56-42 fp32 | 1765 | 1822 | 1917 | 1887 | 1891 | 1879 |
+| **fp32 mean** | 1784 | 1858 | 1910 | 1880 | 1888 | **1884** |
+| E4-57-40 TF32 | 1759 | 1881 | 1981 | 2005 | 1969 | 1959 |
+| E4-57-41 TF32 | 1776 | 1889 | 1981 | 1975 | 2032 | 1969 |
+| E4-57-42 TF32 | 1708 | 1904 | 1992 | 2058 | 2026 | 1995 |
+| **TF32 mean** | 1747 | 1892 | 1984 | 2013 | 2009 | **1974** |
+| E4-58-40 compile | 1789 | 1917 | 1993 | 2025 | 2000 | 1984 |
+| E4-58-41 compile | 1854 | 1810 | 1947 | 1921 | 1969 | 1912 |
+| E4-58-42 compile | 1765 | 1837 | 1797 | 1685 | 1689 | 1752 |
+| **compile mean** | 1803 | 1855 | 1912 | 1877 | 1886 | **1882** |
+
+For reference, E4-08-36@80M rates 2048 and E4-08-37@80M rates 1968.
+
+**Head to head, same seed**, late snapshots (50–80M), 16 pairings each. Each cell is the win
+share (as USSR / as US) and Elo.
+
+| | seed 40 | seed 41 | seed 42 | mean |
+|:---|---:|---:|---:|---:|
+| compile vs TF32 | 52.8% (58/48) +20 | 40.0% (40/40) −71 | 21.7% (30/13) −223 | −84 |
+| TF32 vs fp32 | 50.4% (60/41) +3 | 71.1% (72/70) +156 | 64.1% (72/56) +101 | +84 |
+| compile vs fp32 | 52.1% (58/47) +15 | 63.5% (76/51) +96 | 36.9% (60/14) −93 | +6 |
+
+On seed 42 the compile run was already leaning 0.82 from 35M. Without its in-pin snapshots
+(compile at 50–60M against TF32 at 50–80M) it is still −164.
+
+**Reading:**
+* **The arm means are fp32 1884, TF32 1974, compile 1882.** With three seeds per arm and a
+  ~100 Elo seed spread, the standard error of a difference between two arm means is about 80
+  Elo. None of the three differences is outside it.
+* **A strength effect has no mechanism in either direction.** Compile's gradients sit closer to
+  eager (8.8e-4) than TF32's do (2.0e-3). TF32's +84 was read as the draw of runs rather than an
+  effect, and compile's −84 has to be read the same way.
+* **Collapse looks the same in all three variants.** TF32 had one pin, which recovered. Compile
+  had one pin, censored at 80M. fp32 had no pin but two long USSR leans, one of which (seed 41)
+  lost 139 Elo over 50–80M.
+* **Compile does not pass the standard TF32 was held to**, which was level or better on every
+  seed. It is −71 on seed 41 and −223 on seed 42. The honest verdict is *not shown harmless*,
+  not *shown harmful*.
+
+`--compile-update` stays opt-in. Adopting it for +9% paired would need more seeds of TF32
+against TF32 + compile.
