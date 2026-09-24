@@ -104,6 +104,18 @@ class RolloutBuffer:
         # Standard deviation of the advantages before per-rollout normalisation, kept
         # for diagnostics (post-normalisation std is ~1.0 by construction).
         self.raw_advantage_std = 0.0
+        #: --adv-norm-floor (P25 step 3j). 0 is off: the divisor is the batch's own spread, as
+        #: always. Above 0 the divisor is max(batch std, c * EMA of the batch std), so a signal
+        #: that has faded -- the losing seat's games all ending one way -- stays small instead of
+        #: being rescaled to unit-variance noise. The EMA has a memory of min(age, memory_steps)
+        #: env steps, and the floor waits warmup_steps for it to fill.
+        self.adv_norm_floor = 0.0
+        self.adv_norm_floor_memory_steps = 20_000_000.0
+        self.adv_norm_floor_warmup_steps = 2_000_000.0
+        self.adv_std_ema = 0.0
+        self.adv_std_ema_steps = 0.0
+        self.adv_norm_divisor = 0.0
+        self.adv_norm_floor_bound = 0.0
 
     def reset(self) -> None:
         """Resets the buffer pointer."""
@@ -391,6 +403,13 @@ class RolloutBuffer:
                 "std": float(sel.std()) if sel.numel() > 1 else 0.0,
             }
 
+        if self.adv_norm_floor > 0.0:
+            # Only on this path, so a run with the floor off divides by the tensor exactly as
+            # before and stays bitwise the run it was.
+            div = self._floored_divisor(float(std_adv))
+            self.advantages = (self.advantages - mean_adv) / div
+            return
+
         if self.per_seat_adv_norm:
             # Each seat normalised by its own statistics. With one shared divisor, a seat whose
             # games are nearly all lost -- the collapsing side -- has a small advantage spread that
@@ -410,6 +429,21 @@ class RolloutBuffer:
             self.advantages = normed.view_as(self.advantages)
         else:
             self.advantages = (self.advantages - mean_adv) / std_adv
+
+    def _floored_divisor(self, std: float) -> float:
+        """The --adv-norm-floor divisor for a batch whose raw spread is `std`, then fold `std`
+        into the EMA. The floor is taken from the EMA *before* this batch, so a collapsing
+        batch cannot lower its own floor."""
+        n = float(self.buffer_size * self.num_envs)
+        floor = (self.adv_norm_floor * self.adv_std_ema
+                 if self.adv_std_ema_steps >= self.adv_norm_floor_warmup_steps else 0.0)
+        div = max(std, floor)
+        self.adv_norm_divisor = div
+        self.adv_norm_floor_bound = 1.0 if floor > std else 0.0
+        self.adv_std_ema_steps += n
+        alpha = n / min(self.adv_std_ema_steps, self.adv_norm_floor_memory_steps)
+        self.adv_std_ema += alpha * (std - self.adv_std_ema)
+        return div
 
     def _gae_per_player(
         self,
@@ -501,6 +535,10 @@ class RolloutBuffer:
             "adv_std_raw": self.raw_advantage_std,
             "adv_frac_near_zero": float(near_zero),
         }
+        if self.adv_norm_floor > 0.0:
+            out["adv_norm_divisor"] = self.adv_norm_divisor
+            out["adv_norm_floor_bound"] = self.adv_norm_floor_bound
+            out["adv_std_ema"] = self.adv_std_ema
         # Per-side, pre-normalisation. `adv_mean_*` near zero means the value head has
         # already centred that role and the shared mean is harmless; a gap between the two
         # `adv_std_*` means the shared divisor is rescaling the two sides' signals unequally.

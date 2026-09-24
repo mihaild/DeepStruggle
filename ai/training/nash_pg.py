@@ -242,6 +242,12 @@ class BaseNashPGTrainer:
         wolf_scope: str = "surrogate",
         wolf_dead_zone: float = 0.0,
         wolf_dead_zone_mode: str = "shift",
+        adv_norm_floor: float = 0.0,
+        entropy_ceiling: float = 0.0,
+        entropy_ceiling_lr: float = 0.01,
+        entropy_ceiling_min_coef: float = -0.02,
+        entropy_ceiling_grace_steps: float = 5_000_000.0,
+        target_kl: float = 0.0,
         cuda_graphs: bool = True,
         device: torch.device | str = "cuda",
     ):
@@ -364,6 +370,34 @@ class BaseNashPGTrainer:
             device=self.device,
         )
         self.buffer.per_seat_adv_norm = bool(per_seat_adv_norm)
+        # P25 3j-3l, the levers that act on the collapse loop's own closing points. Each is off at
+        # 0 and off leaves the update bitwise unchanged. None is defined together with WoLF or
+        # per-seat normalisation, so those combinations are refused rather than half-applied.
+        if adv_norm_floor < 0.0 or entropy_ceiling < 0.0 or target_kl < 0.0:
+            raise ValueError("adv_norm_floor, entropy_ceiling and target_kl must be >= 0")
+        if (adv_norm_floor > 0.0 or entropy_ceiling > 0.0 or target_kl > 0.0) and wolf_seat_weight:
+            raise ValueError("the P25 3j-3l levers are not defined together with --wolf-seat-weight")
+        if adv_norm_floor > 0.0 and per_seat_adv_norm:
+            raise ValueError("--adv-norm-floor floors the shared divisor; it is not defined with "
+                             "--per-seat-adv-norm")
+        #: 3j: see RolloutBuffer.adv_norm_floor.
+        self.buffer.adv_norm_floor = float(adv_norm_floor)
+        #: 3k, --entropy-ceiling: a one-sided, per-seat entropy coefficient. Once per iteration,
+        #: after grace_steps, c_seat -= lr * (H_seat - ceiling), clipped to [min_coef, ent_coef],
+        #: with H_seat the seat's mean rollout entropy. It never exceeds ent_coef, so below the
+        #: ceiling it is the fixed bonus; above it the bonus shrinks and then becomes a penalty.
+        #: One-sided because a two-sided target would also push a sharpening seat back up.
+        self.entropy_ceiling = float(entropy_ceiling)
+        self.entropy_ceiling_lr = float(entropy_ceiling_lr)
+        self.entropy_ceiling_min_coef = float(entropy_ceiling_min_coef)
+        self.entropy_ceiling_grace_steps = float(entropy_ceiling_grace_steps)
+        self.ent_coef_seat: Dict[int, float] = {1: float(ent_coef), -1: float(ent_coef)}
+        #: 3l, --target-kl: per-seat early stopping. In each minibatch a seat's approximate KL
+        #: from the rollout policy, E[(r - 1) - log r] over its own decisions, is measured before
+        #: the step; once it exceeds the target the seat's policy terms are masked out for the rest
+        #: of the update (the value loss continues). The per-seat KL is logged whether or not the
+        #: target is set, because the target is chosen from the controls' own distribution.
+        self.target_kl = float(target_kl)
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
         #: an exponential average of the USSR's win share in pure self-play games (both seats the
         #: current policy). The entropy bonus, the KL to pi_ref and the value loss are left
@@ -490,6 +524,18 @@ class BaseNashPGTrainer:
             return
         us, ussr = self._side_views(env_idx)
         self.env.set_merged_influence_env(env_idx, us, ussr)
+
+    def _update_entropy_ceiling(self, metrics: Dict[str, Any]) -> None:
+        """3k: move each seat's entropy coefficient toward keeping its rollout entropy at or below
+        the ceiling. Nothing moves before the grace period, when entropy is still near uniform."""
+        if self.total_env_steps < self.entropy_ceiling_grace_steps:
+            return
+        for code, tag in ((1, "us"), (-1, "ussr")):
+            h = metrics.get(f"entropy_{tag}")
+            if h is None:
+                continue
+            c = self.ent_coef_seat[code] - self.entropy_ceiling_lr * (float(h) - self.entropy_ceiling)
+            self.ent_coef_seat[code] = min(self.ent_coef, max(self.entropy_ceiling_min_coef, c))
 
     def _graphed_forward(self, obs_t: torch.Tensor, masks_t: torch.Tensor,
                          learner_np: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -797,6 +843,10 @@ class BaseNashPGTrainer:
             _n = float(seat_entropy_n[_code].item())
             if _n > 0:
                 metrics[f"entropy_{_tag}"] = float(seat_entropy_sum[_code].item()) / _n
+        if self.entropy_ceiling > 0.0:
+            self._update_entropy_ceiling(metrics)
+            metrics["ent_coef_us"] = self.ent_coef_seat[1]
+            metrics["ent_coef_ussr"] = self.ent_coef_seat[-1]
         metrics.update(self.critic_tracker.metrics())
         # Pool size and span, so a pool that silently stops growing is visible as a flat line
         # rather than being invisible. Without this the mechanism cannot be verified from a run.
@@ -1046,6 +1096,19 @@ class NashPGTrainer(BaseNashPGTrainer):
         num_updates = 0
         wolf_w_us, wolf_w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power,
                                                    self.wolf_dead_zone, self.wolf_dead_zone_mode)
+        # 3k: this update's per-seat entropy coefficients, as device scalars.
+        ent_c_us = torch.tensor(self.ent_coef_seat[1], device=self.device)
+        ent_c_ussr = torch.tensor(self.ent_coef_seat[-1], device=self.device)
+        # 3l: whether each seat is still updating its policy (1.0) or has been stopped (0.0), and
+        # the per-seat approximate KL, accumulated on the device so the check costs no sync.
+        seat_act = {1: torch.ones((), dtype=torch.float64, device=self.device),
+                    -1: torch.ones((), dtype=torch.float64, device=self.device)}
+        seat_kl_sum = {1: torch.zeros((), dtype=torch.float64, device=self.device),
+                       -1: torch.zeros((), dtype=torch.float64, device=self.device)}
+        seat_kl_cnt = {1: torch.zeros((), dtype=torch.float64, device=self.device),
+                       -1: torch.zeros((), dtype=torch.float64, device=self.device)}
+        seat_stopped = {1: torch.zeros((), dtype=torch.float64, device=self.device),
+                        -1: torch.zeros((), dtype=torch.float64, device=self.device)}
         # Per-minibatch diagnostics accumulate ON THE DEVICE and are read once, after the loop.
         # Reading each with .item()/float()/bool() inside the loop forced ~14 CPU-GPU syncs per
         # minibatch, each stalling the queue until the GPU caught up
@@ -1124,6 +1187,22 @@ class NashPGTrainer(BaseNashPGTrainer):
                     ratio_negadv_max_t = torch.maximum(
                         ratio_negadv_max_t,
                         torch.where(b_adv < 0, ratio, torch.zeros_like(ratio)).max().double())
+                with torch.no_grad():
+                    # 3l: each seat's approximate KL from the rollout policy on this minibatch,
+                    # measured before the step; stopping applies from this minibatch on.
+                    _k3 = ((ratio - 1.0) - torch.clamp(log_ratio, -20.0, 20.0)).double()
+                    _own_b = b_learner > 0.5
+                    for _code in (1, -1):
+                        _sel = (_own_b & (b_players == _code)).double()
+                        _cnt = _sel.sum()
+                        _has = (_cnt > 0).double()
+                        _kl_s = (_k3 * _sel).sum() / _cnt.clamp(min=1.0)
+                        seat_kl_sum[_code] += _kl_s * _has
+                        seat_kl_cnt[_code] += _has
+                        if self.target_kl > 0.0:
+                            _over = ((_kl_s > self.target_kl) & (_cnt > 0)).double()
+                            seat_act[_code] = seat_act[_code] * (1.0 - _over)
+                            seat_stopped[_code] += 1.0 - seat_act[_code]
                 surr1 = ratio * b_adv
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * b_adv
                 surrogate = -torch.min(surr1, surr2)
@@ -1153,7 +1232,14 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # Mean over the kept samples as sum / count, which needs no host round trip; with
                 # nothing kept it is 0, as before.
                 _keep_f = keep.to(surrogate.dtype)
-                ppo_loss = (surrogate * _keep_f).sum() / _keep_f.sum().clamp(min=1.0)
+                if self.target_kl > 0.0:
+                    # A stopped seat's samples leave the numerator only: the denominator stays the
+                    # full count, so stopping one seat does not speed up the other.
+                    _seat_w = torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(surrogate.dtype)
+                    ppo_loss = ((surrogate * _keep_f * _seat_w).sum()
+                                / _keep_f.sum().clamp(min=1.0))
+                else:
+                    ppo_loss = (surrogate * _keep_f).sum() / _keep_f.sum().clamp(min=1.0)
 
                 with torch.no_grad():
                     clip_frac_t += ((ratio < 1.0 - self.clip_eps)
@@ -1230,7 +1316,20 @@ class NashPGTrainer(BaseNashPGTrainer):
                     _w = wolf_sample_weights(b_players, wolf_w_us, wolf_w_ussr).to(kl_per.dtype)
                     kl_term = (kl_per * _w).mean()
                     ent_term = (cur_entropy * _w * _own_f).sum() / _own_n
-                policy_loss = (ppo_loss + self.eta * kl_term - self.ent_coef * ent_term
+                ent_loss = self.ent_coef * ent_term
+                if self.target_kl > 0.0:
+                    _sw = torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(kl_per.dtype)
+                    kl_term = (kl_per * _sw).mean()
+                    ent_term = (cur_entropy * _own_f * _sw).sum() / _own_n
+                    ent_loss = self.ent_coef * ent_term
+                if self.entropy_ceiling > 0.0:
+                    _c = torch.where(b_players == 1, ent_c_us, ent_c_ussr).to(cur_entropy.dtype)
+                    _ew = _own_f
+                    if self.target_kl > 0.0:
+                        _ew = _own_f * torch.where(b_players == 1, seat_act[1],
+                                                   seat_act[-1]).to(cur_entropy.dtype)
+                    ent_loss = (cur_entropy * _ew * _c).sum() / _own_n
+                policy_loss = (ppo_loss + self.eta * kl_term - ent_loss
                                + self.search_ce_coef * search_ce)
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
@@ -1300,9 +1399,12 @@ class NashPGTrainer(BaseNashPGTrainer):
         # One host read for everything accumulated on the device.
         (total_loss_accum, policy_loss_accum, policy_loss_total_accum, val_loss_accum, kl_accum,
          entropy_accum, clip_frac_accum, risk_loss_accum, logratio_max_accum, old_lp_min_accum,
-         ratio_negadv_max_accum) = torch.stack([
+         ratio_negadv_max_accum, akl_us_s, akl_us_n, akl_ussr_s, akl_ussr_n, stop_us, stop_ussr
+         ) = torch.stack([
             loss_t, policy_loss_t, policy_loss_total_t, val_loss_t, kl_t, entropy_t, clip_frac_t,
-            risk_loss_t, logratio_max_t, old_lp_min_t, ratio_negadv_max_t]).tolist()
+            risk_loss_t, logratio_max_t, old_lp_min_t, ratio_negadv_max_t,
+            seat_kl_sum[1], seat_kl_cnt[1], seat_kl_sum[-1], seat_kl_cnt[-1],
+            seat_stopped[1], seat_stopped[-1]]).tolist()
         kl_term_accum = float(self.eta) * kl_accum
 
         return {
@@ -1316,6 +1418,12 @@ class NashPGTrainer(BaseNashPGTrainer):
             "kl_term": kl_term_accum / max(1, num_updates),
             "val_loss": val_loss_accum / max(1, num_updates),
             "kl_div": kl_accum / max(1, num_updates),
+            # 3l: per-seat approximate KL from the rollout policy (mean over minibatches), and
+            # the share of minibatches in which the seat's policy terms were stopped.
+            "approx_kl_us": akl_us_s / max(1.0, akl_us_n),
+            "approx_kl_ussr": akl_ussr_s / max(1.0, akl_ussr_n),
+            "kl_stop_frac_us": stop_us / max(1, num_updates),
+            "kl_stop_frac_ussr": stop_ussr / max(1, num_updates),
             "entropy": entropy_accum / max(1, num_updates),
             "clip_frac": clip_frac_accum / max(1, num_updates),
             # 0.0 when search CE is off, so the key is always present and a run without it is

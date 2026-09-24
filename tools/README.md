@@ -255,6 +255,21 @@ of a run without them are unchanged:
       That is a per-seat learning rate, which is how WoLF is defined.
   * The value loss is never weighted.
   * Logged as `wolf_sp_ussr`, `wolf_w_us` and `wolf_w_ussr`, and carried in the resume state.
+* P25's loop-closing levers (steps 3j–3l). Each is off at 0, off leaves the update bitwise
+  unchanged, and none may be combined with `--wolf-seat-weight`:
+  * `--adv-norm-floor c` divides the advantages by `max(batch std, c × EMA of the batch std)`, so
+    a faded signal stays small instead of being rescaled to unit noise. The EMA has a memory of
+    20M steps and the floor starts at 2M. Not defined with `--per-seat-adv-norm`. Logged as
+    `adv_norm_divisor`, `adv_norm_floor_bound` and `adv_std_ema`.
+  * `--entropy-ceiling H` is a one-sided per-seat entropy ceiling in nats. Each iteration from 5M
+    steps, a seat's entropy coefficient moves by −0.01 × (its rollout entropy − H), clipped to
+    [−0.02, `--entropy-coef`]. Below the ceiling it is the fixed bonus, so it never pushes a
+    sharpening seat back up. Logged as `ent_coef_us` / `ent_coef_ussr`.
+  * `--target-kl k` stops a seat's policy terms (surrogate, entropy, KL to π_ref) for the rest of
+    the update once that seat's approximate KL from the rollout policy on a minibatch exceeds `k`.
+    The value loss continues. `approx_kl_us` / `approx_kl_ussr` are logged on every run, and
+    `kl_stop_frac_*` with the target.
+  * The floor's EMA and the per-seat coefficients are carried in the resume state.
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and
