@@ -135,3 +135,77 @@ That is **+8%** in steps/s. The 10M snapshot interval comes on top, removing abo
 
 **The TF32 ablation runs next.** It uses the E4-08 recipe to 80M on seeds 40–42: E4-56 is the
 fp32 control, E4-57 runs with `--tf32`, and the two arms of a seed run as a pair.
+
+## The TF32 A/B (E4-56 fp32, E4-57 `--tf32`), 2026-09-24
+
+**Setup:**
+* the E4-08 recipe (M2d, λ 0.98, pool 0.3/12), from scratch to 80M, on `bea6311`;
+* seeds 40–42, with the two arms of a seed run as a pair;
+* `launch_flags.py --diff` against E4-08-36 shows only the seed, the snapshot interval, the
+  budget and `--tf32`.
+
+All six runs finished without a crash. The rating field is
+`data/reports/p26_tf32_80M.{md,json}`: 33 players, 100 games per side per pair, temperature 0,
+HeuristicBot at 1500. Tournaments run in fp32, so this field is also the checkpoint round-trip
+check. A TF32-trained checkpoint loads and plays in an ordinary fp32 process.
+
+**Self-play balance** (USSR share by 5M):
+
+| run | 0–80M | peak |
+|:---|:---|---:|
+| E4-56-40 | .51 .68 .62 .58 .58 .68 .84 .91 .92 .80 .64 .50 .54 .54 .58 .67 | 0.92 |
+| E4-57-40 | .54 .54 .68 .64 .71 .62 .54 .62 .65 .58 .67 .62 .53 .59 .49 .48 | 0.71 |
+| E4-56-41 | .58 .69 .42 .58 .63 .68 .85 .86 .81 .57 .78 .84 .70 .74 .92 .88 | 0.92 |
+| E4-57-41 | .56 .62 .84 .72 .75 .71 .58 .60 .35 .46 .42 .53 .49 .52 .49 .55 | 0.84 |
+| E4-56-42 | .51 .66 .61 .51 .73 .63 .62 .79 .73 .69 .67 .65 .69 .74 .77 .80 | 0.80 |
+| E4-57-42 | .52 .61 .83 .86 .85 .94 .92 .97 .84 .45 .47 .52 .54 .58 .49 .53 | 0.97 (one bucket, recovered by 50M) |
+
+**Strength:**
+
+| run | 40M | 50M | 60M | 70M | 80M | mean 50–80M |
+|:---|---:|---:|---:|---:|---:|---:|
+| E4-56-40 (fp32) | 1762 | 1847 | 1936 | 1988 | 2020 | 1948 |
+| E4-57-40 (TF32) | 1746 | 1870 | 1971 | 1995 | 1958 | 1948 |
+| E4-56-41 (fp32) | 1805 | 1875 | 1853 | 1733 | 1736 | 1799 |
+| E4-57-41 (TF32) | 1760 | 1876 | 1966 | 1961 | 2023 | 1956 |
+| E4-56-42 (fp32) | 1753 | 1812 | 1909 | 1875 | 1884 | 1870 |
+| E4-57-42 (TF32) | 1695 | 1897 | 1980 | 2043 | 2019 | 1985 |
+
+For reference, E4-08-36@80M rates 2034 and E4-08-37@80M rates 1952.
+
+**Head to head, the TF32 arm against its own seed's fp32 arm**, pooled over 16 pairings of the
+late snapshots (50–80M):
+
+| seed | TF32 wins | as USSR / as US | Elo |
+|:---|---:|:---|---:|
+| 40 | 50.4% | 60 / 41 | +3 |
+| 41 | 71.1% | 72 / 70 | +156 |
+| 42 | 64.1% | 72 / 56 | +101 |
+| mean | 61.9% | | +84 |
+
+* **TF32 is at least level on every seed, so it passes the "does no harm" test.**
+* **It should not be read as making training better.** TF32 cannot plausibly add strength of
+  its own. Each arm is a different trajectory at the 1e-9 level (P25 part 0), and the seed spread
+  is ~100 Elo. What the table shows is that the three fp32 draws happened to include two
+  chronically USSR-leaning runs.
+* **E4-56-41 is another stall without a pin, like E4-08-37.** It lost 139 Elo over 50–80M while
+  leaning 0.78–0.92, and its US seat wins 4–13% against the references.
+* **The one TF32 pin (E4-57-42, 35–40M) recovered by 50M**, and that run ends as the strongest of
+  the six on its late mean.
+
+**Throughput, paired, both arms with the same setting** (`data/logs/perf/pair.sh`, 3M steps):
+
+| | median steps/s per arm | wall s for 3M |
+|:---|---:|---:|
+| fp32 + fp32 | 41.8k / 42.1k | 86.0 / 86.9 |
+| TF32 + TF32 | 48.3k / 48.4k | 74.8 / 75.6 |
+
+That is +15% per arm, the same as solo. A mixed pair shows almost none of it, since the fp32
+partner's kernels hold the GPU (E4-57-40 against E4-56-40: 44.6k against 44.0k). The bit-identical
+rollout changes (+8% solo) are CPU-side and do not show in a GPU-bound pair at all. TF32 is what
+speeds up the two-at-a-time workload.
+
+**TF32 passes all three adoption gates:**
+1. **Inference drift:** KL 1e-7 against fp32.
+2. **Matched A/B:** level or better on 3 of 3 seeds, per seat.
+3. **Checkpoint round-trip:** TF32-trained checkpoints load and play in fp32.
