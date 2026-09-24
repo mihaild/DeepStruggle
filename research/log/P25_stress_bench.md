@@ -591,3 +591,17 @@ code decides it. At about 20% per run, four seeds per arm expect about 0.8 pins 
 so this bench cannot show a lever *preventing* a pin. It can measure a lever's strength cost or
 gain, and the depth and length of the episodes (such as E4-49-03's). Testing prevention needs
 about 10–15 seeds per arm, or a bench that pins more often.
+
+**The rounding demonstration.** E4-27-05's flags (seed 5, λ 0.99) at 4124562, a commit that
+differs from E4-27-05's own only by the 1e-9 rounding above. Its output is in
+`data/bisect/s5_4124562_80M`, kept out of the checkpoint tree.
+
+| run | 0–80M, by 5M (self-play USSR share) | buckets ≥ 0.95 |
+|:---|:---|---:|
+| E4-27-05 (318f01f) | .52 .36 .41 .50 .70 .75 .84 .82 .90 .89 .87 .92 .97 .98 .98 .98 | 4 |
+| rounding demo (4124562) | .42 .56 .62 .71 .75 .68 .55 .56 .47 .51 .53 .54 .60 .80 .84 .90 | 0 |
+
+A last-digit change to one mean moved the collapse from 40M to about 65M. Within 80M it also
+turned a pin into an episode that is still at 0.90 at the end. Both runs head for the same
+place, so the tendency to collapse belongs to the recipe (λ 0.99). Whether a particular run pins
+inside a fixed budget, and when, is a draw. "Seed 5 collapses" was never a property of seed 5.
