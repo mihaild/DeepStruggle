@@ -540,3 +540,10 @@ isolated here. If it is the cause, the dead zone only delays it.
 **Where WoLF stands.** Seven variants (E4-38..47) have not produced one that passes both halves on
 more than the seeds it was tuned on. Seed-level variance on this bench is as large as any lever's
 effect, so a two-seed bench cannot rank levers. Any further lever needs at least four seeds.
+
+## Step 3h: the late collapse was the pool (E4-48), 2026-09-24
+
+Recorded separately in [`P25_pool_resume_bug.md`](P25_pool_resume_bug.md). A resume drained the opponent pool to its
+recent end (fixed in `3803d5d`). Rerun on a fixed pool, both seed-5 continuations from 160M avoid
+the pin their drained twins hit, and they finish 170–390 Elo above them. The bench is from scratch
+and never resumes, so nothing above is affected.

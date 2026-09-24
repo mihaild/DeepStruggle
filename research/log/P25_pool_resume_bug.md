@@ -67,7 +67,7 @@ Self-play USSR share by 5M bucket, 160–240M:
 |:---|:---|---:|:---|
 | **E4-48-05** (fixed pool) | .77 .72 .81 .79 .74 .79 .90 .90 .78 .73 .80 .71 .65 .69 .79 .69 | 0.898 | none |
 | E4-08-05 (drained) | .75 .66 .65 .55 .64 .80 .82 .98 .99 .97 .99 .99 .97 .98 .99 .99 | 0.99 | 195–240M |
-| **E4-48-05-160M.11** (fixed pool) | SEED11 | | |
+| **E4-48-05-160M.11** (fixed pool) | .66 .63 .71 .71 .74 .66 .68 .71 .81 .72 .77 .67 .73 .53 .52 .51 | 0.81 | none |
 | E4-08-05-160M.11 (drained) | .77 .87 .88 .83 .80 .77 .75 .34 .30 .64 .75 .99 .98 .99 .99 .99 | 0.99 | 215–240M |
 
 E4-48-05 went to the edge at 190–200M (0.897, then 0.898). Its advantage spread fell to 0.186 and
@@ -75,7 +75,55 @@ its US entropy rose to 1.83, the same signature every baseline showed on the way
 then came back: 0.78 by 200–205M and 0.65–0.80 for the rest of the leg. The drained baseline
 entered the same episode 5M earlier and stayed pinned at 0.97–0.99 for the remaining 45M.
 
-RESULTS
+The seed-11 branch never came near the line. Its peak was 0.81 at 200–205M, and it ended at 0.51.
+Its drained twin pinned at 0.99 from 215M.
+
+**Passes on 2 of 2**, where the drained pool failed on 2 of 2. Counting the other drained
+continuations from this state (slow π_ref, and WoLF shift and jump), it is 0 of 5 against 2 of 2.
+
+### Strength half
+
+`data/reports/p25_e4-48_200_240M.{md,json}`: both E4-48 runs and both drained twins at 200, 220
+and 240M, plus the 160M start point, E4-31-05@240M and E4-08-03@240M. 100 games per side per pair.
+
+| step | E4-48-05 − E4-08-05 | E4-48-05-160M.11 − E4-08-05-160M.11 |
+|:---|---:|---:|
+| 200M | +172 | +391 |
+| 220M | +192 | +278 |
+| 240M | +229 | +261 |
+
+| model | Elo | vs the 160M start (as USSR / as US) | vs E4-08-03@240M (as USSR / as US) |
+|:---|---:|---:|---:|
+| E4-08-03@240M (seed 3, drained, never collapsed) | 2103 | 72 / 63 | — |
+| **E4-48-05-160M.11@240M** | **2050** | 62 / 49 | 43 / 47 |
+| **E4-48-05@240M** | **2027** | 72 / 42 | 52 / 40 |
+| E4-08-05@160M (the start) | 1993 | — | 37 / 28 |
+| E4-31-05@240M (slow π_ref, drained, collapsed at 235M) | 1909 | 81 / 6 | 53 / 4 |
+| E4-08-05@240M (drained, collapsed) | 1798 | 43 / 1 | 20 / 1 |
+| E4-08-05-160M.11@240M (drained, collapsed) | 1788 | 40 / 1 | 18 / 2 |
+
+**Passes, by 170–390 Elo.** On the fixed pool both seed-5 continuations keep improving past the
+160M start (+34 and +57 at 240M) and win about half their games as the US against it. On the
+drained pool both lost about 200 Elo and won 1% as the US. The fixed-pool seed-5 runs finish 53–76
+under seed 3's 240M, which never collapsed. How much of that gap is the seed and how much is seed 3's
+own drained pool is not measured here (E4-48-03, below).
+
+### Reading
+
+**The late collapse on seed 5 was mostly an artefact of the resume.** Every leg after the first
+trained against its own recent history plus two old members, not the spread pool the design
+describes. A pool of recent selves gives the losing seat nothing it can beat, which is the pool
+starvation mechanism of [`P15_X4b_collapse_is_pool_starvation.md`](../archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md), arriving
+more slowly. The fixed-pool run still had one excursion to the line (E4-48-05 at 190–200M), so
+the mechanism the bench measures is real, but the old members pulled it back.
+
+What this changes:
+* **[`E4_late_dynamics.md`](E4_late_dynamics.md)'s collapses** were all measured on drained pools:
+  the seed-5 continuations, λ 0.99, π_ref 100k and η. Comparisons between those arms remain fair
+  to each other. Their collapse rates and absolute Elo are not the recipe's.
+* **Every E4 run continued past its first leg** trained its later legs on the drained pool.
+* **The P25 stress bench is unaffected**: from scratch, no resume. Its collapses (E4-27 on seeds 3
+  and 5) are the recipe's own.
 
 ## Open
 

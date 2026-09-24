@@ -1,5 +1,12 @@
 # E4-29..33 — training-dynamics changes applied only after 160M
 
+> **Correction, 2026-09-24: every arm here ran on a drained opponent pool.** A resume recorded the
+> restored pool at step 0, so spacing eviction drained the "10-member pool" to its two oldest
+> survivors plus the leg's recent snapshots (fixed in `3803d5d`). The arms were drained in the same
+> way, so comparisons between them stand. The collapses do not stand as properties of the recipe.
+> Rerun on a fixed pool, the seed-5 continuation does not collapse (2 of 2) and ends 170–390 Elo above
+> its drained twin. See [`P25_pool_resume_bug.md`](P25_pool_resume_bug.md).
+
 **Done, 2026-09-23.** The final rating of every arm is the full-field round at the end, [240M, the full field](#240m-the-full-field-every-late-arm-both-seeds-e41). The from-scratch arms
 ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)) rejected both a slow π_ref and λ 0.99.
 The question here is whether a parameter matters only early in training. Each arm resumes
