@@ -4,7 +4,7 @@
 > restored pool at step 0, so spacing eviction drained the "10-member pool" to its two oldest
 > survivors plus the leg's recent snapshots (fixed in `3803d5d`). The arms were drained in the same
 > way, so comparisons between them stand. The collapses do not stand as properties of the recipe.
-> Rerun on a fixed pool, the seed-5 continuation does not collapse (2 of 2) and ends 170–390 Elo above
+> Rerun on a fixed pool, the seed-5 continuation does not collapse (3 of 3) and ends 170–390 Elo above
 > its drained twin. See [`P25_pool_resume_bug.md`](P25_pool_resume_bug.md).
 
 **Done, 2026-09-23.** The final rating of every arm is the full-field round at the end, [240M, the full field](#240m-the-full-field-every-late-arm-both-seeds-e41). The from-scratch arms

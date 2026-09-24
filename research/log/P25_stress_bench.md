@@ -544,6 +544,6 @@ effect, so a two-seed bench cannot rank levers. Any further lever needs at least
 ## Step 3h: the late collapse was the pool (E4-48), 2026-09-24
 
 Recorded separately in [`P25_pool_resume_bug.md`](P25_pool_resume_bug.md). A resume drained the opponent pool to its
-recent end (fixed in `3803d5d`). Rerun on a fixed pool, both seed-5 continuations from 160M avoid
-the pin their drained twins hit, and they finish 170–390 Elo above them. The bench is from scratch
+recent end (fixed in `3803d5d`). Rerun on a fixed pool, all three seed-5 continuations from 160M
+avoid the pin their drained twins hit. The two rated ones finish 170–390 Elo above their twins. The bench is from scratch
 and never resumes, so nothing above is affected.

@@ -69,6 +69,7 @@ Self-play USSR share by 5M bucket, 160–240M:
 | E4-08-05 (drained) | .75 .66 .65 .55 .64 .80 .82 .98 .99 .97 .99 .99 .97 .98 .99 .99 | 0.99 | 195–240M |
 | **E4-48-05-160M.11** (fixed pool) | .66 .63 .71 .71 .74 .66 .68 .71 .81 .72 .77 .67 .73 .53 .52 .51 | 0.81 | none |
 | E4-08-05-160M.11 (drained) | .77 .87 .88 .83 .80 .77 .75 .34 .30 .64 .75 .99 .98 .99 .99 .99 | 0.99 | 215–240M |
+| **E4-48-05-160M.12** (fixed pool, to 220M) | .74 .85 .84 .72 .73 .74 .80 .74 .58 .77 .61 .62 | 0.85 | none |
 
 E4-48-05 went to the edge at 190–200M (0.897, then 0.898). Its advantage spread fell to 0.186 and
 its US entropy rose to 1.83, the same signature every baseline showed on the way into its pin. It
@@ -78,8 +79,11 @@ entered the same episode 5M earlier and stayed pinned at 0.97–0.99 for the rem
 The seed-11 branch never came near the line. Its peak was 0.81 at 200–205M, and it ended at 0.51.
 Its drained twin pinned at 0.99 from 215M.
 
-**Passes on 2 of 2**, where the drained pool failed on 2 of 2. Counting the other drained
-continuations from this state (slow π_ref, and WoLF shift and jump), it is 0 of 5 against 2 of 2.
+A third branch, seed 12, was run to 220M for the collapse readout only. That is past both drained
+twins' pins (195M, 215M). It peaked at 0.85 at 165–170M and ended at 0.62.
+
+**Passes on 3 of 3**, where the drained pool failed on 2 of 2. Counting the other drained
+continuations from this state (slow π_ref, and WoLF shift and jump), it is 0 of 5 against 3 of 3.
 
 ### Strength half
 
@@ -125,6 +129,37 @@ What this changes:
 * **The P25 stress bench is unaffected**: from scratch, no resume. Its collapses (E4-27 on seeds 3
   and 5) are the recipe's own.
 
+## E4-48-03: the fix on seed 3, where the drained pool never collapsed
+
+The same repaired-state continuation from `E4-08-03@160M` (12 members at 5, 80, 85 … 160M).
+Seed 3's drained continuations never pinned (peaks 0.78 and 0.69), so this measures what the fix
+does to strength with no collapse involved. `launch_flags.py --diff` against
+`E4-08-03_20260922_202204`: identical.
+
+| run | 160–240M, by 5M (self-play USSR share) | peak | entropy by 10M |
+|:---|:---|---:|:---|
+| **E4-48-03** (fixed pool) | .64 .47 .52 .61 .59 .70 .64 .51 .54 .56 .58 .50 .51 .56 .52 .54 | 0.70 | 1.28 1.20 1.19 1.17 1.14 1.16 1.27 1.22 |
+| E4-08-03 (drained) | .59 .62 .60 .62 .60 .61 .58 .55 .62 .69 .78 .51 .69 .53 .58 .62 | 0.78 | 1.26 1.31 1.42 1.53 1.58 1.56 1.40 1.35 |
+
+`data/reports/p25_e4-48-03_200_240M.{md,json}`:
+
+| step | E4-48-03 − E4-08-03 | E4-48-03 vs E4-08-03 @240M (as USSR / as US) |
+|:---|---:|---:|
+| 200M | +124 | 56 / 47 |
+| 220M | +66 | 44 / 57 |
+| 240M | +55 | 57 / 71 |
+
+E4-48-03@240M rates 2203 against the 160M start's 2116 (+88). The drained plain leg dipped to 2041
+at 200M, the "200M dip" [`E4_late_dynamics.md`](E4_late_dynamics.md) asked about, and E4-48-03
+has no dip. The drained seed-11 branch (`E4-08-03-160M.11@240M`, 2197) finishes level with it
+(+6), so at 240M the gain on seed 3 is within the seed spread. The clearer difference is the path:
+on the fixed pool entropy stays at 1.14–1.28 with the two seats level (1.20 / 1.18 at the end). On
+the drained pool it rose to 1.58 at 200–210M, the same pre-collapse signature as seed 5, which
+seed 3 survived.
+
+**On both lineages the fix is at least neutral, and it is large where the drained pool collapsed.**
+It is a bug fix, so it needs no gate. Every continuation from here on uses it.
+
 ## Open
 
 * E4-48-05-160M.11's first leg died at ~215M on a CUDA `unspecified launch failure`, raised at
@@ -132,3 +167,15 @@ What this changes:
   asynchronous, so the faulting kernel is earlier, most likely inside a replay. This is the first
   such fault in about 20 runs since graphs were introduced. The kernel log is not readable here, so
   a hardware Xid cannot be ruled out. It was continued from its 215M resume state.
+
+## Next
+
+* **The recipe's late behaviour needs re-measuring on a fixed pool.** The late-dynamics verdicts
+  (λ 0.99, π_ref 100k and η late, slow π_ref from 160M) compared arms that all ran drained. Their
+  ranking may hold, but their collapses may not.
+* **P25's acceptance run (step 6: six seeds, unattended, to 160M) now has to cross resumes on the
+  fixed code.** The late collapse was the reason to expect it to fail, and the bench's from-scratch
+  collapse (E4-27) was a two-seed result that seeds 6 and 7 did not reproduce.
+* `opp_pool_span_m` did not flag the drain, because the step-0 members made the span look like the
+  whole run. A metric computed from the members' real steps, such as the median member age, would
+  have shown it.
