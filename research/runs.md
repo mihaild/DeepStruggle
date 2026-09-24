@@ -65,6 +65,11 @@ stays legible:
 | **E4-46** | **P25 bench, WoLF dead zone (shift) + seat balancing** — E4-41 with `--seat-balance` |
 | **E4-47** | **P25 bench, narrower WoLF dead zone** — E4-41 with `--wolf-dead-zone 0.10` |
 | **E4-48** | **Late-collapse test, fixed pool** — `E4-08-05@160M` to 240M with no change but the opponent-pool resume fix (`3803d5d`), from a repaired 160M state |
+| **E4-49** | **P25 3j–3l bench control** — E4-27's flags (λ 0.99 from scratch), seeds 10–13, 80M |
+| **E4-50** | **P25 3j, advantage-normaliser floor c 0.8** — E4-49 plus `--adv-norm-floor 0.8` |
+| **E4-51** | **P25 3j, advantage-normaliser floor c 0.5** — E4-49 plus `--adv-norm-floor 0.5` |
+| **E4-52** | **P25 3k, one-sided per-seat entropy ceiling** — E4-49 plus `--entropy-ceiling 1.8` |
+| **E4-53** | **P25 3l, per-seat KL early stop** — E4-49 plus `--target-kl k`, k from E4-49's own distribution |
 
 **A continuation is not an attempt.** Taking an arm further on the same seed keeps its name —
 `E4-08-03` covers 0–80M, 80–160M and 160–240M in three directories — so its snapshots read
@@ -151,6 +156,7 @@ having deliberately.
 | **E4-48-03** | The same fixed-pool continuation on seed 3's lineage, from a repaired `E4-08-03@160M` state. Seed 3's drained continuations did not collapse, so this isolates the fix's effect on strength. Baseline: `E4-08-03_20260922_202204` | 160M → 240M | `E4-48-03_20260924_053454` | [`log/P25_pool_resume_bug.md`](log/P25_pool_resume_bug.md) |
 | **E4-48-05-160M.12** | Third fixed-pool replicate of E4-48 on seed 5's lineage (seed-12 branch), collapse readout only | 160M → 220M | `E4-48-05-160M.12_20260924_055334` | [`log/P25_pool_resume_bug.md`](log/P25_pool_resume_bug.md) |
 | **E4-27-06/07, E4-41-06/07** | New-seed replicates of the bench control (λ 0.99 from scratch) and of E4-41 (WoLF dead zone 0.15, shift), seeds 6 and 7: does the bench collapse on other seeds, and is E4-41's gain a seed-3/5 property? | 0 → 60M | `E4-27-06_20260924_040324`, `E4-41-06_20260924_040354`, `E4-{27,41}-07_20260924_05*` | [`log/P25_stress_bench.md`](log/P25_stress_bench.md) |
+| **E4-49..53-10..13** | P25 3j–3l bench: λ 0.99 from scratch, 80M, seeds 10–13, two at a time: control (E4-49), advantage-normaliser floor 0.8 / 0.5 (E4-50 / E4-51), one-sided entropy ceiling 1.8 (E4-52), per-seat KL early stop (E4-53; k = p90 of the controls' per-seat approximate KL over 5–40M). Every earlier λ 0.99 run directory (E4-27, E4-29, E4-35..41, E4-43, E4-46, E4-47; 26 in all) was moved to `checkpoints/_archive/lambda_0.99/` before it | 0 → 80M | `E4-49-10_20260924_075031`, `E4-49-11_20260924_0751*`, … | *running* |
 | **E4.1-01-03/05** | P23 A/B: M2d in the E4.1 merged-influence view, from scratch. Both collapsed (US) early; level with E4 before, −105 / −360 inside. Paused | 80M / 30M (stopped) | `E4.1-01-0{3,5}_20260923_*` | [`log/P23_E4_1_ab.md`](log/P23_E4_1_ab.md) |
 | **E4-08-05-160M.11** | seed branch of seed 5: `E4-08-05@160M` continued to 240M under seed 11, a second seed-5 baseline because the plain seed-5 continuation (`E4-08-05_20260923_095214`) collapsed (US 1% of self-play at 209M) | 160M → 240M | `E4-08-05-160M.11_20260923_122421` | [`log/E4_late_dynamics.md`](log/E4_late_dynamics.md) |
 | **E4-08-03-160M.11** | seed branch: `E4-08-03@160M` continued to 240M under seed 11, otherwise identical to E4-08-03's 160→240M leg. Is that leg's 200M dip seed 3's or M2d's? Also a second baseline for E4-29..33 | 160M → 240M | `E4-08-03-160M.11_20260923_072049` | [`log/E4_late_dynamics.md`](log/E4_late_dynamics.md) |
