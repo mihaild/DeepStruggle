@@ -264,8 +264,9 @@ and one TF32 run.
   * gradients: relative L2 difference 8.8e-4 (cos 0.9999996). That is smaller than the TF32 vs
     fp32 difference in the same measurement (2.0e-3), which the TF32 A/B found harmless.
   * **The comparison has to be made in eval mode.** In train mode two passes of even the *same*
-    eager network differ by ~17%, so something in the forward is stochastic in training. Any
-    train-mode comparison measures that noise, not compilation.
+    eager network differ by ~17%. That is the residual blocks' `nn.Dropout(0.05)`
+    (`ai/models/coldwar_net_v2.py`), so any train-mode comparison measures dropout noise, not
+    compilation.
 * **Compile time:** the first iteration took 3–8 s here, with inductor's cache warm on this
   machine. A cold cache costs more once, most for `max-autotune`.
 
