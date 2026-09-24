@@ -270,6 +270,11 @@ of a run without them are unchanged:
     The value loss continues. `approx_kl_us` / `approx_kl_ussr` are logged on every run, and
     `kl_stop_frac_*` with the target.
   * The floor's EMA and the per-seat coefficients are carried in the resume state.
+* `--entropy-normalize` makes the entropy bonus reward entropy / log(legal count) per decision, the
+  fraction of that decision's maximum. A many-option decision (E4.1's ~50-option op-mode nodes)
+  then gets no more room than a few-option one. On E4's decision mix the raw entropy is about
+  2.1x the normalised one, so `--entropy-coef 0.021` with it matches the default bonus on
+  average. The logged entropy stays raw.
 
 At every snapshot it also records the win rate against each fixed baseline, overall and per side
 (`eval/win_rate_vs_HeuristicBot`, `..._as_us`, `..._as_ussr`), alongside the decisive-decision and

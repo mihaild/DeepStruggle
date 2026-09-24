@@ -165,3 +165,39 @@ def test_the_cli_offers_the_three_levers_off_by_default() -> None:
     from ai.training.train import build_parser
     a = build_parser().parse_args([])
     assert (a.adv_norm_floor, a.entropy_ceiling, a.target_kl) == (0.0, 0.0, 0.0)
+
+
+def test_bonus_entropy_is_raw_by_default_and_a_fraction_of_the_maximum_when_normalized() -> None:
+    import math
+    from ai.training.nash_pg import bonus_entropy
+    ent = torch.tensor([0.0, math.log(4.0), 1.0, 2.0])
+    mask = torch.zeros(4, 10, dtype=torch.uint8)
+    mask[0, :1] = 1      # forced
+    mask[1, :4] = 1      # uniform over 4
+    mask[2, :4] = 1
+    mask[3, :10] = 1
+    assert torch.equal(bonus_entropy(ent, mask, False), ent)
+    got = bonus_entropy(ent, mask, True)
+    want = torch.tensor([0.0, 1.0, 1.0 / math.log(4.0), 2.0 / math.log(10.0)])
+    assert torch.allclose(got, want)
+
+
+def test_entropy_normalize_off_is_bitwise_the_control_and_on_trains() -> None:
+    torch.manual_seed(1)
+    a = _trainer()
+    a.train_iteration()
+    torch.manual_seed(1)
+    b = _trainer(entropy_normalize=False)
+    b.train_iteration()
+    for pa, pb in zip(a.active_net.parameters(), b.active_net.parameters()):
+        assert torch.equal(pa, pb)
+    torch.manual_seed(1)
+    c = _trainer(entropy_normalize=True)
+    c.train_iteration()
+    assert any(not torch.equal(pa, pc) for pa, pc in zip(a.active_net.parameters(),
+                                                       c.active_net.parameters()))
+
+
+def test_the_cli_offers_entropy_normalize_off_by_default() -> None:
+    from ai.training.train import build_parser
+    assert build_parser().parse_args([]).entropy_normalize is False

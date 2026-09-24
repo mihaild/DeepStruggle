@@ -440,6 +440,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "approximate KL from the rollout policy on a minibatch exceeds this, its "
                              "policy terms are masked for the rest of the update. 0 is off; the "
                              "per-seat KL is logged either way (approx_kl_us / approx_kl_ussr).")
+    parser.add_argument("--entropy-normalize", action="store_true", default=False,
+                        help="The entropy bonus rewards entropy / log(legal count) per decision -- the "
+                             "fraction of that decision's maximum -- so a many-option decision gets no "
+                             "more room than a few-option one (P23: E4.1's ~50-option op-mode nodes). "
+                             "Same average bonus as the raw one at ~2.1x --entropy-coef on E4's "
+                             "decision mix. Logged entropy stays raw.")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -640,6 +646,7 @@ def main():
             adv_norm_floor=args.adv_norm_floor,
             entropy_ceiling=args.entropy_ceiling,
             target_kl=args.target_kl,
+            entropy_normalize=args.entropy_normalize,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

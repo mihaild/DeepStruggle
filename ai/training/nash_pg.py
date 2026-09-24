@@ -117,6 +117,21 @@ def wolf_seat_weights(sp_ussr: float, power: float = 1.0, dead_zone: float = 0.0
     return 2.0 * a / (a + b), 2.0 * b / (a + b)
 
 
+def bonus_entropy(entropy: torch.Tensor, mask: torch.Tensor, normalize: bool) -> torch.Tensor:
+    """The per-decision entropy the entropy bonus rewards.
+
+    Raw by default. With `normalize` (--entropy-normalize) it is entropy / log(legal count), the
+    fraction of that decision's maximum. A 50-option decision then carries no more room for the
+    bonus than a 4-option one: E4.1's merged view grows the play- and op-mode decisions from ~4
+    options to ~50, and a losing seat's policy there drifted to near-uniform (0.96 of its maximum)
+    under the fixed bonus (research/log/P23_E4_1_ab.md). A forced decision (one legal action) has
+    zero entropy and stays zero."""
+    if not normalize:
+        return entropy
+    n = mask.to(entropy.dtype).sum(-1)
+    return torch.where(n > 1.5, entropy / torch.log(n.clamp(min=2.0)), torch.zeros_like(entropy))
+
+
 def wolf_sample_weights(players: torch.Tensor, w_us: float, w_ussr: float) -> torch.Tensor:
     """Each sample's surrogate weight from its acting seat: +1 US, -1 USSR, anything else 1."""
     ones = torch.ones(players.shape, dtype=torch.float32, device=players.device)
@@ -248,6 +263,7 @@ class BaseNashPGTrainer:
         entropy_ceiling_min_coef: float = -0.02,
         entropy_ceiling_grace_steps: float = 5_000_000.0,
         target_kl: float = 0.0,
+        entropy_normalize: bool = False,
         cuda_graphs: bool = True,
         device: torch.device | str = "cuda",
     ):
@@ -398,6 +414,8 @@ class BaseNashPGTrainer:
         #: of the update (the value loss continues). The per-seat KL is logged whether or not the
         #: target is set, because the target is chosen from the controls' own distribution.
         self.target_kl = float(target_kl)
+        #: --entropy-normalize: the bonus rewards entropy / log(legal) per decision; see bonus_entropy.
+        self.entropy_normalize = bool(entropy_normalize)
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
         #: an exponential average of the USSR's win share in pure self-play games (both seats the
         #: current policy). The entropy bonus, the KL to pi_ref and the value loss are left
@@ -1257,7 +1275,10 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # the learner's policy toward states it did not choose to be in.
                 _own_f = (b_learner > 0.5).to(cur_entropy.dtype)
                 _own_n = _own_f.sum().clamp(min=1.0)
-                own_entropy = (cur_entropy * _own_f).sum() / _own_n
+                # The entropy the bonus rewards: raw, or as a fraction of each decision's maximum.
+                # The logged entropy stays raw (cur_entropy.mean() below).
+                ent_b = bonus_entropy(cur_entropy, b_mask, self.entropy_normalize)
+                own_entropy = (ent_b * _own_f).sum() / _own_n
                 # P15-X4b: pull the policy toward the searcher, on searched decisions only.
                 # Soft cross-entropy against the visit distribution.
                 #
@@ -1315,12 +1336,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                     # and only its speed is. The logged kl_div and entropy stay unweighted.
                     _w = wolf_sample_weights(b_players, wolf_w_us, wolf_w_ussr).to(kl_per.dtype)
                     kl_term = (kl_per * _w).mean()
-                    ent_term = (cur_entropy * _w * _own_f).sum() / _own_n
+                    ent_term = (ent_b * _w * _own_f).sum() / _own_n
                 ent_loss = self.ent_coef * ent_term
                 if self.target_kl > 0.0:
                     _sw = torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(kl_per.dtype)
                     kl_term = (kl_per * _sw).mean()
-                    ent_term = (cur_entropy * _own_f * _sw).sum() / _own_n
+                    ent_term = (ent_b * _own_f * _sw).sum() / _own_n
                     ent_loss = self.ent_coef * ent_term
                 if self.entropy_ceiling > 0.0:
                     _c = torch.where(b_players == 1, ent_c_us, ent_c_ussr).to(cur_entropy.dtype)
@@ -1328,7 +1349,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                     if self.target_kl > 0.0:
                         _ew = _own_f * torch.where(b_players == 1, seat_act[1],
                                                    seat_act[-1]).to(cur_entropy.dtype)
-                    ent_loss = (cur_entropy * _ew * _c).sum() / _own_n
+                    ent_loss = (ent_b * _ew * _c).sum() / _own_n
                 policy_loss = (ppo_loss + self.eta * kl_term - ent_loss
                                + self.search_ce_coef * search_ce)
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,

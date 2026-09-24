@@ -1373,6 +1373,7 @@ def train_pipeline(
     adv_norm_floor: float = 0.0,
     entropy_ceiling: float = 0.0,
     target_kl: float = 0.0,
+    entropy_normalize: bool = False,
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1567,6 +1568,7 @@ def train_pipeline(
         "adv_norm_floor": float(adv_norm_floor),
         "entropy_ceiling": float(entropy_ceiling),
         "target_kl": float(target_kl),
+        "entropy_normalize": bool(entropy_normalize),
         "cuda_graphs": bool(cuda_graphs),
         # The optimisation settings, under their CLI names so tools/scripts/launch_flags.py can
         # diff them. Until 2026-09-24 none of these was recorded, so a run launched with a
@@ -1740,6 +1742,7 @@ def train_pipeline(
         adv_norm_floor=adv_norm_floor,
         entropy_ceiling=entropy_ceiling,
         target_kl=target_kl,
+        entropy_normalize=entropy_normalize,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1891,6 +1894,9 @@ def train_pipeline(
         print(f"[P25 3k] per-seat entropy ceiling {entropy_ceiling:g} nats, one-sided: coefficient in "
               f"[-0.02, ent_coef], lr 0.01 per nat per iteration, from 5M steps (--entropy-ceiling)",
               flush=True)
+    if entropy_normalize:
+        print(f"[entropy] the bonus rewards entropy / log(legal) per decision (--entropy-normalize), "
+              f"coefficient {entropy_coef:g}", flush=True)
     if target_kl > 0.0:
         print(f"[P25 3l] per-seat KL early stop at approx KL {target_kl:g} from the rollout policy "
               f"(--target-kl)", flush=True)
