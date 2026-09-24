@@ -5,8 +5,15 @@ over 512 positions costs about the same as over 16 (research/log/training_throug
 graph records those kernels once and replays them with a single launch. It replays the SAME
 kernels on the same inputs, so its outputs are bitwise identical to eager -- unlike
 `torch.compile`, which fuses and reorders arithmetic and is held back by P11's adoption gates for
-that reason. Two graphs (learner and pool opponent) can also be replayed on separate streams and
-overlap on the device, which two eager forwards cannot: their host-side launches serialise.
+that reason.
+
+**Never replay two of these graphs concurrently on different streams.** A graph bakes in the cuBLAS
+workspace of the stream it was captured on, and `torch.cuda.Stream()` comes from a pool of 32 per
+device, reused round-robin. Once the pool wraps, two graphs can hold the same workspace, and
+concurrent replays then race on it: wrong logits when both captures used the default capture
+stream (fixed by the per-graph capture stream below), and a GPU deadlock in split-K kernels once
+the pool wrapped after ~16 captures (E4-42, E4-44; see nash_pg._graphed_forward). Replayed one
+after the other they are safe whatever they share.
 
 A graph reads the network's parameters by address. The optimiser updates them in place, so a
 replay always sees the current weights, and `load_state_dict` copies into the existing tensors.
@@ -49,10 +56,9 @@ class GraphedForward:
                 net(self.static_obs, self.static_mask)
         torch.cuda.current_stream(device).wait_stream(side)
         self.graph = torch.cuda.CUDAGraph()
-        # A capture stream of its own. cuBLAS scratch space is keyed by stream, and two graphs
-        # captured on the same (default) capture stream record the SAME workspace: replayed
-        # concurrently on two streams they then race on it and both return wrong logits -- by up
-        # to 0.89 in probability, caught by tests/training/test_graphed_forward.py.
+        # A capture stream of its own, so a capture does not run on the caller's stream. This is
+        # NOT a guarantee of a private cuBLAS workspace: streams come from a reused pool of 32, so
+        # graphs must still never be replayed concurrently (see the module docstring).
         self._capture_stream = torch.cuda.Stream(device=device)
         with torch.cuda.graph(self.graph, stream=self._capture_stream), torch.no_grad():
             self.static_out: Tuple[torch.Tensor, ...] = tuple(

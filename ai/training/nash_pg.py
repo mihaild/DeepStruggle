@@ -389,14 +389,13 @@ class BaseNashPGTrainer:
         self.wolf_dead_zone_mode = str(wolf_dead_zone_mode)
         wolf_seat_weights(0.5, 1.0, 0.0, self.wolf_dead_zone_mode)   # validates the mode
         #: Rollout forwards replayed as CUDA graphs (ai/training/graphed_forward.py): bitwise the
-        #: same kernels as eager, one launch instead of ~317, and the learner and pool-opponent
-        #: graphs overlap on two streams. CUDA only; --no-cuda-graphs falls back to eager.
+        #: same kernels as eager, one launch instead of ~317. The learner's and the pool
+        #: opponent's graphs replay one after the other on the current stream -- see
+        #: _graphed_forward for why never concurrently. CUDA only; --no-cuda-graphs is eager.
         self._graphs: Optional[GraphCache] = None
-        self._opp_stream: Optional[torch.cuda.Stream] = None
         if cuda_graphs and self.device.type == "cuda":
             self._graphs = GraphCache(self.num_envs, self.buffer.obs_dim,
                                       ActionEncoder.FLAT_ACTION_SIZE, self.device)
-            self._opp_stream = torch.cuda.Stream(device=self.device)
         #: The USSR's smoothed self-play win share. Starts even, and is carried in the resume
         #: state so a resumed run does not relearn it.
         self.wolf_sp_ussr = 0.5
@@ -495,10 +494,21 @@ class BaseNashPGTrainer:
     def _graphed_forward(self, obs_t: torch.Tensor, masks_t: torch.Tensor,
                          learner_np: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """The rollout forward as CUDA-graph replays: the learner over every env, and in a mixed
-        batch the pool opponent over every env too, on its own stream so the two overlap. The
-        opponent's rows are then copied into the learner's logits. Values always come from the
-        learner (see the eager branch in collect_rollouts for why)."""
-        assert self._graphs is not None and self._opp_stream is not None
+        batch the pool opponent over every env too; the opponent's rows are then copied into the
+        learner's logits. Values always come from the learner (see the eager branch in
+        collect_rollouts for why).
+
+        The two replays run one after the other on the current stream, NEVER concurrently on two
+        streams. A captured graph bakes in the cuBLAS workspace of the stream it was captured on,
+        and PyTorch hands out streams from a pool of 32 per device, reused round-robin. After ~16
+        captures (two streams each; one capture per new pool member, i.e. per snapshot) an
+        opponent's graph can share the learner's workspace, and replayed concurrently their split-K
+        kernels, which coordinate through counters in that workspace, deadlocked the GPU: E4-42-03,
+        E4-42-05 and E4-44-05 all hung here, in the first sync after the replays, with the GPU at
+        100% and low power (research/log/training_throughput_cpu.md). Serialised replays cannot
+        race whatever workspace they share.
+        """
+        assert self._graphs is not None
         g_l = self._graphs.get(self.active_net)
         g_l.load(obs_t, masks_t)
         mixed = self.opponent_pool is not None and not bool(learner_np.all())
@@ -508,13 +518,9 @@ class BaseNashPGTrainer:
             return logits, v_win_t, v_vp_t
         assert self.opponent_pool is not None
         g_o = self._graphs.get(self.opponent_pool.current)
-        main = torch.cuda.current_stream(self.device)
-        self._opp_stream.wait_stream(main)
-        with torch.cuda.stream(self._opp_stream):
-            g_o.load(obs_t, masks_t)
-            g_o.replay()
         g_l.replay()
-        main.wait_stream(self._opp_stream)
+        g_o.load(obs_t, masks_t)
+        g_o.replay()
         logits, v_win_t, v_vp_t = g_l.outputs()
         logits = logits.float()
         opp_idx = torch.from_numpy(np.flatnonzero(~learner_np)).to(self.device)

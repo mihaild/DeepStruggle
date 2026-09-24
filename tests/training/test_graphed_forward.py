@@ -99,28 +99,29 @@ def test_rollout_with_graphs_matches_eager_with_a_pool() -> None:
     assert torch.allclose(a["log_probs"], b["log_probs"], rtol=0, atol=1e-5)
 
 
-def test_two_graphs_replayed_concurrently_on_two_streams_stay_bitwise_eager() -> None:
-    """The rollout replays the learner's and the opponent's graphs at once. Captured on a shared
-    capture stream they shared a cuBLAS workspace and both came out wrong."""
+def test_graphs_sharing_a_capture_stream_replayed_in_turn_stay_bitwise_eager() -> None:
+    """PyTorch reuses a pool of 32 streams, so after enough captures two graphs share a capture
+    stream and with it a cuBLAS workspace. Replayed concurrently they deadlocked the GPU (E4-42,
+    E4-44); the trainer now replays them one after the other, which must stay exact."""
     import ts_engine as ts
     torch.manual_seed(0)
     a = create_coldwar_net_v2().cuda().eval()
     torch.manual_seed(7)
     b = create_coldwar_net_v2().cuda().eval()
     cache = GraphCache(32, ts.OBS_SIZE, 220, torch.device("cuda"))
+    ga = cache.get(a)
+    # Advance the pool so b's capture stream is a's again (each capture takes two streams).
+    for _ in range(30):
+        torch.cuda.Stream()
+    gb = cache.get(b)
+    assert gb._capture_stream.cuda_stream == ga._capture_stream.cuda_stream
     gen = torch.Generator(device="cuda").manual_seed(1)
-    side, main = torch.cuda.Stream(), torch.cuda.current_stream()
     for _ in range(5):
         obs, mask = _inputs(32, gen)
         with torch.no_grad():
             ea, eb = a(obs, mask)[0], b(obs, mask)[0]
-        ga = cache.get(a)
         ga.load(obs, mask)
-        gb = cache.get(b)
-        side.wait_stream(main)
-        with torch.cuda.stream(side):
-            gb.load(obs, mask)
-            gb.replay()
         ga.replay()
-        main.wait_stream(side)
+        gb.load(obs, mask)
+        gb.replay()
         assert torch.equal(ga.static_out[0], ea) and torch.equal(gb.static_out[0], eb)
