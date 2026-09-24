@@ -489,3 +489,54 @@ No setting of this dial gets both halves on both seeds. What the bench is asking
 that acts on the *losing* seat's signal without flattening the *winning* seat's. Every WoLF variant
 tried here scales the two seats' objectives against each other. Seat balancing does act on the
 losing seat alone, but E4-46 showed it buys that with one-sided sharpening.
+
+## Step 3i: new seeds for the control and E4-41 (seeds 6 and 7), 2026-09-24
+
+E4-27's flags (the control) and E4-41's flags (WoLF dead zone 0.15, shift) on seeds 6 and 7, to
+60M. `launch_flags.py --diff` against the seed-3/5 runs shows the seed only. Seed 7's two runs are
+identical through 10M (the same 5M buckets, advantage spread and entropy), as they must be: inside
+the dead zone both weights are 1.
+
+### Collapse half: E4-41 collapses on 3 of 4 seeds, the control on 2 of 4
+
+| run | 0–60M, by 5M (self-play USSR share) | peak | buckets ≥ 0.9 | entropy by 10M | last 10M: US / USSR entropy | probe 50–60M |
+|:---|:---|---:|:---|:---|:---|---:|
+| E4-27-06 | .53 .56 .61 .77 .67 .80 .74 .69 .68 .80 .79 .51 | 0.80 | none | 1.75 1.62 1.63 1.67 1.66 1.68 | 1.79 / 1.61 | 1.23 |
+| E4-41-06 | .53 .62 .59 .56 .74 .79 .84 .92 .84 .87 .88 .84 | 0.92 | 35–40M | 1.75 1.63 1.70 1.76 1.63 1.64 | 1.84 / 1.57 | 1.18 |
+| E4-27-07 | .54 .51 .55 .70 .62 .58 .53 .68 .41 .47 .53 .63 | 0.70 | none | 1.70 1.59 1.66 1.71 1.61 1.74 | 1.78 / 1.70 | 1.18 |
+| E4-41-07 | .54 .51 .55 .61 .61 .74 .78 .82 .75 .85 .77 .93 | 0.93 | 55–60M | 1.70 1.61 1.66 1.76 1.77 1.81 | 1.97 / 1.69 | 1.27 |
+
+Across the four seeds:
+
+| | seed 3 | seed 5 | seed 6 | seed 7 |
+|:---|:---|:---|:---|:---|
+| control (E4-27) | collapses | collapses | passes (0.80) | passes (0.70) |
+| E4-41 | passes (0.84) | collapses (0.96) | collapses (0.92) | collapses (0.93) |
+
+### Strength half: E4-41 behind its control on both new seeds
+
+`data/reports/p25_seed{6,7}_50_60M.{md,json}`. Each field holds the seed's two runs at 50, 55 and
+60M, plus E4-41-0{3,5}, E4-27-0{3,5} and E4-08-0{3,5} at 60M.
+
+| seed | step | E4-41 − E4-27 | E4-41 vs E4-27 @60M (as USSR / as US) |
+|---:|:---|---:|---:|
+| 6 | 50M | −71 | 52 / 7 |
+| 6 | 55M | −18 | 47 / 15 |
+| 6 | 60M | +54 | 74 / 46 |
+| 7 | 50M | −62 | 69 / 25 |
+| 7 | 55M | −84 | 76 / 13 |
+| 7 | 60M | −14 | 72 / 14 |
+
+**E4-41 fails both halves on the new seeds.** Its seed-3/5 gain (+46..+168) was a property of those
+two seeds. The bench's "collapse on 2 of 2 seeds" was also partly a property of seeds 3 and 5: on
+seeds 6 and 7 the plain λ 0.99 control stays under 0.80.
+
+In both new seeds the E4-41 run drifts further than its control once the brake engages (above
+0.65). With w_us at 1.3–1.6, the US seat's entropy climbs (1.84, 1.97), and the split then widens
+rather than closes. This matches the E4-38 failure ("the brake became an entropy push"): the
+losing seat's whole objective is up-weighted, entropy bonus included. That mechanism was not
+isolated here. If it is the cause, the dead zone only delays it.
+
+**Where WoLF stands.** Seven variants (E4-38..47) have not produced one that passes both halves on
+more than the seeds it was tuned on. Seed-level variance on this bench is as large as any lever's
+effect, so a two-seed bench cannot rank levers. Any further lever needs at least four seeds.
