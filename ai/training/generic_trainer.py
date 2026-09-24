@@ -1171,6 +1171,30 @@ def resolve_resume(resume: str) -> str:
     return os.path.join(resume, RESUME_FILENAME)
 
 
+def locate_pool_members(saved_pool: Dict[str, Any],
+                        run_snapshots: Dict[int, str]) -> Tuple[List[int], List[str]]:
+    """The recorded pool members whose weights can still be found: (steps, paths), in order.
+
+    A member's recorded path wins when the file exists -- that is how a member written by an
+    earlier leg of the lineage, which lives in that leg's run directory, survives a continuation
+    into a new one. Otherwise it is looked up by step among `run_snapshots` (step -> path), the
+    resumed run's own snapshots; states written before paths were recorded only have this. A
+    member found by neither is dropped, and the caller reports how many.
+    """
+    want = [int(x) for x in saved_pool.get("steps", [])]
+    want_paths = list(saved_pool.get("paths") or [""] * len(want))
+    steps: List[int] = []
+    paths: List[str] = []
+    for w, q in zip(want, want_paths):
+        if q and os.path.isfile(q):
+            steps.append(w)
+            paths.append(q)
+        elif w in run_snapshots:
+            steps.append(w)
+            paths.append(run_snapshots[w])
+    return steps, paths
+
+
 def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                       total_env_steps: int, elapsed_seconds: float,
                       seed: Optional[int] = None) -> None:
@@ -1693,6 +1717,7 @@ def train_pipeline(
         # and the code after the branch reads these unconditionally.
         _saved_pool: Optional[Dict[str, Any]] = None
         _seed_steps: List[int] = []
+        _seed_paths: List[str] = []
         if opponent_checkpoints:
             _seed_nets = load_pool(opponent_checkpoints, dev)
             _seed_merged = [checkpoint_merged_influence(p) for p in opponent_checkpoints]
@@ -1705,7 +1730,6 @@ def train_pipeline(
             # an "extension" of a pooled run would spend its first third not really pooled, and
             # nothing would report it. Spread the seeds across the run's history rather than
             # taking the most recent, which is what the pool's eviction rule aims for too.
-            _seed_paths: List[str] = []
             _run_dir = ""
             if resume:
                 _src_file = resolve_resume(resume)
@@ -1733,8 +1757,7 @@ def train_pipeline(
                 _have = {n: q for n, q in _snaps}
                 _want = [int(x) for x in (_saved_pool or {}).get("steps", [])]
                 if _want:
-                    _seed_steps = [w for w in _want if w in _have]
-                    _seed_paths = [_have[w] for w in _seed_steps]
+                    _seed_steps, _seed_paths = locate_pool_members(_saved_pool or {}, _have)
                     _missing = len(_want) - len(_seed_steps)
                     if _missing:
                         print(f"[opponent pool] {_missing} of {len(_want)} recorded members have "
@@ -1799,7 +1822,12 @@ def train_pipeline(
                   f"{'E4.1' if merged_influence else 'E4'}, members "
                   f"{sum(_seed_merged)} E4.1 / {len(_seed_merged) - sum(_seed_merged)} E4", flush=True)
         if opponent_self_pool and not opponent_checkpoints and _saved_pool:
-            trainer.opponent_pool.load_state_dict(_saved_pool, _seed_steps)
+            trainer.opponent_pool.load_state_dict(_saved_pool, _seed_steps, _seed_paths)
+        elif opponent_self_pool and not opponent_checkpoints and _seed_paths:
+            # A rebuild has no record to restore, but its members' steps are known and must be
+            # kept for the same reason: at step 0 they would be the first evicted.
+            trainer.opponent_pool.steps = list(_seed_steps)
+            trainer.opponent_pool.paths = list(_seed_paths)
         if reset_opponent_pool and resume:
             print("[opponent pool] --reset-opponent-pool: the recorded pool was discarded "
                   "deliberately.", flush=True)
@@ -2132,7 +2160,8 @@ def train_pipeline(
                     _opp.load_state_dict(torch.load(snap_path, map_location=dev,
                                                     weights_only=True))
                     trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
-                                              merged=bool(merged_influence))
+                                              merged=bool(merged_influence),
+                                              path=os.path.abspath(snap_path))
                 except Exception as _e:
                     # A pool that fails to grow is a degraded experiment, not a dead one --
                     # say so loudly and keep training rather than losing the run.

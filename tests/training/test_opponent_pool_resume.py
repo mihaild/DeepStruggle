@@ -186,3 +186,100 @@ def test_the_run_directory_a_resume_argument_names_holds_the_snapshots() -> None
         # the parent really is snapshot-free, which is why the old expression starved the pool
         parent = os.path.dirname(os.path.abspath(run_dir))
         assert not [f for f in os.listdir(parent) if f.startswith("snapshot_")]
+
+
+def test_restored_members_keep_their_steps() -> None:
+    """The constructor records every seed at step 0; a restore must put the real steps back.
+
+    It did not: after a resume the whole restored pool sat at step 0. Eviction goes by spacing,
+    members at one step have zero spacing, so every new snapshot evicted a restored member until
+    two were left -- a resumed pool drained to its recent end -- and the next resume, looking the
+    step-0 members up on disk, found none of them and dropped them (E4-44-05's continuation at
+    190M came back with 6 of 12). See research/log/P25_stress_bench.md.
+    """
+    p = _pool()
+    p.steps = [0, 5_000_000, 10_000_000]
+    blob = p.state_dict()
+
+    restored = _pool()
+    restored.load_state_dict(blob, [0, 5_000_000, 10_000_000])
+    assert restored.steps == [0, 5_000_000, 10_000_000]
+    assert restored.state_dict()["steps"] == [0, 5_000_000, 10_000_000], (
+        "the next resume state would record the restored members at the wrong steps")
+
+
+def test_a_resume_does_not_change_what_eviction_keeps() -> None:
+    """Interrupting a run and resuming it must leave the same pool as running straight through."""
+    def grow(pool: OpponentPool, steps: List[int]) -> None:
+        for st in steps:
+            pool.add(_Tiny(float(st)), st, path=f"/run/snapshot_{st}steps.pt")
+
+    first = [s * 5_000_000 for s in range(1, 21)]
+    second = [s * 5_000_000 for s in range(21, 41)]
+
+    straight = OpponentPool([_Tiny(0.0)], num_envs=4, frac=0.5, seed=11, capacity=6)
+    grow(straight, first + second)
+
+    before = OpponentPool([_Tiny(0.0)], num_envs=4, frac=0.5, seed=11, capacity=6)
+    grow(before, first)
+    blob = before.state_dict()
+    resumed = OpponentPool([_Tiny(0.0) for _ in blob["steps"]], num_envs=4, frac=0.5, seed=11,
+                           capacity=6)
+    resumed.load_state_dict(blob, blob["steps"], blob["paths"])
+    grow(resumed, second)
+
+    assert resumed.steps == straight.steps
+    assert resumed.paths == straight.paths
+
+
+def test_paths_are_recorded_and_restored() -> None:
+    p = _pool(n=1)
+    p.add(_Tiny(1.0), 5_000_000, path="/a/snapshot_5000000steps.pt")
+    blob = p.state_dict()
+    assert blob["paths"] == ["", "/a/snapshot_5000000steps.pt"]
+
+    restored = _pool(n=2)
+    restored.load_state_dict(blob, blob["steps"], blob["paths"])
+    assert restored.paths == blob["paths"]
+
+
+def test_load_state_dict_refuses_a_step_list_that_does_not_match_the_nets() -> None:
+    import pytest
+
+    p = _pool()
+    with pytest.raises(ValueError):
+        p.load_state_dict(p.state_dict(), [0, 5_000_000])
+
+
+def test_members_of_an_earlier_leg_are_found_by_their_recorded_path() -> None:
+    """A continuation lives in a new directory; members written by the leg before it do not.
+
+    Looking members up by step in the resumed run's directory alone lost every member an earlier
+    leg wrote. The recorded path finds them wherever they are.
+    """
+    import os
+    import tempfile
+
+    from ai.training.generic_trainer import locate_pool_members
+
+    with tempfile.TemporaryDirectory() as root:
+        leg1 = os.path.join(root, "E9-99-01_20260101_000000")
+        leg2 = os.path.join(root, "E9-99-01_20260102_000000")
+        for d in (leg1, leg2):
+            os.makedirs(d)
+        old = os.path.join(leg1, "snapshot_80000000steps.pt")
+        new = os.path.join(leg2, "snapshot_120000000steps.pt")
+        for f in (old, new):
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x")
+        gone = os.path.join(leg1, "snapshot_40000000steps.pt")   # pruned since
+
+        saved = {"steps": [40_000_000, 80_000_000, 120_000_000], "paths": [gone, old, new]}
+        steps, paths = locate_pool_members(saved, {120_000_000: new})
+        assert steps == [80_000_000, 120_000_000]
+        assert paths == [old, new]
+
+        # A state from before paths were recorded falls back to the run's own snapshots.
+        steps, paths = locate_pool_members({"steps": [80_000_000, 120_000_000]},
+                                           {120_000_000: new})
+        assert steps == [120_000_000] and paths == [new]

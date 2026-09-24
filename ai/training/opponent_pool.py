@@ -107,6 +107,10 @@ class OpponentPool:
         #: Step count each net was captured at, parallel to self.nets. Seeds get 0 so that a
         #: pool started from the initial policy keeps that policy as its earliest point.
         self.steps: List[int] = [0] * len(self.nets)
+        #: Snapshot file each net was loaded from, parallel to self.nets; "" when it has none (the
+        #: initial-policy seed). Recorded so a resume can find members written by an EARLIER leg
+        #: of the lineage, which live in that leg's run directory, not the one being resumed.
+        self.paths: List[str] = [""] * len(self.nets)
         #: P23 / E4.1: whether each member decides in the merged-influence view, parallel to
         #: self.nets. A member trained in the E4 view must keep being offered E4 masks, or it
         #: plays its untrained composed actions and becomes an artificially weak opponent.
@@ -244,7 +248,7 @@ class OpponentPool:
             return weak if self.rng.random() < p_weak else -weak
         return 1 if self.rng.random() < 0.5 else -1
 
-    def add(self, net: Any, steps: int, merged: bool = False) -> None:
+    def add(self, net: Any, steps: int, merged: bool = False, path: str = "") -> None:
         """Add a snapshot taken at `steps`, evicting to stay within capacity.
 
         The net is frozen in place. Callers pass a freshly loaded copy, not the live training
@@ -256,6 +260,7 @@ class OpponentPool:
             p.requires_grad_(False)
         self.nets.append(net)
         self.steps.append(int(steps))
+        self.paths.append(str(path))
         self.merged.append(bool(merged))
         self._register()
 
@@ -274,6 +279,7 @@ class OpponentPool:
                 victim = order[0]
             self.nets.pop(victim)
             self.steps.pop(victim)
+            self.paths.pop(victim)
             self.merged.pop(victim)
             dead = self.ids.pop(victim)
             self.wins.pop(dead, None)
@@ -365,6 +371,9 @@ class OpponentPool:
         """
         return {
             "steps": list(self.steps),
+            # Where each member's weights are, so a continuation into a new run directory keeps
+            # the members earlier legs wrote. Absent from states written before it was added.
+            "paths": list(self.paths),
             # Informational: on resume each member's view is re-derived from its run directory
             # (tools/lib/action_view.py), which cannot disagree with the snapshot it describes.
             "merged": list(self.merged),
@@ -379,14 +388,29 @@ class OpponentPool:
             "side_games": [[int(o), int(s), float(v)] for (o, s), v in self.side_games.items()],
         }
 
-    def load_state_dict(self, blob: Dict[str, Any], loaded_steps: Sequence[int]) -> None:
-        """Restore ids and statistics onto a pool whose nets were just reloaded.
+    def load_state_dict(self, blob: Dict[str, Any], loaded_steps: Sequence[int],
+                        loaded_paths: Optional[Sequence[str]] = None) -> None:
+        """Restore steps, ids and statistics onto a pool whose nets were just reloaded.
 
         `loaded_steps` is what the caller actually managed to load, in order, which may be a
         subset of what was saved if a snapshot has since been pruned. Statistics are carried over
         for the members that survived and dropped for the rest, so a partially recoverable pool
         keeps what it can rather than being silently zeroed or wrongly re-keyed.
+
+        The steps themselves are restored too. They used not to be: the constructor records every
+        seed at step 0, so after a resume the whole restored pool sat at 0. Eviction goes by
+        spacing, and members at one step have zero spacing, so each new snapshot evicted a
+        restored member until two were left -- the pool drained to its recent end -- and the next
+        resume could not find the step-0 members on disk and dropped them.
         """
+        if len(loaded_steps) != len(self.nets):
+            raise ValueError(f"loaded_steps names {len(loaded_steps)} members but the pool holds "
+                             f"{len(self.nets)} nets")
+        if loaded_paths is not None and len(loaded_paths) != len(self.nets):
+            raise ValueError(f"loaded_paths names {len(loaded_paths)} members but the pool holds "
+                             f"{len(self.nets)} nets")
+        self.steps = [int(st) for st in loaded_steps]
+        self.paths = [str(q) for q in loaded_paths] if loaded_paths is not None else [""] * len(self.nets)
         saved_steps = list(blob.get("steps", []))
         saved_ids = list(blob.get("ids", []))
         by_step = {int(st): int(oid) for st, oid in zip(saved_steps, saved_ids)}
