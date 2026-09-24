@@ -59,6 +59,9 @@ stays legible:
 | **E4-40** | **P25 bench, gentler WoLF** — E4-39 with `--wolf-power 0.5` |
 | **E4-41** | **P25 bench, WoLF with a dead zone** — E4-39 with `--wolf-dead-zone 0.15` |
 | **E4-42** | **WoLF on the normal recipe** — E4-08 (λ 0.98) plus `--wolf-seat-weight --wolf-scope policy` |
+| **E4-43** | **P25 bench, WoLF dead zone with a jump** — E4-41 with `--wolf-dead-zone-mode jump` |
+| **E4-44** | **Late-collapse test, WoLF dead zone (shift)** — `E4-08-05@160M` to 240M with E4-41's WoLF flags |
+| **E4-45** | **Late-collapse test, WoLF dead zone (jump)** — `E4-08-05@160M` to 240M with E4-43's WoLF flags |
 
 **A continuation is not an attempt.** Taking an arm further on the same seed keeps its name —
 `E4-08-03` covers 0–80M, 80–160M and 160–240M in three directories — so its snapshots read
@@ -138,6 +141,8 @@ having deliberately.
 | **E4-39-03/05** | P25 bench, WoLF as a per-seat learning rate: E4-38's flags plus `--wolf-scope policy`, so the surrogate, entropy bonus and KL to π_ref are all scaled by the seat's weight. E4-38's surrogate-only weights held entropy at ~1.75 and lost −105 on seed 5. Control: E4-27-0{3,5}; comparison: E4-38-0{3,5} | 0 → 60M | `E4-39-03_20260923_201105`, `E4-39-05_20260923_201135` | [`log/P25_stress_bench.md`](log/P25_stress_bench.md) |
 | **E4-40-03/05, E4-41-03/05** | P25 bench, gentler WoLF on λ 0.99 from scratch: E4-39's flags with `--wolf-power 0.5` (E4-40) or `--wolf-dead-zone 0.15` (E4-41). Controls: E4-27-0{3,5}; comparison: E4-39-0{3,5} | 0 → 60M | `E4-40-03_20260923_233501`, `E4-40-05_*`, `E4-41-0{3,5}_*` | *running* — [`log/P25_stress_bench.md`](log/P25_stress_bench.md) |
 | **E4-42-03/05** | WoLF (`--wolf-scope policy`, power 1) on the normal λ 0.98 recipe: does it cost strength where there is no fast collapse? Control: E4-08-0{3,5} at 60M and 80M | 0 → 80M | `E4-42-0{3,5}_*` | *queued* |
+| **E4-43-03/05** | P25 bench: E4-41's flags (dead zone 0.15) with `--wolf-dead-zone-mode jump`, the full brake outside the zone. Controls: E4-27-0{3,5}; comparison: E4-41-0{3,5} | 0 → 60M | `E4-43-0{3,5}_*` | *queued* |
+| **E4-44-05, E4-45-05** | The late-collapse test: `E4-08-05@160M` (resume state of `E4-08-05_20260921_033333`, 12-member pool) to 240M with WoLF dead zone 0.15, in shift (E4-44) or jump (E4-45) mode. Every earlier continuation from this state collapsed (plain 195M, seed-11 branch 215M, slow π_ref 235M) | 160M → 240M | `E4-44-05_*`, `E4-45-05_*` | *queued* |
 | **E4.1-01-03/05** | P23 A/B: M2d in the E4.1 merged-influence view, from scratch. Both collapsed (US) early; level with E4 before, −105 / −360 inside. Paused | 80M / 30M (stopped) | `E4.1-01-0{3,5}_20260923_*` | [`log/P23_E4_1_ab.md`](log/P23_E4_1_ab.md) |
 | **E4-08-05-160M.11** | seed branch of seed 5: `E4-08-05@160M` continued to 240M under seed 11, a second seed-5 baseline because the plain seed-5 continuation (`E4-08-05_20260923_095214`) collapsed (US 1% of self-play at 209M) | 160M → 240M | `E4-08-05-160M.11_20260923_122421` | [`log/E4_late_dynamics.md`](log/E4_late_dynamics.md) |
 | **E4-08-03-160M.11** | seed branch: `E4-08-03@160M` continued to 240M under seed 11, otherwise identical to E4-08-03's 160→240M leg. Is that leg's 200M dip seed 3's or M2d's? Also a second baseline for E4-29..33 | 160M → 240M | `E4-08-03-160M.11_20260923_072049` | [`log/E4_late_dynamics.md`](log/E4_late_dynamics.md) |
