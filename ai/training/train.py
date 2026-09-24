@@ -425,6 +425,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Outside --wolf-dead-zone: 'shift' moves the share toward 0.5 by the zone "
                              "width before weighting (continuous, softer); 'jump' applies the plain "
                              "rule to the unshifted share (full brake once outside the zone).")
+    parser.add_argument("--adv-norm-floor", type=float, default=0.0,
+                        help="P25 3j: divide advantages by max(batch std, c x EMA of the batch std) "
+                             "instead of the batch std, so a faded signal stays small rather than "
+                             "being rescaled to unit noise. c is this value; 0 is off. EMA memory "
+                             "20M steps, no floor for the first 2M.")
+    parser.add_argument("--entropy-ceiling", type=float, default=0.0,
+                        help="P25 3k: a one-sided per-seat entropy ceiling, in nats. Each seat's "
+                             "entropy coefficient moves by -0.01 x (rollout entropy - ceiling) per "
+                             "iteration, clipped to [-0.02, --entropy-coef], from 5M steps; below the "
+                             "ceiling it is the fixed bonus. 0 is off.")
+    parser.add_argument("--target-kl", type=float, default=0.0,
+                        help="P25 3l: per-seat early stopping of the PPO epochs. Once a seat's "
+                             "approximate KL from the rollout policy on a minibatch exceeds this, its "
+                             "policy terms are masked for the rest of the update. 0 is off; the "
+                             "per-seat KL is logged either way (approx_kl_us / approx_kl_ussr).")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -622,6 +637,9 @@ def main():
             wolf_scope=args.wolf_scope,
             wolf_dead_zone=args.wolf_dead_zone,
             wolf_dead_zone_mode=args.wolf_dead_zone_mode,
+            adv_norm_floor=args.adv_norm_floor,
+            entropy_ceiling=args.entropy_ceiling,
+            target_kl=args.target_kl,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

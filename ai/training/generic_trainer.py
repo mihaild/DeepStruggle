@@ -1229,6 +1229,11 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         # --wolf-seat-weight's running self-play share; a resumed run would otherwise restart it
         # at an even split and weight both seats equally until it relearned the imbalance.
         "wolf_sp_ussr": float(getattr(trainer, "wolf_sp_ussr", 0.5)),
+        # P25 3j and 3k keep running state that a resume would otherwise restart: the floor's
+        # EMA of the advantage spread (and its warm-up) and each seat's entropy coefficient.
+        "adv_std_ema": float(getattr(getattr(trainer, "buffer", None), "adv_std_ema", 0.0)),
+        "adv_std_ema_steps": float(getattr(getattr(trainer, "buffer", None), "adv_std_ema_steps", 0.0)),
+        "ent_coef_seat": (dict(trainer.ent_coef_seat) if hasattr(trainer, "ent_coef_seat") else None),
     }, path)
 
 
@@ -1254,6 +1259,12 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         trainer.total_iterations = int(blob.get("total_iterations", 0))
     if hasattr(trainer, "wolf_sp_ussr"):
         trainer.wolf_sp_ussr = float(blob.get("wolf_sp_ussr", 0.5))
+    _buf = getattr(trainer, "buffer", None)
+    if _buf is not None and hasattr(_buf, "adv_std_ema"):
+        _buf.adv_std_ema = float(blob.get("adv_std_ema", 0.0))
+        _buf.adv_std_ema_steps = float(blob.get("adv_std_ema_steps", 0.0))
+    if hasattr(trainer, "ent_coef_seat") and blob.get("ent_coef_seat"):
+        trainer.ent_coef_seat = {int(k): float(v) for k, v in blob["ent_coef_seat"].items()}
     recorded_seed = blob.get("seed", None)
     reseed = seed is not None and (recorded_seed is None or int(recorded_seed) != int(seed))
     if reseed:
@@ -1359,6 +1370,9 @@ def train_pipeline(
     wolf_scope: str = "surrogate",
     wolf_dead_zone: float = 0.0,
     wolf_dead_zone_mode: str = "shift",
+    adv_norm_floor: float = 0.0,
+    entropy_ceiling: float = 0.0,
+    target_kl: float = 0.0,
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1550,6 +1564,9 @@ def train_pipeline(
         "wolf_scope": str(wolf_scope),
         "wolf_dead_zone": float(wolf_dead_zone),
         "wolf_dead_zone_mode": str(wolf_dead_zone_mode),
+        "adv_norm_floor": float(adv_norm_floor),
+        "entropy_ceiling": float(entropy_ceiling),
+        "target_kl": float(target_kl),
         "cuda_graphs": bool(cuda_graphs),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
@@ -1701,6 +1718,9 @@ def train_pipeline(
         wolf_scope=wolf_scope,
         wolf_dead_zone=wolf_dead_zone,
         wolf_dead_zone_mode=wolf_dead_zone_mode,
+        adv_norm_floor=adv_norm_floor,
+        entropy_ceiling=entropy_ceiling,
+        target_kl=target_kl,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1844,6 +1864,17 @@ def train_pipeline(
               f"objective: power={wolf_power}, dead zone={wolf_dead_zone} ({wolf_dead_zone_mode}), "
               f"memory={wolf_ema_games:g} games "
               f"(--wolf-seat-weight --wolf-scope {wolf_scope})", flush=True)
+
+    if adv_norm_floor > 0.0:
+        print(f"[P25 3j] advantage-normaliser floor: divide by max(batch std, {adv_norm_floor:g} x EMA "
+              f"of the batch std); EMA memory 20M steps, floor from 2M (--adv-norm-floor)", flush=True)
+    if entropy_ceiling > 0.0:
+        print(f"[P25 3k] per-seat entropy ceiling {entropy_ceiling:g} nats, one-sided: coefficient in "
+              f"[-0.02, ent_coef], lr 0.01 per nat per iteration, from 5M steps (--entropy-ceiling)",
+              flush=True)
+    if target_kl > 0.0:
+        print(f"[P25 3l] per-seat KL early stop at approx KL {target_kl:g} from the rollout policy "
+              f"(--target-kl)", flush=True)
 
     # Opponent agents for evaluation (starts with baselines, dynamically appends past snapshots)
     opp_specs = eval_opponents or ["random", "heuristic"]
@@ -2084,7 +2115,11 @@ def train_pipeline(
         # not be answered from any run's log.
         for _sk in ("adv_mean_us", "adv_mean_ussr", "adv_std_us", "adv_std_ussr",
                     "adv_n_us", "adv_n_ussr", "entropy_us", "entropy_ussr",
-                    "wolf_sp_ussr", "wolf_w_us", "wolf_w_ussr"):
+                    "wolf_sp_ussr", "wolf_w_us", "wolf_w_ussr",
+                    # P25 3j-3l. approx_kl_* is always present; the rest only with their lever.
+                    "approx_kl_us", "approx_kl_ussr", "kl_stop_frac_us", "kl_stop_frac_ussr",
+                    "ent_coef_us", "ent_coef_ussr",
+                    "adv_norm_divisor", "adv_norm_floor_bound", "adv_std_ema"):
             if _sk in iteration_metrics:
                 step_metrics[_sk] = float(iteration_metrics[_sk])
         # Auxiliary losses only where the term that produces them is switched on. Logged

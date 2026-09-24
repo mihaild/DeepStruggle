@@ -54,6 +54,20 @@ question.
 gradient, and our collapses are seat-specific. So the main exploiter trains **both** seats
 (alternating, as now) but is **scored per seat**, and resets on either seat's success.
 
+**Per-seat main agents — the asymmetric-game precedent (added 2026-09-23).** AlphaStar did not
+train one main agent for all races; it trained **one main agent per race**, each with its own
+exploiters, because the roles are different games. Twilight Struggle's seats are at least as
+different, every collapse in the E4 census loses the same seat, and the P25 bench shows the
+winning seat keeps sharpening inside a shared network while the losing seat is still learning
+(E4-36-03: USSR entropy 1.65 → 0.9, US held at 1.75). One main agent for both seats is therefore
+a *choice* this plan should test rather than assume. Two forms, in order of cost: **per-seat
+adapters or heads on a shared trunk** (the reserve entry *per-side capacity*, promoted here as a
+league design question), and **two main agents, one per seat**, each training only its seat
+against a league that contains the other. The second halves each agent's data and doubles
+parameters, so it runs only if the first is insufficient. The exploiters are then per-seat by
+construction: a US exploiter attacks the USSR main, and vice versa. Judged as the rest of this
+plan: per-seat strength against frozen anchors at matched wallclock.
+
 ## Change
 
 * **Trainer (small):** `--league-dirs <dir> ...`, a pool that rescans other runs' directories each
