@@ -124,7 +124,35 @@ step on CUDA against the previous commit, using `/workspace/data/logs/perf/train
 * **Thread count:** superseded by passive waiting, which takes the CPU down further (~1.6 cores)
   at full speed, without capping the threads the parallel loops can use.
 
-### Open issue: a two-process stall at ~76M (E4-42), not reproduced
+### Resolved: the stall was a GPU deadlock between concurrent CUDA-graph replays (fixed in `7e260ab`)
+
+**Diagnosis, 2026-09-24 03:00.** The watchdog below caught two more hangs: E4-44-05 and E4-45-05, the
+late-collapse pair, both at ~190M. `PYTHONFAULTHANDLER` printed the main thread of each at
+`nash_pg.py:520` in `_graphed_forward`. That is the first host sync after the learner's and the
+opponent's CUDA graphs are replayed concurrently on two streams, and the C stack sat in
+`cudaStreamSynchronize`.
+
+**Cause.** A captured graph bakes in the cuBLAS workspace of the stream it was captured on.
+`torch.cuda.Stream()` hands out streams from a pool of 32 per device, reused round-robin: the 33rd
+creation returns the 1st. Each capture takes two streams, and a new pool member is captured about
+once per 5M snapshot.
+* After ~16 captures an opponent's graph can share the learner's workspace.
+* From scratch that is ~75–80M steps, where E4-42 hung.
+* After a resume that restores a full pool it comes sooner: E4-44/45 hung ~30M after resuming at
+  160M.
+
+Replayed concurrently, the two graphs' split-K kernels, which coordinate through counters in that
+workspace, deadlock. That explains the GPU at 100% and low power. It is the same shared-workspace
+mechanism as the wrong-logits bug caught earlier by `test_graphed_forward.py`; there it corrupted
+the output, and here it hung.
+
+**Fix.** The two graphs replay one after the other on the current stream, and serialised replays
+cannot race whatever they share. The concurrent-replay test is replaced by one that forces the pool
+to wrap and checks that serialised replays stay bitwise eager. E4-44/45 are continued 190M → 240M
+on the fix, from their 190M resume states.
+
+#### The original report (kept for the record)
+
 
 **2026-09-24, 01:08–01:52.** E4-42-03 and E4-42-05 ran concurrently: WoLF on the λ 0.98 recipe,
 CUDA graphs on, 80M budget.
