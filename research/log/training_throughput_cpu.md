@@ -228,6 +228,18 @@ code: every graph of a cache is captured on the cache's stream, and the warmup r
 test beside them passes on either code; it checks exactness after a drop, not the failure. Outputs
 stay bitwise eager (the rollout tests are unchanged), so no run's numbers change.
 
+**What graphs are worth after the fix** (clang engine, `perf_run.sh` 3M-step M2d runs, graphs on
+vs `--no-cuda-graphs`, alternating):
+
+| setup | graphs on | graphs off | gain |
+|:---|---:|---:|---:|
+| solo, 3 runs each | 72,595 steps/s | 71,748 | **+1.2%** |
+| two runs at once, 2 rounds | 39,851 per process | 39,240 | **+1.5%** |
+
+The +7% measured when graphs went in came mostly from overlapping the learner's and the
+opponent's replays, which the serial-replay fix (`7e260ab`) removed. What is left is the saving on
+kernel launches. It is small, but graphs still pay for themselves.
+
 ### Clang engine (master `5fb5971`) vs GCC: +22% in the engine, nothing end to end (2026-09-24)
 
 Both builds were measured on the same machine, the GPU otherwise idle, alternating rounds.
