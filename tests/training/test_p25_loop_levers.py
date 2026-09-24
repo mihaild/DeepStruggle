@@ -110,10 +110,15 @@ def test_nothing_moves_during_the_grace_period() -> None:
 
 
 def _trainer(**kw: Any) -> NashPGTrainer:
+    from bindings.ts_env import TsVectorizedEnv
     torch.manual_seed(0)
     dev = torch.device("cpu")
     model = create_coldwar_net(dev)
-    return NashPGTrainer(active_net=model, num_envs=8, buffer_size=16, lr=3e-4, eta=0.1,
+    # An explicit env seed: without one the trainer seeds its env from time.time(), so two
+    # trainers built in different seconds play different games and a bitwise comparison of them
+    # passes or fails with the clock.
+    env = TsVectorizedEnv(num_envs=8, base_seed=123)
+    return NashPGTrainer(active_net=model, env=env, num_envs=8, buffer_size=16, lr=3e-4, eta=0.1,
                          ref_update_freq=500, cuda_graphs=False, device=dev, **kw)
 
 

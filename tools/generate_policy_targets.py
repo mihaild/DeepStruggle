@@ -25,6 +25,16 @@ kept because the loader keys on it; the sidecar `.meta.json` records which teach
 
     tools/generate_policy_targets.py --us <ckpt.pt> --ussr <ckpt.pt> --total-games 300 \\
         --output-path /workspace/data/datasets/two_seat_targets.jsonl.gz
+
+**`--merged-view` (P23): an E4 policy translated into the E4.1 view.** The games are played in the
+merged-influence view, and every target is the E4 teachers' policy translated exactly into it
+(`tools/lib/merged_targets.py`): at an op-choice node, "influence, first point in X" gets
+P_E4(influence) * P_E4(X | after the commit), and everything else keeps its E4 probability. The
+acting teacher samples from that translated policy, so the games are the ones the translated
+policy plays. Distilling the dataset (`--mode distill`, which replays it in the merged view because
+the sidecar says so) gives an E4.1 network that starts from the E4 policy instead of from scratch.
+A raw E4 network loaded into the E4.1 view puts all of its op-choice mass on influence
+(`tools/scripts/merged_view_warmstart.py`), which is why a warm start needs this translation.
 """
 
 from __future__ import annotations
@@ -35,7 +45,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import time
 
@@ -43,9 +53,14 @@ import numpy as np
 import torch
 import ts_engine as ts
 
+from tools.lib.merged_targets import after_influence_commit, factorised_policy, is_merged_op_choice
 from tools.lib.player_agent import NeuralAgent
 
 TOP_K = 12
+#: In the merged view an op-choice node has ~50 options and the translated policy can spread over
+#: many of them, so a top-12 cut would reshape the target. Keep everything above a floor instead.
+MERGED_TOP_K = 96
+MERGED_FLOOR = 1e-5
 
 
 def _commit() -> str:
@@ -69,9 +84,46 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--temperature", type=float, default=0.25,
                     help="sampling temperature for the ACTING teachers; some spread is wanted so "
                          "the targets cover more than one line of play")
+    ap.add_argument("--merged-view", action="store_true", default=False,
+                    help="P23: play in the E4.1 merged-influence view and record the E4 teachers' "
+                         "policy translated exactly into it (see the module docstring)")
     ap.add_argument("--output-path", required=True)
     ap.add_argument("--device", default="cuda")
     return ap
+
+
+def _probs(model: Any, obs: torch.Tensor, mask: np.ndarray, dev: torch.device) -> np.ndarray:
+    m = torch.from_numpy(np.asarray(mask)).to(dev)
+    with torch.no_grad():
+        logits, _, _ = model(obs, m)
+    return torch.softmax(logits.float().masked_fill(m <= 0, float("-inf")), dim=-1).cpu().numpy()
+
+
+def _merged_targets(model: Any, runner: Any, idx: List[int], obs_t: torch.Tensor,
+                    merged_masks: np.ndarray, dev: torch.device) -> Tuple[np.ndarray, np.ndarray]:
+    """The teacher's E4 policy at each position in `idx`, translated into the E4.1 view.
+
+    Returns (targets over the E4.1 legal set, the E4.1 masks). Where the views agree the target is
+    the E4 policy itself, and the two masks must be identical there -- checked, because a
+    difference would mean the translation is being applied at a node it does not describe."""
+    states = [runner.get_state(i) for i in idx]
+    merged = np.asarray(merged_masks[idx])
+    e4 = np.stack([np.asarray(ts.Engine.get_flat_action_mask(st, False)) for st in states])
+    p_e4 = _probs(model, obs_t, e4, dev)
+    out = p_e4.astype(np.float64)
+    ops = [j for j, st in enumerate(states) if is_merged_op_choice(st)]
+    same = [j for j in range(len(states)) if j not in set(ops)]
+    if same and not np.array_equal(e4[same], merged[same]):
+        raise RuntimeError("the E4 and E4.1 masks differ at a node that is not a merged op choice")
+    if ops:
+        posts = [after_influence_commit(states[j]) for j in ops]
+        post_obs = torch.from_numpy(np.stack([
+            np.asarray(ts.extract_observation(t, t.ctx().decision_player), np.float32)
+            for t in posts])).to(dev)
+        post_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(t, False)) for t in posts])
+        p_post = _probs(model, post_obs, post_masks, dev)
+        out[ops] = factorised_policy(p_e4[ops], p_post, merged[ops])
+    return out.astype(np.float32), merged
 
 
 def main() -> int:
@@ -98,6 +150,8 @@ def main() -> int:
             n = min(a.batch_size, a.total_games - games_done)
             base_seed = 500_000 + games_done * 10_007 + 1
             runner = ts.VectorizedBatchRunner(n, base_seed)
+            if a.merged_view:
+                runner.set_merged_influence([True] * n, [True] * n)
             hist: List[Dict[str, Any]] = [
                 {"seed": base_seed + i * 10007 + 1, "actions": []} for i in range(n)]
             done = [False] * n
@@ -129,21 +183,31 @@ def main() -> int:
                     if not idx:
                         continue
                     obs_t = torch.from_numpy(obs_all[idx]).float().to(dev)
-                    mask_t = torch.from_numpy(masks_all[idx]).to(dev)
-                    with torch.no_grad():
-                        logits, _, _ = teachers[side](obs_t, mask_t)
-                    lg = logits.float()
-                    lg = lg.masked_fill(mask_t <= 0, float("-inf"))
-                    probs = torch.softmax(lg, dim=-1)
+                    if a.merged_view:
+                        probs_np, merged_np = _merged_targets(teachers[side], runner, idx,
+                                                              obs_t, masks_all, dev)
+                        probs = torch.from_numpy(probs_np).to(dev)
+                        mask_t = torch.from_numpy(merged_np).to(dev)
+                        lg = torch.log(probs.clamp_min(1e-30)).masked_fill(mask_t <= 0, float("-inf"))
+                        k = MERGED_TOP_K
+                    else:
+                        mask_t = torch.from_numpy(masks_all[idx]).to(dev)
+                        with torch.no_grad():
+                            logits, _, _ = teachers[side](obs_t, mask_t)
+                        lg = logits.float()
+                        lg = lg.masked_fill(mask_t <= 0, float("-inf"))
+                        probs = torch.softmax(lg, dim=-1)
+                        k = TOP_K
 
                     t = max(1e-3, a.temperature)
                     sharp = torch.softmax(lg / t, dim=-1)
                     picks = torch.multinomial(sharp, 1).squeeze(1).cpu().numpy()
 
-                    topv, topi = torch.topk(probs, k=min(TOP_K, probs.shape[-1]), dim=-1)
+                    topv, topi = torch.topk(probs, k=min(k, probs.shape[-1]), dim=-1)
                     topv_np = topv.cpu().numpy()
                     topi_np = topi.cpu().numpy()
                     nlegal = mask_t.sum(dim=-1).cpu().numpy()
+                    floor = MERGED_FLOOR if a.merged_view else 0.0
 
                     for sub, i in enumerate(idx):
                         act = int(picks[sub])
@@ -151,7 +215,7 @@ def main() -> int:
                         rec: Dict[str, Any] = {"flat_action": act}
                         if nlegal[sub] > 1:
                             keep = [(int(c), float(v))
-                                    for c, v in zip(topi_np[sub], topv_np[sub]) if v > 0.0]
+                                    for c, v in zip(topi_np[sub], topv_np[sub]) if v > floor]
                             if keep:
                                 rec["search_pi"] = {"a": [c for c, _ in keep],
                                                     "v": [v for _, v in keep]}
@@ -183,6 +247,8 @@ def main() -> int:
         "outcomes": outcomes,
         "commit": _commit(),
         "engine_obs_size": int(ts.OBS_SIZE),
+        # Read by --mode distill: the dataset must be replayed in the view it was played in.
+        "merged_influence": bool(a.merged_view),
     }
     with open(a.output_path + ".meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1)

@@ -777,6 +777,15 @@ def run_search_distillation(
         print("    WARNING: no sidecar metadata; the searcher's configuration is unrecorded",
               flush=True)
 
+    # P23: a dataset played in the E4.1 view must be replayed in it (its composed actions do not
+    # exist in E4), and the distilled network then decides in that view.
+    merged = False
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            merged = bool(json.load(f).get("merged_influence", False))
+    if merged:
+        print("    dataset played in the E4.1 merged-influence view: replaying in it", flush=True)
+
     stats = {"samples": 0.0, "final_loss": 0.0, "final_agreement": 0.0, "final_top1_kl": 0.0}
     for epoch in range(1, epochs + 1):
         t0 = time.time()
@@ -784,7 +793,7 @@ def run_search_distillation(
         loss_sum = 0.0
         agree = 0
         for b_obs, b_mask, b_pi, _b_dt in WarmupDataset(dataset_path).stream_policy_batches(
-                batch_size=batch_size, max_games=max_games, device=dev):
+                batch_size=batch_size, max_games=max_games, device=dev, merged=merged):
             logits, _v_win, _v_vp = model(b_obs, b_mask)
             logp = F.log_softmax(logits, dim=-1)
             # Soft cross-entropy. The target is zero outside the legal set, so masked logits
@@ -812,6 +821,22 @@ def run_search_distillation(
     os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)) or ".", exist_ok=True)
     torch.save(model.state_dict(), output_checkpoint_path)
     print(f"  wrote {output_checkpoint_path}", flush=True)
+    if merged:
+        # A checkpoint's action view is read from its directory (tools/lib/action_view.py). Say
+        # this one decides in E4.1, or every tournament and probe would show it E4 masks.
+        meta_out = os.path.join(os.path.dirname(os.path.abspath(output_checkpoint_path)),
+                                "metadata.json")
+        if os.path.exists(meta_out):
+            with open(meta_out, encoding="utf-8") as f:
+                existing = json.load(f)
+            if not existing.get("merged_influence", False):
+                raise RuntimeError(f"{meta_out} records an E4 view; the distilled checkpoint "
+                                   "decides in E4.1. Write it to its own directory.")
+        else:
+            with open(meta_out, "w", encoding="utf-8") as f:
+                json.dump({"merged_influence": True, "merged_influence_from_step": 0,
+                           "distilled_from_dataset": dataset_path}, f, indent=1)
+            print(f"  wrote {meta_out} (E4.1 view)", flush=True)
     return stats
 
 
