@@ -401,3 +401,46 @@ Whenever the WoLF weights are strongly engaged, the leading seat stops learning,
 recipe the leading seat is the one that was learning. The next two arms test whether the backstop
 can come from somewhere else: seat balancing (E4-46), or a slightly earlier but still gentle brake
 (E4-47).
+
+## Step 3g, part 1: WoLF dead zone (shift) + seat balancing (E4-46), 2026-09-24
+
+E4-41's flags plus `--seat-balance`. `launch_flags.py --diff` against E4-41 shows `--seat-balance`
+only. Collapse is judged on the pool's pure self-play share, as for E4-36.
+
+### Collapse half: passes on both seeds, and the policy sharpens most of any run
+
+| run | 0–60M, by 5M (pure self-play USSR share) | peak | buckets ≥ 0.9 | entropy by 10M | probe 50–60M |
+|:---|:---|---:|:---|:---|---:|
+| E4-46-03 | .52 .56 .64 .67 .71 .81 .75 .77 .78 .73 .77 .78 | 0.81 | none | 1.75 1.57 1.36 1.21 1.15 1.10 | 0.67 |
+| E4-46-05 | .51 .56 .75 .80 .79 .74 .69 .68 .73 .76 .79 .86 | 0.86 | none | 1.77 1.46 1.20 1.28 1.28 1.16 | 1.04 |
+
+### Strength half: level with the control, and well below E4-41
+
+`data/reports/p25_e4-46_50_60M.{md,json}`: E4-46, E4-41 and E4-27 at 50, 55 and 60M, E4-43 at
+60M, and E4-08-0s@60M. 100 games per side per pair.
+
+| seed | step | E4-46 − E4-27 | E4-46 − E4-41 | E4-46 vs E4-27 (as USSR / as US) | E4-46 vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|
+| 3 | 50M | −24 | −148 | 82 / 19 | 11 / 8 |
+| 3 | 55M | −47 | −133 | 83 / 14 | 9 / 7 |
+| 3 | 60M | −43 | −196 | 82 / 16 | 14 / 5 |
+| 5 | 50M | −25 | −177 | 76 / 11 | 9 / 11 |
+| 5 | 55M | +4 | −161 | 87 / 24 | 13 / 7 |
+| 5 | 60M | −20 | −61 | 86 / 9 | 14 / 8 |
+
+**Fails on strength.** E4-46 prevents the collapse, but it gives back all of E4-41's gain.
+
+### Why, and a correction to the fixed-probe signal
+
+The sharpening is **one-sided**. At 60M the USSR seat's entropy is 0.85–0.95 and the US seat's
+1.62–1.73. The head-to-head shows the same split: 82–87% as USSR, 9–24% as US. At full pressure
+seat balancing puts the learner on the weak seat, the US, in ~90% of pool games, against past
+snapshots. The US then learns to beat old selves, while the USSR, playing mostly self-play and
+braked only gently by the shifted dead zone, runs ahead. The pure self-play split stays under 0.9
+because the old-snapshot games keep the US from vanishing, not because the US is good.
+
+**Fixed-probe entropy is not a strength oracle when the seats diverge.** E4-46's probe entropy
+(0.67 and 1.04) is the lowest on the bench, yet it is no stronger than its control. The probe
+averages positions from both seats, and a sharp USSR pulls it down. The −0.74 correlation (above)
+held across runs whose seats were roughly symmetric. Used as a run-health signal it needs to be
+split by seat.
