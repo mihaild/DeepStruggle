@@ -48,8 +48,10 @@ still wins.
 
 The rollout forwards run as CUDA-graph replays (`ai/training/graphed_forward.py`). Each replays
 the same kernels as eager, so its outputs are bitwise identical, but with one launch instead of
-~317. The learner's graph and the pool opponent's graph overlap on two streams. `--no-cuda-graphs`
-falls back to eager.
+~317. The learner's and the pool opponent's graphs are replayed one after the other, never
+concurrently, and all are captured on one stream per cache (`7e260ab`, `9bfceb1`; the module
+docstring says why). After those fixes graphs are worth about +1.2-1.5%. `--no-cuda-graphs` falls
+back to eager.
 
 Measurements, and what was changed and why, are in
 [`research/log/training_throughput_cpu.md`](../research/log/training_throughput_cpu.md).
