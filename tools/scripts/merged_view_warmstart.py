@@ -71,7 +71,8 @@ def policy(model: Any, states: List[ts.GameState], masks: np.ndarray,
         return F.softmax(logits.float(), dim=-1).cpu().numpy()
 
 
-def compare(model: Any, states: List[ts.GameState], device: torch.device) -> Tuple[np.ndarray, ...]:
+def compare(model: Any, states: List[ts.GameState], device: torch.device,
+            student: Any = None) -> Tuple[np.ndarray, ...]:
     e4_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(s)) for s in states])
     mv_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(s, True)) for s in states])
     afters: List[ts.GameState] = []
@@ -85,7 +86,7 @@ def compare(model: Any, states: List[ts.GameState], device: torch.device) -> Tup
     p_post = post_commit_policy(
         afters, lambda sts: policy(model, sts, np.stack([np.asarray(ts.Engine.get_flat_action_mask(t))
                                                          for t in sts]), device))
-    p_raw = policy(model, states, mv_masks, device)
+    p_raw = policy(student if student is not None else model, states, mv_masks, device)
 
     p_fact = factorised_policy(p_e4, p_post, mv_masks)
     node = NODE
@@ -105,16 +106,22 @@ def main() -> None:
     ap.add_argument("checkpoint")
     ap.add_argument("--games", type=int, default=64)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--student", default=None,
+                    help="an E4.1 checkpoint to score against the teacher's translated policy "
+                         "(e.g. one distilled from it), instead of the teacher's own raw output")
     args = ap.parse_args()
     device = resolve_device(args.device)
     agent = NeuralAgent.from_checkpoint(args.checkpoint, device=device)
     model = agent.model
     states = collect(model, args.games, device)
-    kl, tv, inf_f, inf_r, top1 = compare(model, states, device)
-    print(f"{agent.name}: {len(states)} op-choice nodes with influence legal, from {args.games} games")
-    print(f"  KL(P_fact || P_raw)   mean {kl.mean():.3f}  median {np.median(kl):.3f}  p90 {np.quantile(kl, 0.9):.3f}")
+    student = (NeuralAgent.from_checkpoint(args.student, device=device).model
+               if args.student else None)
+    kl, tv, inf_f, inf_r, top1 = compare(model, states, device, student)
+    who = f"student {os.path.basename(os.path.dirname(os.path.abspath(args.student)))}" if args.student else "raw"
+    print(f"{agent.name} ({who}): {len(states)} op-choice nodes with influence legal, from {args.games} games")
+    print(f"  KL(P_fact || P_model) mean {kl.mean():.3f}  median {np.median(kl):.3f}  p90 {np.quantile(kl, 0.9):.3f}")
     print(f"  total variation       mean {tv.mean():.3f}  median {np.median(tv):.3f}")
-    print(f"  influence mass        implied {inf_f.mean():.3f}  raw {inf_r.mean():.3f}")
+    print(f"  influence mass        implied {inf_f.mean():.3f}  model {inf_r.mean():.3f}")
     print(f"  top-1 agreement       {100 * top1.mean():.1f}%")
 
 
