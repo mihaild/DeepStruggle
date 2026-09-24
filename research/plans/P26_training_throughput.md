@@ -1,6 +1,6 @@
 # P26 — training throughput: what is left after the 09-23 pass
 
-**Status:** quick screen running (2026-09-24): the current focus, since P25 closed.
+**Status:** quick screen done (2026-09-24): [`../log/P26_quick_screen.md`](../log/P26_quick_screen.md). The current focus, since P25 closed.
 **Needs approval:** items 1–3 change training numerics. Item 6 is an engine change. The rest are
 not.
 
