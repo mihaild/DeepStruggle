@@ -11,9 +11,23 @@ that reason.
 workspace of the stream it was captured on, and `torch.cuda.Stream()` comes from a pool of 32 per
 device, reused round-robin. Once the pool wraps, two graphs can hold the same workspace, and
 concurrent replays then race on it: wrong logits when both captures used the default capture
-stream (fixed by the per-graph capture stream below), and a GPU deadlock in split-K kernels once
-the pool wrapped after ~16 captures (E4-42, E4-44; see nash_pg._graphed_forward). Replayed one
-after the other they are safe whatever they share.
+stream (fixed then by a capture stream per graph, since replaced by the one-stream design
+below), and a GPU deadlock in split-K kernels once the pool wrapped after ~16 captures (E4-42,
+E4-44; see nash_pg._graphed_forward). Replayed one after the other they are safe whatever they
+share.
+
+**All of a cache's graphs are captured on ONE stream, and each capture warms up on that stream
+first.** cuBLAS keeps a workspace per (handle, stream), allocated on the stream's first cuBLAS call.
+Warming up on a side stream left that first call inside the capture, so the workspace came out of
+the capturing graph's private memory pool -- and when the pool wrapped, a later graph captured on
+the same stream baked in the same address. Dropping the first graph (the opponent pool evicting its
+member) freed that memory while the later graph kept writing to it: `CUDA error: unspecified launch
+failure` 16-30 iterations after a snapshot (E4-48-05-160M.11, E4-49-11, the rounding demo), about
+one capture in 40 in a stress harness, and none with the workspace disabled or with drops disabled
+(research/log/training_throughput_cpu.md). Warming up on the capture stream allocates its workspace
+eagerly, from the ordinary allocator, before any capture; every graph then shares that one
+workspace, which is safe because replays are serial, and dropping a graph frees nothing another
+graph uses.
 
 A graph reads the network's parameters by address. The optimiser updates them in place, so a
 replay always sees the current weights, and `load_state_dict` copies into the existing tensors.
@@ -39,7 +53,8 @@ class GraphedForward:
     """
 
     def __init__(self, net: nn.Module, batch: int, obs_dim: int, action_dim: int,
-                 device: torch.device, warmup: int = 3) -> None:
+                 device: torch.device, warmup: int = 3,
+                 stream: Optional[torch.cuda.Stream] = None) -> None:
         if device.type != "cuda":
             raise ValueError("GraphedForward needs a CUDA device")
         if net.training:
@@ -49,17 +64,16 @@ class GraphedForward:
         self.static_obs = torch.zeros((batch, obs_dim), dtype=torch.float32, device=device)
         self.static_mask = torch.ones((batch, action_dim), dtype=torch.uint8, device=device)
         self._ptrs = self._current_ptrs()
-        side = torch.cuda.Stream(device=device)
-        side.wait_stream(torch.cuda.current_stream(device))
-        with torch.cuda.stream(side), torch.no_grad():
+        # Warm up ON the capture stream, never on a side stream: this first eager run is what
+        # allocates the stream's cuBLAS workspace, and it must happen outside the graph's private
+        # pool (see the module docstring). A GraphCache passes one stream for all its graphs.
+        self._capture_stream = stream if stream is not None else torch.cuda.Stream(device=device)
+        self._capture_stream.wait_stream(torch.cuda.current_stream(device))
+        with torch.cuda.stream(self._capture_stream), torch.no_grad():
             for _ in range(warmup):          # allocator and library workspaces, off the graph
                 net(self.static_obs, self.static_mask)
-        torch.cuda.current_stream(device).wait_stream(side)
+        torch.cuda.current_stream(device).wait_stream(self._capture_stream)
         self.graph = torch.cuda.CUDAGraph()
-        # A capture stream of its own, so a capture does not run on the caller's stream. This is
-        # NOT a guarantee of a private cuBLAS workspace: streams come from a reused pool of 32, so
-        # graphs must still never be replayed concurrently (see the module docstring).
-        self._capture_stream = torch.cuda.Stream(device=device)
         with torch.cuda.graph(self.graph, stream=self._capture_stream), torch.no_grad():
             self.static_out: Tuple[torch.Tensor, ...] = tuple(
                 net(self.static_obs, self.static_mask))
@@ -97,11 +111,14 @@ class GraphCache:
     def __init__(self, batch: int, obs_dim: int, action_dim: int, device: torch.device) -> None:
         self.batch, self.obs_dim, self.action_dim, self.device = batch, obs_dim, action_dim, device
         self._graphs: Dict[int, GraphedForward] = {}
+        #: The one capture stream every graph of this cache is captured on (module docstring).
+        self._stream = torch.cuda.Stream(device=device)
 
     def get(self, net: nn.Module) -> GraphedForward:
         g: Optional[GraphedForward] = self._graphs.get(id(net))
         if g is None or g.net is not net or g.stale():
-            g = GraphedForward(net, self.batch, self.obs_dim, self.action_dim, self.device)
+            g = GraphedForward(net, self.batch, self.obs_dim, self.action_dim, self.device,
+                               stream=self._stream)
             self._graphs[id(net)] = g
         return g
 

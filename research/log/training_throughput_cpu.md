@@ -178,6 +178,56 @@ with `PYTHONFAULTHANDLER=1`, and a watchdog SIGABRTs a run whose log is silent f
 therefore leaves every thread's Python stack in its log and costs at most one 5M resume interval.
 Load at the time was two training runs, idle queue scripts and one finished tournament (00:33–00:46).
 
+### Resolved: the launch failure after a snapshot was a cuBLAS workspace in a dropped graph's pool (2026-09-24)
+
+**Symptom.** `torch.AcceleratorError: CUDA error: unspecified launch failure` in
+`nash_pg._graphed_forward`, at the first sync after the replays. It killed three runs:
+
+| run | iterations after its last snapshot |
+|:---|---:|
+| E4-48-05-160M.11 (at ~216M) | 20 |
+| E4-49-11 continuation (at ~126M) | 16 |
+| the rounding-demo continuation (at ~127M) | 30 |
+
+A snapshot adds a pool member. The first time that member is drawn, `GraphCache.get` captures a
+graph for it, and the next `retain` drops the evicted member's graph. With a snapshot every 76
+iterations, three failures inside that window happen by chance less than 1% of the time.
+
+**Reproduction** (`data/logs/graphstress/`). `harness.py` loops `GraphCache` captures, replays and
+drops with an eager train step. It ran 15,000 captures with no failure and no replay that differed
+from eager, so capture and drop alone do not trigger it. `harness2.py` runs the real
+`NashPGTrainer.train_iteration` (8-step rollouts, PPO update, π_ref, the trainer's `OpponentPool`)
+and adds a pool member every 2 iterations. Two processes each:
+
+| condition | captures per process | failures |
+|:---|:---|:---|
+| as committed (`830c3ba`) | 30, 53 | **2 of 2, within 90 s** |
+| graphs never dropped (`retain` a no-op) | 133, 139 (then out of memory) | 0 |
+| cuBLAS workspace off (`CUBLAS_WORKSPACE_CONFIG=:0:0`), drops on | 202, 186 | 0 |
+| **fix** (one capture stream per cache, warmup on it), workspace on | 320, 329 | 0 |
+| fix as committed, on this branch's code | 3,000 iterations each (1,500 pool additions) | 0 |
+
+**Mechanism.** cuBLAS keeps a workspace per (handle, stream), allocated on the stream's first cuBLAS
+call. `GraphedForward` warmed up on a fresh side stream and then captured on a second fresh stream,
+so the capture stream's first cuBLAS call happened inside the capture. The workspace therefore came
+from that graph's private memory pool. Streams come from torch's round-robin pool of 32. Once it
+wrapped, a later graph captured on the same stream baked in that same workspace address. Dropping
+the first graph released its pool, the memory was reused, and the later graph's replays wrote into
+it.
+
+**Fix** (`ai/training/graphed_forward.py`):
+* a `GraphCache` captures every graph on one stream of its own;
+* each capture warms up on that stream first, so its workspace is allocated eagerly from the
+  ordinary allocator, once, before any capture.
+
+All graphs then share one workspace that is never freed. Replays are already serial (`7e260ab`), so
+sharing is safe.
+
+`tests/training/test_graphed_forward.py` pins two properties, both verified to FAIL on the pre-fix
+code: every graph of a cache is captured on the cache's stream, and the warmup runs on it. The drop
+test beside them passes on either code; it checks exactness after a drop, not the failure. Outputs
+stay bitwise eager (the rollout tests are unchanged), so no run's numbers change.
+
 ## First reading (superseded; kept for the record)
 
 

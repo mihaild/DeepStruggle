@@ -99,10 +99,11 @@ def test_rollout_with_graphs_matches_eager_with_a_pool() -> None:
     assert torch.allclose(a["log_probs"], b["log_probs"], rtol=0, atol=1e-5)
 
 
-def test_graphs_sharing_a_capture_stream_replayed_in_turn_stay_bitwise_eager() -> None:
-    """PyTorch reuses a pool of 32 streams, so after enough captures two graphs share a capture
-    stream and with it a cuBLAS workspace. Replayed concurrently they deadlocked the GPU (E4-42,
-    E4-44); the trainer now replays them one after the other, which must stay exact."""
+def test_a_cache_captures_every_graph_on_one_stream_and_replays_stay_bitwise_eager() -> None:
+    """Every graph of a cache is captured on the cache's one stream, so all share one cuBLAS
+    workspace, allocated eagerly by the warmup on that stream. Shared, they must still be
+    replayed one after the other (E4-42, E4-44 deadlocked when they were not), and so replayed
+    they stay exact."""
     import ts_engine as ts
     torch.manual_seed(0)
     a = create_coldwar_net_v2().cuda().eval()
@@ -110,11 +111,10 @@ def test_graphs_sharing_a_capture_stream_replayed_in_turn_stay_bitwise_eager() -
     b = create_coldwar_net_v2().cuda().eval()
     cache = GraphCache(32, ts.OBS_SIZE, 220, torch.device("cuda"))
     ga = cache.get(a)
-    # Advance the pool so b's capture stream is a's again (each capture takes two streams).
-    for _ in range(30):
+    for _ in range(40):            # wrap torch's 32-stream pool: it must not matter any more
         torch.cuda.Stream()
     gb = cache.get(b)
-    assert gb._capture_stream.cuda_stream == ga._capture_stream.cuda_stream
+    assert gb._capture_stream.cuda_stream == ga._capture_stream.cuda_stream == cache._stream.cuda_stream
     gen = torch.Generator(device="cuda").manual_seed(1)
     for _ in range(5):
         obs, mask = _inputs(32, gen)
@@ -125,3 +125,61 @@ def test_graphs_sharing_a_capture_stream_replayed_in_turn_stay_bitwise_eager() -
         gb.load(obs, mask)
         gb.replay()
         assert torch.equal(ga.static_out[0], ea) and torch.equal(gb.static_out[0], eb)
+
+
+def test_dropping_a_graph_leaves_the_others_exact_after_its_memory_is_reused() -> None:
+    """Drop graphs, churn the allocator over the memory they released, and the survivor must still
+    replay exactly and write nothing outside its own buffers. This does NOT reproduce the
+    launch failure it is named after -- it passes on the pre-fix code too; that failure needed the
+    full training loop (data/logs/graphstress/harness2.py). The mechanism is pinned by
+    test_warmup_runs_on_the_capture_stream below."""
+    import ts_engine as ts
+    nets = []
+    for seed in range(6):
+        torch.manual_seed(seed)
+        nets.append(create_coldwar_net_v2().cuda().eval())
+    cache = GraphCache(64, ts.OBS_SIZE, 220, torch.device("cuda"))
+    for n in nets:
+        cache.get(n)
+    survivor = nets[-1]
+    cache.retain([survivor])
+    assert len(cache._graphs) == 1
+    junk = [torch.full((1 << 20,), float(i), device="cuda") for i in range(64)]   # reuse freed memory
+    gen = torch.Generator(device="cuda").manual_seed(3)
+    g = cache.get(survivor)
+    for _ in range(5):
+        obs, mask = _inputs(64, gen)
+        with torch.no_grad():
+            ref = survivor(obs, mask)[0]
+        g.load(obs, mask)
+        g.replay()
+        torch.cuda.synchronize()
+        assert torch.equal(g.static_out[0], ref)
+    assert all(bool((t == float(i)).all()) for i, t in enumerate(junk)), (
+        "a replay wrote into memory the dropped graphs had released")
+
+
+def test_warmup_runs_on_the_capture_stream() -> None:
+    """The fix itself. cuBLAS allocates a stream's workspace on its first call there; warming up on
+    the capture stream makes that call eager, so the workspace comes from the ordinary allocator,
+    not from a graph's private pool that is freed when the graph is dropped. A warmup on any other
+    stream would leave the first cuBLAS call inside the capture again."""
+    import ts_engine as ts
+    torch.manual_seed(0)
+    net = create_coldwar_net_v2().cuda().eval()
+    cache = GraphCache(16, ts.OBS_SIZE, 220, torch.device("cuda"))
+    entered = []
+    real_stream = torch.cuda.stream
+
+    def spy(s):  # type: ignore[no-untyped-def]
+        entered.append(s)
+        return real_stream(s)
+
+    torch.cuda.stream = spy  # type: ignore[assignment]
+    try:
+        cache.get(net)
+    finally:
+        torch.cuda.stream = real_stream  # type: ignore[assignment]
+    assert entered, "the warmup did not run under a stream context"
+    assert all(e is not None and e.cuda_stream == cache._stream.cuda_stream for e in entered), (
+        "warmup ran on a stream other than the cache's capture stream")
