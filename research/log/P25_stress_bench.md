@@ -361,3 +361,43 @@ both seeds, plus the anchor. 100 games per side per pair.
 **WoLF is strength-neutral on the normal recipe by 80M:** −5 and +33, and level per seat. There was
 no early collapse to prevent on these seeds, so this measures only its cost, and at 80M there is
 none. The −105 on seed 5 at 60M closed by 70M.
+
+## Step 3f: WoLF dead zone with a jump (E4-43), 2026-09-24
+
+E4-41's flags with `--wolf-dead-zone-mode jump`: inside 0.35–0.65 the weights stay 1, and outside
+it the plain rule applies to the unshifted share (9:1 at 0.90). `launch_flags.py --diff` against
+E4-41 on each seed shows `--wolf-dead-zone-mode` only. E4-43-03 and E4-41-03 matched to every printed
+digit at 10M: the same seed, and the same arithmetic until the share first leaves the zone.
+
+### Collapse half: passes on both seeds, tightly
+
+| run | 0–60M, by 5M | peak | buckets ≥ 0.9 | entropy by 10M | probe 50–60M |
+|:---|:---|---:|:---|:---|---:|
+| E4-43-03 | .52 .61 .55 .53 .69 .54 .55 .62 .71 .66 .61 .41 | 0.71 | none | 1.72 1.67 1.69 1.77 1.83 1.82 | 1.38 |
+| E4-43-05 | .51 .58 .42 .58 .73 .72 .60 .58 .60 .60 .67 .68 | 0.73 | none | 1.75 1.63 1.76 1.77 1.80 1.79 | 1.64 |
+
+### Strength half: fails, as the fixed-probe entropy predicted
+
+`data/reports/p25_e443_50_60M.{md,json}`: E4-43, E4-41 and E4-27 at 50, 55 and 60M, plus
+E4-08-0s@60M. 100 games per side per pair, temperature 0.
+
+| seed | step | E4-43 − E4-27 | E4-43 − E4-41 | E4-43 vs E4-27 (as USSR / as US) | E4-43 vs λ 0.98 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|---:|
+| 3 | 50M | −140 | −274 | 58 / 4 | 6 / 4 |
+| 3 | 55M | −107 | −189 | 75 / 4 | 3 / 6 |
+| 3 | 60M | −19 | −171 | 84 / 11 | 5 / 13 |
+| 5 | 50M | −50 | −217 | 72 / 15 | 8 / 8 |
+| 5 | 55M | −107 | −257 | 46 / 11 | 7 / 5 |
+| 5 | 60M | −95 | −136 | 64 / 5 | 7 / 6 |
+
+**The brake/sharpen trade-off is the finding of 3d–3f.** The same rule, shifted or jumped at the
+edge of one zone, gives:
+* **Shift (E4-41):** a gentle brake. The policy sharpens (probe 0.79/0.89) and the runs are strong,
+  +46 to +168, but seed 5 collapses at 50–60M.
+* **Jump (E4-43):** the full brake outside the zone. It holds the split (peaks 0.71/0.73), but the
+  policy stays near random (probe 1.38/1.64) and the runs are weaker than the collapsed control.
+
+Whenever the WoLF weights are strongly engaged, the leading seat stops learning, and on this
+recipe the leading seat is the one that was learning. The next two arms test whether the backstop
+can come from somewhere else: seat balancing (E4-46), or a slightly earlier but still gentle brake
+(E4-47).
