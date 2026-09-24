@@ -25,6 +25,48 @@
 #include "ts/serialization.hpp"
 #include "ts/engine.hpp"
 
+// The batch runner's parallel loops go through libgomp's own entry point, not `#pragma omp`.
+//
+// Every process that steps the engine also runs torch, and torch ships libgomp. The dynamic
+// loader shares a library by soname, so an extension that needs `libgomp.so.1` gets the very
+// copy torch loaded: one OpenMP runtime, one thread pool. `#pragma omp` ties that to the
+// compiler -- GCC emits GOMP_* calls, clang emits __kmpc_* calls into LLVM's libomp, and clang
+// with `-fopenmp=libgomp` silently emits *serial* code -- so under clang the engine brought a
+// second pool of spinning workers next to torch's and lost 5-7% on a rollout loop even though
+// its own code was ~20% faster. Calling GOMP_parallel directly keeps the single pool under any
+// compiler. It is the ABI every GCC-compiled OpenMP binary calls, so it cannot change under us.
+// tests/bindings/test_build_toolchain.py fails if a second pool ever comes back.
+extern "C" {
+void GOMP_parallel(void (*fn)(void*), void* data, unsigned num_threads, unsigned flags);
+int omp_get_thread_num(void);
+int omp_get_num_threads(void);
+}
+
+namespace {
+
+// `for (i = 0; i < n; ++i) body(i)` across the OpenMP team, split into contiguous equal chunks
+// -- what `schedule(static)` does. Each iteration must be independent (they are: one env each).
+template <class F>
+void gomp_parallel_for(int64_t n, F&& body) {
+    struct Job {
+        int64_t n;
+        F* body;
+    };
+    Job job{n, &body};
+    GOMP_parallel(
+        [](void* p) {
+            const Job* j = static_cast<const Job*>(p);
+            const int64_t team = omp_get_num_threads();
+            const int64_t chunk = (j->n + team - 1) / team;
+            const int64_t lo = static_cast<int64_t>(omp_get_thread_num()) * chunk;
+            const int64_t hi = std::min(j->n, lo + chunk);
+            for (int64_t i = lo; i < hi; ++i) (*j->body)(i);
+        },
+        &job, /*num_threads=*/0 /* OMP_NUM_THREADS / the team torch sized */, /*flags=*/0);
+}
+
+}  // namespace
+
 namespace nb = nanobind;
 
 // Helper: Convert enum types to human-readable string names
@@ -1144,6 +1186,17 @@ NB_MODULE(ts_engine, m) {
     //: OBS_SIZE cannot be misread as choosing between several.
     m.attr("OBS_SIZE") = static_cast<int>(ts::OBS_SIZE_V23);
 
+    //: Which compiler built this extension, e.g. "clang 21.1.8". The engine is built with clang
+    //: (root CMakeLists.txt); tests/bindings/test_build_toolchain.py checks the module actually
+    //: imported, which is the one a stale build directory can quietly get wrong.
+#if defined(__clang__)
+    m.attr("BUILD_COMPILER") = std::string("clang ") + __clang_version__;
+#elif defined(__GNUC__)
+    m.attr("BUILD_COMPILER") = std::string("gcc ") + __VERSION__;
+#else
+    m.attr("BUILD_COMPILER") = std::string("unknown");
+#endif
+
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", [](const ts::GameState& state, bool merged_influence) {
             size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
@@ -1240,23 +1293,21 @@ NB_MODULE(ts_engine, m) {
         }
 
         void refresh_all() {
-#pragma omp parallel for schedule(static)
-            for (int64_t i = 0; i < static_cast<int64_t>(num_envs); ++i) {
+            gomp_parallel_for(static_cast<int64_t>(num_envs), [&](int64_t i) {
                 refresh_single(static_cast<size_t>(i));
-            }
+            });
         }
 
         std::vector<int> step_flat_all(const std::vector<uint16_t>& actions, bool auto_advance = false) {
             std::vector<int> results(num_envs, 0);
             const size_t act_count = actions.size();
-#pragma omp parallel for schedule(static)
-            for (int64_t i = 0; i < static_cast<int64_t>(num_envs); ++i) {
-                if (static_cast<size_t>(i) >= act_count) continue;
+            gomp_parallel_for(static_cast<int64_t>(num_envs), [&](int64_t i) {
+                if (static_cast<size_t>(i) >= act_count) return;
                 if (states[i].current_phase == ts::Phase::GAME_OVER ||
                     states[i].victory_points >= 20 ||
                     states[i].victory_points <= -20) {
                     results[i] = 2; // Terminal
-                    continue;
+                    return;
                 }
                 bool ok;
                 if (merged_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))) &&
@@ -1283,7 +1334,7 @@ NB_MODULE(ts_engine, m) {
                 }
                 results[i] = ok ? 1 : 0;
                 refresh_single(static_cast<size_t>(i));
-            }
+            });
             return results;
         }
 
@@ -1397,11 +1448,10 @@ NB_MODULE(ts_engine, m) {
         .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
             size_t n = self.num_envs;
             std::vector<float> potentials(n);
-            #pragma omp parallel for schedule(static)
-            for (size_t i = 0; i < n; ++i) {
+            gomp_parallel_for(static_cast<int64_t>(n), [&](int64_t i) {
                 // Strategic potential Phi(s) strictly defined from US perspective
                 potentials[i] = ts::Scoring::compute_useful_actions_potential(self.states[i], ts::Player::US);
-            }
+            });
             return potentials;
         });
 

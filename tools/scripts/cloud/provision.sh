@@ -101,12 +101,13 @@ set -euo pipefail
 cd /workspace/ts
 export DEBIAN_FRONTEND=noninteractive
 python -c 'import sys; assert sys.version_info >= (3,12), f"python {sys.version} <3.12: this codebase uses PEP 701 f-strings"'
-# Both, not just cmake: the pytorch runtime image ships cmake through conda but has no
+# All three, not just cmake: the pytorch runtime image ships cmake through conda but has no
 # compiler, so guarding on cmake alone skipped build-essential and the configure step
-# failed with "CMAKE_CXX_COMPILER not set".
-if ! command -v cmake >/dev/null || ! command -v g++ >/dev/null; then
+# failed with "CMAKE_CXX_COMPILER not set". clang because the engine is built with clang (the
+# root CMakeLists.txt refuses anything else); build-essential for libstdc++ and make.
+if ! command -v cmake >/dev/null || ! command -v clang++ >/dev/null; then
     apt-get update -qq
-    apt-get install -y -qq cmake build-essential >/dev/null 2>&1
+    apt-get install -y -qq cmake build-essential clang >/dev/null 2>&1
 fi
 pip install --break-system-packages -q nanobind 'numpy>=2.0' tensorboard
 # --break-system-packages because the image's python is PEP 668 externally-managed and pip

@@ -63,6 +63,31 @@ if [[ "$want" == "$have" && -n "$have" ]] && built_extension_exists; then
 fi
 
 echo "check_engine_fresh: engine build is stale or unstamped -- rebuilding" >&2
+
+# The engine is built with clang (root CMakeLists.txt). A build directory's compiler is fixed
+# when it is first configured, so one created under GCC would fail the new check on every
+# reconfigure; it is configured afresh instead, keeping the settings it was made with.
+cached() {
+    sed -n "s/^$1:[A-Z]*=//p" "$BUILD_DIR/CMakeCache.txt" 2>/dev/null | head -n 1
+}
+compiler_id="$(sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\(.*\)")$/\1/p' \
+    "$BUILD_DIR"/CMakeFiles/*/CMakeCXXCompiler.cmake 2>/dev/null | head -n 1)"
+if [[ -f "$BUILD_DIR/CMakeCache.txt" && "$compiler_id" != *Clang* ]]; then
+    echo "check_engine_fresh: $BUILD_DIR was configured with ${compiler_id:-an unknown compiler};" \
+         "reconfiguring it with clang" >&2
+    fresh_args=(--fresh -B "$BUILD_DIR" -S "$ROOT")
+    for var in Python_EXECUTABLE CMAKE_BUILD_TYPE CMAKE_CXX_FLAGS \
+               CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS; do
+        value="$(cached "$var")"
+        [[ -n "$value" ]] && fresh_args+=("-D$var=$value")
+    done
+    if ! env -u CXX cmake "${fresh_args[@]}" >&2; then
+        echo "check_engine_fresh: reconfiguring with clang FAILED (is clang installed? without" >&2
+        echo "  root: tools/scripts/install_clang_userspace.sh)" >&2
+        exit 2
+    fi
+fi
+
 if ! cmake --build "$BUILD_DIR" -j >&2; then
     echo "check_engine_fresh: rebuild FAILED" >&2
     exit 2

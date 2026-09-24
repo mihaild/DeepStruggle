@@ -166,7 +166,11 @@ asserted, so none of them was driving an illegal action; the Python side was not
 
 ### Standard Build:
 The root `CMakeLists.txt` orchestrates `engine/` and `bindings/` together, and the rest of the
-repository expects the result in `build/release`.
+repository expects the result in `build/release`. **The engine is built with clang**; the root
+`CMakeLists.txt` picks `clang++` and refuses any other compiler (measured +20% over GCC on the
+same sources, identical games -- see CLAUDE.md). Install it with `apt-get install clang`, or
+without root with `tools/scripts/install_clang_userspace.sh`. The root `CMakeLists.txt` is part
+of the engine fingerprint, so a change of compiler or flags there marks every build stale.
 ```bash
 cmake -B build/release -S . -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
@@ -175,12 +179,16 @@ cmake --build build/release -j
 ### Build with Sanitizers (AddressSanitizer + UndefinedBehaviorSanitizer):
 ```bash
 cmake -B build_san -S . \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=Debug -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3 \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+  -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined -shared-libasan"
 cmake --build build_san -j
+ASAN_OPTIONS=detect_leaks=0 ./build_san/engine/ts_tests
+tools/scripts/run_asan.sh .venv/bin/python -m pytest -q tests/bindings
 ```
+The extension links compiler-rt's shared ASan runtime (`-shared-libasan`), which `run_asan.sh`
+preloads into the uninstrumented Python interpreter; the test executables keep the static one.
 
 ### Run Unit Tests:
 ```bash

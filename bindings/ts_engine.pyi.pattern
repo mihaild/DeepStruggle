@@ -39,3 +39,9 @@ ts_engine.MapData.get_country_info:
     @staticmethod
     def get_country_info(arg: int, /) -> CountryInfo:
         """Static map data for one country. See `CountryInfo`."""
+
+# The compiler string is a fact about the machine that built the module ("clang 21.1.8
+# (6ubuntu1)"); introspection would bake that value into the committed stub, which would then
+# differ from every build made with another clang. Only its type belongs in the stub.
+ts_engine.BUILD_COMPILER:
+    BUILD_COMPILER: str

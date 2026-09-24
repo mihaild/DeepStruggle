@@ -47,8 +47,10 @@ FROM ${PYTHON_IMAGE} AS engine
 # here, in the image's copy only, for a portable baseline (x86-64-v2: any x86 server since ~2009;
 # armv8-a on ARM). Pass ENGINE_MARCH=native when the image is built on the machine it runs on.
 ARG ENGINE_MARCH=
+# clang: the engine is built with clang, and CMake refuses any other compiler. build-essential
+# for make, libstdc++ and libgomp, which the batch runner links (it shares torch's OpenMP pool).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential cmake \
+ && apt-get install -y --no-install-recommends build-essential clang cmake \
  && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
@@ -72,7 +74,7 @@ RUN march="${ENGINE_MARCH}"; \
 
 # -- runtime --------------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE}
-# libgomp: ts_engine links OpenMP when the compiler provides it.
+# libgomp: the batch runner calls GCC's OpenMP runtime directly, under any compiler.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libgomp1 \
  && rm -rf /var/lib/apt/lists/*

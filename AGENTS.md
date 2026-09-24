@@ -178,7 +178,8 @@ graph TD
 │       ├── check_engine_fresh.sh   # Refuses to proceed against a stale build (see 3.2)
 │       ├── train_and_tournament.sh # Unified training & tournament bash runner
 │       ├── train_direct_rl.sh  # Direct RL self-play runner
-│       └── run_asan.sh         # AddressSanitizer execution script
+│       ├── install_clang_userspace.sh  # clang without root (apt-get download + dpkg -x)
+│       └── run_asan.sh         # runs a command against build_san with clang's ASan runtime
 │
 ├── data/                       # [GIT IGNORED] Working artifacts: model checkpoints, saved
 │                               # .tslog.json game logs, and demonstration datasets
@@ -238,10 +239,16 @@ tests, together with `python -m playwright install chromium`). For a CUDA build 
 
 ### 3.2 Build C++ Engine & Nanobind Extension
 ```bash
+# Needs clang (apt-get install clang; without root: tools/scripts/install_clang_userspace.sh)
 # Standard Release Build
 cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3
 cmake --build build/release -j
 ```
+
+The engine is built with **clang**: the root `CMakeLists.txt` finds it and refuses any other
+compiler, and `tools/scripts/check_engine_fresh.sh` reconfigures a build directory created under
+GCC. The batch runner calls GCC's libgomp directly so it shares torch's OpenMP pool under clang
+(`bindings/AGENTS.md` §3); `tests/bindings/test_build_toolchain.py` guards both.
 
 `cmake --build` produces `build/release/ts_engine.cpython-*.so`, which is what
 `PYTHONPATH=.:build/release` imports as `ts_engine`. Note the output path: the module lands in

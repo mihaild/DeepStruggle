@@ -41,11 +41,16 @@ _REPO_ROOT: pathlib.Path = pathlib.Path(__file__).resolve().parents[2]
 def source_files(root: Optional[pathlib.Path] = None) -> List[pathlib.Path]:
     """Every file whose content can change what the compiled engine does, sorted.
 
-    `engine/` and `bindings/` only. Python is not compiled in, and a change to it cannot make a
+    `engine/` and `bindings/`, plus the root `CMakeLists.txt`, which picks the compiler and the
+    optimisation flags for both: it was missing, so a change of compiler or `-march` left every
+    build reporting itself fresh. Python is not compiled in, and a change to it cannot make a
     built extension stale.
     """
     base = root or _REPO_ROOT
     found: List[pathlib.Path] = []
+    top = base / "CMakeLists.txt"
+    if top.is_file():
+        found.append(top)
     for directory in ("engine", "bindings"):
         d = base / directory
         if not d.is_dir():
