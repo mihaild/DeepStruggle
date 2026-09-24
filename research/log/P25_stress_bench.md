@@ -444,3 +444,48 @@ because the old-snapshot games keep the US from vanishing, not because the US is
 averages positions from both seats, and a sharp USSR pulls it down. The −0.74 correlation (above)
 held across runs whose seats were roughly symmetric. Used as a run-health signal it needs to be
 split by seat.
+
+## Step 3g, part 2: a narrower dead zone (E4-47), 2026-09-24
+
+E4-41's flags with `--wolf-dead-zone 0.10` (shift). The brake starts at 0.60 instead of 0.65, and
+at a 0.90 split it weighs 4:1 instead of 3:1. `launch_flags.py --diff` against E4-41 shows the
+dead zone only.
+
+### Collapse half: passes on both seeds, seed 3 near the line at the end
+
+| run | 0–60M, by 5M (self-play USSR share) | peak | buckets ≥ 0.9 | entropy by 10M | last 10M: US / USSR entropy | probe 50–60M |
+|:---|:---|---:|:---|:---|:---|---:|
+| E4-47-03 | .52 .53 .48 .56 .69 .59 .61 .77 .64 .72 .79 .86 | 0.86 | none | 1.74 1.69 1.69 1.72 1.66 1.71 | 1.89 / 1.60 | 1.08 |
+| E4-47-05 | .51 .66 .67 .67 .71 .65 .46 .60 .49 .53 .51 .39 | 0.71 | none | 1.75 1.68 1.67 1.73 1.70 1.73 | 1.68 / 1.76 | 1.46 |
+| E4-41-03 (dz 0.15) | .52 .61 .74 .75 .61 .71 .84 .81 .67 .57 .75 .66 | 0.84 | none | 1.72 1.68 1.62 1.62 1.58 1.57 | 1.73 / 1.50 | 0.79 |
+| E4-41-05 (dz 0.15) | .51 .57 .74 .76 .68 .57 .55 .58 .67 .73 .90 .96 | 0.96 | 50–60M | 1.74 1.56 1.50 1.52 1.57 1.55 | 1.82 / 1.39 | 0.89 |
+
+Seed 3 ends at 0.86 and rising, with the US seat's entropy climbing (1.89) and the advantage
+spread falling (0.247 at 60M). That is how E4-41-05's collapse began at 45–50M. This is a pass at
+60M, but not by much.
+
+### Strength half: between E4-43 and E4-41, and below E4-41 on both seeds
+
+`data/reports/p25_e4-47_50_60M.{md,json}`: the E4-46 field with E4-47 in place of E4-46.
+
+| seed | step | E4-47 − E4-27 | E4-47 − E4-41 | E4-47 vs E4-27 @60M (as USSR / as US) |
+|---:|:---|---:|---:|---:|
+| 3 | 50M | +71 | −52 | 96 / 31 |
+| 3 | 55M | +50 | −20 | 89 / 25 |
+| 3 | 60M | +91 | −54 | 93 / 37 |
+| 5 | 50M | +23 | −155 | 65 / 17 |
+| 5 | 55M | +21 | −146 | 71 / 30 |
+| 5 | 60M | −57 | −121 | 67 / 21 |
+
+At 60M, E4-47 rates +137 (seed 3) and +44 (seed 5) above E4-43 (jump).
+
+**Fails on strength against E4-41, passes narrowly against the control.** The dead zone behaves as a
+single dial. A wider zone (0.15) sharpens more and is stronger, but can collapse. A narrower one
+(0.10) holds the split better and is weaker. The jump (E4-43) is the far end. Seed 5 never
+sharpened (entropy 1.73 at 60M, probe 1.46), and it is the weaker seed. The fixed-probe entropy
+ranks the two E4-47 seeds correctly, and both sit above E4-41's.
+
+No setting of this dial gets both halves on both seeds. What the bench is asking for is a brake
+that acts on the *losing* seat's signal without flattening the *winning* seat's. Every WoLF variant
+tried here scales the two seats' objectives against each other. Seat balancing does act on the
+losing seat alone, but E4-46 showed it buys that with one-sided sharpening.
