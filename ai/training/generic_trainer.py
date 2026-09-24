@@ -13,7 +13,10 @@ import collections
 import json
 import re
 import argparse
-from typing import List, Optional, Dict, Any, Final, Sequence, Tuple, Union
+import functools
+import random
+from typing import (Any, Callable, Dict, Final, List, Optional, Sequence, Tuple, TypeVar,
+                    Union, cast)
 import numpy as np
 import torch
 import torch.nn as nn
@@ -934,6 +937,37 @@ def run_behavioral_cloning_warmup(
     print(f"=== Warm-up Complete in {time.time() - t0:.1f}s. Saved to: {output_checkpoint_path} ===", flush=True)
 
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def preserves_training_rng(fn: _F) -> _F:
+    """Run `fn` without moving any global random stream the training loop draws from.
+
+    Snapshot evaluation samples actions with torch's global generators (and may touch numpy's and
+    Python's), and those are the same streams the rollout samples from. Left alone, every
+    evaluation shifts the rest of the run onto a different trajectory -- training is chaotic at
+    1e-9 (research/log/P25_stress_bench.md) -- so how often a run is evaluated would change what it
+    learns. Restoring the streams afterwards makes the evaluation interval a reporting setting
+    only: the same run evaluated every 5M or every 10M trains bit for bit the same.
+    """
+    @functools.wraps(fn)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        cpu = torch.get_rng_state()
+        cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        np_state = np.random.get_state()
+        py_state = random.getstate()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            torch.set_rng_state(cpu)
+            if cuda is not None:
+                torch.cuda.set_rng_state_all(cuda)
+            np.random.set_state(np_state)
+            random.setstate(py_state)
+    return cast(_F, wrapped)
+
+
+@preserves_training_rng
 def evaluate_and_log_snapshot(
     model: nn.Module,
     opponents: List[PlayerAgent],
@@ -1329,7 +1363,9 @@ def train_pipeline(
     train_steps: int = 80_000_000,
     decisiveness_turns: float = 0.0,
     max_snapshot_opponents: int = 4,
-    snapshot_every_steps: int = 5_000_000,
+    snapshot_every_steps: int = 10_000_000,
+    pool_every_steps: int = 5_000_000,
+    tf32: bool = False,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
     num_envs: int = 512,
@@ -1421,9 +1457,15 @@ def train_pipeline(
             "budget gives two arms different amounts of training.")
     if int(snapshot_every_steps) <= 0:
         raise ValueError(
-            f"snapshot_every_steps must be positive, got {snapshot_every_steps}. It sets both the "
-            "snapshot cadence and the rate the self-play opponent pool grows, so two arms that "
-            "differ in it are not a one-factor comparison.")
+            f"snapshot_every_steps must be positive, got {snapshot_every_steps}.")
+    if int(pool_every_steps) <= 0:
+        raise ValueError(
+            f"pool_every_steps must be positive, got {pool_every_steps}. It sets the rate the "
+            "self-play opponent pool grows, so two arms that differ in it are not a one-factor "
+            "comparison.")
+    # TF32 matmuls (P26): set either way, so a process that ran something else first cannot hand
+    # a run a setting its metadata does not record.
+    torch.backends.cuda.matmul.allow_tf32 = bool(tf32)
 
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1534,6 +1576,8 @@ def train_pipeline(
         "decisiveness_turns": decisiveness_turns,
         "train_steps": int(train_steps),
         "snapshot_every_steps": int(snapshot_every_steps),
+        "pool_every_steps": int(pool_every_steps),
+        "tf32": bool(tf32),
         "search_ce_coef": float(search_ce_coef),
         "search_sims": int(search_sims),
         "search_subsample": float(search_subsample),
@@ -1803,10 +1847,14 @@ def train_pipeline(
                 _run_dir = os.path.dirname(os.path.abspath(_src_file))
                 _snaps = []
                 for _f in os.listdir(_run_dir):
-                    _m = re.match(r"snapshot_(\d+)steps\.pt$", _f)
+                    # pool_<n>steps.pt: a pool member written between snapshots. Where both
+                    # exist for one step they hold the same weights; the snapshot is kept.
+                    _m = re.match(r"(snapshot|pool)_(\d+)steps\.pt$", _f)
                     if _m:
-                        _snaps.append((int(_m.group(1)), os.path.join(_run_dir, _f)))
-                _snaps.sort()
+                        _snaps.append((int(_m.group(2)), _m.group(1) == "pool",
+                                       os.path.join(_run_dir, _f)))
+                _snaps = [(n, q) for n, _, q in sorted(_snaps)]
+                _snaps = [x for i, x in enumerate(_snaps) if i == 0 or x[0] != _snaps[i - 1][0]]
 
                 # The pool the run actually held, recorded in its resume state. Preferred over
                 # any reconstruction: eviction is by spacing and depends on the order snapshots
@@ -1952,6 +2000,14 @@ def train_pipeline(
     step_budget = int(train_steps)
     eval_every_steps = int(snapshot_every_steps)
     next_eval_steps = eval_every_steps
+    # The pool grows on its own schedule (5M, as it always has), not the snapshot's: snapshots
+    # moved to 10M on 2026-09-24 because evaluating one costs ~17% of a run's wall time at 5M
+    # (research/log/P26_quick_screen.md), and tying the pool to them would have halved its growth
+    # rate -- a change to training, where the snapshot interval should be a change to reporting.
+    # A pool member that falls between snapshots is written as pool_<steps>steps.pt, which a
+    # resume finds as it finds snapshots.
+    pool_every = int(pool_every_steps)
+    next_pool_steps = pool_every
     it = 0
 
     injector = None
@@ -1965,7 +2021,8 @@ def train_pipeline(
 
     print("=" * 80, flush=True)
     print(f"STARTING GENERIC TRAINING PIPELINE ({train_steps:,} steps, "
-          f"snapshot every {eval_every_steps:,} steps)", flush=True)
+          f"snapshot every {eval_every_steps:,} steps, pool member every {pool_every:,})",
+          flush=True)
     num_baselines = len(opponents)
     budget_desc = f"{train_steps:,} steps"
 
@@ -1990,6 +2047,7 @@ def train_pipeline(
         t_start -= resumed_elapsed
         # Snapshots are due by step count, and those steps already happened.
         next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
+        next_pool_steps = ((state["total_env_steps"] // pool_every) + 1) * pool_every
         print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
               f"{resumed_elapsed:.0f}s of training already done", flush=True)
 
@@ -2222,6 +2280,8 @@ def train_pipeline(
 
         # Snapshot Evaluation
         due = total_env_steps >= next_eval_steps
+        snap_path = ""
+        t_eval0 = time.time()
         if due:
             t_eval0 = time.time()
             snap_path = os.path.join(
@@ -2231,27 +2291,37 @@ def train_pipeline(
                 # Sort these numerically, not lexicographically.
                 f"snapshot_{total_env_steps}steps.pt")
             torch.save(model.state_dict(), snap_path)
-            # Hand this snapshot to the opponent pool, if it is growing from the run's own
-            # history. A *copy* is loaded from what was just written rather than the live model:
-            # adding the model under training would give the learner an opponent whose weights
-            # move with it, which is ordinary self-play wearing a costume.
-            if opponent_self_pool and trainer.opponent_pool is not None:
-                try:
-                    # deepcopy for the architecture, then overwrite with the snapshot's
-                    # weights. There is no model factory that reconstructs an arbitrary
-                    # configuration from metadata, and guessing one would be a way to build a
-                    # subtly different opponent.
-                    _opp = _copy.deepcopy(model)
-                    _opp.load_state_dict(torch.load(snap_path, map_location=dev,
-                                                    weights_only=True))
-                    trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
-                                              merged=bool(merged_influence),
-                                              path=os.path.abspath(snap_path))
-                except Exception as _e:
-                    # A pool that fails to grow is a degraded experiment, not a dead one --
-                    # say so loudly and keep training rather than losing the run.
-                    print(f"[opponent pool] FAILED to add snapshot at {total_env_steps}: {_e}",
-                          flush=True)
+
+        # Hand the policy to the opponent pool on the pool's own schedule, if it is growing from
+        # the run's own history -- from the snapshot file when one was just written, otherwise
+        # from a pool_<steps>steps.pt written here. A *copy* is loaded from the file rather than
+        # the live model: adding the model under training would give the learner an opponent
+        # whose weights move with it, which is ordinary self-play wearing a costume.
+        if (opponent_self_pool and trainer.opponent_pool is not None
+                and total_env_steps >= next_pool_steps):
+            next_pool_steps += pool_every
+            member_path = snap_path if due else os.path.join(
+                out_dir, f"pool_{total_env_steps}steps.pt")
+            try:
+                if not due:
+                    torch.save(model.state_dict(), member_path)
+                # deepcopy for the architecture, then overwrite with the snapshot's
+                # weights. There is no model factory that reconstructs an arbitrary
+                # configuration from metadata, and guessing one would be a way to build a
+                # subtly different opponent.
+                _opp = _copy.deepcopy(model)
+                _opp.load_state_dict(torch.load(member_path, map_location=dev,
+                                                weights_only=True))
+                trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
+                                          merged=bool(merged_influence),
+                                          path=os.path.abspath(member_path))
+            except Exception as _e:
+                # A pool that fails to grow is a degraded experiment, not a dead one --
+                # say so loudly and keep training rather than losing the run.
+                print(f"[opponent pool] FAILED to add snapshot at {total_env_steps}: {_e}",
+                      flush=True)
+
+        if due:
             # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
             # load_agent, the tournament runner and every eval module read it as one.
             save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,

@@ -251,14 +251,24 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Opponent-pool draws and which side the learner takes.")
     parser.add_argument("--resume-every-steps", type=int, default=40_000_000,
                         help="Write a step-tagged resume_<steps>.pt at most this often. Resume files are 48MB against a snapshot's 13MB, so this is deliberately much coarser than the snapshot interval.")
-    parser.add_argument("--snapshot-every-steps", type=int, default=5_000_000,
-                        help="Take a snapshot every N env steps. This also sets the rate the "
-                             "self-play opponent pool grows, since the pool is fed from "
-                             "snapshots -- two arms that snapshot at different rates train "
-                             "against different opponent distributions and are not a one-factor "
-                             "comparison. It used to be derived from two time flags; E3-22-28's "
-                             "first attempt thereby snapshotted every 26.7M steps against its "
-                             "baseline's 5M and had to be thrown away.")
+    parser.add_argument("--snapshot-every-steps", type=int, default=10_000_000,
+                        help="Save and evaluate a snapshot every N env steps (10M since "
+                             "2026-09-24; 5M before, when evaluating one cost ~17%% of a run's "
+                             "wall time: research/log/P26_quick_screen.md). Reporting only: "
+                             "evaluation restores the RNG streams it draws from, and the "
+                             "opponent pool grows on --pool-every-steps, so this does not change "
+                             "what a run learns.")
+    parser.add_argument("--pool-every-steps", type=int, default=5_000_000,
+                        help="Add the current policy to the self-play opponent pool every N env "
+                             "steps (as pool_<N>steps.pt between snapshots). This sets the rate "
+                             "the pool grows: two arms that differ in it train against different "
+                             "opponent distributions and are not a one-factor comparison. 5M is "
+                             "the lineage's rate; it used to be tied to the snapshot interval, "
+                             "and E3-22-28's first attempt snapshotted every 26.7M steps against "
+                             "its baseline's 5M and had to be thrown away.")
+    parser.add_argument("--tf32", action="store_true",
+                        help="TF32 matmuls (P26): ~+15%% steps/s on M2d, mean KL 1e-7 to fp32 at "
+                             "inference. Off until its A/B passes.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
                              "RL. A BC warmup washes out early in training; this keeps the "
@@ -590,6 +600,8 @@ def main():
             resume_every_snapshot=args.resume_every_snapshot,
             resume_every_steps=args.resume_every_steps,
             snapshot_every_steps=args.snapshot_every_steps,
+            pool_every_steps=args.pool_every_steps,
+            tf32=args.tf32,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
             inject_weight=args.inject_weight,

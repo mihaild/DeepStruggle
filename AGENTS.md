@@ -326,11 +326,11 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --output-dir <warmup.pt>
 
 # 2. Phase 1 & 2 & 3: Unified RL Training + Live Snapshots + Post-Training Tournament
-# (or simply use ./tools/scripts/train_and_tournament.sh v2 160000000 5000000 <warmup.pt>)
+# (or simply use ./tools/scripts/train_and_tournament.sh v2 160000000 10000000 <warmup.pt>)
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 \
   --train-steps 160000000 \
-  --snapshot-every-steps 5000000 \
+  --snapshot-every-steps 10000000 \
   --warmup-checkpoint <warmup.pt> \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random <checkpoint.pt> \
@@ -341,9 +341,10 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 
 # 2a. A/B experiments. Every budget is in env steps -- there is no wall-clock flag, because
 #     steps/sec depends on the policy and a time budget hands the two arms different amounts
-#     of training. Give both arms the same --train-steps AND the same --snapshot-every-steps:
-#     the snapshot cadence also sets how fast the self-play opponent pool grows, so two arms
-#     that snapshot at different rates face different opponents and differ in two factors.
+#     of training. Give both arms the same --train-steps AND the same --pool-every-steps:
+#     it sets how fast the self-play opponent pool grows, so two arms that differ in it face
+#     different opponents and differ in two factors. --snapshot-every-steps (10M) is reporting
+#     only: evaluation restores the RNG streams it draws from, so it does not change training.
 #     --eval-max-snapshot-opponents bounds evaluation, which is otherwise quadratic in run
 #     length.
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \

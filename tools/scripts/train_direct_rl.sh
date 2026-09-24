@@ -15,7 +15,7 @@ set -e
 
 ARCH="${1:-v2}"               # v1 | v2 | mlp
 TRAIN_STEPS="${2:-80000000}"          # Default: the standard 80M env steps
-SNAPSHOT_EVERY_STEPS="${3:-5000000}"  # Default: every 5M steps
+SNAPSHOT_EVERY_STEPS="${3:-10000000}"  # Default: every 10M steps
 OPPONENT_CHECKPOINT="${4:-}"  # Optional: extra opponent for eval and tournament
 
 OPPONENTS=(heuristic random)

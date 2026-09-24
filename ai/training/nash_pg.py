@@ -448,6 +448,8 @@ class BaseNashPGTrainer:
         if cuda_graphs and self.device.type == "cuda":
             self._graphs = GraphCache(self.num_envs, self.buffer.obs_dim,
                                       ActionEncoder.FLAT_ACTION_SIZE, self.device)
+            # GAE's backward recursion too: ~5,000 elementwise launches per rollout, same kernels.
+            self.buffer.graph_gae = True
         #: The USSR's smoothed self-play win share. Starts even, and is carried in the resume
         #: state so a resumed run does not relearn it.
         self.wolf_sp_ussr = 0.5
@@ -596,6 +598,7 @@ class BaseNashPGTrainer:
         t0 = time.time()
         self.active_net.eval()
         if self._graphs is not None:
+            self._graphs.begin_rollout()
             # Release the graphs of pool members evicted since the last rollout.
             self._graphs.retain([self.active_net] + (list(self.opponent_pool.nets)
                                                      if self.opponent_pool is not None else []))

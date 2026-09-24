@@ -1,6 +1,6 @@
 """Vectorized Rollout Buffer for Masked Multi-Agent Twilight Struggle Training with GAE Credit Slicing."""
 
-from typing import Dict, Generator, Tuple, Optional
+from typing import Any, Dict, Generator, Tuple, Optional
 import torch
 
 from bindings.ts_env import obs_size
@@ -116,6 +116,15 @@ class RolloutBuffer:
         self.adv_std_ema_steps = 0.0
         self.adv_norm_divisor = 0.0
         self.adv_norm_floor_bound = 0.0
+        #: Replay compute_gae's backward recursion as one CUDA graph (set by a trainer that
+        #: graphs its rollout forward). The recursion is ~40 small elementwise kernels per step,
+        #: 128 steps: ~5,000 launches and ~44 ms per rollout on M2d's setup
+        #: (research/log/P26_quick_screen.md). A replay runs the same kernels on the same inputs,
+        #: so the result is bitwise the eager one. CUDA only.
+        self.graph_gae = False
+        self._gae_graph: Optional[Any] = None
+        self._gae_graph_key: Optional[Tuple[Any, ...]] = None
+        self._gae_static: Dict[str, torch.Tensor] = {}
 
     def reset(self) -> None:
         """Resets the buffer pointer."""
@@ -249,6 +258,28 @@ class RolloutBuffer:
                 "next_values_own was passed to add(). Silently falling back to the negated "
                 "bootstrap would make the arm measure nothing.")
 
+        key = (float(gamma), float(gae_lambda), bool(slice_turn_boundaries), bool(blunder_window),
+               int(defcon_risk_horizon), bool(same_perspective_bootstrap))
+        if self.graph_gae and self.device.type == "cuda":
+            window_mask = self._gae_backward_graphed(key, last_v_win, last_v_vp, last_players)
+        else:
+            window_mask = self._gae_backward(key, last_v_win, last_v_vp, last_players)
+
+        if per_player_gae:
+            pp_adv, pp_ret = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players)
+            keep = ~window_mask
+            self.advantages = torch.where(keep, pp_adv, self.advantages)
+            self.returns_win = torch.where(keep, pp_ret, self.returns_win)
+
+        self.normalise_advantages()
+
+    def _gae_backward(self, key: Tuple[Any, ...], last_v_win: torch.Tensor,
+                      last_v_vp: torch.Tensor, last_players: torch.Tensor) -> torch.Tensor:
+        """compute_gae's backward recursion: writes advantages, returns_win, returns_vp and
+        defcon_risk_target in place and returns the blunder-window mask. No host syncs, so it can
+        be captured as a CUDA graph."""
+        (gamma, gae_lambda, slice_turn_boundaries, blunder_window, defcon_risk_horizon,
+         same_perspective_bootstrap) = key
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
         window_mask = torch.zeros((self.buffer_size, self.num_envs), dtype=torch.bool,
                                   device=self.device)
@@ -368,14 +399,41 @@ class RolloutBuffer:
                 curr_vp_norm,
                 curr_vp_norm * 0.1 + 0.9 * non_terminal * next_ret_vp
             )
+        return window_mask
 
-        if per_player_gae:
-            pp_adv, pp_ret = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players)
-            keep = ~window_mask
-            self.advantages = torch.where(keep, pp_adv, self.advantages)
-            self.returns_win = torch.where(keep, pp_ret, self.returns_win)
-
-        self.normalise_advantages()
+    def _gae_backward_graphed(self, key: Tuple[Any, ...], last_v_win: torch.Tensor,
+                              last_v_vp: torch.Tensor, last_players: torch.Tensor) -> torch.Tensor:
+        """`_gae_backward` as a CUDA-graph replay, captured on first use and again whenever the
+        scalar settings change. The graph reads its bootstrap inputs from static copies and
+        writes advantages and returns_win into tensors of its own; normalisation (which syncs
+        with the host) and per-player GAE run eagerly afterwards, as they do without a graph."""
+        st = self._gae_static
+        if self._gae_graph is None or self._gae_graph_key != key:
+            st.clear()
+            st["last_v_win"] = last_v_win.detach().clone()
+            st["last_v_vp"] = last_v_vp.detach().clone()
+            st["last_players"] = last_players.detach().clone()
+            st["advantages"] = torch.zeros_like(self.advantages)
+            st["returns_win"] = torch.zeros_like(self.returns_win)
+            self.advantages, self.returns_win = st["advantages"], st["returns_win"]
+            stream = torch.cuda.Stream(device=self.device)
+            stream.wait_stream(torch.cuda.current_stream(self.device))
+            with torch.cuda.stream(stream):   # warm-up, off the graph
+                self._gae_backward(key, st["last_v_win"], st["last_v_vp"], st["last_players"])
+            torch.cuda.current_stream(self.device).wait_stream(stream)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph, stream=stream):
+                st["window_mask"] = self._gae_backward(
+                    key, st["last_v_win"], st["last_v_vp"], st["last_players"])
+            self._gae_graph, self._gae_graph_key = graph, key
+        st["last_v_win"].copy_(last_v_win)
+        st["last_v_vp"].copy_(last_v_vp)
+        st["last_players"].copy_(last_players)
+        # Normalisation and per-player GAE rebind these to new tensors; the graph writes into
+        # its own, so point them back before the replay.
+        self.advantages, self.returns_win = st["advantages"], st["returns_win"]
+        self._gae_graph.replay()
+        return st["window_mask"]
 
     def normalise_advantages(self) -> None:
         """Normalise the stored advantages in place (per seat under per_seat_adv_norm),
