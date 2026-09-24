@@ -109,3 +109,29 @@ update gains count for more.
 
 Taken together, wall-clock per training step drops by roughly 35–45%, and about 60% of that
 needs no change to numerics or only TF32.
+
+## Adopted: the bit-identical changes and a 10M snapshot interval (`bea6311`, 2026-09-24)
+
+* **What changed:**
+  * `GraphCache` checks staleness once per rollout.
+  * `compute_gae`'s recursion is replayed as a CUDA graph.
+  * `--snapshot-every-steps` defaults to 10M, and the pool grows on its own
+    `--pool-every-steps` (default 5M).
+  * Snapshot evaluation restores the RNG streams it draws from.
+* **Bit identity:**
+  * Old and new trees give identical results over three collect+update iterations with a pool
+    opponent: every metric, the advantages and the weights.
+  * The same run evaluated every 1M and every 2M gives identical results over 5M steps: all 92
+    logged metrics on all 77 iterations, and the final weights.
+* **End to end** (`perf_run.sh`, 3M steps, three alternating runs each):
+
+| | median per-iteration steps/s | wall s for 3M |
+|:---|---:|---:|
+| before (`3dcb2f2`) | 64.9k / 63.9k / 64.3k | 61.9 / 61.8 / 62.3 |
+| after (`bea6311`) | 66.9k / 70.1k / 72.3k | 60.1 / 59.1 / 56.0 |
+
+That is **+8%** in steps/s. The 10M snapshot interval comes on top, removing about half of the
+~17% evaluation overhead.
+
+**The TF32 ablation runs next.** It uses the E4-08 recipe to 80M on seeds 40–42: E4-56 is the
+fp32 control, E4-57 runs with `--tf32`, and the two arms of a seed run as a pair.
