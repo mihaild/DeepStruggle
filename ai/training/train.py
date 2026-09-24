@@ -421,6 +421,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "share is within 0.5 +- this, and outside it shifts the share toward 0.5 "
                              "by this much before weighting, so the weights leave 1 continuously. "
                              "0 is the plain rule.")
+    parser.add_argument("--wolf-dead-zone-mode", choices=["shift", "jump"], default="shift",
+                        help="Outside --wolf-dead-zone: 'shift' moves the share toward 0.5 by the zone "
+                             "width before weighting (continuous, softer); 'jump' applies the plain "
+                             "rule to the unshifted share (full brake once outside the zone).")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -617,6 +621,7 @@ def main():
             wolf_ema_games=args.wolf_ema_games,
             wolf_scope=args.wolf_scope,
             wolf_dead_zone=args.wolf_dead_zone,
+            wolf_dead_zone_mode=args.wolf_dead_zone_mode,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

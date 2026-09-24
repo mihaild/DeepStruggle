@@ -76,8 +76,8 @@ def filter_search_visits(
     return pairs, dropped
 
 
-def wolf_seat_weights(sp_ussr: float, power: float = 1.0,
-                      dead_zone: float = 0.0) -> Tuple[float, float]:
+def wolf_seat_weights(sp_ussr: float, power: float = 1.0, dead_zone: float = 0.0,
+                      dead_zone_mode: str = "shift") -> Tuple[float, float]:
     """Per-seat policy-gradient weights (w_us, w_ussr) from the USSR's self-play win share.
 
     "Win or learn fast" (Bowling & Veloso, 2002): the seat that is winning learns slowly, and the
@@ -95,12 +95,22 @@ def wolf_seat_weights(sp_ussr: float, power: float = 1.0,
     instead of jumping. d = 0 is the rule above exactly. E4-38/E4-39 showed the full rule keeps
     the self-play split near even but trades the lead back and forth (the USSR weight swung
     0.28-1.65); a dead zone acts only near a real imbalance.
+
+    `dead_zone_mode="jump"` applies the plain rule unshifted once outside the zone: the weights jump
+    from 1 at the edge, but a 0.90 split is braked 9:1 as without a zone, not 3:1. E4-41 (shift)
+    sharpened and was stronger than its control on both seeds, but its seed 5 still drifted from
+    0.67 to 0.96 against the softer brake.
     """
+    if dead_zone_mode not in ("shift", "jump"):
+        raise ValueError(f"dead_zone_mode must be 'shift' or 'jump', got {dead_zone_mode!r}")
     x = float(sp_ussr)
     d = max(0.0, float(dead_zone))
     if d > 0.0:
         off = x - 0.5
-        x = 0.5 + (1.0 if off > 0 else -1.0) * max(0.0, abs(off) - d)
+        if abs(off) <= d:
+            return 1.0, 1.0
+        if dead_zone_mode == "shift":
+            x = 0.5 + (1.0 if off > 0 else -1.0) * (abs(off) - d)
     x = min(0.99, max(0.01, x))
     a = x ** float(power)
     b = (1.0 - x) ** float(power)
@@ -231,6 +241,7 @@ class BaseNashPGTrainer:
         wolf_ema_games: float = 2000.0,
         wolf_scope: str = "surrogate",
         wolf_dead_zone: float = 0.0,
+        wolf_dead_zone_mode: str = "shift",
         cuda_graphs: bool = True,
         device: torch.device | str = "cuda",
     ):
@@ -374,6 +385,9 @@ class BaseNashPGTrainer:
         self.wolf_scope = str(wolf_scope)
         #: Half-width of the band around an even self-play split where the weights stay 1.
         self.wolf_dead_zone = float(wolf_dead_zone)
+        #: "shift" (default, E4-41) or "jump": see wolf_seat_weights.
+        self.wolf_dead_zone_mode = str(wolf_dead_zone_mode)
+        wolf_seat_weights(0.5, 1.0, 0.0, self.wolf_dead_zone_mode)   # validates the mode
         #: Rollout forwards replayed as CUDA graphs (ai/training/graphed_forward.py): bitwise the
         #: same kernels as eager, one launch instead of ~317, and the learner and pool-opponent
         #: graphs overlap on two streams. CUDA only; --no-cuda-graphs falls back to eager.
@@ -769,7 +783,7 @@ class BaseNashPGTrainer:
         metrics.update(self.buffer.diagnostics())
         if self.wolf_seat_weight:
             _w_us, _w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power,
-                                               self.wolf_dead_zone)
+                                               self.wolf_dead_zone, self.wolf_dead_zone_mode)
             metrics["wolf_sp_ussr"] = self.wolf_sp_ussr
             metrics["wolf_w_us"] = _w_us
             metrics["wolf_w_ussr"] = _w_ussr
@@ -1025,7 +1039,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         ratio_negadv_max_accum = 0.0    # the dangerous combination, on its own
         num_updates = 0
         wolf_w_us, wolf_w_ussr = wolf_seat_weights(self.wolf_sp_ussr, self.wolf_power,
-                                                   self.wolf_dead_zone)
+                                                   self.wolf_dead_zone, self.wolf_dead_zone_mode)
         # Per-minibatch diagnostics accumulate ON THE DEVICE and are read once, after the loop.
         # Reading each with .item()/float()/bool() inside the loop forced ~14 CPU-GPU syncs per
         # minibatch, each stalling the queue until the GPU caught up

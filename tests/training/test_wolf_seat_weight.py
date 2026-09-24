@@ -75,3 +75,12 @@ def test_the_dead_zone_leaves_weights_at_one_inside_and_is_continuous_at_the_edg
 def test_a_zero_dead_zone_is_the_plain_rule() -> None:
     for x in (0.2, 0.5, 0.83):
         assert wolf_seat_weights(x, 0.5, dead_zone=0.0) == wolf_seat_weights(x, 0.5)
+
+
+def test_jump_mode_brakes_fully_outside_the_zone() -> None:
+    assert wolf_seat_weights(0.6, 1.0, dead_zone=0.15, dead_zone_mode="jump") == pytest.approx((1.0, 1.0))
+    assert wolf_seat_weights(0.9, 1.0, dead_zone=0.15, dead_zone_mode="jump") == pytest.approx(
+        wolf_seat_weights(0.9, 1.0))
+    assert wolf_seat_weights(0.66, 1.0, dead_zone=0.15, dead_zone_mode="jump") == pytest.approx((1.32, 0.68))
+    with pytest.raises(ValueError):
+        wolf_seat_weights(0.9, 1.0, dead_zone=0.15, dead_zone_mode="bounce")

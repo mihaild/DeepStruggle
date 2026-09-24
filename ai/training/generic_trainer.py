@@ -1334,6 +1334,7 @@ def train_pipeline(
     wolf_ema_games: float = 2000.0,
     wolf_scope: str = "surrogate",
     wolf_dead_zone: float = 0.0,
+    wolf_dead_zone_mode: str = "shift",
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1524,6 +1525,7 @@ def train_pipeline(
         "wolf_ema_games": float(wolf_ema_games),
         "wolf_scope": str(wolf_scope),
         "wolf_dead_zone": float(wolf_dead_zone),
+        "wolf_dead_zone_mode": str(wolf_dead_zone_mode),
         "cuda_graphs": bool(cuda_graphs),
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
@@ -1674,6 +1676,7 @@ def train_pipeline(
         wolf_ema_games=wolf_ema_games,
         wolf_scope=wolf_scope,
         wolf_dead_zone=wolf_dead_zone,
+        wolf_dead_zone_mode=wolf_dead_zone_mode,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1810,7 +1813,7 @@ def train_pipeline(
         print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
     if wolf_seat_weight:
         print(f"[wolf] per-seat weights from the self-play USSR share on the {wolf_scope} "
-              f"objective: power={wolf_power}, dead zone={wolf_dead_zone}, "
+              f"objective: power={wolf_power}, dead zone={wolf_dead_zone} ({wolf_dead_zone_mode}), "
               f"memory={wolf_ema_games:g} games "
               f"(--wolf-seat-weight --wolf-scope {wolf_scope})", flush=True)
 
