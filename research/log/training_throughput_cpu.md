@@ -228,6 +228,21 @@ code: every graph of a cache is captured on the cache's stream, and the warmup r
 test beside them passes on either code; it checks exactness after a drop, not the failure. Outputs
 stay bitwise eager (the rollout tests are unchanged), so no run's numbers change.
 
+### Clang engine (master `5fb5971`) vs GCC: +22% in the engine, nothing end to end (2026-09-24)
+
+Both builds were measured on the same machine, the GPU otherwise idle, alternating rounds.
+* **Engine alone** (`ts_benchmark`, 500k steps, pinned to one P-core, 5 rounds): GCC 1.57M
+  steps/s, clang 1.91M. **+22%**, in line with the commit's +24%.
+* **End to end** (`data/logs/perf/perf_run.sh`, a 3M-step M2d run with this branch's Python code;
+  only the engine extension differs, 3 runs each): steady-state throughput is **GCC 72,660
+  steps/s** (71,520–73,186), **clang 72,586** (71,293–72,955). Wall time is 54.66 s against
+  54.65 s, and user CPU about 92.6 s in both.
+
+The engine costs under 5% of one core at training speed (1.9M against 73k steps/s), and training
+is GPU-bound, so a faster engine cannot move the end-to-end number. This agrees with the earlier
+reading that the engine is not the bottleneck. Keeping clang is harmless: games are bit-identical
+per the commit, and throughput is unchanged. It is not a training speedup.
+
 ## First reading (superseded; kept for the record)
 
 
