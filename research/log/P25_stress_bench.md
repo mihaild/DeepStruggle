@@ -8,7 +8,7 @@ it only kept the collapse just under the threshold, at no gain in strength. Slow
 kept seed 3's self-play balanced without making it stronger, and did nothing on seed 5.
 Per-seat advantage normalisation collapsed earlier than its control, as predicted.
 
-The plan is [`../plans/P25_collapse_robustness.md`](../plans/P25_collapse_robustness.md), and the
+The plan is [`../plans/P25_collapse_robustness.md`](../archive/E4_ladder/plans/P25_collapse_robustness.md), and the
 mechanism behind the levers is in
 [`E4_collapse_census_per_seat.md`](E4_collapse_census_per_seat.md).
 
@@ -605,3 +605,55 @@ A last-digit change to one mean moved the collapse from 40M to about 65M. Within
 turned a pin into an episode that is still at 0.90 at the end. Both runs head for the same
 place, so the tendency to collapse belongs to the recipe (λ 0.99). Whether a particular run pins
 inside a fixed budget, and when, is a draw. "Seed 5 collapses" was never a property of seed 5.
+
+## Closing P25 (2026-09-24)
+
+The owner closed P25 on 2026-09-24. The owner's criterion was that a collapse matters only if
+training dies or is delayed for a long time. The evidence gathered against that criterion:
+
+* **On the production recipe (E4-08: λ 0.98, pool 0.3/12) a collapse is a delay.**
+  * About 1 in 6 seeds from scratch entered a pin within 80M.
+  * The long episodes each cost about 50–70M steps.
+  * By 160M the collapsed seeds had caught up: −1.4 Elo against the seeds that never collapsed
+    ([`E4_collapse_is_recoverable.md`](E4_collapse_is_recoverable.md)).
+* **Every permanent stall came after a resume on the drained pool.** The fix is `3803d5d`. On
+  the fixed pool, 3 of 3 continuations did not pin
+  ([`P25_pool_resume_bug.md`](P25_pool_resume_bug.md)).
+* **The clean replicates on the fixed code did not pin.** E4-08-36 and E4-08-37 ran straight to
+  240M with no pin ([`E4_clean_replicates.md`](E4_clean_replicates.md)).
+  * E4-08-37 did lean USSR for its whole run, and its two ~40M flat stretches line up with
+    episodes that peaked at 0.91–0.92.
+  * So a long delay without a pin is possible. It has been seen once.
+* **The λ 0.99 bench pins in about 1 run in 5, and that is a draw, not a property of the seed or
+  the code** (part 0 above). A 4-seed arm expects under one pin in its control, so the 3j–3l bench
+  could not have shown a lever preventing one.
+
+**The 3j–3l bench was stopped part-way, unrated.**
+
+| run | lever | reached | 0–80M, by 5M (self-play USSR share) | buckets ≥ 0.95 |
+|:---|:---|---:|:---|---:|
+| E4-50-10 | floor 0.8 | 80M | .61 .43 .35 .28 .65 .61 .56 .48 .53 .67 .87 .71 .78 .77 .77 .86 | 0 |
+| E4-50-11 | floor 0.8 | 80M | .49 .59 .72 .60 .69 .58 .58 .56 .67 .67 .90 .75 .92 .97 .97 .97 | 3 |
+| E4-50-12 | floor 0.8 | 80M | .57 .53 .79 .87 .72 .84 .68 .70 .79 .83 .77 .70 .70 .73 .63 .62 | 0 |
+| E4-50-13 | floor 0.8 | 45M | .48 .51 .67 .75 .75 .75 .77 .66 .72 | 0 |
+| E4-51-10 | floor 0.5 | 40M | .61 .43 .34 .28 .35 .42 .58 .58 | 0 |
+
+The 0.8 floor pinned once (E4-50-11, 65–80M), where none of the six λ 0.99 controls on the
+current code did. At the bench's pin rate that is not evidence against the floor, and it is
+certainly not evidence for it. The entropy ceiling (E4-52) and the per-seat KL stop (E4-53) never
+ran. All three levers stay in the code, off by default (`--adv-norm-floor`, `--entropy-ceiling`,
+`--target-kl`).
+
+**What P25 leaves behind:**
+* the pool resume fix (`3803d5d`);
+* the per-seat signals (`9c49329`);
+* `launch_flags.py`, which now diffs every recorded flag;
+* the finding that training is chaotic at 1e-9;
+* the CUDA-graph fix (`9bfceb1`), found while chasing the bench's crashes.
+
+**What moves on:**
+* Step 5's codified rewind goes to [`reserve`](../plans/reserve.md) as an optional safety net.
+* The slow π_ref switch (step 4) goes to the strength queue. It won late on seed 3, but only on
+  the drained pool.
+* **The collapse measure should be progress, not a pin.** Use per-seat Elo against the run's own
+  earlier snapshots, since E4-08-37 stalled without a pin.

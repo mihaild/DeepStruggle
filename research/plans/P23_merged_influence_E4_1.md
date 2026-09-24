@@ -1,6 +1,6 @@
 # P23 — E4.1: the first influence placement replaces the influence op-choice
 
-**Status:** **paused** -- stages 1-4 done (implementation `d6c89ad`). The stage-5 A/B collapsed on both seeds, so it has no verdict on the merits; it is to be re-run under the recipe [P25](P25_collapse_robustness.md) adopts. See [`../log/P23_E4_1_ab.md`](../log/P23_E4_1_ab.md).
+**Status:** **parked, 2026-09-24** (owner's decision; strength work goes first). Stages 1–4 are done (implementation `d6c89ad`). From scratch, E4.1 collapses on the US seat in 6 of 6 runs under every entropy setting tried: raw 0.01, raw 0.0076, normalised, and none. A distilled warm start from E4 (E4.1-05-36) also dissolved the US seat. The same warm start in the E4 view (E4-55-36) dissolved it too, only more slowly, so the warm-start reset is a confound of its own. The cause of the from-scratch collapse is not found. See [`../log/P23_E4_1_ab.md`](../log/P23_E4_1_ab.md). To resume, start with an audit of how the merged view trains the US seat (rewards, blunder windows, per-player GAE around composed actions).
 **Gate:** the owner approves this plan (it touches `engine/` and `bindings/`, invariant 11).
 **Needs approval:** engine and bindings changes, as below; no change to `GameState`, the rules or
 the observation. Stage 5 is a separate observation proposal, per the owner's standing rule.
