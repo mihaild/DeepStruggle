@@ -137,6 +137,8 @@ graph TD
 │   └── ...                     # random, heuristic, exploratory, strategic (DEFCON-2 containment),
 │                               # event_heavy, and human (interactive CLI) baselines
 │
+├── deploy/web/                 # Dockerfile (+ compose, README) deploying the workbench from GitHub
+│
 ├── web/                        # Web Workbench (UI + Backend Server + Bot Client)
 │   ├── bot_client.py           # WebSocket network bot runner for browser matches
 │   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (map view, HUD, tracks,
@@ -375,6 +377,10 @@ argmax in the model's own action view, and any move can still be made by hand. *
 other seat. The address bar always carries `game_id`, `model`, `auto` and `pos` (the position itself), updated with `replaceState`, so
 copying it shares the exact board. `$TS_ANALYSIS_DEVICE` (default `cpu`) picks the device; see
 `web/server/analysis.py` and `web/server/AGENTS.md`.
+
+**Deployment:** `deploy/web/Dockerfile` builds the server, engine and UI from the GitHub
+repository (`main` by default, `--build-arg REF=` for another ref) with a portable `-march`, CPU
+torch, and checkpoints mounted at `/data/checkpoints`; see `deploy/web/README.md`.
 
 ### 3.5 Reusable Agent CLI Tools (`tools/`)
 
