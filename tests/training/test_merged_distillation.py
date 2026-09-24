@@ -99,3 +99,38 @@ def test_distilling_a_merged_dataset_marks_the_checkpoint_as_e4_1() -> None:
         run_search_distillation(create_coldwar_net_v2(), path, out, epochs=1, batch_size=64,
                                 device="cpu")
         assert checkpoint_merged_influence(out) is True
+
+
+def test_a_commit_that_ends_the_game_keeps_its_whole_mass_on_the_bare_commit() -> None:
+    """The E4.1 view still offers the bare influence commit where committing ends the game (We
+    Will Bury You's VP falling due). There is no second step: asking the network at the terminal
+    post-commit state gave a softmax over an empty mask, NaN, and a target the generator could not
+    sample from. The post-commit policy there is a one-hot on CONFIRM, so the commit keeps it all."""
+    import ts_engine as ts
+    from tools.lib.merged_targets import post_commit_policy
+    live = ts.GameState()
+    ts.Engine.init_game(live, 7)
+    over = ts.GameState()
+    ts.Engine.init_game(over, 7)
+    over.victory_points = 20
+    assert ts.Engine.is_terminal(over) and not ts.Engine.is_terminal(live)
+    calls = []
+
+    def fn(states):  # type: ignore[no-untyped-def]
+        calls.append(len(states))
+        out = np.zeros((len(states), 220))
+        out[:, 150] = 1.0
+        return out
+
+    p_post = post_commit_policy([live, over], fn)
+    assert calls == [1], "the network must only be asked about live states"
+    assert p_post[0, 150] == 1.0 and p_post[1, CONFIRM] == 1.0
+    p_e4 = np.zeros((2, 220))
+    p_e4[:, INFL] = 0.5
+    p_e4[:, 113] = 0.5
+    mask = np.zeros((2, 220), dtype=np.uint8)
+    mask[0, [113, 150]] = 1        # a normal merged node
+    mask[1, [113, INFL]] = 1       # the bare commit, where it ends the game
+    out = factorised_policy(p_e4, p_post, mask)
+    assert np.isfinite(out).all()
+    assert out[1, INFL] == pytest.approx(0.5) and out[0, 150] == pytest.approx(0.5)

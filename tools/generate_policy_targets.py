@@ -53,7 +53,8 @@ import numpy as np
 import torch
 import ts_engine as ts
 
-from tools.lib.merged_targets import after_influence_commit, factorised_policy, is_merged_op_choice
+from tools.lib.merged_targets import (after_influence_commit, factorised_policy, is_merged_op_choice,
+                                      post_commit_policy)
 from tools.lib.player_agent import NeuralAgent
 
 TOP_K = 12
@@ -92,6 +93,40 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _dump_bad_rows(runner: Any, idx: List[int], bad: np.ndarray, mask_t: torch.Tensor,
+                   probs: torch.Tensor, output_path: str) -> None:
+    """Positions the teacher cannot sample at (an empty mask, or a non-finite policy): write them
+    out with everything needed to reproduce them, and stop. Never skip or patch them -- a position
+    with no legal action, or a network that outputs NaN, is a bug to find, not a row to drop."""
+    rows = []
+    for sub in np.flatnonzero(bad):
+        st = runner.get_state(idx[int(sub)])
+        ctx = st.ctx()
+        rows.append({
+            "env": int(idx[int(sub)]),
+            "decision_type": ts.DecisionType(int(ctx.decision_type)).name,
+            "decision_player": int(ctx.decision_player),
+            "turn": int(st.turn), "action_round": int(st.action_round),
+            "mask_sum": int(mask_t[int(sub)].sum()),
+            "e4_mask_sum": int(np.asarray(ts.Engine.get_flat_action_mask(st, False)).sum()),
+            "merged_mask_sum": int(np.asarray(ts.Engine.get_flat_action_mask(st, True)).sum()),
+            "probs_finite": bool(torch.isfinite(probs[int(sub)]).all()),
+            "is_terminal": bool(ts.Engine.is_terminal(st)),
+            "obs_finite": bool(np.isfinite(np.asarray(
+                ts.extract_observation(st, ctx.decision_player))).all()),
+            "state": st.to_save_dict(),
+        })
+    path = output_path + ".bad_rows.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(rows, f, indent=1, default=str)
+    raise RuntimeError(f"{len(rows)} position(s) with no finite policy to sample from; written to {path}: "
+                       + "; ".join(f"{r['decision_type']} player {r['decision_player']} turn {r['turn']} "
+                                   f"AR {r['action_round']} mask {r['mask_sum']} (E4 {r['e4_mask_sum']}, "
+                                   f"E4.1 {r['merged_mask_sum']}) obs_finite={r['obs_finite']} "
+                                   f"probs_finite={r['probs_finite']} "
+                                   f"terminal={r['is_terminal']}" for r in rows))
+
+
 def _probs(model: Any, obs: torch.Tensor, mask: np.ndarray, dev: torch.device) -> np.ndarray:
     m = torch.from_numpy(np.asarray(mask)).to(dev)
     with torch.no_grad():
@@ -117,11 +152,15 @@ def _merged_targets(model: Any, runner: Any, idx: List[int], obs_t: torch.Tensor
         raise RuntimeError("the E4 and E4.1 masks differ at a node that is not a merged op choice")
     if ops:
         posts = [after_influence_commit(states[j]) for j in ops]
-        post_obs = torch.from_numpy(np.stack([
-            np.asarray(ts.extract_observation(t, t.ctx().decision_player), np.float32)
-            for t in posts])).to(dev)
-        post_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(t, False)) for t in posts])
-        p_post = _probs(model, post_obs, post_masks, dev)
+
+        def _eval(ts_states: List[Any]) -> np.ndarray:
+            obs = torch.from_numpy(np.stack([
+                np.asarray(ts.extract_observation(t, t.ctx().decision_player), np.float32)
+                for t in ts_states])).to(dev)
+            masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(t, False)) for t in ts_states])
+            return _probs(model, obs, masks, dev)
+
+        p_post = post_commit_policy(posts, _eval)
         out[ops] = factorised_policy(p_e4[ops], p_post, merged[ops])
     return out.astype(np.float32), merged
 
@@ -201,6 +240,9 @@ def main() -> int:
 
                     t = max(1e-3, a.temperature)
                     sharp = torch.softmax(lg / t, dim=-1)
+                    bad = (~torch.isfinite(sharp).all(dim=-1)) | (mask_t.sum(dim=-1) == 0)
+                    if bool(bad.any()):
+                        _dump_bad_rows(runner, idx, bad.cpu().numpy(), mask_t, probs, a.output_path)
                     picks = torch.multinomial(sharp, 1).squeeze(1).cpu().numpy()
 
                     topv, topi = torch.topk(probs, k=min(k, probs.shape[-1]), dim=-1)

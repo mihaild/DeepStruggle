@@ -35,7 +35,8 @@ import ts_engine as ts  # noqa: E402
 from bindings.ts_env import TsVectorizedEnv  # noqa: E402
 from tools.lib.player_agent import NeuralAgent, resolve_device  # noqa: E402
 
-from tools.lib.merged_targets import INFL, NODE, OP_CHOICE, factorised_policy  # noqa: E402
+from tools.lib.merged_targets import (INFL, NODE, OP_CHOICE, factorised_policy,  # noqa: E402
+                                      post_commit_policy)
 
 
 def collect(model: Any, games: int, device: torch.device) -> List[ts.GameState]:
@@ -81,7 +82,9 @@ def compare(model: Any, states: List[ts.GameState], device: torch.device) -> Tup
     post_masks = np.stack([np.asarray(ts.Engine.get_flat_action_mask(t)) for t in afters])
 
     p_e4 = policy(model, states, e4_masks, device)
-    p_post = policy(model, afters, post_masks, device)
+    p_post = post_commit_policy(
+        afters, lambda sts: policy(model, sts, np.stack([np.asarray(ts.Engine.get_flat_action_mask(t))
+                                                         for t in sts]), device))
     p_raw = policy(model, states, mv_masks, device)
 
     p_fact = factorised_policy(p_e4, p_post, mv_masks)
