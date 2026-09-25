@@ -241,3 +241,31 @@ with its level in the thousands, and only its divergence was the problem.
 
 **Status:** z-loss, as implemented (penalty on every row, from step 0), is not a fix. It stays in
 the code, off by default.
+
+## Does TF32 precision matter at these logit scales? (2026-09-25)
+
+`data/logs/long/tf32_at_scale.py` (GPU) runs 4,096 rollout positions through each snapshot in
+fp32, and in TF32 at batch 4,096 (update-sized) and at batch 512 (rollout-sized). The table
+gives the largest |Δ log p| over legal actions.
+
+| snapshot | largest logit, median / max | fp32 vs TF32: mean KL | fp32 vs TF32: max \|Δ log p\| | TF32 b4096 vs b512: max \|Δ log p\| |
+|:---|:---|---:|---:|---:|
+| E4-57-44@80M | 58 / 267 | 1.4e-7 | 0.09 | 0.03 |
+| E4-57-43@230M (2M before it diverged) | 500 / 3,850 | 2.4e-7 | 1.0 | 0.44 |
+| E4-57-44@400M | 809 / 4,960 | 2.9e-7 | 1.4 | 0.85 |
+| E4-57-44@560M | 1,260 / 6,100 | 2.4e-7 | 1.7 | 1.1 |
+| E4-57-44@590M (6M before it diverged) | 2,129 / 39,800 | 1.2e-6 | 8.5 | 3.0 |
+| E4-60-43@800M (z-loss) | 16 / 64 | 3.0e-7 | 0.11 | 0.06 |
+
+* **TF32 does not overflow.** It has fp32's exponent range and loses mantissa bits.
+* **On average it barely moves the policy.** Mean KL stays at or below 1e-6 at every scale.
+* **For unlikely actions the noise grows with the level.** The shift is ~1 nat at logits in the
+  thousands and 3–8.5 nats once the tail reached ~40,000. The PPO ratio reads exactly those
+  log-probs for a sampled action, so the mechanism is real.
+* **But E4-57-44 trained healthily for ~300M steps with ~1 nat of it,** from 240M to 560M.
+  E4-57-43 diverged at about the same level of noise (1.0 / 0.44). So TF32 precision does not
+  explain E4-57-43's death on its own. It may have finished E4-57-44 once the tail jumped from
+  6,000 to 40,000.
+
+**The test is an fp32 long run: E4-56-43**, the same recipe with `--no-tf32`, seed 43, solo to
+800M, launched 10:46 UTC. `launch_flags.py --diff` against E4-57-43 shows only `--tf32`.
