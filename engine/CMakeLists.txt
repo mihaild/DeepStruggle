@@ -9,6 +9,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Optimization Flags
 if(MSVC)
     add_compile_options(/O2 /arch:AVX2 /we4834)  # 4834 = discarding a [[nodiscard]] value
+elseif(EMSCRIPTEN)
+    # The browser build: WebAssembly has no -march to tune for (root CMakeLists.txt).
+    add_compile_options(-O3 -Wall -Wextra -Wpedantic -Wno-unused-parameter -Werror=unused-result)
 else()
     add_compile_options(-O3 -march=native -Wall -Wextra -Wpedantic -Wno-unused-parameter
         # A discarded step() verdict is how a refused action becomes a silent no-op or an

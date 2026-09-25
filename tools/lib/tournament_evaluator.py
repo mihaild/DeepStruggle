@@ -10,55 +10,20 @@ from ai.game_length import ply as game_ply
 
 
 def classify_game_ending_reason(state: ts.GameState) -> str:
-    """Accurately determines the exact cause of game termination from the canonical list:
+    """Why a finished game ended, from the canonical list:
     - 20 VP
     - Europe Control
     - DEFCON 1 (own decision)
     - DEFCON 1 (opponent decision)
     - final scoring
     - wargames
+
+    Defined once, in C++ (`ts::state_json::ending_reason`, bindings/state_json.cpp), because the
+    browser workbench names the ending too and a report and the page must never disagree about
+    it. The rules it applies -- CMC suicide, DEFCON 1 before VP, Wargames through turn 10, Europe
+    Control before an ordinary 20 VP -- are documented there.
     """
-    # 0. Cuban Missile Crisis suicide: couping while CMC is active without the influence
-    # to cancel it. The engine ends the game at +/-20 VP and deliberately leaves DEFCON
-    # alone, so without this check the loss is indistinguishable from a legitimate 20 VP
-    # win -- and it is a self-inflicted loss, not a win by anyone's play.
-    if state.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
-        return "DEFCON 1 (own decision)"
-
-    # 1. DEFCON 1 (Takes absolute precedence over VP)
-    if state.defcon <= 1:
-        is_provoked = state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
-        return "DEFCON 1 (opponent decision)" if is_provoked else "DEFCON 1 (own decision)"
-
-    # 2. Wargames (#100): the game is over, before final scoring, without 20 VP.
-    #
-    # The bound is `<= 10`, not `< 10`. A game that goes the distance terminates holding
-    # turn *11*: finish_end_turn increments the turn and only then tests `turn <= 10` before
-    # calling execute_final_scoring. So turn 10 is not final scoring -- it is a game that
-    # ended during the last turn -- and with `< 10` a Wargames played in turn 10 fell past
-    # this test to rule 4 and was reported as final scoring. 3 of the 119 finished games in
-    # the human corpus end exactly that way.
-    if state.turn <= 10 and abs(state.victory_points) < 20 and state.current_phase == ts.Phase.GAME_OVER:
-        return "wargames"
-
-    # 3. Europe Control: controlling Europe when Europe is scored ends the game at +/-20 VP,
-    # which is indistinguishable from any other 20 VP win without the flag the engine sets.
-    # It is 1.4% of the ITS corpus and was being counted as an ordinary 20 VP win here.
-    if state.has_flag(ts.EffectBits.EUROPE_CONTROL_WIN):
-        return "Europe Control"
-
-    # 4. 20 VP Milestone or Held Scoring
-    if abs(state.victory_points) >= 20:
-        return "20 VP"
-
-    # 5. Final Scoring
-    if state.turn >= 10:
-        return "final scoring"
-
-    if state.current_phase == ts.Phase.GAME_OVER:
-        return "wargames"
-
-    return "20 VP"
+    return ts.game_ending_reason(state)
 
 
 def _drain_chance_nodes(state: "ts.GameState") -> None:

@@ -25,6 +25,8 @@
 #include "ts/serialization.hpp"
 #include "ts/engine.hpp"
 #include "state_json.hpp"
+#include "selftest.hpp"
+#include <nanobind/stl/pair.h>
 
 // The batch runner's parallel loops go through libgomp's own entry point, not `#pragma omp`.
 //
@@ -679,6 +681,19 @@ NB_MODULE(ts_engine, m) {
           "ignored, so a save from a newer build opens minus what it cannot use. Restores the "
           "decision-context stack; does not restore action_history or turn_aggregates, which are "
           "diagnostics that no rule and no observation reads.");
+    m.def("selftest_digest", [](int games) {
+              uint32_t steps = 0;
+              const uint32_t d = ts::selftest::digest(games, &steps);
+              return std::make_pair(d, steps);
+          }, nb::arg("games"),
+          "(digest, steps) over `games` whole games (bindings/selftest.hpp). The WebAssembly "
+          "build exports the same function, so equal numbers mean the two engines play the same "
+          "games, position, observation and legal mask alike.");
+    m.def("game_ending_reason", [](const ts::GameState& s) { return std::string(ts::state_json::ending_reason(s)); },
+          nb::arg("state"),
+          "Why a finished game ended: '20 VP', 'Europe Control', 'DEFCON 1 (own decision)', "
+          "'DEFCON 1 (opponent decision)', 'final scoring' or 'wargames'. Shared with the browser "
+          "workbench's engine; tools/lib/tournament_evaluator delegates to it.");
     m.def("state_from_save_json", &game_state_from_save_json, nb::arg("text"),
           "state_from_save_dict for the JSON text to_save_json writes (or any JSON of that "
           "shape). Raises ValueError for text that is not JSON or not a save.");

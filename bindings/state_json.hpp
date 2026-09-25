@@ -102,4 +102,10 @@ Value save(const GameState& state);
 // error: returns false and fills `error`.
 bool load_save(const Value& save, GameState& out, std::string* error);
 
+// Why a finished game ended, from the canonical list: "20 VP", "Europe Control",
+// "DEFCON 1 (own decision)", "DEFCON 1 (opponent decision)", "final scoring", "wargames".
+// The one definition: tools/lib/tournament_evaluator.classify_game_ending_reason calls this, and
+// so does the browser workbench, so a report and the page cannot name a different cause.
+const char* ending_reason(const GameState& state);
+
 }  // namespace ts::state_json

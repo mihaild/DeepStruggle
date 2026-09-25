@@ -977,4 +977,41 @@ bool load_save(const Value& d, GameState& out, std::string* error) {
     return true;
 }
 
+// ---- why a game ended ---------------------------------------------------------------------------
+
+const char* ending_reason(const GameState& state) {
+    // 0. Cuban Missile Crisis suicide: couping while CMC is active without the influence to
+    // cancel it. The engine ends the game at +/-20 VP and deliberately leaves DEFCON alone, so
+    // without this check the loss is indistinguishable from a legitimate 20 VP win -- and it is
+    // a self-inflicted loss, not a win by anyone's play.
+    if (state.has_flag(effect_bits::CMC_SUICIDE_LOSS)) return "DEFCON 1 (own decision)";
+
+    // 1. DEFCON 1 takes precedence over VP.
+    if (state.defcon <= 1) {
+        return state.has_flag(effect_bits::DEFCON_SUICIDE_PROVOKED) ? "DEFCON 1 (opponent decision)"
+                                                                     : "DEFCON 1 (own decision)";
+    }
+
+    const int vp = state.victory_points;
+    const int abs_vp = vp < 0 ? -vp : vp;
+
+    // 2. Wargames (#100): over before final scoring, without 20 VP. `<= 10`, not `< 10`: a game
+    // that goes the distance terminates holding turn 11 (finish_end_turn increments the turn and
+    // only then tests `turn <= 10`), so a Wargames in turn 10 is still a Wargames.
+    if (state.turn <= 10 && abs_vp < 20 && state.current_phase == Phase::GAME_OVER) return "wargames";
+
+    // 3. Europe Control ends the game at +/-20 VP, indistinguishable from any other 20 VP win
+    // without the flag the engine sets.
+    if (state.has_flag(effect_bits::EUROPE_CONTROL_WIN)) return "Europe Control";
+
+    // 4. 20 VP, or a held scoring card.
+    if (abs_vp >= 20) return "20 VP";
+
+    // 5. Final scoring.
+    if (state.turn >= 10) return "final scoring";
+
+    if (state.current_phase == Phase::GAME_OVER) return "wargames";
+    return "20 VP";
+}
+
 }  // namespace ts::state_json
