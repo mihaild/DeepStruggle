@@ -181,3 +181,63 @@ likeliest actions down hardest, and that flattens the policy. The owner stopped 
 
 **E4-60-43** is the same configuration with `--z-loss-coef 1e-5`, seed 43, solo, launched
 07:45 UTC. Seed 43's twin without z-loss died earliest, at 232M.
+
+## E4-60-43 reached 800M, but z-loss costs a great deal of strength (2026-09-25)
+
+**Stability.** E4-60-43 (z-loss 1e-5, seed 43) ran 0 → 800M without diverging.
+* The mean log-normaliser stayed at 1.8–2.3 throughout.
+* The largest single value moved between 55 and 520, spiking only during a pin.
+* Approximate KL stayed at 0.01–0.02.
+* The KL alarm fired once, at 684.4M. It was a single iteration (0.057) inside a pin, not a
+  divergence.
+* It pinned twice: at 140M (one bucket), and at ~655M, a deep pin (USSR ~100% of self-play) of
+  roughly 40–60M that recovered by 720M.
+
+**Strength.** `data/reports/long_z5_800M.{md,json}`: 23 players, 100 games per side per pair,
+temperature 0, HeuristicBot at 1500.
+
+| step | E4-60-43 (z 1e-5) | E4-59-43 (z 1e-4) | E4-59-44 (z 1e-4) | E4-57-43 (none) | E4-57-44 (none) |
+|:---|---:|---:|---:|---:|---:|
+| 80M | 1886 | | | | |
+| 160M | **1725** | 2013 | 1926 | **2185** | **2142** |
+| 190M | | 2012 | 2002 | | |
+| 230–240M | 1803 | | | 2218 | 2208 |
+| 320M | 1895 | | | | |
+| 400M | 1921 | | | | 2323 |
+| 480M | 1937 | | | | |
+| 560M | 1918 | | | | 2334 |
+| 640M | 1982 | | | | |
+| 720M | 1991 | | | | |
+| 800M | 2036 | | | | |
+
+E4-57-44@590M rates 2341 and E4-08-36@240M rates 2279 in the same field.
+
+**The z-loss runs are far weaker at matched steps. The deficit is large and the same in every
+run:**
+* at 160M, E4-60-43 is −460 against its no-z-loss twin, E4-59-43 is −170 against the same
+  twin, and E4-59-44 is −216 against its twin;
+* E4-60-43 got weaker from 80M to 160M (1886 → 1725);
+* at 800M it rates 2036, below E4-57-44@160M, and loses 87% to E4-08-36@240M.
+
+The runs' own training evaluations against HeuristicBot tell the same story:
+
+| run | win rate vs HeuristicBot |
+|:---|:---|
+| E4-57-43 / E4-57-44 (no z-loss) | reach 97–100% by 160–240M |
+| E4-60-43 (1e-5) | 73–96% throughout, to 240M |
+| E4-59-43 / E4-59-44 (1e-4) | 61–96% |
+
+**All three z-loss runs also carried higher entropy than their twins, on the US seat above
+all.** The earlier reading that this entropy was run-to-run noise is withdrawn. It tracks the
+presence of z-loss rather than its size, and so does the strength deficit.
+
+**A candidate mechanism, not tested.** The softmax gives the shift direction of the logits
+exactly zero gradient from every other loss term, so the z-loss is the only gradient there.
+Adam normalises each parameter's step by that parameter's own gradient scale. For parameters
+that carry mostly the shift direction, a z-loss of any coefficient is therefore amplified to a
+full-sized step, and its size stops mattering. That would explain why 1e-5 hurt as much as
+1e-4. The level drift itself, meanwhile, was not measured to cost strength. E4-57-44 grew to 2341
+with its level in the thousands, and only its divergence was the problem.
+
+**Status:** z-loss, as implemented (penalty on every row, from step 0), is not a fix. It stays in
+the code, off by default.
