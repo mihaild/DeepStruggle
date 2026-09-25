@@ -146,3 +146,17 @@ E4-08-37@240M rates 2179 in the same field.
 * **Measured within each seed, the gain from 240M to ~560M is +133 Elo.** The flat stretch from
   400M on could be a plateau, or the drift already costing strength. The logit level took off
   across that stretch.
+
+## Relaunched with z-loss (E4-59-43, E4-59-44), 2026-09-25
+
+**The change:** `--z-loss-coef 1e-4` (`69d8b01`) adds `1e-4 · mean(logsumexp(policy logits)²)` to
+the update. Everything else is the E4-57 configuration, with TF32, on the same seeds, 43 and 44.
+`launch_flags.py --diff` against E4-57-43/44 shows only `--z-loss-coef`.
+
+**The 3M smoke test:**
+* the log-normaliser fell from 2.16 to 1.22, against 2.2 → 2.9 with z-loss off;
+* z-loss was ~3e-4, against a policy loss of ~0.07;
+* entropy and throughput were unchanged.
+
+**Launch:** 06:33 UTC. The readouts now carry `logit_lse_mean` and `logit_lse_absmax`, and the
+per-iteration KL alarm is armed.
