@@ -160,3 +160,24 @@ the update. Everything else is the E4-57 configuration, with TF32, on the same s
 
 **Launch:** 06:33 UTC. The readouts now carry `logit_lse_mean` and `logit_lse_absmax`, and the
 per-iteration KL alarm is armed.
+
+### E4-59 stopped at ~199M; E4-60-43 with z-loss 1e-5
+
+**What E4-59 showed:** z-loss at 1e-4 held the level. The mean log-normaliser stayed at
+0.36–0.64 and the largest single value at 18–66, against thousands in the twins. But both runs
+carried visibly higher entropy than their twins, above all on the US seat (1.7–1.95 against
+1.25–1.46 at 80–160M), and both leaned USSR:
+* **E4-59-43:** pins at 40M and 110M, both recovered.
+* **E4-59-44:** 0.87–0.89 at 80M and 160M.
+
+**Why the entropy rises:** the penalty's gradient on a logit is `2c · lse · p`, so it pushes the
+likeliest actions down hardest, and that flattens the policy. The owner stopped both at
+199M / 196M.
+
+| run | USSR share by 5M, 0–195M |
+|:---|:---|
+| E4-59-43 | .59 .64 .80 .84 .83 .88 .90 .96 .94 .89 .86 .79 .78 .63 .66 .88 .63 .44 .49 .69 .79 .96 .94 .81 .72 .56 .52 … |
+| E4-59-44 | .53 .68 .65 .80 .82 .71 .74 .75 .86 .78 .59 .58 .74 .77 .79 .87 .89 .73 .71 .85 .86 .92 .75 .70 .94 .85 .92 … |
+
+**E4-60-43** is the same configuration with `--z-loss-coef 1e-5`, seed 43, solo, launched
+07:45 UTC. Seed 43's twin without z-loss died earliest, at 232M.
