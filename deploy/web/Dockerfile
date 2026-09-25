@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 #
-# The web workbench (FastAPI server + built UI + ts_engine), built from the GitHub repository.
+# The web workbench -- the page with its WebAssembly engine, plus the local files server that
+# lists and exports this machine's checkpoints -- built from the GitHub repository.
 #
 #     docker build -t deepstruggle-web deploy/web
 #     docker run -d -p 8000:8000 -v /path/to/checkpoints:/data/checkpoints:ro \
@@ -16,13 +17,17 @@
 #     --build-arg ENGINE_MARCH=<gcc -march>    see the engine stage (default: portable)
 #
 # Checkpoints are not in the image. Mount a checkpoints tree at /data/checkpoints -- the same
-# layout as data/checkpoints, `<run>/snapshot_*.pt` -- and the analysis panel lists it. Replays
-# the server writes land in /data/replays. See deploy/web/README.md.
+# layout as data/checkpoints, `<run>/snapshot_*.pt` -- and the analysis panel lists it; the server
+# exports a checkpoint to ONNX (cached in /data/onnx_cache) the first time the page asks for it.
+# Replays in /data/replays are listed for watching. See deploy/web/README.md.
 
 ARG REPO=https://github.com/mihaild/DeepStruggle.git
 ARG REF=main
 ARG PYTHON_IMAGE=python:3.14-slim
 ARG NODE_IMAGE=node:22-slim
+# Pinned like tools/scripts/install_emsdk.sh: the browser engine is checked bit for bit against
+# the native one with this compiler (tests/web/test_wasm_engine.py).
+ARG EMSDK_IMAGE=emscripten/emsdk:6.0.10
 
 # -- source ---------------------------------------------------------------------------------------
 FROM scratch AS source
@@ -32,12 +37,24 @@ ARG REF
 # dependency of anything the server imports.
 ADD --keep-git-dir=false ${REPO}#${REF} /
 
+# -- the engine for the page (WebAssembly) -------------------------------------------------------
+FROM ${EMSDK_IMAGE} AS wasm
+WORKDIR /src
+COPY --from=source / ./
+# The fingerprint of these sources is baked in, so the page can tell it runs this build.
+RUN emcmake cmake -B build/wasm -S . -DCMAKE_BUILD_TYPE=Release \
+        -DTS_ENGINE_FINGERPRINT="$(PYTHONPATH=/src python3 tools/lib/engine_fingerprint.py)" \
+ && cmake --build build/wasm --target ts_engine_wasm -j"$(nproc)"
+
 # -- web UI ---------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS ui
 WORKDIR /src/web/ui
 COPY --from=source /web/ui/package.json /web/ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY --from=source /web/ui/ ./
+# The page bundles rules/map.json and rules/cards.json from outside web/ui.
+COPY --from=source /rules /src/rules
+COPY --from=wasm /src/web/ui/public/engine ./public/engine
 RUN npm run build
 
 # -- ts_engine ------------------------------------------------------------------------------------
@@ -80,15 +97,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
-# Only what the server imports -- not the test, training-dashboard or replay-conversion extras of
-# requirements.txt. Torch from the CPU index: analysis reads one position at a time, and the CUDA
-# wheels would add gigabytes for nothing (TS_ANALYSIS_DEVICE defaults to cpu).
+# Only what the server imports: fastapi/uvicorn, and for exporting a checkpoint to ONNX torch
+# (CPU wheel: an export needs no GPU, and the CUDA wheels would add gigabytes), onnx/onnxscript,
+# and onnxruntime, which verifies every export against torch before it is served.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.13.0" \
  && pip install --no-cache-dir "numpy>=2.5.0" "fastapi>=0.141.0" "uvicorn[standard]>=0.52.0" \
-        "websockets>=17.0.0" "pydantic>=2.13.0"
+        "pydantic>=2.13.0" "onnx>=1.23.0" "onnxscript>=0.7.2" "onnxruntime>=1.30.0"
 
 RUN useradd --create-home --uid 1000 app \
- && mkdir -p /data/checkpoints /data/replays \
+ && mkdir -p /data/checkpoints /data/replays /data/onnx_cache \
  && chown -R app:app /data
 WORKDIR /app
 COPY --from=source / ./
@@ -100,11 +117,11 @@ ENV PYTHONPATH=/app:/app/build/release \
     TS_DATA_ROOT=/data \
     TS_CHECKPOINTS_DIR=/data/checkpoints \
     TS_REPLAYS_DIR=/data/replays \
-    TS_ANALYSIS_DEVICE=cpu
+    TS_ONNX_CACHE_DIR=/data/onnx_cache
 
 USER app
-VOLUME ["/data/replays"]
+VOLUME ["/data/replays", "/data/onnx_cache"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/metadata/cards', timeout=4)"]
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/local/info', timeout=4)"]
 CMD ["python", "-m", "web.server.main", "--host", "0.0.0.0", "--port", "8000", "--log-level", "INFO"]

@@ -1,4 +1,5 @@
 import { GameState, MapMetadata } from "./types";
+import { MAP_METADATA } from "./metadata";
 
 export class DebugPanel {
   private onOverride: (override: any) => void;
@@ -9,16 +10,9 @@ export class DebugPanel {
     this.fetchMetadata();
   }
 
-  public async fetchMetadata() {
+  public fetchMetadata() {
     if (this.mapData) return;
-    try {
-      const res = await fetch("/api/metadata/map");
-      if (res.ok) {
-        this.mapData = await res.json();
-      }
-    } catch (e) {
-      console.warn("Could not fetch map metadata in debug panel:", e);
-    }
+    this.mapData = MAP_METADATA;   // bundled from rules/map.json
   }
 
   public setMapData(data: MapMetadata) {

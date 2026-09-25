@@ -12,11 +12,16 @@ nanobind>=2.15.0           # build-time dependency of the ts_engine extension; C
 numpy>=2.5.0
 torch>=2.13.0              # for a CUDA build, install from pytorch.org first, then this file
 
-# --- the web workbench (web/server, web/bot_client) --------------------------------------------
+# --- the web workbench's local server (web/server): lists checkpoints and replays ---------------
 fastapi>=0.141.0
 uvicorn[standard]>=0.52.0
 websockets>=17.0.0
 pydantic>=2.13.0
+# A checkpoint as ONNX for the page (tools/export_onnx.py): torch's exporter needs onnx and
+# onnxscript, and onnxruntime verifies every export against torch before it is written.
+onnx>=1.23.0
+onnxscript>=0.7.2
+onnxruntime>=1.30.0
 
 # --- tests -------------------------------------------------------------------------------------
 pytest>=9.1.0

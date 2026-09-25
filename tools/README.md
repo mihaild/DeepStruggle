@@ -408,6 +408,32 @@ case.
 
 ---
 
+## 3c. `tools/export_onnx.py` (A Checkpoint for the Browser Workbench)
+Writes a checkpoint as ONNX, the format the browser workbench runs (onnxruntime-web), for a
+Hugging Face repo or for dropping onto the page. The local workbench server calls the same
+`export()` on demand, so there you can pick any `.pt` directly.
+
+```bash
+PYTHONPATH=.:build/release .venv/bin/python tools/export_onnx.py \
+  --checkpoint data/checkpoints/<run>/snapshot_final.pt --out <run>.onnx
+```
+
+The file describes itself in ONNX `metadata_props` -- `ts.format`, `ts.obs_size`,
+`ts.action_size`, `ts.merged_influence` (the action view, from the run directory as for every
+harness), `ts.label`, `ts.checkpoint` + `ts.checkpoint_sha256`, `ts.engine_fingerprint` -- and the
+page refuses a model whose observation width is not the engine's. Two things are proved on real
+positions before anything is written, and the export is refused (exit 1) otherwise: the value
+heads ignore the mask (the page's critic rows pass all ones where Python passes none), and ONNX
+Runtime agrees with torch (same favourite move everywhere, probabilities within 1e-3, values
+within 1e-4). About 12.6 MB per model.
+
+The browser side is built by `tools/scripts/build_web.sh` (the engine as WebAssembly, then the
+page) with Emscripten from `tools/scripts/install_emsdk.sh` (pinned, no root). Rebuild the page
+after any engine change: it runs its own copy of the engine, and `tests/web/test_wasm_engine.py`
+holds that copy to the native one bit for bit.
+
+---
+
 ## 4. `tools/generate_dataset.py` (Vectorized Demonstration Dataset Generator)
 Churns out thousands of games in parallel across hundreds of C++ environments, on a
 multi-temperature exploration schedule, writing a compressed `.jsonl.gz` dataset for supervised BC

@@ -101,11 +101,16 @@ export class ReplayControls {
   public async fetchServerReplays() {
     if (!this.serverSelect) return;
     try {
-      const res = await fetch("/api/replays");
-      if (!res.ok) return;
+      // The local server's replay directory. On a static host (GitHub Pages) there is none:
+      // the list is hidden and replays come in through "Load Replay".
+      const res = await fetch("/api/local/replays");
+      if (!res.ok) {
+        this.serverSelect.classList.add("hidden");
+        return;
+      }
       const replays: Array<{ filename: string; game_id: string; total_steps: number; result: any }> = await res.json();
       
-      this.serverSelect.innerHTML = "<option value=\"\">Select Server Replay...</option>";
+      this.serverSelect.innerHTML = "<option value=\"\">Local replays...</option>";
       replays.forEach(r => {
         const opt = document.createElement("option");
         opt.value = r.filename;
@@ -121,13 +126,14 @@ export class ReplayControls {
         this.loadServerReplay(replayParam);
       }
     } catch (e) {
-      console.warn("Could not fetch server replays:", e);
+      this.serverSelect.classList.add("hidden");
+      console.warn("No local replay list (static host?):", e);
     }
   }
 
   public async loadServerReplay(filename: string) {
     try {
-      const res = await fetch(`/api/replays/${filename}`);
+      const res = await fetch(`/api/local/replays/${encodeURIComponent(filename)}`);
       if (!res.ok) return;
       const data = await res.json();
       this.loadReplayData(data);
@@ -271,16 +277,32 @@ export class ReplayControls {
     this.labelEl.textContent = `Step ${this.currentStep} / ${Math.max(0, this.steps.length - 1)}`;
   }
 
+  /**
+   * Set by the app: the live game as a replay document, exported when no replay is being watched
+   * -- so a game played in the page (engine testing, a game against a model) can be saved.
+   */
+  public liveReplay: (() => object | null) | null = null;
+  public watching = false;
+
   private exportReplay() {
-    if (this.steps.length === 0) {
+    let doc: object | null = null;
+    let name = "ts_replay.tslog.json";
+    if (this.watching && this.steps.length > 0) {
+      doc = { steps: this.steps };
+      name = `ts_replay_step_${this.currentStep}.tslog.json`;
+    } else if (this.liveReplay) {
+      doc = this.liveReplay();
+      name = `ts_workbench_${new Date().toISOString().replace(/[:.]/g, "-")}.tslog.json`;
+    }
+    if (!doc) {
       alert("No replay data to export.");
       return;
     }
-    const blob = new Blob([JSON.stringify({ steps: this.steps }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ts_replay_step_${this.currentStep}.tslog.json`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
   }

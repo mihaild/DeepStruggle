@@ -1,3 +1,5 @@
+import json
+import os
 import pytest
 import threading
 import time
@@ -11,8 +13,43 @@ def get_free_port():
         s.bind(('', 0))
         return s.getsockname()[1]
 
+SPACE_REPLAY = "space_race_fixture.tslog.json"
+
+
+def _write_space_race_replay(directory) -> None:
+    """A two-step replay whose second snapshot has the US at space box 2 and the USSR at box 1.
+
+    The test used to select `strategic_llm_game_defcon2.tslog.json` from data/replays -- a file
+    that was never committed, so it failed everywhere but the machine it was written on. The
+    position is built here instead, through the engine's own save loader, and rendered by the
+    engine's own display state, so the snapshot is exactly what a real game would record.
+    """
+    import ts_engine as ts
+    from tools.lib.game_step import drain_chance
+
+    s = ts.GameState()
+    ts.Engine.init_game(s, 7)
+    drain_chance(s)
+    start = s.to_dict()
+    save = s.to_save_dict()
+    save.update(us_space_track=2, ussr_space_track=1)
+    ahead = ts.state_from_save_dict(save).to_dict()
+    steps = [
+        {"step_index": 0, "turn": 1, "ar": 0, "phase": "SETUP", "player": "SYSTEM", "action": {},
+         "description": "start", "state_snapshot": start},
+        {"step_index": 1, "turn": 1, "ar": 0, "phase": "SETUP", "player": "SYSTEM", "action": {},
+         "description": "US at box 2, USSR at box 1", "state_snapshot": ahead},
+    ]
+    doc = {"version": "1.0", "metadata": {"game_id": "space_race_fixture", "total_steps": 2}, "steps": steps}
+    (directory / SPACE_REPLAY).write_text(json.dumps(doc))
+
+
 @pytest.fixture(scope="module")
-def server_url():
+def server_url(tmp_path_factory):
+    replays = tmp_path_factory.mktemp("space_replays")
+    _write_space_race_replay(replays)
+    previous = os.environ.get("TS_REPLAYS_DIR")
+    os.environ["TS_REPLAYS_DIR"] = str(replays)
     port = get_free_port()
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
     server = uvicorn.Server(config)
@@ -23,6 +60,10 @@ def server_url():
     time.sleep(1.0)
     yield url
     server.should_exit = True
+    if previous is None:
+        os.environ.pop("TS_REPLAYS_DIR", None)
+    else:
+        os.environ["TS_REPLAYS_DIR"] = previous
 
 @pytest.fixture(scope="module")
 def browser_context():
@@ -144,13 +185,13 @@ def test_space_race_replay_state_synchronization(browser_context, server_url):
     # Wait for replay dropdown options to populate
     page.wait_for_function('document.getElementById("rep-server-select").options.length > 1', timeout=5000)
     server_select = page.locator("#rep-server-select")
-    server_select.select_option(value="strategic_llm_game_defcon2.tslog.json")
+    server_select.select_option(value=SPACE_REPLAY)
     
     # Wait for replay slider to be ready
-    page.wait_for_function('parseInt(document.getElementById("rep-timeline-slider").max, 10) > 100', timeout=5000)
-    
-    # Jump to Step 155 (US Box 2, USSR Box 1)
-    page.evaluate('window.__wb.replayControls.goToStep(155)')
+    page.wait_for_function('parseInt(document.getElementById("rep-timeline-slider").max, 10) == 1', timeout=5000)
+
+    # The crafted step: US Box 2, USSR Box 1
+    page.evaluate('window.__wb.replayControls.goToStep(1)')
     page.wait_for_timeout(300)
     
     # Verify Space Race header widget shows US: #2 and USSR: #1

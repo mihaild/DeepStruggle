@@ -1,4 +1,5 @@
 import { GameState, CardMetadata } from "./types";
+import { CARDS_METADATA } from "./metadata";
 
 export interface EffectInfo {
   name: string;
@@ -342,15 +343,9 @@ export class CardsView {
     }
   }
 
-  public async fetchMetadata() {
-    try {
-      const res = await fetch("/api/metadata/cards");
-      if (!res.ok) return;
-      const data = await res.json();
-      this.setCardsMetadata(data);
-    } catch (e) {
-      console.warn("Could not fetch card metadata:", e);
-    }
+  public fetchMetadata() {
+    // Bundled from rules/cards.json (metadata.ts).
+    this.setCardsMetadata(CARDS_METADATA);
   }
 
   private setupTabs() {

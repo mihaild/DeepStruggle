@@ -49,7 +49,7 @@ class ReplayLogger:
         self.result: Optional[ReplayResultDict] = None
         self.trace: Optional[ReplayTraceMetaDict] = None
         #: Set when the game began from a loaded position (a workbench link) rather than from
-        #: the seed; the token is `web.server.analysis.encode_position`'s. Such a replay cannot
+        #: the seed; the token is a `pos=` link's (web/ui/src/game/position.ts). Such a replay cannot
         #: be re-driven from the seed, and says so by carrying this.
         self.start_position: Optional[str] = None
 
@@ -182,11 +182,12 @@ class ReplayManager:
 
     @staticmethod
     def load_replay(filename: str) -> Optional[ReplayLogDict]:
-        target = replays_dir()
+        target = os.path.realpath(replays_dir())
         full_path = os.path.join(target, filename)
         if not os.path.exists(full_path):
             full_path = os.path.join(target, f"{filename}.tslog.json")
-        if not os.path.exists(full_path):
+        # Served over HTTP by the local workbench: nothing outside the replay directory.
+        if not os.path.realpath(full_path).startswith(target + os.sep) or not os.path.isfile(full_path):
             return None
         with open(full_path, "r", encoding="utf-8") as f:
             data: ReplayLogDict = json.load(f)

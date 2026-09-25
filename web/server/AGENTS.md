@@ -1,53 +1,48 @@
-# FastAPI Game Server & Replay System Guide (`web/server/`)
+# Local Files Server & Replay System Guide (`web/server/`)
 
-This directory contains the backend server for Twilight Struggle, providing real-time game orchestration, WebSocket communication, REST metadata endpoints, and replay file management.
+The workbench runs **in the browser** (see [`web/ui/AGENTS.md`](../ui/AGENTS.md)): the engine is
+the WebAssembly build of `engine/` + `bindings/`, the game session and the model readout are
+TypeScript, and models run as ONNX in onnxruntime-web. The same page is published to GitHub Pages
+with no server at all. This directory is what a *local* checkout adds on top: the files a static
+page cannot reach -- this machine's checkpoints and replays -- and the replay writer the Python
+tools use.
+
+It holds **no game**. There are no sessions, no WebSocket and no bot clients; the server-side
+session (`session.py`), its model readout (`analysis.py`) and the network bot client
+(`web/bot_client.py`) were removed when the game moved into the page. Their behaviour lives on in
+`web/ui/src/game/` and `web/ui/src/analysis/`, held to the originals by `tests/web` (the action
+log by a golden recorded from the Python session, the readout against `read_policy` /
+`read_critic`).
 
 ---
 
-## Stepping the engine
-
-`GameSession.handle_action` does not step the engine directly. It goes through
-`tools.lib.game_step`: `step_checked` (which raises `IllegalActionError` instead of returning a
-`False` somebody will discard) and then `drain_chance`, which resolves the chance nodes the action
-landed on. That is the same pair `GameLoop` uses for `play_match` and `self_play`, and the three
-have to agree or a replay written by one cannot be re-driven by another.
-
-Two rules follow:
-
-* **Never re-implement the drain.** The session used to own a copy that looped `while` the game sat
-  on a chance node, discarding the engine's return value, so a refused roll spun forever. A client
-  sending an out-of-range `secondary_id` was enough to hang the request.
-* **`secondary_id` on the action that reaches a chance node is the manual die** (the UI's
-  `selectedDieRoll`: 0 for auto, 1..6 to force). It is a workbench affordance for testing the
-  engine and is passed through as `drain_chance(forced_die=...)`. Anything outside 0..6 is refused
-  by the engine, and the handler answers `False` after rolling back.
-
 ## 1. File Overview
 
-- [`main.py`](main.py):
-  - FastAPI application entry point.
-  - REST endpoints:
-    - `POST /api/games/new`: Initializes a new game session with optional RNG seed.
-    - `GET /api/games/{game_id}`: Fetches current full game state dictionary.
-    - `POST /api/games/{game_id}/cancel_action` and `POST /api/games/{game_id}/undo`: Both call
-      `GameSession.handle_cancel_action`, discarding the in-progress decision and returning the
-      restored state.
-    - `GET /api/replays`: Lists the saved `.tslog.json` replay logs; appending a filename to that
-      path loads one, with its full state snapshots.
-    - `GET /api/metadata/map`: Returns Deluxe 84-country map data and regional topology.
-    - `GET /api/metadata/cards`: Returns all 110 cards metadata (Ops, sides, eras, rules text).
-  - WebSocket endpoint: `/ws/game/{game_id}?role=US|USSR|OBSERVER`.
-  - Static file mounting: Serves compiled `web/ui/dist` on `/`.
+- [`main.py`](main.py): the FastAPI app.
+  - `GET /api/local/info` -- the engine fingerprint of the sources here, and the roots. The page
+    compares it with the fingerprint baked into its WebAssembly engine and shows **ENGINE STALE**
+    when the page was built from other sources (rebuild with `tools/scripts/build_web.sh`).
+  - `GET /api/local/models` -- every network under the checkpoints tree, grouped by run, newest
+    run first (`resume_*.pt` are training state and are left out).
+  - `GET /api/local/models/onnx?path=<run>/<snapshot>.pt` -- that checkpoint as ONNX. The first
+    request exports it with `tools/export_onnx.py` (a few seconds: the export is verified against
+    torch on real positions and refused if ONNX Runtime disagrees); later ones are served from the
+    cache. 404 for anything outside the tree, 422 for a checkpoint that does not export.
+  - `GET /api/local/replays`, `GET /api/local/replays/<file>` -- the replay directory.
+  - Serves the built page (`web/ui/dist`) at `/`.
 
-- [`session.py`](session.py):
-  - `GameSession` class managing the `ts_engine.GameState` instance.
-  - Validates incoming `PLAY_ACTION` messages against the active `DecisionContext`.
-  - Executes `ts_engine.Engine.step()` and generates human-readable event logs.
-  - Broadcasts `STATE_UPDATE` JSON payloads to all connected WebSocket clients.
-  - Supports `DEBUG_OVERRIDE` actions for manual influence/DEFCON/VP manipulation.
+- [`local_files.py`](local_files.py): what those endpoints read.
+  - `models_root()` (`$TS_CHECKPOINTS_DIR`, else the shared `data/checkpoints`) and
+    `resolve_model_path()`, which refuses anything outside the tree or not a network file.
+  - `onnx_for()`: the export cache (`$TS_ONNX_CACHE_DIR`, else `data/onnx_cache`), keyed by the
+    checkpoint's size and mtime and the engine fingerprint -- a retrained snapshot or a rebuilt
+    engine gets a fresh export. **One export at a time, process-wide**: torch's ONNX exporter keeps
+    global state, and two exports in parallel threads fail each other.
 
 - [`replay.py`](replay.py):
   - `ReplayLogger`: Appends micro-actions, turn/AR milestones, and state snapshots as `.tslog.json`.
+    Written by `tools/lib/self_play.py`, `tools/play_match.py` and the tournament tools; the
+    browser workbench exports its own games in the same format (*Export Replay*).
   - Optional per-step **trace**: `policy` (what the model believed at that node) and `critic`
     (both value heads from both perspectives on the state the step's snapshot shows), plus
     `metadata.trace` naming the model, engine build and settings that produced them. Written by
@@ -56,62 +51,19 @@ Two rules follow:
     legal action by default (`trace_top_k=0`), because the workbench paints each probability
     onto the card, mode button or country it belongs to. **Every reader must treat both
     keys as absent by default** — a heuristic bot has no distribution, a human game has no
-    model, and replays predating the trace have neither. The live server never puts a trace in a
-    `STATE_UPDATE` unasked: a distribution over a bot's legal actions is a read on its hand,
-    which is what the per-role `observation_b64` exists to withhold. The one exception is the
-    opt-in live analysis below, sent only to the socket that requested it.
+    model, and replays predating the trace have neither.
   - `start_position` in the metadata marks a game begun from a loaded position (a shared link)
     rather than from the seed; such a replay cannot be re-driven from the seed alone.
-
-- [`analysis.py`](analysis.py): **live model analysis** for the workbench.
-  - `list_models()` / `resolve_model_path()`: checkpoints are named relative to the checkpoints
-    tree (`$TS_CHECKPOINTS_DIR`, else the shared `data/checkpoints`); `resume_*.pt` and anything
-    outside the tree are refused, so a URL cannot point the server at an arbitrary file.
-  - `MODEL_CACHE`: a few `NeuralAgent`s loaded via `NeuralAgent.from_checkpoint`, which detects
-    the architecture from the weights and the **action view** (E4 / E4.1 merged-influence) from
-    the run directory. Device from `$TS_ANALYSIS_DEVICE`, default `cpu` (a position costs a few
-    ms; the GPU usually belongs to a training run).
-  - `analyze()`: the policy over every legal action **in the model's own view** (`read_policy`,
-    `deterministic=True`, so the torch RNG is untouched) and the critic from both perspectives
-    (`read_critic`). Each choice carries the MicroAction a click would send, so the UI attaches
-    probabilities by matching what a button/card/country sends, never by flat offsets. A
-    *composed* E4.1 choice ("Ops → Influence, first point in X") names the commit half.
-  - `flat_to_steps()`: how "play favourite" applies a flat action. A composed E4.1 action is
-    applied as the two E4 steps it is defined as (as `Engine::step_flat` composes it), each
-    logged and undoable like a click; half of one is never left applied.
-  - `encode_position()` / `decode_position()`: the address-bar token — `to_save_dict` JSON,
-    zlib, base64url, ~1 KB mid-game. A token that does not round-trip through
-    `state_from_save_dict` exactly is refused rather than opened approximately.
-
-  WebSocket messages (in `main.py`): `SET_ANALYSIS_MODEL {model: <rel path> | null}` opts this
-  socket in or out (errors come back as `ANALYSIS_ERROR {message}`); every later `STATE_UPDATE`
-  to that socket carries `analysis` (a `LiveAnalysisDict`) for the same position as its `state`,
-  and `analysis_model`. `PLAY_FLAT {flat_idx, forced_die, expect_position?}` plays a flat action
-  in the socket's model's view; with `expect_position` it is ignored unless the game still holds
-  that position (auto-play, a click and a second tab can all race for the same node). Every `state` now carries `position`, the token for the board it describes.
-  `GameSession.version` is bumped on every change of position; a readout is cached per
-  (model, version) and a superseded broadcast is dropped rather than sent late.
-
-- **`POST /api/games/{game_id}/position`** `{position}`: put a shared position on the board.
-  Returns `changed: false` (and does nothing) when the game already holds exactly that
-  position, which is what lets a page reload keep the game's undo history; otherwise the
-  history and log restart there. A malformed token is a 400.
-- **`GET /api/analysis/models`**: every loadable checkpoint, grouped by run, newest run first.
-  - `ReplayManager`: Discovers and loads those files.
-  - `replays_dir()` resolves the location per call — `$TS_REPLAYS_DIR` if set, else `data/replays`
-    — so a test fixture can point the server at a directory it has just generated a replay into.
-    Prefer it to the `REPLAYS_DIR` constant, which cannot see an override set after import.
-
-- **`GET /api/metadata/action_space`** (in [`main.py`](main.py)): the 212-dim flat action space
-  — offsets, `confirm_done_index`, and the `DecisionType` ids — served from `ActionEncoder` and
-  the engine enum. The workbench needs it to turn a trace's flat index back into the card, mode
-  or country it refers to. **Do not copy these offsets into the frontend**: a second hand-kept
-  table would eventually disagree with the encoder, and every probability would then be painted
-  on the wrong thing while still looking plausible. The mapping is pinned by
-  `tests/web/test_action_space_metadata.py`, which replays a real game through it.
+  - `ReplayManager`: discovers and loads those files, confined to the replay directory.
+    `replays_dir()` resolves the location per call — `$TS_REPLAYS_DIR` if set, else
+    `data/replays` — so a test fixture can point the server at a directory it has just generated
+    a replay into. Prefer it to the `REPLAYS_DIR` constant, which cannot see an override set after
+    import.
 
 - [`replay_types.py`](replay_types.py):
-  - Strongly typed `TypedDict` definitions for all serialized game states, action logs, audit structures, and WebSocket envelopes.
+  - Strongly typed `TypedDict` definitions for all serialized game states, action logs, replays
+    and audit structures. `GameStateDict` is what `GameState.to_dict()` returns -- the display
+    state written once in `bindings/state_json.cpp` and shared with the page's engine.
 
 ---
 
@@ -119,19 +71,20 @@ Two rules follow:
 
 > [!IMPORTANT]
 > **Keep Server Documentation Synchronized**:
-> Whenever adding or altering REST endpoints, changing WebSocket message schemas, updating session routing, or changing replay formats, you **MUST** update this file and root [`AGENTS.md`](../../AGENTS.md).
+> Whenever adding or altering endpoints, changing what the page is served, or changing replay
+> formats, you **MUST** update this file and root [`AGENTS.md`](../../AGENTS.md).
 
 ---
 
 ## 3. How to Run & Test
 
 ```bash
-# Start server
-PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
+# Build the page and its WebAssembly engine, then serve them with this machine's files
+tools/scripts/build_web.sh
+PYTHONPATH=.:build/release .venv/bin/python -m web.server.main --port 8000
 
-# Run server and bot integration tests. Invoke pytest as a module, never via .venv/bin/pytest:
-# that console script carries an absolute shebang and breaks if the venv is moved.
-# tests/web additionally needs a built UI bundle (cd web/ui && npm run build) and, for the E2E
-# tests, a Playwright Chromium. It is not the suite to run for engine, bindings, AI or tools work.
-PYTHONPATH=. .venv/bin/python -m pytest -q tests/web/test_server_and_bot.py tests/web/test_web_workbench.py
+# Tests. Invoke pytest as a module, never via .venv/bin/pytest: that console script carries an
+# absolute shebang and breaks if the venv is moved. tests/web needs the built page
+# (tools/scripts/build_web.sh) and, for the E2E tests, a Playwright Chromium.
+PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 ```

@@ -20,6 +20,7 @@ if(EMSCRIPTEN)
     target_compile_definitions(ts_engine_wasm PRIVATE TS_ENGINE_FINGERPRINT="${TS_ENGINE_FINGERPRINT}")
     set(TS_WASM_EXPORTS
         _ts_fingerprint _ts_obs_size _ts_action_size _ts_action_layout_json _ts_last_error
+        _ts_card_name _ts_card_ops _ts_country_name
         _ts_new_game _ts_state_size _ts_state_ptr _ts_display_json _ts_save_json _ts_load_save_json
         _ts_is_terminal _ts_terminal_utility _ts_ending_reason _ts_decision_player _ts_decision_type
         _ts_step _ts_mask _ts_decode_flat _ts_is_merged_influence_action _ts_observation

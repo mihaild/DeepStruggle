@@ -67,12 +67,10 @@ class ActionLogEntryDict(TypedDict, total=False):
 
 class GameStateDict(TypedDict, total=False):
     """Complete GameState dictionary serialized by ts.state_to_dict."""
-    # The engine's own observation for the player whose move it is, base64 float32.
-    # Present only for that player: it encodes their hand, which the opponent must not see.
+    # The engine's own observation for the player whose move it is, base64 float32, when a caller
+    # that holds the engine attaches it for a dict-driven bot (bot/neural_bot.py). Only ever for
+    # that player: it encodes their hand, which the opponent must not see.
     observation_b64: str
-    # The position as a URL-safe token (web/server/analysis.py encode_position), so the
-    # workbench can put it in the address bar and a link reopens exactly this board.
-    position: str
     victory_points: int
     defcon: int
     mil_ops: Dict[str, int]
@@ -334,82 +332,17 @@ class AuditGameReportDict(TypedDict, total=False):
     meta: Optional[Dict[str, Any]]
 
 
-class WebSocketActionPayloadDict(TypedDict, total=False):
-    """MicroAction payload sent over WebSocket or HTTP."""
-    type: int
-    card_id: int
-    target_id: int
-    ops: int
-    flags: int
-    action_type: int
-    primary_id: int
-    secondary_id: int
-
-
-class AnalysisChoiceDict(TypedDict, total=False):
-    """One legal action in a live analysis, with the MicroAction a click would send.
-
-    `decision_type`/`primary_id`/`flags` let the client attach the probability to the button,
-    card or country that sends exactly that action, without re-deriving flat offsets. A
-    `composed` entry is an E4.1 merged-view action ("Ops for influence, first point in
-    `country_id`", or with no `country_id` "place nothing"); its MicroAction fields name the
-    commit half, which is the influence button.
-    """
-    idx: int
-    p: float
-    name: str
-    decision_type: int
-    primary_id: int
-    flags: int
-    composed: bool
-    country_id: int
-
-
-class LiveAnalysisDict(TypedDict, total=False):
-    """What a chosen checkpoint thinks of the live position (web/server/analysis.py).
-
-    `policy` is the summary of `read_policy` (argmax, entropy, n_legal, ...) without `top`;
-    the per-action probabilities are `choices`, every legal action, by descending p. Absent
-    `policy` means no decision is open (terminal game); the critic is always present.
-    """
-    model: str
-    label: str
-    merged_influence: bool
-    decision_player: str
-    decision_type: int
-    critic: ReplayCriticDict
-    policy: ReplayPolicyDict
-    choices: List[AnalysisChoiceDict]
-
-
 class AnalysisRunDict(TypedDict):
-    """One run directory's checkpoints, as offered by the workbench's model picker."""
+    """One run directory's checkpoints, as the workbench's model picker offers them."""
     run: str
     snapshots: List[str]
 
 
 class AnalysisModelListDict(TypedDict):
-    """`GET /api/analysis/models`: every checkpoint under the shared checkpoints tree."""
+    """`GET /api/local/models`: every network under the checkpoints tree, grouped by run."""
     root: str
     runs: List[AnalysisRunDict]
     loose: List[str]
-
-
-class WebSocketMessageDict(TypedDict, total=False):
-    """Top-level WebSocket packet exchanged with client."""
-    type: str
-    game_id: Optional[str]
-    player: Optional[str]
-    state: Optional[GameStateDict]
-    # Only on STATE_UPDATEs to a socket that asked for one with SET_ANALYSIS_MODEL.
-    analysis: Optional[LiveAnalysisDict]
-    analysis_model: Optional[str]
-    action: Optional[WebSocketActionPayloadDict]
-    error: Optional[str]
-    winner: Optional[str]
-    message: Optional[str]
-
-
 class SavedGameSessionDict(TypedDict, total=False):
     """Serialization format for local game state checkpoint in CLI agent player."""
     seed: int

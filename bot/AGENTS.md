@@ -7,7 +7,7 @@ This directory contains pure bot client implementations, baseline heuristics, an
 ## 1. Overview of Bot Clients
 
 - [`base_bot.py`](base_bot.py): Abstract `BaseBot` class defining the standard interface for Twilight Struggle agents:
-  - `select_action(state_dict, legal_actions_dict) -> Optional[dict]`: Dict-based action selection for WebSocket / JSON servers.
+  - `select_action(state_dict, legal_actions_dict) -> Optional[dict]`: Dict-based action selection for JSON-driven callers.
   - `select_flat_action(state, player) -> int`: Fast 212-dim flat index selection for vectorized environments.
   - `reset()`: Resets internal memory or search state between games.
 - [`random_bot.py`](random_bot.py): `RandomBot` baseline stochastic player making uniform random choices over legal moves.
@@ -22,17 +22,11 @@ This directory contains pure bot client implementations, baseline heuristics, an
 
 ## 2. Launching Bots
 
-### Playing Against Bots via Web Workbench:
-The WebSocket client is located in [`web/bot_client.py`](../web/bot_client.py):
-```bash
-# 1. Start backend server
-PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
-
-# 2. Launch NeuralBot for USSR
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path <checkpoint.pt>
-
-# 3. Open browser at http://localhost:8000/?game_id=game-1&role=US
-```
+### Playing Against a Model in the Web Workbench:
+The workbench runs in the browser and plays neural models itself (ONNX exports of checkpoints),
+so no bot process is involved: pick a model in *Model Analysis* and set *Auto-play* to the side it
+should play (see [`web/ui/AGENTS.md`](../web/ui/AGENTS.md)). The network bot client that used to
+connect a `BaseBot` to a server-side game (`web/bot_client.py`) was removed with that server.
 
 ### Running Offline Matches Between Bots:
 Matches can be run offline with full replay generation via [`tools/play_match.py`](../tools/play_match.py):

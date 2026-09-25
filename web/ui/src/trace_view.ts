@@ -21,33 +21,18 @@
  */
 import { ReplayStep, PolicyTrace, CriticTrace } from "./replay_controls";
 import { GameState } from "./types";
+import { ActionLayout } from "./engine/wasm_engine";
 
-/** The 212-dim flat action space, fetched from the server rather than duplicated here. */
-export interface ActionSpace {
-  size: number;
-  offsets: { card: number; play_mode: number; timing: number; op_mode: number; node: number; branch: number };
-  confirm_done_index: number;
-  decision_types: Record<string, number>;
-}
-
-let actionSpace: ActionSpace | null = null;
+let actionSpace: ActionLayout | null = null;
 
 /**
- * Fetch the action-space layout once.
+ * The flat action space's layout, from the engine running in the page (WasmEngine.layout).
  *
- * The offsets live in `bindings/action_encoder.py` and are served by
- * `/api/metadata/action_space`. A second copy maintained here would eventually disagree with the
- * encoder, and every probability would then be painted on the wrong card or country while still
- * looking entirely plausible.
+ * A second copy maintained here would eventually disagree with the engine, and every probability
+ * would then be painted on the wrong card or country while still looking entirely plausible.
  */
-export async function loadActionSpace(): Promise<void> {
-  if (actionSpace) return;
-  try {
-    const res = await fetch("/api/metadata/action_space");
-    if (res.ok) actionSpace = await res.json();
-  } catch (e) {
-    console.warn("Could not fetch action space metadata; board probabilities disabled:", e);
-  }
+export function setActionSpace(layout: ActionLayout): void {
+  actionSpace = layout;
 }
 
 const FLAG_CONFIRM_DONE = 0x80;
@@ -63,8 +48,7 @@ function flatIndex(decisionType: number, primaryId: number, flags: number): numb
       return primaryId >= 1 && primaryId <= 110 ? off.card + primaryId - 1 : null;
     case dt.SELECT_PLAY_MODE:
       return off.play_mode + primaryId;
-    case dt.CHOOSE_TIMING_BRANCH:
-      return off.timing + primaryId;
+    // CHOOSE_TIMING_BRANCH is retired (P17) and has no flat slots: nothing to paint.
     case dt.SELECT_OP_MODE:
       return off.op_mode + primaryId;
     case dt.POINT_NODE:

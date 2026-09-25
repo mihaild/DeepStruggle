@@ -24,7 +24,9 @@
 
       <div class="session-controls">
         <div class="session-info">
-          <span id="connection-status" class="status-badge connected">CONNECTING...</span>
+          <!-- The engine running in the page: its fingerprint, and a warning when the local
+               server's sources have moved on from the build the page loaded. -->
+          <span id="connection-status" class="status-badge">LOADING ENGINE…</span>
           <span id="active-player-badge" class="player-badge ussr">USSR TURN</span>
         </div>
         <div class="header-buttons">
@@ -64,16 +66,34 @@
           </div>
         </div>
 
-        <!-- Section 1a: Live analysis. A chosen checkpoint's policy over the open decision and
-             its critic on the position, recomputed on every move (analysis_view.ts). -->
+        <!-- Section 1a: Live analysis. A model's policy over the open decision and its critic on
+             the position, recomputed in the page on every move (analysis_view.ts). -->
         <div class="panel analysis-panel" id="analysis-panel">
           <div class="panel-header">
             <h3>MODEL ANALYSIS</h3>
             <span id="analysis-status" class="badge">off</span>
           </div>
           <div class="analysis-controls">
-            <select id="analysis-run-select" class="analysis-select" title="Training run"></select>
-            <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" disabled></select>
+            <select id="analysis-source-select" class="analysis-select analysis-source" title="Where the model comes from">
+              <option value="">— analysis off —</option>
+              <option value="local" id="analysis-source-local-option">Local checkpoints</option>
+              <option value="hf">Hugging Face</option>
+              <option value="file">.onnx file</option>
+            </select>
+            <div id="analysis-src-local" class="analysis-src hidden">
+              <select id="analysis-run-select" class="analysis-select" title="Training run"></select>
+              <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" disabled></select>
+            </div>
+            <div id="analysis-src-hf" class="analysis-src hidden">
+              <input id="analysis-hf-repo" class="analysis-select" placeholder="owner/repo" title="A public Hugging Face model repo holding .onnx exports (tools/export_onnx.py)">
+              <input id="analysis-hf-revision" class="analysis-select analysis-snapshot" value="main" title="Branch, tag or commit">
+              <button id="analysis-hf-list" class="btn btn-secondary btn-sm" title="List the repo's .onnx files">List</button>
+              <select id="analysis-hf-file" class="analysis-select" title="Model file"></select>
+            </div>
+            <div id="analysis-src-file" class="analysis-src hidden">
+              <input id="analysis-file-input" type="file" accept=".onnx" class="analysis-file" title="An .onnx export (tools/export_onnx.py); you can also drop it anywhere on the page">
+            </div>
+            <div id="analysis-model-info" class="analysis-model-info hidden"></div>
             <button id="btn-play-favourite" class="btn btn-primary btn-sm" title="Play the model's most likely move (F)" disabled>★ Play favourite</button>
             <label class="analysis-autoplay" title="This side plays the model's favourite automatically; you play the other">
               Auto-play
@@ -190,8 +210,8 @@
           <div class="value-ribbon hidden" id="rep-value-ribbon" title="Critic v_win (US perspective) across the game -- click to seek"></div>
         </div>
         <div class="replay-options">
-          <select id="rep-server-select" class="replay-select-dropdown" title="Select server replay">
-            <option value="">Select Server Replay...</option>
+          <select id="rep-server-select" class="replay-select-dropdown" title="Replays in the local server's replay directory">
+            <option value="">Local replays...</option>
           </select>
           <label>Speed:
             <select id="rep-speed-select">

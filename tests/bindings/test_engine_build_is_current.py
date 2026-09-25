@@ -33,7 +33,9 @@ def _newest_source() -> tuple[Optional[pathlib.Path], float]:
     """The newest source the extension is built *from*.
 
     engine/tests/ is not among them -- those compile into ts_tests, not the extension, so
-    editing a C++ test never makes the .so stale and must not read as a missed rebuild.
+    editing a C++ test never makes the .so stale and must not read as a missed rebuild. Nor is
+    bindings/wasm/: it compiles only into the browser workbench's WebAssembly engine, so editing
+    it cannot relink this .so, and a timestamp check would call it stale forever.
     """
     newest, newest_mtime = None, 0.0
     for directory in SOURCE_DIRS:
@@ -41,7 +43,8 @@ def _newest_source() -> tuple[Optional[pathlib.Path], float]:
         if not root.is_dir():
             continue
         for path in root.rglob("*"):
-            if "tests" in path.relative_to(root).parts:
+            parts = path.relative_to(root).parts
+            if "tests" in parts or (directory == "bindings" and parts[:1] == ("wasm",)):
                 continue
             if path.suffix in SOURCE_SUFFIXES and path.is_file():
                 mtime = path.stat().st_mtime

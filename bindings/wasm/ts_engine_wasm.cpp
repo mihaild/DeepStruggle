@@ -14,7 +14,9 @@
 #include "selftest.hpp"
 #include "state_json.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/card_data.hpp"
 #include "ts/engine.hpp"
+#include "ts/map_data.hpp"
 #include "ts/game_state.hpp"
 #include "ts/observation.hpp"
 #include "ts/prng.hpp"
@@ -120,6 +122,17 @@ TS_API const char* ts_action_layout_json() {
 }
 
 TS_API const char* ts_last_error() { return g_error.c_str(); }
+
+// The engine's own names, for the action log -- the same text the Python session wrote.
+TS_API const char* ts_card_name(int id) {
+    return (id >= 1 && id <= 110) ? keep(std::string(ts::CardData::get_card_name(static_cast<uint8_t>(id)))) : "";
+}
+TS_API int ts_card_ops(int id) {
+    return (id >= 1 && id <= 110) ? static_cast<int>(ts::CardData::get_card(static_cast<uint8_t>(id)).ops) : 0;
+}
+TS_API const char* ts_country_name(int id) {
+    return (id >= 0 && id < 84) ? keep(std::string(ts::MapData::get_country_name(static_cast<uint8_t>(id)))) : "";
+}
 
 // ---- the position -----------------------------------------------------------------------------
 

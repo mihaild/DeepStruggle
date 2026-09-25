@@ -1,22 +1,22 @@
 /**
- * Live model analysis: pick a checkpoint, and on every position see what it would do and what
- * its critic thinks, while you keep playing either side by hand.
+ * Live model analysis: pick a model, and on every position see what it would do and what its
+ * critic thinks, while you keep playing either side by hand.
  *
- * The readout is computed by the server (`web/server/analysis.py`) for the position the live
- * STATE_UPDATE carries, and arrives in the same message, so the numbers can never describe a
- * different board from the one on screen. It is opt-in per connection (SET_ANALYSIS_MODEL).
+ * Everything runs in the page: the engine as WebAssembly, the model as ONNX in onnxruntime-web
+ * (analysis/model.ts), the readout in analysis/readout.ts. This panel picks the model -- from the
+ * local server's checkpoints, a Hugging Face repo, or a file -- and shows the readout.
  *
- * Unlike the replay trace, each choice arrives with the MicroAction a click would send
- * (`decision_type`/`primary_id`/`flags`), so a probability is attached to a button, card or
- * country by matching what that element sends -- no flat offsets are re-derived here. A
- * *composed* choice belongs to a checkpoint that decides in the E4.1 merged-influence view:
- * "Ops -> Influence, first point in X" is one action for the model and two clicks for a person,
- * so it is painted on the country X, and the influence button carries the sum of all of them --
- * the probability the model puts on choosing influence at all.
+ * Each choice carries the MicroAction a click would send (`decision_type`/`primary_id`/`flags`),
+ * so a probability is attached to a button, card or country by matching what that element sends
+ * -- no flat offsets are re-derived here. A *composed* choice belongs to a model that decides in
+ * the E4.1 merged-influence view: "Ops -> Influence, first point in X" is one action for the
+ * model and two clicks for a person, so it is painted on the country X, and the influence button
+ * carries the sum of all of them -- the probability the model puts on choosing influence at all.
  */
 import { GameState } from "./types";
 import { BadgeMark, clearDecorations, criticTableHtml, fmtP, htmlBadge, probColor, svgBadge } from "./trace_view";
 import { CriticTrace, PolicyTrace } from "./replay_controls";
+import { ModelSource, sourceLabel } from "./analysis/model";
 
 export interface AnalysisChoice {
   idx: number;
@@ -30,6 +30,7 @@ export interface AnalysisChoice {
 }
 
 export interface LiveAnalysis {
+  /** Which loaded model produced it (the app's key); a readout for another is dropped. */
   model: string;
   label?: string;
   merged_influence?: boolean;
@@ -42,6 +43,22 @@ export interface LiveAnalysis {
 
 /** Which side auto-play moves for; "" is off. */
 export type AutoSide = "" | "US" | "USSR";
+
+/** A model the user picked: where from, and for a dropped file, its bytes. */
+export interface ModelPick {
+  source: ModelSource;
+  bytes?: Uint8Array;
+}
+
+/** What the panel says about the loaded model. */
+export interface LoadedInfo {
+  key: string;
+  label: string;
+  merged: boolean;
+  checkpoint: string;
+  /** Set when the model was exported next to another engine build than the page runs. */
+  engineWarning?: string;
+}
 
 interface ModelList {
   root: string;
@@ -76,64 +93,150 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 }
 
+function el<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+
 export class AnalysisPanel {
   private models: ModelList | null = null;
-  private selected: string | null = null;
+  private status: "off" | "loading" | "ready" | "error" = "off";
+  private pending: ModelSource | null = null;
+  private loaded: LoadedInfo | null = null;
   private error: string | null = null;
-  private runSelect: HTMLSelectElement;
-  private snapSelect: HTMLSelectElement;
-  private favButton: HTMLButtonElement;
-  private body: HTMLElement;
-  private badge: HTMLElement;
   private lastAnalysis: LiveAnalysis | null = null;
-  private autoSelect: HTMLSelectElement;
   private auto: AutoSide = "";
 
+  private sourceSelect = el<HTMLSelectElement>("analysis-source-select");
+  private runSelect = el<HTMLSelectElement>("analysis-run-select");
+  private snapSelect = el<HTMLSelectElement>("analysis-snapshot-select");
+  private hfRepo = el<HTMLInputElement>("analysis-hf-repo");
+  private hfRevision = el<HTMLInputElement>("analysis-hf-revision");
+  private hfFile = el<HTMLSelectElement>("analysis-hf-file");
+  private fileInput = el<HTMLInputElement>("analysis-file-input");
+  private favButton = el<HTMLButtonElement>("btn-play-favourite");
+  private autoSelect = el<HTMLSelectElement>("analysis-autoplay-select");
+  private body = el<HTMLElement>("analysis-body");
+  private badge = el<HTMLElement>("analysis-status");
+  private info = el<HTMLElement>("analysis-model-info");
+
   constructor(
-    private onSelectModel: (rel: string | null) => void,
+    private onPick: (pick: ModelPick | null) => void,
     private onPlayFlat: (flatIdx: number) => void,
     private onAutoSideChange: (side: AutoSide) => void = () => {},
   ) {
-    this.autoSelect = document.getElementById("analysis-autoplay-select") as HTMLSelectElement;
     this.autoSelect.addEventListener("change", () => {
       this.setAutoSide(this.autoSelect.value as AutoSide);
       this.onAutoSideChange(this.auto);
     });
-    this.runSelect = document.getElementById("analysis-run-select") as HTMLSelectElement;
-    this.snapSelect = document.getElementById("analysis-snapshot-select") as HTMLSelectElement;
-    this.favButton = document.getElementById("btn-play-favourite") as HTMLButtonElement;
-    this.body = document.getElementById("analysis-body")!;
-    this.badge = document.getElementById("analysis-status")!;
-
+    this.sourceSelect.addEventListener("change", () => {
+      // Switching source loads nothing by itself: a checkpoint's first use is an export, and a
+      // model the user did not pick should not cost that or replace the one on screen.
+      this.showSourceControls();
+      if (this.sourceSelect.value === "") this.pick(null);
+    });
     this.runSelect.addEventListener("change", () => {
       this.fillSnapshots(this.runSelect.value, null);
-      this.choose(this.currentSelection());
+      this.pickLocal();
     });
-    this.snapSelect.addEventListener("change", () => this.choose(this.currentSelection()));
+    this.snapSelect.addEventListener("change", () => this.pickLocal());
+    el<HTMLButtonElement>("analysis-hf-list").addEventListener("click", () => this.listHf());
+    this.hfFile.addEventListener("change", () => {
+      if (this.hfFile.value) {
+        this.pick({ source: { kind: "hf", repo: this.hfRepo.value.trim(), revision: this.hfRevision.value.trim() || "main", path: this.hfFile.value } });
+      }
+    });
+    this.fileInput.addEventListener("change", async () => {
+      const f = this.fileInput.files?.[0];
+      if (f) this.pick({ source: { kind: "file", name: f.name }, bytes: new Uint8Array(await f.arrayBuffer()) });
+    });
     this.favButton.addEventListener("click", () => this.playFavourite());
     this.body.addEventListener("click", (ev) => {
       const row = (ev.target as HTMLElement).closest<HTMLElement>("[data-flat-idx]");
       if (row) this.onPlayFlat(parseInt(row.getAttribute("data-flat-idx")!, 10));
     });
-    this.loadModels();
+    this.showSourceControls();
+    this.loadLocalModels();
   }
 
-  /** The checkpoint this panel is showing, relative to the checkpoints tree. */
-  public get model(): string | null {
-    return this.selected;
+  /** A model file dropped anywhere on the page. */
+  public async dropFile(f: File): Promise<void> {
+    this.sourceSelect.value = "file";
+    this.showSourceControls();
+    this.pick({ source: { kind: "file", name: f.name }, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
 
-  /** Select a model programmatically (from the URL); does not notify. */
-  public setModel(rel: string | null): void {
-    this.selected = rel;
+  private pick(p: ModelPick | null): void {
+    this.lastAnalysis = null;
     this.error = null;
-    this.syncSelects();
+    this.onPick(p);
   }
 
-  public setError(message: string | null): void {
+  private pickLocal(): void {
+    const run = this.runSelect.value;
+    const snap = this.snapSelect.value;
+    if (!run || !snap) return;
+    this.pick({ source: { kind: "local", path: run === LOOSE_GROUP ? snap : `${run}/${snap}` } });
+  }
+
+  private showSourceControls(): void {
+    const kind = this.sourceSelect.value;
+    for (const k of ["local", "hf", "file"]) {
+      el<HTMLElement>(`analysis-src-${k}`).classList.toggle("hidden", kind !== k);
+    }
+  }
+
+  // ---- what the app tells the panel ------------------------------------------------------------
+
+  /** Show a source as selected (from the URL) without loading anything. */
+  public showSource(s: ModelSource | null): void {
+    if (!s) {
+      this.sourceSelect.value = "";
+    } else if (s.kind === "local") {
+      this.sourceSelect.value = "local";
+      this.selectLocal(s.path);
+    } else if (s.kind === "hf") {
+      this.sourceSelect.value = "hf";
+      this.hfRepo.value = s.repo;
+      this.hfRevision.value = s.revision;
+      this.hfFile.innerHTML = `<option value="${esc(s.path)}">${esc(s.path)}</option>`;
+      this.hfFile.value = s.path;
+    } else {
+      this.sourceSelect.value = "file";
+    }
+    this.showSourceControls();
+  }
+
+  public setLoading(s: ModelSource): void {
+    this.status = "loading";
+    this.pending = s;
+    this.loaded = null;
+    this.error = null;
+    this.lastAnalysis = null;
+    this.renderBody();
+  }
+
+  public setLoaded(info: LoadedInfo): void {
+    this.status = "ready";
+    this.loaded = info;
+    this.pending = null;
+    this.error = null;
+    this.renderBody();
+  }
+
+  public setOff(): void {
+    this.status = "off";
+    this.loaded = null;
+    this.pending = null;
+    this.error = null;
+    this.lastAnalysis = null;
+    this.renderBody();
+  }
+
+  public setError(message: string): void {
+    this.status = "error";
     this.error = message;
-    if (message) this.selected = null;
-    this.syncSelects();
+    this.loaded = null;
+    this.lastAnalysis = null;
     this.renderBody();
   }
 
@@ -164,7 +267,7 @@ export class AnalysisPanel {
   /**
    * The move auto-play should make in the position on screen: the favourite, when a decision
    * is open and it belongs to the auto-play side. Null otherwise -- including when no model is
-   * chosen, since there is then nothing to play.
+   * loaded, since there is then nothing to play.
    */
   public autoPlayMove(): number | null {
     const a = this.lastAnalysis;
@@ -176,59 +279,38 @@ export class AnalysisPanel {
     document.getElementById("analysis-panel")?.classList.toggle("hidden", !visible);
   }
 
-  private choose(rel: string | null): void {
-    this.selected = rel;
-    this.error = null;
-    this.lastAnalysis = null;
-    this.onSelectModel(rel);
-    this.renderBody();
+  // ---- sources -----------------------------------------------------------------------------------
+
+  private async loadLocalModels(): Promise<void> {
+    try {
+      const res = await fetch("/api/local/models");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.models = await res.json();
+    } catch {
+      // A static host (GitHub Pages): there is no local server to list checkpoints.
+      this.models = null;
+      el<HTMLOptionElement>("analysis-source-local-option").disabled = true;
+      el<HTMLOptionElement>("analysis-source-local-option").textContent = "Local checkpoints (no local server)";
+      return;
+    }
+    const opts: string[] = [`<option value="">— choose a run —</option>`];
+    for (const r of this.models!.runs) opts.push(`<option value="${esc(r.run)}">${esc(r.run)}</option>`);
+    if (this.models!.loose.length) opts.push(`<option value="${LOOSE_GROUP}">${LOOSE_GROUP}</option>`);
+    const keep = this.runSelect.value;
+    this.runSelect.innerHTML = opts.join("");
+    if (keep) this.selectLocal(this.currentLocalPath(keep));
+    else this.fillSnapshots(this.runSelect.value, null);
   }
 
-  private currentSelection(): string | null {
-    const run = this.runSelect.value;
+  private currentLocalPath(run: string): string {
     const snap = this.snapSelect.value;
-    if (!run || !snap) return null;
     return run === LOOSE_GROUP ? snap : `${run}/${snap}`;
   }
 
-  private async loadModels(): Promise<void> {
-    try {
-      const res = await fetch("/api/analysis/models");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.models = await res.json();
-    } catch (e) {
-      console.warn("Could not list checkpoints for analysis:", e);
-      this.models = { root: "", runs: [], loose: [] };
-    }
-    const opts = [`<option value="">— analysis off —</option>`];
-    for (const r of this.models!.runs) opts.push(`<option value="${esc(r.run)}">${esc(r.run)}</option>`);
-    if (this.models!.loose.length) opts.push(`<option value="${LOOSE_GROUP}">${LOOSE_GROUP}</option>`);
-    this.runSelect.innerHTML = opts.join("");
-    this.syncSelects();
-  }
-
-  private fillSnapshots(run: string, want: string | null): void {
-    let snaps: string[] = [];
-    if (run === LOOSE_GROUP) snaps = this.models?.loose ?? [];
-    else snaps = this.models?.runs.find(r => r.run === run)?.snapshots ?? [];
-    this.snapSelect.innerHTML = snaps.map(s => `<option value="${esc(s)}">${esc(snapshotLabel(s))}</option>`).join("");
-    this.snapSelect.disabled = snaps.length === 0;
-    // Default to the run's latest weights: the list is ordered by training step, final last.
-    const pick = want && snaps.includes(want) ? want : snaps[snaps.length - 1];
-    if (pick) this.snapSelect.value = pick;
-  }
-
-  /** Make the two selects show `this.selected`, once the listing has arrived. */
-  private syncSelects(): void {
-    if (!this.models) return;
-    if (!this.selected) {
-      this.runSelect.value = "";
-      this.fillSnapshots("", null);
-      return;
-    }
-    const slash = this.selected.indexOf("/");
-    const run = slash >= 0 ? this.selected.slice(0, slash) : LOOSE_GROUP;
-    const snap = slash >= 0 ? this.selected.slice(slash + 1) : this.selected;
+  private selectLocal(path: string): void {
+    const slash = path.indexOf("/");
+    const run = slash >= 0 ? path.slice(0, slash) : LOOSE_GROUP;
+    const snap = slash >= 0 ? path.slice(slash + 1) : path;
     if (![...this.runSelect.options].some(o => o.value === run)) {
       // Named by a link but not listed here (another machine's checkpoint tree): keep it
       // visible rather than silently showing a different model.
@@ -242,32 +324,83 @@ export class AnalysisPanel {
     }
   }
 
-  /** Redraw the panel for a live STATE_UPDATE. `analysis` is undefined until it arrives. */
+  private fillSnapshots(run: string, want: string | null): void {
+    let snaps: string[] = [];
+    if (run === LOOSE_GROUP) snaps = this.models?.loose ?? [];
+    else snaps = this.models?.runs.find(r => r.run === run)?.snapshots ?? [];
+    this.snapSelect.innerHTML = snaps.map(s => `<option value="${esc(s)}">${esc(snapshotLabel(s))}</option>`).join("");
+    this.snapSelect.disabled = snaps.length === 0;
+    // Default to the run's latest weights: the list is ordered by training step, final last.
+    const pick = want && snaps.includes(want) ? want : snaps[snaps.length - 1];
+    if (pick) this.snapSelect.value = pick;
+  }
+
+  /** The .onnx files of a Hugging Face repo, from its public tree API. */
+  private async listHf(): Promise<void> {
+    const repo = this.hfRepo.value.trim();
+    const rev = this.hfRevision.value.trim() || "main";
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      this.setError("Hugging Face repo must look like owner/name");
+      return;
+    }
+    this.hfFile.innerHTML = `<option value="">listing…</option>`;
+    try {
+      const res = await fetch(`https://huggingface.co/api/models/${repo}/tree/${encodeURIComponent(rev)}?recursive=true`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 || res.status === 404 ? " (private or missing repo?)" : ""}`);
+      const entries: Array<{ type: string; path: string }> = await res.json();
+      const files = entries.filter(e => e.type === "file" && e.path.endsWith(".onnx")).map(e => e.path).sort();
+      if (files.length === 0) throw new Error("no .onnx files in the repo (export them with tools/export_onnx.py)");
+      this.hfFile.innerHTML = `<option value="">— choose a model —</option>`
+        + files.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+    } catch (e) {
+      this.hfFile.innerHTML = "";
+      this.setError(`Could not list ${repo}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  // ---- rendering ----------------------------------------------------------------------------------
+
+  /** Redraw for the position on screen. `analysis` is undefined until it arrives. */
   public render(analysis: LiveAnalysis | undefined, state: GameState | null): void {
-    this.lastAnalysis = analysis && analysis.model === this.selected ? analysis : null;
+    this.lastAnalysis = analysis && this.loaded && analysis.model === this.loaded.key ? analysis : null;
     this.renderBody(state);
+  }
+
+  private renderInfo(): void {
+    if (this.status === "ready" && this.loaded) {
+      const l = this.loaded;
+      this.info.innerHTML = `<b>${esc(l.label)}</b> <span class="analysis-info-dim">${l.merged ? "E4.1 view" : "E4 view"}${l.checkpoint ? ` · ${esc(l.checkpoint)}` : ""}</span>`
+        + (l.engineWarning ? `<div class="analysis-warning">${esc(l.engineWarning)}</div>` : "");
+      this.info.classList.remove("hidden");
+    } else {
+      this.info.innerHTML = "";
+      this.info.classList.add("hidden");
+    }
   }
 
   private renderBody(state: GameState | null = null): void {
     const a = this.lastAnalysis;
+    this.renderInfo();
     this.favButton.disabled = this.favourite() === null;
     const fav = a?.choices.find(c => c.idx === a.policy?.argmax_idx);
     this.favButton.title = fav ? `Play the model's most likely move: ${fav.name ?? "#" + fav.idx} (F)` : "No decision to make";
 
-    if (this.error) {
+    if (this.status === "error") {
       this.badge.textContent = "error";
-      this.body.innerHTML = `<div class="analysis-error">${esc(this.error)}</div>`;
+      this.body.innerHTML = `<div class="analysis-error">${esc(this.error ?? "")}</div>`;
       return;
     }
-    if (!this.selected) {
+    if (this.status === "off") {
       this.badge.textContent = "off";
-      this.body.innerHTML = `<div class="trace-empty">Choose a checkpoint to see its policy on every decision and its critic on every position. You can still play any move yourself.</div>`
+      this.body.innerHTML = `<div class="trace-empty">Choose a model -- local checkpoint, Hugging Face repo, or an .onnx file (drop it anywhere) -- to see its policy on every decision and its critic on every position. You can still play any move yourself.</div>`
         + (this.auto ? `<div class="analysis-error">Auto-play ${this.auto} needs a model to play with.</div>` : "");
       return;
     }
-    if (!a) {
+    if (this.status === "loading" || !a) {
       this.badge.textContent = "loading";
-      this.body.innerHTML = `<div class="trace-empty">Loading ${esc(this.selected)}…</div>`;
+      const what = this.pending ? sourceLabel(this.pending) : this.loaded?.label ?? "";
+      const note = this.pending?.kind === "local" ? " (a checkpoint's first use exports it to ONNX: a few seconds)" : "";
+      this.body.innerHTML = `<div class="trace-empty">Loading ${esc(what)}…${note}</div>`;
       return;
     }
     this.badge.textContent = a.merged_influence ? "E4.1 view" : "E4 view";

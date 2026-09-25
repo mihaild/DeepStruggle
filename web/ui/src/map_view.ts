@@ -1,4 +1,5 @@
 import { GameState, MapMetadata } from "./types";
+import { MAP_METADATA } from "./metadata";
 
 export interface RegionScoreAudit {
   regionId: number;
@@ -46,18 +47,12 @@ export class MapView {
     this.fetchMetadata();
   }
 
-  public async fetchMetadata() {
+  public fetchMetadata() {
     if (this.mapData) return;
-    try {
-      const res = await fetch("/api/metadata/map");
-      if (res.ok) {
-        this.mapData = await res.json();
-        if (this.lastState) {
-          this.render(this.lastState);
-        }
-      }
-    } catch (e) {
-      console.warn("Could not fetch map metadata from /api/metadata/map:", e);
+    // Bundled from rules/map.json (metadata.ts): the page needs no server to draw the board.
+    this.mapData = MAP_METADATA;
+    if (this.lastState) {
+      this.render(this.lastState);
     }
   }
 
