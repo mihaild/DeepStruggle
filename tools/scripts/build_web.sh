@@ -45,7 +45,10 @@ if [[ $ENGINE_ONLY == 1 ]]; then
     exit 0
 fi
 cd "$ROOT/web/ui"
-if [[ ! -d node_modules ]]; then
+# Install when missing, and again when package-lock.json has changed since the last install
+# (npm records that install in node_modules/.package-lock.json): a checkout whose node_modules
+# predates a new dependency would otherwise fail to build with a missing import.
+if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules/.package-lock.json ]]; then
     npm ci --no-audit --no-fund
 fi
 npm run build
