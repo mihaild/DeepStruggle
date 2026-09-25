@@ -80,3 +80,69 @@ invariant to that level, so nothing in the loss bounds it. It grows in fp32 and 
 
 E4-57-44 continues on TF32, watched by a per-iteration alarm on approximate KL > 0.05
 (`data/logs/long/kl_alarm.py`).
+
+## E4-57-44 diverged at 596M and was stopped
+
+**Before the divergence:** the run was clean from 240M to 590M. It had approximate KL
+0.009–0.011, KL to π_ref ≤ 0.15, USSR share 0.48–0.64 at every 40M readout, and no pin.
+
+**The divergence** was caught by the per-iteration alarm at 596.6M and read from
+`training_metrics.jsonl`. It began in the **critic**, not in the KL:
+
+| steps | KL to π_ref | approx KL us / ussr | clip | explained variance | value loss |
+|---:|---:|:---|---:|---:|---:|
+| 596.05M | 0.18 | 0.006 / 0.033 | 0.30 | 0.97 | 0.026 |
+| 596.18M | 0.06 | 0.007 / 0.048 | 0.33 | 0.95 | 0.050 |
+| 596.25M | 0.40 | 0.013 / 0.068 | 0.41 | 0.75 | 0.166 |
+| 596.31M | 0.75 | 0.037 / 0.023 | 0.38 | 0.22 | 0.303 |
+| 596.44M | 0.11 | 0.134 / 0.080 | 0.49 | 0.02 | 0.292 |
+| 596.64M | 0.37 | 0.965 / 0.604 | 0.52 | −0.09 | 0.424 |
+| 597.75M | 4.66 | 1.4e6 / 1.2e6 | 0.57 | −0.01 | 1.428 |
+
+The run was stopped at ~598.6M (exit 143, a kill). `resume_state.pt` (590.0M) is kept as
+`resume_590020608steps_pre_divergence.pt`.
+
+**The logit level had taken off beforehand.** Largest legal logit, median / p99 / max:
+
+| step | median | p99 | max |
+|:---|---:|---:|---:|
+| 400M | 825 | 3,485 | 4,643 |
+| 480M | 370 | 4,791 | 6,029 |
+| 560M | 1,748 | 5,227 | 5,854 |
+| 590M | 2,293 | 37,469 | 38,901 |
+
+The 590M state, the last one kept, already carries that jump.
+
+**Both long runs have now died**, E4-57-43 at 232M and E4-57-44 at 596M, and both through the
+unbounded logit level. Both ran with TF32. No fp32 run has gone past 240M from scratch, so
+whether fp32 would survive is unknown.
+
+## What time bought before the divergence
+
+`data/reports/long_runs_to_590M.{md,json}`: 17 players, 100 games per side per pair,
+temperature 0, HeuristicBot at 1500.
+
+| step | E4-57-44 | E4-57-43 | E4-08-36 (fp32, reference) |
+|:---|---:|---:|---:|
+| 40M | 1940 | | |
+| 80M | 2046 | 1966 | 2037 |
+| 160M | 2177 | 2226 | 2238 |
+| 230–240M | 2234 | 2260 (230M) | 2317 |
+| 320M | 2286 | | |
+| 400M | 2350 | | |
+| 480M | 2352 | | |
+| 560M | 2367 | | |
+| 590M | 2367 | | |
+
+E4-08-37@240M rates 2179 in the same field.
+
+* **E4-57-44 gains up to about 400M, then flattens.**
+  * +104 over 160–240M;
+  * +116 over 240–400M;
+  * +17 over 400–590M.
+* **E4-57-44@560–590M is the strongest M2d measured: 2367, +50 over E4-08-36@240M.** Head to
+  head, 590M wins 57% as USSR and 60% as US against E4-08-36@240M. Against its own 240M
+  snapshot it wins 75 / 56.
+* **Measured within each seed, the gain from 240M to ~560M is +133 Elo.** The flat stretch from
+  400M on could be a plateau, or the drift already costing strength. The logit level took off
+  across that stretch.
