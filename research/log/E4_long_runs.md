@@ -357,3 +357,32 @@ training and speed.
 `--ladder-head-center`, seeds 43 and 44, as a pair to 800M, launched 14:36 UTC.
 `launch_flags.py --diff` against E4-57-43/44 shows only `--ladder-head-center`.
 **Stage 2, quality,** follows.
+
+### E4-56-43 past 400M: a treadmill, not convergence or a cycle (2026-09-25)
+
+**Head to head among its own late snapshots** (`data/reports/long_fp32_800M.json`, 100 games per
+side per pair). Each cell is the row's win share, overall, as USSR / as US.
+
+| | vs 400M | vs 480M | vs 560M | vs 640M | vs 720M |
+|:---|---:|---:|---:|---:|---:|
+| 480M | 56 (52/59) | | | | |
+| 560M | 56 (57/54) | 52 (50/55) | | | |
+| 640M | 58 (62/55) | 58 (53/64) | 59 (65/53) | | |
+| 720M | 53 (62/44) | 55 (62/48) | 51 (64/38) | 53 (61/45) | |
+| 800M | 55 (61/49) | 57 (62/53) | 62 (73/51) | 52 (63/41) | 59 (75/43) |
+
+* **The later snapshot wins 15 of 15 pairs, and there are no cycles.** No triple has every leg
+  above 55%.
+* **The edge does not accumulate.**
+  * 80M newer: 52–59%.
+  * 400M newer: 55%.
+* **Against outside references it is flat.** Its Elo is 2120–2150 at every late snapshot.
+  * Against E4-08-36@240M it went from 39/30 at 400M to 52/29 at 800M.
+  * Against E4-57-44@590M it went from 36/44 to 43/35.
+* **The edge over older selves comes mostly from the USSR seat** (800M against 720M: 75% as USSR,
+  43% as US). Against outside references the US seat stays weak, at 20–40%.
+
+**Reading:** the run keeps moving and keeps beating its recent past, but gains nothing in general
+strength. It has not converged to a fixed point, and it is not cycling intransitively at an 80M
+resolution. It is a self-play treadmill on a plateau. Cycles faster than ~10M would not show at
+this spacing; a tournament over the 10M snapshots would.
