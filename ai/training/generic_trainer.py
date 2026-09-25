@@ -1436,6 +1436,7 @@ def train_pipeline(
     target_kl: float = 0.0,
     entropy_normalize: bool = False,
     compile_update: str = "off",
+    z_loss_coef: float = 0.0,
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1640,6 +1641,7 @@ def train_pipeline(
         "target_kl": float(target_kl),
         "entropy_normalize": bool(entropy_normalize),
         "compile_update": str(compile_update),
+        "z_loss_coef": float(z_loss_coef),
         "cuda_graphs": bool(cuda_graphs),
         # The optimisation settings, under their CLI names so tools/scripts/launch_flags.py can
         # diff them. Until 2026-09-24 none of these was recorded, so a run launched with a
@@ -1815,6 +1817,7 @@ def train_pipeline(
         target_kl=target_kl,
         entropy_normalize=entropy_normalize,
         compile_update=compile_update,
+        z_loss_coef=z_loss_coef,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1969,6 +1972,9 @@ def train_pipeline(
     if entropy_ceiling > 0.0:
         print(f"[P25 3k] per-seat entropy ceiling {entropy_ceiling:g} nats, one-sided: coefficient in "
               f"[-0.02, ent_coef], lr 0.01 per nat per iteration, from 5M steps (--entropy-ceiling)",
+              flush=True)
+    if z_loss_coef > 0.0:
+        print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
     if compile_update != "off":
         print(f"[P26] the update's forwards run under torch.compile ({compile_update}); the "
@@ -2233,7 +2239,9 @@ def train_pipeline(
                     # P25 3j-3l. approx_kl_* is always present; the rest only with their lever.
                     "approx_kl_us", "approx_kl_ussr", "kl_stop_frac_us", "kl_stop_frac_ussr",
                     "ent_coef_us", "ent_coef_ussr",
-                    "adv_norm_divisor", "adv_norm_floor_bound", "adv_std_ema"):
+                    "adv_norm_divisor", "adv_norm_floor_bound", "adv_std_ema",
+                    # the policy logits' level, and the z-loss that bounds it
+                    "logit_lse_mean", "logit_lse_absmax", "z_loss"):
             if _sk in iteration_metrics:
                 step_metrics[_sk] = float(iteration_metrics[_sk])
         # Auxiliary losses only where the term that produces them is switched on. Logged

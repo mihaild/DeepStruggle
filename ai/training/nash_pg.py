@@ -269,6 +269,7 @@ class BaseNashPGTrainer:
         entropy_normalize: bool = False,
         cuda_graphs: bool = True,
         compile_update: str = "off",
+        z_loss_coef: float = 0.0,
         device: torch.device | str = "cuda",
     ):
         self.device = torch.device(device if (torch.cuda.is_available() and device == "cuda") else ("cuda" if torch.cuda.is_available() and str(device).startswith("cuda") else "cpu"))
@@ -430,6 +431,15 @@ class BaseNashPGTrainer:
             raise ValueError(f"compile_update must be one of {sorted(COMPILE_UPDATE_MODES)}, "
                              f"got {compile_update!r}")
         self.compile_update = str(compile_update)
+        #: z-loss (PaLM): coef * mean(logsumexp(logits)^2) on the update's policy logits. The
+        #: softmax is invariant to a common shift of the logits, so nothing else bounds their level,
+        #: and it drifts upward without limit: ~350 by 240M in fp32, 2,300 median / 39,000 max by
+        #: 590M in E4-57-44, and both 800M runs diverged through it (research/log/E4_long_runs.md).
+        #: The penalty pulls the log-normaliser toward 0. 0 is off and leaves the update exactly as
+        #: it was; the log-normaliser is logged either way (logit_lse_mean / _absmax).
+        if z_loss_coef < 0.0:
+            raise ValueError(f"z_loss_coef must be >= 0, got {z_loss_coef}")
+        self.z_loss_coef = float(z_loss_coef)
         self._compiled_nets: Dict[int, nn.Module] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
         #: an exponential average of the USSR's win share in pure self-play games (both seats the
@@ -1166,6 +1176,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         loss_t, policy_loss_t, policy_loss_total_t = _z(), _z(), _z()
         val_loss_t, kl_t, entropy_t, clip_frac_t, risk_loss_t = _z(), _z(), _z(), _z(), _z()
         logratio_max_t, old_lp_min_t, ratio_negadv_max_t = _z(-1e30), _z(1e30), _z()
+        lse_sum_t, lse_absmax_t, z_loss_t = _z(), _z(), _z()
 
         # pi_ref's log-probabilities over the whole buffer, once. pi_ref is frozen for the whole
         # update (it is refreshed after train_step, in train_iteration) and always in eval mode,
@@ -1383,6 +1394,16 @@ class NashPGTrainer(BaseNashPGTrainer):
                     ent_loss = (ent_b * _ew * _c).sum() / _own_n
                 policy_loss = (ppo_loss + self.eta * kl_term - ent_loss
                                + self.search_ce_coef * search_ce)
+                # The log-normaliser over the legal actions (masked logits are -1e9, so they add
+                # exactly nothing): the level the z-loss holds down.
+                lse = torch.logsumexp(cur_logits.float(), dim=-1)
+                if self.z_loss_coef > 0.0:
+                    z_loss = self.z_loss_coef * (lse * lse).mean()
+                    policy_loss = policy_loss + z_loss
+                    z_loss_t += z_loss.detach()
+                with torch.no_grad():
+                    lse_sum_t += lse.mean().double()
+                    lse_absmax_t = torch.maximum(lse_absmax_t, lse.abs().max().double())
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss
@@ -1451,12 +1472,14 @@ class NashPGTrainer(BaseNashPGTrainer):
         # One host read for everything accumulated on the device.
         (total_loss_accum, policy_loss_accum, policy_loss_total_accum, val_loss_accum, kl_accum,
          entropy_accum, clip_frac_accum, risk_loss_accum, logratio_max_accum, old_lp_min_accum,
-         ratio_negadv_max_accum, akl_us_s, akl_us_n, akl_ussr_s, akl_ussr_n, stop_us, stop_ussr
+         ratio_negadv_max_accum, akl_us_s, akl_us_n, akl_ussr_s, akl_ussr_n, stop_us, stop_ussr,
+         lse_sum_accum, lse_absmax_accum, z_loss_accum
          ) = torch.stack([
             loss_t, policy_loss_t, policy_loss_total_t, val_loss_t, kl_t, entropy_t, clip_frac_t,
             risk_loss_t, logratio_max_t, old_lp_min_t, ratio_negadv_max_t,
             seat_kl_sum[1], seat_kl_cnt[1], seat_kl_sum[-1], seat_kl_cnt[-1],
-            seat_stopped[1], seat_stopped[-1]]).tolist()
+            seat_stopped[1], seat_stopped[-1],
+            lse_sum_t, lse_absmax_t, z_loss_t]).tolist()
         kl_term_accum = float(self.eta) * kl_accum
 
         return {
@@ -1468,6 +1491,11 @@ class NashPGTrainer(BaseNashPGTrainer):
             # improvement and become regularisation.
             "policy_loss_total": policy_loss_total_accum / max(1, num_updates),
             "kl_term": kl_term_accum / max(1, num_updates),
+            # The policy logits' level (log-normaliser over legal actions), mean over minibatches
+            # and largest |value| seen; and the z-loss term when it is on.
+            "logit_lse_mean": lse_sum_accum / max(1, num_updates),
+            "logit_lse_absmax": lse_absmax_accum,
+            "z_loss": z_loss_accum / max(1, num_updates),
             "val_loss": val_loss_accum / max(1, num_updates),
             "kl_div": kl_accum / max(1, num_updates),
             # 3l: per-seat approximate KL from the rollout policy (mean over minibatches), and

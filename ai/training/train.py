@@ -458,6 +458,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "more room than a few-option one (P23: E4.1's ~50-option op-mode nodes). "
                              "Same average bonus as the raw one at ~2.1x --entropy-coef on E4's "
                              "decision mix. Logged entropy stays raw.")
+    parser.add_argument("--z-loss-coef", type=float, default=0.0,
+                        help="z-loss: coef * mean(logsumexp(policy logits)^2) in the update (PaLM uses "
+                             "1e-4). Bounds the logits' level, which the softmax leaves free and which "
+                             "drifts upward without limit; both 800M runs diverged through it "
+                             "(research/log/E4_long_runs.md). 0 is off.")
     parser.add_argument("--compile-update", choices=["off", "default", "max-autotune"],
                         default="off",
                         help="torch.compile the PPO update's forwards (P26); the rollout keeps "
@@ -668,6 +673,7 @@ def main():
             target_kl=args.target_kl,
             entropy_normalize=args.entropy_normalize,
             compile_update=args.compile_update,
+            z_loss_coef=args.z_loss_coef,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
