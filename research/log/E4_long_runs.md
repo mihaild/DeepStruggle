@@ -322,3 +322,38 @@ References in the same field: E4-08-36@240M 2212, E4-57-43@230M 2158, E4-60-43 (
   ~100 Elo seed spread, and seed 43 lost ~140M steps to its pin. It is not a precision effect
   that can be read from one pair.
 * **z-loss is confirmed as costly** in this field too: E4-60-43@800M rates below E4-56-43@320M.
+
+## Where the logit level lives, and centred per-entity heads (2026-09-25)
+
+`data/logs/long/logit_anatomy.py` (CPU) splits each legal logit of M2d into `policy_head(h)` and
+the per-entity correction. The level column is the median over positions of |mean over legal
+actions|.
+
+| snapshot | legal-logit level | `policy_head(h)` part | per-entity (country) part |
+|:---|---:|---:|---:|
+| E4-57-44@80M (TF32) | 59 | 1.9 | 60 |
+| E4-57-44@400M | 813 | 1.4 | 807 |
+| E4-57-44@590M | 2,266 | 2.7 | 2,259 |
+| E4-56-43@800M (fp32) | 280 | 3.2 | 282 |
+| E4-60-43@800M (z-loss) | 5.6 | 3.6 | 1.7 |
+
+**All of the drift is in `pe_country`.** It is the one head whose output is shared by every
+country: a single MLP applied per country. In E4 a decision's legal set never mixes countries with
+non-country actions (confirmed by the owner). So a shift common to every country logit is
+invisible to the policy, gets no gradient, and random-walks as the head's weights move for other
+reasons.
+
+**The fix, `--ladder-head-center` (`1e820df`), centres `pe_country`'s hidden features across the
+84 countries before its final projection.** The tests confirm three things:
+* every country-only distribution is unchanged;
+* the correction's mean over countries equals the final bias exactly;
+* that bias gets zero gradient, so it never moves.
+
+It adds no loss term, unlike z-loss, so Adam has nothing to amplify. It is recorded as a
+`pe_center` buffer and refused with `--merged-influence`. The 3M smoke test showed normal
+training and speed.
+
+**Stage 1, divergence (owner's plan):** E4-61-43/44 are the E4-57 configuration (TF32) plus
+`--ladder-head-center`, seeds 43 and 44, as a pair to 800M, launched 14:36 UTC.
+`launch_flags.py --diff` against E4-57-43/44 shows only `--ladder-head-center`.
+**Stage 2, quality,** follows.
