@@ -49,6 +49,15 @@ moved from 5M to 10M on 2026-09-24, because at 5M evaluation cost ~17% of a run'
 
 TF32 matmuls are on by default since 2026-09-24 (P26): +15% steps/s on M2d, solo or paired, and no strength cost in a 3-seed A/B (`research/log/P26_quick_screen.md`). `--no-tf32` gives fp32, which is what every run before E4-57 used. The setting is recorded in `metadata.json` as `tf32`.
 
+`--ladder-head-center` centres the per-entity heads' hidden features across entities before
+their final projection. In E4 no decision compares country actions with other actions, so a
+shift common to every country logit is invisible to the policy and gets no gradient. Left free,
+it drifts without limit, and every bit of the long runs' logit level was in `pe_country`. The
+flag removes that direction: the policy on every country-only decision is unchanged, the final
+bias gets zero gradient, and the raw values stay at the size of the differences between
+countries. It is recorded as a `pe_center` buffer, so loaders recover it from the weights. It is
+refused with `--merged-influence`, where countries do compete with play modes.
+
 `--z-loss-coef c` (default 0) adds `c · mean(logsumexp(policy logits)²)` to the update (PaLM's
 z-loss, usually `c = 1e-4`). The softmax ignores a common shift of the logits, so nothing else
 bounds their level, and it drifts upward without limit. Both 800M runs (E4-57-43/44) diverged

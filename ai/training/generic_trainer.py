@@ -1460,6 +1460,12 @@ def train_pipeline(
     if int(snapshot_every_steps) <= 0:
         raise ValueError(
             f"snapshot_every_steps must be positive, got {snapshot_every_steps}.")
+    if ladder_config and ladder_config.get("head_center") and merged_influence:
+        raise ValueError(
+            "--ladder-head-center removes the common shift of the country logits, which is "
+            "invisible only while no decision compares countries with other actions. E4.1's "
+            "merged view does (influence-first-point-in-X against the play modes), so the shift "
+            "is part of the policy there. Refused rather than silently changing the policy.")
     if int(pool_every_steps) <= 0:
         raise ValueError(
             f"pool_every_steps must be positive, got {pool_every_steps}. It sets the rate the "

@@ -74,6 +74,7 @@ class LadderNet(ColdWarNetV2):
                  entity_proj_dim: int,
                  num_attn_heads: int,
                  categorical_value: bool,
+                 head_center: bool = False,
                  **kwargs: Any) -> None:
         if input_mode not in INPUT_MODES:
             raise ValueError(f"input_mode must be one of {INPUT_MODES}; got {input_mode!r}")
@@ -291,6 +292,23 @@ class LadderNet(ColdWarNetV2):
                 assert isinstance(out, nn.Linear)
                 nn.init.zeros_(out.weight)
                 nn.init.zeros_(out.bias)
+        # --ladder-head-center: the per-entity heads' hidden features are centred across entities
+        # before the final projection, so a head's output has no common component except its
+        # final bias. In E4 a decision's legal set never mixes countries with non-country actions,
+        # so a shift common to every country logit is invisible to the policy and gets no gradient;
+        # left free it drifts without limit -- to a median ~2,300 and a tail of ~40,000 by 590M in
+        # E4-57-44, all of it in pe_country's output (research/log/E4_long_runs.md) -- and at that
+        # scale TF32 rounding costs nats on unlikely actions. Centring the features rather than the
+        # output keeps the raw values at the size of the differences between entities, and the
+        # bias, the only common term left, receives exactly zero gradient and never moves. The
+        # function class is unchanged up to that invisible shift. E4.1's merged view does mix
+        # countries with play modes, so the trainer refuses the combination. Recorded as a buffer,
+        # so the architecture is recovered from the weights like everything else.
+        if head_center and not self.per_entity_heads:
+            raise ValueError("head_center centres the per-entity heads; there are none to centre.")
+        self.head_center = bool(head_center)
+        if self.head_center:
+            self.register_buffer("pe_center", torch.ones(()))
 
 
     def _card_lookup(self, card_raw: torch.Tensor, pre: torch.Tensor,
@@ -326,6 +344,16 @@ class LadderNet(ColdWarNetV2):
 
     # ------------------------------------------------------------------ config
 
+    def _entity_out(self, head: nn.Module, x: torch.Tensor) -> torch.Tensor:
+        """A per-entity head over [batch, entities, features] -> [batch, entities]; under
+        head_center the hidden features are centred across entities before the last layer."""
+        if not self.head_center:
+            return head(x).squeeze(-1)
+        assert isinstance(head, nn.Sequential)
+        f = head[:-1](x)
+        f = f - f.mean(dim=1, keepdim=True)
+        return head[-1](f).squeeze(-1)
+
     def ladder_config(self) -> Dict[str, Any]:
         """The full structural configuration, for the checkpoint and for `create_like`.
 
@@ -354,6 +382,7 @@ class LadderNet(ColdWarNetV2):
             entity_proj_dim=self.entity_proj_dim,
             num_attn_heads=self.ladder_num_attn_heads,
             categorical_value=bool(self.categorical_value),
+            head_center=self.head_center,
         )
 
 
@@ -395,9 +424,9 @@ class LadderNet(ColdWarNetV2):
         country_block = base[:, _A.NODE_OFFSET:_A.BRANCH_OFFSET]
         gap_end = base[:, _A.BRANCH_OFFSET:] * 0.0
 
-        card_corr = (self.pe_card(torch.cat(parts_card, dim=-1)).squeeze(-1)
+        card_corr = (self._entity_out(self.pe_card, torch.cat(parts_card, dim=-1))
                      if self.pe_card is not None else card_block * 0.0)
-        country_corr = (self.pe_country(torch.cat(parts_country, dim=-1)).squeeze(-1)
+        country_corr = (self._entity_out(self.pe_country, torch.cat(parts_country, dim=-1))
                         if self.pe_country is not None else country_block * 0.0)
         return base + torch.cat([card_corr, gap_mid, country_corr, gap_end], dim=-1)
 
@@ -625,6 +654,7 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         num_res_blocks=len(blocks),
         entity_proj_dim=int(proj.shape[0]),
         num_attn_heads=4,
+        head_center="pe_center" in sd,
         categorical_value=any(k.startswith("value_dist_head") for k in sd),
     )
 

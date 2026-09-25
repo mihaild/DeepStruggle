@@ -59,6 +59,7 @@ _LADDER = {
     "card_self_attention": "ladder_card_self_attention", "cross_attention": "ladder_cross_attention",
     "head_context": "ladder_head_context", "head_static": "ladder_head_static",
     "head_entities": "ladder_head_entities", "hidden_dim": "ladder_hidden_dim",
+    "head_center": "ladder_head_center",
     "num_res_blocks": "ladder_res_blocks", "card_lookup": "ladder_card_lookup",
     "card_lookup_heads": "ladder_card_lookup_heads", "card_lookup_dim": "ladder_card_lookup_dim",
     "card_lookup_identity_dim": "ladder_card_lookup_identity_dim",
@@ -104,6 +105,8 @@ def recorded(run_dir: str) -> dict:
             for ck, cv in v.items():
                 if ck in _LADDER:
                     out[_LADDER[ck]] = cv
+            # added 2026-09-25; every ladder config before it had uncentred heads
+            out.setdefault("ladder_head_center", bool(v.get("head_center", False)))
         elif k in dflt:
             out[k] = v
     return out

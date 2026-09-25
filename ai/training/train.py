@@ -70,6 +70,7 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         head_context=bool(args.ladder_head_context) if args.per_entity_heads else True,
         head_static=bool(args.ladder_head_static) if args.per_entity_heads else True,
         head_entities=(args.ladder_head_entities if args.per_entity_heads else "both"),
+        head_center=bool(args.ladder_head_center),
         identity_dim=int(args.identity_dim),
         drop_static=bool(args.drop_static),
         hidden_dim=int(args.ladder_hidden_dim),
@@ -167,6 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
                           "Scoring -- identical ops, era and is_scoring -- so a query returns an\n"
                           "average over the cards it needed to tell apart. Kept reachable as the\n"
                           "ablation that attributes the gain, not as a variant expected to work.")
+    lad.add_argument("--ladder-head-center", action="store_true", default=False,
+                     help="Centre the per-entity heads' hidden features across entities before "
+                          "their final projection, removing the common shift of the country logits "
+                          "that the E4 policy cannot see and that otherwise drifts without limit "
+                          "(research/log/E4_long_runs.md). E4 view only.")
     lad.add_argument("--ladder-head-entities", type=str, default=None,
                      choices=["both", "country", "card"],
                      help="Which per-entity heads exist. The card-collision finding predicts "
