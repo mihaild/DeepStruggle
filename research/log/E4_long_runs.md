@@ -386,3 +386,50 @@ side per pair). Each cell is the row's win share, overall, as USSR / as US.
 strength. It has not converged to a fixed point, and it is not cycling intransitively at an 80M
 resolution. It is a self-play treadmill on a plateau. Cycles faster than ~10M would not show at
 this spacing; a tournament over the 10M snapshots would.
+
+## The other per-entity architectures: card heads, identity, card lookup (2026-09-25)
+
+`data/logs/long/entity_head_drift.py` (CPU) loads each snapshot through
+`NeuralAgent.from_checkpoint` and hooks each head. **Level** is the median over positions of
+|mean over entities| of a head's output. Heads were detected from the weights, because early
+runs did not record `ladder_config`. All of these runs are fp32 (pre-TF32) and ≤ 240M.
+
+| run (architecture) | step | card-head level | country-head level | `policy_head(h)` max | legal \|logit\| max, p50 / max |
+|:---|---:|---:|---:|---:|:---|
+| E4-07-02 (M2: both heads, no identity) | 20M | 1.9 | 13.6 | 4.7 | 8 / 43 |
+| | 80M | 15.7 | 135 | 6.8 | 108 / 366 |
+| | 120M | 34.0 | 167 | 9.0 | 100 / 595 |
+| | 160M | 16.8 | 57 | 7.0 | 48 / 443 |
+| E4-09-01 (card head only) | 20M | 2.3 | — | 6.8 | 8 / 20 |
+| | 80M | 21.8 | — | 7.9 | 9 / 92 |
+| E4-18-03 (both heads + identity 16) | 20M | 0.8 | 5.6 | 6.0 | 8 / 35 |
+| | 160M | 0.7 | 1.4 | 4.9 | 9 / 51 |
+| E4-17-03 (country + identity 16) | 165M | — | 21 | 1.9 | 3 / 237 |
+| | 240M | — | 439 | 5.5 | 281 / 901 |
+| E4-24-03 (country + identity + card lookup) | 20M | — | 11.7 | 7.2 | 14 / 44 |
+| | 160M | — | 238 | 10.0 | 137 / 908 |
+| E4-08-03 (M2d, reference) | 85M | — | 164 | 7.5 | 141 / 373 |
+| | 160M | — | 313 | 6.1 | 281 / 1,167 |
+| E4-03-01 (v2 anchor: both heads + identity) | 85M | 3.9 | 3.4 | 7.1 | 21 / 36 |
+| | 120M | 0.1 | 0.0 | 0.8 | 0.8 / 12 |
+| | 160M | 0.1 | 0.0 | 3.8 | 3.8 / 19 |
+
+**The card head drifts too.** The card-only head went 2 → 22 by 80M. M2's card head went 2 → 34
+by 120M. That is slower than the country head but the same mechanism: a legal set of cards only
+leaves a shift common to every card invisible. `--ladder-head-center` already centres `pe_card`
+as well, when it exists.
+
+**Country-head drift is on every ladder rung with a country head, bar one run.** E4-18-03 (both
+heads + identity) stayed at ~1 through 160M. That is one seed of a random walk, so it is not
+evidence that identity or a second head prevents drift. E4-17-03, which has identity, drifted to
+439.
+
+**None of these runs got near the divergence scale.** Their largest logits are ≤ ~1,200 by
+160–240M, and none ran past 240M or with TF32.
+
+**The v2 anchor shows the opposite pathology, a collapse of the logit scale.** Its whole output
+shrank from a typical largest legal logit of 21 at 85M to 0.8 at 120M. Its training entropy rose
+from 1.22 to 1.85–1.91 over the same stretch. That is the 356-Elo loss recorded as entropy
+inflation ([`../findings/training/entropy_inflation.md`](../findings/training/entropy_inflation.md)),
+now located: the policy's logits flattened wholesale. It was a resume on the drained pool (the
+pre-`3803d5d` bug), so it is confounded, and its cause is not established.
