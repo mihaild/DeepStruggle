@@ -59,6 +59,7 @@ _LADDER = {
     "card_self_attention": "ladder_card_self_attention", "cross_attention": "ladder_cross_attention",
     "head_context": "ladder_head_context", "head_static": "ladder_head_static",
     "head_entities": "ladder_head_entities", "hidden_dim": "ladder_hidden_dim",
+    "head_center": "ladder_head_center",
     "num_res_blocks": "ladder_res_blocks", "card_lookup": "ladder_card_lookup",
     "card_lookup_heads": "ladder_card_lookup_heads", "card_lookup_dim": "ladder_card_lookup_dim",
     "card_lookup_identity_dim": "ladder_card_lookup_identity_dim",
@@ -77,10 +78,23 @@ UNCHECKED_BY_DESIGN = frozenset({
 })
 
 
+#: Settings added after runs that lack them, and the value every such run had: all training before
+#: `tf32` was recorded ran in fp32, and before `pool_every_steps` existed the pool grew at each
+#: snapshot. Filled in rather than reported as unrecorded, so a diff against an older run shows
+#: these as the real differences they are.
+_BEFORE_RECORDED = {
+    "tf32": lambda meta: False,
+    "pool_every_steps": lambda meta: meta.get("snapshot_every_steps"),
+}
+
+
 def recorded(run_dir: str) -> dict:
     """{dest: value} for every CLI setting the run's metadata records, under the CLI's own names."""
     meta, dflt = _metadata(run_dir), _defaults()
     out = {}
+    for k, known in _BEFORE_RECORDED.items():
+        if k not in meta and known(meta) is not None:
+            out[k] = known(meta)
     for k, v in meta.items():
         if k in _NOT_FLAGS:
             continue
@@ -91,6 +105,8 @@ def recorded(run_dir: str) -> dict:
             for ck, cv in v.items():
                 if ck in _LADDER:
                     out[_LADDER[ck]] = cv
+            # added 2026-09-25; every ladder config before it had uncentred heads
+            out.setdefault("ladder_head_center", bool(v.get("head_center", False)))
         elif k in dflt:
             out[k] = v
     return out

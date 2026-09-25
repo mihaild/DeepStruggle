@@ -61,7 +61,27 @@ def test_a_replaced_parameter_makes_the_graph_stale_and_the_cache_recaptures() -
     p = next(net.parameters())
     p.data = p.data.clone()           # a new tensor at a new address
     assert first.stale()
-    assert cache.get(net) is not first
+    # Checked once per rollout: within one the cache does not walk the parameters again...
+    assert cache.get(net) is first
+    # ...and at the next rollout it does, and recaptures.
+    cache.begin_rollout()
+    second = cache.get(net)
+    assert second is not first and not second.stale()
+
+
+def test_the_cache_checks_staleness_once_per_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ts_engine as ts
+    net = create_coldwar_net_v2().cuda().eval()
+    cache = GraphCache(16, ts.OBS_SIZE, 220, torch.device("cuda"))
+    calls = []
+    orig = GraphedForward.stale
+    monkeypatch.setattr(GraphedForward, "stale", lambda self: calls.append(1) or orig(self))
+    cache.get(net)                    # a fresh capture needs no check
+    for _ in range(3):
+        cache.begin_rollout()
+        for _ in range(5):
+            cache.get(net)
+    assert len(calls) == 3
 
 
 def _collect(graphs: bool, pool: bool) -> dict[str, torch.Tensor]:

@@ -54,7 +54,7 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --warmup-dataset data/datasets/<latest_dataset>.jsonl.gz \
   --bc-epochs 2 \
   --train-steps 160000000 \
-  --snapshot-every-steps 5000000 \
+  --snapshot-every-steps 10000000 \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random \
   --eval-games-per-side 50 \
@@ -73,7 +73,7 @@ Runs vectorized NashPG self-play across 512 parallel C++ environments, with blun
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch <arch> \
   --train-steps 160000000 \
-  --snapshot-every-steps 5000000 \
+  --snapshot-every-steps 10000000 \
   --warmup-checkpoint data/checkpoints/<latest_warmup_or_champion>.pt \
   --reward-scheme blunder_aware \
   --eval-opponents heuristic random data/checkpoints/<historical_champion>.pt \
@@ -157,6 +157,6 @@ PYTHONPATH=. .venv/bin/python tools/generate_dataset.py \
    - Value Loss (`L_value_win`): Should steadily decrease towards < 0.15.
    - KL Divergence from Reference Policy (`D_KL`): Kept bounded below 0.20 by the NashPG reference penalty.
 3. **Live Snapshots**:
-   Snapshots are written every `--snapshot-every-steps` as `snapshot_[N]steps.pt` and evaluated against heuristic baselines. That cadence also sets how fast the self-play opponent pool grows, so two arms of an A/B must share it or they are not a one-factor comparison.
+   Snapshots are written every `--snapshot-every-steps` (default 10M) as `snapshot_[N]steps.pt` and evaluated against heuristic baselines. Evaluation leaves training's RNG streams untouched, so the interval is reporting only. The self-play opponent pool grows on its own schedule, `--pool-every-steps` (default 5M, written as `pool_[N]steps.pt` between snapshots), and two arms of an A/B must share that one.
 4. **Post-Training Tournament**:
    When `--post-tournament` is enabled, `tools/tournament.py` automatically executes a massive round-robin tournament across all snapshots and baselines upon training completion, dumping `massive_tournament_report.md`.

@@ -11,12 +11,12 @@ Launches neural network reinforcement learning (NashPG) or supervised demonstrat
 live snapshot tournament evaluation.
 
 ```bash
-# RL training run with blunder-aware rewards, snapshotting every 5M env steps
+# RL training run with blunder-aware rewards, snapshotting every 10M env steps
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --arch v2 \
   --warmup-checkpoint <warmup.pt> \
   --train-steps 160000000 \
-  --snapshot-every-steps 5000000 \
+  --snapshot-every-steps 10000000 \
   --reward-scheme blunder_aware \
   --num-envs 512 \
   --eval-games-per-side 50 \
@@ -31,13 +31,44 @@ arms comparable, because steps/sec depends on the policy: the arm whose games ru
 costlier evaluations and so gets less training, which biases the comparison in a fixed
 direction rather than a random one.
 
-`--train-steps` is the budget and `--snapshot-every-steps` the snapshot cadence. Give an A/B's
-two arms the same value for **both**. The snapshot cadence is not only a reporting knob: the
-self-play opponent pool is fed from snapshots, so an arm that snapshots more slowly trains
-against a smaller, staler pool. `--snapshot-every-steps` used to be derived from two time
-flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps against its
-baseline's ~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
+`--train-steps` is the budget. `--snapshot-every-steps` (default 10M) sets how often a snapshot is
+saved and evaluated, and `--pool-every-steps` (default 5M) sets how often the self-play opponent
+pool grows. Give an A/B's two arms the same `--pool-every-steps`: an arm whose pool grows more
+slowly trains against a smaller, staler pool. The two used to be one flag, derived from two time
+flags, and E3-22-28's first attempt thereby snapshotted every 26.7M steps against its baseline's
+~5M: at 45M steps it had 2 pool opponents where the baseline had 9, and with
 `--opponent-frac 0.3` that made it a two-factor experiment. It was thrown away.
+
+**The snapshot interval is a reporting setting only.** Snapshot evaluation restores the global
+random streams it draws from (`preserves_training_rng`), and the pool has its own schedule, so the
+same run evaluated every 1M or every 2M trains bit for bit the same: every logged training metric
+and the final weights were checked equal over 5M steps (`research/log/P26_quick_screen.md`). A
+pool member that falls between snapshots is written as `pool_<N>steps.pt`. A resume finds these
+files the way it finds snapshots. Tournaments, which read `snapshot_*`, ignore them. Snapshots
+moved from 5M to 10M on 2026-09-24, because at 5M evaluation cost ~17% of a run's wall time.
+
+TF32 matmuls are on by default since 2026-09-24 (P26): +15% steps/s on M2d, solo or paired, and no strength cost in a 3-seed A/B (`research/log/P26_quick_screen.md`). `--no-tf32` gives fp32, which is what every run before E4-57 used. The setting is recorded in `metadata.json` as `tf32`.
+
+`--ladder-head-center` centres the per-entity heads' hidden features across entities before
+their final projection. In E4 no decision compares country actions with other actions, so a
+shift common to every country logit is invisible to the policy and gets no gradient. Left free,
+it drifts without limit, and every bit of the long runs' logit level was in `pe_country`. The
+flag removes that direction: the policy on every country-only decision is unchanged, the final
+bias gets zero gradient, and the raw values stay at the size of the differences between
+countries. It is recorded as a `pe_center` buffer, so loaders recover it from the weights. It is
+refused with `--merged-influence`, where countries do compete with play modes.
+
+`--z-loss-coef c` (default 0) adds `c · mean(logsumexp(policy logits)²)` to the update (PaLM's
+z-loss, usually `c = 1e-4`). The softmax ignores a common shift of the logits, so nothing else
+bounds their level, and it drifts upward without limit. Both 800M runs (E4-57-43/44) diverged
+through that drift (`research/log/E4_long_runs.md`). The level is logged as `logit_lse_mean` /
+`logit_lse_absmax` whether the penalty is on or not.
+
+`--compile-update {off,default,max-autotune}` (default off) runs the PPO update's forwards under
+`torch.compile`. The rollout keeps its CUDA graphs of the eager network. It measured +10% solo
+and +9% paired with `max-autotune`, and its outputs and gradients differ from eager by less than
+TF32 does. It is opt-in until its A/B runs (`research/log/P26_quick_screen.md`). Do not use
+inductor's CUDA-graph modes: `reduce-overhead` crashed beside the trainer's own graphs.
 
 ### Throughput and CPU
 

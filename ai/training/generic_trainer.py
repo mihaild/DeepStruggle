@@ -13,7 +13,10 @@ import collections
 import json
 import re
 import argparse
-from typing import List, Optional, Dict, Any, Final, Sequence, Tuple, Union
+import functools
+import random
+from typing import (Any, Callable, Dict, Final, List, Optional, Sequence, Tuple, TypeVar,
+                    Union, cast)
 import numpy as np
 import torch
 import torch.nn as nn
@@ -777,6 +780,15 @@ def run_search_distillation(
         print("    WARNING: no sidecar metadata; the searcher's configuration is unrecorded",
               flush=True)
 
+    # P23: a dataset played in the E4.1 view must be replayed in it (its composed actions do not
+    # exist in E4), and the distilled network then decides in that view.
+    merged = False
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            merged = bool(json.load(f).get("merged_influence", False))
+    if merged:
+        print("    dataset played in the E4.1 merged-influence view: replaying in it", flush=True)
+
     stats = {"samples": 0.0, "final_loss": 0.0, "final_agreement": 0.0, "final_top1_kl": 0.0}
     for epoch in range(1, epochs + 1):
         t0 = time.time()
@@ -784,7 +796,7 @@ def run_search_distillation(
         loss_sum = 0.0
         agree = 0
         for b_obs, b_mask, b_pi, _b_dt in WarmupDataset(dataset_path).stream_policy_batches(
-                batch_size=batch_size, max_games=max_games, device=dev):
+                batch_size=batch_size, max_games=max_games, device=dev, merged=merged):
             logits, _v_win, _v_vp = model(b_obs, b_mask)
             logp = F.log_softmax(logits, dim=-1)
             # Soft cross-entropy. The target is zero outside the legal set, so masked logits
@@ -812,6 +824,22 @@ def run_search_distillation(
     os.makedirs(os.path.dirname(os.path.abspath(output_checkpoint_path)) or ".", exist_ok=True)
     torch.save(model.state_dict(), output_checkpoint_path)
     print(f"  wrote {output_checkpoint_path}", flush=True)
+    if merged:
+        # A checkpoint's action view is read from its directory (tools/lib/action_view.py). Say
+        # this one decides in E4.1, or every tournament and probe would show it E4 masks.
+        meta_out = os.path.join(os.path.dirname(os.path.abspath(output_checkpoint_path)),
+                                "metadata.json")
+        if os.path.exists(meta_out):
+            with open(meta_out, encoding="utf-8") as f:
+                existing = json.load(f)
+            if not existing.get("merged_influence", False):
+                raise RuntimeError(f"{meta_out} records an E4 view; the distilled checkpoint "
+                                   "decides in E4.1. Write it to its own directory.")
+        else:
+            with open(meta_out, "w", encoding="utf-8") as f:
+                json.dump({"merged_influence": True, "merged_influence_from_step": 0,
+                           "distilled_from_dataset": dataset_path}, f, indent=1)
+            print(f"  wrote {meta_out} (E4.1 view)", flush=True)
     return stats
 
 
@@ -909,6 +937,37 @@ def run_behavioral_cloning_warmup(
     print(f"=== Warm-up Complete in {time.time() - t0:.1f}s. Saved to: {output_checkpoint_path} ===", flush=True)
 
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def preserves_training_rng(fn: _F) -> _F:
+    """Run `fn` without moving any global random stream the training loop draws from.
+
+    Snapshot evaluation samples actions with torch's global generators (and may touch numpy's and
+    Python's), and those are the same streams the rollout samples from. Left alone, every
+    evaluation shifts the rest of the run onto a different trajectory -- training is chaotic at
+    1e-9 (research/log/P25_stress_bench.md) -- so how often a run is evaluated would change what it
+    learns. Restoring the streams afterwards makes the evaluation interval a reporting setting
+    only: the same run evaluated every 5M or every 10M trains bit for bit the same.
+    """
+    @functools.wraps(fn)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        cpu = torch.get_rng_state()
+        cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        np_state = np.random.get_state()
+        py_state = random.getstate()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            torch.set_rng_state(cpu)
+            if cuda is not None:
+                torch.cuda.set_rng_state_all(cuda)
+            np.random.set_state(np_state)
+            random.setstate(py_state)
+    return cast(_F, wrapped)
+
+
+@preserves_training_rng
 def evaluate_and_log_snapshot(
     model: nn.Module,
     opponents: List[PlayerAgent],
@@ -1304,7 +1363,9 @@ def train_pipeline(
     train_steps: int = 80_000_000,
     decisiveness_turns: float = 0.0,
     max_snapshot_opponents: int = 4,
-    snapshot_every_steps: int = 5_000_000,
+    snapshot_every_steps: int = 10_000_000,
+    pool_every_steps: int = 5_000_000,
+    tf32: bool = True,
     eval_opponents: Optional[List[str]] = None,
     eval_games_per_side: int = 50,
     num_envs: int = 512,
@@ -1374,6 +1435,8 @@ def train_pipeline(
     entropy_ceiling: float = 0.0,
     target_kl: float = 0.0,
     entropy_normalize: bool = False,
+    compile_update: str = "off",
+    z_loss_coef: float = 0.0,
     cuda_graphs: bool = True,
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
@@ -1396,9 +1459,21 @@ def train_pipeline(
             "budget gives two arms different amounts of training.")
     if int(snapshot_every_steps) <= 0:
         raise ValueError(
-            f"snapshot_every_steps must be positive, got {snapshot_every_steps}. It sets both the "
-            "snapshot cadence and the rate the self-play opponent pool grows, so two arms that "
-            "differ in it are not a one-factor comparison.")
+            f"snapshot_every_steps must be positive, got {snapshot_every_steps}.")
+    if ladder_config and ladder_config.get("head_center") and merged_influence:
+        raise ValueError(
+            "--ladder-head-center removes the common shift of the country logits, which is "
+            "invisible only while no decision compares countries with other actions. E4.1's "
+            "merged view does (influence-first-point-in-X against the play modes), so the shift "
+            "is part of the policy there. Refused rather than silently changing the policy.")
+    if int(pool_every_steps) <= 0:
+        raise ValueError(
+            f"pool_every_steps must be positive, got {pool_every_steps}. It sets the rate the "
+            "self-play opponent pool grows, so two arms that differ in it are not a one-factor "
+            "comparison.")
+    # TF32 matmuls (P26): set either way, so a process that ran something else first cannot hand
+    # a run a setting its metadata does not record.
+    torch.backends.cuda.matmul.allow_tf32 = bool(tf32)
 
     dev = resolve_device(device)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1509,6 +1584,8 @@ def train_pipeline(
         "decisiveness_turns": decisiveness_turns,
         "train_steps": int(train_steps),
         "snapshot_every_steps": int(snapshot_every_steps),
+        "pool_every_steps": int(pool_every_steps),
+        "tf32": bool(tf32),
         "search_ce_coef": float(search_ce_coef),
         "search_sims": int(search_sims),
         "search_subsample": float(search_subsample),
@@ -1569,6 +1646,8 @@ def train_pipeline(
         "entropy_ceiling": float(entropy_ceiling),
         "target_kl": float(target_kl),
         "entropy_normalize": bool(entropy_normalize),
+        "compile_update": str(compile_update),
+        "z_loss_coef": float(z_loss_coef),
         "cuda_graphs": bool(cuda_graphs),
         # The optimisation settings, under their CLI names so tools/scripts/launch_flags.py can
         # diff them. Until 2026-09-24 none of these was recorded, so a run launched with a
@@ -1743,6 +1822,8 @@ def train_pipeline(
         entropy_ceiling=entropy_ceiling,
         target_kl=target_kl,
         entropy_normalize=entropy_normalize,
+        compile_update=compile_update,
+        z_loss_coef=z_loss_coef,
         cuda_graphs=cuda_graphs,
         device=dev,
     )
@@ -1778,10 +1859,14 @@ def train_pipeline(
                 _run_dir = os.path.dirname(os.path.abspath(_src_file))
                 _snaps = []
                 for _f in os.listdir(_run_dir):
-                    _m = re.match(r"snapshot_(\d+)steps\.pt$", _f)
+                    # pool_<n>steps.pt: a pool member written between snapshots. Where both
+                    # exist for one step they hold the same weights; the snapshot is kept.
+                    _m = re.match(r"(snapshot|pool)_(\d+)steps\.pt$", _f)
                     if _m:
-                        _snaps.append((int(_m.group(1)), os.path.join(_run_dir, _f)))
-                _snaps.sort()
+                        _snaps.append((int(_m.group(2)), _m.group(1) == "pool",
+                                       os.path.join(_run_dir, _f)))
+                _snaps = [(n, q) for n, _, q in sorted(_snaps)]
+                _snaps = [x for i, x in enumerate(_snaps) if i == 0 or x[0] != _snaps[i - 1][0]]
 
                 # The pool the run actually held, recorded in its resume state. Preferred over
                 # any reconstruction: eviction is by spacing and depends on the order snapshots
@@ -1894,6 +1979,12 @@ def train_pipeline(
         print(f"[P25 3k] per-seat entropy ceiling {entropy_ceiling:g} nats, one-sided: coefficient in "
               f"[-0.02, ent_coef], lr 0.01 per nat per iteration, from 5M steps (--entropy-ceiling)",
               flush=True)
+    if z_loss_coef > 0.0:
+        print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
+              flush=True)
+    if compile_update != "off":
+        print(f"[P26] the update's forwards run under torch.compile ({compile_update}); the "
+              f"rollout stays eager with CUDA graphs (--compile-update)", flush=True)
     if entropy_normalize:
         print(f"[entropy] the bonus rewards entropy / log(legal) per decision (--entropy-normalize), "
               f"coefficient {entropy_coef:g}", flush=True)
@@ -1927,6 +2018,14 @@ def train_pipeline(
     step_budget = int(train_steps)
     eval_every_steps = int(snapshot_every_steps)
     next_eval_steps = eval_every_steps
+    # The pool grows on its own schedule (5M, as it always has), not the snapshot's: snapshots
+    # moved to 10M on 2026-09-24 because evaluating one costs ~17% of a run's wall time at 5M
+    # (research/log/P26_quick_screen.md), and tying the pool to them would have halved its growth
+    # rate -- a change to training, where the snapshot interval should be a change to reporting.
+    # A pool member that falls between snapshots is written as pool_<steps>steps.pt, which a
+    # resume finds as it finds snapshots.
+    pool_every = int(pool_every_steps)
+    next_pool_steps = pool_every
     it = 0
 
     injector = None
@@ -1940,7 +2039,8 @@ def train_pipeline(
 
     print("=" * 80, flush=True)
     print(f"STARTING GENERIC TRAINING PIPELINE ({train_steps:,} steps, "
-          f"snapshot every {eval_every_steps:,} steps)", flush=True)
+          f"snapshot every {eval_every_steps:,} steps, pool member every {pool_every:,})",
+          flush=True)
     num_baselines = len(opponents)
     budget_desc = f"{train_steps:,} steps"
 
@@ -1965,6 +2065,7 @@ def train_pipeline(
         t_start -= resumed_elapsed
         # Snapshots are due by step count, and those steps already happened.
         next_eval_steps = ((state["total_env_steps"] // eval_every_steps) + 1) * eval_every_steps
+        next_pool_steps = ((state["total_env_steps"] // pool_every) + 1) * pool_every
         print(f"Resumed from {src}: {state['total_env_steps']:,} steps, iteration {it}, "
               f"{resumed_elapsed:.0f}s of training already done", flush=True)
 
@@ -2144,7 +2245,9 @@ def train_pipeline(
                     # P25 3j-3l. approx_kl_* is always present; the rest only with their lever.
                     "approx_kl_us", "approx_kl_ussr", "kl_stop_frac_us", "kl_stop_frac_ussr",
                     "ent_coef_us", "ent_coef_ussr",
-                    "adv_norm_divisor", "adv_norm_floor_bound", "adv_std_ema"):
+                    "adv_norm_divisor", "adv_norm_floor_bound", "adv_std_ema",
+                    # the policy logits' level, and the z-loss that bounds it
+                    "logit_lse_mean", "logit_lse_absmax", "z_loss"):
             if _sk in iteration_metrics:
                 step_metrics[_sk] = float(iteration_metrics[_sk])
         # Auxiliary losses only where the term that produces them is switched on. Logged
@@ -2197,6 +2300,8 @@ def train_pipeline(
 
         # Snapshot Evaluation
         due = total_env_steps >= next_eval_steps
+        snap_path = ""
+        t_eval0 = time.time()
         if due:
             t_eval0 = time.time()
             snap_path = os.path.join(
@@ -2206,27 +2311,37 @@ def train_pipeline(
                 # Sort these numerically, not lexicographically.
                 f"snapshot_{total_env_steps}steps.pt")
             torch.save(model.state_dict(), snap_path)
-            # Hand this snapshot to the opponent pool, if it is growing from the run's own
-            # history. A *copy* is loaded from what was just written rather than the live model:
-            # adding the model under training would give the learner an opponent whose weights
-            # move with it, which is ordinary self-play wearing a costume.
-            if opponent_self_pool and trainer.opponent_pool is not None:
-                try:
-                    # deepcopy for the architecture, then overwrite with the snapshot's
-                    # weights. There is no model factory that reconstructs an arbitrary
-                    # configuration from metadata, and guessing one would be a way to build a
-                    # subtly different opponent.
-                    _opp = _copy.deepcopy(model)
-                    _opp.load_state_dict(torch.load(snap_path, map_location=dev,
-                                                    weights_only=True))
-                    trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
-                                              merged=bool(merged_influence),
-                                              path=os.path.abspath(snap_path))
-                except Exception as _e:
-                    # A pool that fails to grow is a degraded experiment, not a dead one --
-                    # say so loudly and keep training rather than losing the run.
-                    print(f"[opponent pool] FAILED to add snapshot at {total_env_steps}: {_e}",
-                          flush=True)
+
+        # Hand the policy to the opponent pool on the pool's own schedule, if it is growing from
+        # the run's own history -- from the snapshot file when one was just written, otherwise
+        # from a pool_<steps>steps.pt written here. A *copy* is loaded from the file rather than
+        # the live model: adding the model under training would give the learner an opponent
+        # whose weights move with it, which is ordinary self-play wearing a costume.
+        if (opponent_self_pool and trainer.opponent_pool is not None
+                and total_env_steps >= next_pool_steps):
+            next_pool_steps += pool_every
+            member_path = snap_path if due else os.path.join(
+                out_dir, f"pool_{total_env_steps}steps.pt")
+            try:
+                if not due:
+                    torch.save(model.state_dict(), member_path)
+                # deepcopy for the architecture, then overwrite with the snapshot's
+                # weights. There is no model factory that reconstructs an arbitrary
+                # configuration from metadata, and guessing one would be a way to build a
+                # subtly different opponent.
+                _opp = _copy.deepcopy(model)
+                _opp.load_state_dict(torch.load(member_path, map_location=dev,
+                                                weights_only=True))
+                trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
+                                          merged=bool(merged_influence),
+                                          path=os.path.abspath(member_path))
+            except Exception as _e:
+                # A pool that fails to grow is a degraded experiment, not a dead one --
+                # say so loudly and keep training rather than losing the run.
+                print(f"[opponent pool] FAILED to add snapshot at {total_env_steps}: {_e}",
+                      flush=True)
+
+        if due:
             # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
             # load_agent, the tournament runner and every eval module read it as one.
             save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,

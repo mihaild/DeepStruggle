@@ -5,7 +5,7 @@
 ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)) and from the P23 A/B
 ([`../plans/P23_merged_influence_E4_1.md`](../plans/P23_merged_influence_E4_1.md)), scanned for
 collapse episodes. This is the evidence behind
-[`../plans/P25_collapse_robustness.md`](../plans/P25_collapse_robustness.md).
+[`../plans/P25_collapse_robustness.md`](../archive/E4_ladder/plans/P25_collapse_robustness.md).
 
 **Criterion.** An episode is a run of consecutive 5M buckets in which one seat wins at most 10%
 of self-play games. A bucket is the mean of the per-iteration `ussr_win_rate`. The *drift* start

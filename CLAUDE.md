@@ -226,7 +226,7 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 
 # Phase 1-3: RL self-play + live snapshot evals + post-training tournament
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
-  --arch v2 --train-steps 160000000 --snapshot-every-steps 5000000 \
+  --arch v2 --train-steps 160000000 --snapshot-every-steps 10000000 \
   --reward-scheme blunder_aware \
   --opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12 \
   --identity-dim 16 --per-entity-heads 64 --graph-layers 0 --self-transform \
@@ -235,7 +235,7 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
   --post-tournament --post-tournament-models heuristic random <checkpoint.pt> \
   --post-tournament-games 500
 #   add --warmup-checkpoint <warmup.pt> ONLY for a deliberately warm-started arm
-# or: ./tools/scripts/train_and_tournament.sh v2 160000000 5000000 <warmup.pt>
+# or: ./tools/scripts/train_and_tournament.sh v2 160000000 10000000 <warmup.pt>
 
 # Standalone tournament / Elo evaluation over a checkpoint directory
 PYTHONPATH=. .venv/bin/python tools/tournament.py \

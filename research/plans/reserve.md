@@ -31,6 +31,16 @@ cycle and keeps learning speed. OGDA / extragradient / optimistic mirror descent
 last-iterate-convergent update rules; deeper surgery than a flag, so it waits for evidence
 that the anchor family is the right one but insufficient.
 
+## Codified rewind + pool gating (was P25 step 5)
+**Trigger:** a run on the production recipe stalls, meaning per-seat Elo against its own earlier
+snapshots is flat for 40M or more, more often than about 1 run in 10. P25 closed without it,
+because collapse on the fixed pool has been a recoverable delay
+([`../log/P25_stress_bench.md`](../log/P25_stress_bench.md#closing-p25-2026-09-24)). The design
+is in [`../archive/E4_ladder/plans/P25_collapse_robustness.md`](../archive/E4_ladder/plans/P25_collapse_robustness.md),
+step 5:
+* resume from the last snapshot that passed, with the sampling seed advanced by a fixed rule;
+* admit a snapshot to the pool only if it passes the same per-seat check.
+
 ## Per-side capacity
 **Trigger, revised 2026-09-23:** the P25 bench shows the winning seat sharpening inside the
 shared network while the losing seat is still learning (E4-36-03), every E4 collapse loses the

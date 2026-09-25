@@ -70,6 +70,7 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         head_context=bool(args.ladder_head_context) if args.per_entity_heads else True,
         head_static=bool(args.ladder_head_static) if args.per_entity_heads else True,
         head_entities=(args.ladder_head_entities if args.per_entity_heads else "both"),
+        head_center=bool(args.ladder_head_center),
         identity_dim=int(args.identity_dim),
         drop_static=bool(args.drop_static),
         hidden_dim=int(args.ladder_hidden_dim),
@@ -167,6 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
                           "Scoring -- identical ops, era and is_scoring -- so a query returns an\n"
                           "average over the cards it needed to tell apart. Kept reachable as the\n"
                           "ablation that attributes the gain, not as a variant expected to work.")
+    lad.add_argument("--ladder-head-center", action="store_true", default=False,
+                     help="Centre the per-entity heads' hidden features across entities before "
+                          "their final projection, removing the common shift of the country logits "
+                          "that the E4 policy cannot see and that otherwise drifts without limit "
+                          "(research/log/E4_long_runs.md). E4 view only.")
     lad.add_argument("--ladder-head-entities", type=str, default=None,
                      choices=["both", "country", "card"],
                      help="Which per-entity heads exist. The card-collision finding predicts "
@@ -251,14 +257,26 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Opponent-pool draws and which side the learner takes.")
     parser.add_argument("--resume-every-steps", type=int, default=40_000_000,
                         help="Write a step-tagged resume_<steps>.pt at most this often. Resume files are 48MB against a snapshot's 13MB, so this is deliberately much coarser than the snapshot interval.")
-    parser.add_argument("--snapshot-every-steps", type=int, default=5_000_000,
-                        help="Take a snapshot every N env steps. This also sets the rate the "
-                             "self-play opponent pool grows, since the pool is fed from "
-                             "snapshots -- two arms that snapshot at different rates train "
-                             "against different opponent distributions and are not a one-factor "
-                             "comparison. It used to be derived from two time flags; E3-22-28's "
-                             "first attempt thereby snapshotted every 26.7M steps against its "
-                             "baseline's 5M and had to be thrown away.")
+    parser.add_argument("--snapshot-every-steps", type=int, default=10_000_000,
+                        help="Save and evaluate a snapshot every N env steps (10M since "
+                             "2026-09-24; 5M before, when evaluating one cost ~17%% of a run's "
+                             "wall time: research/log/P26_quick_screen.md). Reporting only: "
+                             "evaluation restores the RNG streams it draws from, and the "
+                             "opponent pool grows on --pool-every-steps, so this does not change "
+                             "what a run learns.")
+    parser.add_argument("--pool-every-steps", type=int, default=5_000_000,
+                        help="Add the current policy to the self-play opponent pool every N env "
+                             "steps (as pool_<N>steps.pt between snapshots). This sets the rate "
+                             "the pool grows: two arms that differ in it train against different "
+                             "opponent distributions and are not a one-factor comparison. 5M is "
+                             "the lineage's rate; it used to be tied to the snapshot interval, "
+                             "and E3-22-28's first attempt snapshotted every 26.7M steps against "
+                             "its baseline's 5M and had to be thrown away.")
+    parser.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
+                        help="TF32 matmuls (P26; default on since 2026-09-24): +15%% steps/s on "
+                             "M2d, solo or paired, with mean KL 1e-7 to fp32 at inference and no "
+                             "strength cost in a 3-seed A/B (research/log/P26_quick_screen.md). "
+                             "--no-tf32 for fp32, as every run before E4-57.")
     parser.add_argument("--inject-dataset", type=str, default=None,
                         help="Human corpus directory to interleave supervised steps from during "
                              "RL. A BC warmup washes out early in training; this keeps the "
@@ -446,6 +464,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "more room than a few-option one (P23: E4.1's ~50-option op-mode nodes). "
                              "Same average bonus as the raw one at ~2.1x --entropy-coef on E4's "
                              "decision mix. Logged entropy stays raw.")
+    parser.add_argument("--z-loss-coef", type=float, default=0.0,
+                        help="z-loss: coef * mean(logsumexp(policy logits)^2) in the update (PaLM uses "
+                             "1e-4). Bounds the logits' level, which the softmax leaves free and which "
+                             "drifts upward without limit; both 800M runs diverged through it "
+                             "(research/log/E4_long_runs.md). 0 is off.")
+    parser.add_argument("--compile-update", choices=["off", "default", "max-autotune"],
+                        default="off",
+                        help="torch.compile the PPO update's forwards (P26); the rollout keeps "
+                             "its CUDA graphs of the eager network. Reorders arithmetic, so off "
+                             "until an A/B passes. max-autotune is inductor's "
+                             "max-autotune-no-cudagraphs: longer first compile, faster kernels.")
     parser.add_argument("--no-cuda-graphs", action="store_true", default=False,
                         help="Run the rollout forwards eagerly instead of as CUDA-graph replays. The "
                              "replays execute the same kernels (bitwise-identical outputs per network); "
@@ -590,6 +619,8 @@ def main():
             resume_every_snapshot=args.resume_every_snapshot,
             resume_every_steps=args.resume_every_steps,
             snapshot_every_steps=args.snapshot_every_steps,
+            pool_every_steps=args.pool_every_steps,
+            tf32=args.tf32,
             inject_dataset=args.inject_dataset,
             inject_every=args.inject_every,
             inject_weight=args.inject_weight,
@@ -647,6 +678,8 @@ def main():
             entropy_ceiling=args.entropy_ceiling,
             target_kl=args.target_kl,
             entropy_normalize=args.entropy_normalize,
+            compile_update=args.compile_update,
+            z_loss_coef=args.z_loss_coef,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,

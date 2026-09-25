@@ -1,6 +1,6 @@
 # P24 — an AlphaStar-style league, without a supervised starting point
 
-**Status:** proposed, not started. Gated on [P25](P25_collapse_robustness.md) (a collapse-robust recipe) and the slow-π_ref replicate; P23 (E4.1) is paused.
+**Status:** proposed, not started. Gated on the slow-π_ref replicate. [P25](../archive/E4_ladder/plans/P25_collapse_robustness.md) closed without a lever: collapse on the fixed pool is a recoverable delay. P23 (E4.1) is parked. **New constraint (2026-09-24):** a `--warmup-checkpoint` start (fresh optimizer, π_ref and pool) dissolves the US seat within 5M, even in the E4 view ([`../log/P23_E4_1_ab.md`](../log/P23_E4_1_ab.md)). Resetting an exploiter to an early snapshot is exactly such a start, so find out which reset does it before building the league.
 **Needs approval:** none of it touches `engine/` or the observation. It needs one trainer change
 (a pool that grows from other runs' directories) and a driver built on `tools/train.py`.
 

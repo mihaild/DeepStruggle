@@ -134,7 +134,7 @@ class WarmupDataset:
                 count += 1
 
     def stream_policy_transitions(
-        self, max_games: Optional[int] = None
+        self, max_games: Optional[int] = None, merged: bool = False
     ) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
         """Streams (observation, action_mask, policy_target) for SEARCHED decisions only.
 
@@ -153,6 +153,11 @@ class WarmupDataset:
         the policy actually differ. X4a found 93.1% agreement over card/play-mode nodes, which
         average 4.1 legal actions; whether that holds at POINT_NODE placements, which average
         17.5, is a different question and needs the split.
+
+        `merged` replays in the E4.1 merged-influence view (P23): masks from the merged view, and a
+        composed action applied as the two E4 steps it names. A dataset played in that view
+        (`tools/generate_policy_targets.py --merged-view`) desynchronises at its first composed
+        action if replayed in E4, so the caller reads the view from the dataset's sidecar.
         """
         with gzip.open(self.filepath, 'rt', encoding='utf-8') as f:
             games = 0
@@ -165,7 +170,7 @@ class WarmupDataset:
                 for a in game['actions']:
                     p_ = (st.ctx().decision_player
                           if st.ctx().decision_player != ts.Player.NONE else st.phasing_player)
-                    mask = np.array(ts.get_flat_action_mask(st), copy=True)
+                    mask = np.array(ts.get_flat_action_mask(st, merged), copy=True)
                     flat_act = a['flat_action']
                     if (mask.sum() == 0 or flat_act < 0 or flat_act >= mask.shape[0]
                             or mask[flat_act] == 0):
@@ -182,8 +187,11 @@ class WarmupDataset:
                         if tot > 0:
                             yield obs, mask, target / tot, int(st.ctx().decision_type)
 
-                    ma = ts.decode_flat_action(st, flat_act)
-                    ts.Engine.step(st, ma)
+                    if merged:
+                        ts.Engine.step_flat(st, flat_act, False, True)
+                    else:
+                        ma = ts.decode_flat_action(st, flat_act)
+                        ts.Engine.step(st, ma)
                     while (not ts.Engine.is_terminal(st)
                            and st.ctx().decision_player == ts.Player.NONE
                            and st.ctx().decision_type == ts.DecisionType.ROLL_DIE):
@@ -196,8 +204,10 @@ class WarmupDataset:
         max_games: Optional[int] = None,
         device: torch.device = torch.device('cpu'),
         shuffle_buffer_size: int = 4096,
+        merged: bool = False,
     ) -> Iterator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
-        """Bounded-memory shuffled batches of (obs, mask, policy_target, decision_type)."""
+        """Bounded-memory shuffled batches of (obs, mask, policy_target, decision_type); `merged`
+        as in stream_policy_transitions."""
         b_obs: List[np.ndarray] = []
         b_mask: List[np.ndarray] = []
         b_pi: List[np.ndarray] = []
@@ -211,7 +221,7 @@ class WarmupDataset:
                 torch.tensor([b_dt[i] for i in idx], dtype=torch.long, device=device),
             )
 
-        for obs, mask, pi, dt in self.stream_policy_transitions(max_games=max_games):
+        for obs, mask, pi, dt in self.stream_policy_transitions(max_games=max_games, merged=merged):
             b_obs.append(obs)
             b_mask.append(mask)
             b_pi.append(pi)

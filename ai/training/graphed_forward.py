@@ -33,7 +33,10 @@ A graph reads the network's parameters by address. The optimiser updates them in
 replay always sees the current weights, and `load_state_dict` copies into the existing tensors.
 Anything that REPLACES a parameter or buffer tensor (a `.to()` onto another device, assigning a new
 `nn.Parameter`) would leave the graph reading freed memory; `stale()` detects that and the caller
-re-captures.
+re-captures. `stale()` walks every parameter and buffer, which on M2d cost ~50 ms per 128-step
+rollout when `GraphCache.get` ran it on every step (research/log/P26_quick_screen.md). Nothing
+replaces a tensor in the middle of a rollout -- snapshots, pool admissions and resumes all happen
+between iterations -- so `GraphCache` checks each network once per `begin_rollout()`.
 """
 
 from __future__ import annotations
@@ -111,18 +114,27 @@ class GraphCache:
     def __init__(self, batch: int, obs_dim: int, action_dim: int, device: torch.device) -> None:
         self.batch, self.obs_dim, self.action_dim, self.device = batch, obs_dim, action_dim, device
         self._graphs: Dict[int, GraphedForward] = {}
+        #: Networks whose graph was checked against `stale()` since the last `begin_rollout()`.
+        self._checked: set[int] = set()
         #: The one capture stream every graph of this cache is captured on (module docstring).
         self._stream = torch.cuda.Stream(device=device)
 
+    def begin_rollout(self) -> None:
+        """Call before each rollout: every network's graph is checked for staleness again at its
+        next `get()`, and not again until the next `begin_rollout()`."""
+        self._checked.clear()
+
     def get(self, net: nn.Module) -> GraphedForward:
         g: Optional[GraphedForward] = self._graphs.get(id(net))
-        if g is None or g.net is not net or g.stale():
+        if g is None or g.net is not net or (id(net) not in self._checked and g.stale()):
             g = GraphedForward(net, self.batch, self.obs_dim, self.action_dim, self.device,
                                stream=self._stream)
             self._graphs[id(net)] = g
+        self._checked.add(id(net))
         return g
 
     def retain(self, nets: List[nn.Module]) -> None:
         keep = {id(n) for n in nets}
         for k in [k for k in self._graphs if k not in keep]:
             del self._graphs[k]
+            self._checked.discard(k)

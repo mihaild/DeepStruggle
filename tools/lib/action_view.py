@@ -23,7 +23,7 @@ import os
 import re
 from typing import Tuple
 
-_SNAPSHOT_STEPS = re.compile(r"snapshot_(\d+)steps\.pt$")
+_SNAPSHOT_STEPS = re.compile(r"(?:snapshot|pool)_(\d+)steps\.pt$")
 
 
 def run_view(run_dir: str) -> Tuple[bool, int]:

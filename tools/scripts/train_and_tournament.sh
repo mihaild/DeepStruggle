@@ -17,7 +17,7 @@ set -euo pipefail
 
 ARCH="${1:-v2}"                       # v1 | v2 | mlp
 TRAIN_STEPS="${2:-80000000}"          # Default: the standard 80M env steps
-SNAPSHOT_EVERY_STEPS="${3:-5000000}"  # Default: every 5M steps, which also grows the pool
+SNAPSHOT_EVERY_STEPS="${3:-10000000}"  # Default: every 10M steps (the pool grows every 5M on its own)
 WARMUP_CHECKPOINT="${4:-}"            # Optional: path to a BC warmup checkpoint
 OPPONENT_CHECKPOINT="${5:-}"          # Optional: extra opponent for eval and tournament
 
