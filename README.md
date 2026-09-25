@@ -20,7 +20,7 @@ Known, reproducible, unfixed defects are tracked in [`BUGS.md`](BUGS.md).
 
 * **C++20 Simulation Core (`engine/`)**: Zero-allocation, high-throughput simulation engine covering the Deluxe Edition—all 110 cards, persistent board effects, simultaneous headline resolution, space race tracks, and regional scoring. Every card has an event handler, but that is not the same as every rule being right: known rules defects are tracked in [`BUGS.md`](BUGS.md).
 * **Neural Policies & Reinforcement Learning (`ai/`)**: Graph Neural Network + ResNet architecture (`ColdWarNet`) regularized under Nash Policy Gradient (NashPG) self-play, paired with behavioral cloning from demonstration datasets (self-play and a corpus of recorded human games) and a suite of evaluation probes in `ai/eval/`.
-* **Interactive Web Workbench (`web/`)**: Full-featured web interface powered by FastAPI, WebSockets, and a Vite + TypeScript SVG Deluxe Map supporting human-vs-bot matches, bot-vs-bot exhibitions, and complete replay timelines (`.tslog.json`).
+* **Interactive Web Workbench (`web/`)**: A Vite + TypeScript SVG Deluxe Map that runs entirely in the browser -- the engine compiled to WebAssembly, models run as ONNX -- for watching replays (`.tslog.json`), testing the engine by playing it, and playing with a model that shows its move probabilities and critic on every position. Works from GitHub Pages with no server; a small local server adds this machine's checkpoints and replays.
 * **Evaluation & Tournament Suite (`tools/`)**: High-throughput tournament runner with Bradley-Terry Maximum Likelihood Elo estimation, automated loss-cause diagnostics, and match playback.
 
 ---
@@ -33,7 +33,7 @@ Known, reproducible, unfixed defects are tracked in [`BUGS.md`](BUGS.md).
 ├── bindings/       # Native Python nanobind module (ts_engine) & environment bridge
 ├── ai/             # Neural networks (ColdWarNet), rewards, and NashPG RL pipelines
 ├── bot/            # Baseline bots (HeuristicBot, RandomBot, StrategicBot, NeuralBot)
-├── web/            # Full-stack Web Workbench (FastAPI server + SVG map UI)
+├── web/            # Web Workbench, in the browser (WebAssembly engine + ONNX models) + a local files server
 ├── tools/          # Unified CLI suite for training, tournaments, matches, and replays
 ├── rules/          # Formal specifications (cards, map topology, effect flags)
 └── tests/          # Python test suite across bindings, engine rules, and training
@@ -74,11 +74,11 @@ cmake --build build/release -j
 ### 3. Build Web UI & Launch Workbench
 
 ```bash
-# Build the frontend assets
-cd web/ui && npm install && npm run build && cd ../..
+# Build the engine as WebAssembly and the page (needs Emscripten: tools/scripts/install_emsdk.sh)
+tools/scripts/build_web.sh
 
-# Start the game server
-PYTHONPATH=.:build/release uvicorn web.server.main:app --host 0.0.0.0 --port 8000
+# Serve it, with this machine's checkpoints and replays
+PYTHONPATH=.:build/release .venv/bin/python -m web.server.main --port 8000
 ```
 
 Open `http://localhost:8000` in your browser to launch the Web Workbench.
@@ -105,8 +105,9 @@ Two suites need something extra and are worth knowing about before you run a bar
 PYTHONPATH=. python tools/download_ts_replayer.py
 PYTHONPATH=.:build/release pytest -n auto tests/replayer
 
-# tests/web needs the built frontend and a browser, neither of which is in the repository.
-cd web/ui && npm install && npm run build && cd ../..
+# tests/web needs the built page (with its WebAssembly engine) and a browser, neither of which is
+# in the repository. Emscripten: tools/scripts/install_emsdk.sh
+tools/scripts/build_web.sh
 python -m playwright install chromium
 PYTHONPATH=.:build/release pytest tests/web
 ```

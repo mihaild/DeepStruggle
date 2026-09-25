@@ -1,0 +1,65 @@
+# The browser workbench on GitHub Pages: the engine compiled to WebAssembly and the page, built
+# from main and published as static files. Nothing runs server-side -- models come from Hugging
+# Face or a file dropped on the page, replays from a file.
+#
+# Enable once in the repository: Settings -> Pages -> Source: GitHub Actions.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EMSDK_VERSION: "6.0.10"   # pinned, as tools/scripts/install_emsdk.sh is
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/ui/package-lock.json
+
+      - name: Cache Emscripten
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/opt/emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}
+
+      - name: Install Emscripten
+        run: tools/scripts/install_emsdk.sh
+
+      - name: Build the engine (WebAssembly) and the page
+        env:
+          # The page is served under /<repository>/ on Pages.
+          TS_WEB_BASE: /${{ github.event.repository.name }}/
+          TS_PYTHON: python3
+        run: tools/scripts/build_web.sh
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/ui/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

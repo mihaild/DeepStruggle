@@ -1953,3 +1953,37 @@ body {
    this class. Without a generic rule it did nothing: only the modal and the tooltip had one, so
    the replay readout sat empty on screen during live play. */
 .hidden { display: none !important; }
+
+/* Model sources in the analysis panel (local checkpoints / Hugging Face / .onnx file). */
+.analysis-source { flex: 1 1 100%; }
+.analysis-src {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+/* A select sizes to its longest option; without this a long run name pushes the row past the
+   panel's edge. */
+.analysis-src > * { min-width: 0; }
+.analysis-file {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.analysis-model-info {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: var(--text-main);
+  word-break: break-word;
+}
+.analysis-info-dim { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.analysis-warning {
+  margin-top: 3px;
+  color: var(--warning);
+  font-size: 10px;
+}
+/* The engine badge when the page's engine is not the one the local sources would build. */
+.status-badge.stale { background: rgba(245, 158, 11, 0.18); color: var(--warning); border: 1px solid var(--warning); }
+/* A model file being dragged over the page. */
+body.drop-target #map-container { outline: 3px dashed var(--warning); outline-offset: -6px; }

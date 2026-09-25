@@ -38,6 +38,8 @@ __pycache__/
 web/ui/node_modules/
 node_modules/
 web/ui/dist/
+# The WebAssembly engine, built from engine/ + bindings/ by tools/scripts/build_web.sh.
+web/ui/public/engine/
 dist/
 frontend/.vite/
 

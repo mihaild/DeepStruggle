@@ -18,7 +18,26 @@ This directory contains the Python native extension module (`ts_engine`) built w
   - Hand-knowledge helpers over `CardLocation`: `in_hand_of()`, `known_to_opponent()`, `hand_of()`, `hand_holder()`, `revealed()`, plus `reveal_hand()` / `reveal_both_hands()`. Use these instead of comparing a location to a hand constant — see [`engine/AGENTS.md`](../engine/AGENTS.md) §7.
   - Metadata helpers: `MapData`, `CardData`, `StateMachine`, `Operations`, `Scoring`, `CardHandlers`.
   - `EffectBits` submodule: the named 64-bit continuous-effect flags.
-  - Dictionary serializer: `state_to_dict()` for full zero-copy state inspection.
+  - Dictionary serializer: `state_to_dict()` / `GameState.to_dict()` -- the display state.
+  - JSON text of the same: `GameState.to_display_json()`, `GameState.to_save_json()` (byte for
+    byte `json.dumps(to_save_dict(), sort_keys=True, separators=(",", ":"))`) and
+    `state_from_save_json()`. `game_ending_reason(state)` names why a game ended
+    (`tools/lib/tournament_evaluator.classify_game_ending_reason` delegates to it), and
+    `selftest_digest(games)` is the whole-game digest the WebAssembly build must reproduce.
+- [`state_json.hpp`](state_json.hpp) / [`state_json.cpp`](state_json.cpp): **the display state,
+  the save and its loader, and the ending reason, written once** as a small dependency-free JSON
+  value tree. The nanobind functions above convert the tree to Python objects; the WebAssembly
+  build prints it. Two hand-kept copies would drift -- the browser showing or saving a position
+  differently from Python -- which is why the conversions moved here out of `ts_bindings.cpp`.
+- [`wasm/ts_engine_wasm.cpp`](wasm/ts_engine_wasm.cpp): the engine for the **browser workbench**,
+  a flat C API compiled by Emscripten (`tools/scripts/build_web.sh`; under `emcmake` this
+  directory builds `ts_engine_wasm` into `web/ui/public/engine/` instead of the Python module).
+  New game, raw-bytes undo snapshots, display/save JSON, loading a save (refused unless it
+  round-trips), stepping a MicroAction with the workbench's forced-die drain (all or nothing),
+  masks in both action views, flat-action decode, observations, names, debug setters, the action
+  layout and the engine fingerprint baked in at build.
+- [`selftest.hpp`](selftest.hpp): one whole-game digest (full save, both observations, the mask,
+  every position) compiled into both builds; `tests/web/test_wasm_engine.py` compares the numbers.
   - Save format: `GameState.to_save_dict()` / `state_from_save_dict()`, tagged `ts_save_v2`. Named
     fields, not a byte blob, so a save written by one build opens in another: an unknown key is
     ignored and a missing one keeps its default. It restores the board, the tracks, the card

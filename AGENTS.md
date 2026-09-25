@@ -8,16 +8,17 @@ This repository contains the complete AI, simulation engine, web workbench, and 
 
 ```mermaid
 graph TD
-    subgraph WebWorkbench ["Web Workbench (web/)"]
+    subgraph WebWorkbench ["Web Workbench (web/) -- runs in the browser"]
         UI["Vite + TypeScript + SVG Deluxe Map (web/ui/)"]
-        HUD["Decision HUD & Action Dispatcher"]
+        Session["Game session: stepping, undo, log, links (web/ui/src/game/)"]
+        Analysis["Model analysis: ONNX in onnxruntime-web (web/ui/src/analysis/)"]
+        Wasm["ts_engine as WebAssembly (bindings/wasm/)"]
         Replayer["Replay & Timeline Player"]
-        Server["FastAPI REST & WebSocket Game Server (web/server/)"]
-        WS["WebSocket Game Session Manager"]
-        Logger["Replay Recorder (.tslog.json)"]
-        UI <-->|WebSocket: JSON State / Actions| WS
-        WS <--> Server
-        Server <--> Logger
+        Server["Local files server: checkpoints -> ONNX, replays (web/server/)"]
+        UI <--> Session
+        Session <--> Wasm
+        Analysis <--> Wasm
+        Analysis <-->|HTTP: .onnx| Server
     end
 
     subgraph NeuralAI ["Neural Network & RL (ai/)"]
@@ -70,15 +71,13 @@ graph TD
         Cards["ts::CardData (110 Cards Event Logic)"]
     end
 
-    WebBotRunner["WebSocket bot_client.py (web/)"] <-->|WebSocket| WS
-    WS <--> Nanobind
+    Wasm <-.->|same C++, bit-identical games| CoreEngine
     Nanobind <--> CoreEngine
     VecEnv <--> Nanobind
     VecEnv <--> NashPG
     NashPG <--> ColdWarNet
     Rewards <--> NashPG
     ColdWarNet --> NeuralBotClient
-    NeuralBotClient --> WebBotRunner
     SharedLib <--> ColdWarNet
 ```
 
@@ -104,6 +103,9 @@ graph TD
 │   ├── CMakeLists.txt          # nanobind module build configuration
 │   ├── AGENTS.md               # Specific instructions for maintaining Python bindings
 │   ├── ts_bindings.cpp         # nanobind module exporting ts_engine & VectorizedBatchRunner
+│   ├── state_json.{hpp,cpp}    # display state + save as JSON, shared with the WebAssembly build
+│   ├── selftest.hpp            # whole-game digest compiled into both builds (parity check)
+│   ├── wasm/ts_engine_wasm.cpp # the engine's C API for the browser (Emscripten, build_web.sh)
 │   ├── ts_engine/              # GENERATED stub package (__init__.pyi + one file per submodule)
 │   ├── ts_engine.pyi.pattern   # Hand-written overrides the stub generator cannot introspect
 │   ├── action_encoder.py       # 212-dim Flat Action <-> MicroAction bidirectional codec
@@ -139,13 +141,13 @@ graph TD
 │
 ├── deploy/web/                 # Dockerfile (+ compose, README) deploying the workbench from GitHub
 │
-├── web/                        # Web Workbench (UI + Backend Server + Bot Client)
-│   ├── bot_client.py           # WebSocket network bot runner for browser matches
-│   ├── ui/                     # Vite + TypeScript + SVG Deluxe Map (map view, HUD, tracks,
-│   │                           # debug panel, replay controls)
-│   └── server/                 # FastAPI Game Server & Replay Manager (see web/server/AGENTS.md)
-│       ├── main.py             # FastAPI app, REST routes, WebSocket endpoint /ws/game/{id}
-│       ├── session.py          # GameSession class, action router, state broadcasting
+├── web/                        # Web Workbench -- runs in the browser (see web/ui/AGENTS.md)
+│   ├── ui/                     # Vite + TypeScript + SVG: the map, HUD, tracks, replay controls,
+│   │                           # the game session (src/game), model analysis (src/analysis) and
+│   │                           # the WebAssembly engine loader (src/engine)
+│   └── server/                 # Local files server & replay writer (see web/server/AGENTS.md)
+│       ├── main.py             # the page + /api/local/{info,models,replays}
+│       ├── local_files.py      # checkpoint listing and on-demand ONNX export cache
 │       ├── replay.py           # ReplayLogger and ReplayManager
 │       └── replay_types.py     # TypedDict specifications for state, action, and logs
 │
@@ -207,7 +209,7 @@ graph TD
 ├── rules/                      # Formal spec the engine implements (tracked, except the PDF)
 │   ├── Rules_Final.pdf         # [GIT IGNORED] Official rulebook -- GMT Games copyright, not ours to commit
 │   ├── rules.md / rules.json   # Formal mathematical rules specification
-│   ├── cards.json              # 110-card metadata, served to the web UI at /api/metadata/cards
+│   ├── cards.json              # 110-card metadata, bundled into the web UI (web/ui/src/metadata.ts)
 │   ├── flags.json              # 43 persistent continuous effect & state bits
 │   └── map.json / map.md       # 84-country graph topology & coordinates
 │
@@ -364,31 +366,37 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
   --output-report <run-dir>/tournament_report.md
 ```
 
-### 3.4 Launch Web Workbench & Play Against NeuralBot
+### 3.4 Launch the Web Workbench
 ```bash
-# 1. Start backend server (serves web UI on port 8000)
-PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
+# 1. Build the page and its WebAssembly engine (needs Emscripten: tools/scripts/install_emsdk.sh).
+#    Rebuild after any engine change -- the page runs its own copy of the engine.
+tools/scripts/build_web.sh
 
-# 2. In a separate terminal, launch NeuralBot for the opponent (e.g. USSR)
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR \
-  --type neural --model-path <checkpoint.pt>
+# 2. Serve it, with this machine's checkpoints and replays
+PYTHONPATH=.:build/release .venv/bin/python -m web.server.main --port 8000
 
-# 3. Open browser at:
-# http://localhost:8000/?game_id=game-1&role=US
+# 3. Open http://localhost:8000/
 ```
 
-**Analysis mode** (no bot needed): open `http://localhost:8000/?game_id=game-1`, pick a run and
-snapshot in the *Model Analysis* panel, and every position shows that checkpoint's probability on
-each card, button and country plus its critic for both sides; *★ Play favourite* (or `F`) plays its
-argmax in the model's own action view, and any move can still be made by hand. *Auto-play*
-(none / USSR / US) makes that side play the favourite by itself, so you play the model from the
-other seat. The address bar always carries `game_id`, `model`, `auto` and `pos` (the position itself), updated with `replaceState`, so
-copying it shares the exact board. `$TS_ANALYSIS_DEVICE` (default `cpu`) picks the device; see
-`web/server/analysis.py` and `web/server/AGENTS.md`.
+The workbench serves three purposes, all in the page:
 
-**Deployment:** `deploy/web/Dockerfile` builds the server, engine and UI from the GitHub
-repository (`main` by default, `--build-arg REF=` for another ref) with a portable `-march`, CPU
-torch, and checkpoints mounted at `/data/checkpoints`; see `deploy/web/README.md`.
+* **Watch replays** -- the local server's list, *Load Replay*, or drop a `.tslog.json` on the page.
+  A traced replay shows the model's probabilities and critic at every step.
+* **Test the engine by playing it** -- click any move for either side; the HUD's die selector forces
+  rolls, *Debug Tools* sets influence, DEFCON and VP (undoable), *Export Replay* saves the game.
+* **Play with a model** -- in *Model Analysis* pick a local checkpoint (exported to ONNX on first
+  use, `tools/export_onnx.py`), a Hugging Face repo's `.onnx`, or drop an `.onnx` file. Every
+  position then shows its probability on each card, button and country plus its critic for both
+  sides; *★ Play favourite* (or `F`) plays its argmax in the model's own action view, and
+  *Auto-play* (none / USSR / US) makes that side play by itself.
+
+The address bar always carries `pos` (the position itself), `model` and `auto`, updated with
+`replaceState`, so copying it shares the exact board. The engine badge shows the page engine's
+fingerprint and turns **STALE** when the local sources have moved on from the build the page loaded.
+
+**Deployment:** GitHub Pages publishes the page with no server (`.github/workflows/pages.yml`);
+`deploy/web/Dockerfile` builds page, engine and local server from the GitHub repository with
+checkpoints mounted at `/data/checkpoints`. See `deploy/web/README.md`.
 
 ### 3.5 Reusable Agent CLI Tools (`tools/`)
 
@@ -530,12 +538,14 @@ Pick by what you touched; the table is the whole rule.
 | `engine/`, `bindings/` | C++ suite + `tests/bindings tests/engine_logic` | ~30s |
 | `tools/lib/ts_replayer_*` | the above + `tests/replayer` | ~6.5 min |
 | `ai/`, `bot/`, `tools/` | the above + `tests/training` | ~7 min |
-| `web/server/`, `web/ui/`, `web/bot_client.py` | **also** `tests/web` (see prerequisites) | +5s |
+| `web/server/`, `web/ui/` | **also** `tests/web` (see prerequisites) | ~40s |
 
-**Do not run `tests/web` for engine, bindings, AI or tools changes.** It cannot tell you anything
+**Do not run the whole of `tests/web` for AI or tools changes.** It cannot tell you anything
 about them, and it fails for reasons that have nothing to do with your change: the frontend tests
-need `web/ui/dist` built and the E2E tests need a Playwright browser installed, neither of which is
-in the repository. A red web suite on an engine change is noise that trains you to ignore failures.
+need `web/ui/dist` built (`tools/scripts/build_web.sh`) and the E2E tests need a Playwright browser
+installed, neither of which is in the repository. The exception is an engine or bindings change:
+the workbench runs the engine as WebAssembly, and `tests/web/test_wasm_engine.py` (after
+`tools/scripts/build_web.sh --engine`) is what proves that build still plays the native games.
 
 ### The ts-replayer corpus
 

@@ -24,6 +24,9 @@
 #include "ts/state_machine.hpp"
 #include "ts/serialization.hpp"
 #include "ts/engine.hpp"
+#include "state_json.hpp"
+#include "selftest.hpp"
+#include <nanobind/stl/pair.h>
 
 // The batch runner's parallel loops go through libgomp's own entry point, not `#pragma omp`.
 //
@@ -98,581 +101,104 @@ static const char* decision_type_to_str(ts::DecisionType dt) {
         ". Use try_step/try_step_flat if you meant to probe legality.");
 }
 
-static const char* roll_type_to_str(ts::RollType t) noexcept {
-    switch (t) {
-        case ts::RollType::COUP: return "COUP";
-        case ts::RollType::REALIGNMENT: return "REALIGNMENT";
-        case ts::RollType::SPACE_RACE: return "SPACE_RACE";
-        case ts::RollType::WAR_EVENT: return "WAR_EVENT";
-        case ts::RollType::OLYMPIC_GAMES: return "OLYMPIC_GAMES";
-        case ts::RollType::SUMMIT: return "SUMMIT";
-        case ts::RollType::TRAP_ESCAPE: return "TRAP_ESCAPE";
-        case ts::RollType::TURN_CLEANUP: return "TURN_CLEANUP";
-        default: return "NONE";
-    }
-}
-
-static const char* phase_to_str(ts::Phase phase) {
-    switch (phase) {
-        case ts::Phase::SETUP: return "SETUP";
-        case ts::Phase::HEADLINE: return "HEADLINE";
-        case ts::Phase::ACTION_ROUND: return "ACTION_ROUND";
-        case ts::Phase::INTERRUPT: return "INTERRUPT";
-        case ts::Phase::DISCARD: return "DISCARD";
-        case ts::Phase::END_TURN: return "END_TURN";
-        case ts::Phase::GAME_OVER: return "GAME_OVER";
-        default: return "UNKNOWN";
-    }
-}
-
-static const char* play_mode_to_str(uint8_t mode) {
-    // P17: a SELECT_PLAY_MODE node carries a Resolution, so this names those.
-    switch (mode) {
-        case static_cast<uint8_t>(ts::Resolution::EVENT): return "EVENT";
-        case static_cast<uint8_t>(ts::Resolution::SPACE): return "SPACE";
-        case static_cast<uint8_t>(ts::Resolution::OPS_INFLUENCE): return "OPS_INFLUENCE";
-        case static_cast<uint8_t>(ts::Resolution::OPS_COUP): return "OPS_COUP";
-        case static_cast<uint8_t>(ts::Resolution::OPS_REALIGN): return "OPS_REALIGN";
-        default: return "UNKNOWN";
-    }
-}
-
-static const char* op_mode_to_str(uint8_t mode) {
-    switch (mode) {
-        case static_cast<uint8_t>(ts::OpMode::INFLUENCE): return "INFLUENCE";
-        case static_cast<uint8_t>(ts::OpMode::COUP): return "COUP";
-        case static_cast<uint8_t>(ts::OpMode::REALIGN): return "REALIGN";
-        default: return "UNKNOWN";
-    }
-}
-
-static const char* timing_branch_to_str(uint8_t branch) {
-    switch (branch) {
-        case static_cast<uint8_t>(ts::TimingBranch::OPS_FIRST): return "OPS_FIRST";
-        case static_cast<uint8_t>(ts::TimingBranch::EVENT_FIRST): return "EVENT_FIRST";
-        default: return "UNKNOWN";
-    }
-}
-
-// Helper: Convert entire GameState to a detailed Python dictionary
+// ---- the state as Python objects ------------------------------------------------------------
+//
+// The display state and the save are written once, as JSON trees, in state_json.cpp -- shared
+// with the WebAssembly build the browser workbench runs, so the two cannot drift. Here the tree
+// is only converted to and from Python objects.
 namespace {
 
-// Named-field save format for a game's STARTING position. See from_save_dict for the scope.
-nb::dict game_state_to_save_dict(const ts::GameState& state) {
-    nb::dict d;
-    d["format"] = "ts_save_v2";   // v1 dropped the decision stack; readers must know which
+namespace sj = ts::state_json;
 
-    d["victory_points"] = state.victory_points;
-    d["defcon"] = state.defcon;
-    d["turn"] = state.turn;
-    d["action_round"] = state.action_round;
-    d["us_mil_ops"] = state.us_mil_ops;
-    d["ussr_mil_ops"] = state.ussr_mil_ops;
-    d["us_space_track"] = state.us_space_track;
-    d["ussr_space_track"] = state.ussr_space_track;
-    d["phasing_player"] = static_cast<int>(state.phasing_player);
-    d["current_phase"] = static_cast<int>(state.current_phase);
-    d["headline_us_card"] = state.headline_us_card;
-    d["headline_ussr_card"] = state.headline_ussr_card;
-    d["headline_first_card"] = state.headline_first_card;
-    d["headline_second_card"] = state.headline_second_card;
-    d["headline_stage"] = state.headline_stage;
-    d["forced_card_player"] = static_cast<int>(state.forced_card_player);
-    d["forced_card_id"] = state.forced_card_id;
-    d["defcon_dropped_to_2"] = state.defcon_dropped_to_2;
-    d["china_card_holder"] = static_cast<int>(state.china_card_holder);
-    d["china_card_playable"] = state.china_card_playable;
-    d["persistent_effects"] = state.persistent_effects;
-    d["rng_state"] = state.rng_state;
-
-    d["headline_first_owner"] = static_cast<int>(state.headline_first_owner);
-    d["headline_second_owner"] = static_cast<int>(state.headline_second_owner);
-    d["last_die_roll"] = state.last_die_roll;
-    d["last_opp_die_roll"] = state.last_opp_die_roll;
-
-    nb::dict roll;
-    roll["type"] = static_cast<int>(state.last_roll.type);
-    roll["roller"] = static_cast<int>(state.last_roll.roller);
-    roll["card_id"] = state.last_roll.card_id;
-    roll["country_id"] = state.last_roll.country_id;
-    roll["roll1"] = state.last_roll.roll1;
-    roll["mod1"] = state.last_roll.mod1;
-    roll["roll2"] = state.last_roll.roll2;
-    roll["mod2"] = state.last_roll.mod2;
-    roll["success"] = state.last_roll.success;
-    roll["net_delta"] = state.last_roll.net_delta;
-    d["last_roll"] = roll;
-
-    // The decision state machine. Without this the restored state is pointing at a different
-    // decision than the saved one, and every legal action and every observation differs.
-    nb::list frames;
-    for (size_t i = 0; i < state.ctx_stack.size(); ++i) {
-        const ts::DecisionContext& c = state.ctx_stack[i];
-        nb::dict f;
-        f["decision_player"] = static_cast<int>(c.decision_player);
-        f["decision_type"] = static_cast<int>(c.decision_type);
-        f["op_mode"] = static_cast<int>(c.op_mode);
-        f["pending_op_card"] = c.pending_op_card;
-        f["pending_ops_value"] = c.pending_ops_value;
-        f["remaining_steps"] = c.remaining_steps;
-        f["max_per_country"] = c.max_per_country;
-        f["allow_early_stop"] = c.allow_early_stop;
-        f["resolving_card"] = c.resolving_card;
-        f["timing_branch"] = c.timing_branch;
-        f["suppress_op_card_event"] = c.suppress_op_card_event;
-        f["event_granted_ops"] = c.event_granted_ops;
-        f["pending_roll"] = static_cast<int>(c.pending_roll);
-        f["roll_target"] = c.roll_target;
-        f["roll_actor"] = static_cast<int>(c.roll_actor);
-        f["event_stage"] = c.event_stage;
-        nb::list si, vn, nc;
-        for (size_t k = 0; k < c.start_influence_nodes.size(); ++k) si.append(c.start_influence_nodes[k]);
-        for (size_t k = 0; k < c.visited_nodes.size(); ++k) vn.append(c.visited_nodes[k]);
-        for (size_t k = 0; k < c.node_count_bits.size(); ++k) nc.append(c.node_count_bits[k]);
-        f["start_influence_nodes"] = si;
-        f["visited_nodes"] = vn;
-        f["node_count_bits"] = nc;
-        frames.append(f);
+nb::object to_py(const sj::Value& v) {
+    switch (v.kind()) {
+        case sj::Value::Kind::Null: return nb::none();
+        case sj::Value::Kind::Bool: return nb::bool_(v.as_bool());
+        case sj::Value::Kind::Int: return nb::cast(v.as_int());
+        case sj::Value::Kind::UInt: return nb::cast(v.as_uint());
+        case sj::Value::Kind::Double: return nb::float_(v.as_double());
+        case sj::Value::Kind::String: return nb::str(v.as_string().c_str(), v.as_string().size());
+        case sj::Value::Kind::Array: {
+            nb::list out;
+            for (const auto& item : v.items()) out.append(to_py(item));
+            return out;
+        }
+        case sj::Value::Kind::Object: {
+            nb::dict out;
+            for (const auto& [key, item] : v.members()) out[nb::str(key.c_str(), key.size())] = to_py(item);
+            return out;
+        }
     }
-    d["ctx_stack"] = frames;
-    d["ctx_stack_depth"] = state.ctx_stack_depth;
-
-    nb::list locs;
-    for (int i = 0; i <= 110; ++i) locs.append(static_cast<int>(state.card_locations[i]));
-    d["card_locations"] = locs;
-
-    nb::list us_inf, ussr_inf;
-    for (int i = 0; i < 84; ++i) {
-        us_inf.append(state.countries[i].us_influence);
-        ussr_inf.append(state.countries[i].ussr_influence);
-    }
-    d["us_influence"] = us_inf;
-    d["ussr_influence"] = ussr_inf;
-    return d;
+    return nb::none();
 }
 
-template <typename T>
-T save_get(const nb::dict& d, const char* key, T fallback) {
-    if (!d.contains(key)) return fallback;   // missing field -> default, so old saves still load
-    try { return nb::cast<T>(d[key]); } catch (...) { return fallback; }
+// Python -> tree. A value the tree has no kind for, or an int past 64 bits, becomes null, which
+// the loader treats as a wrong-type scalar: its default, as the old nb::cast try/catch did.
+sj::Value from_py(nb::handle h) {
+    PyObject* o = h.ptr();
+    if (o == Py_None) return sj::Value();
+    if (PyBool_Check(o)) return sj::Value(o == Py_True);
+    if (PyLong_Check(o)) {
+        int overflow = 0;
+        const long long s = PyLong_AsLongLongAndOverflow(o, &overflow);
+        if (overflow == 0 && !(s == -1 && PyErr_Occurred())) return sj::Value(static_cast<int64_t>(s));
+        PyErr_Clear();
+        if (overflow > 0) {
+            const unsigned long long u = PyLong_AsUnsignedLongLong(o);
+            if (!(u == static_cast<unsigned long long>(-1) && PyErr_Occurred())) return sj::Value(static_cast<uint64_t>(u));
+            PyErr_Clear();
+        }
+        return sj::Value();
+    }
+    if (PyFloat_Check(o)) return sj::Value(PyFloat_AsDouble(o));
+    if (PyUnicode_Check(o)) return sj::Value(std::string(nb::cast<std::string_view>(h)));
+    if (PyDict_Check(o)) {
+        sj::Value out = sj::Value::object();
+        for (auto [k, v] : nb::borrow<nb::dict>(h)) {
+            if (!PyUnicode_Check(k.ptr())) continue;
+            out.set(std::string(nb::cast<std::string_view>(k)), from_py(v));
+        }
+        return out;
+    }
+    if (PyList_Check(o) || PyTuple_Check(o)) {
+        sj::Value out = sj::Value::array();
+        for (nb::handle item : nb::borrow<nb::sequence>(h)) out.push(from_py(item));
+        return out;
+    }
+    return sj::Value();
+}
+
+// Named-field save format of a position. See state_json.hpp for the scope.
+nb::dict game_state_to_save_dict(const ts::GameState& state) {
+    return nb::borrow<nb::dict>(to_py(sj::save(state)));
 }
 
 ts::GameState game_state_from_save_dict(const nb::dict& d) {
     ts::GameState s{};
-    ts::Engine::init_game(s, 1);   // a valid baseline; every field below overwrites it
+    std::string error;
+    if (!sj::load_save(from_py(d), s, &error)) throw std::invalid_argument("bad save: " + error);
+    return s;
+}
 
-    s.victory_points = save_get<int8_t>(d, "victory_points", s.victory_points);
-    s.defcon = save_get<uint8_t>(d, "defcon", s.defcon);
-    s.turn = save_get<uint8_t>(d, "turn", s.turn);
-    s.action_round = save_get<uint8_t>(d, "action_round", s.action_round);
-    s.us_mil_ops = save_get<uint8_t>(d, "us_mil_ops", s.us_mil_ops);
-    s.ussr_mil_ops = save_get<uint8_t>(d, "ussr_mil_ops", s.ussr_mil_ops);
-    s.us_space_track = save_get<uint8_t>(d, "us_space_track", s.us_space_track);
-    s.ussr_space_track = save_get<uint8_t>(d, "ussr_space_track", s.ussr_space_track);
-    s.phasing_player = static_cast<ts::Player>(
-        save_get<int>(d, "phasing_player", static_cast<int>(s.phasing_player)));
-    s.current_phase = static_cast<ts::Phase>(
-        save_get<int>(d, "current_phase", static_cast<int>(s.current_phase)));
-    s.headline_us_card = save_get<uint8_t>(d, "headline_us_card", s.headline_us_card);
-    s.headline_ussr_card = save_get<uint8_t>(d, "headline_ussr_card", s.headline_ussr_card);
-    s.headline_first_card = save_get<uint8_t>(d, "headline_first_card", s.headline_first_card);
-    s.headline_second_card = save_get<uint8_t>(d, "headline_second_card", s.headline_second_card);
-    s.headline_stage = save_get<uint8_t>(d, "headline_stage", s.headline_stage);
-    s.forced_card_player = static_cast<ts::Player>(
-        save_get<int>(d, "forced_card_player", static_cast<int>(s.forced_card_player)));
-    s.forced_card_id = save_get<uint8_t>(d, "forced_card_id", s.forced_card_id);
-    s.defcon_dropped_to_2 = save_get<uint8_t>(d, "defcon_dropped_to_2", s.defcon_dropped_to_2);
-    s.china_card_holder = static_cast<ts::Player>(
-        save_get<int>(d, "china_card_holder", static_cast<int>(s.china_card_holder)));
-    s.china_card_playable = save_get<uint8_t>(d, "china_card_playable", s.china_card_playable);
-    s.persistent_effects = save_get<uint64_t>(d, "persistent_effects", s.persistent_effects);
-    s.rng_state = save_get<uint64_t>(d, "rng_state", s.rng_state);
+std::string game_state_to_save_json(const ts::GameState& state) { return sj::save(state).dump(); }
 
-    s.headline_first_owner = static_cast<ts::Player>(
-        save_get<int>(d, "headline_first_owner", static_cast<int>(s.headline_first_owner)));
-    s.headline_second_owner = static_cast<ts::Player>(
-        save_get<int>(d, "headline_second_owner", static_cast<int>(s.headline_second_owner)));
-    s.last_die_roll = save_get<uint8_t>(d, "last_die_roll", s.last_die_roll);
-    s.last_opp_die_roll = save_get<uint8_t>(d, "last_opp_die_roll", s.last_opp_die_roll);
-
-    if (d.contains("last_roll")) {
-        nb::dict roll = nb::cast<nb::dict>(d["last_roll"]);
-        s.last_roll.type = static_cast<ts::RollType>(
-            save_get<int>(roll, "type", static_cast<int>(s.last_roll.type)));
-        s.last_roll.roller = static_cast<ts::Player>(
-            save_get<int>(roll, "roller", static_cast<int>(s.last_roll.roller)));
-        s.last_roll.card_id = save_get<uint8_t>(roll, "card_id", s.last_roll.card_id);
-        s.last_roll.country_id = save_get<uint8_t>(roll, "country_id", s.last_roll.country_id);
-        s.last_roll.roll1 = save_get<uint8_t>(roll, "roll1", s.last_roll.roll1);
-        s.last_roll.mod1 = save_get<int8_t>(roll, "mod1", s.last_roll.mod1);
-        s.last_roll.roll2 = save_get<uint8_t>(roll, "roll2", s.last_roll.roll2);
-        s.last_roll.mod2 = save_get<int8_t>(roll, "mod2", s.last_roll.mod2);
-        s.last_roll.success = save_get<bool>(roll, "success", s.last_roll.success);
-        s.last_roll.net_delta = save_get<int8_t>(roll, "net_delta", s.last_roll.net_delta);
-    }
-
-    if (d.contains("ctx_stack")) {
-        nb::list frames = nb::cast<nb::list>(d["ctx_stack"]);
-        for (size_t i = 0; i < frames.size() && i < s.ctx_stack.size(); ++i) {
-            nb::dict f = nb::cast<nb::dict>(frames[i]);
-            ts::DecisionContext& c = s.ctx_stack[i];
-            c = ts::DecisionContext{};
-            c.decision_player = static_cast<ts::Player>(save_get<int>(f, "decision_player", 0));
-            c.decision_type = static_cast<ts::DecisionType>(save_get<int>(f, "decision_type", 0));
-            c.op_mode = static_cast<ts::OpMode>(save_get<int>(f, "op_mode", 0));
-            c.pending_op_card = save_get<uint8_t>(f, "pending_op_card", 0);
-            c.pending_ops_value = save_get<uint8_t>(f, "pending_ops_value", 0);
-            c.remaining_steps = save_get<uint8_t>(f, "remaining_steps", 0);
-            c.max_per_country = save_get<uint8_t>(f, "max_per_country", 0);
-            c.allow_early_stop = save_get<uint8_t>(f, "allow_early_stop", 0);
-            c.resolving_card = save_get<uint8_t>(f, "resolving_card", 0);
-            c.timing_branch = save_get<uint8_t>(f, "timing_branch", 0);
-            c.suppress_op_card_event = save_get<uint8_t>(f, "suppress_op_card_event", 0);
-            c.event_granted_ops = save_get<uint8_t>(f, "event_granted_ops", 0);
-            c.pending_roll = static_cast<ts::RollType>(save_get<int>(f, "pending_roll", 0));
-            c.roll_target = save_get<uint8_t>(f, "roll_target", 0);
-            c.roll_actor = static_cast<ts::Player>(save_get<int>(f, "roll_actor", 0));
-            c.event_stage = save_get<uint8_t>(f, "event_stage", 0);
-            if (f.contains("start_influence_nodes")) {
-                nb::list v = nb::cast<nb::list>(f["start_influence_nodes"]);
-                for (size_t k = 0; k < v.size() && k < c.start_influence_nodes.size(); ++k)
-                    c.start_influence_nodes[k] = nb::cast<uint64_t>(v[k]);
-            }
-            if (f.contains("visited_nodes")) {
-                nb::list v = nb::cast<nb::list>(f["visited_nodes"]);
-                for (size_t k = 0; k < v.size() && k < c.visited_nodes.size(); ++k)
-                    c.visited_nodes[k] = nb::cast<uint64_t>(v[k]);
-            }
-            if (f.contains("node_count_bits")) {
-                nb::list v = nb::cast<nb::list>(f["node_count_bits"]);
-                for (size_t k = 0; k < v.size() && k < c.node_count_bits.size(); ++k)
-                    c.node_count_bits[k] = nb::cast<uint64_t>(v[k]);
-            }
-        }
-    }
-    s.ctx_stack_depth = save_get<uint8_t>(d, "ctx_stack_depth", s.ctx_stack_depth);
-
-    if (d.contains("card_locations")) {
-        nb::list locs = nb::cast<nb::list>(d["card_locations"]);
-        for (size_t i = 0; i < locs.size() && i <= 110; ++i) {
-            s.card_locations[i] = static_cast<ts::CardLocation>(nb::cast<int>(locs[i]));
-        }
-    }
-    if (d.contains("us_influence") && d.contains("ussr_influence")) {
-        nb::list us_inf = nb::cast<nb::list>(d["us_influence"]);
-        nb::list ussr_inf = nb::cast<nb::list>(d["ussr_influence"]);
-        for (size_t i = 0; i < us_inf.size() && i < 84; ++i) {
-            s.countries[i].us_influence = nb::cast<uint8_t>(us_inf[i]);
-        }
-        for (size_t i = 0; i < ussr_inf.size() && i < 84; ++i) {
-            s.countries[i].ussr_influence = nb::cast<uint8_t>(ussr_inf[i]);
-        }
-    }
+ts::GameState game_state_from_save_json(const std::string& text) {
+    sj::Value v;
+    std::string error;
+    if (!sj::Value::parse(text, v, &error)) throw std::invalid_argument("save is not JSON: " + error);
+    ts::GameState s{};
+    if (!sj::load_save(v, s, &error)) throw std::invalid_argument("bad save: " + error);
     return s;
 }
 
 }  // namespace
 
 nb::dict game_state_to_dict(const ts::GameState& state) {
-    nb::dict d;
+    return nb::borrow<nb::dict>(to_py(sj::display_state(state)));
+}
 
-    // 1. Global Tracks
-    d["victory_points"] = state.victory_points;
-    d["defcon"] = state.defcon;
-    nb::dict mil_ops;
-    mil_ops["US"] = state.us_mil_ops;
-    mil_ops["USSR"] = state.ussr_mil_ops;
-    d["mil_ops"] = mil_ops;
-
-    nb::dict space;
-    space["US"] = state.us_space_track;
-    space["USSR"] = state.ussr_space_track;
-    d["space"] = space;
-
-    d["turn"] = state.turn;
-    d["action_round"] = state.action_round;
-
-    // 2. Phasing & Priority
-    d["phasing_player"] = (state.phasing_player == ts::Player::US ? "US" : (state.phasing_player == ts::Player::USSR ? "USSR" : "NONE"));
-    d["current_phase"] = static_cast<int>(state.current_phase);
-    d["current_phase_name"] = phase_to_str(state.current_phase);
-    d["phase_name"] = phase_to_str(state.current_phase);
-    d["headline_us_card"] = state.headline_us_card;
-    d["headline_ussr_card"] = state.headline_ussr_card;
-    d["headline_first_card"] = state.headline_first_card;
-    d["headline_second_card"] = state.headline_second_card;
-    d["headline_stage"] = state.headline_stage;
-    d["forced_card_player"] = (state.forced_card_player == ts::Player::US ? "US" : (state.forced_card_player == ts::Player::USSR ? "USSR" : "NONE"));
-    d["forced_card_id"] = state.forced_card_id;
-    d["last_die_roll"] = state.last_die_roll;
-    d["last_opp_die_roll"] = state.last_opp_die_roll;
-
-    nb::dict die_roll;
-    die_roll["type"] = roll_type_to_str(state.last_roll.type);
-    die_roll["type_id"] = static_cast<uint8_t>(state.last_roll.type);
-    die_roll["roller"] = (state.last_roll.roller == ts::Player::US ? "US" : (state.last_roll.roller == ts::Player::USSR ? "USSR" : "NONE"));
-    die_roll["card_id"] = state.last_roll.card_id;
-    die_roll["card_name"] = (state.last_roll.card_id >= 1 && state.last_roll.card_id <= 110) ? std::string(ts::CardData::get_card(state.last_roll.card_id).name) : "";
-    die_roll["country_id"] = state.last_roll.country_id;
-    die_roll["country_name"] = (state.last_roll.country_id < 84) ? std::string(ts::MapData::get_country(state.last_roll.country_id).name) : "";
-    die_roll["roll1"] = state.last_roll.roll1;
-    die_roll["mod1"] = state.last_roll.mod1;
-    die_roll["total1"] = state.last_roll.roll1 + state.last_roll.mod1;
-    die_roll["roll2"] = state.last_roll.roll2;
-    die_roll["mod2"] = state.last_roll.mod2;
-    die_roll["total2"] = state.last_roll.roll2 + state.last_roll.mod2;
-    die_roll["success"] = state.last_roll.success;
-    die_roll["net_delta"] = state.last_roll.net_delta;
-    d["die_roll"] = die_roll;
-
-    // 3. Space turns used
-    nb::dict space_turns;
-    space_turns["US"] = state.get_space_turns_used(ts::Player::US);
-    space_turns["USSR"] = state.get_space_turns_used(ts::Player::USSR);
-    d["space_turns_used"] = space_turns;
-
-    // 4. China Card
-    nb::dict china;
-    china["holder"] = (state.china_card_holder == ts::Player::US ? "US" : "USSR");
-    china["playable"] = (state.china_card_playable != 0);
-    d["china_card"] = china;
-
-    // 5. Persistent Flags
-    nb::list flags;
-    #define CHECK_FLAG(f, name) if (state.has_flag(ts::effect_bits::f)) flags.append(name)
-    CHECK_FLAG(NATO_ACTIVE, "NATO_ACTIVE");
-    CHECK_FLAG(NATO_CANCELED_FRANCE, "NATO_CANCELED_FRANCE");
-    CHECK_FLAG(NATO_CANCELED_WEST_GERMANY, "NATO_CANCELED_WEST_GERMANY");
-    CHECK_FLAG(MARSHALL_PLAN_PLAYED, "MARSHALL_PLAN_PLAYED");
-    CHECK_FLAG(WARSAW_PACT_PLAYED, "WARSAW_PACT_PLAYED");
-    CHECK_FLAG(US_JAPAN_PACT_ACTIVE, "US_JAPAN_PACT_ACTIVE");
-    CHECK_FLAG(CONTAINMENT_ACTIVE, "CONTAINMENT_ACTIVE");
-    CHECK_FLAG(PURGE_US_ACTIVE, "PURGE_US_ACTIVE");
-    CHECK_FLAG(PURGE_USSR_ACTIVE, "PURGE_USSR_ACTIVE");
-    CHECK_FLAG(VIETNAM_REVOLTS_ACTIVE, "VIETNAM_REVOLTS_ACTIVE");
-    CHECK_FLAG(FORMOSAN_RESOLUTION_ACTIVE, "FORMOSAN_RESOLUTION_ACTIVE");
-    CHECK_FLAG(CMC_ACTIVE_US, "CMC_ACTIVE_US");
-    CHECK_FLAG(CMC_ACTIVE_USSR, "CMC_ACTIVE_USSR");
-    CHECK_FLAG(NUCLEAR_SUBS_ACTIVE, "NUCLEAR_SUBS_ACTIVE");
-    CHECK_FLAG(QUAGMIRE_ACTIVE, "QUAGMIRE_ACTIVE");
-    CHECK_FLAG(BEAR_TRAP_ACTIVE, "BEAR_TRAP_ACTIVE");
-    CHECK_FLAG(SALT_ACTIVE, "SALT_ACTIVE");
-    CHECK_FLAG(WE_WILL_BURY_YOU_PENDING, "WE_WILL_BURY_YOU_PENDING");
-    CHECK_FLAG(BREZHNEV_DOCTRINE_ACTIVE, "BREZHNEV_DOCTRINE_ACTIVE");
-    CHECK_FLAG(FLOWER_POWER_ACTIVE, "FLOWER_POWER_ACTIVE");
-    CHECK_FLAG(U2_INCIDENT_ACTIVE, "U2_INCIDENT_ACTIVE");
-    CHECK_FLAG(SHUTTLE_DIPLOMACY_ACTIVE, "SHUTTLE_DIPLOMACY_ACTIVE");
-    CHECK_FLAG(DEATH_SQUADS_US, "DEATH_SQUADS_US");
-    CHECK_FLAG(DEATH_SQUADS_USSR, "DEATH_SQUADS_USSR");
-    CHECK_FLAG(CAMP_DAVID_PLAYED, "CAMP_DAVID_PLAYED");
-    CHECK_FLAG(IRON_LADY_PLAYED, "IRON_LADY_PLAYED");
-    CHECK_FLAG(NORTH_SEA_OIL_PLAYED, "NORTH_SEA_OIL_PLAYED");
-    CHECK_FLAG(NORTH_SEA_OIL_ACTIVE, "NORTH_SEA_OIL_ACTIVE");
-    CHECK_FLAG(THE_REFORMER_PLAYED, "THE_REFORMER_PLAYED");
-    CHECK_FLAG(IRAN_CONTRA_ACTIVE, "IRAN_CONTRA_ACTIVE");
-    CHECK_FLAG(EVIL_EMPIRE_PLAYED, "EVIL_EMPIRE_PLAYED");
-    CHECK_FLAG(ALDRICH_AMES_ACTIVE, "ALDRICH_AMES_ACTIVE");
-    CHECK_FLAG(JOHN_PAUL_II_PLAYED, "JOHN_PAUL_II_PLAYED");
-    CHECK_FLAG(NORAD_ACTIVE, "NORAD_ACTIVE");
-    CHECK_FLAG(YURI_AND_SAMANTHA_ACTIVE, "YURI_AND_SAMANTHA_ACTIVE");
-    CHECK_FLAG(AWACS_PLAYED, "AWACS_PLAYED");
-    CHECK_FLAG(IRANIAN_HOSTAGE_CRISIS_PLAY, "IRANIAN_HOSTAGE_CRISIS_PLAY");
-    CHECK_FLAG(WILLY_BRANDT_PLAYED, "WILLY_BRANDT_PLAYED");
-    CHECK_FLAG(TEAR_DOWN_THIS_WALL_PLAYED, "TEAR_DOWN_THIS_WALL_PLAYED");
-    CHECK_FLAG(CHERNOBYL_ACTIVE, "CHERNOBYL_ACTIVE");
-    CHECK_FLAG(SPACE_US_ATTEMPT_1, "SPACE_US_ATTEMPT_1");
-    CHECK_FLAG(SPACE_US_ATTEMPT_2, "SPACE_US_ATTEMPT_2");
-    CHECK_FLAG(SPACE_USSR_ATTEMPT_1, "SPACE_USSR_ATTEMPT_1");
-    CHECK_FLAG(SPACE_USSR_ATTEMPT_2, "SPACE_USSR_ATTEMPT_2");
-    CHECK_FLAG(DEFCON_SUICIDE_PROVOKED, "DEFCON_SUICIDE_PROVOKED");
-    CHECK_FLAG(CMC_SUICIDE_LOSS, "CMC_SUICIDE_LOSS");
-    CHECK_FLAG(EUROPE_CONTROL_WIN, "EUROPE_CONTROL_WIN");
-    #undef CHECK_FLAG
-    d["flags"] = flags;
-    d["persistent_effects"] = state.persistent_effects;
-
-    // 6. Countries (84 Nodes)
-    nb::dict countries;
-    for (uint8_t i = 0; i < 84; ++i) {
-        nb::dict c;
-        const auto& info = ts::MapData::get_country(i);
-        c["id"] = i;
-        c["name"] = std::string(info.name);
-        c["stability"] = info.stability;
-        c["battleground"] = info.battleground;
-        c["region"] = static_cast<int>(info.region);
-        c["us_influence"] = state.countries[i].us_influence;
-        c["ussr_influence"] = state.countries[i].ussr_influence;
-
-        // Control evaluation
-        uint8_t us_inf = state.countries[i].us_influence;
-        uint8_t ussr_inf = state.countries[i].ussr_influence;
-        uint8_t stab = info.stability;
-        if (us_inf >= stab && us_inf >= ussr_inf + stab) {
-            c["controlled_by"] = "US";
-        } else if (ussr_inf >= stab && ussr_inf >= us_inf + stab) {
-            c["controlled_by"] = "USSR";
-        } else {
-            c["controlled_by"] = "NONE";
-        }
-
-        countries[std::string(info.name).c_str()] = c;
-    }
-    d["countries"] = countries;
-
-    // 7. Cards & Locations
-    nb::list us_hand;
-    nb::list ussr_hand;
-    nb::list us_cards;
-    nb::list ussr_cards;
-    nb::list discard_pile;
-    nb::list removed_pile;
-    nb::list unavailable_cards;
-    uint8_t draw_deck_count = 0;
-
-    for (uint8_t i = 1; i <= 110; ++i) {
-        auto loc = state.card_locations[i];
-        switch (loc) {
-            case ts::CardLocation::HAND_US_UNKNOWN:
-            case ts::CardLocation::HAND_US_KNOWN: {
-                us_hand.append(i);
-                nb::dict ci;
-                ci["id"] = i;
-                ci["name"] = std::string(ts::CardData::get_card_name(i));
-                ci["ops"] = ts::CardData::get_card(i).ops;
-                us_cards.append(ci);
-                break;
-            }
-            case ts::CardLocation::HAND_USSR_UNKNOWN:
-            case ts::CardLocation::HAND_USSR_KNOWN: {
-                ussr_hand.append(i);
-                nb::dict ci;
-                ci["id"] = i;
-                ci["name"] = std::string(ts::CardData::get_card_name(i));
-                ci["ops"] = ts::CardData::get_card(i).ops;
-                ussr_cards.append(ci);
-                break;
-            }
-            case ts::CardLocation::DISCARD_PILE: discard_pile.append(i); break;
-            case ts::CardLocation::REMOVED_FROM_GAME: removed_pile.append(i); break;
-            case ts::CardLocation::DRAW_DECK: draw_deck_count++; break;
-            case ts::CardLocation::UNAVAILABLE: unavailable_cards.append(i); break;
-            default: break;
-        }
-    }
-
-    nb::dict hands;
-    hands["US"] = us_hand;
-    hands["USSR"] = ussr_hand;
-    hands["US_cards"] = us_cards;
-    hands["USSR_cards"] = ussr_cards;
-    d["hands"] = hands;
-    d["discard_pile"] = discard_pile;
-    d["removed_pile"] = removed_pile;
-    d["unavailable_cards"] = unavailable_cards;
-    d["draw_deck_count"] = draw_deck_count;
-
-    nb::dict all_locs;
-    for (uint8_t i = 1; i <= 110; ++i) {
-        auto loc = state.card_locations[i];
-        const char* loc_str = "UNAVAILABLE";
-        switch (loc) {
-            case ts::CardLocation::HEADLINE_COMMITTED: loc_str = "HEADLINE_COMMITTED"; break;
-            case ts::CardLocation::UNAVAILABLE: loc_str = "UNAVAILABLE"; break;
-            case ts::CardLocation::DRAW_DECK: loc_str = "DRAW_DECK"; break;
-            case ts::CardLocation::HAND_US_UNKNOWN: loc_str = "HAND_US_UNKNOWN"; break;
-            case ts::CardLocation::HAND_US_KNOWN: loc_str = "HAND_US_KNOWN"; break;
-            case ts::CardLocation::HAND_USSR_UNKNOWN: loc_str = "HAND_USSR_UNKNOWN"; break;
-            case ts::CardLocation::HAND_USSR_KNOWN: loc_str = "HAND_USSR_KNOWN"; break;
-            case ts::CardLocation::DISCARD_PILE: loc_str = "DISCARD_PILE"; break;
-            case ts::CardLocation::REMOVED_FROM_GAME: loc_str = "REMOVED_FROM_GAME"; break;
-            case ts::CardLocation::ONGOING_EVENT: loc_str = "ONGOING_EVENT"; break;
-            default: break;
-        }
-        all_locs[nb::cast(i)] = loc_str;
-    }
-    d["card_locations"] = all_locs;
-
-    // 8. Decision Context & Stack
-    const auto& ctx = state.ctx();
-    nb::dict ctx_dict;
-    ctx_dict["decision_player"] = (ctx.decision_player == ts::Player::US ? "US" : (ctx.decision_player == ts::Player::USSR ? "USSR" : "NONE"));
-    ctx_dict["decision_type"] = static_cast<int>(ctx.decision_type);
-    ctx_dict["decision_type_name"] = decision_type_to_str(ctx.decision_type);
-    ctx_dict["op_mode"] = static_cast<int>(ctx.op_mode);
-    ctx_dict["op_mode_name"] = op_mode_to_str(static_cast<uint8_t>(ctx.op_mode));
-    ctx_dict["pending_op_card"] = ctx.pending_op_card;
-    ctx_dict["pending_op_card_name"] = (ctx.pending_op_card > 0) ? std::string(ts::CardData::get_card_name(ctx.pending_op_card)) : "";
-    ctx_dict["pending_ops_value"] = ctx.pending_ops_value;
-    ctx_dict["remaining_steps"] = ctx.remaining_steps;
-    ctx_dict["max_per_country"] = ctx.max_per_country;
-    ctx_dict["allow_early_stop"] = (ctx.allow_early_stop != 0);
-    ctx_dict["resolving_card"] = ctx.resolving_card;
-    ctx_dict["resolving_card_name"] = (ctx.resolving_card > 0) ? std::string(ts::CardData::get_card_name(ctx.resolving_card)) : "";
-    ctx_dict["stack_depth"] = state.ctx_stack_depth;
-    d["decision_context"] = ctx_dict;
-
-    // 9. Legal Action Mask & Human Readable Action Labels
-    uint8_t mask[128];
-    size_t mask_size = 0;
-    ts::Engine::get_legal_action_mask(state, mask, &mask_size);
-
-    nb::list legal_list;
-    nb::dict action_labels;
-    for (size_t i = 0; i < mask_size; ++i) {
-        if (mask[i]) {
-            legal_list.append(i);
-
-            // Generate contextual human-readable label
-            std::string label;
-            switch (ctx.decision_type) {
-                case ts::DecisionType::POINT_NODE:
-                    if (i < 84) {
-                        label = std::string(ts::MapData::get_country_name(static_cast<uint8_t>(i)));
-                    } else if (i == 84) {
-                        label = "Done / Pass";
-                    }
-                    break;
-                case ts::DecisionType::SELECT_CARD:
-                    if (i >= 1 && i <= 110) {
-                        label = std::string(ts::CardData::get_card_name(static_cast<uint8_t>(i)));
-                    }
-                    break;
-                case ts::DecisionType::SELECT_PLAY_MODE:
-                    label = play_mode_to_str(static_cast<uint8_t>(i));
-                    break;
-                case ts::DecisionType::SELECT_OP_MODE:
-                    label = op_mode_to_str(static_cast<uint8_t>(i));
-                    break;
-                case ts::DecisionType::CHOOSE_TIMING_BRANCH:
-                    label = timing_branch_to_str(static_cast<uint8_t>(i));
-                    break;
-                default:
-                    label = "Option " + std::to_string(i);
-                    break;
-            }
-            if (!label.empty()) {
-                action_labels[std::to_string(i).c_str()] = label;
-            }
-        }
-    }
-    nb::dict legal_actions;
-    legal_actions["decision_type"] = static_cast<int>(ctx.decision_type);
-    legal_actions["decision_type_name"] = decision_type_to_str(ctx.decision_type);
-    legal_actions["decision_player"] = (ctx.decision_player == ts::Player::US ? "US" : (ctx.decision_player == ts::Player::USSR ? "USSR" : "NONE"));
-    legal_actions["valid_ids"] = legal_list;
-    legal_actions["valid_action_labels"] = action_labels;
-    legal_actions["allow_early_stop"] = (ctx.allow_early_stop != 0);
-    d["legal_actions"] = legal_actions;
-
-    d["is_terminal"] = ts::Engine::is_terminal(state);
-    if (ts::Engine::is_terminal(state)) {
-        d["terminal_utility"] = ts::Engine::get_terminal_utility(state);
-    } else {
-        d["terminal_utility"] = 0.0f;
-    }
-
-    return d;
+std::string game_state_to_display_json(const ts::GameState& state) {
+    return sj::display_state(state).dump();
 }
 
 NB_MODULE(ts_engine, m) {
@@ -966,6 +492,13 @@ NB_MODULE(ts_engine, m) {
              "position of whole games, comparing the pending decision, the legal mask and the "
              "observation. Does NOT carry action_history or turn_aggregates, which nothing reads "
              "for rules or for the observation; they are diagnostics.")
+        .def("to_save_json", &game_state_to_save_json,
+             "The save as canonical JSON text: keys sorted, compact -- the same bytes as "
+             "json.dumps(self.to_save_dict(), sort_keys=True, separators=(',', ':')). Written in "
+             "C++ and shared with the WebAssembly engine, so a position saved by either opens in "
+             "the other.")
+        .def("to_display_json", &game_state_to_display_json,
+             "to_dict() as JSON text, as the browser workbench's engine produces it.")
         .def("to_json", [](const ts::GameState& s) { return ts::Serializer::to_json(s); })
         .def("raw_bytes", [](const ts::GameState& s) {
             return nb::bytes(reinterpret_cast<const char*>(&s), sizeof(ts::GameState));
@@ -1148,6 +681,22 @@ NB_MODULE(ts_engine, m) {
           "ignored, so a save from a newer build opens minus what it cannot use. Restores the "
           "decision-context stack; does not restore action_history or turn_aggregates, which are "
           "diagnostics that no rule and no observation reads.");
+    m.def("selftest_digest", [](int games) {
+              uint32_t steps = 0;
+              const uint32_t d = ts::selftest::digest(games, &steps);
+              return std::make_pair(d, steps);
+          }, nb::arg("games"),
+          "(digest, steps) over `games` whole games (bindings/selftest.hpp). The WebAssembly "
+          "build exports the same function, so equal numbers mean the two engines play the same "
+          "games, position, observation and legal mask alike.");
+    m.def("game_ending_reason", [](const ts::GameState& s) { return std::string(ts::state_json::ending_reason(s)); },
+          nb::arg("state"),
+          "Why a finished game ended: '20 VP', 'Europe Control', 'DEFCON 1 (own decision)', "
+          "'DEFCON 1 (opponent decision)', 'final scoring' or 'wargames'. Shared with the browser "
+          "workbench's engine; tools/lib/tournament_evaluator delegates to it.");
+    m.def("state_from_save_json", &game_state_from_save_json, nb::arg("text"),
+          "state_from_save_dict for the JSON text to_save_json writes (or any JSON of that "
+          "shape). Raises ValueError for text that is not JSON or not a save.");
 
 
     // Flat Action Mask & Codec exports

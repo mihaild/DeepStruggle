@@ -14,7 +14,9 @@ services:
     volumes:
       - ${CHECKPOINTS:-./checkpoints}:/data/checkpoints:ro
       - replays:/data/replays
+      - onnx_cache:/data/onnx_cache
     restart: unless-stopped
 
 volumes:
   replays:
+  onnx_cache:

@@ -1,4 +1,41 @@
-# Python & nanobind configuration for Twilight Struggle simulation engine
+# Language bindings for the engine: Python (nanobind) and, under Emscripten, the browser.
+
+# The state as JSON -- the display state and the named-field save -- written once for both
+# bindings, so the Python workbench and the browser one render and save positions identically.
+add_library(ts_state_json STATIC state_json.cpp)
+target_include_directories(ts_state_json PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/engine/include)
+target_link_libraries(ts_state_json PUBLIC ts_engine_core)
+set_target_properties(ts_state_json PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- the browser build (emcmake; see tools/scripts/build_web.sh) ----------------------------
+if(EMSCRIPTEN)
+    # The engine fingerprint (tools/lib/engine_fingerprint.py) of the sources being built, baked
+    # in so the page can show which engine it runs and flag a model exported against another.
+    set(TS_ENGINE_FINGERPRINT "unknown" CACHE STRING "engine_fingerprint.py of these sources")
+    # Where the page loads the module from; git-ignored, rebuilt by build_web.sh.
+    set(TS_WASM_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/web/ui/public/engine" CACHE PATH "wasm output")
+
+    add_executable(ts_engine_wasm wasm/ts_engine_wasm.cpp)
+    target_link_libraries(ts_engine_wasm PRIVATE ts_state_json ts_engine_core)
+    target_compile_definitions(ts_engine_wasm PRIVATE TS_ENGINE_FINGERPRINT="${TS_ENGINE_FINGERPRINT}")
+    set(TS_WASM_EXPORTS
+        _ts_fingerprint _ts_obs_size _ts_action_size _ts_action_layout_json _ts_last_error
+        _ts_card_name _ts_card_ops _ts_country_name
+        _ts_new_game _ts_state_size _ts_state_ptr _ts_display_json _ts_save_json _ts_load_save_json
+        _ts_is_terminal _ts_terminal_utility _ts_ending_reason _ts_decision_player _ts_decision_type
+        _ts_step _ts_mask _ts_decode_flat _ts_is_merged_influence_action _ts_observation
+        _ts_set_country _ts_set_defcon _ts_set_vp _ts_selftest _malloc _free)
+    list(JOIN TS_WASM_EXPORTS "," TS_WASM_EXPORTS_CSV)
+    target_link_options(ts_engine_wasm PRIVATE
+        -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker,node -sALLOW_MEMORY_GROWTH=1
+        -sEXPORTED_FUNCTIONS=${TS_WASM_EXPORTS_CSV}
+        -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAP32,HEAPU32,HEAPF32,UTF8ToString,stringToNewUTF8)
+    set_target_properties(ts_engine_wasm PROPERTIES
+        OUTPUT_NAME ts_engine SUFFIX ".mjs" RUNTIME_OUTPUT_DIRECTORY "${TS_WASM_OUTPUT_DIR}")
+    return()
+endif()
+
+# ---- Python (nanobind) ----------------------------------------------------------------------
 find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
 
 find_package(nanobind CONFIG QUIET)
@@ -18,7 +55,7 @@ endif()
 if(nanobind_FOUND)
     nanobind_add_module(ts_engine ts_bindings.cpp)
     target_include_directories(ts_engine PRIVATE ${CMAKE_SOURCE_DIR}/engine/include)
-    target_link_libraries(ts_engine PRIVATE ts_engine_core)
+    target_link_libraries(ts_engine PRIVATE ts_engine_core ts_state_json)
     # GCC's OpenMP runtime, linked by exact file rather than `-fopenmp`: the batch runner calls
     # GOMP_parallel itself (see the comment above gomp_parallel_for in ts_bindings.cpp), so under
     # any compiler the process shares torch's libgomp and its one thread pool. The runtime file

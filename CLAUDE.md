@@ -83,17 +83,19 @@ compiler-rt's shared runtime, which `run_asan.sh` preloads. The executables keep
 ## Tests & type checking
 
 **`tests/` is split into groups, and not every group is relevant to every change.** Match the
-suite to what you touched — most importantly, **do not run `tests/web` for engine, bindings, AI or
+suite to what you touched — most importantly, **do not run the whole of `tests/web` for AI or
 tools changes.** It tells you nothing about them and fails on missing build artifacts
 (`web/ui/dist`, a Playwright browser) that are deliberately not in the repo, so a red web suite on
-a backend change is pure noise.
+a backend change is pure noise. The one exception is an engine or bindings change: the workbench
+runs the engine as WebAssembly, and `tests/web/test_wasm_engine.py` is what proves that build still
+plays the native engine's games.
 
 | you changed | run |
 |:---|:---|
-| `engine/`, `bindings/` | C++ suite, then `tests/bindings tests/engine_logic` (~30s) |
+| `engine/`, `bindings/` | C++ suite, then `tests/bindings tests/engine_logic` (~30s), then `tools/scripts/build_web.sh --engine` and `tests/web/test_wasm_engine.py` |
 | `tools/lib/ts_replayer_*` | the above + `tests/replayer` |
 | `ai/`, `bot/`, `tools/` | the above + `tests/training` |
-| `web/**` | **also** `tests/web`, after building the UI (below) |
+| `web/**` | **also** `tests/web`, after `tools/scripts/build_web.sh` (below) |
 | `research/**` | `tests/docs` (fast, no build needed) — every relative link must resolve |
 
 ### The ts-replayer corpus
@@ -140,8 +142,9 @@ PYTHONPATH=. .venv/bin/python -m pytest -q tests/replayer
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/training
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/engine_logic/test_all_110_cards.py::TestName::test_case
 
-# 3. Web/UI — ONLY for changes under web/. Two prerequisites, neither committed:
-cd web/ui && npm install && npm run build && cd ../..   # produces web/ui/dist
+# 3. Web/UI — for changes under web/ AND to engine/ or bindings/ (the page runs the engine as
+#    WebAssembly, and tests/web holds it bit-identical to the native build). Prerequisites:
+tools/scripts/build_web.sh                              # wasm engine + web/ui/dist (Emscripten)
 .venv/bin/python -m playwright install chromium         # for the E2E tests
 PYTHONPATH=. .venv/bin/python -m pytest -q tests/web
 
@@ -243,10 +246,11 @@ PYTHONPATH=. .venv/bin/python tools/tournament.py \
 # Single match / replay generation (also supports --us human for interactive CLI play)
 PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategic
 
-# Web workbench: server + bot opponent + browser
-PYTHONPATH=. .venv/bin/python -m uvicorn web.server.main:app --host 0.0.0.0 --port 8000
-PYTHONPATH=. .venv/bin/python -m web.bot_client --game-id game-1 --role USSR --type neural --model-path <checkpoint.pt>
-# then open http://localhost:8000/?game_id=game-1&role=US
+# Web workbench: the page runs the engine (WebAssembly) and models (ONNX) itself; the local
+# server only lists this machine's checkpoints and replays. Rebuild the page after an engine change.
+tools/scripts/build_web.sh                       # needs Emscripten: tools/scripts/install_emsdk.sh
+PYTHONPATH=.:build/release .venv/bin/python -m web.server.main --port 8000
+# then open http://localhost:8000/ -- or publish web/ui/dist (GitHub Pages: .github/workflows/pages.yml)
 ```
 
 Other `tools/` CLIs: `generate_dataset.py` and `build_human_dataset.py` (demonstration datasets),
@@ -333,12 +337,16 @@ is the perfect-information MCTS used for evaluation.
 `heuristic_bot`, `exploratory_bot`, `strategic_bot` (DEFCON-2 containment focus),
 `event_heavy_bot`, `human_bot` (interactive CLI); `neural_bot` loads ColdWarNet checkpoints.
 
-**Web (`web/`):** `web/server/main.py` is the FastAPI app — REST endpoints for game/replay/metadata,
-plus `/ws/game/{game_id}?role=US|USSR|OBSERVER`. `session.py`'s `GameSession` owns the
-`ts_engine.GameState`, validates actions against the active `DecisionContext`, steps the engine, and
-broadcasts `STATE_UPDATE`. `replay.py` reads and writes `.tslog.json` under the replay directory
-(`TS_REPLAYS_DIR` overrides it). `web/ui/` is the Vite + TypeScript SVG map frontend.
-`web/bot_client.py` connects a `BaseBot` to a running game over WebSocket.
+**Web (`web/`):** the workbench runs in the browser. `web/ui/` (Vite + TypeScript + SVG) holds
+the engine as WebAssembly (`bindings/wasm/ts_engine_wasm.cpp`, built by
+`tools/scripts/build_web.sh`), the game session (`src/game/`: stepping, dice, undo, the action log,
+position links) and model analysis (`src/analysis/`: ONNX in onnxruntime-web, from a local
+checkpoint, a Hugging Face repo or a dropped file). The display state and the save are one C++
+implementation (`bindings/state_json.cpp`) shared by the Python bindings and the WebAssembly build,
+and `tests/web/test_wasm_engine.py` holds the two engines to bit-identical games.
+`web/server/main.py` is only the local files server: it lists checkpoints (exporting one to ONNX on
+first request, `tools/export_onnx.py`) and replays. `replay.py` reads and writes `.tslog.json` under
+the replay directory (`TS_REPLAYS_DIR` overrides it).
 
 **Data layout:** `data/` is git-ignored and holds working artifacts — model checkpoints,
 `.tslog.json` game logs, and compressed demonstration `.jsonl.gz` datasets. `rules/` holds

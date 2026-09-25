@@ -619,6 +619,14 @@ class GameState:
         Named-field save of a position, mid-game included: scalars, RNG, card locations, board influence, the headline owners, the die-roll record AND the decision-context stack (ctx_stack + depth). Round-trips with state_from_save_dict -- verified over every position of whole games, comparing the pending decision, the legal mask and the observation. Does NOT carry action_history or turn_aggregates, which nothing reads for rules or for the observation; they are diagnostics.
         """
 
+    def to_save_json(self) -> str:
+        """
+        The save as canonical JSON text: keys sorted, compact -- the same bytes as json.dumps(self.to_save_dict(), sort_keys=True, separators=(',', ':')). Written in C++ and shared with the WebAssembly engine, so a position saved by either opens in the other.
+        """
+
+    def to_display_json(self) -> str:
+        """to_dict() as JSON text, as the browser workbench's engine produces it."""
+
     def to_json(self) -> str: ...
 
     def raw_bytes(self) -> bytes:
@@ -810,6 +818,21 @@ def state_to_dict(arg: GameState, /) -> dict:
 def state_from_save_dict(arg: dict, /) -> GameState:
     """
     Rebuild a position from to_save_dict output, mid-game included. Missing keys take their default, so a save written before a field existed still loads, and an unknown key is ignored, so a save from a newer build opens minus what it cannot use. Restores the decision-context stack; does not restore action_history or turn_aggregates, which are diagnostics that no rule and no observation reads.
+    """
+
+def selftest_digest(games: int) -> tuple[int, int]:
+    """
+    (digest, steps) over `games` whole games (bindings/selftest.hpp). The WebAssembly build exports the same function, so equal numbers mean the two engines play the same games, position, observation and legal mask alike.
+    """
+
+def game_ending_reason(state: GameState) -> str:
+    """
+    Why a finished game ended: '20 VP', 'Europe Control', 'DEFCON 1 (own decision)', 'DEFCON 1 (opponent decision)', 'final scoring' or 'wargames'. Shared with the browser workbench's engine; tools/lib/tournament_evaluator delegates to it.
+    """
+
+def state_from_save_json(text: str) -> GameState:
+    """
+    state_from_save_dict for the JSON text to_save_json writes (or any JSON of that shape). Raises ValueError for text that is not JSON or not a save.
     """
 
 def get_flat_action_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...

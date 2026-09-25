@@ -6,11 +6,17 @@ from web.server.main import app
 
 client = TestClient(app)
 
+# The page bundles these (web/ui/src/metadata.ts): the workbench draws the board with no server.
+RULES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "rules")
+
+
+def _rules(name: str):
+    with open(os.path.join(RULES, name), encoding="utf-8") as f:
+        return json.load(f)
+
 def test_map_metadata_completeness():
-    """Validates that /api/metadata/map provides complete 84-country Deluxe Map graph with coordinates."""
-    res = client.get("/api/metadata/map")
-    assert res.status_code == 200, f"Failed to fetch map metadata: {res.status_code}"
-    data = res.json()
+    """rules/map.json, which the page bundles, is the complete 84-country Deluxe map with coordinates."""
+    data = _rules("map.json")
 
     countries = data.get("countries", [])
     assert len(countries) == 84, f"Expected 84 countries, got {len(countries)}"
@@ -46,10 +52,8 @@ def test_map_metadata_completeness():
         assert "battlegrounds" in r_info
 
 def test_cards_metadata_completeness():
-    """Validates that /api/metadata/cards returns all 110 Deluxe Edition cards."""
-    res = client.get("/api/metadata/cards")
-    assert res.status_code == 200, f"Failed to fetch cards metadata: {res.status_code}"
-    cards = res.json()
+    """rules/cards.json, which the page bundles, holds all 110 Deluxe Edition cards."""
+    cards = _rules("cards.json")
     if isinstance(cards, dict):
         cards = cards.get("cards", [])
 
@@ -97,6 +101,15 @@ def test_frontend_workbench_html_structure():
         "rep-value-ribbon",
         "trace-panel",
         "trace-panel-body",
+        "analysis-panel",
+        "analysis-source-select",
+        "analysis-run-select",
+        "analysis-hf-repo",
+        "analysis-file-input",
+        "analysis-body",
+        "btn-play-favourite",
+        "analysis-autoplay-select",
+        "connection-status",
         "btn-rep-play",
         "btn-toggle-replay",
         "modal-container"
@@ -110,7 +123,7 @@ def test_replay_state_snapshot_full_fidelity(generated_replay_dir: str):
 
     Uses the generated fixture directory; `data/replays/` is git-ignored and may be empty.
     """
-    res = client.get("/api/replays")
+    res = client.get("/api/local/replays")
     assert res.status_code == 200
     replays = res.json()
     assert len(replays) > 0, f"fixture directory {generated_replay_dir} produced no replays"
@@ -118,7 +131,7 @@ def test_replay_state_snapshot_full_fidelity(generated_replay_dir: str):
     # Take whatever the listing offers. This used to name a specific ambient file,
     # llm_match_with_commentary.tslog.json, which no longer has to exist anywhere.
     target_filename = replays[0]["filename"]
-    rep_res = client.get(f"/api/replays/{target_filename}")
+    rep_res = client.get(f"/api/local/replays/{target_filename}")
     assert rep_res.status_code == 200
     rep_data = rep_res.json()
 

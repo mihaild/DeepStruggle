@@ -1,17 +1,15 @@
 """One observation route: every path to the network must use Observation::extract.
 
-Three paths reach the policy -- the vectorized training env, the replay generator, and the
-web/bot client. The first two call the engine extractor. The third rebuilt the
-observation in Python from a JSON state dict, and that duplicate drifted: replays made
-through it ended on turn 1 while the same checkpoint played to turn 10 through the engine
-extractor. A policy fed a different encoding than it was trained on plays close to
-randomly.
+Three paths used to reach the policy -- the vectorized training env, the replay generator, and the
+web/bot client. The first two call the engine extractor. The third rebuilt the observation in
+Python from a JSON state dict, and that duplicate drifted: replays made through it ended on turn 1
+while the same checkpoint played to turn 10 through the engine extractor.
 
-The server now sends the engine's observation to the player whose move it is, and
-NeuralBot uses it when present. These tests pin that contract.
+The network client is gone with the server-side workbench -- the browser workbench runs the
+WebAssembly build of the engine and reads Observation::extract itself (tests/web/
+test_wasm_engine.py holds it to the native one bit for bit). What remains to pin is that the
+dict-driven NeuralBot still refuses to play without the engine's observation.
 """
-
-import base64
 
 import numpy as np
 import pytest
@@ -37,52 +35,6 @@ def _decider(st: ts.GameState) -> ts.Player:
     ctx = st.ctx()
     return ctx.decision_player if ctx.decision_player != ts.Player.NONE else st.phasing_player
 
-
-def test_session_emits_engine_observation_only_to_the_acting_player() -> None:
-    """The observation carries the acting player's own hand, so the opponent must not get it."""
-    from web.server.session import GameSession
-
-    sess = GameSession(game_id="pytest_obs_route", seed=4242)
-    for _ in range(40):
-        if ts.Engine.is_terminal(sess.state):
-            break
-        legal = np.flatnonzero(ActionEncoder.get_legal_mask(sess.state))
-        if not len(legal):
-            break
-        ts.Engine.step_flat(sess.state, int(legal[0]))
-
-    decider = _decider(sess.state)
-    acting = "US" if decider == ts.Player.US else "USSR"
-    waiting = "USSR" if acting == "US" else "US"
-
-    assert sess.get_state_dict(for_role=acting).get("observation_b64"), \
-        "acting player should receive the engine observation"
-    assert not sess.get_state_dict(for_role=waiting).get("observation_b64"), \
-        "non-acting player must not receive it (it contains the opponent's hand)"
-    assert not sess.get_state_dict(for_role="OBSERVER").get("observation_b64")
-    assert not sess.get_state_dict().get("observation_b64")
-
-
-def test_transmitted_observation_is_bit_identical_to_the_engine_extractor() -> None:
-    from web.server.session import GameSession
-
-    sess = GameSession(game_id="pytest_obs_exact", seed=4242)
-    for _ in range(40):
-        if ts.Engine.is_terminal(sess.state):
-            break
-        legal = np.flatnonzero(ActionEncoder.get_legal_mask(sess.state))
-        if not len(legal):
-            break
-        ts.Engine.step_flat(sess.state, int(legal[0]))
-
-    decider = _decider(sess.state)
-    role = "US" if decider == ts.Player.US else "USSR"
-    payload = sess.get_state_dict(for_role=role)["observation_b64"]
-    sent = np.frombuffer(base64.b64decode(payload), dtype=np.float32)
-    expected = np.asarray(ts.extract_observation(sess.state, decider), dtype=np.float32)
-
-    assert sent.shape == expected.shape == (int(ts.OBS_SIZE),)
-    assert np.array_equal(sent, expected), "transmitted observation must be the engine's own"
 
 
 def test_the_neural_bot_refuses_to_play_without_the_engines_observation() -> None:
