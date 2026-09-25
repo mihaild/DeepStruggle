@@ -1,4 +1,47 @@
 import { GameState, MicroAction } from "./types";
+import { CARDS_METADATA } from "./metadata";
+
+const CARD_META = new Map(CARDS_METADATA.map(c => [c.id, c]));
+
+/** Where a card an event offers sits, in words ("Drawn", "Discard pile", "US hand", ...). */
+function whereLabel(loc: string | undefined): string {
+  if (!loc) return "";
+  if (loc === "PEEKED_TEMP") return "Drawn";
+  if (loc === "DISCARD_PILE") return "Discard pile";
+  if (loc.startsWith("HAND_USSR")) return "USSR hand";
+  if (loc.startsWith("HAND_US")) return "US hand";
+  if (loc === "REMOVED_FROM_GAME") return "Removed";
+  if (loc === "DRAW_DECK") return "Draw deck";
+  return loc;
+}
+
+function escAttr(s: string): string {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+}
+
+/**
+ * One button per card an event lets the player choose. The cards are often in no hand the
+ * player can see -- Our Man in Tehran's five drawn cards, the discard pile for Star Wars and SALT
+ * Negotiations -- so without these the choice could not be made from the page at all.
+ */
+function cardChoiceButtons(state: GameState, ids: number[]): string {
+  const locs = (state.card_locations || {}) as Record<string, string>;
+  return ids.filter(id => id >= 1 && id <= 110).map(id => {
+    const meta = CARD_META.get(id);
+    const name = meta?.name ?? `Card #${id}`;
+    const side = meta?.side ?? "neutral";
+    const where = whereLabel(locs[String(id)]);
+    const text = meta?.description ? escAttr(meta.description) : "";
+    return `
+      <button class="btn btn-secondary btn-block btn-hud-action btn-choice-card card-choice side-${side}" data-primary="${id}" title="${text}" style="margin-bottom: 6px; text-align: left; padding: 7px 10px;">
+        <div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline;">
+          <span style="font-weight: bold;">#${id} ${escAttr(name)}</span>
+          <span style="font-size: 11px; opacity: 0.8; white-space: nowrap;">${meta ? `${meta.ops} Ops · ${side.toUpperCase()}` : ""}</span>
+        </div>
+        ${where ? `<div style="font-size: 10px; opacity: 0.7; margin-top: 2px;">${where}</div>` : ""}
+      </button>`;
+  }).join("");
+}
 
 interface BranchMeta {
   title: string;
@@ -145,6 +188,10 @@ export class ActionHud {
           promptText = `<strong>${player}:</strong> <em>Blockade</em> is resolving! Select and discard a card with <strong>Operations ≥ 3</strong> from hand to maintain US influence in West Germany (or confirm/pass to forfeit influence):`;
         } else if (resolvingCard === 43) { // SALT Negotiations
           promptText = `<strong>${player}:</strong> <em>SALT Negotiations</em>: Select a non-scoring card from the Discard Pile to return to hand:`;
+        } else if (resolvingCard === 108) { // Our Man in Tehran
+          promptText = `<strong>${player}:</strong> <em>Our Man in Tehran</em>: these are the cards drawn from the deck. Discard any of them, one at a time; <em>Done</em> returns the rest to the deck:`;
+        } else if (resolvingCard === 85) { // Star Wars
+          promptText = `<strong>${player}:</strong> <em>Star Wars</em>: Select a non-scoring card from the Discard Pile -- its Event is played immediately:`;
         } else if (resolvingCard === 5) { // Five Year Plan
           promptText = `<strong>${player}:</strong> <em>Five Year Plan</em>: Select a card from hand to discard:`;
         } else if (resolvingCard === 49) { // Missile Envy
@@ -173,8 +220,20 @@ export class ActionHud {
           promptText = `<strong>${player} Action Round ${state.action_round}:</strong> Select a card from your hand to play:`;
         }
 
-        if (allowEarlyStop) {
-          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0" style="margin-top: 8px;">✓ Pass / Confirm (Do not discard)</button>`;
+        // An event's card choice lists its cards here: they are often in no hand on screen.
+        if (resolvingCard > 0) {
+          buttonsHtml += cardChoiceButtons(state, validIds);
+        }
+        // Offered whenever the engine offers it (id 0 in valid_ids), not only when the context
+        // allows an early stop: a choice with no legal card at all -- Star Wars facing a discard
+        // pile of events the US cannot trigger -- is left by passing, and without this button the
+        // page had nothing to click.
+        if (allowEarlyStop || validIds.includes(0)) {
+          const passLabel = resolvingCard === 108 ? "✓ Done — return the rest to the deck"
+            : resolvingCard === 43 ? "✓ Take no card"
+            : !validIds.some(id => id >= 1 && id <= 110) ? "✓ No card can be chosen — continue"
+            : "✓ Pass / Confirm (Do not discard)";
+          buttonsHtml += `<button class="btn btn-warning btn-block btn-hud-action" data-flags="128" data-primary="0" style="margin-top: 8px;">${passLabel}</button>`;
         }
         break;
 

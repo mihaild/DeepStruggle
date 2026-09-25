@@ -542,7 +542,11 @@ export class CardsView {
         one_time: false
       };
 
-      const loc = locations[id.toString()] || "DRAW_DECK";
+      // The engine says whether the opponent has seen a hand card (HAND_US_KNOWN / _UNKNOWN);
+      // the filter and badges only care whose hand it is. Compared raw, "US Hand" and "USSR
+      // Hand" never matched a single card.
+      const raw = locations[id.toString()] || "DRAW_DECK";
+      const loc = raw.startsWith("HAND_USSR") ? "HAND_USSR" : raw.startsWith("HAND_US") ? "HAND_US" : raw;
 
       if (this.locationFilter !== "ALL" && loc !== this.locationFilter) {
         continue;
@@ -597,6 +601,7 @@ export class CardsView {
       case "REMOVED_FROM_GAME": return "loc-removed";
       case "ONGOING_EVENT": return "loc-ongoing";
       case "UNAVAILABLE": return "loc-future";
+      case "PEEKED_TEMP": return "loc-ongoing";
       default: return "loc-default";
     }
   }
@@ -610,6 +615,7 @@ export class CardsView {
       case "REMOVED_FROM_GAME": return "Removed";
       case "ONGOING_EVENT": return "Ongoing";
       case "UNAVAILABLE": return "Future Era";
+      case "PEEKED_TEMP": return "Drawn (being chosen)";
       default: return loc;
     }
   }

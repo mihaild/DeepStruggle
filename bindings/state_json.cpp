@@ -441,6 +441,10 @@ const char* card_location_name(CardLocation loc) {
         case CardLocation::DISCARD_PILE: return "DISCARD_PILE";
         case CardLocation::REMOVED_FROM_GAME: return "REMOVED_FROM_GAME";
         case CardLocation::ONGOING_EVENT: return "ONGOING_EVENT";
+        // Cards someone is looking at -- Our Man in Tehran's five, a card shown by an event --
+        // were missing here and read "UNAVAILABLE", so the workbench had no way to show the US
+        // the cards it was being asked to choose from.
+        case CardLocation::PEEKED_TEMP: return "PEEKED_TEMP";
         default: return "UNAVAILABLE";
     }
 }
