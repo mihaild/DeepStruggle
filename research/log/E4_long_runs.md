@@ -269,3 +269,56 @@ gives the largest |Δ log p| over legal actions.
 
 **The test is an fp32 long run: E4-56-43**, the same recipe with `--no-tf32`, seed 43, solo to
 800M, launched 10:46 UTC. `launch_flags.py --diff` against E4-57-43 shows only `--tf32`.
+
+## E4-56-43 (fp32) reached 800M without diverging (2026-09-25)
+
+**Stability.** E4-56-43, the fp32 control, ran 0 → 800M without a divergence.
+* Approximate KL stayed at 0.010–0.02 throughout. The KL alarm fired once, at 213.6M: a single
+  iteration of 0.057 inside the pin.
+* **The logit level drifted as it does in every run without z-loss.** The mean log-normaliser
+  went 6 → 31 through 270M and then 87 (320M), 180 (400M), 311 (480M), and ~330–390 from 520M.
+  The largest single value reached 4,000 by 400M and 5,300–8,900 over 520–800M.
+* **So fp32 trained through the same logit scales at which both TF32 runs died.**
+  * E4-57-43 died at 232M with a largest logit of 3,850.
+  * E4-57-44 was fine to 560M at ~6,000 and died at 596M after its tail jumped to ~40,000.
+  * No such jump happened in fp32.
+
+**Its one long episode was a pin from ~125M to ~265M**: USSR ~98–99.6% of self-play,
+`adv_std_raw` down to 0.074 at 200M. It recovered without intervention. The logit level grew
+fastest during the pin, 11 → 31 in mean. E4-60-43's tail also spiked during its pin.
+
+**Strength.** `data/reports/long_fp32_800M.{md,json}`: 23 players, 100 games per side per pair,
+temperature 0, HeuristicBot at 1500. Elo is field-relative, so these numbers do not compare
+directly with the earlier fields.
+
+| step | E4-56-43 (fp32, seed 43) | E4-57-44 (TF32, seed 44) |
+|:---|---:|---:|
+| 80M | 1896 | |
+| 120–240M (inside the pin) | 1626–1689 | 2067 (160M), 2130 (240M) |
+| 280M | 1983 | |
+| 320M | 2041 | |
+| 400M | 2128 | 2248 |
+| 480M | 2120 | |
+| 560M | 2140 | 2263 |
+| 640M | 2150 | |
+| 720M | 2120 | |
+| 800M | 2145 | |
+| 590M | | 2253 |
+
+References in the same field: E4-08-36@240M 2212, E4-57-43@230M 2158, E4-60-43 (z-loss 1e-5)
+1861 @400M and 1940 @800M.
+
+**Reading:**
+* **Survival:** fp32 survived to 800M on 1 of 1 run. TF32 died on 2 of 2, at 232M and 596M.
+  With the logit scale matched, and with the measured TF32 noise on unlikely actions (1–8.5 nats
+  at these scales), TF32 is now the likely *contributor* to the long-run divergences. The drift
+  is common to both, and in fp32 alone it did no measured harm to 800M. This is one fp32 run;
+  n = 1 against 2.
+* **Strength from time alone levels off at ~400M in both surviving curves.**
+  * E4-56-43 gains +145 over 280–400M and then +17 over 400–800M.
+  * E4-57-44 gains about +15 over 400–590M.
+  * Past ~400M steps, time alone buys little on M2d with this recipe.
+* **E4-56-43's plateau (~2,130–2,150) is ~110 below E4-57-44's (~2,250).** That is within the
+  ~100 Elo seed spread, and seed 43 lost ~140M steps to its pin. It is not a precision effect
+  that can be read from one pair.
+* **z-loss is confirmed as costly** in this field too: E4-60-43@800M rates below E4-56-43@320M.
