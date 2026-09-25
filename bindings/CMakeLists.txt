@@ -1,4 +1,12 @@
-# Python & nanobind configuration for Twilight Struggle simulation engine
+# Language bindings for the engine: Python (nanobind) and, under Emscripten, the browser.
+
+# The state as JSON -- the display state and the named-field save -- written once for both
+# bindings, so the Python workbench and the browser one render and save positions identically.
+add_library(ts_state_json STATIC state_json.cpp)
+target_include_directories(ts_state_json PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/engine/include)
+target_link_libraries(ts_state_json PUBLIC ts_engine_core)
+set_target_properties(ts_state_json PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
 
 find_package(nanobind CONFIG QUIET)
@@ -18,7 +26,7 @@ endif()
 if(nanobind_FOUND)
     nanobind_add_module(ts_engine ts_bindings.cpp)
     target_include_directories(ts_engine PRIVATE ${CMAKE_SOURCE_DIR}/engine/include)
-    target_link_libraries(ts_engine PRIVATE ts_engine_core)
+    target_link_libraries(ts_engine PRIVATE ts_engine_core ts_state_json)
     # GCC's OpenMP runtime, linked by exact file rather than `-fopenmp`: the batch runner calls
     # GOMP_parallel itself (see the comment above gomp_parallel_for in ts_bindings.cpp), so under
     # any compiler the process shares torch's libgomp and its one thread pool. The runtime file
