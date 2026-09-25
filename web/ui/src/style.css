@@ -56,6 +56,17 @@ body {
 /* ==========================================================================
    TOP BAR & GLOBAL TRACKS
    ========================================================================== */
+.disclaimer-bar {
+  flex-shrink: 0;
+  padding: 3px 16px;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-panel-solid);
+  border-bottom: 1px solid var(--border-color);
+}
+
 .top-bar {
   height: 64px;
   background: var(--bg-panel-solid);
@@ -1416,7 +1427,7 @@ body {
 
 .effect-desc {
   font-size: 11px;
-  color: var(--text-muted, #94A3B8);
+  color: var(--text-muted);
   line-height: 1.35;
 }
 

@@ -45,6 +45,11 @@ export class TSApp {
   private model: Model | null = null;
   private modelKey = "";
   private modelLoads = 0;
+  /**
+   * Analysis was turned off on purpose, by the user or by the link. The link then says
+   * `model=off`, so that opening it does not load the default model instead.
+   */
+  private analysisOff = false;
 
   /** The live position, its readout and its link token, kept while a replay is on screen. */
   private liveState: GameState | null = null;
@@ -128,10 +133,29 @@ export class TSApp {
     }
     this.checkEngineFreshness();
     this.refresh();
-    const src = this.urlModel ? sourceFromParam(this.urlModel) : null;
-    if (src && src.kind !== "file") {
+    const src = this.urlModel && this.urlModel !== "off" ? sourceFromParam(this.urlModel) : null;
+    if (this.urlModel === "off") {
+      this.analysisOff = true;
+      this.analysisPanel.showSource(null);
+    } else if (src && src.kind !== "file") {
       this.analysisPanel.showSource(src);
       this.loadModel({ source: src });
+    } else if (!this.isReplayMode) {
+      this.loadDefaultModel();
+    }
+  }
+
+  /**
+   * A link that names no model gets the newest upload in the default Hugging Face repo. Dropped
+   * -- result and error alike -- if a model was picked while the repo was being listed.
+   */
+  private async loadDefaultModel() {
+    const before = this.modelLoads;
+    try {
+      const source = await this.analysisPanel.newestDefaultHf();
+      if (this.modelLoads === before) this.loadModel({ source });
+    } catch (e) {
+      if (this.modelLoads === before) this.analysisPanel.setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -177,7 +201,9 @@ export class TSApp {
     params.delete("game_id");
     params.delete("role");
     const model = this.model ? sourceToParam(this.model.source) : null;
-    if (model) params.set("model", model); else params.delete("model");
+    if (model) params.set("model", model);
+    else if (this.analysisOff) params.set("model", "off");
+    else params.delete("model");
     const auto = this.analysisPanel.autoSide;
     if (auto) params.set("auto", auto.toLowerCase()); else params.delete("auto");
     params.set("pos", this.positionToken);
@@ -232,6 +258,7 @@ export class TSApp {
 
   private async loadModel(pick: ModelPick | null) {
     const load = ++this.modelLoads;
+    this.analysisOff = !pick;
     this.liveAnalysis = undefined;
     if (!pick) {
       this.model = null;

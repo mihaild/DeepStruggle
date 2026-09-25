@@ -93,6 +93,13 @@ web/ui/
      dropped **file**. The file carries its description in ONNX metadata (`analysis/onnx_meta.ts`):
      a model whose observation width differs from the engine's is refused, one exported next to
      another engine build is flagged.
+   - **The default model.** A link with no `model` loads the newest `.onnx` in
+     `DEFAULT_HF_REPO` (`mihaild/deepstruggle@main`, `analysis/model.ts`): `listHfModels` asks the
+     tree API with `expand=true`, which gives each file's last commit date, follows the `Link`
+     pages, and sorts newest first. The default is dropped if the user picks a model while it is
+     listing. Turning analysis off writes `model=off`, so that link does not load the default.
+     The E2E browsers launch with `HF_BLOCKED` (huggingface.co does not resolve); tests that need
+     the repo serve it with `page.route`.
    - `analysis/readout.ts` is the port of the old server readout: one batched forward (the
      decider's observation with its real mask, and both sides' observations for the critic),
      softmax over the legal actions at temperature 1, the argmax as the favourite.
@@ -109,7 +116,7 @@ web/ui/
      `ActionHud.onRerender` re-applies badges after the HUD redraws itself (the die selector).
    - **The address bar is the share link.** `syncUrl()` writes `pos` (the engine's save JSON,
      zlib, base64url -- `game/position.ts`, interchangeable with Python's zlib), `model`
-     (`local:` / `hf:` source; a dropped file has no address) and `auto`, with
+     (`local:` / `hf:` source, or `off`; a dropped file has no address) and `auto`, with
      `history.replaceState`, never `pushState`, so moves do not pile up in Back. A reload of the
      same link keeps the game's history; *New Game* starts afresh in the page.
    - A generic `.hidden { display: none }` rule backs every mode-specific panel.

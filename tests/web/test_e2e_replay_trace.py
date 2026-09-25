@@ -12,6 +12,7 @@ import pytest
 import uvicorn
 from playwright.sync_api import sync_playwright
 
+from tests.web.test_e2e_workbench import HF_BLOCKED
 from web.server.main import app
 
 
@@ -57,7 +58,8 @@ def traced_replay_server(tmp_path_factory):
 def browser():
     with sync_playwright() as p:
         b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox",
-                                                   "--disable-dev-shm-usage", "--disable-gpu"])
+                                                   "--disable-dev-shm-usage", "--disable-gpu",
+                                                   HF_BLOCKED])
         yield b
         b.close()
 

@@ -26,7 +26,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 import ts_engine as ts
-from tests.web.test_e2e_workbench import DIST
+from tests.web.test_e2e_workbench import DIST, HF_BLOCKED
 from tools.lib.game_step import drain_chance
 
 OUR_MAN_IN_TEHRAN, STAR_WARS, SALT, NATO = 108, 85, 43, 21
@@ -114,7 +114,7 @@ def site() -> Iterator[str]:
 @pytest.fixture(scope="module")
 def browser() -> Iterator[Any]:
     with sync_playwright() as p:
-        b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-gpu"])
+        b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-gpu", HF_BLOCKED])
         yield b
         b.close()
 

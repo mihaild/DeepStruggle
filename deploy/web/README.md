@@ -11,8 +11,10 @@ push to `main` and publishes `web/ui/dist`. Enable it once: *Settings → Pages 
 Actions*. The page is then at `https://<owner>.github.io/<repo>/`.
 
 With no server, models come from a **Hugging Face** model repo (type `owner/repo`, press *List*)
-or an `.onnx` **dropped on the page**; replays from *Load Replay* or a dropped `.tslog.json`. Make
-the `.onnx` files with
+or an `.onnx` **dropped on the page**; replays from *Load Replay* or a dropped `.tslog.json`. A
+link that names no model loads the most recently uploaded `.onnx` in `mihaild/deepstruggle`
+(`DEFAULT_HF_REPO` in `web/ui/src/analysis/model.ts`), so publishing a new default model is an
+upload there. Make the `.onnx` files with
 
 ```bash
 PYTHONPATH=.:build/release .venv/bin/python tools/export_onnx.py \

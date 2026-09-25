@@ -6,6 +6,7 @@ import time
 import socket
 import uvicorn
 from playwright.sync_api import sync_playwright
+from tests.web.test_e2e_workbench import HF_BLOCKED
 from web.server.main import app
 
 def get_free_port():
@@ -70,7 +71,8 @@ def browser_context():
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+                  HF_BLOCKED]
         )
         yield browser
         browser.close()

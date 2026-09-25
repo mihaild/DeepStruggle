@@ -16,7 +16,9 @@
 import { GameState } from "./types";
 import { BadgeMark, clearDecorations, criticTableHtml, fmtP, htmlBadge, probColor, svgBadge } from "./trace_view";
 import { CriticTrace, PolicyTrace } from "./replay_controls";
-import { ModelSource, sourceLabel } from "./analysis/model";
+import {
+  DEFAULT_HF_REPO, DEFAULT_HF_REVISION, HfModelFile, listHfModels, ModelSource, sourceLabel,
+} from "./analysis/model";
 
 export interface AnalysisChoice {
   idx: number;
@@ -139,7 +141,9 @@ export class AnalysisPanel {
       this.pickLocal();
     });
     this.snapSelect.addEventListener("change", () => this.pickLocal());
-    el<HTMLButtonElement>("analysis-hf-list").addEventListener("click", () => this.listHf());
+    el<HTMLButtonElement>("analysis-hf-list").addEventListener("click", () => {
+      this.listHf().catch(e => this.setError(e instanceof Error ? e.message : String(e)));
+    });
     this.hfFile.addEventListener("change", () => {
       if (this.hfFile.value) {
         this.pick({ source: { kind: "hf", repo: this.hfRepo.value.trim(), revision: this.hfRevision.value.trim() || "main", path: this.hfFile.value } });
@@ -154,6 +158,7 @@ export class AnalysisPanel {
       const row = (ev.target as HTMLElement).closest<HTMLElement>("[data-flat-idx]");
       if (row) this.onPlayFlat(parseInt(row.getAttribute("data-flat-idx")!, 10));
     });
+    if (!this.hfRepo.value) this.hfRepo.value = DEFAULT_HF_REPO;
     this.showSourceControls();
     this.loadLocalModels();
   }
@@ -335,27 +340,36 @@ export class AnalysisPanel {
     if (pick) this.snapSelect.value = pick;
   }
 
-  /** The .onnx files of a Hugging Face repo, from its public tree API. */
-  private async listHf(): Promise<void> {
+  /** List the Hugging Face repo in the inputs into the file select, newest upload first. */
+  private async listHf(): Promise<HfModelFile[]> {
     const repo = this.hfRepo.value.trim();
     const rev = this.hfRevision.value.trim() || "main";
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
-      this.setError("Hugging Face repo must look like owner/name");
-      return;
-    }
     this.hfFile.innerHTML = `<option value="">listing…</option>`;
     try {
-      const res = await fetch(`https://huggingface.co/api/models/${repo}/tree/${encodeURIComponent(rev)}?recursive=true`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 || res.status === 404 ? " (private or missing repo?)" : ""}`);
-      const entries: Array<{ type: string; path: string }> = await res.json();
-      const files = entries.filter(e => e.type === "file" && e.path.endsWith(".onnx")).map(e => e.path).sort();
+      const files = await listHfModels(repo, rev);
       if (files.length === 0) throw new Error("no .onnx files in the repo (export them with tools/export_onnx.py)");
       this.hfFile.innerHTML = `<option value="">— choose a model —</option>`
-        + files.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+        + files.map(f => `<option value="${esc(f.path)}">${esc(f.path)}${f.date ? ` · ${esc(f.date.slice(0, 10))}` : ""}</option>`).join("");
+      return files;
     } catch (e) {
       this.hfFile.innerHTML = "";
-      this.setError(`Could not list ${repo}: ${e instanceof Error ? e.message : e}`);
+      throw new Error(`Could not list ${repo}: ${e instanceof Error ? e.message : e}`);
     }
+  }
+
+  /**
+   * The model a link that names none gets: the newest upload in the default repo, shown as
+   * selected. Throws if the repo cannot be listed; the caller decides whether that is still
+   * worth showing, since the user may have picked a model while it was listing.
+   */
+  public async newestDefaultHf(): Promise<ModelSource> {
+    this.sourceSelect.value = "hf";
+    this.hfRepo.value = DEFAULT_HF_REPO;
+    this.hfRevision.value = DEFAULT_HF_REVISION;
+    this.showSourceControls();
+    const files = await this.listHf();
+    this.hfFile.value = files[0].path;
+    return { kind: "hf", repo: DEFAULT_HF_REPO, revision: DEFAULT_HF_REVISION, path: files[0].path };
   }
 
   // ---- rendering ----------------------------------------------------------------------------------

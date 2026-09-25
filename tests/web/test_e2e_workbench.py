@@ -16,7 +16,7 @@ import os
 import socket
 import threading
 import time
-from typing import Any, Dict, Iterator
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import numpy as np
 import pytest
@@ -34,6 +34,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 DIST = os.path.join(REPO, "web", "ui", "dist")
 RUN = "E9-04-01_20260101_000000"
 SNAP = "snapshot_2000000steps.pt"
+
+#: Chromium flag every E2E browser launches with. A link that names no model makes the page list
+#: the default Hugging Face repo; a test must never depend on -- or download from -- the real one.
+#: Requests a test serves itself with `page.route` are answered before name resolution.
+HF_BLOCKED = "--host-resolver-rules=MAP huggingface.co ~NOTFOUND"
+HF_TREE = "https://huggingface.co/api/models/mihaild/deepstruggle/tree/main?recursive=true&expand=true"
 
 
 def _free_port() -> int:
@@ -97,16 +103,21 @@ def static_site() -> Iterator[str]:
 def browser() -> Iterator[Any]:
     with sync_playwright() as p:
         b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox",
-                                                   "--disable-dev-shm-usage", "--disable-gpu"])
+                                                   "--disable-dev-shm-usage", "--disable-gpu",
+                                                   # Never the real Hugging Face: a link that names
+                                                   # no model lists it for the default one.
+                                                   HF_BLOCKED])
         yield b
         b.close()
 
 
-def _open(browser: Any, url: str) -> Any:
+def _open(browser: Any, url: str, setup: Optional[Callable[[Any], None]] = None) -> Any:
     page = browser.new_page(viewport={"width": 1440, "height": 900})
     errors: list = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.errors = errors
+    if setup:
+        setup(page)   # e.g. routes, which must be in place before the page's first request
     page.goto(url)
     page.wait_for_function("window.__wb && window.__wb.liveState && window.__wb.positionToken", timeout=30000)
     return page
@@ -223,6 +234,97 @@ def test_a_file_that_is_not_an_export_is_refused_with_a_reason(browser: Any, ser
     page.set_input_files("#analysis-file-input", str(bogus))
     page.wait_for_selector("#analysis-body .analysis-error", timeout=30000)
     assert page.inner_text("#analysis-status") == "error"
+
+
+@pytest.fixture(scope="module")
+def onnx_bytes(checkpoint: Dict[str, str], tmp_path_factory: pytest.TempPathFactory) -> bytes:
+    from tools.export_onnx import export
+
+    path = str(tmp_path_factory.mktemp("hf_onnx") / "model.onnx")
+    export(checkpoint["path"], path, positions=16)
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def _fake_hf_repo(page: Any, onnx: bytes, requests: List[str]) -> None:
+    """The default repo, served by the test: two listing pages, the newest upload on the second.
+
+    Every request to huggingface.co is recorded. The listing is paged the way the real API pages
+    an expanded tree -- a `Link: <...>; rel="next"` header -- so a page that read only the first
+    page would load `old.onnx`.
+    """
+    cors = {"access-control-allow-origin": "*", "access-control-expose-headers": "Link"}
+    first = [
+        {"type": "file", "path": "README.md", "lastCommit": {"date": "2026-09-24T10:00:00.000Z"}},
+        {"type": "file", "path": "old.onnx", "lastCommit": {"date": "2026-09-01T12:00:00.000Z"}},
+        {"type": "directory", "path": "runs"},
+    ]
+    second = [{"type": "file", "path": "runs/new.onnx", "lastCommit": {"date": "2026-09-25T19:46:55.000Z"}}]
+
+    def tree(route: Any) -> None:
+        requests.append(route.request.url)
+        more = "cursor=" not in route.request.url
+        headers = {**cors, "link": f'<{HF_TREE}&cursor=p2>; rel="next"'} if more else cors
+        route.fulfill(status=200, headers=headers, content_type="application/json",
+                      body=json.dumps(first if more else second))
+
+    def resolve(route: Any) -> None:
+        requests.append(route.request.url)
+        route.fulfill(status=200, headers=cors, body=onnx)
+
+    page.route("https://huggingface.co/api/models/**", tree)
+    page.route("https://huggingface.co/mihaild/deepstruggle/resolve/**", resolve)
+
+
+def test_a_link_that_names_no_model_loads_the_newest_upload(browser: Any, static_site: str, onnx_bytes: bytes) -> None:
+    """GitHub Pages: no local server, no model in the link -- the newest .onnx in the default repo."""
+    requests: List[str] = []
+    page = _open(browser, static_site + "/", lambda p: _fake_hf_repo(p, onnx_bytes, requests))
+    page.wait_for_selector("#analysis-body .analysis-choice", timeout=60000)
+    assert page.input_value("#analysis-source-select") == "hf"
+    assert page.input_value("#analysis-hf-repo") == "mihaild/deepstruggle"
+    assert page.input_value("#analysis-hf-file") == "runs/new.onnx"
+    options = page.eval_on_selector_all("#analysis-hf-file option", "os => os.map(o => o.value).filter(Boolean)")
+    assert options == ["runs/new.onnx", "old.onnx"], "newest upload first, and only .onnx files"
+    assert requests[-1] == "https://huggingface.co/mihaild/deepstruggle/resolve/main/runs/new.onnx"
+    page.wait_for_function("new URLSearchParams(location.search).get('model') === 'hf:mihaild/deepstruggle@main:runs/new.onnx'")
+    assert not page.errors
+
+
+def test_turning_analysis_off_stays_off_in_the_link(browser: Any, static_site: str, onnx_bytes: bytes) -> None:
+    requests: List[str] = []
+    page = _open(browser, static_site + "/", lambda p: _fake_hf_repo(p, onnx_bytes, requests))
+    page.wait_for_selector("#analysis-body .analysis-choice", timeout=60000)
+    page.select_option("#analysis-source-select", "")
+    page.wait_for_function("new URLSearchParams(location.search).get('model') === 'off'")
+    link = page.url
+
+    again: List[str] = []
+    other = _open(browser, link, lambda p: _fake_hf_repo(p, onnx_bytes, again))
+    other.wait_for_timeout(1500)
+    assert again == [], "a link that says model=off must not list or download the default model"
+    assert other.inner_text("#analysis-status") == "off"
+    assert other.input_value("#analysis-source-select") == ""
+    assert "model=off" in other.url
+    assert not page.errors and not other.errors
+
+
+def test_an_unreachable_default_repo_is_reported_not_fatal(browser: Any, static_site: str) -> None:
+    page = _open(browser, static_site + "/")   # huggingface.co does not resolve in these tests
+    page.wait_for_selector("#analysis-body .analysis-error", timeout=30000)
+    assert "Could not list mihaild/deepstruggle" in page.inner_text("#analysis-body")
+    assert page.evaluate("window.__wb.state.decision_context.decision_type_name") == "POINT_NODE"
+    assert not page.errors
+
+
+def test_the_page_says_it_is_unofficial(browser: Any, static_site: str) -> None:
+    page = _open(browser, static_site + "/?model=off")
+    bar = page.locator("#disclaimer-bar")
+    assert bar.is_visible()
+    text = bar.inner_text()
+    assert "Unofficial" in text and "not affiliated with or endorsed by GMT Games" in text
+    assert "Twilight Struggle® is a registered trademark of GMT Games" in text
+    assert bar.bounding_box()["y"] == 0, "the first line of the page"
 
 
 def test_debug_overrides_and_their_undo(browser: Any, server: str) -> None:

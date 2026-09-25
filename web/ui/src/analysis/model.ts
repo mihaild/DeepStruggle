@@ -55,6 +55,40 @@ export function hfFileUrl(repo: string, revision: string, path: string): string 
   return `https://huggingface.co/${repo}/resolve/${encodeURIComponent(revision)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+/** Where the page takes its model from when a link names none: the newest upload here. */
+export const DEFAULT_HF_REPO = "mihaild/deepstruggle";
+export const DEFAULT_HF_REVISION = "main";
+
+export interface HfModelFile {
+  path: string;
+  /** ISO-8601 time of the commit that last changed the file; "" if the API did not say. */
+  date: string;
+}
+
+/**
+ * The .onnx files of a public Hugging Face model repo, newest upload first. `expand=true` makes
+ * the tree API report each file's last commit; an expanded listing is paged, and the next page
+ * is named by the `Link` header, which the API exposes to cross-origin pages.
+ */
+export async function listHfModels(repo: string, revision: string): Promise<HfModelFile[]> {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("a Hugging Face repo must look like owner/name");
+  const files: HfModelFile[] = [];
+  let url: string | null =
+    `https://huggingface.co/api/models/${repo}/tree/${encodeURIComponent(revision)}?recursive=true&expand=true`;
+  while (url) {
+    const res: Response = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 || res.status === 404 ? " (private or missing repo?)" : ""}`);
+    const entries: Array<{ type: string; path: string; lastCommit?: { date?: string } }> = await res.json();
+    for (const e of entries) {
+      if (e.type === "file" && e.path.endsWith(".onnx")) files.push({ path: e.path, date: e.lastCommit?.date ?? "" });
+    }
+    url = res.headers.get("Link")?.match(/<([^>]+)>;\s*rel="next"/)?.[1] ?? null;
+  }
+  // ISO-8601 times order as strings; files uploaded in one commit fall back to their path.
+  files.sort((a, b) => (a.date === b.date ? a.path.localeCompare(b.path) : a.date < b.date ? 1 : -1));
+  return files;
+}
+
 export interface ModelMeta {
   label: string;
   mergedInfluence: boolean;
