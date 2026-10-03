@@ -123,6 +123,234 @@ Pooled by period, headline rate ahead vs not ahead (level and behind together):
   gave the same picture, and found about 10% of "ahead" holdings never played by the US (game
   end, or discarded or taken by other events).
 
+## What Star Wars retrieves (follow-up)
+
+Owner: check also what events the US chooses to retrieve when it plays Star Wars.
+
+**Method.** The same 30 runs replayed with the pick recorded (same seeds: the per-snapshot table
+above is reproduced exactly; dumps `data/eval/star_wars/E7-02-44_1000r/`). Star Wars' event is one
+mandatory US card choice; its legal options are the non-scoring cards in the discard pile whose
+event can trigger for the US (`ActionMask`), 22-30 on average. Retrievals are split by how the
+event fired: **the US played Star Wars** (its headline or event in a round -- 84% of them
+headlines); **the USSR played Star Wars** (for Ops in a round, or headlined it), which fires the US
+event all the same; and 39 where it fired inside another event (Missile Envy handing Star Wars to
+the US), left out. Every US play while ahead is accounted for: 4,886 retrievals, plus 52 plays
+whose event did not get to the pick -- the two traced were a game ending in the headline before
+Star Wars resolved (USSR's Glasnost at −19 VP), and an empty discard pile right after the
+reshuffle, where the event fizzles by the rules.
+
+**US plays Star Wars** -- share of the picks:
+
+| card | 40-80M | 120-840M | 880-1,200M | 1,200M |
+|:---|---:|---:|---:|---:|
+| Junta | 42% | 10% | 3% | 2% |
+| UN Intervention | 12% | 22% | 12% | 7% |
+| Red Scare/Purge | 12% | 12% | 40% | 53% |
+| How I Learned to Stop Worrying | 0% | 5% | 4% | 2% |
+| Duck and Cover | 6% | 3% | 1% | 1% |
+| Grain Sales to Soviets | 1% | 3% | 3% | 1% |
+| ABM Treaty | 4% | 5% | 5% | 7% |
+| SALT Negotiations | 1% | 5% | 5% | 3% |
+| any USSR card | 6% | 8% | 6% | 8% |
+| retrievals | 972 | 2,214 | 1,700 | 238 |
+
+**USSR plays Star Wars (US event fires)** -- share of the picks:
+
+| card | 40-80M | 120-840M | 880-1,200M | 1,200M |
+|:---|---:|---:|---:|---:|
+| Junta | 51% | 21% | 5% | 1% |
+| UN Intervention | 3% | 27% | 13% | 6% |
+| Red Scare/Purge | 1% | 1% | 3% | 3% |
+| How I Learned to Stop Worrying | 0% | 15% | 35% | 40% |
+| Duck and Cover | 22% | 11% | 17% | 22% |
+| Grain Sales to Soviets | 9% | 8% | 9% | 8% |
+| ABM Treaty | 0% | 1% | 0% | 0% |
+| SALT Negotiations | 0% | 1% | 0% | 0% |
+| any USSR card | 1% | 3% | 2% | 3% |
+| retrievals | 711 | 4,590 | 1,247 | 121 |
+
+**Reading.**
+
+* **What the US takes moves with training.** Early (40-80M) it is Junta (42% of picks); through
+  120-840M UN Intervention leads (22%) with Junta and Red Scare/Purge behind; from 880M **Red
+  Scare/Purge** takes over -- 40% of picks over 880-1,200M, 53% at 1,200M, where it is taken in
+  77% of the retrievals that offer it. Since most of these plays are headlines, that is the
+  opponent's Ops at −1 for the whole turn.
+* **When the USSR plays Star Wars, the US picks differently**: How I Learned to Stop Worrying
+  (35-40% from 880M) and Duck and Cover (17-22%), Grain Sales (~8%); Red Scare/Purge only 1-3%.
+  These retrievals happen in the USSR's action rounds, mid-turn, so part of the difference is
+  timing, not only preference.
+* **About 7% of the US's own retrievals take a USSR card** (346 of 4,886), steady across training:
+  "We Will Bury You" (85), "Lone Gunman" (79), Ortega Elected in Nicaragua (29), Muslim
+  Revolution (26), Liberation Theology (23), OPEC (14) and others. By their text these events
+  help the USSR (We Will Bury You: DEFCON −1 and 3 VP to the USSR unless UN Intervention follows;
+  Lone Gunman: the USSR conducts Operations). Candidate mistakes, not checked further here.
+
+### Detail: the top 10 picks per period
+
+"Offered in" is the share of retrievals where the card was a legal option; "picked when offered"
+is how often it was taken then.
+
+#### Star Wars retrievals, 40-80M: the US played Star Wars (headline or event in a round)
+
+972 retrievals, 22.4 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| Junta | neutral | 410 | 42.2% | 50% | 84% |
+| UN Intervention | neutral | 120 | 12.3% | 47% | 26% |
+| Red Scare/Purge | neutral | 115 | 11.8% | 52% | 23% |
+| Duck and Cover | us | 59 | 6.1% | 45% | 14% |
+| ABM Treaty | neutral | 39 | 4.0% | 54% | 7% |
+| Missile Envy | neutral | 30 | 3.1% | 51% | 6% |
+| The Voice of America | us | 24 | 2.5% | 47% | 5% |
+| Nuclear Test Ban | neutral | 22 | 2.3% | 42% | 5% |
+| “We Will Bury You” | ussr | 18 | 1.9% | 32% | 6% |
+| SALT Negotiations | neutral | 12 | 1.2% | 43% | 3% |
+| 30 other cards | | 123 | 12.7% | | |
+
+By the side of the card taken: neutral 81%, us 14%, ussr 6%. Not counted: 9 retrievals where the US event fired inside another event (Star Wars handed over to the US by an event such as Missile Envy).
+
+#### Star Wars retrievals, 40-80M: the USSR played Star Wars, firing the US event
+
+711 retrievals, 27.2 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| Junta | neutral | 361 | 50.8% | 64% | 80% |
+| Duck and Cover | us | 159 | 22.4% | 50% | 44% |
+| Grain Sales to Soviets | us | 61 | 8.6% | 39% | 22% |
+| Soviets Shoot Down KAL-007 | us | 28 | 3.9% | 16% | 25% |
+| UN Intervention | neutral | 23 | 3.2% | 46% | 7% |
+| Missile Envy | neutral | 17 | 2.4% | 56% | 4% |
+| The Voice of America | us | 11 | 1.5% | 61% | 3% |
+| Tear Down this Wall | us | 11 | 1.5% | 23% | 7% |
+| Red Scare/Purge | neutral | 10 | 1.4% | 58% | 2% |
+| Colonial Rear Guards | us | 4 | 0.6% | 59% | 1% |
+| 18 other cards | | 26 | 3.7% | | |
+
+By the side of the card taken: neutral 59%, us 41%, ussr 1%.
+
+#### Star Wars retrievals, 120-840M: the US played Star Wars (headline or event in a round)
+
+2,214 retrievals, 24.2 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| UN Intervention | neutral | 485 | 21.9% | 47% | 47% |
+| Red Scare/Purge | neutral | 265 | 12.0% | 58% | 21% |
+| Junta | neutral | 222 | 10.0% | 54% | 19% |
+| SALT Negotiations | neutral | 111 | 5.0% | 42% | 12% |
+| ABM Treaty | neutral | 108 | 4.9% | 60% | 8% |
+| How I Learned to Stop Worrying | neutral | 105 | 4.7% | 48% | 10% |
+| Nuclear Test Ban | neutral | 87 | 3.9% | 46% | 9% |
+| Brush War | neutral | 72 | 3.3% | 58% | 6% |
+| Duck and Cover | us | 71 | 3.2% | 48% | 7% |
+| Grain Sales to Soviets | us | 60 | 2.7% | 50% | 5% |
+| 65 other cards | | 628 | 28.4% | | |
+
+By the side of the card taken: neutral 73%, us 19%, ussr 8%. Not counted: 28 retrievals where the US event fired inside another event (Star Wars handed over to the US by an event such as Missile Envy).
+
+#### Star Wars retrievals, 120-840M: the USSR played Star Wars, firing the US event
+
+4,590 retrievals, 27.2 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| UN Intervention | neutral | 1,262 | 27.5% | 50% | 55% |
+| Junta | neutral | 953 | 20.8% | 60% | 35% |
+| How I Learned to Stop Worrying | neutral | 684 | 14.9% | 50% | 30% |
+| Duck and Cover | us | 495 | 10.8% | 52% | 21% |
+| Grain Sales to Soviets | us | 367 | 8.0% | 50% | 16% |
+| Soviets Shoot Down KAL-007 | us | 98 | 2.1% | 28% | 8% |
+| Tear Down this Wall | us | 90 | 2.0% | 27% | 7% |
+| Missile Envy | neutral | 75 | 1.6% | 57% | 3% |
+| “We Will Bury You” | ussr | 70 | 1.5% | 52% | 3% |
+| Red Scare/Purge | neutral | 55 | 1.2% | 64% | 2% |
+| 57 other cards | | 441 | 9.6% | | |
+
+By the side of the card taken: neutral 70%, us 27%, ussr 3%.
+
+#### Star Wars retrievals, 880-1,200M: the US played Star Wars (headline or event in a round)
+
+1,700 retrievals, 26.1 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| Red Scare/Purge | neutral | 672 | 39.5% | 64% | 62% |
+| UN Intervention | neutral | 205 | 12.1% | 48% | 25% |
+| Missile Envy | neutral | 83 | 4.9% | 58% | 8% |
+| ABM Treaty | neutral | 82 | 4.8% | 63% | 8% |
+| SALT Negotiations | neutral | 82 | 4.8% | 42% | 12% |
+| How I Learned to Stop Worrying | neutral | 68 | 4.0% | 54% | 7% |
+| Grain Sales to Soviets | us | 51 | 3.0% | 54% | 6% |
+| Junta | neutral | 46 | 2.7% | 56% | 5% |
+| “Lone Gunman” | ussr | 32 | 1.9% | 31% | 6% |
+| Nuclear Test Ban | neutral | 31 | 1.8% | 49% | 4% |
+| 59 other cards | | 348 | 20.5% | | |
+
+By the side of the card taken: neutral 80%, us 14%, ussr 6%. Not counted: 2 retrievals where the US event fired inside another event (Star Wars handed over to the US by an event such as Missile Envy).
+
+#### Star Wars retrievals, 880-1,200M: the USSR played Star Wars, firing the US event
+
+1,247 retrievals, 28.0 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| How I Learned to Stop Worrying | neutral | 441 | 35.4% | 53% | 67% |
+| Duck and Cover | us | 211 | 16.9% | 53% | 32% |
+| UN Intervention | neutral | 162 | 13.0% | 50% | 26% |
+| Grain Sales to Soviets | us | 111 | 8.9% | 49% | 18% |
+| Junta | neutral | 58 | 4.7% | 60% | 8% |
+| Tear Down this Wall | us | 39 | 3.1% | 26% | 12% |
+| Red Scare/Purge | neutral | 34 | 2.7% | 66% | 4% |
+| Soviets Shoot Down KAL-007 | us | 32 | 2.6% | 31% | 8% |
+| Arms Race | neutral | 20 | 1.6% | 58% | 3% |
+| Missile Envy | neutral | 15 | 1.2% | 58% | 2% |
+| 40 other cards | | 124 | 9.9% | | |
+
+By the side of the card taken: neutral 62%, us 36%, ussr 2%.
+
+#### Star Wars retrievals, 1,200M: the US played Star Wars (headline or event in a round)
+
+238 retrievals, 28.4 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| Red Scare/Purge | neutral | 127 | 53.4% | 69% | 77% |
+| UN Intervention | neutral | 17 | 7.1% | 47% | 15% |
+| ABM Treaty | neutral | 17 | 7.1% | 66% | 11% |
+| Brush War | neutral | 11 | 4.6% | 63% | 7% |
+| “Lone Gunman” | ussr | 11 | 4.6% | 29% | 16% |
+| Nuclear Test Ban | neutral | 10 | 4.2% | 58% | 7% |
+| SALT Negotiations | neutral | 7 | 2.9% | 42% | 7% |
+| Junta | neutral | 4 | 1.7% | 59% | 3% |
+| How I Learned to Stop Worrying | neutral | 4 | 1.7% | 60% | 3% |
+| Grain Sales to Soviets | us | 3 | 1.3% | 56% | 2% |
+| 19 other cards | | 27 | 11.3% | | |
+
+By the side of the card taken: neutral 86%, ussr 8%, us 6%. Not counted: 0 retrievals where the US event fired inside another event (Star Wars handed over to the US by an event such as Missile Envy).
+
+#### Star Wars retrievals, 1,200M: the USSR played Star Wars, firing the US event
+
+121 retrievals, 29.8 legal options on average.
+
+| card | side | picked | share of picks | offered in | picked when offered |
+|:---|:---|---:|---:|---:|---:|
+| How I Learned to Stop Worrying | neutral | 48 | 39.7% | 60% | 67% |
+| Duck and Cover | us | 27 | 22.3% | 59% | 38% |
+| Grain Sales to Soviets | us | 10 | 8.3% | 59% | 14% |
+| UN Intervention | neutral | 7 | 5.8% | 56% | 10% |
+| Tear Down this Wall | us | 4 | 3.3% | 29% | 11% |
+| Red Scare/Purge | neutral | 4 | 3.3% | 69% | 5% |
+| Soviets Shoot Down KAL-007 | us | 4 | 3.3% | 36% | 9% |
+| Nuclear Test Ban | neutral | 3 | 2.5% | 68% | 4% |
+| The Voice of America | us | 2 | 1.7% | 55% | 3% |
+| “Lone Gunman” | ussr | 2 | 1.7% | 33% | 5% |
+| 10 other cards | | 10 | 8.3% | | |
+
+By the side of the card taken: neutral 55%, us 42%, ussr 3%.
+
 **Not measured here:** whether the event would be worth more than the Ops in these positions. That
 depends on what is in the discard pile, and needs a counterfactual (play the event on a copy and
 compare the value head or game results). That is the natural next step if the owner wants it.
