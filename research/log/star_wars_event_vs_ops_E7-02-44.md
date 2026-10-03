@@ -202,9 +202,28 @@ Stop Worrying 0.07, Nuclear Test Ban 0.02, Red Scare/Purge 0.02) -- step 449 of 
 Gunman reveals the US hand and gives the USSR 1 Op, which it spends on a coup in Venezuela: it
 fails (3 + 1 vs 4), but DEFCON drops to 2 for the turn and USSR military ops rise to 5. The US
 critic reads the pick itself as neutral (0.723 → 0.734) and drops to 0.669 once the coup has
-happened. The US still wins on turn 9 (Europe Control). Other 1,200M seeds with the same pick
-(headline unless noted): 9843847, 9004283 (action round), 129098, 2300617, 7597392, 6776818,
-4566295, 595564, 7122176, 187325.
+happened. The US still wins on turn 9 (Europe Control).
+
+Five more of the 1,200M games, generated the same way (owner: find a few more), each named
+`data/replays/E7-02-44_1200M_star_wars_lone_gunman_s<seed>.tslog.json`:
+
+| seed | step | when | VP | options | p(Lone Gunman) | the USSR's 1 Op | critic (US): before pick → after pick → after the Op | result |
+|---:|---:|:---|---:|---:|---:|:---|:---|:---|
+| 9483595 | 449 | T8 headline | +4 | 14 | 0.89 | coup Venezuela, fails | 0.723 → 0.734 → 0.669 | US, T9, Europe Control |
+| 9004283 | 425 | T8 AR1 | −3 | 13 | 1.00 | coup Brazil, +1 | −0.064 → −0.005 → −0.155 | USSR, final scoring (−11) |
+| 9843847 | 533 | T10 headline | −4 | 35 | 0.91 | coup Venezuela, +1 | −0.779 → −0.655 → −0.802 | USSR, T11, 20 VP |
+| 129098 | 434 | T8 headline | +7 | 17 | 1.00 | coup Brazil, fails | 0.816 → 0.820 → 0.762 | US, T10, 20 VP |
+| 187325 | 491 | T9 headline | −6 | 23 | 1.00 | coup Zaire, +3 | −0.696 → −0.621 → −0.671 | USSR, T11, 20 VP |
+| 6776818 | 568 | T10 headline | +3 | 36 | 1.00 | coup Zaire, +1 | −0.457 → −0.335 → −0.476 | US, final scoring (+12) |
+
+In all six the USSR spends the Op on a coup at DEFCON 3, so DEFCON goes to 2 for the turn and
+USSR military ops rise. The policy is near-certain of the pick (0.89-1.00), and the critic reads
+the pick itself as a gain for the US (+0.004 to +0.12) and gives it back once the USSR has
+couped (−0.05 to −0.15): the network does not seem to anticipate what the USSR does with the Op.
+The one benefit seen is NORAD in the action-round case (9004283): DEFCON moved to 2 during the
+round with Canada US-controlled, so the US added 1 influence (Panama). NORAD was active in two of
+the headline games as well, but it pays only at the end of an action round. Other 1,200M seeds
+with the same pick, not generated: 2300617, 7597392, 4566295, 595564, 7122176.
 
 ### Detail: the top 10 picks per period
 
