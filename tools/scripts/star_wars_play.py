@@ -49,6 +49,7 @@ def play(model: Any, games: int, seed: int, batch: int, game0: int = 0) -> Dict[
     plays: List[Dict[str, Any]] = []        # every US play of Star Wars: phase, ahead, outcome
     holdings: List[Dict[str, Any]] = []     # every US holding: ahead_seen, outcome
     nonplays: List[Dict[str, Any]] = []     # Star Wars selected at a card choice that was not a play
+    retrievals: List[Dict[str, Any]] = []   # the card Star Wars' event takes from the discard pile
     for b0 in range(0, games, batch):
         n = min(batch, games - b0)
         env = TsVectorizedEnv(num_envs=n, base_seed=seed + game0 + b0)
@@ -88,6 +89,21 @@ def play(model: Any, games: int, seed: int, batch: int, game0: int = 0) -> Dict[
                     sel["next"] = [str(ctx.decision_type), int(ctx.resolving_card), str(st.get_card_location(STAR_WARS))]
                     nonplays.append(sel)
                     pending[i] = None
+                if (int(ctx.resolving_card) == STAR_WARS and ctx.decision_player == ts.Player.US
+                        and ctx.decision_type == ts.DecisionType.SELECT_CARD):
+                    # Star Wars' event: the US picks a card from the discard pile to play as an event.
+                    # Who played Star Wars: the USSR fires the US event by playing it for Ops, or
+                    # by headlining it.
+                    m = np.asarray(masks)[i]
+                    headline = st.current_phase == ts.Phase.HEADLINE
+                    by_us = (int(st.headline_us_card) == STAR_WARS if headline
+                             else st.phasing_player == ts.Player.US)
+                    retrievals.append({
+                        "game": game0 + b0 + i, "turn": int(st.turn), "by": "US" if by_us else "USSR",
+                        "phase": "headline" if headline else "ar",
+                        "card": int(ts.decode_flat_action(st, a).primary_id),
+                        "options": [int(ts.decode_flat_action(st, int(k)).primary_id)
+                                    for k in np.flatnonzero(m[:ActionEncoder.PLAY_MODE_OFFSET])]})
                 if int(ctx.resolving_card) != 0 or ctx.decision_player != ts.Player.US:
                     continue
                 h = holding[i]
@@ -119,7 +135,7 @@ def play(model: Any, games: int, seed: int, batch: int, game0: int = 0) -> Dict[
             for i, d in enumerate(dones):
                 if d:
                     done[i] = True
-    return {"games": games, "plays": plays, "holdings": holdings, "nonplays": nonplays}
+    return {"games": games, "plays": plays, "holdings": holdings, "nonplays": nonplays, "retrievals": retrievals}
 
 
 def collect(model: Any, target: int, seed: int, batch: int, chunk: int) -> Dict[str, Any]:
@@ -128,12 +144,14 @@ def collect(model: Any, target: int, seed: int, batch: int, chunk: int) -> Dict[
     plays: List[Dict[str, Any]] = []
     holdings: List[Dict[str, Any]] = []
     nonplays: List[Dict[str, Any]] = []
+    retrievals: List[Dict[str, Any]] = []
     game0 = 0
     while sum(p["ahead"] for p in plays) < target:
         d = play(model, chunk, seed, batch, game0)
         plays += d["plays"]
         holdings += d["holdings"]
         nonplays += d["nonplays"]
+        retrievals += d["retrievals"]
         game0 += chunk
     ahead = sorted((p for p in plays if p["ahead"]), key=lambda p: (p["game"], p["turn"], p["ar"]))[:target]
     last = ahead[-1]["game"]
@@ -141,7 +159,8 @@ def collect(model: Any, target: int, seed: int, batch: int, chunk: int) -> Dict[
     return {"games": last + 1, "target": target,
             "plays": [p for p in plays if (id(p) in keep) or (not p["ahead"] and p["game"] <= last)],
             "holdings": [h for h in holdings if h["game"] <= last],
-            "nonplays": [p for p in nonplays if p["game"] <= last]}
+            "nonplays": [p for p in nonplays if p["game"] <= last],
+            "retrievals": [r for r in retrievals if r["game"] <= last]}
 
 
 def split_row(label: str, d: Dict[str, Any]) -> str:
@@ -249,6 +268,49 @@ def plot_svg(points: Sequence[tuple[float, Dict[str, Any]]], title: str, branch_
     return "\n".join(o)
 
 
+def _tag_retrievals(d: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Each retrieval with `via`: "US play" when it follows a recorded US play of Star Wars as its
+    event (the plays are always while ahead -- behind, the event does nothing); "USSR play" when
+    the USSR played it; otherwise "inside another event" -- the US event firing inside another
+    event's resolution, as when Missile Envy hands Star Wars to the US."""
+    played = {(p["game"], p["turn"], p["phase"]) for p in d["plays"] if p["outcome"] in ("headline", "event")}
+    out = []
+    for r in d.get("retrievals", []):
+        via = ("USSR play" if r["by"] == "USSR"
+               else "US play" if (r["game"], r["turn"], r["phase"]) in played else "inside another event")
+        out.append({**r, "via": via})
+    return out
+
+
+def retrieval_table(rs: Sequence[Dict[str, Any]], top: int = 10) -> str:
+    """The cards Star Wars' event took from the discard pile: how often each was picked, its share
+    of the picks, and its pick rate when it was a legal option."""
+    cards = {int(c["id"]): c for c in json.load(open("rules/cards.json"))}
+    picked: Dict[int, int] = {}
+    offered: Dict[int, int] = {}
+    for r in rs:
+        picked[r["card"]] = picked.get(r["card"], 0) + 1
+        for c in r["options"]:
+            offered[c] = offered.get(c, 0) + 1
+    n = len(rs)
+    out = [f"{n:,} retrievals, {sum(len(r['options']) for r in rs) / max(1, n):.1f} legal options on average.", "",
+           "| card | side | picked | share of picks | offered in | picked when offered |",
+           "|:---|:---|---:|---:|---:|---:|"]
+    for c, k in sorted(picked.items(), key=lambda kv: -kv[1])[:top]:
+        out.append(f"| {cards[c]['name']} | {str(cards[c].get('side', 'neutral')).lower()} | {k:,} | "
+                   f"{100 * k / n:.1f}% | {100 * offered[c] / n:.0f}% | {100 * k / offered[c]:.0f}% |")
+    rest = n - sum(k for _, k in sorted(picked.items(), key=lambda kv: -kv[1])[:top])
+    if rest:
+        out.append(f"| {len(picked) - top} other cards | | {rest:,} | {100 * rest / n:.1f}% | | |")
+    by_side: Dict[str, int] = {}
+    for r in rs:
+        s = str(cards[r["card"]].get("side", "neutral")).lower()
+        by_side[s] = by_side.get(s, 0) + 1
+    out += ["", "By the side of the card taken: " + ", ".join(
+        f"{s} {100 * k / n:.0f}%" for s, k in sorted(by_side.items(), key=lambda kv: -kv[1])) + "."]
+    return "\n".join(out)
+
+
 def _steps(path: str) -> int:
     m = re.search(r"snapshot_(\d+)steps\.pt$", path)
     return int(m.group(1)) if m else -1
@@ -298,6 +360,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--plot-svg", default=None, help="also draw the split of plays while ahead (SVG)")
     ap.add_argument("--plot-title", default="Star Wars played while the US is ahead in space")
     ap.add_argument("--branch-at", type=float, default=None, help="mark a run boundary at this step (millions)")
+    ap.add_argument("--retrieval-periods", nargs="+", default=None,
+                    help="tabulate the cards Star Wars took, pooled over these step ranges in millions (e.g. 880-1200)")
     a = ap.parse_args(argv)
     labels = a.labels or [f"{_steps(p) / 1e6:.0f}M" for p in a.checkpoints]
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -326,6 +390,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         points.append((x, d))
     if a.plot_svg:
         open(a.plot_svg, "w").write(plot_svg(points, a.plot_title, a.branch_at) + "\n")
+    if a.retrieval_periods:
+        for period in a.retrieval_periods:
+            lo, hi = (float(v) for v in period.split("-"))
+            pooled = [r for x, d in points if lo <= x <= hi for r in _tag_retrievals(d)]
+            inside = sum(r["via"] == "inside another event" for r in pooled)
+            for via, what in (("US play", "the US played Star Wars (headline or event in a round)"),
+                              ("USSR play", "the USSR played Star Wars, firing the US event")):
+                rs = [r for r in pooled if r["via"] == via]
+                md = f"### Star Wars retrievals, {period}M: {what}\n\n{retrieval_table(rs)}"
+                if via == "US play":
+                    md += (f" Not counted: {inside} retrievals where the US event fired inside another event "
+                           f"(Star Wars handed over to the US by an event such as Missile Envy).")
+                out += ["", md]
+                print("\n" + md, flush=True)
     if a.output_md:
         open(a.output_md, "w").write("\n".join(out) + "\n")
     return 0
