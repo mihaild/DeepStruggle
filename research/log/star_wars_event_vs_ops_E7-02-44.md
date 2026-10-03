@@ -186,6 +186,26 @@ reshuffle, where the event fizzles by the rules.
   help the USSR (We Will Bury You: DEFCON −1 and 3 VP to the USSR unless UN Intervention follows;
   Lone Gunman: the USSR conducts Operations). Candidate mistakes, not checked further here.
 
+**Example: Lone Gunman through Star Wars** (owner: find an example replay). Game 942 of the
+1,200M snapshot's run, reproduced exactly from its seed (the batch runner seeds env `i` with
+`base_seed + 10007·i + 1`; here 9,483,595) with a greedy replay:
+
+    PYTHONPATH=.:build/release python tools/play_match.py \
+      --agent data/checkpoints/E7-02-44_20260930_222159/snapshot_1200029696steps.pt \
+      --seed 9483595 --temperature 0.0001 --game-id E7-02-44_1200M_star_wars_lone_gunman_s9483595 \
+      --output data/replays/E7-02-44_1200M_star_wars_lone_gunman_s9483595.tslog.json
+
+Turn 8 headline, VP +4: the USSR headlines ABM Treaty, the US Star Wars (US space ahead). ABM
+Treaty resolves first (4 Ops: DEFCON 3 → 4, then a successful USSR coup in Mexico, DEFCON 4 → 3).
+Star Wars then offers 14 cards; the policy takes **Lone Gunman at p = 0.89** (How I Learned to
+Stop Worrying 0.07, Nuclear Test Ban 0.02, Red Scare/Purge 0.02) -- step 449 of the replay. Lone
+Gunman reveals the US hand and gives the USSR 1 Op, which it spends on a coup in Venezuela: it
+fails (3 + 1 vs 4), but DEFCON drops to 2 for the turn and USSR military ops rise to 5. The US
+critic reads the pick itself as neutral (0.723 → 0.734) and drops to 0.669 once the coup has
+happened. The US still wins on turn 9 (Europe Control). Other 1,200M seeds with the same pick
+(headline unless noted): 9843847, 9004283 (action round), 129098, 2300617, 7597392, 6776818,
+4566295, 595564, 7122176, 187325.
+
 ### Detail: the top 10 picks per period
 
 "Offered in" is the share of retrievals where the card was a legal option; "picked when offered"
