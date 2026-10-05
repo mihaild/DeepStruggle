@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 380" width="760" height="380" font-family="system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Marshall Plan evented by its US holder, seed-44 line">
+<style>.bg{fill:#fcfcfb}.ink{fill:#0b0b0b}.ink2{fill:#52514e}.mut{fill:#898781}.grid{stroke:#e1e0d9}.axis{stroke:#c3c2b7}.s0{stroke:#2a78d6;fill:#2a78d6}.t0{fill:#2a78d6}.s1{stroke:#eb6834;fill:#eb6834}.t1{fill:#eb6834}svg .mark{stroke:#fcfcfb}svg .line{fill:none}svg .band{stroke:none}@media (prefers-color-scheme: dark){.bg{fill:#1a1a19}.ink{fill:#ffffff}.ink2{fill:#c3c2b7}.grid{stroke:#2c2c2a}.axis{stroke:#383835}.s0{stroke:#3987e5;fill:#3987e5}.t0{fill:#3987e5}.s1{stroke:#d95926;fill:#d95926}.t1{fill:#d95926}svg .mark{stroke:#1a1a19}}</style>
+<rect class="bg" width="760" height="380" rx="8"/>
+<text class="ink" x="56" y="22" font-size="15" font-weight="600">Marshall Plan evented by its US holder, seed-44 line</text>
+<text class="ink2" x="56" y="40" font-size="12">Share of US holdings headlined or evented; greedy self-play, 2,048 games per point; 95% bands</text>
+<line class="grid" x1="56" x2="590" y1="336.0" y2="336.0" stroke-width="1"/>
+<text class="mut" x="48" y="340.0" font-size="11" text-anchor="end">0%</text>
+<line class="grid" x1="56" x2="590" y1="282.8" y2="282.8" stroke-width="1"/>
+<text class="mut" x="48" y="286.8" font-size="11" text-anchor="end">20%</text>
+<line class="grid" x1="56" x2="590" y1="229.6" y2="229.6" stroke-width="1"/>
+<text class="mut" x="48" y="233.6" font-size="11" text-anchor="end">40%</text>
+<line class="grid" x1="56" x2="590" y1="176.4" y2="176.4" stroke-width="1"/>
+<text class="mut" x="48" y="180.4" font-size="11" text-anchor="end">60%</text>
+<line class="grid" x1="56" x2="590" y1="123.2" y2="123.2" stroke-width="1"/>
+<text class="mut" x="48" y="127.2" font-size="11" text-anchor="end">80%</text>
+<line class="grid" x1="56" x2="590" y1="70.0" y2="70.0" stroke-width="1"/>
+<text class="mut" x="48" y="74.0" font-size="11" text-anchor="end">100%</text>
+<text class="mut" x="56.0" y="354" font-size="11" text-anchor="middle">0M</text>
+<text class="mut" x="100.5" y="354" font-size="11" text-anchor="middle">400M</text>
+<text class="mut" x="145.0" y="354" font-size="11" text-anchor="middle">800M</text>
+<text class="mut" x="189.5" y="354" font-size="11" text-anchor="middle">1,200M</text>
+<text class="mut" x="234.0" y="354" font-size="11" text-anchor="middle">1,600M</text>
+<text class="mut" x="278.5" y="354" font-size="11" text-anchor="middle">2,000M</text>
+<text class="mut" x="323.0" y="354" font-size="11" text-anchor="middle">2,400M</text>
+<text class="mut" x="367.5" y="354" font-size="11" text-anchor="middle">2,800M</text>
+<text class="mut" x="412.0" y="354" font-size="11" text-anchor="middle">3,200M</text>
+<text class="mut" x="456.5" y="354" font-size="11" text-anchor="middle">3,600M</text>
+<text class="mut" x="501.0" y="354" font-size="11" text-anchor="middle">4,000M</text>
+<text class="mut" x="545.5" y="354" font-size="11" text-anchor="middle">4,400M</text>
+<text class="mut" x="590.0" y="354" font-size="11" text-anchor="middle">4,800M</text>
+<line class="axis" x1="56" x2="590" y1="336.0" y2="336.0" stroke-width="1"/>
+<text class="mut" x="323.0" y="372" font-size="11" text-anchor="middle">training steps</text>
+<line class="axis" x1="367.5" x2="367.5" y1="67" y2="336.0" stroke-width="1" stroke-dasharray="3 3"/>
+<text class="mut" x="371.5" y="64" font-size="10">2,800M: E7-20-44, no league</text>
+<line class="axis" x1="456.5" x2="456.5" y1="54" y2="336.0" stroke-width="1" stroke-dasharray="3 3"/>
+<text class="mut" x="460.5" y="51" font-size="10">3,600M: continued</text>
+<polygon class="s0 band" points="64.9,312.7 73.8,332.6 82.7,331.9 91.6,334.0 100.5,256.5 109.4,203.1 118.3,228.1 127.2,201.2 136.1,269.0 145.0,236.3 153.9,215.0 162.8,225.0 171.7,248.6 180.6,267.6 189.5,288.1 198.4,247.6 207.3,265.4 216.2,264.8 225.1,240.3 234.0,280.1 242.9,272.9 251.8,273.4 260.7,243.4 269.6,291.2 278.5,271.1 287.4,286.2 296.3,248.0 305.2,262.0 314.1,281.8 323.0,258.0 331.9,256.9 340.8,293.0 349.7,278.8 358.6,246.9 367.5,225.5 376.4,305.8 385.3,217.0 394.2,169.4 403.1,167.8 412.0,264.7 420.9,292.0 429.8,309.3 438.7,294.0 447.6,288.7 456.5,315.3 465.4,317.5 474.3,319.6 483.2,305.6 492.1,325.3 501.0,328.3 509.9,321.6 518.8,322.7 527.7,315.8 536.6,324.4 545.5,325.4 554.4,326.2 563.3,311.4 572.2,320.3 581.1,332.9 590.0,328.6 590.0,332.8 581.1,335.4 572.2,326.8 563.3,319.6 554.4,331.2 545.5,330.6 536.6,329.9 527.7,323.1 518.8,328.6 509.9,327.6 501.0,332.6 492.1,330.6 483.2,314.6 474.3,326.1 465.4,324.4 456.5,322.6 447.6,300.0 438.7,304.6 429.8,317.7 420.9,302.8 412.0,278.1 403.1,183.6 394.2,185.4 385.3,232.8 376.4,314.9 367.5,241.1 358.6,261.3 349.7,291.1 340.8,303.6 331.9,270.7 323.0,272.0 314.1,293.9 305.2,275.8 296.3,262.2 287.4,297.9 278.5,284.1 269.6,302.1 260.7,258.1 251.8,286.3 242.9,285.7 234.0,292.2 225.1,254.9 216.2,278.0 207.3,278.6 198.4,262.3 189.5,299.6 180.6,281.1 171.7,263.1 162.8,240.5 153.9,230.5 145.0,251.3 136.1,281.8 127.2,217.2 118.3,243.4 109.4,218.9 100.5,270.8 91.6,335.8 82.7,334.9 73.8,335.2 64.9,320.7" fill-opacity="0.14"/>
+<polyline class="s0 line" points="64.9,317.1 73.8,334.3 82.7,333.8 91.6,335.3 100.5,263.9 109.4,211.0 118.3,235.9 127.2,209.2 136.1,275.7 145.0,243.9 153.9,222.8 162.8,232.9 171.7,256.1 180.6,274.6 189.5,294.1 198.4,255.1 207.3,272.2 216.2,271.7 225.1,247.7 234.0,286.4 242.9,279.6 251.8,280.1 260.7,250.9 269.6,297.0 278.5,277.9 287.4,292.4 296.3,255.3 305.2,269.1 314.1,288.1 323.0,265.2 331.9,264.0 340.8,298.6 349.7,285.2 358.6,254.3 367.5,233.4 376.4,310.7 385.3,225.0 394.2,177.3 403.1,175.6 412.0,271.7 420.9,297.7 429.8,313.9 438.7,299.6 447.6,294.7 456.5,319.3 465.4,321.3 474.3,323.2 483.2,310.4 492.1,328.4 501.0,330.9 509.9,325.0 518.8,326.1 527.7,319.8 536.6,327.6 545.5,328.4 554.4,329.1 563.3,315.9 572.2,323.9 581.1,334.6 590.0,331.1" stroke-width="2" stroke-linejoin="round"/>
+<circle class="s0 mark" cx="64.9" cy="317.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="73.8" cy="334.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="82.7" cy="333.8" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="91.6" cy="335.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="100.5" cy="263.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="109.4" cy="211.0" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="118.3" cy="235.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="127.2" cy="209.2" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="136.1" cy="275.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="145.0" cy="243.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="153.9" cy="222.8" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="162.8" cy="232.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="171.7" cy="256.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="180.6" cy="274.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="189.5" cy="294.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="198.4" cy="255.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="207.3" cy="272.2" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="216.2" cy="271.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="225.1" cy="247.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="234.0" cy="286.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="242.9" cy="279.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="251.8" cy="280.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="260.7" cy="250.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="269.6" cy="297.0" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="278.5" cy="277.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="287.4" cy="292.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="296.3" cy="255.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="305.2" cy="269.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="314.1" cy="288.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="323.0" cy="265.2" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="331.9" cy="264.0" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="340.8" cy="298.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="349.7" cy="285.2" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="358.6" cy="254.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="367.5" cy="233.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="376.4" cy="310.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="385.3" cy="225.0" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="394.2" cy="177.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="403.1" cy="175.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="412.0" cy="271.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="420.9" cy="297.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="429.8" cy="313.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="438.7" cy="299.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="447.6" cy="294.7" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="456.5" cy="319.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="465.4" cy="321.3" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="474.3" cy="323.2" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="483.2" cy="310.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="492.1" cy="328.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="501.0" cy="330.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="509.9" cy="325.0" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="518.8" cy="326.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="527.7" cy="319.8" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="536.6" cy="327.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="545.5" cy="328.4" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="554.4" cy="329.1" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="563.3" cy="315.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="572.2" cy="323.9" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="581.1" cy="334.6" r="3.5" style="stroke-width:1.5"/>
+<circle class="s0 mark" cx="590.0" cy="331.1" r="3.5" style="stroke-width:1.5"/>
+<polygon class="s1 band" points="73.8,333.5 91.6,334.5 109.4,226.8 127.2,225.4 145.0,256.2 162.8,249.3 180.6,282.3 198.4,265.4 216.2,279.6 234.0,293.2 251.8,287.4 269.6,302.4 287.4,296.9 305.2,280.9 323.0,273.8 340.8,303.8 358.6,266.4 376.4,313.7 394.2,196.0 412.0,281.7 429.8,314.9 447.6,300.8 465.4,321.8 483.2,312.7 501.0,329.9 518.8,325.4 536.6,326.5 554.4,328.0 572.2,324.2 590.0,329.3 590.0,332.7 572.2,329.0 554.4,331.9 536.6,330.8 518.8,330.0 501.0,333.2 483.2,319.4 465.4,327.0 447.6,309.3 429.8,321.4 412.0,292.0 394.2,210.9 376.4,320.4 358.6,278.0 340.8,311.9 323.0,285.2 305.2,291.4 287.4,306.0 269.6,310.8 251.8,297.7 234.0,302.6 216.2,290.1 198.4,277.5 180.6,293.2 162.8,262.1 145.0,268.4 127.2,239.2 109.4,240.6 91.6,335.8 73.8,335.4" fill-opacity="0.14"/>
+<polyline class="s1 line" points="73.8,334.8 91.6,335.5 109.4,233.8 127.2,232.4 145.0,262.4 162.8,255.9 180.6,288.0 198.4,271.6 216.2,285.1 234.0,298.1 251.8,292.8 269.6,306.9 287.4,301.7 305.2,286.4 323.0,279.7 340.8,308.1 358.6,272.4 376.4,317.4 394.2,203.4 412.0,287.1 429.8,318.4 447.6,305.3 465.4,324.7 483.2,316.3 501.0,331.8 518.8,328.0 536.6,329.0 554.4,330.3 572.2,326.9 590.0,331.3" stroke-width="2" stroke-linejoin="round"/>
+<rect class="s1 mark" x="70.6" y="331.6" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="88.4" y="332.3" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="106.2" y="230.6" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="124.0" y="229.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="141.8" y="259.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="159.6" y="252.7" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="177.4" y="284.8" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="195.2" y="268.4" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="213.0" y="281.9" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="230.8" y="294.9" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="248.6" y="289.6" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="266.4" y="303.7" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="284.2" y="298.5" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="302.0" y="283.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="319.8" y="276.5" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="337.6" y="304.9" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="355.4" y="269.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="373.2" y="314.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="391.0" y="200.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="408.8" y="283.9" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="426.6" y="315.2" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="444.4" y="302.1" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="462.2" y="321.5" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="480.0" y="313.1" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="497.8" y="328.6" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="515.6" y="324.8" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="533.4" y="325.8" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="551.2" y="327.1" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="569.0" y="323.7" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<rect class="s1 mark" x="586.8" y="328.1" width="6.4" height="6.4" rx="1" style="stroke-width:1.5"/>
+<text class="t0" x="600" y="324.0" font-size="12" font-weight="600">Early War (T1-3) 2%</text>
+<text class="t1" x="600" y="340.0" font-size="12" font-weight="600">whole game 2%</text>
+</svg>
