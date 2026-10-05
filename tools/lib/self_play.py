@@ -11,7 +11,7 @@ import torch
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from bindings.action_encoder import ActionEncoder
-from ai.eval.blunders import BlunderCounts, check_play
+from ai.eval.blunders import BlunderCounts, _play_mode, check_play
 from ai.eval.policy_readout import (
     TRACE_P_FLOOR,
     TRACE_TOP_K,
@@ -222,7 +222,9 @@ def generate_self_play_replay(
             if _dt == 1:
                 last_card[player_name] = int(ma.primary_id)
             elif _dt == 2:
-                _mode = {0: "EVENT", 1: "OPS", 2: "SPACE"}.get(int(ma.primary_id))
+                # From ts.Resolution: this was the pre-P17 {0: EVENT, 1: OPS, 2: SPACE}, which
+                # scored every Influence play as a space race play and skipped coups and realignments.
+                _mode = _play_mode(int(ma.primary_id))
                 _card = last_card.get(player_name, 0)
                 if _mode and 1 <= _card <= 110:
                     _forced = (int(getattr(st, "forced_card_id", 0)) == _card

@@ -42,7 +42,7 @@ import numpy as np
 import ts_engine as ts
 
 from ai.eval.blunders import (DUCK_AND_COVER, FIVE_YEAR_PLAN, KAL_007, OLYMPIC_GAMES,
-                              WE_WILL_BURY_YOU, defcon_suicide_cards, hand_of)
+                              WE_WILL_BURY_YOU, _play_mode, defcon_suicide_cards, hand_of)
 from ai.stats import wilson_interval
 
 SUMMIT = 45
@@ -140,7 +140,10 @@ class DefconEndings:
 
 
 def _mode_name(primary_id: int) -> str:
-    return {0: "EVENT", 1: "OPS", 2: "SPACE", 3: "PASS"}.get(int(primary_id), "?")
+    """From ts.Resolution (`blunders._play_mode`). This was the pre-P17 {0: EVENT, 1: OPS,
+    2: SPACE, 3: PASS}, which named every Influence play SPACE and every coup PASS; only the EVENT
+    test below reads it, and EVENT is 0 either way, so the classification was unaffected."""
+    return _play_mode(int(primary_id)) or "?"
 
 
 def classify_ending(loser: ts.Player, provoked: bool, last_play: Optional[Play],

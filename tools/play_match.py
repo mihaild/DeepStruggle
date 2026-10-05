@@ -182,6 +182,20 @@ def resolve_agent(agent_spec: str, role: str, temperature: float = 0.1, device: 
     )
 
 
+#: SELECT_PLAY_MODE's primary id is a `ts.Resolution`, named here from the enum itself. This was
+#: written out as the pre-P17 `{0: Event, 1: Operations, 2: Space Race}` and never updated when P17
+#: reordered the enum (SPACE 2 -> 1, one OPS -> three), so every match replay labelled each
+#: Influence play "Space Race", each space race play "Operations", and coups and realignments
+#: "Mode 3" / "Mode 4" -- the same drift `ai.eval.blunders._play_mode` records.
+PLAY_MODE_NAMES: Dict[int, str] = {
+    int(ts.Resolution.EVENT): "Event",
+    int(ts.Resolution.SPACE): "Space Race",
+    int(ts.Resolution.OPS_INFLUENCE): "Operations (Influence)",
+    int(ts.Resolution.OPS_COUP): "Operations (Coup)",
+    int(ts.Resolution.OPS_REALIGN): "Operations (Realignment)",
+}
+
+
 def format_action_description(action_dict: Dict[str, Any], state_dict: Dict[str, Any]) -> str:
     """Formats a concise human-readable description for an action."""
     d_type = action_dict.get("decision_type", 0)
@@ -192,8 +206,7 @@ def format_action_description(action_dict: Dict[str, Any], state_dict: Dict[str,
         c_name = ts.CardData.get_card_name(p_id) if 1 <= p_id <= 110 else f"Card #{p_id}"
         return f"Plays card #{p_id} '{c_name}'"
     elif d_type == 2:  # SELECT_PLAY_MODE
-        modes = {0: "Event", 1: "Operations", 2: "Space Race"}
-        return f"Plays as {modes.get(p_id, f'Mode {p_id}')}"
+        return f"Plays as {PLAY_MODE_NAMES.get(p_id, f'Mode {p_id}')}"
     elif d_type == 3:  # CHOOSE_TIMING_BRANCH
         branches = {0: "Operations First", 1: "Event First"}
         return f"Timing: {branches.get(p_id, f'Branch {p_id}')}"
