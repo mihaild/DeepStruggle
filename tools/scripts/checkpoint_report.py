@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Per-checkpoint behaviour report: events vs Ops, Star Wars, Five Year Plan, Aldrich Ames.
+"""Per-checkpoint behaviour report: individual cards first, then events vs Ops for every card.
 
 One pass of greedy self-play per checkpoint feeds every section:
 
-1. **Events vs Ops** -- the event census of `tools/scripts/event_play_census.py`, the same logic
-   (one count per holding where the owner could have played the event).
-2. **Star Wars** -- the US's plays of it while ahead in space (headline / Ops / event / space race
+1. **Star Wars** -- the US's plays of it while ahead in space (headline / Ops / event / space race
    in a round) and the card its event takes from the discard pile, split by who played Star Wars
    (`tools/scripts/star_wars_play.py`).
-3. **Five Year Plan played by the USSR** -- the USSR playing the US card from its own hand so the
+2. **Five Year Plan played by the USSR** -- the USSR playing the US card from its own hand so the
    US event fires (headline, or a round with the event first or the Ops first; not the space
    race): the action round, split Early War / Mid+Late War, and the USSR hand at that moment.
-4. **Aldrich Ames Remix played by the US** -- the same for the US playing the USSR card.
+3. **Aldrich Ames Remix played by the US** -- the same for the US playing the USSR card.
+4. **OPEC and Alliance for Progress** -- how often the owner plays the event by the VP it would
+   score at that moment (0-2 / 3-4 / 5+), per card choice and per holding.
+5. **Soviets Shoot Down KAL-007** -- the US's choices holding it, split by South Korea's control.
+6. **UN Intervention** -- the opponent card each side plays with it.
+7. **Space race** -- the cards each side sends there most.
+8. **Events vs Ops, every card** -- the event census of `tools/scripts/event_play_census.py`, the
+   same logic (one count per holding where the owner could have played the event).
 
     PYTHONPATH=.:build/release python tools/scripts/checkpoint_report.py \\
         --checkpoints <pt> [<pt> ...] --games 16384
@@ -48,6 +53,17 @@ ID = {c["name"]: i for i, c in CARDS.items()}
 STAR_WARS = ID["Star Wars"]
 FIVE_YEAR_PLAN = ID["Five Year Plan"]
 ALDRICH_AMES = ID["Aldrich Ames Remix"]
+KAL_007 = ID["Soviets Shoot Down KAL-007"]
+OPEC = ID["OPEC"]
+ALLIANCE = ID["Alliance for Progress"]
+UN_INTERVENTION = ID["UN Intervention"]
+_MAP = {c["name"]: c for c in json.load(open("rules/map.json"))["countries"]}
+SOUTH_KOREA = int(_MAP["South Korea"]["id"])
+#: The engine's lists (`trigger_opec`, `trigger_alliance_for_progress`): 1 VP per country controlled.
+OPEC_COUNTRIES = [int(_MAP[n]["id"]) for n in
+                  ("Egypt", "Iran", "Libya", "Saudi Arabia", "Iraq", "Gulf States", "Venezuela")]
+ALLIANCE_COUNTRIES = [int(c["id"]) for c in _MAP.values()
+                      if c["battleground"] and c["region"] in ("Central America", "South America")]
 REPORT_DIR = "research/log/per_checkpoint"
 DATA_DIR = "/workspace/data/eval/per_checkpoint"
 
@@ -207,6 +223,96 @@ class OpponentCardPlay:
         self.pending.pop(g, None)
 
 
+class OwnCardChoices:
+    """Every card choice of `owner` (headline or action round, not inside an event) while `card`
+    is in its hand: whether the event could trigger, `feature(st)` (a number that conditions the
+    event's worth), and whether the card was played and how -- "headline", or in a round "event",
+    "Ops" or "space race". `holding` numbers the spells of the card in the owner's hand."""
+
+    def __init__(self, card: int, owner: Any, feature: Any) -> None:
+        self.card, self.owner, self.feature = card, owner, feature
+        self.choices: List[Dict[str, Any]] = []
+        self.pending: Dict[int, Dict[str, Any]] = {}
+        self.held: Dict[int, bool] = {}
+        self.spell: Dict[int, int] = {}
+
+    def see(self, g: int, st: ts.GameState, a: int) -> None:
+        ctx = st.ctx()
+        sel = self.pending.pop(g, None)
+        if sel is not None:
+            if ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE and int(ctx.pending_op_card) == self.card:
+                sel["played"] = "event" if a == EVENT else "space race" if a == SPACE else "Ops"
+            else:
+                sel["played"] = "not a play"
+        holding = ts.in_hand_of(st.get_card_location(self.card), self.owner)
+        if holding and not self.held.get(g, False):
+            self.spell[g] = self.spell.get(g, 0) + 1
+        self.held[g] = holding
+        if (not holding or int(ctx.resolving_card) != 0 or ctx.decision_player != self.owner
+                or ctx.decision_type != ts.DecisionType.SELECT_CARD
+                or st.current_phase not in (ts.Phase.HEADLINE, ts.Phase.ACTION_ROUND)):
+            return
+        headline = st.current_phase == ts.Phase.HEADLINE
+        chosen = a < ActionEncoder.PLAY_MODE_OFFSET and int(ts.decode_flat_action(st, a).primary_id) == self.card
+        rec: Dict[str, Any] = {"game": g, "holding": self.spell[g], "turn": int(st.turn),
+                               "phase": "headline" if headline else "ar",
+                               "legal": bool(ts.CardHandlers.can_trigger_event(st, self.card, self.owner)),
+                               "feature": self.feature(st), "played": "headline" if chosen and headline else None}
+        self.choices.append(rec)
+        if chosen and not headline:
+            self.pending[g] = rec
+
+    def done(self, g: int) -> None:
+        for d in (self.pending, self.held, self.spell):
+            d.pop(g, None)
+
+
+class UNIntervention:
+    """The card a side plays with UN Intervention: the opponent card whose Ops it uses."""
+
+    def __init__(self) -> None:
+        self.picks: List[Dict[str, Any]] = []
+
+    def see(self, g: int, st: ts.GameState, a: int, mask: np.ndarray) -> None:
+        ctx = st.ctx()
+        if int(ctx.resolving_card) != UN_INTERVENTION or ctx.decision_type != ts.DecisionType.SELECT_CARD:
+            return
+        self.picks.append({"game": g, "turn": int(st.turn), "side": "US" if ctx.decision_player == ts.Player.US else "USSR",
+                           "card": int(ts.decode_flat_action(st, a).primary_id),
+                           "options": [int(ts.decode_flat_action(st, int(k)).primary_id)
+                                       for k in np.flatnonzero(mask[:ActionEncoder.PLAY_MODE_OFFSET])]})
+
+    def done(self, g: int) -> None:
+        pass
+
+
+class PlayModes:
+    """Every play-mode choice (a card played in an action round, not inside an event): which card,
+    which side, and whether it went to the space race -- the denominator for the space-race list."""
+
+    def __init__(self) -> None:
+        self.counts: Dict[str, Dict[str, int]] = {"US": {}, "USSR": {}}
+        self.space: Dict[str, Dict[str, int]] = {"US": {}, "USSR": {}}
+
+    def see(self, g: int, st: ts.GameState, a: int) -> None:
+        ctx = st.ctx()
+        if (ctx.decision_type != ts.DecisionType.SELECT_PLAY_MODE or int(ctx.resolving_card) != 0
+                or st.current_phase != ts.Phase.ACTION_ROUND):
+            return
+        side = "US" if ctx.decision_player == ts.Player.US else "USSR"
+        card = str(int(ctx.pending_op_card))
+        self.counts[side][card] = self.counts[side].get(card, 0) + 1
+        if a == SPACE:
+            self.space[side][card] = self.space[side].get(card, 0) + 1
+
+    def done(self, g: int) -> None:
+        pass
+
+
+def _controlled(st: ts.GameState, countries: Sequence[int], side: Any) -> int:
+    return sum(1 for c in countries if ts.Scoring.is_controlled_by(st, c, side))
+
+
 def play(model: Any, merged: bool, games: int, seed: int, batch: int) -> Dict[str, Any]:
     from bindings.ts_env import TsVectorizedEnv, check_obs_width, model_obs_features
     check_obs_width(model)
@@ -216,6 +322,12 @@ def play(model: Any, merged: bool, games: int, seed: int, batch: int) -> Dict[st
     model.eval()
     census, sw = Census(), StarWars()
     fyp, ames = OpponentCardPlay(FIVE_YEAR_PLAN, ts.Player.USSR), OpponentCardPlay(ALDRICH_AMES, ts.Player.US)
+    kal = OwnCardChoices(KAL_007, ts.Player.US,
+                         lambda st: int(ts.Scoring.is_controlled_by(st, SOUTH_KOREA, ts.Player.US)))
+    opec = OwnCardChoices(OPEC, ts.Player.USSR, lambda st: _controlled(st, OPEC_COUNTRIES, ts.Player.USSR))
+    alliance = OwnCardChoices(ALLIANCE, ts.Player.US, lambda st: _controlled(st, ALLIANCE_COUNTRIES, ts.Player.US))
+    un, modes = UNIntervention(), PlayModes()
+    observers = (census, sw, fyp, ames, kal, opec, alliance, un, modes)
     for b0 in range(0, games, batch):
         n = min(batch, games - b0)
         env = TsVectorizedEnv(num_envs=n, base_seed=seed + b0)
@@ -243,16 +355,23 @@ def play(model: Any, merged: bool, games: int, seed: int, batch: int) -> Dict[st
                 sw.see(g, st, a, masks_np[i])
                 fyp.see(g, st, a)
                 ames.see(g, st, a)
+                kal.see(g, st, a)
+                opec.see(g, st, a)
+                alliance.see(g, st, a)
+                un.see(g, st, a, masks_np[i])
+                modes.see(g, st, a)
             obs, masks, _, dones, _ = env.step(actions)
             for i, d in enumerate(dones):
                 if d and not done[i]:
                     done[i] = True
-                    for o in (census, sw, fyp, ames):
+                    for o in observers:
                         o.done(b0 + i)
     return {"games": games, "seed": seed, "batch": batch,
             "holdings": [[h.card, h.side, h.outcome, h.legal] for h in census.holdings],
             "star_wars": {"plays": sw.plays, "retrievals": sw.retrievals},
-            "five_year_plan": fyp.plays, "aldrich_ames": ames.plays}
+            "five_year_plan": fyp.plays, "aldrich_ames": ames.plays,
+            "kal_007": kal.choices, "opec": opec.choices, "alliance_for_progress": alliance.choices,
+            "un_intervention": un.picks, "play_modes": {"all": modes.counts, "space": modes.space}}
 
 
 # --------------------------------------------------------------------------------------------
@@ -356,6 +475,115 @@ def opponent_card_section(title: str, intro: str, plays: Sequence[Dict[str, Any]
     return "\n".join(out)
 
 
+VP_BUCKETS = (("0-2 VP", 0, 2), ("3-4 VP", 3, 4), ("5+ VP", 5, 99))
+
+
+def _bucket(v: int) -> str:
+    return next(name for name, lo, hi in VP_BUCKETS if lo <= v <= hi)
+
+
+def _holding_outcomes(choices: Sequence[Dict[str, Any]]) -> Dict[Tuple[int, int], Dict[str, Any]]:
+    """Per holding (game, spell): its choices where the event could trigger, the best `feature`
+    among them, and how the holding ended -- the card's play, if it was played at one of them."""
+    out: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    for c in choices:
+        h = out.setdefault((c["game"], c["holding"]), {"max": -1, "played": None, "at": None, "legal": False})
+        if c["legal"]:
+            h["legal"] = True
+            h["max"] = max(h["max"], int(c["feature"]))
+        if c["played"] in ("headline", "event", "Ops", "space race"):
+            h["played"], h["at"] = c["played"], int(c["feature"])
+    return out
+
+
+def vp_card_section(name: str, intro: str, choices: Sequence[Dict[str, Any]]) -> str:
+    legal = [c for c in choices if c["legal"]]
+    out = [f"### {name}", "", intro, "",
+           "At each of the owner's card choices holding the card where the event can trigger, by the VP the event "
+           "would score at that moment:", "",
+           "| VP the event would score | headline choices | headlined | action-round choices | event in the round "
+           "| Ops / space race in the round |", "|:---|---:|---:|---:|---:|---:|"]
+    for b, _, _ in VP_BUCKETS:
+        hl = [c for c in legal if c["phase"] == "headline" and _bucket(int(c["feature"])) == b]
+        ar = [c for c in legal if c["phase"] == "ar" and _bucket(int(c["feature"])) == b]
+        out.append(f"| {b} | {len(hl):,} | {_pct(sum(c['played'] == 'headline' for c in hl), len(hl))} | {len(ar):,} | "
+                   f"{_pct(sum(c['played'] == 'event' for c in ar), len(ar))} | "
+                   f"{_pct(sum(c['played'] in ('Ops', 'space race') for c in ar), len(ar))} |")
+    hs = [h for h in _holding_outcomes(choices).values() if h["legal"]]
+    out += ["", "Per holding (the card in the owner's hand until it leaves), by the most the event would have scored "
+                "at any of those choices -- how the holding ended:", "",
+            "| best VP while held | holdings | evented (headline or round) | Ops / space race | not played by the owner |",
+            "|:---|---:|---:|---:|---:|"]
+    for b, _, _ in VP_BUCKETS:
+        xs = [h for h in hs if _bucket(h["max"]) == b]
+        out.append(f"| {b} | {len(xs):,} | {_pct(sum(h['played'] in ('headline', 'event') for h in xs), len(xs))} | "
+                   f"{_pct(sum(h['played'] in ('Ops', 'space race') for h in xs), len(xs))} | "
+                   f"{_pct(sum(h['played'] is None for h in xs), len(xs))} |")
+    ev = [h["at"] for h in hs if h["played"] in ("headline", "event")]
+    if ev:
+        out += ["", f"When evented, the VP it would score at that choice: mean {float(np.mean(ev)):.2f}, "
+                    f"5+ in {_pct(sum(v >= 5 for v in ev), len(ev))} of {len(ev):,} plays (a headline resolves after "
+                    f"the other side's may have changed the board)."]
+    return "\n".join(out)
+
+
+def kal_section(choices: Sequence[Dict[str, Any]]) -> str:
+    out = ["## Soviets Shoot Down KAL-007", "",
+           "KAL-007 (US, 4 Ops): DEFCON −1 and the US +2 VP; *if the US controls South Korea* the US may also place "
+           "influence or realign with the card's Ops. Each of the US's card choices while holding it, by South "
+           "Korea's control at that moment:", "",
+           "| | US controls South Korea | does not |", "|:---|---:|---:|"]
+    by = {k: [c for c in choices if int(c["feature"]) == k] for k in (1, 0)}
+    hl = {k: [c for c in by[k] if c["phase"] == "headline"] for k in by}
+    ar = {k: [c for c in by[k] if c["phase"] == "ar"] for k in by}
+    out += [f"| headline choices | {len(hl[1]):,} | {len(hl[0]):,} |",
+            f"| headlined | {_pct(sum(c['played'] == 'headline' for c in hl[1]), len(hl[1]))} | "
+            f"{_pct(sum(c['played'] == 'headline' for c in hl[0]), len(hl[0]))} |",
+            f"| action-round choices | {len(ar[1]):,} | {len(ar[0]):,} |"]
+    for m, label in (("event", "event in the round"), ("Ops", "Ops in the round"), ("space race", "space race")):
+        out.append(f"| {label} | {_pct(sum(c['played'] == m for c in ar[1]), len(ar[1]))} | "
+                   f"{_pct(sum(c['played'] == m for c in ar[0]), len(ar[0]))} |")
+    return "\n".join(out)
+
+
+def _pick_table(recs: Sequence[Dict[str, Any]], top: int = 15) -> str:
+    n = len(recs)
+    if n == 0:
+        return "None."
+    picked = collections.Counter(r["card"] for r in recs)
+    offered = collections.Counter(c for r in recs for c in r["options"])
+    out = [f"{n:,} plays, {sum(len(r['options']) for r in recs) / n:.1f} eligible cards in hand on average.", "",
+           "| card | played with it | share | eligible in | played when eligible |", "|:---|---:|---:|---:|---:|"]
+    for c, k in picked.most_common(top):
+        out.append(f"| {CARDS[c]['name']} | {k:,} | {100 * k / n:.1f}% | {100 * offered[c] / n:.0f}% | "
+                   f"{100 * k / offered[c]:.0f}% |")
+    return "\n".join(out)
+
+
+def un_section(picks: Sequence[Dict[str, Any]]) -> str:
+    out = ["## UN Intervention: the card played with it", "",
+           "UN Intervention is played with an opponent card from the same hand, whose Ops are used without its event. "
+           "\"Eligible\": the opponent's non-scoring cards in hand at that choice (the engine's options)."]
+    for side in ("US", "USSR"):
+        out += ["", f"### {side}", "", _pick_table([p for p in picks if p["side"] == side])]
+    return "\n".join(out)
+
+
+def space_section(modes: Dict[str, Dict[str, Dict[str, int]]], top: int = 15) -> str:
+    out = ["## Space race: the cards sent", "",
+           "Every card played in an action round goes through the play-mode choice; this counts those sent to the "
+           "space race. \"Share of its plays\": of that side's plays of the card in a round, the share spent on the "
+           "space race."]
+    for side in ("US", "USSR"):
+        allp, sp = modes["all"][side], modes["space"][side]
+        n, tot = sum(sp.values()), sum(allp.values())
+        out += ["", f"### {side}", "", f"{n:,} space race plays, {_pct(n, tot)} of the {tot:,} cards it played in a round.", "",
+                "| card | sent to space | share of space plays | share of its plays |", "|:---|---:|---:|---:|"]
+        for c, k in sorted(sp.items(), key=lambda kv: -kv[1])[:top]:
+            out.append(f"| {CARDS[int(c)]['name']} | {k:,} | {_pct(k, n)} | {_pct(k, allp.get(c, 0))} |")
+    return "\n".join(out)
+
+
 def _sha(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -396,7 +624,9 @@ def report(path: str, d: Dict[str, Any], merged: bool, feats: int,
     out += [f"* **Action view:** {'merged influence (E4.1)' if merged else 'E4'}; observation feature bits: {feats}",
             f"* **Games:** {d['games']:,} greedy self-play games of the checkpoint against itself, seed "
             f"{d['seed']:,}, batches of {d['batch']}. Every section reads the same games.", "",
-            "## Events vs Ops", "", census_table(holdings, d["games"]), "",
+            "Sections: Star Wars · Five Year Plan played by the USSR · Aldrich Ames Remix played by the US · OPEC "
+            "and Alliance for Progress · Soviets Shoot Down KAL-007 · UN Intervention · Space race · and, last, "
+            "Events vs Ops for every card.", "",
             star_wars_section(d["star_wars"]), "",
             opponent_card_section(
                 "Five Year Plan played by the USSR",
@@ -409,7 +639,18 @@ def report(path: str, d: Dict[str, Any], merged: bool, feats: int,
                 "Aldrich Ames Remix (USSR, 3 Ops): the US reveals its hand for the rest of the turn and the USSR "
                 "discards a card of its choice from it. Here: the US playing it from its own hand so that the event "
                 "fires (a Late War card, so all plays fall in Mid+Late War).",
-                d["aldrich_ames"], "us", show_mode=False)]
+                d["aldrich_ames"], "us", show_mode=False), "",
+            "## OPEC and Alliance for Progress", "",
+            vp_card_section("OPEC (USSR)", "OPEC (USSR, 3 Ops): the USSR gains 1 VP for each of Egypt, Iran, Libya, "
+                            "Saudi Arabia, Iraq, the Gulf States and Venezuela it controls (cancelled by North Sea Oil, "
+                            "when the event cannot trigger).", d["opec"]), "",
+            vp_card_section("Alliance for Progress (US)", "Alliance for Progress (US, 3 Ops): the US gains 1 VP for "
+                            "each battleground it controls in Central and South America (Mexico, Panama, Cuba, "
+                            "Venezuela, Brazil, Chile, Argentina).", d["alliance_for_progress"]), "",
+            kal_section(d["kal_007"]), "",
+            un_section(d["un_intervention"]), "",
+            space_section(d["play_modes"]), "",
+            "## Events vs Ops, every card", "", census_table(holdings, d["games"])]
     return "\n".join(out) + "\n"
 
 
