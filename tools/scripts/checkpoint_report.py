@@ -372,8 +372,10 @@ def _label(path: str) -> Tuple[str, str, str]:
     return short, step, stem
 
 
-def report(path: str, d: Dict[str, Any], merged: bool, feats: int) -> str:
+def report(path: str, d: Dict[str, Any], merged: bool, feats: int,
+           label: Optional[str] = None, note: Optional[str] = None) -> str:
     short, step, _ = _label(path)
+    title = label or f"{short} @ {step}"
     meta: Dict[str, Any] = {}
     try:
         meta = json.load(open(os.path.join(os.path.dirname(os.path.abspath(path)), "metadata.json")))
@@ -382,11 +384,11 @@ def report(path: str, d: Dict[str, Any], merged: bool, feats: int) -> str:
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     holdings = [Holding(int(r[0]), int(r[1]), str(r[2]), bool(r[3])) for r in d["holdings"]]
     rel = os.path.relpath(path, "/workspace")
-    out = [f"# {short} @ {step}: behaviour report", "",
+    out = [f"# {title}: behaviour report", "",
            f"Generated {datetime.date.today().isoformat()} by `tools/scripts/checkpoint_report.py` (commit {commit}).", "",
            "## The checkpoint", "",
            f"* **File:** `{rel}` (sha256 `{_sha(path)[:12]}…`)",
-           f"* **Run:** {meta.get('description', '(no metadata.json description)')}"]
+           f"* **Run:** {note or meta.get('description', '(no metadata.json description)')}"]
     if meta.get("resumed_from"):
         out.append(f"* **Resumed from:** `{os.path.relpath(str(meta['resumed_from']), '/workspace')}`")
     out += [f"* **Action view:** {'merged influence (E4.1)' if merged else 'E4'}; observation feature bits: {feats}",
@@ -433,13 +435,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--seed", type=int, default=55_000)
     ap.add_argument("--load", action="store_true", help="rebuild the reports from the saved records")
     ap.add_argument("--output-dir", default=REPORT_DIR)
+    ap.add_argument("--data-dir", default=DATA_DIR, help="where the raw records go (and --load reads them)")
+    ap.add_argument("--labels", nargs="+", default=None,
+                    help="a name per checkpoint, for the title and the file name (default: run @ step); "
+                         "needed for a checkpoint outside a run directory, such as an SWA or a soup")
+    ap.add_argument("--notes", nargs="+", default=None,
+                    help="a description per checkpoint, in place of its run's metadata.json description")
     a = ap.parse_args(argv)
+    if a.labels and len(a.labels) != len(a.checkpoints) or a.notes and len(a.notes) != len(a.checkpoints):
+        ap.error("--labels and --notes need one entry per checkpoint")
     os.makedirs(a.output_dir, exist_ok=True)
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(a.data_dir, exist_ok=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    for path in a.checkpoints:
-        _, _, stem = _label(path)
-        dump = os.path.join(DATA_DIR, f"{stem}.json")
+    for k, path in enumerate(a.checkpoints):
+        label = a.labels[k] if a.labels else None
+        note = a.notes[k] if a.notes else None
+        stem = re.sub(r"[^A-Za-z0-9.+-]+", "_", label).strip("_") if label else _label(path)[2]
+        dump = os.path.join(a.data_dir, f"{stem}.json")
         merged = checkpoint_merged_influence(path)
         model = NeuralAgent.from_checkpoint(path, device=str(dev)).model
         feats = model_obs_features(model)
@@ -448,7 +460,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             d = play(model, merged, a.games, a.seed, a.batch)
             json.dump(d, open(dump, "w"))
-        md = report(path, d, merged, feats)
+        md = report(path, d, merged, feats, label, note)
         out = os.path.join(a.output_dir, f"{stem}.md")
         open(out, "w").write(md)
         print(f"{path} -> {out}", flush=True)
