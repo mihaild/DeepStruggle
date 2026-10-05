@@ -16,10 +16,8 @@ except ImportError:
         sys.path.insert(0, _root)
     import ts_engine as ts
 
-from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
+from ai.models.coldwar_net import create_coldwar_net
 from bindings.action_encoder import ActionEncoder
-from tools.lib.player_agent import reject_retired_architecture
 from bot.base_bot import BaseBot
 from web.server.replay_types import ReplayPolicyDict
 
@@ -27,11 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class NeuralBot(BaseBot):
-    """Neural network player driven by ColdWarNet (NashPG/BC weights).
+    """Neural network player driven by a ColdWarNet-family checkpoint (NashPG/BC weights).
 
-    The architecture is detected from the checkpoint's own weights, so V1 and V2 both load.
-    Retired architectures are refused outright by `reject_retired_architecture` rather than
-    partially loaded, which would otherwise run a network that is not the one that trained.
+    The checkpoint is loaded by `NeuralAgent.from_checkpoint`, which detects the architecture
+    from the weights -- V1, V2 or the P21 LadderNet -- and refuses a retired one outright rather
+    than partially loading it. A checkpoint this bot cannot feed correctly (merged-influence view,
+    observation feature blocks) is refused too.
     """
 
     def __init__(
@@ -53,13 +52,24 @@ class NeuralBot(BaseBot):
         self.last_readout: Optional["ReplayPolicyDict"] = None
 
         if model_path and os.path.exists(model_path):
-            weights_dict = torch.load(model_path, map_location=self.device, weights_only=True)
-            reject_retired_architecture(weights_dict)
-            if any("cross_attn" in k or "cross_card_proj" in k for k in weights_dict.keys()):
-                self.model = create_coldwar_net_v2(self.device)
-            else:
-                self.model = create_coldwar_net(self.device)
-            self.model.load_state_dict(weights_dict)
+            # The one loader that knows every architecture -- V1, V2 and the P21 LadderNet --
+            # from the weights. This used to choose between V1 and V2 itself, so a LadderNet
+            # checkpoint (every E7 model) was rebuilt as a V1 network and refused by
+            # load_state_dict: `play_match.py --us <ckpt> --ussr <ckpt>` could not load any of them.
+            from bindings.ts_env import model_obs_features
+            from tools.lib.player_agent import NeuralAgent
+            agent = NeuralAgent.from_checkpoint(model_path, device=self.device)
+            # This bot builds its masks in the E4 view and reads the engine's base observation
+            # (`observation_b64`, ts.OBS_SIZE floats), so it cannot play a checkpoint that decides
+            # in the merged-influence view or reads optional feature blocks. Refused, since either
+            # would play -- badly -- rather than fail.
+            if agent.merged_influence:
+                raise ValueError(f"{model_path} decides in the merged-influence view (P23); NeuralBot "
+                                 f"builds E4 masks and cannot play it")
+            if model_obs_features(agent.model):
+                raise ValueError(f"{model_path} reads observation feature blocks "
+                                 f"({model_obs_features(agent.model)}); NeuralBot feeds the base layout")
+            self.model = agent.model
             print(f"[NeuralBot] Loaded trained checkpoint ({type(self.model).__name__}) from {model_path}")
         else:
             self.model = create_coldwar_net(self.device)
