@@ -297,7 +297,8 @@ def _era(turn: int) -> str:
     return "Early War" if turn <= 3 else "Mid+Late War"
 
 
-def opponent_card_section(title: str, intro: str, plays: Sequence[Dict[str, Any]], holder: str) -> str:
+def opponent_card_section(title: str, intro: str, plays: Sequence[Dict[str, Any]], holder: str,
+                          show_mode: bool = True) -> str:
     fired = [p for p in plays if p["mode"] != "space race"]
     eras = ["Early War", "Mid+Late War"]
     by = {e: [p for p in fired if _era(p["turn"]) == e] for e in eras}
@@ -316,10 +317,11 @@ def opponent_card_section(title: str, intro: str, plays: Sequence[Dict[str, Any]
             k = sum(p["ar"] == ar for p in by[e])
             cells.append(f"{k} ({_pct(k, len(by[e]))})" if by[e] else "—")
         out.append(f"| {'H' if ar == 0 else f'AR{ar}'} | " + " | ".join(cells) + " |")
-    out += ["", "| how it was played | " + " | ".join(eras) + " |", "|:---|" + "---:|" * len(eras)]
-    for m in ("headline", "event first", "Ops first"):
-        out.append(f"| {m} | " + " | ".join(
-            f"{_pct(sum(p['mode'] == m for p in by[e]), len(by[e]))}" for e in eras) + " |")
+    if show_mode:
+        out += ["", "| how it was played | " + " | ".join(eras) + " |", "|:---|" + "---:|" * len(eras)]
+        for m in ("headline", "event first", "Ops first"):
+            out.append(f"| {m} | " + " | ".join(
+                f"{_pct(sum(p['mode'] == m for p in by[e]), len(by[e]))}" for e in eras) + " |")
     by_turn = collections.Counter(p["turn"] for p in fired)
     out += ["", "By turn: " + ", ".join(f"T{t} {by_turn[t]}" for t in sorted(by_turn)) + "."]
     # What is in the hand
@@ -407,7 +409,7 @@ def report(path: str, d: Dict[str, Any], merged: bool, feats: int,
                 "Aldrich Ames Remix (USSR, 3 Ops): the US reveals its hand for the rest of the turn and the USSR "
                 "discards a card of its choice from it. Here: the US playing it from its own hand so that the event "
                 "fires (a Late War card, so all plays fall in Mid+Late War).",
-                d["aldrich_ames"], "us")]
+                d["aldrich_ames"], "us", show_mode=False)]
     return "\n".join(out) + "\n"
 
 
