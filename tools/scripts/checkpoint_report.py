@@ -42,8 +42,8 @@ import torch
 import ts_engine as ts
 
 from bindings.action_encoder import ActionEncoder
-from tools.scripts.event_play_census import (EVENT, SCORING, Holding, _holdings_now, _mark_event_legal,
-                                             _mark_headline_legal, table as census_table)
+from tools.scripts.event_play_census import (EVENT, SCORING, Holding, HoldingTracker, dump_holding,
+                                             load_holding, table as census_table)
 from tools.scripts.star_wars_play import _tag_retrievals, retrieval_table
 
 US, USSR = int(ts.Player.US), int(ts.Player.USSR)
@@ -86,54 +86,21 @@ def _mode(a: int) -> str:
 # --------------------------------------------------------------------------------------------
 
 class Census:
-    """`event_play_census.play`'s bookkeeping, one env at a time."""
+    """The event census: `event_play_census.HoldingTracker`, one per game, so the counting is the
+    census tool's own -- each holding's legality and how it ended (headline, event, Ops, space race
+    or kept)."""
 
     def __init__(self) -> None:
         self.holdings: List[Holding] = []
-        self.held: Dict[int, Dict[int, int]] = {}
-        self.latest: Dict[int, Dict[int, Holding]] = {}
-        self.selected: Dict[int, Optional[Tuple[int, int]]] = {}
+        self.trackers: Dict[int, HoldingTracker] = {}
 
     def see(self, g: int, st: ts.GameState, a: int) -> None:
-        held = self.held.setdefault(g, {})
-        latest = self.latest.setdefault(g, {})
-        now = _holdings_now(st)
-        for c, side in now.items():
-            if held.get(c) != side:
-                h = Holding(c, side)
-                self.holdings.append(h)
-                latest[c] = h
-        self.held[g] = now
-        ctx = st.ctx()
-        if int(ctx.resolving_card) != 0:
-            return
-        mover = int(ctx.decision_player if ctx.decision_player != ts.Player.NONE else st.phasing_player)
-        if ctx.decision_type == ts.DecisionType.SELECT_CARD and st.current_phase == ts.Phase.ACTION_ROUND:
-            _mark_event_legal(st, mover, now, latest)
-        elif ctx.decision_type == ts.DecisionType.SELECT_CARD and st.current_phase == ts.Phase.HEADLINE:
-            _mark_headline_legal(st, mover, now, latest)
-        if ctx.decision_type == ts.DecisionType.SELECT_CARD and a < ActionEncoder.PLAY_MODE_OFFSET:
-            card = int(ts.decode_flat_action(st, a).primary_id)
-            if now.get(card) == mover:
-                if st.current_phase == ts.Phase.HEADLINE:
-                    latest[card].outcome = "headline"
-                    latest[card].legal = True
-                elif st.current_phase == ts.Phase.ACTION_ROUND:
-                    if card in SCORING:
-                        latest[card].outcome = "event"
-                        latest[card].legal = True
-                    else:
-                        self.selected[g] = (card, mover)
-        elif ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE and st.current_phase == ts.Phase.ACTION_ROUND:
-            card = int(ctx.pending_op_card)
-            sel = self.selected.get(g)
-            if sel is not None and sel == (card, mover) and card in latest:
-                latest[card].outcome = "event" if a == EVENT else "ops/space"
-            self.selected[g] = None
+        self.trackers.setdefault(g, HoldingTracker()).observe(st, a)
 
     def done(self, g: int) -> None:
-        for d in (self.held, self.latest, self.selected):
-            d.pop(g, None)
+        t = self.trackers.pop(g, None)
+        if t is not None:
+            self.holdings += t.holdings
 
 
 class StarWars:
@@ -366,8 +333,12 @@ def play(model: Any, merged: bool, games: int, seed: int, batch: int) -> Dict[st
                     done[i] = True
                     for o in observers:
                         o.done(b0 + i)
+        for i in range(n):                      # a game still running at the step cap
+            if not done[i]:
+                for o in observers:
+                    o.done(b0 + i)
     return {"games": games, "seed": seed, "batch": batch,
-            "holdings": [[h.card, h.side, h.outcome, h.legal] for h in census.holdings],
+            "holdings": [dump_holding(h) for h in census.holdings],
             "star_wars": {"plays": sw.plays, "retrievals": sw.retrievals},
             "five_year_plan": fyp.plays, "aldrich_ames": ames.plays,
             "kal_007": kal.choices, "opec": opec.choices, "alliance_for_progress": alliance.choices,
@@ -612,7 +583,7 @@ def report(path: str, d: Dict[str, Any], merged: bool, feats: int,
     except (OSError, ValueError):
         pass
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
-    holdings = [Holding(int(r[0]), int(r[1]), str(r[2]), bool(r[3])) for r in d["holdings"]]
+    holdings = [load_holding(r) for r in d["holdings"]]
     rel = os.path.relpath(path, "/workspace")
     out = [f"# {title}: behaviour report", "",
            f"Generated {datetime.date.today().isoformat()} by `tools/scripts/checkpoint_report.py` (commit {commit}).", "",
