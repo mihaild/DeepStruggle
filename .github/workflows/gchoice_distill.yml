@@ -1,0 +1,327 @@
+# One offline round of Gumbel-choice expert iteration, on CPU, end to end: does the network absorb
+# the moves its own Gumbel search plays, and does that make it stronger?
+#
+#   targets  -- N runners, each plays `games_per_runner` games of the base network against itself
+#               (tools/generate_search_targets.py --target gchoice) and records, at a sampled share
+#               of its decisions, a noise-free Gumbel root's choice at each budget in `gumbel_sims`
+#               beside the network's argmax and distribution. Seeds are disjoint per runner.
+#   heldout  -- the same on other seeds, for the checks only.
+#   distill  -- one job per arm (tools/gchoice_targets.py arm, then tools/train.py --mode distill
+#               from the base), every arm on the same positions; then tools/gchoice_targets.py
+#               check on the held-out games: did it move where the search departs, and nowhere else?
+#   play     -- the base and every arm in one round robin, greedy (temperature 0: the arms can
+#               differ in entropy), split over runners as tournament.yml does (--part k/N).
+#   pool     -- the tournament report, the checks and the provenance in one artifact.
+#
+#   gh workflow run gchoice_distill.yml --ref main
+#   gh run download <run-id> -n gchoice-distill-<run-id> -D data/reports/gchoice_distill
+#
+# `targets_from=<run id>` reuses an earlier run's targets and held-out games (new arms, another
+# learning rate) without generating them again.
+name: gchoice-distill
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "The base checkpoint, a .pt path in hf_repo"
+        default: "_models/E7-A8-R1-S44@6400M+(S44,45,46)@6720..6800M.pt"
+      hf_repo:
+        default: "mihaild/deepstruggle"
+      runners:
+        description: "Target-generation runners"
+        default: "20"
+      games_per_runner:
+        default: "200"
+      batch:
+        description: "Games played at once per runner"
+        default: "50"
+      heldout_games:
+        default: "100"
+      target:
+        description: "The teacher: gchoice (a Gumbel root at each budget in gumbel_sims) or rollout (the rollout root, rollout_spec)"
+        default: "gchoice"
+      rollout_spec:
+        description: "rollout: k:worlds:horizon:rule (ai/search/rollout_root.py)"
+        default: "4:32:4:z2"
+      gumbel_sims:
+        description: "Gumbel root budgets searched at every sampled position (search_pi follows the first)"
+        default: "256 64"
+      subsample:
+        description: "Share of decisions with two or more legal moves that are searched"
+        default: "0.25"
+      temperature:
+        description: "The acting network's sampling temperature while the targets are generated"
+        default: "0.2"
+      arms:
+        description: "form:budget[:extra] per arm (tools/gchoice_targets.py arm); extra is the min margin for gated, the budget to agree with for consensus, tau for soft; budget 'rollout' with target=rollout"
+        default: "departures:256 departures:64 gated:256:0.04 own:256"
+      epochs:
+        default: "2"
+      lr:
+        default: "1e-4"
+      games_per_side:
+        description: "Tournament games per side per pairing"
+        default: "3000"
+      play_runners:
+        default: "20"
+      targets_from:
+        description: "Reuse this earlier run's targets and held-out games (skip generation)"
+        default: ""
+
+permissions:
+  contents: read
+  actions: read   # targets_from reads another run's artifacts
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  PYTHONPATH: .:build/release
+  TS_PYTHON: python
+  MODEL: ${{ inputs.model }}
+  HF_REPO: ${{ inputs.hf_repo }}
+  RUNNERS: ${{ inputs.runners }}
+  GAMES: ${{ inputs.games_per_runner }}
+  BATCH: ${{ inputs.batch }}
+  HELDOUT: ${{ inputs.heldout_games }}
+  SIMS: ${{ inputs.gumbel_sims }}
+  TARGET: ${{ inputs.target }}
+  ROLLOUT_SPEC: ${{ inputs.rollout_spec }}
+  SUBSAMPLE: ${{ inputs.subsample }}
+  TEMPERATURE: ${{ inputs.temperature }}
+  ARMS: ${{ inputs.arms }}
+  EPOCHS: ${{ inputs.epochs }}
+  LR: ${{ inputs.lr }}
+  GAMES_PER_SIDE: ${{ inputs.games_per_side }}
+  PLAY_RUNNERS: ${{ inputs.play_runners }}
+  TARGETS_FROM: ${{ inputs.targets_from }}
+  TARGETS_RUN: ${{ inputs.targets_from || github.run_id }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parts: ${{ steps.p.outputs.parts }}
+      play_parts: ${{ steps.p.outputs.play_parts }}
+      arms: ${{ steps.p.outputs.arms }}
+    steps:
+      - id: p
+        run: |
+          python3 - <<'PY'
+          import json, os
+          r, pr = int(os.environ["RUNNERS"]), int(os.environ["PLAY_RUNNERS"])
+          arms = []
+          for spec in os.environ["ARMS"].split():
+              f = spec.split(":")
+              form, budget = f[0], f[1]
+              extra = f[2] if len(f) > 2 else ""
+              name = (f"gc-{form}{budget}" if budget.isdigit() else f"gc-{form}-{budget}") \
+                  + (f"-m{extra}" if form == "gated" else "") + (f"x{extra}" if form == "consensus" else "") \
+                  + (f"-t{extra}" if form == "soft" else "")
+              flags = (f"--min-margin {extra or '0.04'}" if form == "gated" else
+                       f"--agree-with {extra}" if form == "consensus" else
+                       f"--tau {extra or '0.1'}" if form == "soft" else "")
+              arms.append({"form": form, "budget": budget, "flags": flags, "name": name})
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"parts={json.dumps(list(range(1, r + 1)))}\n")
+              out.write(f"play_parts={json.dumps(list(range(1, pr + 1)))}\n")
+              out.write(f"arms={json.dumps(arms)}\n")
+          print(json.dumps(arms, indent=1))
+          PY
+
+  targets:
+    needs: plan
+    if: needs.plan.result == 'success' && inputs.targets_from == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Fetch the base
+        run: |
+          mkdir -p work && curl -sSfL --retry 3 -o work/base.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL"
+          sha256sum work/base.pt
+      - name: Targets, part ${{ matrix.part }}
+        run: |
+          mkdir -p out
+          tools/scripts/check_engine_fresh.sh && python tools/generate_search_targets.py \
+            --checkpoint work/base.pt --total-games "$GAMES" --batch-size "$BATCH" \
+            --target "$TARGET" --rollout-spec "$ROLLOUT_SPEC" --gumbel-sims $SIMS --node-filter all --subsample "$SUBSAMPLE" \
+            --temperature "$TEMPERATURE" --device cpu --seed-offset $(( ${{ matrix.part }} * 10000000 )) \
+            --output-path "out/targets-${{ matrix.part }}.jsonl.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gchoice-targets-${{ github.run_id }}-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  heldout:
+    needs: plan
+    if: needs.plan.result == 'success' && inputs.targets_from == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Fetch the base
+        run: mkdir -p work && curl -sSfL --retry 3 -o work/base.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL"
+      - name: Held-out games
+        run: |
+          mkdir -p out
+          tools/scripts/check_engine_fresh.sh && python tools/generate_search_targets.py \
+            --checkpoint work/base.pt --total-games "$HELDOUT" --batch-size "$BATCH" \
+            --target "$TARGET" --rollout-spec "$ROLLOUT_SPEC" --gumbel-sims $SIMS --node-filter all --subsample "$SUBSAMPLE" \
+            --temperature "$TEMPERATURE" --device cpu --seed-offset 990000000 \
+            --output-path out/heldout.jsonl.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gchoice-heldout-${{ github.run_id }}
+          path: out/
+          retention-days: 30
+
+  distill:
+    needs: [plan, targets, heldout]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && (needs.targets.result == 'success' || needs.targets.result == 'skipped')
+      && (needs.heldout.result == 'success' || needs.heldout.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: ${{ fromJson(needs.plan.outputs.arms) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # This run's targets, or with targets_from another run's (run-id + token reads across runs).
+      - uses: actions/download-artifact@v4
+        if: inputs.targets_from == ''
+        with:
+          pattern: gchoice-targets-${{ github.run_id }}-*
+          path: targets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: inputs.targets_from == ''
+        with:
+          name: gchoice-heldout-${{ github.run_id }}
+          path: heldout
+      - uses: actions/download-artifact@v4
+        if: inputs.targets_from != ''
+        with:
+          pattern: gchoice-targets-${{ inputs.targets_from }}-*
+          path: targets
+          merge-multiple: true
+          run-id: ${{ inputs.targets_from }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: inputs.targets_from != ''
+        with:
+          name: gchoice-heldout-${{ inputs.targets_from }}
+          path: heldout
+          run-id: ${{ inputs.targets_from }}
+          github-token: ${{ github.token }}
+      - name: Fetch the base
+        run: |
+          mkdir -p work
+          curl -sSfL --retry 3 -o work/base.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL"
+          find targets heldout -name '*.jsonl.gz' | sort
+      - name: Arm ${{ matrix.arm.name }}
+        run: |
+          mkdir -p out
+          name="${{ matrix.arm.name }}"
+          tools/scripts/check_engine_fresh.sh && python tools/gchoice_targets.py arm \
+            --input $(find targets -name 'targets-*.jsonl.gz' | sort) --form "${{ matrix.arm.form }}" \
+            --budget "${{ matrix.arm.budget }}" ${{ matrix.arm.flags }} \
+            --out work/arm.jsonl.gz | tee "out/$name.arm.json"
+          python tools/train.py --mode distill --warmup-checkpoint work/base.pt \
+            --distill-dataset work/arm.jsonl.gz --distill-epochs "$EPOCHS" --distill-lr "$LR" \
+            --device cpu --output-dir "out/$name.pt" | tee "out/$name.distill.log"
+          extra=""; [ "$TARGET" = gchoice ] && extra=256
+          for b in $(echo "$extra ${{ matrix.arm.budget }}" | tr ' ' '\n' | sort -u); do
+            python tools/gchoice_targets.py check --input heldout/heldout.jsonl.gz --base work/base.pt \
+              --model "out/$name.pt" --budget "$b" --out "out/$name.check$b.json"
+          done
+          sha256sum "out/$name.pt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gchoice-arm-${{ github.run_id }}-${{ matrix.arm.name }}
+          path: out/
+          retention-days: 30
+
+  play:
+    needs: [plan, distill]
+    if: always() && needs.plan.result == 'success' && needs.distill.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.plan.outputs.play_parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gchoice-arm-${{ github.run_id }}-*
+          path: arms
+          merge-multiple: true
+      - name: Play part ${{ matrix.part }}
+        run: |
+          mkdir -p models parts
+          curl -sSfL --retry 3 -o models/heads-soup.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL"
+          cp arms/gc-*.pt models/
+          tools/scripts/check_engine_fresh.sh && python tools/tournament.py \
+            --models $(ls models/*.pt | sort) --games-per-side "$GAMES_PER_SIDE" --device cpu \
+            --workers 0 --shard-pairs 1 --temperature 0 \
+            --part "${{ matrix.part }}/$PLAY_RUNNERS" --output-part "parts/part-${{ matrix.part }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gchoice-play-${{ github.run_id }}-${{ matrix.part }}
+          path: parts/
+          if-no-files-found: error
+
+  pool:
+    needs: [plan, distill, play]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gchoice-play-${{ github.run_id }}-*
+          path: parts
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gchoice-arm-${{ github.run_id }}-*
+          path: arms
+          merge-multiple: true
+      - name: Report
+        run: |
+          mkdir -p report
+          cp arms/*.check*.json arms/*.check*.md arms/*.arm.json arms/*.distill.log report/ 2>/dev/null || true
+          python tools/tournament.py --pool-parts parts/part-*.json \
+            --output-report report/tournament.md --output-json report/tournament.json || true
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "engine_fingerprint: $(python -c 'from tools.lib.engine_fingerprint import fingerprint; print(fingerprint())' 2>/dev/null)"
+            echo "base: $HF_REPO $MODEL"
+            echo "targets: run $TARGETS_RUN, teacher $TARGET (gumbel_sims $SIMS / rollout $ROLLOUT_SPEC), $RUNNERS runners x $GAMES games, batch $BATCH, subsample $SUBSAMPLE, temperature $TEMPERATURE; held-out $HELDOUT games"
+            echo "arms: $ARMS  epochs $EPOCHS  lr $LR"
+            echo "tournament: $GAMES_PER_SIDE games a side per pairing, temperature 0, $PLAY_RUNNERS runners"
+            echo "checkpoint sha256:"; (cd arms && sha256sum gc-*.pt)
+          } > report/provenance.txt
+          { echo '```'; cat report/provenance.txt; echo '```'; echo '## Held-out checks';
+            cat report/*.check*.md 2>/dev/null; echo '## Tournament'; cat report/tournament.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gchoice-distill-${{ github.run_id }}
+          path: report/
+          retention-days: 90

@@ -19,7 +19,7 @@ import torch
 import ts_engine as ts
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_coldwar_net_v2
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSAgent, BatchedMCTSConfig
-from ai.search.gumbel_root import halving_phases, phase_share
+from ai.search.gumbel_root import halving_phases, phase_share, world_shares
 from bindings.action_encoder import ActionEncoder
 from tools.lib.player_agent import load_agent, search_spec_config
 from tools.play_match import _SearchBot, resolve_agent
@@ -211,3 +211,46 @@ def test_a_best_response_search_needs_the_python_tree() -> None:
     with pytest.raises(ValueError, match="Python tree only"):
         BatchedMCTS(_model(), device="cpu", featurise_capacity=256,
                     config=BatchedMCTSConfig(simulations=8, opponent="greedy"))._search(_states(4))
+
+
+def test_a_phase_share_splits_evenly_over_at_most_that_many_worlds() -> None:
+    assert world_shares(10, 1) == [10]
+    assert world_shares(10, 4) == [3, 3, 2, 2]
+    assert world_shares(3, 16) == [1, 1, 1]          # never a world with no evaluation
+    assert world_shares(0, 4) == [0]
+    for per in range(1, 40):
+        for m in (1, 2, 5, 16, 64):
+            assert sum(world_shares(per, m)) == per
+
+
+@pytest.mark.parametrize("worlds", [4, 16])
+def test_more_worlds_spend_the_same_evaluations(worlds: int) -> None:
+    """Worlds split a candidate's share; they never add evaluations, and the picks are legal and
+    reproducible from the seed. Equal up to the children that end the game, which cost no
+    evaluation and depend on the dice each world draws."""
+    states = _states()
+    spent, picks = {}, {}
+    for m in (1, worlds):
+        model = _CountingModel(_model())
+        cfg = BatchedMCTSConfig(simulations=64, determinize=True, gumbel_k=8, gumbel_scale=0.0,
+                                fpu_reduction=0.2, gumbel_worlds=m, seed=11)
+        mcts = BatchedMCTS(model, device="cpu", config=cfg, featurise_capacity=256)
+        picks[m] = mcts.best_actions(states)
+        spent[m] = model.rows
+        for st, a in zip(states, picks[m]):
+            assert np.asarray(ActionEncoder.get_legal_mask(st))[a]
+    assert spent[worlds] <= len(states) * (64 + 1)
+    assert abs(spent[worlds] - spent[1]) <= 0.01 * spent[1]
+    cfg = BatchedMCTSConfig(simulations=64, determinize=True, gumbel_k=8, gumbel_scale=0.0,
+                            fpu_reduction=0.2, gumbel_worlds=worlds, seed=11)
+    again = BatchedMCTS(_model(), device="cpu", config=cfg, featurise_capacity=256).best_actions(states)
+    assert again == picks[worlds]
+
+
+def test_the_gumbel_spec_takes_worlds_last(tmp_path: Path) -> None:
+    path = tmp_path / "m.pt"
+    torch.save(_model().state_dict(), str(path))
+    _, cfg, label = search_spec_config(f"gumbel:{path}:256:8:0.2:all:16")
+    assert (cfg.gumbel_worlds, cfg.node_filter, label) == (16, "all", "gumbel256-k8-w16")
+    _, cfg, label = search_spec_config(f"gumbel:{path}:256:8:0.2:card")
+    assert (cfg.gumbel_worlds, label) == (1, "gumbel256-k8-card")

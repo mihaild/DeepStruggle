@@ -23,6 +23,14 @@ Honest search samples one world from the decider's side for each phase and searc
 positions in it undeterminized -- after the move the opponent usually decides, and resampling from
 there would show the decider the opponent's real hand.
 
+**Worlds** (`BatchedMCTSConfig.gumbel_worlds`). A world fixes the hidden cards and the dice, and the
+search below a candidate resolves each move's dice once, when it expands it: more simulations in
+one world deepen the tree under one roll and never average over rolls. With `gumbel_worlds = m`,
+each phase draws min(m, share) worlds and splits each candidate's share of evaluations over them,
+so a candidate's value averages that many draws of the cards and the dice; 1 is one world per phase
+(research/log/E7_search_depth_and_value.md: more worlds make the pick reproducible and, at a fixed
+budget, shallower and worse).
+
 Unlike Gumbel MuZero, each phase searches a candidate's position afresh rather than growing one
 tree (visits and values pooled across phases), so the batched C++ search does the work unchanged.
 `improved_policies` gives the paper's improved-policy training target (P32 T1) and, with it, each
@@ -35,7 +43,7 @@ builds the root, and importing it back would make the two modules a cycle.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, TypedDict
 
 import numpy as np
 import torch
@@ -53,6 +61,22 @@ if TYPE_CHECKING:
 _UINT64 = 1 << 64
 _US = int(ts.Player.US)
 C_VISIT, C_SCALE = 50.0, 0.1
+
+
+class GumbelStats(TypedDict):
+    """One position's record of the last `choose` / `improved_policies` call (`last_stats`)."""
+    candidates: List[int]                  # the root's candidates, most probable first
+    n: Dict[int, float]                    # evaluations spent on each
+    q: Dict[int, Optional[float]]          # mean value of its position for the mover (None: unvisited)
+    value: float                           # the network's value of the position for the mover
+
+
+def world_shares(per: int, worlds: int) -> List[int]:
+    """A candidate's `per` evaluations in one phase, split as evenly as they go over
+    min(worlds, per) independent worlds (`BatchedMCTSConfig.gumbel_worlds`)."""
+    m = max(1, min(int(worlds), int(per)))
+    base, extra = divmod(int(per), m)
+    return [base + (1 if j < extra else 0) for j in range(m)]
 
 
 def completed_q(logits: Dict[int, float], value_mover: float, n: Dict[int, float],
@@ -114,6 +138,10 @@ class GumbelRoot:
         self.sub = sub
         self.last_saturated_frac = 0.0
         self.last_values = np.zeros(0, dtype=np.float64)
+        #: Per position of the last call: the candidates, each one's evaluations and mean value for
+        #: the mover, and the network's value. Read by offline tools (search targets that keep the
+        #: root's values beside its choice, tools/search_reliability.py); nothing in play reads it.
+        self.last_stats: List[GumbelStats] = []
 
     def _network(self, states: Sequence[ts.GameState]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Logits, legal masks and the mover's value at the real positions."""
@@ -188,6 +216,7 @@ class GumbelRoot:
             else:
                 g.append({a: 0.0 for a in legal})
             alive.append(sorted(legal, key=lambda a: -(g[i][a] + logits[i][a]))[:m_max])
+        initial = [list(c) for c in alive]
         n = [{a: 0.0 for a in lo} for lo in logits]
         w = [{a: 0.0 for a in lo} for lo in logits]
         phases = [halving_phases(len(c)) for c in alive]
@@ -204,18 +233,19 @@ class GumbelRoot:
                     continue
                 remaining[i] -= per * len(alive[i])
                 searched.append(i)
-                world = st.clone()
-                if cfg.determinize and not ts.Engine.is_terminal(world):
-                    world = determinize(world, ts.Player(movers[i]), mcts._rng)
-                world.rng_state = mcts._rng.getrandbits(64) % _UINT64
-                world_mask = np.asarray(ActionEncoder.get_legal_mask(world))
-                for a in alive[i]:
-                    if not world_mask[a]:
-                        continue                      # illegal in this world (Cambridge Five)
-                    s = world.clone()
-                    ts.Engine.step_flat(s, a)
-                    settle(s, SettleMode.FORCED if cfg.auto_advance else SettleMode.CHANCE)
-                    jobs.append((i, a, s, per))
+                for share in world_shares(per, cfg.gumbel_worlds):
+                    world = st.clone()
+                    if cfg.determinize and not ts.Engine.is_terminal(world):
+                        world = determinize(world, ts.Player(movers[i]), mcts._rng)
+                    world.rng_state = mcts._rng.getrandbits(64) % _UINT64
+                    world_mask = np.asarray(ActionEncoder.get_legal_mask(world))
+                    for a in alive[i]:
+                        if not world_mask[a]:
+                            continue                  # illegal in this world (Cambridge Five)
+                        s = world.clone()
+                        ts.Engine.step_flat(s, a)
+                        settle(s, SettleMode.FORCED if cfg.auto_advance else SettleMode.CHANCE)
+                        jobs.append((i, a, s, share))
             # Every candidate of the phase in one search, each with its own share, so the phase
             # takes as many network rounds as its largest share rather than the sum of them.
             # The root's mover is the side searching, also in candidate positions where the
@@ -237,6 +267,11 @@ class GumbelRoot:
                 ranked = sorted(alive[i], key=lambda a: -(g[i][a] + logits[i][a] + sig[a]))
                 alive[i] = ranked[:1] if ph == phases[i] - 1 else ranked[:max(1, (len(ranked) + 1) // 2)]
         # Survivors are ranked best first, whether the halving finished or the budget ran out.
+        self.last_stats = [
+            GumbelStats(candidates=initial[i], n={a: n[i][a] for a in initial[i]},
+                        q={a: (w[i][a] / n[i][a] if n[i][a] > 0 else None) for a in initial[i]},
+                        value=float(v[i]))
+            for i in range(len(states))]
         return logits, g, alive, n, w, v
 
     def _search(self, positions: Sequence[ts.GameState], evaluations: Sequence[int],

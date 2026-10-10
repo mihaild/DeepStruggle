@@ -1,0 +1,112 @@
+# Rollout labels for the value probe (tools/value_probe.py label): fresh self-play of the bank's model,
+# a sampled share of decisions, the network's top moves played out in paired raw continuations. The
+# fit runs locally on the pooled labels (tools/value_probe.py fit).
+#
+#   gh workflow run value_probe.yml --ref main
+#   gh run download <run-id> -n value-probe-labels-<run-id> -D data/reports/value_probe/<run-id>
+name: value-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "Self-play games per runner"
+        default: "48"
+      rate:
+        description: "Share of decisions with two or more legal moves that are labelled"
+        default: "0.025"
+      k:
+        default: "3"
+      pairs:
+        default: "256"
+      runners:
+        default: "20"
+      model:
+        default: "E7line_swa_4720-4800M.onnx"
+      template:
+        default: "shallow_E7-02+03+04+05_1200M.pt"
+      hf_repo:
+        default: "mihaild/deepstruggle"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .:build/release
+  TS_PYTHON: python
+  GAMES: ${{ inputs.games }}
+  RATE: ${{ inputs.rate }}
+  K: ${{ inputs.k }}
+  PAIRS: ${{ inputs.pairs }}
+  RUNNERS: ${{ inputs.runners }}
+  MODEL: ${{ inputs.model }}
+  TEMPLATE: ${{ inputs.template }}
+  HF_REPO: ${{ inputs.hf_repo }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parts: ${{ steps.p.outputs.parts }}
+    steps:
+      - id: p
+        run: echo "parts=$(python3 -c "import json,os; print(json.dumps(list(range(1, int(os.environ['RUNNERS']) + 1))))")" >> "$GITHUB_OUTPUT"
+
+  label:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Rebuild the model from its export
+        run: |
+          mkdir -p data/checkpoints/hf
+          for f in "$MODEL" "$TEMPLATE"; do
+            curl -sSfL --retry 3 -o "data/checkpoints/hf/$(basename "$f")" "https://huggingface.co/$HF_REPO/resolve/main/$f"
+          done
+          onnx="data/checkpoints/hf/$(basename "$MODEL")"
+          tools/scripts/check_engine_fresh.sh && python tools/onnx_to_checkpoint.py --onnx "$onnx" \
+            --template "data/checkpoints/hf/$(basename "$TEMPLATE")" --out "${onnx%.onnx}.pt"
+      - name: Label, part ${{ matrix.part }}
+        run: |
+          mkdir -p out
+          OMP_NUM_THREADS=4 python tools/value_probe.py label --model "data/checkpoints/hf/$(basename "${MODEL%.onnx}").pt" \
+            --games "$GAMES" --rate "$RATE" --k "$K" --pairs "$PAIRS" \
+            --part "${{ matrix.part }}/$RUNNERS" --out "out/label-${{ matrix.part }}.jsonl.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: value-probe-part-${{ github.run_id }}-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  pool:
+    needs: [plan, label]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: value-probe-part-${{ github.run_id }}-*
+          path: labels
+          merge-multiple: true
+      - name: Provenance
+        run: |
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "model: $HF_REPO $MODEL (rebuilt with template $TEMPLATE)"
+            echo "games/runner: $GAMES  rate: $RATE  k: $K  pairs: $PAIRS  runners: $RUNNERS"
+            echo "parts: $(ls labels/label-*.jsonl.gz | wc -l)"
+          } > labels/provenance.txt
+          cat labels/provenance.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: value-probe-labels-${{ github.run_id }}
+          path: labels/
+          retention-days: 90

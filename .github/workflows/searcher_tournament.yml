@@ -1,0 +1,153 @@
+# Searchers over the search bank's model in one round robin, greedy, split over runners:
+#
+#   build  rebuilds the model from its export and, from a value-probe labelling run's artifact,
+#          the same network with its critic head fine-tuned on rollout labels
+#          (tools/value_probe.py tune; the policy is untouched) -- one copy of each, shared.
+#   play   N runners, each every N-th shard (tools/tournament.py --part).
+#   pool   the report.
+#
+# Entrants are load_agent specs; {BASE} and {TUNED} stand for the two checkpoints, and name:<label>:
+# tells apart two searchers of one configuration. {TUNED} needs labels_run, a value_probe.yml run of
+# this repository.
+#
+#   gh workflow run searcher_tournament.yml --ref main
+name: searcher-tournament
+
+on:
+  workflow_dispatch:
+    inputs:
+      entrants:
+        default: "name:net:{BASE} name:gumbel256:gumbel:{BASE}:256:8 name:rollout-h4:rollout:{BASE}:4:16:4:z2"
+      games_per_side:
+        default: "1000"
+      runners:
+        default: "20"
+      labels_run:
+        description: "A value-probe labelling run of this repository whose labels tune the critic head (needed only for {TUNED})"
+        default: ""
+      model:
+        description: "A published export (.onnx, rebuilt with the template) or a torch checkpoint (.pt) in hf_repo"
+        default: "E7line_swa_4720-4800M.onnx"
+      template:
+        default: "shallow_E7-02+03+04+05_1200M.pt"
+      hf_repo:
+        default: "mihaild/deepstruggle"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: .:build/release
+  TS_PYTHON: python
+  ENTRANTS: ${{ inputs.entrants }}
+  GAMES: ${{ inputs.games_per_side }}
+  RUNNERS: ${{ inputs.runners }}
+  MODEL: ${{ inputs.model }}
+  TEMPLATE: ${{ inputs.template }}
+  HF_REPO: ${{ inputs.hf_repo }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      parts: ${{ steps.p.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - id: p
+        run: echo "parts=$(python3 -c "import json,os; print(json.dumps(list(range(1, int(os.environ['RUNNERS']) + 1))))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: inputs.labels_run != ''
+        with:
+          name: value-probe-labels-${{ inputs.labels_run }}
+          path: labels
+          run-id: ${{ inputs.labels_run }}
+          github-token: ${{ github.token }}
+      - name: Rebuild the model and tune its critic head
+        run: |
+          mkdir -p data/checkpoints/hf models
+          for f in "$MODEL" "$TEMPLATE"; do
+            curl -sSfL --retry 3 -o "data/checkpoints/hf/$(basename "$f")" "https://huggingface.co/$HF_REPO/resolve/main/$f"
+          done
+          if [[ "$MODEL" == *.pt ]]; then
+            # A torch checkpoint in the repo (the heads soup is published as .pt): used as it is.
+            cp "data/checkpoints/hf/$(basename "$MODEL")" models/base.pt
+            tools/scripts/check_engine_fresh.sh
+          else
+            onnx="data/checkpoints/hf/$(basename "$MODEL")"
+            tools/scripts/check_engine_fresh.sh && python tools/onnx_to_checkpoint.py --onnx "$onnx" \
+              --template "data/checkpoints/hf/$(basename "$TEMPLATE")" --out models/base.pt
+          fi
+          # The tuned head only when an entrant reads it: its labels are the bank model's.
+          if [[ "$ENTRANTS" == *"{TUNED}"* ]]; then
+            OMP_NUM_THREADS=4 python tools/value_probe.py tune --model models/base.pt \
+              --labels labels/label-*.jsonl.gz --out models/tuned.pt
+          fi
+          sha256sum models/*.pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: searcher-models-${{ github.run_id }}
+          path: models/
+          retention-days: 30
+
+  play:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.build.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: searcher-models-${{ github.run_id }}
+          path: models
+      - name: Play part ${{ matrix.part }}
+        run: |
+          mkdir -p parts
+          specs="${ENTRANTS//\{BASE\}/models/base.pt}"
+          specs="${specs//\{TUNED\}/models/tuned.pt}"
+          tools/scripts/check_engine_fresh.sh && python tools/tournament.py --models $specs \
+            --games-per-side "$GAMES" --device cpu --workers 0 --shard-pairs 1 --temperature 0 \
+            --part "${{ matrix.part }}/$RUNNERS" --output-part "parts/part-${{ matrix.part }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: searcher-play-${{ github.run_id }}-${{ matrix.part }}
+          path: parts/
+          if-no-files-found: error
+
+  pool:
+    needs: [build, play]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: searcher-play-${{ github.run_id }}-*
+          path: parts
+          merge-multiple: true
+      - name: Report
+        run: |
+          mkdir -p report
+          python tools/tournament.py --pool-parts parts/part-*.json \
+            --output-report report/tournament.md --output-json report/tournament.json
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "model: $HF_REPO $MODEL$([[ "$MODEL" == *.onnx ]] && echo " (rebuilt with $TEMPLATE)")$([[ "$ENTRANTS" == *"{TUNED}"* ]] && echo "; tuned head from labels run ${{ inputs.labels_run }}")"
+            echo "entrants: $ENTRANTS"
+            echo "games per side: $GAMES  temperature 0  runners: $RUNNERS"
+          } > report/provenance.txt
+          { echo '```'; cat report/provenance.txt; echo '```'; cat report/tournament.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: searcher-tournament-${{ github.run_id }}
+          path: report/
+          retention-days: 90

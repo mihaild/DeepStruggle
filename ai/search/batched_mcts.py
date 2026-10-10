@@ -41,7 +41,7 @@ import ts_engine as ts
 from bindings.settle import SettleMode
 from bindings.settle import settle as _settle
 from ai.search.dmcts import determinize
-from ai.search.gumbel_root import GumbelRoot
+from ai.search.gumbel_root import GumbelRoot, GumbelStats
 from ai.search.pimcts import PIMCTSConfig, acting_player, drain_chance_nodes
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import model_obs_features
@@ -157,6 +157,13 @@ class BatchedMCTSConfig(PIMCTSConfig):
     #: evaluations -- cannot overturn the prior, so a move the network has written off is never
     #: chosen however it searches (research/log/E7_cuban_missile_crisis_probe.md).
     gumbel_prior_temperature: float = 1.0
+    #: Independent worlds a Gumbel root searches each candidate in, per halving phase. A world is a
+    #: fresh draw of the hidden cards and of the dice: the search resolves a move's dice once,
+    #: when it first expands it, and every later simulation through that move reuses that roll, so
+    #: more simulations in one world never average over rolls -- only more worlds do. A phase's
+    #: per-candidate share of evaluations is split evenly over min(worlds, share) worlds, the
+    #: candidates of a world sharing its draw. 1, the default, is one world per phase.
+    gumbel_worlds: int = 1
     #: Run the network through CUDA graphs (the C++ tree on CUDA only): one graph per batch size,
     #: padded up to a multiple of GRAPH_BUCKET rows. A graph replays the same kernels eager torch
     #: launches, so at one batch size the outputs are bit-identical -- but the padding changes the
@@ -726,6 +733,12 @@ class BatchedMCTS:
         if self._gumbel is None:
             raise ValueError("improved_policies needs the Gumbel root (gumbel_k > 0)")
         return self._gumbel.improved_policies(states)
+
+    @property
+    def gumbel_stats(self) -> List[GumbelStats]:
+        """The Gumbel root's record of the last `best_actions` / `improved_policies` call, one per
+        position (`GumbelRoot.last_stats`); empty without `gumbel_k`."""
+        return self._gumbel.last_stats if self._gumbel is not None else []
 
     def best_actions(self, states: Sequence[ts.GameState]) -> List[int]:
         """Most-visited action per position; falls back to the first legal action. With

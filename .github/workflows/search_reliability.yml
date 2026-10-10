@@ -1,0 +1,186 @@
+# Searchers on the search bank (tools/search_reliability.py): does averaging a Gumbel root over more
+# draws of the hidden cards and the dice make its departures from the network reproducible, and
+# better by paired playouts, at the same budget?
+#
+#   search    N runners, each a share of the bank's 2,300 positions: every --spec, --seeds times.
+#   playouts  N runners: each position's raw move and every searcher's picks, paired raw-network
+#             continuations (all searchers judged on the same games).
+#   report    the table, the JSON, provenance.
+#
+# The bank and its model are the search-disagreement bank's: release search-bank-playouts-20261007 of
+# release_repo (JamesYouL2/DeepStruggle, where the bank was built), and E7line_swa_4720-4800M rebuilt
+# from its published export on each runner.
+#
+#   gh workflow run search_reliability.yml --ref main
+#   gh run download <run-id> -n search-reliability-<run-id> -D data/reports/search_reliability
+name: search-reliability
+
+on:
+  workflow_dispatch:
+    inputs:
+      specs:
+        description: "NAME=SIMS:K:FPU:FILTER:WORLDS per searcher (the first is the baseline)"
+        default: "w1=256:8:0.2:all:1 w4=256:8:0.2:all:4 w16=256:8:0.2:all:16 w64=256:8:0.2:all:64 w1x1024=1024:8:0.2:all:1 w16x1024=1024:8:0.2:all:16"
+      seeds:
+        default: "4"
+      pairs:
+        description: "Paired continuations per move"
+        default: "512"
+      runners:
+        default: "20"
+      release:
+        default: "search-bank-playouts-20261007"
+      release_repo:
+        description: "The repository whose release holds bank.jsonl.gz"
+        default: "JamesYouL2/DeepStruggle"
+      model:
+        description: "The bank's model: a published export in hf_repo, rebuilt as torch on each runner"
+        default: "E7line_swa_4720-4800M.onnx"
+      template:
+        default: "shallow_E7-02+03+04+05_1200M.pt"
+      hf_repo:
+        default: "mihaild/deepstruggle"
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  PYTHONPATH: .:build/release
+  TS_PYTHON: python
+  SPECS: ${{ inputs.specs }}
+  SEEDS: ${{ inputs.seeds }}
+  PAIRS: ${{ inputs.pairs }}
+  RUNNERS: ${{ inputs.runners }}
+  RELEASE: ${{ inputs.release }}
+  RELEASE_REPO: ${{ inputs.release_repo }}
+  MODEL: ${{ inputs.model }}
+  TEMPLATE: ${{ inputs.template }}
+  HF_REPO: ${{ inputs.hf_repo }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      parts: ${{ steps.p.outputs.parts }}
+    steps:
+      - id: p
+        run: echo "parts=$(python3 -c "import json,os; print(json.dumps(list(range(1, int(os.environ['RUNNERS']) + 1))))")" >> "$GITHUB_OUTPUT"
+
+  search:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Fetch the bank and rebuild its model
+        run: |
+          mkdir -p data/checkpoints/hf input
+          gh release download "$RELEASE" -R "$RELEASE_REPO" --pattern bank.jsonl.gz --dir input
+          for f in "$MODEL" "$TEMPLATE"; do
+            curl -sSfL --retry 3 -o "data/checkpoints/hf/$(basename "$f")" "https://huggingface.co/$HF_REPO/resolve/main/$f"
+          done
+          onnx="data/checkpoints/hf/$(basename "$MODEL")"
+          tools/scripts/check_engine_fresh.sh && python tools/onnx_to_checkpoint.py --onnx "$onnx" \
+            --template "data/checkpoints/hf/$(basename "$TEMPLATE")" --out "${onnx%.onnx}.pt"
+      - name: Search, part ${{ matrix.part }}
+        run: |
+          mkdir -p out
+          specs=(); for s in $SPECS; do specs+=(--spec "$s"); done
+          OMP_NUM_THREADS=4 python tools/search_reliability.py search --bank input/bank.jsonl.gz \
+            --model "data/checkpoints/hf/$(basename "${MODEL%.onnx}").pt" "${specs[@]}" --seeds "$SEEDS" \
+            --part "${{ matrix.part }}/$RUNNERS" --out "out/search-${{ matrix.part }}.jsonl.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reliability-search-${{ github.run_id }}-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  playouts:
+    needs: [plan, search]
+    if: always() && needs.plan.result == 'success' && needs.search.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reliability-search-${{ github.run_id }}-*
+          path: search
+          merge-multiple: true
+      - name: Fetch the bank and rebuild its model
+        run: |
+          mkdir -p data/checkpoints/hf input
+          gh release download "$RELEASE" -R "$RELEASE_REPO" --pattern bank.jsonl.gz --dir input
+          for f in "$MODEL" "$TEMPLATE"; do
+            curl -sSfL --retry 3 -o "data/checkpoints/hf/$(basename "$f")" "https://huggingface.co/$HF_REPO/resolve/main/$f"
+          done
+          onnx="data/checkpoints/hf/$(basename "$MODEL")"
+          tools/scripts/check_engine_fresh.sh && python tools/onnx_to_checkpoint.py --onnx "$onnx" \
+            --template "data/checkpoints/hf/$(basename "$TEMPLATE")" --out "${onnx%.onnx}.pt"
+      - name: Playouts, part ${{ matrix.part }}
+        run: |
+          mkdir -p out
+          OMP_NUM_THREADS=4 python tools/search_reliability.py playouts --bank input/bank.jsonl.gz \
+            --search search/search-*.jsonl.gz --model "data/checkpoints/hf/$(basename "${MODEL%.onnx}").pt" \
+            --pairs "$PAIRS" --part "${{ matrix.part }}/$RUNNERS" --out "out/playouts-${{ matrix.part }}.jsonl.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reliability-playouts-${{ github.run_id }}-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  report:
+    needs: [plan, search, playouts]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          build-engine: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reliability-search-${{ github.run_id }}-*
+          path: search
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reliability-playouts-${{ github.run_id }}-*
+          path: playouts
+          merge-multiple: true
+      - name: Report
+        run: |
+          mkdir -p report
+          gh release download "$RELEASE" -R "$RELEASE_REPO" --pattern bank.jsonl.gz --dir input
+          PYTHONPATH=. python tools/search_reliability.py report --bank input/bank.jsonl.gz \
+            --search search/search-*.jsonl.gz --playouts playouts/playouts-*.jsonl.gz --out report/report.md
+          cp search/*.meta.json playouts/*.meta.json report/ 2>/dev/null || true
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "bank: release $RELEASE of $RELEASE_REPO; model: $HF_REPO $MODEL (rebuilt with template $TEMPLATE)"
+            echo "specs: $SPECS"
+            echo "seeds: $SEEDS  pairs: $PAIRS  runners: $RUNNERS"
+            echo "search parts: $(ls search/search-*.jsonl.gz | wc -l)  playout parts: $(ls playouts/playouts-*.jsonl.gz | wc -l)"
+          } > report/provenance.txt
+          { echo '```'; cat report/provenance.txt; echo '```'; cat report/report.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-reliability-${{ github.run_id }}
+          path: |
+            report/
+            search/
+            playouts/
+          retention-days: 90

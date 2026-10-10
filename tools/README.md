@@ -1071,6 +1071,67 @@ self-play:
 
 ---
 
+## 7c. Search Experiments: Searchers on the Bank, the Rollout Root, Distillation Rounds
+
+The tools behind `research/log/E7_search_depth_and_value.md` and `research/log/E7_gchoice_distill.md`.
+Each runs locally and has a CI workflow that shards it over runners.
+
+**Searchers.** `gumbel:<ckpt>:sims:k:fpu:filter:worlds` -- the sixth field, `worlds`
+(`BatchedMCTSConfig.gumbel_worlds`), splits each candidate's share of a halving phase over that many
+independent draws of the hidden cards and the dice. `rollout:<ckpt>:k:worlds:horizon:rule`
+(`ai/search/rollout_root.py`) is the rollout root: the network's top `k` moves, each played in
+`worlds` sampled worlds and played out by the network through `horizon` action-round boundaries, the
+critic at the leaf, then `argmax`, `z<x>` (the best only if its paired lead over the network's move is
+x standard errors) or `kl<t>` (one mirror-descent step). `rollout:<ckpt>:4:16:4:z2` is the measured
+player. `name:<label>:<spec>` names an entrant in reports.
+
+**`tools/search_reliability.py`** -- searchers on the search bank: `search` (every position, each
+searcher, `--seeds` independent streams), `playouts` (each position's network move and every pick in
+paired raw-network continuations), `report` (departure rate, reproducibility, population-weighted
+playout gain, merged across runs by position). Workflow `search_reliability.yml`. The offline judge
+ranks searchers but games decide: it ranked Gumbel@1,024 above Gumbel@256, which games reverse.
+
+**`tools/value_probe.py`** -- `label` (fresh self-play, a sampled share of decisions, the network's top
+moves in paired continuations; workflow `value_probe.yml`), `fit` (heads on the frozen trunk against
+the critic, on held-out positions and on the bank), `tune` (the checkpoint with its critic head
+fine-tuned on the labels, the policy untouched).
+
+**Distillation rounds.** `tools/generate_search_targets.py --target gchoice` (a Gumbel root at each
+`--gumbel-sims` budget) or `--target rollout` (`--rollout-spec`) records the teacher's pick beside the
+network's argmax and distribution; `tools/gchoice_targets.py arm` rewrites one set of games into each
+arm (`departures`, `gated`, `consensus`, `soft`, `own`), `tools/train.py --mode distill` fine-tunes,
+and `tools/gchoice_targets.py check` reports on held-out games where the checkpoint moved. Workflow
+`gchoice_distill.yml` runs targets, arms, checks and a greedy round robin end to end.
+
+**Games.** `searcher_tournament.yml` -- a round robin of searchers over one checkpoint (a `.pt` from
+the Hugging Face repo, or an export rebuilt as torch), greedy, split over runners.
+
+```bash
+export PYTHONPATH=.:build/release
+# a searcher in a match
+.venv/bin/python tools/tournament.py --models <ckpt.pt> gumbel:<ckpt.pt>:256:8 rollout:<ckpt.pt>:4:16:4:z2 \
+    --games-per-side 100 --temperature 0 --workers 0 --device cpu
+# searchers on the bank, then the report
+.venv/bin/python tools/search_reliability.py search --bank bank.jsonl.gz --model <ckpt.pt> \
+    --spec w1=256:8:0.2:all:1 --spec r4=rollout:4:16:4:z2 --seeds 4 --out search.jsonl.gz
+.venv/bin/python tools/search_reliability.py playouts --bank bank.jsonl.gz --search search.jsonl.gz \
+    --model <ckpt.pt> --pairs 512 --out playouts.jsonl.gz
+.venv/bin/python tools/search_reliability.py report --bank bank.jsonl.gz --search search.jsonl.gz \
+    --playouts playouts.jsonl.gz --out report.md
+# a distillation round with the rollout root as the teacher
+.venv/bin/python tools/generate_search_targets.py --checkpoint <ckpt.pt> --target rollout \
+    --rollout-spec 4:32:4:z2 --node-filter all --subsample 0.25 --total-games 50 --batch-size 50 \
+    --device cpu --seed-offset 10000000 --output-path targets-1.jsonl.gz
+.venv/bin/python tools/gchoice_targets.py arm --input targets-*.jsonl.gz --form soft --budget rollout \
+    --tau 0.1 --out soft.jsonl.gz
+.venv/bin/python tools/train.py --mode distill --warmup-checkpoint <ckpt.pt> \
+    --distill-dataset soft.jsonl.gz --distill-epochs 2 --device cpu --output-dir soft.pt
+.venv/bin/python tools/gchoice_targets.py check --input heldout.jsonl.gz --base <ckpt.pt> \
+    --model soft.pt --budget rollout --out check.json
+```
+
+---
+
 ## 8. Shared Helpers Library (`tools/lib/`)
 Internal simulation, evaluation, and logging modules imported by the CLI tools:
 - `tools/lib/player_agent.py`: unified agent loader (`load_agent`) and policy inference wrappers, including `OnnxAgent` for `tools/export_onnx.py` exports.
