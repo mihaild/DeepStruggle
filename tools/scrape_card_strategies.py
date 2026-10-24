@@ -38,10 +38,11 @@ if os.path.exists(list_page_path):
                     continue
                 row_text = [td.get_text(strip=True) for td in tds]
                 a = tr.find("a")
-                if a and a.get("href"):
+                href = a.get("href") if a else None
+                if isinstance(href, str) and href:
                     match = re.match(r"^#?(\d+)", row_text[0])
                     if match:
-                        card_urls[int(match.group(1))] = a.get("href")
+                        card_urls[int(match.group(1))] = href
 
 
 def clean_inner_html_to_markdown(elem: bs4.PageElement) -> str:
@@ -50,13 +51,15 @@ def clean_inner_html_to_markdown(elem: bs4.PageElement) -> str:
         return ""
     if isinstance(elem, str):
         return str(elem)
-    
-    tag_name = elem.name.lower()
+    if not isinstance(elem, bs4.Tag):
+        return ""
+
+    tag_name = (elem.name or "").lower()
     
     # Ignore widgets / scripts / sharing
     if tag_name in ["script", "style", "noscript"]:
         return ""
-    if elem.get("class") and any(c in ["sharedaddy", "sd-sharing-enabled", "wpcnt", "jp-relatedposts"] for c in elem.get("class")):
+    if any(c in ["sharedaddy", "sd-sharing-enabled", "wpcnt", "jp-relatedposts"] for c in elem.get_attribute_list("class")):
         return ""
     if elem.get("id") in ["jp-post-flair"]:
         return ""
@@ -68,7 +71,8 @@ def clean_inner_html_to_markdown(elem: bs4.PageElement) -> str:
         inner = "".join(clean_inner_html_to_markdown(c) for c in elem.contents).strip()
         return f"*{inner}*" if inner else ""
     elif tag_name == "a":
-        href = elem.get("href", "").strip()
+        value = elem.get("href", "")
+        href = value.strip() if isinstance(value, str) else ""
         inner = "".join(clean_inner_html_to_markdown(c) for c in elem.contents).strip()
         if href and inner:
             return f"[{inner}]({href})"

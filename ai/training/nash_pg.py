@@ -791,10 +791,9 @@ class BaseNashPGTrainer:
         #: these only, so a pooled run stays comparable with an unpooled one.
         self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
         #: The view spec's observation half: the feature set the learner reads (recorded in its
-        #: weights). Every seat of every env gets it -- pool members are snapshots of this run,
-        #: and a member of another feature set fails its strict load rather than misreading.
+        #: weights). Every seat gets it; pool members must use the same feature set.
         self.obs_features = model_obs_features(active_net)
-        if self.obs_features and self.env is not None:
+        if self.env is not None:
             self.env.set_obs_features(self.obs_features, self.obs_features)
         self.buffer = RolloutBuffer(
             buffer_size=self.buffer_size,
@@ -1487,6 +1486,8 @@ class BaseNashPGTrainer:
 
     def collect_rollouts(self) -> Dict[str, Any]:
         """Collects on-policy rollouts across all parallel environments."""
+        if self.opponent_pool is not None and self.opponent_pool.obs_features != self.obs_features:
+            raise ValueError("opponent pool observation features do not match the learner")
         t0 = time.time()
         if self._search_pool is not None:
             self._search_pool.begin()

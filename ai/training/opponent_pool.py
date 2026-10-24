@@ -71,6 +71,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
+from bindings.ts_env import model_obs_features
+
 
 class OpponentPool:
     """A set of frozen policies, plus the per-environment assignment of who plays whom.
@@ -86,7 +88,7 @@ class OpponentPool:
                  merged: Optional[Sequence[bool]] = None,
                  seat_balance: bool = False, seat_balance_max_frac: float = 0.8,
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
-                 league_frac: Optional[float] = None) -> None:
+                 league_frac: Optional[float] = None, obs_features: Optional[int] = None) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -110,6 +112,11 @@ class OpponentPool:
             if "league" in groups and league_capacity < 1:
                 raise ValueError("league members need league_capacity >= 1")
         self.nets = list(nets)
+        # Rollouts use learner-view observations for both the policy and critic. Equal widths
+        # alone do not imply equal semantics (HEADLINE_REVEAL changes existing slots).
+        self.obs_features = model_obs_features(self.nets[0]) if obs_features is None else obs_features
+        for net in self.nets:
+            self._check_obs_features(net)
         self.capacity = capacity
         self.pfsp = bool(pfsp)
         self.pfsp_weighting = pfsp_weighting
@@ -183,6 +190,12 @@ class OpponentPool:
         self.current: Any = self.nets[0]
         self.current_id: int = self.ids[0]
         self.current_merged: bool = self.merged[0]
+
+    def _check_obs_features(self, net: Any) -> None:
+        actual = model_obs_features(net)
+        if actual != self.obs_features:
+            raise ValueError(f"opponent observation features {actual:#x} do not match "
+                             f"learner/pool observation features {self.obs_features:#x}")
 
     def _register(self) -> int:
         """Give the newest net a stable id and zeroed statistics."""
@@ -288,6 +301,7 @@ class OpponentPool:
             raise ValueError(f"unknown pool group {group!r}; expected 'self' or 'league'")
         if group == "league" and self.league_capacity < 1:
             raise ValueError("league members need league_capacity >= 1")
+        self._check_obs_features(net)
         net.eval()
         for p in net.parameters():
             p.requires_grad_(False)

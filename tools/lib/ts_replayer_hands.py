@@ -20,8 +20,8 @@ Those constraints leave a choice, so the choice is made by preference rather tha
 spread across half a dozen heuristics: a player carries what is least worth playing, which is
 the opponent's small events, and does not sit on their own good cards.
 
-Solved with z3 (MIT). Where z3 is not installed the converter falls back to the older
-turn-by-turn borrowing, which is why this module keeps its own entry point.
+Solved with z3 (MIT). An unavailable or unsuccessful solver returns None; the converter reports
+a hand-reconstruction failure and emits no decisions instead of substituting approximate hands.
 """
 from __future__ import annotations
 

@@ -10,11 +10,14 @@ everything a game can be marked for. Both go through the stats Worker's handler,
 from __future__ import annotations
 
 import json
+import copy
+from pathlib import Path
 from typing import Any, Dict
 
 import pytest
 
 from tests.web.js_runner import PUBLIC, run_ts
+from tools import game_stats as cli
 from tools.lib.engine_fingerprint import fingerprint
 from tools.lib.game_stats import SubmissionDict, decode_log, summarize_submission, verify
 
@@ -31,6 +34,22 @@ def test_a_submitted_game_replays_to_its_end_in_python(played: Dict[str, Any]) -
         sub: SubmissionDict = played[name]
         v = verify(sub, fingerprint())
         assert v.status == "ok", f"{name}: {v.status} {v.detail}"
+
+
+def test_rating_verifies_the_exact_record_before_counting_it(played: Dict[str, Any], tmp_path: Path) -> None:
+    clean = played["clean"]
+    forged = copy.deepcopy(clean)
+    forged["id"] = "forged-result"
+    forged["result"]["winner"] = "USSR" if clean["result"]["winner"] == "US" else "US"
+    wrong_hash = copy.deepcopy(clean)
+    wrong_hash["id"] = "forged-hash"
+    wrong_hash["final_hash"] = "0" * 64
+    export, output = tmp_path / "games.json", tmp_path / "fit.json"
+    export.write_text(json.dumps([clean, played["messy"], forged, wrong_hash]))
+    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output)]) == 0
+    fit = json.loads(output.read_text())
+    assert len(fit["fits"]) == 1 and fit["fits"][0]["games"] == 1
+    assert fit["skipped"] == {"not clean": 1, "verification: mismatch": 2}
 
 
 def test_the_log_is_compact_and_round_trips(played: Dict[str, Any]) -> None:

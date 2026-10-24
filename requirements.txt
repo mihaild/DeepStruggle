@@ -32,10 +32,9 @@ httpx>=0.28.0              # starlette's TestClient, used by tests/web
 pyrefly>=1.2.0             # the static type check, which tests/bindings runs as a subprocess --
                            # so it is a test dependency even though nothing imports it
 
-# --- optional, and what they cost if absent ----------------------------------------------------
-# z3-solver reconstructs the hands behind a ts-replayer log. Without it the converter falls back
-# to per-turn heuristics, so tests/replayer will not reproduce the corpus faithfully.
+# Required for human replay conversion: no decisions are emitted without a solved hand model.
 z3-solver>=5.1.0
+# --- optional, and what they cost if absent ----------------------------------------------------
 # TensorBoard is how a training run is watched; without it the trainer still runs and still
 # writes training_metrics.jsonl, it just logs no event files.
 tensorboard>=2.21.0

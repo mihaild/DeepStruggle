@@ -2692,6 +2692,7 @@ def train_pipeline(
             groups=_seed_groups,
             league_capacity=int(league_pool_size) if league_dirs else 0,
             league_frac=league_frac,
+            obs_features=trainer.obs_features,
         )
         if any(_seed_merged) or merged_influence:
             print(f"[opponent pool] action views (P23): learner "

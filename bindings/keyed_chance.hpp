@@ -38,10 +38,11 @@ inline uint64_t situation(const GameState& s, uint64_t world_key) noexcept {
     const auto& c = s.ctx();
     uint64_t h = world_key;
     h = mix(h, (uint64_t{s.turn} << 24) | (uint64_t{s.action_round} << 16) |
-               (uint64_t(s.phasing_player) << 8) | uint64_t(s.current_phase));
-    h = mix(h, (uint64_t(c.decision_type) << 40) | (uint64_t(c.decision_player) << 32) |
+               (uint64_t(static_cast<uint8_t>(s.phasing_player)) << 8) | uint64_t(s.current_phase));
+    // Player::USSR is -1: narrow to its byte before widening so it cannot fill adjacent fields.
+    h = mix(h, (uint64_t(c.decision_type) << 40) | (uint64_t(static_cast<uint8_t>(c.decision_player)) << 32) |
                (uint64_t(c.pending_roll) << 24) | (uint64_t{c.roll_target} << 16) |
-               (uint64_t(c.roll_actor) << 8) | uint64_t{c.remaining_steps});
+               (uint64_t(static_cast<uint8_t>(c.roll_actor)) << 8) | uint64_t{c.remaining_steps});
     h = mix(h, (uint64_t{c.resolving_card} << 24) | (uint64_t{c.pending_op_card} << 16) |
                (uint64_t{s.ctx_stack_depth} << 8) | uint64_t{s.headline_stage});
     return h;

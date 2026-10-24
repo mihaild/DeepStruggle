@@ -41,9 +41,9 @@ build directory created under GCC. The batch runner's parallel loops call GCC's 
 OpenMP adds a second pool, measured 5-7% slower. `tests/bindings/test_build_toolchain.py` fails on
 a non-clang engine, a second pool, or loops that silently run serially (`bindings/AGENTS.md` §3).
 
-Three requirements degrade rather than break if absent: `z3-solver` (the human-log converter then
-falls back to per-turn heuristics and no longer reproduces the corpus), `tensorboard` (training
-still writes `training_metrics.jsonl`) and `playwright` (browser E2E tests only).
+`z3-solver` is required for human-log conversion: unavailable or unsuccessful hand solving is a
+conversion failure before any decisions are emitted. Two requirements degrade if absent:
+`tensorboard` (training still writes `training_metrics.jsonl`) and `playwright` (browser E2E tests only).
 
 The extension lands at `build/release/ts_engine.cpython-*.so` — the binary root, not
 `build/release/bindings/` — and is imported via `PYTHONPATH=.:build/release`.
@@ -320,7 +320,9 @@ against its own epoch's default, so earlier codes hold). The engine has no defau
 (`bindings.ts_env.model_obs_features(model)`),
 `ts.obs_size_for(features)` is the width, and the batch runner holds a set per env and side
 (`set_obs_features(us, ussr)`), zero-padding rows to the widest so models with different sets share
-a batch. Blocks so far: `OPS_BUDGET` (bit 1, 3 floats; P30 C4) and `HEADLINE_REVEAL` (bit 2, no width:
+a batch. Training pools require every member, including fixed and league opponents, to have the
+learner's exact feature bits; equal observation widths are insufficient. Blocks so far:
+`OPS_BUDGET` (bit 1, 3 floats; P30 C4) and `HEADLINE_REVEAL` (bit 2, no width:
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
 2026-10-20). Adding a block still needs the owner.
 

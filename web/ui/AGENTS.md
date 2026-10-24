@@ -423,6 +423,12 @@ web/ui/
      `RolloutRunner` runs one search at a time, the worker one message at a time (they share one
      engine and one rollout batch), and a request still waiting when a newer one arrives is
      superseded without running.
+     Inline fallback owns a separate, lazily loaded engine too, so user moves, undo and New Game
+     during inference cannot be overwritten by a snapshot restore. Each worker loads one model
+     per lifetime: replacement terminates it, rejects initialization and active requests, and
+     invalidates queued searches. Late messages from an obsolete worker are ignored; worker
+     errors also settle initialization so the search queue can continue. Invalid imported save
+     context depths are refused before the live position changes.
    - **How the model plays a side.** The search radios (`#mode-opponent`, in the model & search
      section): the rollout root, the strongest player, or the policy, set through `setSearch`.
      The rollout option describes the spec it would keep (the one in force, else the measured

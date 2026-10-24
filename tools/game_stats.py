@@ -11,7 +11,7 @@
 The page submits a finished game to the stats database (web/stats_worker/, Cloudflare D1);
 `fetch` exports its table with wrangler. `verify` re-drives every game played on this build's
 engine and checks it ends on the submitted position; a game from another engine names the commit
-to check out. `rating` fits each model player's rating on Playdek's scale from the clean games
+to check out. `rating` repeats that verification and fits each model player's rating from the clean games
 (tools/lib/game_stats.py has the model). See tools/README.md, "Games against people".
 """
 
@@ -128,7 +128,13 @@ def cmd_verify(a: argparse.Namespace) -> int:
 def cmd_rating(a: argparse.Namespace) -> int:
     by_player: Dict[str, List[RatedGame]] = {}
     skipped: Dict[str, int] = {}
+    fingerprint = engine_fingerprint()
     for sub in load_export(a.export):
+        verdict = verify(sub, fingerprint)
+        if verdict.status != "ok":
+            why = f"verification: {verdict.status}"
+            skipped[why] = skipped.get(why, 0) + 1
+            continue
         s = summarize_submission(sub)
         why = ("not clean" if not s["clean"] else
                "too many undos" if a.max_undos is not None and s["undos"] > a.max_undos else

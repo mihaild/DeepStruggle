@@ -8,6 +8,9 @@ format is named fields precisely so a save written before a field existed still 
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -104,6 +107,22 @@ def test_an_unknown_field_is_ignored() -> None:
 
 def test_the_format_is_tagged() -> None:
     assert _played().to_save_dict()["format"] == "ts_save_v2"
+
+
+@pytest.mark.parametrize("depth", [6, 255, 256, -1, "0", None])
+def test_invalid_context_depth_is_rejected_by_both_loaders(depth: Any) -> None:
+    saved = _played().to_save_dict()
+    saved["ctx_stack_depth"] = depth
+    with pytest.raises(ValueError, match="ctx_stack_depth"):
+        ts.state_from_save_dict(saved)
+    with pytest.raises(ValueError, match="ctx_stack_depth"):
+        ts.state_from_save_json(json.dumps(saved))
+
+
+def test_missing_context_depth_keeps_the_baseline() -> None:
+    saved = _played().to_save_dict()
+    del saved["ctx_stack_depth"]
+    assert ts.state_from_save_dict(saved).ctx_stack_depth == 0
 
 
 @pytest.mark.parametrize("seed", [777, 31337, 4242])

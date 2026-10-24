@@ -84,7 +84,7 @@ policy and value restored exactly).
 | `--ladder-head-center` / `--no-ladder-head-center` | centres per-entity head features across entities. **On by default** (auto: on for per-entity heads in the E4 view, follows the checkpoint on resume, refused with `--merged-influence`); recorded as `pe_center` | a shift common to every country logit gets no gradient and drifted without limit in the long runs |
 | `--z-loss-coef c` | adds `c·mean(logsumexp(logits)²)` (usually 1e-4); `logit_lse_mean`/`_absmax` are logged regardless | both 800M runs diverged through logit-level drift ([E4 long runs](../research/log/E4_long_runs.md)) |
 | `--ladder-token-layers L` / `--ladder-token-dim D` | a transformer token path over 84 countries + 110 cards + globals beside the grouped trunk; ~12x the shallow trunk's cost at D = 128, L = 2 | [P30 C1](../research/log/P30_C1_tokens.md) |
-| `--obs-features NAME...` | optional observation features: `ops_budget` (a 3-float block appended) and `headline_reveal` (no width: the box-4 holder sees the opponent's revealed headline). **Default since E8: `headline_reveal`**; the list replaces it, and the flag with no names is none (every pre-E8 run). Recorded in weights and metadata, so mixed sets play in one batch (`engine/AGENTS.md` §6a); a resume, `--resume-weights` or warm start whose weights read another set is refused | [P30 C4](../research/log/P30_C4_ops_budget.md) |
+| `--obs-features NAME...` | optional observation features: `ops_budget` (a 3-float block appended) and `headline_reveal` (no width: the box-4 holder sees the opponent's revealed headline). **Default since E8: `headline_reveal`**; the list replaces it, and the flag with no names is none (every pre-E8 run). Recorded in weights and metadata; evaluation supports mixed sets (`engine/AGENTS.md` §6a), while training pools require the learner's exact set. A resume, `--resume-weights` or warm start whose weights read another set is refused | [P30 C4](../research/log/P30_C4_ops_budget.md) |
 
 **Optimiser** (P28: [LR schedule](../research/log/P28_step2a_lr_schedule.md), [EMA](../research/log/P28_step2b_ema_weights.md))
 
@@ -378,7 +378,9 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
   player view, never for the model, never with the model's readout on screen or its suggestion;
   no forced dice, no debug overrides, not from a loaded position. Take-backs are counted
   (`--max-undos` to leave them out), not disqualifying.
-* `rating` fits each **model player** -- model file and search -- on the clean games: Elo's
+* `rating` re-drives and verifies every record in the current engine before fitting each
+  **model player** -- model file and search -- on the clean games. Failed verification and
+  other-engine records are excluded with counts in the output and JSON. The fit uses Elo's
   logistic on a 400-point scale against each human's self-reported Playdek rating, with
   `--ussr-advantage` the USSR's edge between equal players (not fitted; the default 0 assumes
   none). Playdek does not publish its formula; the 400-point Elo scale is what players report it
@@ -495,8 +497,9 @@ turns whose recording stops part way.
   (`_shuttle_japan_asia_miscount`). Where the log's score is wrong the engine adopts it from there
   on: the players decided against the score the app showed.
 - `tools/lib/ts_replayer_hands.py`: both hands for a whole game solved at once as a z3 constraint
-  problem from the rules, with preference heuristics as soft clauses. Without z3 it falls back to
-  per-turn heuristics and `Conversion.hands_solved` is False. Before each entry the solved hands
+  problem from the rules, with preference heuristics as soft clauses. Missing z3 or an unsolved
+  hand model is a conversion failure before any decisions or callbacks are emitted; a turn absent
+  from the model also fails instead of padding a hand. Before each entry the solved hands
   are seated and every other card the engine holds goes back to the **draw deck**, never the
   discard pile: the pile holds only what the log has spent, so the engine reshuffles where the
   humans did, and the discard features and any redeal from a converted position read the real

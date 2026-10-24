@@ -1,9 +1,8 @@
 """The Playdek-scale rating fit of tools/lib/game_stats.py, on games whose truth is known.
 
 Games are drawn from the model the fit assumes -- Elo's logistic against each human's rating --
-for a model of known strength, and the fit must find it. The CLI is run end to end on synthetic
-submissions (logs encoded here, as web/ui/src/game/record.ts encodes them), so which games count
--- clean ones, grouped by model and search -- is checked without a browser or an engine.
+for a model of known strength, and the fit must find it. Grouping is tested with synthetic
+verified submissions; tests/web/test_game_stats.py checks rating real played games end to end.
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ import pytest
 
 from tools import game_stats as cli
 from tools.lib.game_stats import (RatedGame, SettingsDict, Step, decode_log, fit_rating, load_export,
-                                  summarize)
+                                  summarize, Verdict)
 
 SHA = "c" * 64
 
@@ -109,7 +108,15 @@ def test_the_log_decodes_to_its_tags() -> None:
     assert steps[1] == Step(1, 1, 0, 0, 0, "suggested", False, "USSR", False, 2)
 
 
-def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: pytest.CaptureFixture[str]) -> None:
+def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: pytest.CaptureFixture[str],
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    verified: List[str] = []
+
+    def accept(sub: Any, fingerprint: str) -> Verdict:
+        verified.append(sub["id"])
+        return Verdict("ok", "unit fixture")
+
+    monkeypatch.setattr(cli, "verify", accept)
     subs = [_submission(i, f"p{i % 3}", 1600 + 50 * (i % 3), "US" if i % 2 else "USSR",
                         "USSR" if i % 2 else "US") for i in range(12)]  # the model wins every game
     subs.append(_submission(100, "p0", 1600, "US", "US", human_for_model=True))
@@ -122,6 +129,7 @@ def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: 
     assert cli.main(["rating", str(export), "--bootstrap", "50", "--json", str(tmp_path / "fit.json")]) == 0
     out = capsys.readouterr().out
     fit = json.loads((tmp_path / "fit.json").read_text())
+    assert verified == [s["id"] for s in subs]
     players = {f["player"]: f for f in fit["fits"]}
     assert set(players) == {f"E7 test [{SHA[:12]}] policy", f"E7 test [{SHA[:12]}] rollout:4:32:4:z2"}
     policy = players[f"E7 test [{SHA[:12]}] policy"]
@@ -132,3 +140,15 @@ def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: 
 
     assert cli.main(["show", str(export)]) == 0
     assert "human_moves_for_model=1" in capsys.readouterr().out
+
+
+def test_rating_rejects_unplayed_and_other_engine_records(tmp_path: Any) -> None:
+    refused = _submission(0, "p", 2000, "USSR", "US")
+    refused["build"]["engine_fingerprint"] = cli.engine_fingerprint()
+    other_engine = _submission(1, "p", 2000, "USSR", "US")
+    export, output = tmp_path / "games.json", tmp_path / "fit.json"
+    export.write_text(json.dumps([refused, other_engine]))
+    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output)]) == 0
+    fit = json.loads(output.read_text())
+    assert not fit["fits"]
+    assert fit["skipped"] == {"verification: refused": 1, "verification: other-engine": 1}

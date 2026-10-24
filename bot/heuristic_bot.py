@@ -95,7 +95,7 @@ class HeuristicBot(BaseBot):
                     c_info = ts_engine.MapData.get_country_info(node_id)
                     is_bg = c_info.get("battleground", False)
                     stab = c_info.get("stability", 2)
-                    c_data = countries.get(str(node_id), {}) if isinstance(countries, dict) else {}
+                    c_data = countries.get(c_info["name"], {}) if isinstance(countries, dict) else {}
                     my_inf = c_data.get("us_influence" if self.role == "US" else "ussr_influence", 0)
                     opp_inf = c_data.get("ussr_influence" if self.role == "US" else "us_influence", 0)
                     my_ctrl = (my_inf >= opp_inf + stab)

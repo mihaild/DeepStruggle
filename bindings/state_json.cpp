@@ -994,7 +994,12 @@ bool load_save(const Value& d, GameState& out, std::string* error) {
             }
         }
     }
-    s.ctx_stack_depth = get<uint8_t>(d, "ctx_stack_depth", s.ctx_stack_depth);
+    if (const Value* depth = d.find("ctx_stack_depth")) {
+        if (!element<uint8_t>(*depth, &s.ctx_stack_depth) || s.ctx_stack_depth >= s.ctx_stack.size()) {
+            if (error) *error = "ctx_stack_depth is outside the decision stack";
+            return false;
+        }
+    }
 
     const Value* locs = nullptr;
     if (!list_of(d, "card_locations", &locs, error)) return false;

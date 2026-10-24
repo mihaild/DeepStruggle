@@ -214,6 +214,8 @@ How to launch: `CLAUDE.md` ("Running training ..."): derive the flags from a hea
 is in env steps (there is no wall-clock flag, since steps/sec depends on the policy), and both arms
 must share `--train-steps` **and** `--pool-every-steps`, which sets how fast the opponent pool grows.
 `--snapshot-every-steps` is reporting only: evaluation restores the RNG streams it draws from.
+Training pools reject members whose observation feature bits differ from the learner's, including
+equal-width feature sets and newly added league members.
 Every `training_metrics.jsonl` metric is mirrored to `<run-dir>/tb` for TensorBoard
 (`.venv/bin/python -m tensorboard.main --logdir <run-dir>/tb`; `--no-tensorboard` to skip).
 How to run and rate an arm, and how to record it: `research/method/running_experiments.md`,
@@ -237,6 +239,9 @@ settings, the build's commit) to a Cloudflare Worker that keeps it in D1
 is hosted here. `tools/game_stats.py` exports the table, re-drives each game in the engine, and
 fits each model player's rating on Playdek's scale from the clean games
 ([`tools/README.md`](tools/README.md) §2d).
+The rating command verifies each record in the current engine before including it, reporting
+failed verification and other-engine exclusions. Browser rollout search always owns its engine;
+model replacement terminates the old worker and settles its initialization and search requests.
 
 ### 3.4 CLIs
 
@@ -246,6 +251,14 @@ loss causes; more or a directory: a round robin with Bradley-Terry Elo) and `too
 downloaded by `tools/download_ts_replayer.py` and converted, verified entry by entry against the
 log's own boards, by `tools/lib/ts_replayer_*.py`; every game converts in full. Everything else,
 with flags: [`tools/README.md`](tools/README.md).
+Human conversion requires successful whole-game hand solving with z3; it reports failure before
+emitting decisions when solving is unavailable. The terminal heuristic reads influence from
+name-keyed display countries; tournament `HeuristicAgent` is a separate implementation.
+
+Save loaders reject a supplied context depth outside the six-entry decision stack before
+publishing a state. Keyed chance packs player values as unsigned bytes so USSR (-1) cannot erase
+turn, round, decision or roll-target fields; keyed-search measurements and labels from before
+this correction need to be retaken.
 
 ---
 

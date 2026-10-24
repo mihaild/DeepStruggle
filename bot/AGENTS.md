@@ -12,7 +12,10 @@ inherit from [`BaseBot`](base_bot.py).
   - `select_flat_action(state, player) -> int`: a flat action index, for vectorized environments.
   - `reset()`: clears internal memory or search state between games.
 - [`random_bot.py`](random_bot.py): `RandomBot`, uniform over legal moves.
-- [`heuristic_bot.py`](heuristic_bot.py): `HeuristicBot`, a fixed rule list (battlegrounds, scoring-card timing, ops efficiency); `tools/tournament.py`'s default Elo anchor.
+- [`heuristic_bot.py`](heuristic_bot.py): the terminal match's `HeuristicBot`, a fixed rule list
+  (battlegrounds, scoring-card timing, ops efficiency). Its JSON influence scoring reads countries
+  by their display names. Tournament evaluation uses the separate native-state `HeuristicAgent`
+  in `tools/lib/player_agent.py` as its default Elo anchor.
 - [`heuristic_mcts_bot.py`](heuristic_mcts_bot.py): `HeuristicMCTSBot` (`heuristic_mcts[:sims]` in `tools/play_match.py`), MCTS over the real engine with `ai.search.heuristic_eval` at the leaf and no checkpoint. 18/20 against HeuristicBot from 16 simulations on (`research/findings/training/heuristic_mcts_baseline.md`). **It searches the true state and sees the opponent's hand**: fine for a benchmark, never a claim about play under real information.
 - [`neural_bot.py`](neural_bot.py): `NeuralBot`, loaded through `tools.lib.player_agent.NeuralAgent.from_checkpoint`: the architecture (V1, V2 or LadderNet) is detected from the weights and a retired one is refused rather than partially loaded. It builds E4 masks and reads the base observation, so a checkpoint in the merged-influence view or with observation feature blocks is refused (`tests/training/test_neural_bot_checkpoint.py`).
 - [`exploratory_bot.py`](exploratory_bot.py): `ExploratoryBot`, explores diverse paths: Space Race, realignments, coups.

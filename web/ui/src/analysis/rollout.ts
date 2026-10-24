@@ -83,7 +83,7 @@ async function weighBelief(engine: WasmEngine, model: Model, width: number): Pro
 /**
  * Run the root on the position `engine` holds. `engine` must not be the one drawing the board
  * while this runs (the batch copies the position, but the forwards interleave with everything
- * else) -- the page gives the worker its own; a page without workers runs it inline between moves.
+ * else) -- both the worker and the inline fallback own a separate engine.
  * Returns null when no decision is open or the network has a single legal move.
  */
 export async function rolloutRoot(engine: WasmEngine, model: Model, spec: RolloutSpec, seed: number): Promise<SearchResult | null> {

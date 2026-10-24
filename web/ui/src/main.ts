@@ -196,7 +196,7 @@ export class TSApp {
       return;
     }
     setActionSpace(this.engine.layout);
-    this.runner = new RolloutRunner(this.engine);
+    this.runner = new RolloutRunner();
     this.session = new GameSession(this.engine);
     if (!this.urlPosition || !(await this.resumeStoredGame(this.urlPosition))) {
       this.session.newGame(Math.floor(Math.random() * 1_000_000));

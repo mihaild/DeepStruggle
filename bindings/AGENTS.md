@@ -67,6 +67,8 @@ are cited from elsewhere; keep them.
     mid-decision restored at a different decision — 91 of 97 positions on one seed — with every
     visible field matching. `action_history` and `turn_aggregates` are deliberately not saved: no
     rule or observation reads them. If one ever does, add it here.
+    Both loaders reject a supplied `ctx_stack_depth` unless it is an integer inside the six-entry
+    stack. Missing depth still defaults; an invalid Wasm load leaves the live position intact.
 - [`state_json.hpp`](state_json.hpp) / [`state_json.cpp`](state_json.cpp): **the display state, the
   save and its loader, and the ending reason, written once** as a dependency-free JSON value tree,
   converted to Python objects here and printed by the WebAssembly build — two hand-kept copies
@@ -165,8 +167,9 @@ are cited from elsewhere; keep them.
   event cards wherever they reach the same situation; at the turn's end the next deal is forced
   (the engine's forced-deal slots) from one card priority order per world, with one card in reserve
   per hand for the Space Walk discard. A single continuation plays the same game distribution; only
-  the coupling between continuations changes. Measured on P34's sibling slice: two candidates'
-  results in one world correlate at 0.39 keyed against 0.22 with the shared stream.
+  the coupling between continuations changes. Player fields are narrowed to unsigned bytes before
+  packing: USSR is -1 and must not overwrite neighboring fields. Keyed measurements and labels
+  from before this correction must be retaken; ordinary engine dice are unchanged.
   `ts.keyed_key(state, key)` is the keying step, for references and tests.
 - **The oracle's worlds** (`RolloutBatch(oracle=True)`, `ts.determinize(..., keep_hand=True)`; the
   rollout agent string's `:oracle`): every world keeps the opponent's true hand and reshuffles only

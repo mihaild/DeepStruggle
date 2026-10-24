@@ -9,6 +9,22 @@ the full write-up is in git history.
 
 ---
 
+## EVAL-1 — leaderboard records do not identify overlapping deal sets
+
+**Area:** leaderboard evaluation · **Severity:** P2 · **Status:** open
+
+Duplicate detection compares base seeds, while the deals played depend on the base, game count
+and chunk size. With 1,000 games per side and chunk size 1,000, neighboring bases share 998 of
+1,000 deal seeds for the same pairing, yet both records are accepted as independent evidence.
+Historical match records omit chunk size, so their actual seed sets cannot be reconstructed
+reliably from the records alone.
+
+**Fix.** Record the actual deal set and sampling protocol for future matches and reject overlap
+per pairing. Recover historical chunk provenance before migrating existing evidence; preserve
+its original interpretation rather than inferring a chunk size from current defaults.
+
+---
+
 ## TEST-1 — the differential fuzzing suite does not run
 
 **Area:** tests · **Severity:** low · **Status:** open

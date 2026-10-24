@@ -293,10 +293,9 @@ class Conversion:
     # Decisions inside a listed invalid play (_INVALID_PLAYS), answered to keep the entry
     # moving and emitted as nothing.
     invalid_decisions: int = 0
-    # Cards borrowed from the next turn's list as the ones this side carried over. See
-    # _cards_carried_over.
+    # Cards recovered by the whole-game model beyond the turn's visible card list.
     cards_carried_over: int = 0
-    # Whether the hands came from the constraint model rather than the turn-by-turn borrowing.
+    # False on a hand-reconstruction failure, before any decisions are emitted.
     hands_solved: bool = False
     # Turns whose reveals the rest of the log contradicts, so the hands were solved without
     # them (solve_hands). Those hands are not known to be the players', so the turns' decisions
@@ -3606,7 +3605,7 @@ def _is_the_record_ending(m: Mismatch, raws: List[Dict]) -> bool:
     they stay failures. The distinction is between the log saying nothing and the log saying
     something else.
     """
-    if not raws:
+    if m.kind == "hand reconstruction failed" or not raws:
         return False
     # A failure inside a turn the recording stops in is not worth diagnosing: the turn is a
     # fragment and is dropped either way, so whether we could have reproduced it is moot. At
@@ -3662,6 +3661,8 @@ def convert_game(game: Dict, on_decision: Optional[Callable] = None,
     """
     conv = Conversion(replay_id=int(game.get("replay_id", -1)))
     raws = game.get("all_turns", [])
+    if not raws:
+        return conv  # An empty download has no decisions or hands to reconstruct.
     hands = game.get("hands", {}) or {}
 
     handicap = unsupported_handicap(raws)
@@ -3786,13 +3787,18 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
 def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
                      on_decision: Optional[Callable] = None,
                      on_entry: Optional[Callable] = None) -> None:
-    # Both hands, for every turn, solved from the log and the rules in one pass. Where z3 is
-    # not installed, or the log will not admit a hand, this is None and the turn-by-turn
-    # borrowing below stands in.
+    # No decisions may be emitted without the whole-game hand model, including setup.
     conflicts: Set[int] = set()
     solved_hands = solve_hands(raws, hands, card_id, reveal_conflicts=conflicts)
     conv.hands_solved = solved_hands is not None
     conv.reveal_conflict_turns = sorted(conflicts)
+    if solved_hands is None:
+        first = parse_entry(raws[0]) if raws else None
+        mismatch = Mismatch(conv.replay_id, first.turn if first else 0,
+                            first.phase if first else "", first.player if first else "", first.card if first else None,
+                            "hand reconstruction failed",
+                            "no whole-game hand model; ensure z3-solver is installed and diagnose the log")
+        raise ConversionFailure(mismatch)
     cur_turn = None
     turn_hands = {"US": [], "USSR": []}
     played = {"US": set(), "USSR": set()}
@@ -3811,11 +3817,6 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
     # many samples emitted. A record that stops mid-turn takes the whole turn with it, so this
     # is what a truncation rewinds to. See _rewind_to_turn_start.
     conv.turn_started_at = (0, 0, 0)
-    # The turn the record stops in, which is the only one a short hand list can be blamed on
-    # the recording for.
-    last_turn = max((int(r.get("num")) for r in raws
-                     if str(r.get("num", "")).isdigit()), default=0)
-
     for index, raw in enumerate(raws):
         e = parse_entry(raw)
         if (e.turn, e.phase, e.player) in _KNOWN_INCOMPLETE.get(conv.replay_id,
@@ -3886,50 +3887,20 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
             conv.hand_reattributions += _reattribute_hands(raws, int(e.turn), turn_hands)
             conv.hand_reattributions += _cards_named_through_un_intervention(
                 raws, int(e.turn), turn_hands)
-            # The log lists only the cards a player used, so a game that stops mid-turn leaves
-            # hands far too small to have been the ones played from. Top them up to the size
-            # the rules deal, capping Ops below anything the log records that side revealing.
-            # A new turn restores each side's space race attempt. The engine resets this when
-            # it advances the turn itself, which forcing turn numbers from the log bypasses, so
-            # a stale count made a legitimate attempt illegal: at turn 4 AR4 of replay 112 the
-            # USSR races with Duck and Cover and the engine offered only Ops modes.
-
-
-            size = 8 if int(e.turn) <= 3 else 9
-            if solved_hands is not None and int(e.turn) in solved_hands:
-                # The hands the whole game was solved for at once -- see ts_replayer_hands.
-                # They already hold what the log states, what the rules force and what a
-                # player would have carried, so nothing here is left to top up. What the turn's
-                # list holds and the solved hand does not is a card that reached the hand part
-                # way through the turn, which the model says *that* about and the acquisition
-                # tracking below says *when*.
-                peeked = _peeked_this_turn(raws, int(e.turn))
-                for side in ("US", "USSR"):
-                    was = set(turn_hands[side])
-                    solved = list(solved_hands[int(e.turn)][side])
-                    # Our Man in Tehran's cards are named in the turn's list because the US saw
-                    # them, but they come off the draw pile and go back to it or to the discards
-                    # without ever being held (_stage_our_man_in_tehran stages them from the
-                    # deck). Seating them as late arrivals put them in the US hand from AR1: at
-                    # turn 4 of replay 30 three cards the US only saw at AR7.
-                    late = [c for c in was if c not in solved and not (side == "US" and c in peeked)]
-                    turn_hands[side] = solved + late
-                    conv.cards_carried_over += len(set(solved) - was)
-            else:
-                claimed = set(turn_hands["US"]) | set(turn_hands["USSR"])
-                # What each side carried in from the turn before -- see _cards_carried_over.
-                for side in ("US", "USSR"):
-                    carried = _cards_carried_over(state, raws, hands, int(e.turn), side,
-                                                  turn_hands[side], size, claimed)
-                    turn_hands[side].extend(carried)
-                    claimed |= set(carried)
-                    conv.cards_carried_over += len(carried)
-                for side in ("US", "USSR"):
-                    padded = _pad_hand(state, turn_hands[side], size,
-                                       _reveal_ops_cap(raws, e.turn, side), claimed,
-                                       final_turn=int(e.turn) >= last_turn)
-                    claimed |= set(padded)
-                    turn_hands[side] = padded
+            if int(e.turn) not in solved_hands:
+                raise ConversionFailure(Mismatch(conv.replay_id, e.turn, e.phase, e.player, e.card,
+                                                  "hand reconstruction failed", "turn missing from hand model"))
+            # Whole-game hands already include the held cards. Extra cards in the visible list
+            # arrived mid-turn; acquisition tracking below determines when they enter the hand.
+            peeked = _peeked_this_turn(raws, int(e.turn))
+            for side in ("US", "USSR"):
+                was = set(turn_hands[side])
+                solved = list(solved_hands[int(e.turn)][side])
+                # Our Man in Tehran's cards were seen from the deck, never held: at turn 4 of
+                # replay 30 the US only sees three of the listed cards at AR7.
+                late = [c for c in was if c not in solved and not (side == "US" and c in peeked)]
+                turn_hands[side] = solved + late
+                conv.cards_carried_over += len(set(solved) - was)
             played = {"US": set(), "USSR": set()}
             # Cards the turn's list names that reached the hand part way through it, against
             # the entry that brings each one in. The solved hands settle *which* those are --
@@ -3937,24 +3908,23 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
             # *when*, which Missile Envy and the traps read out of the hand as it stands.
             pending = {side: _mid_turn_acquisitions(raws, int(e.turn), side, turn_hands[side])
                        for side in ("US", "USSR")}
-            if solved_hands is not None and int(e.turn) in solved_hands:
-                for side in ("US", "USSR"):
-                    solved = set(solved_hands[int(e.turn)][side])
-                    known = pending[side]
-                    pending[side] = {}
-                    never: Set[int] = set()
-                    for c in turn_hands[side]:
-                        if c in solved:
-                            continue
-                        at = known.get(c)
-                        if at is None:
-                            at = _arrival_entry(raws, int(e.turn), side, c, index)
-                        if at is None:
-                            never.add(c)
-                        elif at >= index:
-                            pending[side][c] = at
-                    turn_hands[side] = [c for c in turn_hands[side] if c not in never]
-                    conv.listed_never_held += len(never)
+            for side in ("US", "USSR"):
+                solved = set(solved_hands[int(e.turn)][side])
+                known = pending[side]
+                pending[side] = {}
+                never: Set[int] = set()
+                for c in turn_hands[side]:
+                    if c in solved:
+                        continue
+                    at = known.get(c)
+                    if at is None:
+                        at = _arrival_entry(raws, int(e.turn), side, c, index)
+                    if at is None:
+                        never.add(c)
+                    elif at >= index:
+                        pending[side][c] = at
+                turn_hands[side] = [c for c in turn_hands[side] if c not in never]
+                conv.listed_never_held += len(never)
 
         # --- rebuild the position this entry was decided from ---
         if prev_raw is not None:
