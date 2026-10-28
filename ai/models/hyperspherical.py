@@ -9,6 +9,7 @@ back to unit norm after each optimiser step (the measured head-weight growth, P3
     h~       = l2(W2 ReLU((W1 h) * s))                    W1: d -> e*d, W2: e*d -> d, unit-norm rows, no bias
     h        = l2(h + alpha * (h~ - h))                   alpha per dimension, init 1 / (L + 1)
     out      = c * sqrt(d) * h_L                          the heads read per-element RMS c (default 1)
+    out      = |stem| * h_L                               with carry_norm (P39 arm 6): the stem's own norm
 
 `s` (per hidden unit, init 1) only reweights the hidden units: ReLU is scale-equivariant and the branch is
 renormalised, so a uniform scale changes nothing. A small alpha at initialisation keeps a fresh deep trunk close to
@@ -51,7 +52,8 @@ class SphereBlock(nn.Module):
 class SphereTrunk(nn.Module):
     """`num_blocks` SphereBlocks between the stem and the heads (see the module docstring)."""
 
-    def __init__(self, dim: int, num_blocks: int, expansion: int = 4, out_scale: float = 1.0) -> None:
+    def __init__(self, dim: int, num_blocks: int, expansion: int = 4, out_scale: float = 1.0,
+                 carry_norm: bool = False) -> None:
         super().__init__()
         if num_blocks <= 0 or expansion <= 0 or out_scale <= 0.0:
             raise ValueError(f"a sphere trunk needs blocks, an expansion and a positive output scale, got "
@@ -65,12 +67,32 @@ class SphereTrunk(nn.Module):
         self.out_scale = float(out_scale)
         if self.out_scale != 1.0:
             self.register_buffer("out_scale_buf", torch.tensor(self.out_scale, dtype=torch.float32))
+        # --ladder-sphere-carry-norm (P39 arm 6): the output keeps the stem's own norm instead of a fixed RMS, so the
+        # blocks only rotate the trunk's output -- and with every alpha at 0 the trunk is the identity, which is what
+        # lets it be inserted into a trained network in place (`identity_init`). A buffer only when on.
+        self.carry_norm = bool(carry_norm)
+        if self.carry_norm:
+            if self.out_scale != 1.0:
+                raise ValueError("carry_norm keeps the stem's norm; it takes no output scale")
+            self.register_buffer("carry_norm_buf", torch.tensor(1.0, dtype=torch.float32))
 
     def forward(self, stem: torch.Tensor) -> torch.Tensor:
         h = F.normalize(stem, dim=-1)
         for block in self.blocks:
             h = block(h)
+        if self.carry_norm:
+            return h * stem.norm(dim=-1, keepdim=True)
         return h * (self.out_scale * math.sqrt(self.dim))
+
+    @torch.no_grad()
+    def identity_init(self) -> None:
+        """Every block's alpha to 0: with carry_norm the trunk then returns its input exactly (grown in place); the
+        alphas take gradient at once and the blocks' weights follow as the alphas leave 0."""
+        if not self.carry_norm:
+            raise ValueError("only a carry_norm sphere trunk is the identity at alpha 0")
+        for block in self.blocks:
+            assert isinstance(block, SphereBlock)
+            block.alpha.zero_()
 
     @torch.no_grad()
     def project(self) -> None:

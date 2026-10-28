@@ -116,6 +116,7 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
            if int(args.ladder_sphere_blocks) > 0 else {}),
         **({"sphere_out_scale": float(args.ladder_sphere_out_scale)}
            if int(args.ladder_sphere_blocks) > 0 and float(args.ladder_sphere_out_scale) != 1.0 else {}),
+        **({"sphere_carry_norm": True} if args.ladder_sphere_carry_norm else {}),
         **({"head_norm": True} if args.ladder_head_norm else {}),
         num_attn_heads=4,
         card_lookup=bool(args.ladder_card_lookup),
@@ -212,6 +213,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="The per-element RMS of the sphere trunk's output, the heads' input (1 by default; A8's "
                           "heads read ~0.4-0.55). At 1 the per-update KL sat at ~3x the control's whatever the "
                           "learning rate (P38 rung 2b).")
+    lad.add_argument("--ladder-sphere-carry-norm", action="store_true",
+                     help="P39 arm 6: the sphere trunk's output keeps the stem's norm (the blocks only rotate it), "
+                          "so with its alphas at 0 the trunk is the identity and can be grown into a trained network "
+                          "in place (--resume-grow-sphere).")
     lad.add_argument("--ladder-head-norm", action="store_true",
                      help="A LayerNorm between the first Linear and the GELU of the per-entity, branch and play-mode "
                           "heads, as the base policy head has. Only those heads go dormant (the plateaued control, "
@@ -324,6 +329,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="With --resume: the model's grouped input projections (--ladder-entity-proj-dim) are an "
                              "integer multiple of the state's; widen the network, pi_ref and Adam's moments without "
                              "changing what it plays (ai/models/grow.py) and continue.")
+    parser.add_argument("--resume-grow-sphere", action="store_true", default=False,
+                        help="With --resume (P39 arm 6): the model has a --ladder-sphere-carry-norm trunk the state "
+                             "lacks; insert it at the identity (every alpha 0), so the network plays what it did, "
+                             "and continue. Combines with --resume-widen.")
     parser.add_argument("--resume-reset-policy-head", action="store_true", default=False,
                         help="With --resume: re-initialise the policy head (policy_head, the per-entity heads and their "
                              "trunk context, the branch and play-mode heads) with fresh weights and Adam moments, keeping "
@@ -1302,6 +1311,7 @@ def main():
             resume_weights=args.resume_weights,
             resume_widen=args.resume_widen,
             resume_grow_tokens=args.resume_grow_tokens,
+            resume_grow_sphere=args.resume_grow_sphere,
             resume_reset_policy_head=args.resume_reset_policy_head,
             teacher_checkpoint=args.teacher_checkpoint,
             teacher_coef=args.teacher_coef,

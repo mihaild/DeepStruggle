@@ -77,6 +77,7 @@ _LADDER = {
     "res_post_norm": "ladder_res_post_norm",
     "sphere_blocks": "ladder_sphere_blocks", "sphere_expansion": "ladder_sphere_expansion",
     "sphere_out_scale": "ladder_sphere_out_scale", "head_norm": "ladder_head_norm",
+    "sphere_carry_norm": "ladder_sphere_carry_norm",
     "logit_cap_leak": "ladder_logit_cap_leak", "logit_cap_leak_up": "ladder_logit_cap_leak_up",
     "region_attn_dim": "ladder_region_attn_dim", "region_attn_heads": "ladder_region_attn_heads",
 }
@@ -149,6 +150,8 @@ _BEFORE_RECORDED = {
     "adam_eps": lambda meta: 1e-8,
     "policy_head_lr_mult": lambda meta: 1.0,
     "mup": lambda meta: False,
+    # P39 arm 6 (2026-10-28): no sphere grown in place before it existed.
+    "resume_grow_sphere": lambda meta: False,
     "mup_base_proj_dim": lambda meta: 256,
     "mup_base_hidden_dim": lambda meta: 480,
     "ema_weights": lambda meta: 0.0,

@@ -29,6 +29,7 @@ from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_
                                       fresh_policy_head_norms, policy_head_norms)
 from ai.models.grow import (grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
                             widen_optimizer_state, widen_state_dict)
+from ai.models.hyperspherical import SphereTrunk
 from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
@@ -1464,11 +1465,13 @@ ADDABLE_HEADS: Tuple[str, ...] = ("card_aux_head.", "aux_own_head.", "aux_vp_hea
                                  "logit_cap")
 
 
-def _load_allowing_added_heads(module: nn.Module, state: Dict[str, Any]) -> List[str]:
-    """Load `state`; the only keys allowed to be missing are those of an ADDABLE_HEADS head the
-    module has and the state lacks. Anything else missing, or anything unexpected, refuses."""
+def _load_allowing_added_heads(module: nn.Module, state: Dict[str, Any],
+                               also: Tuple[str, ...] = ()) -> List[str]:
+    """Load `state`; the only keys allowed to be missing are those of an ADDABLE_HEADS head (or an `also` prefix:
+    a grown module, --resume-grow-sphere) the module has and the state lacks. Anything else missing, or anything
+    unexpected, refuses."""
     missing, unexpected = module.load_state_dict(state, strict=False)
-    stale = [k for k in missing if not k.startswith(ADDABLE_HEADS)]
+    stale = [k for k in missing if not k.startswith(ADDABLE_HEADS + also)]
     if stale or unexpected:
         raise RuntimeError(f"resume state does not match {type(module).__name__}: missing {stale}, "
                            f"unexpected {list(unexpected)}")
@@ -1485,18 +1488,19 @@ def _load_optimizer_state(optimizer: torch.optim.Optimizer, saved: Dict[str, Any
 
 
 def _optimizer_state_with_added(model: nn.Module, added: Sequence[str], saved: Dict[str, Any]) -> Dict[str, Any]:
-    """The saved optimizer state extended to parameters added since: the added ones must be the
-    last parameters of the model (a head registered after everything else), so the saved state
-    indexes a prefix; they get no state, which Adam initialises on first use."""
+    """The saved optimizer state extended to parameters added since. The saved state indexes the model's
+    parameters without the added ones, in the model's order (a head registered last, or a module grown in the
+    middle -- --resume-grow-sphere); each saved index is mapped to its parameter's place now, and the added ones
+    get no state, which Adam initialises on first use."""
     names = [n for n, _ in model.named_parameters()]
-    added_params = [n for n in names if n in set(added)]
-    if names[len(names) - len(added_params):] != added_params:
-        raise RuntimeError(f"added parameters {added_params} are not the model's last parameters; "
-                           f"the saved optimizer state cannot be mapped onto them")
+    added_set = set(added)
+    kept = [i for i, n in enumerate(names) if n not in added_set]
     groups = saved["param_groups"]
-    if len(groups) != 1 or len(groups[0]["params"]) != len(names) - len(added_params):
-        raise RuntimeError("the saved optimizer state does not index the restored parameters")
-    out = {"state": dict(saved["state"]), "param_groups": [dict(groups[0])]}
+    flat = [i for g in groups for i in g["params"]]
+    if flat != list(range(len(kept))):
+        raise RuntimeError("the saved optimizer state does not index the restored parameters in model order")
+    state = {kept[int(i)]: st for i, st in saved["state"].items()}
+    out = {"state": state, "param_groups": [dict(groups[0])]}
     out["param_groups"][0]["params"] = list(range(len(names)))
     return out
 
@@ -1543,7 +1547,7 @@ def reset_policy_head(model: nn.Module, optimizer: torch.optim.Optimizer, seed: 
 
 def load_resume_state(path: str, model: nn.Module, trainer: Any,
                       seed: Optional[int] = None, widen: bool = False, grow_tokens: bool = False,
-                      reset_head: bool = False) -> Dict[str, Any]:
+                      reset_head: bool = False, grow_sphere: bool = False) -> Dict[str, Any]:
     """Restore a run in place and return where it left off.
 
     `seed` is the seed the *resuming* run was given. Where it differs from the one the state was
@@ -1568,7 +1572,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         if blob.get("ema_state_dict") is not None:
             raise ValueError("--resume-widen does not widen an --ema-weights average")
         p = int(saved_sd["lad_board.0.weight"].shape[0])
-        names = [n for n, _ in model.named_parameters()]
+        # The saved state indexes the parameters it has: a sphere trunk grown in the same resume is not among them.
+        names = [n for n, _ in model.named_parameters() if not (grow_sphere and n.startswith("sphere."))]
         blob["model_state_dict"] = widen_state_dict(saved_sd, k, generator=torch.Generator().manual_seed(int(seed or 0)))
         blob["reference_state_dict"] = widen_state_dict(blob["reference_state_dict"], k,
                                                         generator=torch.Generator().manual_seed(int(seed or 0)))
@@ -1595,14 +1600,33 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         print(f"[resume grow-tokens] {getattr(model, 'token_layers', 0)} token layer(s) of width {t} added; the fusion "
               f"layer and the per-entity heads read them through zero weights, so the network computes what it did",
               flush=True)
-    added = _load_allowing_added_heads(model, blob["model_state_dict"])
+    if grow_sphere:
+        # --resume-grow-sphere (P39 arm 6): the model has a carry-norm sphere trunk the state lacks. It is inserted
+        # at the identity (every alpha 0) in the network and pi_ref alike, so the grown network plays what the saved
+        # one did; its parameters start with fresh Adam moments.
+        sphere = getattr(model, "sphere", None)
+        if sphere is None or not getattr(sphere, "carry_norm", False):
+            raise ValueError("--resume-grow-sphere needs --ladder-sphere-blocks with --ladder-sphere-carry-norm")
+        if any(k.startswith("sphere.") for k in blob["model_state_dict"]):
+            raise ValueError("--resume-grow-sphere: the resume state already has a sphere trunk")
+        if blob.get("ema_state_dict") is not None:
+            raise ValueError("--resume-grow-sphere does not grow an --ema-weights average")
+    _grown = ("sphere.",) if grow_sphere else ()
+    added = _load_allowing_added_heads(model, blob["model_state_dict"], _grown)
     if added:
         # A branch that adds a training-only head (e.g. --aux-card-events) to a state written
         # without it: the trunk, policy and value are restored exactly and forward() is unchanged,
         # so the branch starts as the saved network; the new head starts fresh, with fresh Adam
         # moments, and the optimizer keeps every existing parameter's moments.
         _load_optimizer_state(trainer.optimizer, _optimizer_state_with_added(model, added, blob["optimizer_state_dict"]))
-        _load_allowing_added_heads(trainer.reference_net, blob["reference_state_dict"])
+        _load_allowing_added_heads(trainer.reference_net, blob["reference_state_dict"], _grown)
+        if grow_sphere:
+            for _net in (model, trainer.reference_net):
+                _sp = getattr(_net, "sphere", None)
+                assert isinstance(_sp, SphereTrunk)
+                _sp.identity_init()
+            print(f"[resume grow-sphere] {len(getattr(model, 'sphere').blocks)} sphere block(s) inserted at the "
+                  f"identity (alpha 0, the stem's norm carried): the network plays what it did", flush=True)
         heads = sorted({k.split(".")[0] for k in added})
         print(f"[resume] added to the saved network, starting fresh: {heads}; everything else restored",
               flush=True)
@@ -1801,6 +1825,7 @@ def train_pipeline(
     active_search_late_from: int = 400_000_000,
     resume_weights: Optional[str] = None,
     resume_widen: bool = False,
+    resume_grow_sphere: bool = False,
     resume_grow_tokens: bool = False,
     resume_reset_policy_head: bool = False,
     teacher_checkpoint: Optional[str] = None,
@@ -2120,6 +2145,7 @@ def train_pipeline(
         "active_search_late_from": int(active_search_late_from),
         "resume_weights": resume_weights,
         "resume_widen": bool(resume_widen),
+        "resume_grow_sphere": bool(resume_grow_sphere),
         "resume_grow_tokens": bool(resume_grow_tokens),
         "resume_reset_policy_head": bool(resume_reset_policy_head),
         "teacher_checkpoint": teacher_checkpoint,
@@ -2980,7 +3006,8 @@ def train_pipeline(
     if resume:
         src = resolve_resume(resume)
         state = load_resume_state(src, model, trainer, seed=seed, widen=resume_widen,
-                                  grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head)
+                                  grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head,
+                                  grow_sphere=resume_grow_sphere)
         _ema_state = state.get("ema_state_dict")
         # --seed-env drives the game seeds: restore the generator a continuation saved; a state without one (written
         # before it existed, or a branch under another seed) keys a fresh one by the seed and the step, so two resume
