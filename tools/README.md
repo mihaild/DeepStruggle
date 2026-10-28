@@ -103,6 +103,10 @@ policy and value restored exactly).
 | `--wolf-seat-weight` (`--wolf-ema-games` 2000, `--wolf-power`, `--wolf-scope {surrogate,policy}`) | win-or-learn-fast weights per seat; `surrogate` (default, E4-38) scales only the surrogate, so the unweighted entropy bonus pushes the down-weighted seat toward uniform; `policy` is a true per-seat learning rate. The value loss is never weighted |
 | `--adv-norm-floor c`, `--entropy-ceiling H`, `--target-kl k` | P25's loop-closing levers: an advantage-std floor from its 20M-step EMA, a one-sided per-seat entropy ceiling, a per-seat early stop of the policy terms. Not combinable with `--wolf-seat-weight` |
 | `--entropy-normalize` | the bonus rewards entropy / log(legal count); `--entropy-coef 0.021` with it matches the default bonus on E4's decision mix |
+| `--clip-eps` (0.2), `--ppo-epochs` (4) | PPO's clip and epochs per iteration (P39 arm 3; clip 0.1 bounded the deep trunk's step, research/runs.md) |
+| `--lr-warmup-steps N` | the rate ramps linearly from 0 over the first N env steps, counted from step 0 (P39 arm 1) |
+| `--adam-beta2` (0.999), `--adam-eps` (1e-8), `--policy-head-lr-mult` (1) | AdamW's second-moment decay and epsilon; the policy heads' rate as a multiple of `--lr` (P39 arm 5) |
+| `--mup` (`--mup-base-proj-dim` 256, `--mup-base-hidden-dim` 480) | muP against A8's widths (`ai/models/mup.py`): each matrix's rate times base fan-in over its own, readouts zeroed at initialisation; the identity at the base widths (P39 arm 4). Per-parameter rates are contiguous optimiser groups in model order, scaled together by the schedule; a resume maps a state laid out in other groups onto them |
 
 ### Throughput and CPU
 
@@ -146,6 +150,10 @@ and reads windows (`--window-steps`) with their win/loss base rates beside each 
   saved and cannot be restored is an error, not a warning.
 * `--warmup-checkpoint` / `--warmup-dataset` naming a path that does not exist is an error, never a
   cold start.
+* **Growing in place.** `--resume-widen` widens the grouped projections by an integer factor;
+  `--resume-grow-sphere` (with `--ladder-sphere-blocks N --ladder-sphere-carry-norm`) inserts a sphere
+  trunk whose output keeps the stem's norm, at alpha 0 -- the identity (P39 arm 6). Both keep the
+  network's function, pi_ref's and the saved Adam moments; they combine in one resume.
 
 #### Naming the run
 
@@ -172,8 +180,24 @@ recorded resolved in `metadata.json`:
 |:---|:---|
 | `--seed-init` | weight initialisation (and numpy's global stream, used only by the warmup/BC paths) |
 | `--seed-sampling` | action sampling and minibatch shuffling (torch is re-seeded right after the model is built) |
-| `--seed-env` | the engine's per-game streams: deals and dice |
+| `--seed-env` | the engine's per-game streams: deals and dice -- each env's first game and, through the env's own generator saved with the resume state, every game after it (since 2026-10-27; before, later games followed numpy's global stream, i.e. `--seed-init`) |
 | `--seed-pool` | opponent-pool draws and which side the learner takes |
+
+### Online distillation (`--mode online-distill`, P39 arm 2)
+
+A fresh network of the `--ladder-*` shape trained to a teacher's policy (KL to its policy at temperature 1) and value
+(MSE) on the teacher's own self-play, played in the vectorized environment at `--distill-play-temperature` (0.25)
+and consumed as it is played (50M stored positions would be ~750 GB). A held-out set from games on another seed
+gives the KL, the argmax agreement and the value MSE every `--distill-eval-every` positions; training stops after
+`--distill-patience` evaluations without a 0.5% KL improvement or at `--distill-positions`. The run directory holds
+`best.pt` (a plain state dict: the RL arm's `--warmup-checkpoint`), `snapshot_<n>pos.pt`, `distill_metrics.jsonl`
+and `distill_result.json`. `--mup` and `--policy-head-lr-mult` apply to the student.
+
+```bash
+tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release .venv/bin/python tools/train.py \
+  --mode online-distill --distill-teacher <control snapshot or SWA .pt> <the deep shape's --ladder-* flags> \
+  --distill-positions 50000000 --run-name <name> --description "..."
+```
 
 ### Metrics: JSONL and TensorBoard
 

@@ -134,6 +134,38 @@ control.
   finding about this loss on this game, recorded as such; until then "learns slower" is a start, not
   a verdict.
 
+## Code (built 2026-10-27/28; nothing launched beyond the runs below)
+
+Every arm is one flag set on the test-bed's command (A30 on R86: `--ladder-entity-proj-dim 512 --ladder-hidden-dim 768
+--ladder-res-blocks 0 --ladder-sphere-blocks 2 --ladder-sphere-expansion 4 --ladder-sphere-out-scale 0.35 --lr 0.0002
+--batch-size 16384`, the A8 flags otherwise). Flags are in [`../../tools/README.md`](../../tools/README.md) §1.
+
+| arm | flags | code |
+|:---|:---|:---|
+| 1 warmup | `--lr-warmup-steps 50000000` | `ai/training/schedule.py` `warmup_factor` |
+| 3 trust region | `--clip-eps 0.1`; `--target-kl 0.016`; `--ppo-epochs 2` | `ai/training/nash_pg.py` |
+| 4 muP | `--mup` (base widths `--mup-base-proj-dim 256 --mup-base-hidden-dim 480`, A8's) | `ai/models/mup.py`, per-parameter groups in `make_optimizer` |
+| 5 other parameters | `--adam-beta2 0.95`, `--adam-eps 1e-6`, `--lr-schedule cosine --lr-min 3e-5 --lr-schedule-span <steps>`, `--vf-coef 0.25` / `1.0`, `--policy-head-lr-mult 0.5` | `make_optimizer`; the schedule scales every group by its `lr_mult` |
+| 2 distillation warm start | `--mode online-distill --distill-teacher <control .pt>` with the deep shape's flags, then the RL arm with `--warmup-checkpoint <run>/best.pt` | `ai/training/online_distill.py`: the teacher's self-play consumed as played (50M stored positions would be ~750 GB), held-out KL / argmax agreement / value MSE, early stop |
+| 6 in-place growth | `--resume <control>:<steps> --resume-widen --resume-grow-sphere` with `--ladder-entity-proj-dim 512 --ladder-sphere-blocks 2 --ladder-sphere-carry-norm` (6b adds `--ladder-head-norm --resume-reset-policy-head`) | `ai/models/hyperspherical.py` `carry_norm` (the output keeps the stem's norm: the identity at alpha 0), the generic trainer's resume path |
+
+**Arm 6's width.** The fusion layer is followed by a LayerNorm, so it can be widened without changing the function only
+by an integer factor (each unit copied k times keeps the norm's statistics): A8's fusion of 480 grows to 960, not to
+A26's 768. What is built grows the projections 256 -> 512 (2x, `--resume-widen`) and inserts the sphere blocks at the
+identity, leaving the fusion at 480; a 2x fusion (960) would be a further, function-preserving build. The sphere
+trunk inserted is the carry-norm variant -- a new architecture code, not A30 (whose output RMS is fixed at 0.35).
+
+Each launch: derive from the test-bed run with `tools/scripts/launch_flags.py E8-A30-R86-S44_20261026_022112 --diff
+<new run>`, register the code (`run_codes.py --update`; codes after main's), checks at 60M (step size, rank >= 2x
+fresh) and reads beside the control and the A8-width control at the clip.
+
 ## Runs
 
 (filled in while running; mirrors [`../runs.md`](../runs.md))
+
+| arm | run | result |
+|:---|:---|:---|
+| 1 warmup 50M | `E8-A30-R89-S44` | the step returns with the rate (per-update KL 0.021 at 50-60M, A30 0.023); 5.1% at 400M (A30 8.3%); stopped at 408M |
+| 3a clip 0.1 | `E8-A30-R90-S44` | the step bounded (KL 0.008) with the rank growing; 23.3% at 2,000M, 32.1% at 4,000M -- ~3.4 behind the A8-width control at the same clip (`E8-A8-R93-S44`, 36.3% at 4,000M), about level with the plain control; undecided, a 4,800M read owed |
+| 3b target KL 0.016 | `E8-A30-R91-S44` | rank 1.2x fresh at 60M; stopped at the check |
+| 3c epochs 2 | `E8-A30-R92-S44` | rank below fresh at 60M; stopped at the check |

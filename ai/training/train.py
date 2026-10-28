@@ -6,6 +6,7 @@ if 'TRITON_CACHE_DIR' not in os.environ:
 import argparse
 import os
 import sys
+import time
 import torch
 
 from ai.training.generic_trainer import (train_pipeline, run_behavioral_cloning_warmup, obs_feature_bits,
@@ -21,6 +22,12 @@ from tools.lib.player_agent import load_agent
 from tools.lib.batch_tournament import BatchMatchRunner
 from ai.models.coldwar_net import create_coldwar_net
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
+from ai.models.ladder_net import create_ladder_net
+from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
+                           zero_output_layers)
+from ai.training.generic_trainer import _resolve_run_dir
+from ai.training.online_distill import DistillConfig, run_online_distillation
+from ai.training.value_fit import _git
 
 
 #: The ladder axes that `--arch ladder` requires. Listed once so the error names all of them.
@@ -143,6 +150,37 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         **({"logit_cap_leak_up": float(args.ladder_logit_cap_leak_up)}
            if getattr(args, "ladder_logit_cap", 0.0) and getattr(args, "ladder_logit_cap_leak_up", 0.0) else {}),
     )
+
+
+def _run_online_distill(args: argparse.Namespace) -> None:
+    """P39 arm 2: a fresh network of the --ladder-* shape distilled from --distill-teacher on its self-play."""
+    cfg = _ladder_config(args)
+    if cfg is None:
+        raise SystemExit("--mode online-distill needs the student's --ladder-* shape")
+    dev = args.device if args.device == "cpu" or torch.cuda.is_available() else "cpu"
+    if args.seed is not None:
+        torch.manual_seed(int(args.seed))
+    student = create_ladder_net(dev, categorical_value=args.categorical_value,
+                                **{**cfg, "obs_features": obs_feature_bits(args.obs_features)})
+    mults = None
+    if args.mup:
+        base = base_shapes_for(student.ladder_config(), args.mup_base_proj_dim, args.mup_base_hidden_dim,
+                               lambda **kw: create_ladder_net("cpu", **kw))
+        mults = mup_lr_mults(student, base, args.mup_base_hidden_dim)
+        zero_output_layers(student)
+    mults = combine_lr_mults(mults, policy_head_lr_mults(student, float(args.policy_head_lr_mult)))
+    run_dir = _resolve_run_dir(args.output_dir, args.run_name, "distill", time.strftime("%Y%m%d_%H%M%S"))
+    seed_env = int(args.seed_env if args.seed_env is not None else (args.seed if args.seed is not None else 44))
+    dcfg = DistillConfig(teacher=args.distill_teacher, positions=args.distill_positions, num_envs=args.num_envs,
+                         rollout_len=args.distill_rollout_len, batch=args.batch_size,
+                         epochs=args.distill_epochs_per_rollout, lr=args.lr, weight_decay=args.weight_decay,
+                         play_temperature=args.distill_play_temperature, value_coef=args.distill_value_coef,
+                         holdout=args.distill_holdout, eval_every=args.distill_eval_every,
+                         patience=args.distill_patience, seed_env=seed_env, device=str(dev))
+    meta = {k: v for k, v in vars(args).items()} | {
+        "run_name": args.run_name, "description": args.description, "ladder_config": student.ladder_config(),
+        "git_commit": _git("rev-parse", "HEAD"), "seed_env": seed_env}
+    run_online_distillation(student, dcfg, run_dir, meta, lr_mults=mults)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -312,7 +350,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Which per-entity heads exist. The card-collision finding predicts "
                           "`country` carries most of M2's gain (arms M2d/M2e).")
     parser.add_argument("--mode", type=str, default="train",
-                        choices=["train", "warmup", "eval", "curriculum", "distill", "value-fit", "policy-fit", "q-fit"],
+                        choices=["train", "warmup", "eval", "curriculum", "distill", "value-fit", "policy-fit", "q-fit",
+                                 "online-distill"],
                         help="Execution mode. `distill` is P15-X4a: soft cross-entropy "
                              "toward a searcher's visit distribution, from a dataset made "
                              "by tools/generate_search_targets.py. `value-fit` is P34's "
@@ -353,6 +392,22 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Deliberately below BC's 1e-3: this bends a trained policy "
                              "rather than training one.")
     parser.add_argument("--bc-epochs", type=int, default=5, help="Number of epochs for BC warmup")
+    od = parser.add_argument_group("online distillation (--mode online-distill, P39 arm 2)")
+    od.add_argument("--distill-teacher", type=str, default=None,
+                    help="The checkpoint distilled (the A8 control): it plays its own games and the fresh network "
+                         "built from the --ladder-* flags is trained to its policy and value on them.")
+    od.add_argument("--distill-positions", type=int, default=50_000_000, help="The position budget.")
+    od.add_argument("--distill-play-temperature", type=float, default=0.25,
+                    help="The temperature the teacher samples its moves at (the targets are its policy at 1).")
+    od.add_argument("--distill-value-coef", type=float, default=0.5, help="Weight of the value MSE beside the KL.")
+    od.add_argument("--distill-rollout-len", type=int, default=32,
+                    help="Positions per env between student updates (num_envs x this per update round).")
+    od.add_argument("--distill-epochs-per-rollout", type=int, default=1, help="Passes over each round's positions.")
+    od.add_argument("--distill-holdout", type=int, default=32_768,
+                    help="Held-out teacher positions (games on another seed) for KL, argmax agreement and value MSE.")
+    od.add_argument("--distill-eval-every", type=int, default=2_000_000, help="Positions between evaluations.")
+    od.add_argument("--distill-patience", type=int, default=5,
+                    help="Stop after this many evaluations without a 0.5%% held-out KL improvement.")
     pf = parser.add_argument_group("policy fit (--mode policy-fit, P36c)")
     pf.add_argument("--policy-dataset", type=str, default=None,
                     help="A tools/distill_targets.py .npz: the keyed root's improved policy on entry decisions.")
@@ -1510,6 +1565,10 @@ def main():
             run_name=args.run_name, description=args.description, output_dir=args.output_dir,
             cli={k: v for k, v in vars(args).items()
                  if k.startswith("policy_") or k in ("mode", "warmup_checkpoint", "seed")})
+    elif args.mode == "online-distill":
+        if not args.distill_teacher or args.arch != "ladder":
+            raise SystemExit("--mode online-distill needs --distill-teacher and --arch ladder (the student's shape)")
+        _run_online_distill(args)
     elif args.mode == "q-fit":
         if not args.q_dataset or not args.q_target or not args.warmup_checkpoint:
             raise SystemExit("--mode q-fit needs --q-dataset, --q-target and --warmup-checkpoint (the network copied)")
