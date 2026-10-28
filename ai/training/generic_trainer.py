@@ -29,6 +29,9 @@ from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_
                                       fresh_policy_head_norms, policy_head_norms)
 from ai.models.grow import (grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
                             widen_optimizer_state, widen_state_dict)
+from ai.models.ladder_net import LadderNet, create_ladder_net
+from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
+                           zero_output_layers)
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward, VPPotentialShaping
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
@@ -36,7 +39,7 @@ from ai.training.active_search import ActiveSearch, gate_metrics
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
 from ai.training.schedule import WeightEMA, scheduled_lr, warmup_factor
-from ai.training.nash_pg import DEFAULT_ROLLOUT_TEMPS, NashPGTrainer
+from ai.training.nash_pg import DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, regroup_optimizer_state
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
@@ -1472,6 +1475,15 @@ def _load_allowing_added_heads(module: nn.Module, state: Dict[str, Any]) -> List
     return list(missing)
 
 
+def _load_optimizer_state(optimizer: torch.optim.Optimizer, saved: Dict[str, Any]) -> None:
+    """Load a saved optimizer state, mapping its groups onto this optimizer's when the layouts differ (a run branched
+    with per-group rates, P39 arms 4/5, from a single-group state or back): the per-parameter moments carry over."""
+    now = optimizer.state_dict()["param_groups"]
+    same = len(now) == len(saved["param_groups"]) and all(
+        len(a["params"]) == len(b["params"]) for a, b in zip(now, saved["param_groups"]))
+    optimizer.load_state_dict(saved if same else regroup_optimizer_state(saved, optimizer))
+
+
 def _optimizer_state_with_added(model: nn.Module, added: Sequence[str], saved: Dict[str, Any]) -> Dict[str, Any]:
     """The saved optimizer state extended to parameters added since: the added ones must be the
     last parameters of the model (a head registered after everything else), so the saved state
@@ -1589,13 +1601,13 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         # without it: the trunk, policy and value are restored exactly and forward() is unchanged,
         # so the branch starts as the saved network; the new head starts fresh, with fresh Adam
         # moments, and the optimizer keeps every existing parameter's moments.
-        trainer.optimizer.load_state_dict(_optimizer_state_with_added(model, added, blob["optimizer_state_dict"]))
+        _load_optimizer_state(trainer.optimizer, _optimizer_state_with_added(model, added, blob["optimizer_state_dict"]))
         _load_allowing_added_heads(trainer.reference_net, blob["reference_state_dict"])
         heads = sorted({k.split(".")[0] for k in added})
         print(f"[resume] added to the saved network, starting fresh: {heads}; everything else restored",
               flush=True)
     else:
-        trainer.optimizer.load_state_dict(blob["optimizer_state_dict"])
+        _load_optimizer_state(trainer.optimizer, blob["optimizer_state_dict"])
         trainer.reference_net.load_state_dict(blob["reference_state_dict"])
     if reset_head:
         heads = reset_policy_head(model, trainer.optimizer)
@@ -1707,6 +1719,12 @@ def train_pipeline(
     lr: float = 3e-4,
     weight_decay: float = 1e-4,
     decay_norms_biases: bool = True,
+    adam_beta2: float = 0.999,
+    adam_eps: float = 1e-8,
+    policy_head_lr_mult: float = 1.0,
+    mup: bool = False,
+    mup_base_proj_dim: int = 256,
+    mup_base_hidden_dim: int = 480,
     eta: float = 0.1,
     vf_coef: float = 0.5,
     value_dist_coef: float = 0.02,
@@ -2260,6 +2278,12 @@ def train_pipeline(
         "lr": float(lr),
         "weight_decay": float(weight_decay),
         "decay_norms_biases": bool(decay_norms_biases),
+        "adam_beta2": float(adam_beta2),
+        "adam_eps": float(adam_eps),
+        "policy_head_lr_mult": float(policy_head_lr_mult),
+        "mup": bool(mup),
+        "mup_base_proj_dim": int(mup_base_proj_dim),
+        "mup_base_hidden_dim": int(mup_base_hidden_dim),
         "batch_size": int(batch_size),
         "buffer_size": int(buffer_size),
         "gamma": float(gamma),
@@ -2443,6 +2467,26 @@ def train_pipeline(
     # P32: a frozen teacher to distil in one seat. It must read the same observation and act in
     # the same action view, or its log-probabilities would be over different inputs and slots.
     teacher_net: Optional[nn.Module] = None
+    # P39 arms 4 and 5: per-parameter learning-rate multipliers (muP's fan-in scaling against A8's widths, a slower
+    # policy head). None keeps the single-group optimiser every earlier run has.
+    _mup_mults: Optional[Dict[str, float]] = None
+    if mup:
+        if not isinstance(model, LadderNet):
+            raise ValueError("--mup is built for --arch ladder")
+        _base = base_shapes_for(model.ladder_config(), mup_base_proj_dim, mup_base_hidden_dim,
+                                lambda **kw: create_ladder_net("cpu", **kw))
+        _mup_mults = mup_lr_mults(model, _base, mup_base_hidden_dim)
+        if not resume and not warmup_checkpoint:
+            _zeroed = zero_output_layers(model)
+        else:
+            _zeroed = []
+        print(f"[mup] rates against widths {mup_base_proj_dim} / {mup_base_hidden_dim}: {len(_mup_mults)} matrices "
+              f"scaled ({min(_mup_mults.values(), default=1.0):.3f}-{max(_mup_mults.values(), default=1.0):.3f}); "
+              f"readouts zeroed: {_zeroed or 'none (restored weights)'}", flush=True)
+    _lr_mults = combine_lr_mults(_mup_mults, policy_head_lr_mults(model, float(policy_head_lr_mult)))
+    if adam_beta2 != 0.999 or adam_eps != 1e-8 or policy_head_lr_mult != 1.0:
+        print(f"[optimiser] AdamW betas (0.9, {adam_beta2}), eps {adam_eps:g}, policy heads at x{policy_head_lr_mult} "
+              f"the rate", flush=True)
     if teacher_coef > 0.0:
         if not teacher_checkpoint:
             raise ValueError("--teacher-coef needs --teacher-checkpoint")
@@ -2468,6 +2512,9 @@ def train_pipeline(
         lr=lr,
         weight_decay=weight_decay,
         decay_norms_biases=decay_norms_biases,
+        adam_betas=(0.9, float(adam_beta2)),
+        adam_eps=float(adam_eps),
+        lr_mults=_lr_mults,
         eta=eta,
         vf_coef=vf_coef,
         value_dist_coef=value_dist_coef,
@@ -3134,7 +3181,7 @@ def train_pipeline(
         _cur_lr = _lr_now(int(trainer.total_env_steps))
         if lr_schedule != "constant" or lr_warmup_steps > 0:
             for _g in trainer.optimizer.param_groups:
-                _g["lr"] = _cur_lr
+                _g["lr"] = _cur_lr * float(_g.get("lr_mult", 1.0))
         _steps_before = int(trainer.total_env_steps)
         iteration_metrics = trainer.train_iteration()
         if ema is not None:

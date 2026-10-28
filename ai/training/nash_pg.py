@@ -314,17 +314,34 @@ def phase_lock(path: str) -> Any:
 
 
 def make_optimizer(net: nn.Module, lr: float, weight_decay: float = 1e-4,
-                   decay_norms_biases: bool = True) -> torch.optim.AdamW:
+                   decay_norms_biases: bool = True, betas: Tuple[float, float] = (0.9, 0.999), eps: float = 1e-8,
+                   lr_mults: Optional[Dict[str, float]] = None) -> torch.optim.AdamW:
     """The RL update's AdamW. By default one group with every parameter decayed (every run before P38, so their
     optimiser states resume unchanged); with `decay_norms_biases` False, the parameters of fewer than two dimensions
-    -- LayerNorm gains and biases -- go undecayed in a second group."""
-    if decay_norms_biases:
-        opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=float(weight_decay))
+    -- LayerNorm gains and biases -- go undecayed in a second group.
+
+    `lr_mults` (P39 arms 4 and 5: muP's per-layer rates, a slower policy head) gives a parameter, by name, a rate of
+    `lr * mult`. The groups are then contiguous runs of parameters in the model's own order that share a weight decay
+    and a multiplier, each carrying its `lr_mult` so the schedule scales it (the global parameter order is kept, so a
+    single-group state maps onto them: `regroup_optimizer_state`)."""
+    if lr_mults is None:
+        if decay_norms_biases:
+            opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=float(weight_decay), betas=betas, eps=eps)
+        else:
+            decay = [p for p in net.parameters() if p.ndim >= 2]
+            keep = [p for p in net.parameters() if p.ndim < 2]
+            opt = torch.optim.AdamW([{"params": decay, "weight_decay": float(weight_decay)},
+                                     {"params": keep, "weight_decay": 0.0}], lr=lr, betas=betas, eps=eps)
     else:
-        decay = [p for p in net.parameters() if p.ndim >= 2]
-        keep = [p for p in net.parameters() if p.ndim < 2]
-        opt = torch.optim.AdamW([{"params": decay, "weight_decay": float(weight_decay)},
-                                 {"params": keep, "weight_decay": 0.0}], lr=lr)
+        groups: List[Dict[str, Any]] = []
+        for name, p in net.named_parameters():
+            wd = float(weight_decay) if (decay_norms_biases or p.ndim >= 2) else 0.0
+            mult = float(lr_mults.get(name, 1.0))
+            if groups and groups[-1]["weight_decay"] == wd and groups[-1]["lr_mult"] == mult:
+                groups[-1]["params"].append(p)
+            else:
+                groups.append({"params": [p], "weight_decay": wd, "lr_mult": mult, "lr": lr * mult})
+        opt = torch.optim.AdamW(groups, lr=lr, betas=betas, eps=eps)
     # A hyperspherical trunk (P38 rung 2) keeps its weight rows at unit norm: re-projected after every step, wherever
     # the step is taken (the update and every auxiliary fit share this optimiser).
     project = getattr(net, "project_weights", None)
@@ -333,6 +350,21 @@ def make_optimizer(net: nn.Module, lr: float, weight_decay: float = 1e-4,
             project()
         opt.register_step_post_hook(_project)
     return opt
+
+
+def regroup_optimizer_state(saved: Dict[str, Any], optimizer: torch.optim.Optimizer) -> Dict[str, Any]:
+    """A saved AdamW state laid out in other groups, mapped onto `optimizer`'s groups. Both layouts must index the
+    parameters in the model's order (one group, or contiguous groups from `make_optimizer`'s `lr_mults`): the
+    per-parameter moments are keyed by that global index and carry over as they are; the groups' hyperparameters are
+    the current optimiser's (its rates and decays are what the run was launched with)."""
+    flat_saved = [i for g in saved["param_groups"] for i in g["params"]]
+    current = optimizer.state_dict()["param_groups"]
+    flat_now = [i for g in current for i in g["params"]]
+    if flat_saved != list(range(len(flat_saved))) or flat_now != list(range(len(flat_now))) \
+            or len(flat_saved) != len(flat_now):
+        raise RuntimeError("the saved optimizer state and this optimizer do not both index the parameters in model "
+                           "order; their groups cannot be mapped onto each other")
+    return {"state": dict(saved["state"]), "param_groups": [dict(g) for g in current]}
 
 
 class BaseNashPGTrainer:
@@ -349,6 +381,9 @@ class BaseNashPGTrainer:
         lr: float = 3e-4,
         weight_decay: float = 1e-4,    # AdamW's decoupled decay
         decay_norms_biases: bool = True,
+        adam_betas: Tuple[float, float] = (0.9, 0.999),
+        adam_eps: float = 1e-8,
+        lr_mults: Optional[Dict[str, float]] = None,
         eta: float = 0.1,              # NashPG KL-regularization strength
         clip_eps: float = 0.2,         # PPO clipping epsilon
         search_ce_coef: float = 0.0,   # P15-X4b: weight on CE toward the searcher. 0 = off
@@ -830,7 +865,9 @@ class BaseNashPGTrainer:
         # growth of the policy heads' weights (20-50x a fresh head's at the plateau, P37a), with the norms' gains
         # and every bias -- the parameters of fewer than two dimensions -- left undecayed, as is standard: decaying
         # a LayerNorm's gain shrinks the normalised features themselves.
-        self.optimizer = make_optimizer(self.active_net, lr, weight_decay, decay_norms_biases)
+        self.optimizer = make_optimizer(self.active_net, lr, weight_decay, decay_norms_biases,
+                                        betas=(float(adam_betas[0]), float(adam_betas[1])), eps=float(adam_eps),
+                                        lr_mults=lr_mults)
 
         self.env = env if env is not None else TsVectorizedEnv(num_envs=self.num_envs, base_seed=int(time.time()))
         # Tier-1 critic discrimination. Holds one sample per game per turn until that

@@ -572,6 +572,23 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Leave LayerNorm gains and biases (every parameter of fewer than two dimensions) "
                              "undecayed, in a second optimiser group. Default: one group, everything decayed, as "
                              "before P38.")
+    # P39 arm 5 (research/plans/P39_deep_trunk_optimisation.md): the optimiser's other parameters.
+    parser.add_argument("--adam-beta2", type=float, default=0.999,
+                        help="AdamW's beta2 (P39 arm 5 tries 0.95: a shorter second-moment memory).")
+    parser.add_argument("--adam-eps", type=float, default=1e-8,
+                        help="AdamW's epsilon (P39 arm 5 tries 1e-6: the sphere trunk's unit-norm rows give tiny "
+                             "gradient entries).")
+    parser.add_argument("--policy-head-lr-mult", type=float, default=1.0,
+                        help="P39 arm 5: the policy heads' learning rate as a multiple of --lr (the heads saturate "
+                             "first and drag the trunk). 1, the default, is one rate for every parameter.")
+    # P39 arm 4: muP against the A8 control's widths.
+    parser.add_argument("--mup", action="store_true",
+                        help="muP (ai/models/mup.py): each matrix's rate scaled by the base fan-in over its own, the "
+                             "readouts zeroed at initialisation; at the base widths the rates are --lr unchanged.")
+    parser.add_argument("--mup-base-proj-dim", type=int, default=256,
+                        help="--mup's base entity-projection width (A8's).")
+    parser.add_argument("--mup-base-hidden-dim", type=int, default=480,
+                        help="--mup's base fusion width (A8's); a parameter the base lacks is scaled against it.")
     parser.add_argument("--eta", type=float, default=0.1, help="NashPG reference KL penalty weight")
     parser.add_argument("--vf-coef", type=float, default=0.5,
                         help="Weight on the value loss in the shared-trunk objective. 0.5 suits\n"
@@ -1206,6 +1223,12 @@ def main():
             lr=args.lr,
             weight_decay=args.weight_decay,
             decay_norms_biases=args.decay_norms_biases,
+            adam_beta2=args.adam_beta2,
+            adam_eps=args.adam_eps,
+            policy_head_lr_mult=args.policy_head_lr_mult,
+            mup=args.mup,
+            mup_base_proj_dim=args.mup_base_proj_dim,
+            mup_base_hidden_dim=args.mup_base_hidden_dim,
             eta=args.eta,
             vf_coef=args.vf_coef,
             value_dist_coef=args.value_dist_coef,

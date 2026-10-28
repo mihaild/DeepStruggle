@@ -144,6 +144,13 @@ _BEFORE_RECORDED = {
     # P39 arm 3 (2026-10-27): PPO's clip and epochs were fixed at 0.2 and 4 before they were flags.
     "clip_eps": lambda meta: 0.2,
     "ppo_epochs": lambda meta: 4,
+    # P39 arms 4 and 5 (2026-10-28): one AdamW group at (0.9, 0.999) / 1e-8, no muP, before they were flags.
+    "adam_beta2": lambda meta: 0.999,
+    "adam_eps": lambda meta: 1e-8,
+    "policy_head_lr_mult": lambda meta: 1.0,
+    "mup": lambda meta: False,
+    "mup_base_proj_dim": lambda meta: 256,
+    "mup_base_hidden_dim": lambda meta: 480,
     "ema_weights": lambda meta: 0.0,
     # P29 bet 2 (2026-09-30): no aux targets before they existed.
     "aux_ownership": lambda meta: 0.0,

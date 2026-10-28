@@ -85,6 +85,7 @@ _GATED: Tuple[Tuple[str, Any, Tuple[str, ...]], ...] = (
     ("lr_schedule", "constant", ("lr_schedule_start", "lr_schedule_every", "lr_schedule_values",
                                  "lr_schedule_span", "lr_min")),
     ("setup_mc_credit", False, ("setup_mc_coef", "setup_mc_min_batch")),
+    ("mup", False, ("mup_base_proj_dim", "mup_base_hidden_dim")),
     ("setup_script_frac", 0.0, ("setup_script_openings",)),
     ("setup_entropy_floor", 0.0, ("setup_entropy_lr", "setup_entropy_max_coef")),
     ("play_mode_floor", 0.0, ("floor_scope", "floor_from", "floor_anneal_from",
