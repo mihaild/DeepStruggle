@@ -198,3 +198,26 @@ snapshots, 6 minutes per configuration, steady steps/s over the last 4 (`--phase
   dispatch. The levers left are the ones above (cutting the rollout's syncs, the overlapped rollout
   -- parked on `wip/overlap-rollout` with an intermittent CUDA race -- and compile / bf16 as recipe
   A/Bs).
+
+## Addendum, 2026-10-28: no slowdown -- runs share one GPU
+
+The owner asked why E8 runs trained at 33-58k steps/s against E7's ~100k. Measured alone on the idle GPU:
+
+| measurement | Oct 5-7 | 2026-10-28 |
+|:---|---:|---:|
+| bare loop (`e7_bench.py`, E7-20-44's network, 512 envs, no pool), E7-era code (`e1445574`) | rollout 0.266 s, update 0.361 s | rollout 0.236 s, update 0.290 s (124.6k steps/s) |
+| same, current code | -- | rollout 0.230 s, update 0.290 s (126.0k steps/s) |
+| update GPU kernel time per iteration | 0.357 s | 0.286 s (both codes) |
+| full `tools/train.py`, the A8 control's flags, alone | 99k (E7-33-44, Oct 7) | **106.8k** (py-spy run, 300 s) |
+
+Nothing slowed: code, flags, libraries (torch 2.13 / CUDA 13, unchanged since 2026-08-24) and the GPU are as fast as
+on Oct 5 or faster. The per-run rates are the GPU shared: two A8 trainers make about what one makes alone (R48 and
+its head-norm branch 50k + 49k), the deep sphere trunk beside an A8 run 32k + 33k, and the reads and other sessions'
+GPU jobs take their share. A first benchmark the night before read 68k for both codes because another session's
+leaderboard evaluation was on the GPU throughout; the MPS daemon (pipe `/workspace/data/mps/pipe`) is not used by
+the trainers, which connect to the default pipe and run as plain CUDA clients. Phase shares of the 300 s profile:
+update forward+loss 23.0%, backward 15.9%, optimizer and clip 5.2%; rollout C++ step 11.6%, forward 11.3%, other
+18.8%; pool / snapshot / eval 6.0%.
+
+So two arms in parallel split the throughput rather than add to it: one arm alone reaches each read in about half
+the wall-clock.
