@@ -105,3 +105,9 @@ about six of them at an opponent entry decision on most steps) at ~0.04-0.06 s a
 so the full root costs ~10-15x a plain iteration and 20% ~3.5x. At +36 the 20% opponent is about the learner's own
 level (the learner beats its pool ~63%), too weak a punisher to test the arm's premise; the full root (+122) is, at
 its price, unless the batch runner lets a searched game wait so the root batches across steps.
+
+**A greedy opponent instead (owner's question, 2026-10-29).** Training games sample at temperature 1
+(`DEFAULT_ROLLOUT_TEMPS`); the same SWA at temperature 0 against itself at 1, 1,000 deals a side
+(`data/reports/control_t0_vs_t1.json`): **54.5% ± 1.1** (US 49.8 / USSR 58.0), **~+31 Elo** -- about the 20% root's
+edge and a quarter of the full root's. Free for pool games (`--opponent-temperature 0`, built since P24), x2 in learner
+rows for a greedy seat in self-play games; a cheap but mild punisher, not the strong opponent the arm's premise needs.
