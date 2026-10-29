@@ -2011,6 +2011,14 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R96": {
+   "description": "P40 Arm C's fit (--mode online-distill, P39 arm 2): a fresh network trained to the A8 control's 11,920-12,000M SWA -- its policy at temperature 1 by KL, its value by MSE -- on the control's own self-play (moves at 0.25), to held-out argmax agreement >= 95% or 50M positions; no RL, no pool (the pool flags are the parser's defaults)",
+   "first": "E8-A30-R96-S44_20261029_233607",
+   "flags": {
+    "distill_teacher": "/workspace/data/checkpoints/E8-A8-R1-S44_20261023_032854/swa_11920-12000M.pt",
+    "block_lambda": "off"
+   }
   }
  },
  "overrides": {
@@ -2249,7 +2257,8 @@
   "E8-A8-R93-S44_20261027_084717": "E8-A8-R93-S44",
   "E8-A8-R1-S44@10010M+R48@13200M+R94_20261028_151621": "E8-A8-R1-S44@10010M+R48@13200M+R94",
   "E8-A30-R95-S44_20261029_074305": "E8-A30-R95-S44",
-  "E8-A8-R95-S44_20261029_155800": "E8-A8-R95-S44"
+  "E8-A8-R95-S44_20261029_155800": "E8-A8-R95-S44",
+  "E8-A30-R96-S44_20261029_233607": "E8-A30-R96-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",

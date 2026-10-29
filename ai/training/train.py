@@ -178,7 +178,10 @@ def _run_online_distill(args: argparse.Namespace) -> None:
                          holdout=args.distill_holdout, eval_every=args.distill_eval_every,
                          patience=args.distill_patience, seed_env=seed_env, device=str(dev))
     meta = {k: v for k, v in vars(args).items()} | {
-        "run_name": args.run_name, "description": args.description, "ladder_config": student.ladder_config(),
+        "run_name": args.run_name, "description": args.description,
+        # The configuration as passed, as an RL run records it: run_codes reads the A code from it, and the student's
+        # own canonical form (ladder_config(), which zeroes axes an architecture ignores) would read as another code.
+        "ladder_config": {**cfg, "obs_features": obs_feature_bits(args.obs_features)},
         "git_commit": _git("rev-parse", "HEAD"), "seed_env": seed_env}
     run_online_distillation(student, dcfg, run_dir, meta, lr_mults=mults)
 
