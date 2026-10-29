@@ -48,7 +48,7 @@ def _raw_adv(on: bool, lam: float = 0.9) -> torch.Tensor:
     b = RolloutBuffer(T, N, device="cpu")
     b.setup_block_lambda = on
     last = _fill(b)
-    key = (1.0, lam, False, True, 4, False, "setup" if on else "off")
+    key = (1.0, lam, False, True, 4, False, "setup" if on else "off", False)
     b._gae_backward(key, last.last_v_win, last.last_v_vp, last.last_players)
     return b.advantages.clone()
 
@@ -64,7 +64,7 @@ def test_inside_the_block_the_advantage_telescopes_to_the_first_real_position() 
     b = RolloutBuffer(T, N, device="cpu")
     b.setup_block_lambda = True
     last = _fill(b)
-    b._gae_backward((1.0, lam, False, True, 4, False, "setup"), last.last_v_win, last.last_v_vp,
+    b._gae_backward((1.0, lam, False, True, 4, False, "setup", False), last.last_v_win, last.last_v_vp,
                     last.last_players)
     a = b.advantages
     # step 5 is the block's last placement: ordinary lambda from there on
@@ -146,7 +146,7 @@ def _lam_one(mode: str, b: RolloutBuffer) -> torch.Tensor:
     for t in range(T - 1):
         b.rewards.zero_(); b.rewards[t + 1] = 1.0
         b.values_win.zero_()
-        b._gae_backward((1.0, 0.0, False, False, 4, False, mode), last.last_v_win,
+        b._gae_backward((1.0, 0.0, False, False, 4, False, mode, False), last.last_v_win,
                         last.last_v_vp, last.last_players)
         # with gae_lambda = 0 the advantage at t sees reward t+1 only through a lambda-1 link
         out[t] = b.advantages[t] != 0

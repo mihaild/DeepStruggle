@@ -154,6 +154,13 @@ class RolloutBuffer:
         self.block_lambda = "off"
         #: The engine's RNG state at each decision (int64 view of the uint64), for "same-side".
         self.rngs = torch.zeros((buffer_size, num_envs), dtype=torch.int64, device=self.device)
+        #: P40 Arm S: True where the env was HELD this step (its game waiting at an entry decision for
+        #: the searched opponent's batched root call; `TsVectorizedEnv.step(hold=)`). A held row repeats
+        #: the next row's state with reward 0, so GAE passes straight through it (its advantage and
+        #: returns are the next row's), and it enters neither the advantage statistics nor any loss.
+        #: `uses_hold` is set by a trainer that holds; off, nothing below reads `held`.
+        self.held = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
+        self.uses_hold = False
         self._gae_graph: Optional[Any] = None
         self._gae_graph_key: Optional[Tuple[Any, ...]] = None
         self._gae_static: Dict[str, torch.Tensor] = {}
@@ -192,6 +199,7 @@ class RolloutBuffer:
         search_pi: Optional[torch.Tensor] = None,
         has_search: Optional[torch.Tensor] = None,
         rngs: Optional[np.ndarray | torch.Tensor] = None,
+        held: Optional[torch.Tensor] = None,
     ) -> None:
         """Appends a single environment step across all parallel environments."""
         if isinstance(obs, np.ndarray):
@@ -248,6 +256,11 @@ class RolloutBuffer:
         if rngs is not None:
             self.rngs[self.step].copy_(rngs.to(self.device) if isinstance(rngs, torch.Tensor)
                                        else torch.from_numpy(rngs).to(self.device))
+        if self.uses_hold:
+            if held is None:
+                self.held[self.step].zero_()
+            else:
+                self.held[self.step].copy_(held)
         if next_values_own is not None:
             self.next_values_own[self.step].copy_(next_values_own)
             self.has_next_values_own = True
@@ -302,11 +315,15 @@ class RolloutBuffer:
                 "bootstrap would make the arm measure nothing.")
 
         mode = self.block_mode()
+        if self.uses_hold and per_player_gae:
+            raise ValueError("held rows pass through the interleaved GAE recursion; per_player_gae has no "
+                             "pass-through for them")
+        mode = self.block_mode()
         if mode != "off" and per_player_gae:
             raise ValueError("block lambda is defined on the interleaved GAE recursion; "
                              "per_player_gae replaces it outside blunder windows.")
         key = (float(gamma), float(gae_lambda), bool(slice_turn_boundaries), bool(blunder_window),
-               int(defcon_risk_horizon), bool(same_perspective_bootstrap), mode)
+               int(defcon_risk_horizon), bool(same_perspective_bootstrap), mode, bool(self.uses_hold))
         if self.graph_gae and self.device.type == "cuda":
             window_mask = self._gae_backward_graphed(key, last_v_win, last_v_vp, last_players)
         else:
@@ -326,7 +343,7 @@ class RolloutBuffer:
         defcon_risk_target in place and returns the blunder-window mask. No host syncs, so it can
         be captured as a CUDA graph."""
         (gamma, gae_lambda, slice_turn_boundaries, blunder_window, defcon_risk_horizon,
-         same_perspective_bootstrap, mode) = key
+         same_perspective_bootstrap, mode, uses_hold) = key
         # lam_one[t]: the transition t -> t+1 stays inside a block, so it takes lambda = 1. The
         # last step's successor is outside the buffer and keeps the ordinary lambda.
         lam_one = torch.zeros((self.buffer_size, self.num_envs), dtype=torch.bool,
@@ -437,9 +454,20 @@ class RolloutBuffer:
             else:
                 std_gae = delta + gamma * gae_lambda * sign * non_terminal * last_gae
 
-            last_gae = torch.where(in_window, win_adv, std_gae)
+            new_gae = torch.where(in_window, win_adv, std_gae)
+            ret_win = torch.where(in_window, win_ret, new_gae + v_t)
+            if uses_hold:
+                # A held row is the next row's state again, same mover, reward 0: it passes the
+                # next row's advantage and returns through unchanged (at the buffer's last row
+                # there is no next row, and the advantage is 0 with the value as the return, as
+                # the bootstrap of the same state gives).
+                h = self.held[t]
+                nxt_ret = (self.returns_win[t + 1] if t + 1 < self.buffer_size else v_t)
+                new_gae = torch.where(h, last_gae, new_gae)
+                ret_win = torch.where(h, nxt_ret, ret_win)
+            last_gae = new_gae
             self.advantages[t] = last_gae
-            self.returns_win[t] = torch.where(in_window, win_ret, last_gae + v_t)
+            self.returns_win[t] = ret_win
             # The blunder window is a deliberate override of both, and it outranks the estimator:
             # per-player GAE below must not undo it.
             window_mask[t] = in_window
@@ -468,6 +496,8 @@ class RolloutBuffer:
                 curr_vp_norm,
                 curr_vp_norm * 0.1 + 0.9 * non_terminal * next_ret_vp
             )
+            if uses_hold:
+                self.returns_vp[t] = torch.where(self.held[t], next_ret_vp, self.returns_vp[t])
         return window_mask
 
     def _gae_backward_graphed(self, key: Tuple[Any, ...], last_v_win: torch.Tensor,
@@ -529,6 +559,10 @@ class RolloutBuffer:
             _own = self.learner.view(-1) > 0.5
             if bool(_own.any()) and not bool(_own.all()):
                 own = _own
+        if self.uses_hold:
+            # Held rows duplicate the next row; they would count its advantage twice.
+            _kept = ~self.held.view(-1)
+            own = _kept if own is None else (own & _kept)
         stat_adv = flat_adv if own is None else flat_adv[own]
         mean_adv = stat_adv.mean()
         std_adv = stat_adv.std() + 1e-8
@@ -745,6 +779,10 @@ class RolloutBuffer:
         """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
+        if self.uses_hold:
+            # Held rows enter no loss: each repeats the following row of its env.
+            indices = indices[~self.held.view(total_steps).index_select(0, indices)]
+        n_rows = int(indices.numel())
 
         flat_obs = self.obs.view(total_steps, self.obs_dim)
         flat_masks = self.masks.view(total_steps, self.action_dim)
@@ -759,7 +797,7 @@ class RolloutBuffer:
         flat_has_search = self.has_search.view(total_steps)
         flat_players = self.players.view(total_steps)
 
-        for start_idx in range(0, total_steps, batch_size):
+        for start_idx in range(0, n_rows, batch_size):
             batch_idx = indices[start_idx : start_idx + batch_size]
             yield (
                 flat_obs[batch_idx],

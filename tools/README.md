@@ -108,6 +108,24 @@ policy and value restored exactly).
 | `--adam-beta2` (0.999), `--adam-eps` (1e-8), `--policy-head-lr-mult` (1) | AdamW's second-moment decay and epsilon; the policy heads' rate as a multiple of `--lr` (P39 arm 5) |
 | `--mup` (`--mup-base-proj-dim` 256, `--mup-base-hidden-dim` 480) | muP against A8's widths (`ai/models/mup.py`): each matrix's rate times base fan-in over its own, readouts zeroed at initialisation; the identity at the base widths (P39 arm 4). Per-parameter rates are contiguous optimiser groups in model order, scaled together by the schedule; a resume maps a state laid out in other groups onto them |
 
+### The searched opponent (`--searched-opponent-spec`, P40 Arm S)
+
+In the last `--searched-opponent-share` (0.125) of the envs -- after the pool's mixed ones, which come first -- the
+learner plays one side, drawn per game, against a lagged snapshot of itself (refreshed every
+`--searched-opponent-refresh-steps`, 50M) played greedily, with the rollout root choosing its move at its searched
+decisions: `--searched-opponent-scope entry` (a headline card or an action round's card play) or `all` (every
+decision with two or more legal moves, as `rollout:` plays in a tournament). The root is the opponent only: no
+search target, no root-played learner move; its rows are the environment's, as a pool opponent's are. The spec is a
+rollout spec tail without its checkpoint; add `:graphs` (a 32-position call ~27 ms against ~50 eager).
+
+A root call costs ~20 ms whatever it searches, so searched games WAIT: at a searched decision the env is held in
+place (`TsVectorizedEnv.step(hold=)`) until `--searched-opponent-batch` (32) are queued or the oldest has waited
+`--searched-opponent-max-wait` (8) steps, then one call decides them all. A held step is a buffer row marked `held`
+(`RolloutBuffer.held`): it repeats the next row's state with reward 0, GAE passes through it, and it is in no
+loss, no minibatch and no advantage statistic. Needs the opponent pool; refuses seat balancing, per-player GAE,
+the active search and the forced plays. Logs `searched_opp_*`: calls, positions, mean batch, departures from the
+snapshot's greedy move, held rows, and the learner's win rate against it (the run's, per seat).
+
 ### Throughput and CPU
 
 `tools/train.py` and `tools/tournament.py` set `OMP_WAIT_POLICY=PASSIVE` (spinning idle workers
@@ -670,6 +688,9 @@ shards it over runners.
   played by the network's move and the challengers left (`RolloutBatch.race`;
   `research/log/E7_rollout_race.md`). `4:64:4:z2:earlier:own:race16` plays as `4:64` for ~1.5x the
   cost of `4:32`.
+* `entry:rollout:<...>` plays the rollout root at entry decisions only (a headline card, an action round's card
+  play) and the network's greedy move elsewhere (`EntryRolloutAgent`); `rollout:` alone searches every decision
+  with two or more legal moves. `sparse:<frac>:rollout:<...>` searches a random share of decisions.
 * `name:<label>:<spec>` names an entrant in reports.
 
 **`tools/search_reliability.py`** -- `search` (searchers on the search bank, `--seeds` streams),

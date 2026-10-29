@@ -33,7 +33,7 @@ import torch
 
 import ts_engine as ts
 
-from ai.search.rollout_root import RolloutTeacher, rollout_spec_config
+from ai.search.rollout_root import RolloutTeacher, is_entry_decision, rollout_spec_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,16 +49,6 @@ def child_env() -> Dict[str, str]:
         paths.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(paths)
     return env
-
-
-def is_entry_decision(st: "ts.GameState") -> bool:
-    """A headline card choice, or an action round's own card play (not a card chosen inside an event)."""
-    ctx = st.ctx()
-    if int(ctx.decision_type) != int(ts.DecisionType.SELECT_CARD) or int(ctx.resolving_card) != 0:
-        return False
-    if st.current_phase == ts.Phase.HEADLINE:
-        return int(st.headline_stage) == 0
-    return st.current_phase == ts.Phase.ACTION_ROUND
 
 
 @dataclass

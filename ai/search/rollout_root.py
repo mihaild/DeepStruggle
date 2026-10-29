@@ -570,6 +570,47 @@ class TeacherPolicyTargets:
         return out
 
 
+def is_entry_decision(st: ts.GameState) -> bool:
+    """A headline card choice, or an action round's own card play (not a card chosen inside an event)."""
+    ctx = st.ctx()
+    if int(ctx.decision_type) != int(ts.DecisionType.SELECT_CARD) or int(ctx.resolving_card) != 0:
+        return False
+    if st.current_phase == ts.Phase.HEADLINE:
+        return int(st.headline_stage) == 0
+    return st.current_phase == ts.Phase.ACTION_ROUND
+
+
+class EntryRolloutAgent:
+    """A rollout root applied only at entry decisions (`is_entry_decision`: a headline card choice or an
+    action round's card play), the network's greedy move everywhere else -- what P36's active search and
+    P40 Arm S's searched opponent search, where `rollout:` alone searches every decision with two or more
+    legal moves. `entry:rollout:...` in tournament specs."""
+
+    def __init__(self, inner: RolloutRootAgent) -> None:
+        self.inner = inner
+        self.name = f"{inner.name}@entry"
+        self.searched = 0
+        self.decisions = 0
+
+    def reseed(self, seed: int) -> None:
+        self.inner.reseed(seed)
+
+    def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
+        states = list(states)
+        lg, masks, _ = self.inner.root._forward(states)
+        picks = [int(np.argmax(np.where(masks[i].astype(bool), lg[i], -np.inf))) for i in range(len(states))]
+        chosen = [i for i in range(len(states)) if is_entry_decision(states[i])]
+        if chosen:
+            for i, a in zip(chosen, self.inner.select_actions_batch([states[i] for i in chosen])):
+                picks[i] = a
+        self.decisions += len(states)
+        self.searched += len(chosen)
+        return picks
+
+    def select_action(self, state: ts.GameState, *_: Any, **__: Any) -> int:
+        return self.select_actions_batch([state])[0]
+
+
 class SparseRolloutAgent:
     """A rollout root applied at a random `frac` of decisions, the network's greedy move at the rest -- to
     measure whether its corrections help one at a time (the network following up) or only in sequence (the

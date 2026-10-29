@@ -1174,6 +1174,26 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P36: the same from --active-search-late-from on.")
     parser.add_argument("--active-search-late-from", type=int, default=400_000_000,
                         help="P36: the step the refresh cadence slows at.")
+    # P40 Arm S's searched opponent (ai/training/searched_opponent.py; owner, 2026-10-29).
+    parser.add_argument("--searched-opponent-spec", type=str, default=None,
+                        help="P40 Arm S: a rollout spec tail without its checkpoint (e.g. "
+                             "4:4:1:z2:earlier:own:keyed:aligned:box4:graphs). In the last "
+                             "--searched-opponent-share of the envs the learner plays one side, drawn per game, "
+                             "against a lagged snapshot of itself played greedily with the rollout root at its "
+                             "searched decisions -- the root as the opponent, no search target. Needs the opponent "
+                             "pool. Off by default.")
+    parser.add_argument("--searched-opponent-share", type=float, default=0.125,
+                        help="P40 Arm S: the share of envs with the searched opponent (after the pool's mixed ones).")
+    parser.add_argument("--searched-opponent-scope", choices=["entry", "all"], default="entry",
+                        help="P40 Arm S: the root at entry decisions only (a headline card, an action round's card "
+                             "play), or at every decision with two or more legal moves as `rollout:` in a tournament.")
+    parser.add_argument("--searched-opponent-refresh-steps", type=int, default=50_000_000,
+                        help="P40 Arm S: steps between refreshes of the opponent's snapshot from the learner.")
+    parser.add_argument("--searched-opponent-batch", type=int, default=32,
+                        help="P40 Arm S: searched games wait at a searched decision until this many are queued "
+                             "for one root call ...")
+    parser.add_argument("--searched-opponent-max-wait", type=int, default=8,
+                        help="P40 Arm S: ... or until the oldest has waited this many steps.")
     parser.add_argument("--search-teacher-checkpoint", type=str, default=None,
                         help="P32: search with this FROZEN network for the search CE targets, instead of the "
                              "network being trained -- whose targets follow it as it changes. Same "
@@ -1363,6 +1383,12 @@ def main():
             active_search_refresh_steps=args.active_search_refresh_steps,
             active_search_refresh_steps_late=args.active_search_refresh_steps_late,
             active_search_late_from=args.active_search_late_from,
+            searched_opponent_spec=args.searched_opponent_spec,
+            searched_opponent_share=args.searched_opponent_share,
+            searched_opponent_scope=args.searched_opponent_scope,
+            searched_opponent_refresh_steps=args.searched_opponent_refresh_steps,
+            searched_opponent_batch=args.searched_opponent_batch,
+            searched_opponent_max_wait=args.searched_opponent_max_wait,
             resume_weights=args.resume_weights,
             resume_widen=args.resume_widen,
             resume_grow_tokens=args.resume_grow_tokens,

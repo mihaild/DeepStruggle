@@ -372,8 +372,19 @@ class TsVectorizedEnv:
         self.ep_lengths[env_idx] = 0
         self.ep_rewards[env_idx] = 0.0
 
-    def step(self, actions: np.ndarray | List[int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
-        """Steps all N environments in parallel with exact acting player attribution."""
+    def step(self, actions: np.ndarray | List[int],
+             hold: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
+        """Steps all N environments in parallel with exact acting player attribution.
+
+        `hold` (bool per env) leaves those games exactly where they are for this step -- P40 Arm S's
+        searched opponent, whose games wait at a searched decision until enough are queued for one
+        root call. A held env is sent a card slot its mask refuses, which the engine rejects before
+        touching the game -- at a SELECT_CARD decision by the mask, anywhere else by the decision-type
+        check (`StateMachine::step`; the one card-shaped exception, UN Intervention at Grain Sales'
+        play-mode node, is still decided by the mask). The observation, the RNG and the mask are
+        unchanged; only the display-only last-roll record is cleared, as every step clears it. A held
+        env that is NOT refused, or a refusal anywhere else, raises. Its reward is 0, it is never
+        done, and the step does not count toward its episode length."""
         # 1. Capture exact acting players & privileged opponent hands BEFORE stepping simulation
         # The masks the caller sampled from, captured before the step overwrites the buffer --
         # needed to tell a mask/engine disagreement from a sampler that ignored the mask.
@@ -391,8 +402,20 @@ class TsVectorizedEnv:
 
         # 2. Step C++ simulation in parallel
         action_list = [int(a) for a in actions]
+        held_idx = np.flatnonzero(hold) if hold is not None else np.zeros(0, dtype=np.int64)
+        for raw in held_idx:
+            action_list[int(raw)] = self._refused_card_slot(int(raw), prev_masks[int(raw)])
 
         step_results = self.runner.step_flat_all(action_list, self._auto_advance)
+        if len(held_idx):
+            not_refused = [int(i) for i in held_idx if step_results[int(i)] != 0]
+            if not_refused:
+                raise IllegalActionError(
+                    f"held envs {not_refused[:8]} were stepped: the engine accepted the refused card slot "
+                    f"{[action_list[i] for i in not_refused[:8]]}, so the hold moved the game")
+            step_results = list(step_results)
+            for raw in held_idx:
+                step_results[int(raw)] = 1
         # 0 = the engine refused the action. Never observed (0 refusals in 5,052 batched steps),
         # but if it happens the rollout is being built from a game that did not advance, so the
         # data is wrong rather than merely late. `0 in list` is a C-level scan with no allocation;
@@ -511,7 +534,10 @@ class TsVectorizedEnv:
             states=states,
         )
 
+        if len(held_idx):
+            rewards[held_idx] = 0.0
         self.ep_lengths += 1
+        self.ep_lengths[held_idx] -= 1
         self.ep_rewards += rewards
 
         completed_episodes: List[Dict[str, Any]] = []
@@ -567,6 +593,14 @@ class TsVectorizedEnv:
         info["dones"] = dones
 
         return obs, masks, rewards, dones, info
+
+    def _refused_card_slot(self, env_idx: int, mask: np.ndarray) -> int:
+        """A card slot the engine will refuse at env `env_idx`'s current decision: the first card its
+        mask leaves out (a hand never holds all 110, and outside a card choice none is legal)."""
+        off = np.flatnonzero(np.asarray(mask[ActionEncoder.CARD_OFFSET:ActionEncoder.PLAY_MODE_OFFSET]) == 0)
+        if not off.size:
+            raise ValueError(f"env {env_idx}: every card slot is legal, so none can be refused")
+        return int(ActionEncoder.CARD_OFFSET + off[0])
 
     def observations_for(self, players: np.ndarray) -> np.ndarray:
         """Observations of the CURRENT states, each from the perspective named in `players`.

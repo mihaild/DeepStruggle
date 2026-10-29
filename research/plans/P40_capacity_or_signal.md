@@ -98,7 +98,8 @@ other training arm until the matrix reads.
 
 **Arm S's opponent, priced (2026-10-29).** The rollout root at the plan's settings (k 4, 4 keyed worlds, horizon 2,
 earlier+own) on the A8 control's 9,920-10,000M SWA against the same network raw, 1,000 deals a side
-(`data/reports/arm_s_root_k4w4h2_p*_vs_raw.json`): at every entry decision **66.8% ± 1.1** (US 64.6 / USSR 68.7, ~+122
+(`data/reports/arm_s_root_k4w4h2_p*_vs_raw.json`): at every decision with two or more legal moves -- what `rollout:`
+searches, not only the entry decisions (corrected below) -- **66.8% ± 1.1** (US 64.6 / USSR 68.7, ~+122
 Elo); at a random 20% of them **55.2% ± 1.1** (US 50.9 / USSR 58.7, ~+36) -- 30% of the full gain, as on E7 (25%
 searched kept 35%). Cost in training: the root is called at almost every rollout step (one game in eight is ~64 envs,
 about six of them at an opponent entry decision on most steps) at ~0.04-0.06 s a call against a plain step's ~1.8 ms,
@@ -111,3 +112,29 @@ its price, unless the batch runner lets a searched game wait so the root batches
 (`data/reports/control_t0_vs_t1.json`): **54.5% ± 1.1** (US 49.8 / USSR 58.0), **~+31 Elo** -- about the 20% root's
 edge and a quarter of the full root's. Free for pool games (`--opponent-temperature 0`, built since P24), x2 in learner
 rows for a greedy seat in self-play games; a cheap but mild punisher, not the strong opponent the arm's premise needs.
+
+**The fastest strong combination (owner, 2026-10-29: "try to find faster combination for Arm S").** All on the same
+SWA against itself raw (greedy), 1,000 deals a side (`data/reports/arm_s_root_k*_vs_raw.json`,
+`arm_s_entry_k441_vs_raw.json`); cost per searched position from `arm_s_grid_cost.json` (marginal, in a large batch):
+
+| root | where it searches | score | Elo | ms / position |
+|:---|:---|:---|:---|:---|
+| k4 w4 h2 (the plan's) | every decision | 66.8% ± 1.1 | +122 | 0.73 |
+| **k4 w4 h1** | every decision | 64.7% ± 1.1 | +105 | 0.58 |
+| k2 w2 h1 | every decision | 58.0% ± 1.1 | +56 | -- |
+| k4 w2 h2 | every decision | 54.9% ± 1.1 | +34 | 0.39 |
+| **k4 w4 h1** | **entry decisions only** (`entry:rollout:`) | **60.9% ± 1.1** (US 56.7 / USSR 64.3) | **+77** | 0.58 |
+| greedy, no root | -- | 54.5% ± 1.1 | +31 | 0 |
+
+Two worlds lose almost everything (w2: no better than greedy); the second horizon is worth ~17 Elo at ~25% more per
+position. The pricing above assumed entry decisions while the strength it quoted searched every decision, which is
+~3x as many positions: searched at entry decisions only, k4 w4 h1 keeps 73% of its every-decision gain, ~+108 over
+the learner's own temperature-1 play. A call's fixed cost, not the positions, dominates: k4 w4 h1 takes 27 / 29 / 50 /
+121 ms for 8 / 16 / 32 / 64 entry positions eager and **19 / 17 / 27 / 38 ms with the root's CUDA graphs** (`:graphs`;
+measured beside two trainers). So the opponent is **k4 w4 h1 at entry decisions, graphed, with hold-and-batch**: a
+searched game waits at its decision (the env holds it in place) until 32 are queued or the oldest has waited 8 steps,
+then one call decides them all; at one game in eight (~8 opponent entry decisions a step) that is ~7 ms a step on
+top of a plain step's ~1.8 ms, ~2.5x a plain iteration, against ~10x for a call every step. Built
+(`ai/training/searched_opponent.py`, `--searched-opponent-spec 4:4:1:z2:earlier:own:keyed:aligned:box4:graphs`;
+tools/README.md); a 128-env smoke run from scratch held ~half of the searched envs' opponent rows at 16 searched
+envs, a share that falls with more of them (64 at 512 envs).

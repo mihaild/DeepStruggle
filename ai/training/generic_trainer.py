@@ -37,6 +37,7 @@ from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumRew
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
 from ai.training.active_search import ActiveSearch, gate_metrics
+from ai.training.searched_opponent import SearchedOpponent
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
 from ai.training.schedule import WeightEMA, scheduled_lr, warmup_factor
@@ -1447,6 +1448,8 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         # P36's gated active search: when its gate opened and the checks so far.
         "active_search": (trainer.active_search.state_dict()
                           if getattr(trainer, "active_search", None) is not None else None),
+        "searched_opponent": (trainer.searched_opp.state_dict()
+                              if getattr(trainer, "searched_opp", None) is not None else None),
     }, path)
 
 
@@ -1692,6 +1695,7 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         "ema_state_dict": blob.get("ema_state_dict"),
         # None for a state written without --active-search-spec.
         "active_search": blob.get("active_search"),
+        "searched_opponent": blob.get("searched_opponent"),
         # None for a state written before the env had its own game-seed generator, or a branch under another seed.
         "env_game_rng_state": None if reseed else blob.get("env_game_rng_state"),
     }
@@ -1823,6 +1827,12 @@ def train_pipeline(
     active_search_refresh_steps: int = 10_000_000,
     active_search_refresh_steps_late: int = 50_000_000,
     active_search_late_from: int = 400_000_000,
+    searched_opponent_spec: Optional[str] = None,
+    searched_opponent_share: float = 0.125,
+    searched_opponent_scope: str = "entry",
+    searched_opponent_refresh_steps: int = 50_000_000,
+    searched_opponent_batch: int = 32,
+    searched_opponent_max_wait: int = 8,
     resume_weights: Optional[str] = None,
     resume_widen: bool = False,
     resume_grow_sphere: bool = False,
@@ -2143,6 +2153,13 @@ def train_pipeline(
         "active_search_refresh_steps": int(active_search_refresh_steps),
         "active_search_refresh_steps_late": int(active_search_refresh_steps_late),
         "active_search_late_from": int(active_search_late_from),
+        # P40 Arm S's searched opponent: off when the spec is None.
+        "searched_opponent_spec": searched_opponent_spec,
+        "searched_opponent_share": float(searched_opponent_share),
+        "searched_opponent_scope": searched_opponent_scope,
+        "searched_opponent_refresh_steps": int(searched_opponent_refresh_steps),
+        "searched_opponent_batch": int(searched_opponent_batch),
+        "searched_opponent_max_wait": int(searched_opponent_max_wait),
         "resume_weights": resume_weights,
         "resume_widen": bool(resume_widen),
         "resume_grow_sphere": bool(resume_grow_sphere),
@@ -2881,6 +2898,36 @@ def train_pipeline(
                   f"share of draws={'by size' if league_frac is None else league_frac}", flush=True)
             if opponent_self_pool:
                 _league_scan()
+    if searched_opponent_spec:
+        # P40 Arm S. Its block of envs sits after the pool's mixed ones, and nothing else may move
+        # those games or reassign them: forced plays, the active search, seat balancing (which
+        # redraws which envs are mixed) and per-player GAE (no pass-through for held rows).
+        _pool = trainer.opponent_pool
+        if _pool is None:
+            raise ValueError("--searched-opponent-spec needs the opponent pool (invariant 14)")
+        if seat_balance:
+            raise ValueError("--searched-opponent-spec with --seat-balance: balancing redraws which envs are mixed, "
+                             "so it could hand a searched env to the pool")
+        _clash = [n for n, on in (("--active-search-spec", trainer.active_search is not None),
+                                  ("--seed-scenarios", trainer.seeder is not None),
+                                  ("--forced-openings-frac", trainer.opening_seeder is not None),
+                                  ("--force-applicable-events", trainer.event_forcer is not None),
+                                  ("--setup-script-frac", trainer.setup_script_frac > 0.0),
+                                  ("--per-player-gae", bool(per_player_gae))) if on]
+        if _clash:
+            raise ValueError(f"--searched-opponent-spec cannot be combined with {', '.join(_clash)}")
+        trainer.searched_opp = SearchedOpponent(
+            model, searched_opponent_spec, device=trainer.device, num_envs=num_envs,
+            share=searched_opponent_share, pool_mixed=int(_pool.is_mixed.sum()),
+            refresh_every=searched_opponent_refresh_steps, batch=searched_opponent_batch,
+            max_wait=searched_opponent_max_wait, scope=searched_opponent_scope,
+            seed=int(seed if seed is not None else 0) + 13579)
+        trainer.buffer.uses_hold = True
+        print(f"[searched opponent] {trainer.searched_opp.label} at {searched_opponent_scope} decisions, on a "
+              f"snapshot of the learner refreshed every {searched_opponent_refresh_steps / 1e6:.0f}M, greedy "
+              f"elsewhere; envs {int(trainer.searched_opp.envs[0])}-{int(trainer.searched_opp.envs[-1])} of "
+              f"{num_envs} (share {searched_opponent_share:g}); games held until {searched_opponent_batch} wait "
+              f"or one has waited {searched_opponent_max_wait} steps", flush=True)
     if per_seat_adv_norm:
         print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
     if adv_norm_learner_only:
@@ -3043,6 +3090,8 @@ def train_pipeline(
             _as_open = trainer.active_search.state.open_step
             print(f"[active search] resumed: {len(trainer.active_search.state.checks)} gate checks so far, gate "
                   + (f"open since {_as_open / 1e6:.0f}M" if _as_open is not None else "closed"), flush=True)
+        if trainer.searched_opp is not None:
+            trainer.searched_opp.restore(state.get("searched_opponent"))
 
     # Restored before anything reads or writes the weights: snapshot_0s.pt claims to be
     # this run's starting point, and an eval of it costs real time, so both have to see
@@ -3326,6 +3375,12 @@ def train_pipeline(
         if _as is not None:
             step_metrics["active_search_joined"] = float(_as.joined)
             step_metrics["active_search_rows"] = float(_as.rows_rollout)
+        if trainer.searched_opp is not None:
+            # P40 Arm S: the root's calls and batches, its departures from the snapshot's greedy move, the
+            # held rows, and the learner's results against it (the run's, per seat).
+            for _sk, _sv in iteration_metrics.items():
+                if _sk.startswith("searched_opp_"):
+                    step_metrics[_sk] = float(_sv)
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(step_metrics) + "\n")

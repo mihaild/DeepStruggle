@@ -20,7 +20,8 @@ from ai.models.coldwar_net_v2 import (ColdWarNetV2, check_checkpoint_layout,
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
 from ai.search.heuristic_mcts import HeuristicMCTSConfig, make_heuristic_mcts_agent
-from ai.search.rollout_root import RolloutRootAgent, SparseRolloutAgent, rollout_spec_config, rollout_spec_leaf
+from ai.search.rollout_root import (EntryRolloutAgent, RolloutRootAgent, SparseRolloutAgent, rollout_spec_config,
+                                    rollout_spec_leaf)
 from bindings.ts_env import check_obs_width, legal_mask, model_obs_features, observe
 from tools.lib.action_view import checkpoint_merged_influence
 from tools.lib.checkpoint_id import checkpoint_label
@@ -650,6 +651,13 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         if not isinstance(inner, RolloutRootAgent):
             raise ValueError(f"sparse: needs a rollout: spec, not {rest!r}")
         return SparseRolloutAgent(inner, float(frac_s))
+    if s.lower().startswith("entry:"):
+        # entry:rollout:<...> -- the rollout root at entry decisions only (a headline card or an action
+        # round's card play), the network's greedy move at the rest (ai/search/rollout_root.EntryRolloutAgent).
+        inner = load_agent(s.split(":", 1)[1], device=device)
+        if not isinstance(inner, RolloutRootAgent):
+            raise ValueError(f"entry: needs a rollout: spec, not {s.split(':', 1)[1]!r}")
+        return EntryRolloutAgent(inner)
     if s.lower().startswith("rollout:"):
         # rollout:<checkpoint>[:k[:worlds[:horizon[:rule[:leaf checkpoint]]]]] -- the network's top k
         # moves played out by the network in sampled worlds, a cautious choice (ai/search/rollout_root.py);

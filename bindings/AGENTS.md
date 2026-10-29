@@ -41,6 +41,11 @@ are cited from elsewhere; keep them.
     from `next_game_seed()` -- the env's own generator when it was built with `game_seed` (training passes
     `--seed-env`; `game_rng_state` / `set_game_rng_state` carry it through a resume), else the global numpy RNG,
     as every evaluation tool still uses.
+  - **Holding a game** (`TsVectorizedEnv.step(actions, hold=)`, P40 Arm S's searched opponent): a held env is
+    sent a card slot its mask refuses, which `StateMachine::step` rejects before touching the game (by the mask
+    at a card choice, by the decision-type check elsewhere): the observation, RNG and mask are unchanged and only
+    the display-only last-roll record is cleared, as every step clears it. A held env the engine accepts raises;
+    its reward is 0, it is never done, and the step is not counted in its episode length. Python only.
   - **Observation feature blocks** ([`engine/AGENTS.md`](../engine/AGENTS.md) §6a):
     `extract_observation_features(state, perspective, features)` — the base plus the requested
     `OBS_FEATURE_*` blocks; `features` has no default and unknown bits raise. `obs_size_for(features)`

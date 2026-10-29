@@ -589,6 +589,10 @@ class BaseNashPGTrainer:
         #: construction: the root plays a fraction of the learner's entry decisions as environment
         #: once its gate is open, and its improved policy is the search-CE target there.
         self.active_search: Optional[Any] = None
+        #: P40 Arm S's searched opponent (ai/training/searched_opponent.py), set by the pipeline after
+        #: construction: in a block of envs the opponent's side is a lagged snapshot of the learner with
+        #: the rollout root at its searched decisions, its games held while the root's batch fills.
+        self.searched_opp: Optional[Any] = None
         if self.search_ce_coef > 0.0 or self.search_value_beta > 0.0:
             # The network the searcher runs: the one being trained, or a frozen teacher. Searching
             # with the learner closes a loop -- targets built from the network follow it as it
@@ -1585,6 +1589,36 @@ class BaseNashPGTrainer:
         logits.index_copy_(0, opp_idx, g_o.static_out[0].index_select(0, opp_idx).float())
         return logits, v_win_t, v_vp_t
 
+    def _searched_opponent_moves(self, obs_t: torch.Tensor, masks_t: torch.Tensor, logits: torch.Tensor,
+                                 actions_t: torch.Tensor, learner_np: np.ndarray
+                                 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[np.ndarray]]:
+        """(logits, actions, hold) with the searched opponent's rows filled in (see collect_rollouts)."""
+        so = self.searched_opp
+        assert so is not None and self.env is not None
+        idx = so.opponent_rows(learner_np)
+        if not idx.size:
+            return logits, actions_t, None
+        idx_t = torch.from_numpy(idx).to(self.device)
+        with torch.no_grad():
+            if self._graphs is not None:
+                g = self._graphs.get(so.snapshot)
+                g.load(obs_t, masks_t)
+                g.replay()
+                so_logits = g.static_out[0].index_select(0, idx_t).float()
+            else:
+                so_logits = so.snapshot(obs_t.index_select(0, idx_t), masks_t.index_select(0, idx_t))[0].float()
+        logits = logits.float()
+        logits.index_copy_(0, idx_t, so_logits)
+        greedy_t = so_logits.argmax(dim=-1)
+        actions_t = actions_t.clone()
+        actions_t.index_copy_(0, idx_t, greedy_t)
+        greedy = np.zeros(self.num_envs, dtype=np.int64)
+        greedy[idx] = greedy_t.cpu().numpy()
+        envs, picks, hold = so.plan(self.env.runner, np.asarray(self._masks_np), idx, greedy)
+        if envs.size:
+            actions_t[torch.from_numpy(envs).to(self.device)] = torch.from_numpy(picks).to(self.device)
+        return logits, actions_t, (hold if hold.any() else None)
+
     def collect_rollouts(self) -> Dict[str, Any]:
         """Collects on-policy rollouts across all parallel environments."""
         if self.opponent_pool is not None and self.opponent_pool.obs_features != self.obs_features:
@@ -1597,12 +1631,20 @@ class BaseNashPGTrainer:
             self._graphs.begin_rollout()
             # Release the graphs of pool members evicted since the last rollout.
             self._graphs.retain([self.active_net] + (list(self.opponent_pool.nets)
-                                                     if self.opponent_pool is not None else []))
+                                                     if self.opponent_pool is not None else [])
+                                + ([self.searched_opp.snapshot] if self.searched_opp is not None else []))
         if self.opponent_pool is not None:
             self.opponent_pool.start_iteration()
             self._selfplay_mask = ~self.opponent_pool.is_mixed
         else:
             self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
+        if self.searched_opp is not None:
+            if self.searched_opp.maybe_refresh(self.active_net, int(self.total_env_steps)):
+                print(f"[searched opponent] the snapshot refreshed from the learner at "
+                      f"{self.total_env_steps / 1e6:.0f}M", flush=True)
+            # Its games are the learner against the root, not self-play: kept out of the self-play
+            # statistics as a pool game is.
+            self._selfplay_mask &= ~self.searched_opp.is_searched
         self._apply_views()
         self.buffer.reset()
         if self.active_search is not None:
@@ -1649,7 +1691,10 @@ class BaseNashPGTrainer:
                 learner_np = self.opponent_pool.learner_acts(_dp)
             else:
                 learner_np = np.ones(self.num_envs, dtype=bool)
+            if self.searched_opp is not None:
+                learner_np = self.searched_opp.learner_acts(_dp, learner_np)
             learner_t = torch.from_numpy(learner_np).to(self.device)
+            _hold: Optional[np.ndarray] = None
 
             with torch.no_grad():
                 if self._graphs is not None:
@@ -1705,6 +1750,12 @@ class BaseNashPGTrainer:
                 if self.opponent_temperature is not None and not bool(learner_np.all()):
                     actions_t = opponent_actions(logits, actions_t, ~learner_t,
                                                  self.opponent_temperature)
+                if self.searched_opp is not None:
+                    # P40 Arm S: the searched opponent's rows -- the snapshot's logits (stored, so the
+                    # row's log-prob is the snapshot's own), its greedy move, the root's move where it
+                    # has decided, and the hold for games waiting on the root's batch.
+                    logits, actions_t, _hold = self._searched_opponent_moves(
+                        obs_t, masks_t, logits, actions_t, learner_np)
 
                 if self.setup_script_frac > 0.0:
                     # After every other override, so a scripted game is scripted whoever moves;
@@ -1847,7 +1898,11 @@ class BaseNashPGTrainer:
                 self._predeal_on = True
                 print(f"[pre-deal] the critic on both sides at the turn-end park, coef "
                       f"{self.predeal_value_coef}", flush=True)
-            next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
+            if _hold is not None:
+                next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(
+                    actions_np, hold=_hold)
+            else:
+                next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
             if self._predeal_on:
                 _pf, _pus, _pussr = self.env.runner.get_predeal()
                 _pe = np.flatnonzero(np.asarray(_pf))
@@ -1909,6 +1964,7 @@ class BaseNashPGTrainer:
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
                 next_values_own=next_own_t,
                 rngs=_rngs_np,
+                held=(torch.from_numpy(_hold).to(self.device) if _hold is not None else None),
             )
 
             # v_win is from the *acting* player's perspective; multiplying by the acting
@@ -1938,6 +1994,8 @@ class BaseNashPGTrainer:
                     # Clear the pending samples without recording an outcome, or they would be
                     # attached to whatever the next episode in this slot produces.
                     self.critic_tracker.reset_env(_i)
+                if self.searched_opp is not None:
+                    self.searched_opp.on_episode_end(_i, float(self._info["victory_points"][_i]))
                 if self.opponent_pool is not None:
                     # The outcome goes with it: the pool keys its per-opponent win rates off
                     # this, and without them there is no in-run signal for whether pooling works
@@ -2054,6 +2112,8 @@ class BaseNashPGTrainer:
         # rather than being invisible. Without this the mechanism cannot be verified from a run.
         if self.opponent_pool is not None:
             metrics.update(self.opponent_pool.stats())
+        if self.searched_opp is not None:
+            metrics.update(self.searched_opp.stats())
         # How much of the searcher's answer the real mask rejected. A determinized search can
         # legitimately propose an action that is illegal in the true state, so a small nonzero
         # rate is expected and healthy; it going to zero would mean the filter is not reaching

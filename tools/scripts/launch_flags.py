@@ -182,6 +182,12 @@ _BEFORE_RECORDED = {
     "active_search_refresh_steps": lambda meta: 10_000_000,
     "active_search_refresh_steps_late": lambda meta: 50_000_000,
     "active_search_late_from": lambda meta: 400_000_000,
+    # P40 Arm S (2026-10-29): no searched opponent before it existed.
+    "searched_opponent_share": lambda meta: 0.125,
+    "searched_opponent_scope": lambda meta: "entry",
+    "searched_opponent_refresh_steps": lambda meta: 50_000_000,
+    "searched_opponent_batch": lambda meta: 32,
+    "searched_opponent_max_wait": lambda meta: 8,
     # no forced opening before it existed (2026-09-28); None cannot be filled in, so it is recorded
     # below as "unrecorded" for older runs and diffs as the default.
 }
