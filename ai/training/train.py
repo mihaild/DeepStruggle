@@ -176,7 +176,8 @@ def _run_online_distill(args: argparse.Namespace) -> None:
                          epochs=args.distill_epochs_per_rollout, lr=args.lr, weight_decay=args.weight_decay,
                          play_temperature=args.distill_play_temperature, value_coef=args.distill_value_coef,
                          holdout=args.distill_holdout, eval_every=args.distill_eval_every,
-                         patience=args.distill_patience, seed_env=seed_env, device=str(dev))
+                         patience=args.distill_patience, seed_env=seed_env, device=str(dev),
+                         lr_final_frac=args.distill_lr_final_frac)
     meta = {k: v for k, v in vars(args).items()} | {
         "run_name": args.run_name, "description": args.description,
         # The configuration as passed, as an RL run records it: run_codes reads the A code from it, and the student's
@@ -411,6 +412,8 @@ def build_parser() -> argparse.ArgumentParser:
     od.add_argument("--distill-eval-every", type=int, default=2_000_000, help="Positions between evaluations.")
     od.add_argument("--distill-patience", type=int, default=5,
                     help="Stop after this many evaluations without a 0.5%% held-out KL improvement.")
+    od.add_argument("--distill-lr-final-frac", type=float, default=1.0,
+                    help="The rate decays by a cosine over --distill-positions to --lr times this (1: constant).")
     pf = parser.add_argument_group("policy fit (--mode policy-fit, P36c)")
     pf.add_argument("--policy-dataset", type=str, default=None,
                     help="A tools/distill_targets.py .npz: the keyed root's improved policy on entry decisions.")

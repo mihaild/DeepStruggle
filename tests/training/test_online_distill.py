@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from ai.models.ladder_net import create_ladder_net
-from ai.training.online_distill import DistillConfig, _losses, run_online_distillation
+from ai.training.online_distill import DistillConfig, _losses, cosine_frac, run_online_distillation
 
 SHAPE: Dict[str, Any] = dict(input_mode="grouped", aggregation="flatten", entity_dim=16, entity_proj_dim=32,
                              card_self_attention=False, cross_attention=False, per_entity_heads=16, head_context=True,
@@ -61,3 +61,11 @@ def test_a_teacher_on_another_view_is_refused(tmp_path: Any) -> None:
                         device="cpu")
     with pytest.raises(ValueError):
         run_online_distillation(student, cfg, os.path.join(str(tmp_path), "run"), {})
+
+
+def test_the_cosine_runs_from_the_rate_to_its_final_fraction() -> None:
+    assert cosine_frac(0, 100, 0.05) == pytest.approx(1.0)
+    assert cosine_frac(50, 100, 0.05) == pytest.approx(0.525)
+    assert cosine_frac(100, 100, 0.05) == pytest.approx(0.05)
+    assert cosine_frac(150, 100, 0.05) == pytest.approx(0.05)          # past the budget it stays at the floor
+    assert cosine_frac(37, 100, 1.0) == 1.0                              # 1: constant, the old behaviour

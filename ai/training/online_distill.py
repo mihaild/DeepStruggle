@@ -18,6 +18,7 @@ dict that `--warmup-checkpoint` loads into the RL arm.
 from __future__ import annotations
 
 import json
+import math
 import os
 import pathlib
 import time
@@ -43,6 +44,7 @@ class DistillConfig:
     batch: int = 4096
     epochs: int = 1                          # passes over each rollout's positions
     lr: float = 3e-4
+    lr_final_frac: float = 1.0               # cosine from lr to lr * this over the budget; 1 = constant
     weight_decay: float = 1e-4
     play_temperature: float = 0.25
     value_coef: float = 0.5
@@ -53,6 +55,11 @@ class DistillConfig:
     min_improvement: float = 0.005           # relative held-out KL improvement that counts
     seed_env: int = 44
     device: str = "cuda"
+
+
+def cosine_frac(seen: int, budget: int, final: float) -> float:
+    """The rate's multiple after `seen` of `budget` positions: 1 at the start, `final` at the end, a half cosine between."""
+    return final + (1.0 - final) * 0.5 * (1.0 + math.cos(math.pi * min(1.0, seen / max(1, budget))))
 
 
 def _teacher_step(teacher: nn.Module, obs: np.ndarray, masks: np.ndarray, dev: torch.device,
@@ -166,6 +173,11 @@ def run_online_distillation(student: nn.Module, cfg: DistillConfig, run_dir: str
         n = int(data["obs"].shape[0])
         train: Dict[str, float] = {"kl": 0.0, "value_mse": 0.0, "agree": 0.0}
         batches = 0
+        if cfg.lr_final_frac != 1.0:
+            # Cosine over the position budget, each group at its own multiple (muP, the head rate).
+            frac = cosine_frac(seen, cfg.positions, cfg.lr_final_frac)
+            for g in opt.param_groups:
+                g["lr"] = cfg.lr * float(g.get("lr_mult", 1.0)) * frac
         for _ in range(cfg.epochs):
             perm = torch.randperm(n, device=dev)
             for i in range(0, n, cfg.batch):
