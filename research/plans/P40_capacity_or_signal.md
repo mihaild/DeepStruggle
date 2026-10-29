@@ -95,3 +95,13 @@ other training arm until the matrix reads.
 ## Runs
 
 (filled in while running; mirrors [`../runs.md`](../runs.md))
+
+**Arm S's opponent, priced (2026-10-29).** The rollout root at the plan's settings (k 4, 4 keyed worlds, horizon 2,
+earlier+own) on the A8 control's 9,920-10,000M SWA against the same network raw, 1,000 deals a side
+(`data/reports/arm_s_root_k4w4h2_p*_vs_raw.json`): at every entry decision **66.8% ± 1.1** (US 64.6 / USSR 68.7, ~+122
+Elo); at a random 20% of them **55.2% ± 1.1** (US 50.9 / USSR 58.7, ~+36) -- 30% of the full gain, as on E7 (25%
+searched kept 35%). Cost in training: the root is called at almost every rollout step (one game in eight is ~64 envs,
+about six of them at an opponent entry decision on most steps) at ~0.04-0.06 s a call against a plain step's ~1.8 ms,
+so the full root costs ~10-15x a plain iteration and 20% ~3.5x. At +36 the 20% opponent is about the learner's own
+level (the learner beats its pool ~63%), too weak a punisher to test the arm's premise; the full root (+122) is, at
+its price, unless the batch runner lets a searched game wait so the root batches across steps.
