@@ -99,7 +99,7 @@ def test_gae_passes_through_held_rows_and_no_batch_reads_them() -> None:
     _fill(held, [r + (False,) for r in rows[:2]] + [rows[2][:3] + (0.0, False, True)] + [r + (False,) for r in rows[2:]])
     zero = torch.zeros(1)
     for b in (plain, held):
-        b.compute_gae(zero, zero, torch.zeros(1, dtype=torch.bool), torch.ones(1, dtype=torch.int8))
+        b.compute_gae(zero, zero, torch.ones(1, dtype=torch.int8))
     keep = [0, 1, 3, 4, 5]
     assert torch.allclose(held.advantages[keep, 0], plain.advantages[:, 0], atol=1e-6)
     assert torch.allclose(held.returns_win[keep, 0], plain.returns_win[:, 0], atol=1e-6)
