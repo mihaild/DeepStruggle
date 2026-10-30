@@ -168,3 +168,13 @@ inside R94's band) without gaining past it; Arm S read 51.6 / 53.4 / 54.3% at 16
 past the plateau, and runs ~3x faster alone (~65k steps/s against ~22-26k beside Arm C). The A8-R95 continuation waits
 for Arm S to finish.
 
+**Arm S stopped at 17,737M (owner, 2026-10-30, for P41).** Reads against A13+R48's SWA: **51.6 / 53.4 / 54.3 / 54.6%** at
+16,400 / 16,800 / 17,200 / 17,600M -- the last two above R94's band (49.4-53.3%), none clearly above the 55% bar. The
+searched opponent moved the plateau a little (~+2 points over R94's 52.8%, flattening) where every training-mode change
+had not moved it at all; the learner's ~26% against its searched opponent never rose, the root's edge held as the
+snapshot followed the learner. Not tested head to head against R94.
+
+**Where P40 ends.** Capacity (Arm C): a deep network distilled from the bar held the bar under RL (50.7% at 400M) and
+gained nothing past it in the reads taken -- no evidence capacity binds; from scratch every bigger network lost to A8.
+Signal (Arm S): the one lever that moved the plateau at all, modestly, at ~2.5x a plain step's cost.
+
