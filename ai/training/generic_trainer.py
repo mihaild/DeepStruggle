@@ -1925,6 +1925,7 @@ def train_pipeline(
     compile_update: str = "off",
     z_loss_coef: float = 0.0,
     logit_gap_coef: float = 0.0,
+    zero_avoid_coef: float = 0.0,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2300,6 +2301,7 @@ def train_pipeline(
         "z_loss_coef": float(z_loss_coef),
         "logit_gap_coef": float(logit_gap_coef),
         "logit_gap": float(logit_gap),
+        "zero_avoid_coef": float(zero_avoid_coef),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "setup_block_lambda": bool(setup_block_lambda),
@@ -2677,6 +2679,7 @@ def train_pipeline(
         compile_update=compile_update,
         z_loss_coef=z_loss_coef,
         logit_gap_coef=logit_gap_coef,
+        zero_avoid_coef=zero_avoid_coef,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -2953,6 +2956,9 @@ def train_pipeline(
     if z_loss_coef > 0.0:
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
+    if zero_avoid_coef > 0.0:
+        print(f"[zero-avoiding] coef {zero_avoid_coef:g} on KL(uniform || pi) over the legal moves, the learner's rows "
+              f"(--zero-avoid-coef, P41 J1)", flush=True)
     if logit_gap_coef > 0.0:
         print(f"[logit gap] coef {logit_gap_coef:g} on legal logits more than {logit_gap:g} below the "
               f"top (--logit-gap-coef / --logit-gap)", flush=True)
@@ -3183,6 +3189,8 @@ def train_pipeline(
     if logit_gap_coef > 0.0:
         active_aux_losses.append("logit_gap_loss")
         active_aux_losses.append("logit_gap_frac")
+    if zero_avoid_coef > 0.0:
+        active_aux_losses.append("zero_avoid_kl")
     if teacher_coef > 0.0:
         active_aux_losses.append("teacher_kl")
         active_aux_losses.append("teacher_rows")

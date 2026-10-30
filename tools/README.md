@@ -103,6 +103,7 @@ policy and value restored exactly).
 | `--wolf-seat-weight` (`--wolf-ema-games` 2000, `--wolf-power`, `--wolf-scope {surrogate,policy}`) | win-or-learn-fast weights per seat; `surrogate` (default, E4-38) scales only the surrogate, so the unweighted entropy bonus pushes the down-weighted seat toward uniform; `policy` is a true per-seat learning rate. The value loss is never weighted |
 | `--adv-norm-floor c`, `--entropy-ceiling H`, `--target-kl k` | P25's loop-closing levers: an advantage-std floor from its 20M-step EMA, a one-sided per-seat entropy ceiling, a per-seat early stop of the policy terms. Not combinable with `--wolf-seat-weight` |
 | `--entropy-normalize` | the bonus rewards entropy / log(legal count); `--entropy-coef 0.021` with it matches the default bonus on E4's decision mix |
+| `--zero-avoid-coef c` | P41 J1: c x KL(uniform ‖ π) over the legal moves on the learner's rows, beside the entropy bonus; zero-avoiding, so no legal move's probability can collapse. Logs `zero_avoid_kl` |
 | `--clip-eps` (0.2), `--ppo-epochs` (4) | PPO's clip and epochs per iteration (P39 arm 3; clip 0.1 bounded the deep trunk's step, research/runs.md) |
 | `--lr-warmup-steps N` | the rate ramps linearly from 0 over the first N env steps, counted from step 0 (P39 arm 1) |
 | `--adam-beta2` (0.999), `--adam-eps` (1e-8), `--policy-head-lr-mult` (1) | AdamW's second-moment decay and epsilon; the policy heads' rate as a multiple of `--lr` (P39 arm 5) |

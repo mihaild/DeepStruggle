@@ -511,6 +511,7 @@ class BaseNashPGTrainer:
         z_loss_coef: float = 0.0,
         logit_gap_coef: float = 0.0,   # gap penalty: coef * mean relu(top - z - gap)^2 over legal moves
         logit_gap: float = 7.0,
+        zero_avoid_coef: float = 0.0,   # P41 J1: coef * KL(uniform || pi) over the legal moves, learner rows
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1083,6 +1084,13 @@ class BaseNashPGTrainer:
             raise ValueError(f"logit_gap_coef must be >= 0, got {logit_gap_coef}")
         self.logit_gap_coef = float(logit_gap_coef)
         self.logit_gap = float(logit_gap)
+        # P41 J1 (Jaxcalibur's regulariser beside the entropy bonus): KL(uniform || pi) over the legal moves,
+        # -mean_a log pi(a) - log|A|. It is zero-AVOIDING where entropy is not: a move at probability ~0 costs
+        # -log pi without bound, so no legal move's logit can fall arbitrarily far behind -- the saturation
+        # (19-33 nats) the gap penalty bounds crudely, with a gradient that is the move's own deficit.
+        if zero_avoid_coef < 0.0:
+            raise ValueError(f"zero_avoid_coef must be >= 0, got {zero_avoid_coef}")
+        self.zero_avoid_coef = float(zero_avoid_coef)
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -2459,6 +2467,18 @@ class BaseNashPGTrainer:
         return combined
 
 
+def zero_avoid_kl(logits: torch.Tensor, mask: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """P41 J1: the weighted mean over rows of KL(uniform || pi) on each row's legal moves,
+    -mean_{legal a} log pi(a) - log|legal|: 0 at the uniform policy and at a forced move, growing without bound as
+    any legal move's probability goes to zero. `weight` selects rows (the learner's own)."""
+    legal = mask.bool()
+    n = legal.sum(dim=-1).clamp(min=1).to(torch.float32)
+    log_p = F.log_softmax(logits.float(), dim=-1).masked_fill(~legal, 0.0)
+    kl = -log_p.sum(dim=-1) / n - torch.log(n)
+    w = weight.to(kl.dtype)
+    return (kl * w).sum() / w.sum().clamp(min=1.0)
+
+
 class NashPGTrainer(BaseNashPGTrainer):
     """Standard NashPG Trainer for ColdWarNet V1, V2, and V3."""
 
@@ -2650,6 +2670,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         logratio_max_t, old_lp_min_t, ratio_negadv_max_t = _z(-1e30), _z(1e30), _z()
         lse_sum_t, lse_absmax_t, z_loss_t = _z(), _z(), _z()
         gap_loss_t, gap_frac_t = _z(), _z()
+        za_loss_t = _z()
 
         # pi_ref's log-probabilities over the whole buffer, once. pi_ref is frozen for the whole
         # update (it is refreshed after train_step, in train_iteration) and always in eval mode,
@@ -2940,6 +2961,13 @@ class NashPGTrainer(BaseNashPGTrainer):
                         gap_loss_t += _gap_loss.detach().double()
                         gap_frac_t += ((_excess > 0).sum().double()
                                        / _legal.sum().clamp(min=1).double())
+                if self.zero_avoid_coef > 0.0:
+                    # Over the learner's own rows, as the entropy bonus: the opponent's choices are the
+                    # environment. Masked logits are -1e9, so their log-probabilities are zeroed out, not summed.
+                    _za_loss = zero_avoid_kl(cur_logits, b_mask, _own_f)
+                    policy_loss = policy_loss + self.zero_avoid_coef * _za_loss
+                    with torch.no_grad():
+                        za_loss_t += _za_loss.detach().double()
                 with torch.no_grad():
                     lse_sum_t += lse.mean().double()
                     lse_absmax_t = torch.maximum(lse_absmax_t, lse.abs().max().double())
@@ -3056,6 +3084,7 @@ class NashPGTrainer(BaseNashPGTrainer):
             # The gap penalty (before its coefficient) and the share of legal moves beyond the gap.
             "logit_gap_loss": float(gap_loss_t) / max(1, num_updates),
             "logit_gap_frac": float(gap_frac_t) / max(1, num_updates),
+            "zero_avoid_kl": float(za_loss_t) / max(1, num_updates),
             "val_loss": val_loss_accum / max(1, num_updates),
             **({"predeal_value_loss": float(pd_loss_t) / max(1, pd_batches), "predeal_rows": _pd_rows}
                if self.predeal_value_coef > 0.0 else {}),

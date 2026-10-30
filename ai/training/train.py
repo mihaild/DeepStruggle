@@ -1048,6 +1048,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logit-gap-coef", type=float, default=0.0,
                         help="Penalty coef * mean over legal moves of relu(top - logit - --logit-gap)^2 "
                              "(owner 2026-10-09): keeps a saturated policy learnable. 0 (default): off.")
+    parser.add_argument("--zero-avoid-coef", type=float, default=0.0,
+                        help="P41 J1: coef * KL(uniform || pi) over the legal moves on the learner's rows, beside the "
+                             "entropy bonus -- zero-avoiding, so no legal move's probability can collapse. 0: off.")
     parser.add_argument("--logit-gap", type=float, default=7.0,
                         help="The logit gap below the top legal move that --logit-gap-coef starts at.")
     parser.add_argument("--phase-lock", type=str, default=None, metavar="PATH",
@@ -1521,6 +1524,7 @@ def main():
             compile_update=args.compile_update,
             z_loss_coef=args.z_loss_coef,
             logit_gap_coef=args.logit_gap_coef,
+            zero_avoid_coef=args.zero_avoid_coef,
             logit_gap=args.logit_gap,
             phase_lock=args.phase_lock,
             token_chunk=args.ladder_token_chunk,

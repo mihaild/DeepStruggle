@@ -182,6 +182,8 @@ _BEFORE_RECORDED = {
     "active_search_refresh_steps": lambda meta: 10_000_000,
     "active_search_refresh_steps_late": lambda meta: 50_000_000,
     "active_search_late_from": lambda meta: 400_000_000,
+    # P41 J1 (2026-10-30): no zero-avoiding term before it existed.
+    "zero_avoid_coef": lambda meta: 0.0,
     # P40 Arm S (2026-10-29): no searched opponent before it existed.
     "searched_opponent_share": lambda meta: 0.125,
     "searched_opponent_scope": lambda meta: "entry",
