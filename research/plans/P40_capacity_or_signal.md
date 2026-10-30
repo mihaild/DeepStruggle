@@ -147,3 +147,12 @@ fresh head's norm against 12-33x). The missing agreement is near-tie decisions t
 runs as **E8-A30-R90-S44-2** (a warm start is bookkeeping in the run grammar, so it is R90's second run), read every 400M
 against A13+R48's SWA beside the control's 40.6% at 12,000M.
 
+**Arm C's first RL lost its start (2026-10-30).** On R90 unchanged (lr 2e-4, entropy coefficient 0.01) the distilled A30
+fell from ~40% to **22.4%** against A13+R48's SWA by 400M: entropy 0.26 -> 0.93 within 34M steps, per-update KL 2-8x the
+control's at its plateau. Stopped at 412M -- at 22% it could not reach the control's 40.6% by 800M, the matrix's rule, so
+it answers nothing about capacity. The plasticity that made it a good start is what undid it: the teacher's saturated
+heads (12-33x a fresh head's norm) hold entropy 0.29 against the same bonus; the distilled heads (2.5-6.5x) do not.
+60M probes from the same start, against the teacher greedy: entropy coefficient 0.002 held entropy (~0.37) but larger
+steps cost strength (35.3%); lr 5e-5 kept steps small (KL 0.003) while entropy still crept (0.59; 42.8%). Both together
+next, then Arm C's RL on whichever holds the start.
+
