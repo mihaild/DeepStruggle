@@ -96,3 +96,9 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
 ## Runs
 
 (filled in while running; mirrors [`../runs.md`](../runs.md))
+
+* **Arm S stopped at 17,737M** (owner, 2026-10-30): 51.6 / 53.4 / 54.3 / 54.6% at 16,400-17,600M
+  ([P40](P40_capacity_or_signal.md)). So J8a's bar is that trend: above the base's band on two consecutive reads.
+* **`E8-A8-R95-S44`**, the base, continued in place from 2,000M toward its plateau (10,000M budget) since 2026-10-30 20:06 UTC.
+* **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
+  20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
