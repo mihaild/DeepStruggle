@@ -163,3 +163,8 @@ Arm S 51.6% at 16,400M -- each ahead of its own control, none past the best E8 n
 SWA (E8-A30-R100-S44) and the A8-control version stopped at 733M; from-scratch arms use A8-on-R95's recipe (16k, clip
 0.1, zeroed readouts: 35.8% at 2,000M against 27.7%).
 
+**Arm C stopped at 662M (owner, 2026-10-30), Arm S alone.** From R94 the distilled A30 held its start (50.7% at 400M,
+inside R94's band) without gaining past it; Arm S read 51.6 / 53.4 / 54.3% at 16,400 / 16,800 / 17,200M, the one trend
+past the plateau, and runs ~3x faster alone (~65k steps/s against ~22-26k beside Arm C). The A8-R95 continuation waits
+for Arm S to finish.
+
