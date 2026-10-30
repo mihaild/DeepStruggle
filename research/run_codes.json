@@ -2044,6 +2044,19 @@
     "block_lambda": "off",
     "batch_size": 16384
    }
+  },
+  "R99": {
+   "description": "R90 (16k, PPO clip 0.1) at lr 5e-5 with entropy coefficient 0.002: the recipe that holds a warm start from distillation (P40 Arm C) -- on R90 unchanged the distilled A30 lost its start to the entropy bonus",
+   "first": "E8-A30-R99-S44_20261030_060849",
+   "flags": {
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "entropy_coef": 0.002,
+    "clip_eps": 0.1,
+    "block_lambda": "off",
+    "lr": 5e-05,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2286,7 +2299,8 @@
   "E8-A30-R96-S44_20261029_233607": "E8-A30-R96-S44",
   "E8-A30-R97-S44_20261029_234557": "E8-A30-R97-S44",
   "E8-A30-R90-S44-2_20261030_014247": "E8-A30-R90-S44-2",
-  "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98_20261030_045109": "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98"
+  "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98_20261030_045109": "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98",
+  "E8-A30-R99-S44_20261030_060849": "E8-A30-R99-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
