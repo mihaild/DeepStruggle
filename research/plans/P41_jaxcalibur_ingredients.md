@@ -54,7 +54,7 @@ plateau (10,000M budget) in the next free slot.
 ## Decision rules
 
 * An arm **passes** by the per-seat rule against the control at matched steps at 2,000M and holds it
-  at 4,000M; a pass enters the base recipe for the arms after it (J1 → J2/J3 → J4 → J5).
+  at 4,000M; a pass enters the base recipe for the arms after it (J1 → J5 → J6 → J2/J3 → J4).
 * J1 passes only with the saturation numbers moved (median gap down, rare-card rates up) **and**
   strength not lower; a regulariser that moves the numbers and costs strength is tuned (c ÷ 3) once.
 * J3 is read first on its own target: a head that does not beat the public probe (0.378) has not
@@ -68,16 +68,25 @@ plateau (10,000M budget) in the next free slot.
 
 ## Sequencing (two slots; Arm S keeps one until it reads)
 
+**Order (owner, 2026-10-30): J1 → J5 → J6 → J2 / J3 → J4 → J7 → J8 → J9.** Architecture comes
+right after the regulariser because much is likely to depend on it; and **the opponent heads depend
+on history**: without a history input the hand head can learn only the public-information prior
+(the belief probes: public 0.3780 against 0.3363 for the posterior from this turn's opponent
+decisions), and the next-action head only a style prior, so J2/J3 are not run before J6. Jaxcalibur
+has both the 16 event tokens and predictions carried across turns; the heads are read on their own
+targets only once the network can see the history they need.
+
 | slot 1 | slot 2 |
 |:---|:---|
-| Arm S to its decision (P40), then the `E8-A8-R95-S44` continuation to its plateau | J1 (2,000M, ~a day beside another arm), then J2, then J3 |
-| J8a from the base's plateau once the control has one | J4 if J2 and J3 pass; then J5 |
-| J8b on the best combination | J6 / J7 on J5's network, on the owner's word |
+| Arm S to its decision (P40), then the `E8-A8-R95-S44` continuation to its plateau | J1 (2,000M, ~a day beside another arm), then **J5** |
+| J8a from the base's plateau once the control has one | **J6** on J5's passing network (the owner's block), then J2, J3, J4 |
+| J8b on the best combination | J7 on the owner's word |
 
 Builds, in order of need: the zero-avoiding term (a loss term; the gap penalty's code is the
-pattern), the two auxiliary heads with their targets in the rollout buffer (the opponent's next
-action from the rollout's record; the opponent's hand from the engine state, never into the
-observation), µP for the token path. J6/J7 are observation blocks and wait for the owner.
+pattern); µP for the token path and the health checks on it; the history block (16 × 3 integer
+codes, embedded network-side, tokens in J5's encoder) once approved; then the two auxiliary heads
+with their targets in the rollout buffer (the opponent's next action from the rollout's record; the
+opponent's hand from the engine state, never into the observation).
 
 ## Not in this plan
 
