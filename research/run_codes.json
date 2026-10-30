@@ -2069,6 +2069,20 @@
     "distill_lr_final_frac": 0.05,
     "block_lambda": "off"
    }
+  },
+  "R101": {
+   "description": "R94 (logit gap 1e-3 at 7, 16k, PPO clip 0.1) at lr 5e-5 with entropy coefficient 0.002: R94's recipe with the two changes that hold a distilled warm start (R99's probes) -- P40 Arm C from the bar",
+   "first": "E8-A30-R101-S44_20261030_130725",
+   "flags": {
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "entropy_coef": 0.002,
+    "clip_eps": 0.1,
+    "logit_gap_coef": 0.001,
+    "block_lambda": "off",
+    "lr": 5e-05,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2313,7 +2327,8 @@
   "E8-A30-R90-S44-2_20261030_014247": "E8-A30-R90-S44-2",
   "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98_20261030_045109": "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98",
   "E8-A30-R99-S44_20261030_060849": "E8-A30-R99-S44",
-  "E8-A30-R100-S44_20261030_112517": "E8-A30-R100-S44"
+  "E8-A30-R100-S44_20261030_112517": "E8-A30-R100-S44",
+  "E8-A30-R101-S44_20261030_130725": "E8-A30-R101-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
