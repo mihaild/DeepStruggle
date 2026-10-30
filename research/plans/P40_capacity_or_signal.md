@@ -138,3 +138,12 @@ top of a plain step's ~1.8 ms, ~2.5x a plain iteration, against ~10x for a call 
 (`ai/training/searched_opponent.py`, `--searched-opponent-spec 4:4:1:z2:earlier:own:keyed:aligned:box4:graphs`;
 tools/README.md); a 128-env smoke run from scratch held ~half of the searched envs' opponent rows at 16 searched
 envs, a share that falls with more of them (64 at 512 envs).
+
+**Arm C's fit, done (2026-10-30).** `--mode online-distill` at 50M positions and a constant 3e-4 (E8-A30-R96-S44) underfit
+at 86.0% held-out agreement; to 400M positions with a cosine to 5% (E8-A30-R97-S44, 61 min) it reached **92.3%** and
+flattened -- below the 95% bar, but the bar's purpose holds: **level with the teacher greedy, 50.4% ± 1.1**, and a fresh
+network's plasticity (random labels under its own head, trunk frozen, 90.8% against the teacher's 32.0%; heads 2.5-6.5x a
+fresh head's norm against 12-33x). The missing agreement is near-tie decisions that cost no games. RL from it on R90
+runs as **E8-A30-R90-S44-2** (a warm start is bookkeeping in the run grammar, so it is R90's second run), read every 400M
+against A13+R48's SWA beside the control's 40.6% at 12,000M.
+
