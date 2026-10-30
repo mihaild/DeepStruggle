@@ -10,7 +10,7 @@ preview_urls = false
 
 [vars]
 # The page's origins: GitHub Pages, and the local dev and files servers.
-ALLOWED_ORIGINS = "https://mihaild.github.io,http://localhost:5173,http://localhost:8000"
+ALLOWED_ORIGINS = "https://mihaild.github.io,http://localhost:5173,http://localhost:8000,https://www.twilightstruggle.app"
 RATE_PER_HOUR = "30"
 
 [[d1_databases]]
