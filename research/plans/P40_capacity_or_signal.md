@@ -156,3 +156,10 @@ heads (12-33x a fresh head's norm) hold entropy 0.29 against the same bonus; the
 steps cost strength (35.3%); lr 5e-5 kept steps small (KL 0.003) while entropy still crept (0.59; 42.8%). Both together
 next, then Arm C's RL on whichever holds the start.
 
+**Every arm from the bar (owner, 2026-10-30).** The working recipes all stop in one band against A13+R48's SWA -- R48
+48-52%, R94 52.8%, Arm C's second attempt 48.1% at 400M (R99: lr 5e-5, entropy 0.002, which held the distilled start),
+Arm S 51.6% at 16,400M -- each ahead of its own control, none past the best E8 network. So arms start from R94 at
+16,000M (52.8%) and are judged against its band (49.4-53.3%): Arm S already branches it; Arm C is redistilled from its
+SWA (E8-A30-R100-S44) and the A8-control version stopped at 733M; from-scratch arms use A8-on-R95's recipe (16k, clip
+0.1, zeroed readouts: 35.8% at 2,000M against 27.7%).
+
