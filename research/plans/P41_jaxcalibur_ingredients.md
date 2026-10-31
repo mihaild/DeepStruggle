@@ -166,5 +166,12 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   owner reads the numbers to decide J5's configuration. **The base stops** when none of the last three reads beats the best read
   from before them by more than 0.5 points (0.5 is a real gain if it accumulates). **J5 before the base's gap-penalty branch.** J5's sizes are measured when the current runs
   have finished, on a free GPU; nothing is paused for it.
+* **Lose-now moves (2026-10-31).** Equilibrium of PPO + c KL(uniform ‖ π): π = c / (n Δ), Δ = (1 + v) / raw advantage std (0.21);
+  measured at DEFCON <= 2 on J1 at 2,800M: median 1.4e-3 summed over a position's losing moves, predicted 1.1e-3 (base 1e-16,
+  R94 3e-4). Entropy alone: exp(-Δ/c), effectively 0. **Top-choice suicides are not blunders**: positions already lost (v -0.95
+  to -0.98), the best safe alternative scoring 0-3% in greedy playouts on all three networks, and no safe alternative at
+  that step in 38-61%. **What J1 does cost:** own DEFCON 1 ends 9.9% of its temperature-1 games (R94 3.4%, base under 1.3%),
+  and held scoring ends 3.4% of its greedy games (base 0.9%), both from ~600 games, the first training noise, the second
+  in play.
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
