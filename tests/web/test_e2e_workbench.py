@@ -702,6 +702,10 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
     page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
     page.wait_for_selector("#lb-body tr")
     assert page.is_visible("#lb-scale-mode") and page.text_content("#lb-th-elo") == "Elo"
+    ep = data["epochs"][epoch]
+    scale = page.inner_text("#lb-scale")
+    assert scale.startswith(f"Anchor {ep['anchor']} = {ep['anchor_elo']:.0f}.")
+    assert ep["description"] not in scale and "fitted" not in scale and "seat" not in scale
     assert "The Playdek estimate switch" in page.inner_text("#lb-note")
     page.check("input[name=lb-mode][value=playdek]")
     assert page.text_content("#lb-th-elo") == "Playdek est."
@@ -712,6 +716,10 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
     assert note.startswith("Estimates only, not ratings from the Playdek app")
     assert "a model's rating there could differ" in note and "7 clean games against 3 people" in note
     assert "scale=playdek" in page.url
+    assert "anchor" not in page.inner_text("#lb-scale").lower()
+    page.click(f"#lb-body tr[data-player='{ep['anchor']}']")
+    assert "the anchor" not in page.inner_text("#lb-detail")
+    assert "anchor" not in page.inner_text("#lb-table").lower()
     page.click(f"#lb-body tr[data-player='{players[-1]}']")
     assert "Playdek estimate" in page.inner_text("#lb-detail")
     page.reload()

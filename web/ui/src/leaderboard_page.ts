@@ -387,7 +387,7 @@ class LeaderboardPage {
       ${this.isHfDefault(pid) ? `<p>${HF_TAG} The default on Hugging Face: the workbench plays this network with this search when a link names neither.</p>` : ""}
       ${codeLine}
       ${links ? `<p class="lb-links">${links}</p>` : ""}
-      <p>Elo <b>${rating.elo.toFixed(0)}</b>${pid === this.ep.anchor ? " (the anchor)" : ` ± ${rating.se.toFixed(0)}`} · ${rating.games.toLocaleString("en-US")} games against ${rating.opponents} opponents, ${rating.main_opponents} of them main players.</p>
+      <p>Elo <b>${rating.elo.toFixed(0)}</b>${pid !== this.ep.anchor ? ` ± ${rating.se.toFixed(0)}` : this.mode === "playdek" ? "" : " (the anchor)"} · ${rating.games.toLocaleString("en-US")} games against ${rating.opponents} opponents, ${rating.main_opponents} of them main players.</p>
       ${estLine}
       <div class="lb-table-wrap"><table class="lb-table">
         <thead><tr><th>Against</th><th class="num">Elo</th><th class="num">Games</th><th class="num">Score</th>
@@ -458,10 +458,8 @@ class LeaderboardPage {
         + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, using the Playdek ratings those people entered themselves, with takebacks allowed. `
         + `Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider.`
       : ANCHOR_NOTE + (pd ? ESTIMATE_POINTER : "");
-    $("lb-scale").innerHTML = `${esc(ep.description)} Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}.
-      The main players are fitted on their games against each other; everyone else against them, held fixed,
-      so a rating does not move with the view. The US seat is worth ${ep.seat_us >= 0 ? "+" : ""}${ep.seat_us.toFixed(0)} ± ${ep.seat_us_se.toFixed(0)} Elo.
-      Click a row for its head-to-head results.`
+    const anchor = this.mode === "playdek" ? "" : `Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}. `;
+    $("lb-scale").innerHTML = `${anchor}Click a row for its head-to-head results.`
       + (ep.unrated.length ? ` <span class="lb-dim">Unrated (no games that connect them to the main players): ${ep.unrated.map(esc).join(", ")}.</span>` : "");
     const d = this.data;
     const records = `https://github.com/${esc(d.github)}/blob/${esc(d.commit ?? "main")}/leaderboard/matches/${esc(this.epoch)}.jsonl`;
