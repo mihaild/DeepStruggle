@@ -162,7 +162,8 @@ const HF_TAG = `<span class="lb-tag hf" title="The default on Hugging Face: the 
 
 const ANCHOR_NOTE = `These ratings come only from games between the models listed here, on a scale
   anchored at one of them. They do not correspond to human Elo ratings, such as those of the
-  Playdek Twilight Struggle app: no game against a human contributes to them.`;
+  Playdek Twilight Struggle app.`;
+const ESTIMATE_POINTER = ` The Playdek estimate switch shows an estimate of that scale, from games people played against these models on this site.`;
 
 const KIND_LABEL: Record<string, string> ={ policy: "", gumbel: "Gumbel", rollout: "rollout", search: "PUCT", bot: "bot" };
 
@@ -452,10 +453,10 @@ class LeaderboardPage {
     const ep = this.ep;
     const pd = this.data.playdek;
     $("lb-note").textContent = this.mode === "playdek" && pd
-      ? `Estimates, from ${pd.games} clean games against ${pd.humans} people on the workbench to ${pd.as_of}, at the Playdek ratings they gave; takebacks are allowed. `
-        + `A player people have faced is placed by those games and its leaderboard gaps together; a player nobody has faced by its gaps alone, so its ± is wider. `
-        + `This is not a rating Playdek has issued.`
-      : ANCHOR_NOTE;
+      ? `Estimates only, not ratings from the Playdek app: the games behind them were played on this site, not in the app, and a model's rating there could differ. `
+        + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, using the Playdek ratings those people entered themselves, with takebacks allowed. `
+        + `A player people have faced is placed by those games and its leaderboard gaps together; a player nobody has faced by its gaps alone, so its ± is wider.`
+      : ANCHOR_NOTE + (pd ? ESTIMATE_POINTER : "");
     $("lb-scale").innerHTML = `${esc(ep.description)} Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}.
       The main players are fitted on their games against each other; everyone else against them, held fixed,
       so a rating does not move with the view. The US seat is worth ${ep.seat_us >= 0 ? "+" : ""}${ep.seat_us.toFixed(0)} ± ${ep.seat_us_se.toFixed(0)} Elo.

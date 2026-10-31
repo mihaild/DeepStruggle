@@ -696,17 +696,21 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
     page.wait_for_selector("#lb-body tr")
     assert not page.is_visible("#lb-scale-mode")
     assert page.text_content("#lb-th-elo") == "Elo" and "scale=playdek" not in page.url
+    assert "Playdek estimate" not in page.inner_text("#lb-note"), "no pointer to a switch the page does not have"
 
     served["body"] = json.dumps(with_estimate)
     page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
     page.wait_for_selector("#lb-body tr")
     assert page.is_visible("#lb-scale-mode") and page.text_content("#lb-th-elo") == "Elo"
+    assert "The Playdek estimate switch" in page.inner_text("#lb-note")
     page.check("input[name=lb-mode][value=playdek]")
     assert page.text_content("#lb-th-elo") == "Playdek est."
     rows = page.eval_on_selector_all(
         "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
     assert rows == [[p, f"{estimate[p]['rating']:.0f}"] for p in reversed(players)]
-    assert "7 clean games against 3 people" in page.inner_text("#lb-note")
+    note = page.inner_text("#lb-note")
+    assert note.startswith("Estimates only, not ratings from the Playdek app")
+    assert "a model's rating there could differ" in note and "7 clean games against 3 people" in note
     assert "scale=playdek" in page.url
     page.click(f"#lb-body tr[data-player='{players[-1]}']")
     assert "Playdek estimate" in page.inner_text("#lb-detail")
