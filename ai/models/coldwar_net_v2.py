@@ -992,6 +992,13 @@ def check_checkpoint_layout(state_dict: dict) -> None:
                 f"this ladder checkpoint has {int(lad_enc.shape[1]) - idim} card features; "
                 f"layout v2.3 has {ColdWarNetV2.CARD_FEATURES}.")
         return
+    if "tok_main.heads_buf" in state_dict:                   # P41 J5: tokens as the main path, no grouped projections
+        widths = tuple(int(state_dict[f"tok_{k}_in.weight"].shape[1]) for k in ("country", "card", "global"))
+        layout = (ColdWarNetV2.BOARD_FEATURES, ColdWarNetV2.CARD_FEATURES, ColdWarNetV2.GLOBAL_SIZE)
+        if widths != layout:
+            raise ValueError(f"this token checkpoint reads {widths} floats per country, card and global block; "
+                             f"layout v2.3 is {layout}.")
+        return
     lad_b = state_dict.get("lad_board.0.weight")
     lad_c = state_dict.get("lad_card.0.weight")
     if lad_b is not None and lad_c is not None:              # input_mode="grouped"

@@ -71,6 +71,7 @@ _LADDER = {
     "card_lookup_heads": "ladder_card_lookup_heads", "card_lookup_dim": "ladder_card_lookup_dim",
     "card_lookup_identity_dim": "ladder_card_lookup_identity_dim",
     "token_layers": "ladder_token_layers", "token_dim": "ladder_token_dim",
+    "token_main": "ladder_token_main", "token_heads": "ladder_token_heads", "token_mlp_mult": "ladder_token_mlp_mult",
     "branch_head": "ladder_branch_head", "play_mode_head": "ladder_play_mode_head",
     "logit_cap": "ladder_logit_cap", "logit_cap_grad": "ladder_logit_cap_grad",
     "res_dropout": "ladder_res_dropout", "trunk_norm": "ladder_trunk_norm",

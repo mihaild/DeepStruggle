@@ -41,7 +41,7 @@ TREND = {
     "heads run 2,000M": "/workspace/data/checkpoints/E7-A8-R1-S44_20261007_162257/swa_1920-2000M.pt",
     "heads run 6,400M": "/workspace/data/checkpoints/E7-A8-R1-S44_20261007_162257/swa_6320-6400M.pt",
 }
-TRUNK = ("lad_board", "lad_card", "global_proj", "fusion_in", "res_blocks")
+TRUNK = ("lad_board", "lad_card", "global_proj", "tok_main", "fusion_in", "res_blocks")
 POLICY_HEAD = POLICY_HEAD_MODULES
 A = 220
 

@@ -56,7 +56,9 @@ def base_shapes_for(config: Mapping[str, object], base_proj_dim: int, base_hidde
     """The parameter shapes of the same network at the base widths, without its extra depth (no sphere or residual
     blocks): `build(**config)` makes a LadderNet on the CPU."""
     cfg = dict(config)
-    cfg.update(entity_proj_dim=int(base_proj_dim), hidden_dim=int(base_hidden_dim), num_res_blocks=0)
+    # A token-main network has no grouped projections to set a base width for (P41 J5).
+    cfg.update(entity_proj_dim=0 if cfg.get("token_main") else int(base_proj_dim), hidden_dim=int(base_hidden_dim),
+               num_res_blocks=0)
     for k in ("sphere_blocks", "sphere_expansion", "sphere_out_scale", "sphere_carry_norm", "trunk_norm",
               "res_post_norm"):
         cfg.pop(k, None)

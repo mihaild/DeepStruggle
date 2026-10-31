@@ -38,7 +38,7 @@ plateau (10,000M budget) in the next free slot.
 | **J8** | **training against search, repeated on top**: Arm S's searched opponent (`--searched-opponent-spec 4:4:1:z2:earlier:own:keyed:aligned:box4:graphs`, one game in eight) (a) as a branch from the new base's plateau -- Arm S's form, replicated; (b) at the same share from the start of the best combination, gated as R69 was (search joins when the root beats its raw snapshot ≥ 55% in a 200-game check every 40M) | the one P40 result that moved a plateau; it must be shown to hold on the new base, and whether it helps from the start is untested |
 | **J9** | **length**: the best combination run to twice the steps its control plateaued at if still rising | their ~100M games are ~45,000M of our steps; our plateaus are at 12,000M |
 
-## J5's design: the token transformer as the main path (owner, 2026-10-31: option B; for review, not built)
+## J5's design: the token transformer as the main path (owner, 2026-10-31: option B; built, not launched)
 
 The row above (A33, attention beside the grouped trunk) is not the run: it costs a transformer's compute and tests only
 "attention beside the trunk", and its relatives were level (E7-09-44 by 400M, A18 grown onto a plateau). What Jaxcalibur
@@ -51,13 +51,17 @@ publishes: a non-causal transformer, pre-RMSNorm, different MLP weights per posi
   row plus a learned identity per country and card (`tok_*_in`, `tok_*_id`).
 * **Blocks:** L pre-RMSNorm blocks: full self-attention shared by all tokens, then an **MLP per token type** (global,
   country, card), only the token's own running: parameters triple, compute does not.
-* **Main path:** the grouped projections and fusion input go. The trunk `h` is `fusion_in` over the global token's output
-  alone, so everything reaches the trunk through attention.
-* **Heads, unchanged:** base policy and value from `h`; per-country and per-card heads each from their own token, raw row
-  and the trunk context; branch and play-mode heads as now. The 220-wide flat action space is untouched.
+* **Main path:** the grouped projections go. The trunk `h` is `fusion_in` over the global token's output and the mean of
+  the country and of the card tokens (owner, 2026-10-31), so everything reaches the trunk through attention.
+* **Heads:** base policy and value from `h`; per-country and per-card heads each from their own token, raw row and the
+  trunk context; branch and play-mode heads also read **the active card's token** (owner, 2026-10-31). The 220-wide flat
+  action space is untouched.
 * **Readouts zeroed** (R95). `--mup` scales nothing at these widths unless a base is defined for the token path: left off the build.
-* **Flags:** `--ladder-token-main` (drop the grouped path), `--ladder-token-mlp-mult`, per-type MLP and RMSNorm under
-  it; recovered from a state dict as every axis is; ONNX export tested (the workbench must still run it).
+* **Flags (built, `ai/models/token_transformer.py`):** `--ladder-token-main` with `--ladder-entity-proj-dim 0`,
+  `--ladder-token-layers`, `--ladder-token-dim`, `--ladder-token-heads`, `--ladder-token-mlp-mult`; recovered from a state
+  dict; the ONNX export is checked against torch; a 3 x 192 smoke run through the CLI ran at ~1.6k steps/s beside two trainers.
+* **The setup stays a separate problem:** the network sees the phase, the placements left and the board, so "Czechoslovakia
+  while the counter is high" remains the easy function; tokens do not add exploration or credit.
 
 **Size: cost per row, measured** (a prototype, bf16, batch 1,024 beside two trainers, so ±~30%: its 2x128
 read slower than its 3x128). One forward plus four updates per row; A8's 9.9 µs matches its ~107k steps/s alone, so
@@ -72,7 +76,8 @@ steps/s below is 10^6 / cost.
 | 3 × 256, per-type MLP ×2 | 3.55M | 595 | 4.3 | ~1.7k | 5.5 d | 14 d |
 | 4 × 256, per-type MLP ×4 (Jaxcalibur's size) | 7.75M | 829 | 6.0 | ~1.2k | 8 d | 19 d |
 
-**Proposed: 3 × 192**, with the larger cells open if the build runs faster than the prototype. The GPU is the limit: 9.9
+**Size is decided on a free GPU (owner, 2026-10-31):** every cell is measured with nothing beside it, then chosen; L is
+the attention depth, 2-4 in the benchmark, 3 the leaning. The GPU is the limit: 9.9
 GB per 1,024 rows at 4 × 256 means passes of ~1,024 rows at the 16k minibatch (`--ladder-token-chunk`), and a neighbour
 slows it badly (A18: 4.7k beside R57, which fell from 69k to 10-20k). It runs with the GPU to itself or one light neighbour.
 

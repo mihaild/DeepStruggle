@@ -134,6 +134,9 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         # P30 C1. Recorded only when on, so the configs of earlier runs stay comparable.
         **({"token_layers": int(args.ladder_token_layers), "token_dim": int(args.ladder_token_dim)}
            if args.ladder_token_layers else {}),
+        # P41 J5. Recorded only when on.
+        **({"token_main": True, "token_heads": int(args.ladder_token_heads),
+            "token_mlp_mult": int(args.ladder_token_mlp_mult)} if getattr(args, "ladder_token_main", False) else {}),
         # Owner 2026-10-06. Recorded only when on, as the token path.
         **({"branch_head": True} if getattr(args, "ladder_branch_head", False) else {}),
         # Owner 2026-10-16 (Cell A). Recorded only when on.
@@ -342,6 +345,14 @@ def build_parser() -> argparse.ArgumentParser:
                           "down (an unsatisfiable push that drifts the network). 0 (default): off.")
     lad.add_argument("--ladder-token-dim", type=int, default=128,
                      help="Token width for --ladder-token-layers (default 128).")
+    lad.add_argument("--ladder-token-main", action="store_true", default=False,
+                     help="P41 J5: the token transformer is the main path -- pre-RMSNorm blocks, an MLP per token type, "
+                          "no grouped projections (--ladder-entity-proj-dim 0); the trunk reads the global token and "
+                          "each type's mean, the play-mode and branch heads the active card's token.")
+    lad.add_argument("--ladder-token-heads", type=int, default=4,
+                     help="Attention heads with --ladder-token-main (must divide --ladder-token-dim).")
+    lad.add_argument("--ladder-token-mlp-mult", type=int, default=2,
+                     help="MLP width over token width with --ladder-token-main.")
     lad.add_argument("--ladder-head-center", action=argparse.BooleanOptionalAction, default=None,
                      help="Centre the per-entity heads' hidden features across entities before "
                           "their final projection, removing the country-logit shift the E4 policy "

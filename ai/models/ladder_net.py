@@ -36,6 +36,7 @@ import ts_engine as ts
 
 from ai.models.coldwar_net_v2 import (STATIC_BOARD_SLOTS, STATIC_CARD_SLOTS,
                                       ColdWarNetV2, static_input_mask)
+from ai.models.token_transformer import TokenTransformer
 from ai.models.hyperspherical import SphereTrunk
 from bindings.action_encoder import ActionEncoder
 
@@ -204,6 +205,9 @@ class LadderNet(ColdWarNetV2):
                  logit_cap_leak_up: float = 0.0,
                  token_layers: int = 0,
                  token_dim: int = 0,
+                 token_main: bool = False,
+                 token_heads: int = 4,
+                 token_mlp_mult: int = 2,
                  region_attn_dim: int = 0,
                  region_attn_heads: int = 4,
                  **kwargs: Any) -> None:
@@ -225,6 +229,12 @@ class LadderNet(ColdWarNetV2):
                              "it needs input_mode='grouped'.")
         if token_layers and token_dim <= 0:
             raise ValueError(f"token_layers={token_layers} needs a positive token_dim")
+        if token_main and not (token_layers and per_entity_heads):
+            raise ValueError("token_main makes the token path the network's main path: it needs token_layers and "
+                             "the per-entity heads that read the tokens")
+        if token_main and entity_proj_dim:
+            raise ValueError("token_main drops the grouped projections; --ladder-entity-proj-dim must be 0, not "
+                             f"{entity_proj_dim}: refused rather than silently ignored")
         tokenless = input_mode in ("flat", "grouped")
         # `grouped` keeps every entity's RAW slots at a fixed offset, so a per-entity head can
         # read country i's own features and reach country i's logit with no learned token space
@@ -309,6 +319,12 @@ class LadderNet(ColdWarNetV2):
                      "ro_query", "ro_country_kv", "ro_card_kv", "ro_out"):
             if hasattr(self, name):
                 setattr(self, name, None)
+        # P41 J5: the token transformer is the main path, so the global block reaches the trunk through its token.
+        self.token_main = bool(token_main)
+        self.token_heads = int(token_heads)
+        self.token_mlp_mult = int(token_mlp_mult)
+        if self.token_main:
+            setattr(self, "global_proj", None)
 
         d = int(entity_dim)
         p = self.entity_proj_dim
@@ -336,9 +352,12 @@ class LadderNet(ColdWarNetV2):
                 keep[self.CARD_OFFSET:self.CARD_OFFSET + self.CARD_SIZE]).squeeze(-1)
             self.register_buffer("board_keep_idx", b_keep, persistent=False)
             self.register_buffer("card_keep_idx", c_keep, persistent=False)
-            self.lad_board = _mlp(int(b_keep.numel()), p)
-            self.lad_card = _mlp(int(c_keep.numel()), p)
-            fused_width = 2 * p + 128
+            if self.token_main:
+                fused_width = 0
+            else:
+                self.lad_board = _mlp(int(b_keep.numel()), p)
+                self.lad_card = _mlp(int(c_keep.numel()), p)
+                fused_width = 2 * p + 128
 
         else:  # entity
             self.lad_board_enc = nn.Sequential(nn.Linear(board_in, d), nn.GELU())
@@ -426,12 +445,17 @@ class LadderNet(ColdWarNetV2):
             self.tok_global_in = nn.Linear(self.GLOBAL_SIZE, t)
             self.tok_country_id = nn.Parameter(torch.randn(84, t) * 0.02)
             self.tok_card_id = nn.Parameter(torch.randn(110, t) * 0.02)
-            layer = nn.TransformerEncoderLayer(t, TOKEN_HEADS, 2 * t, dropout=0.0,
-                                               batch_first=True, norm_first=True)
-            self.tok_enc = nn.TransformerEncoder(layer, self.token_layers,
-                                                 enable_nested_tensor=False)
-            self.tok_norm = nn.LayerNorm(t)
-            fused_width += t
+            if self.token_main:
+                self.tok_main = TokenTransformer(t, self.token_layers, self.token_heads, self.token_mlp_mult)
+                # The trunk reads the global token's output and the mean of each entity type's.
+                fused_width = 3 * t
+            else:
+                layer = nn.TransformerEncoderLayer(t, TOKEN_HEADS, 2 * t, dropout=0.0,
+                                                   batch_first=True, norm_first=True)
+                self.tok_enc = nn.TransformerEncoder(layer, self.token_layers,
+                                                     enable_nested_tensor=False)
+                self.tok_norm = nn.LayerNorm(t)
+                fused_width += t
 
         self.fusion_in = nn.Sequential(
             nn.Linear(fused_width, hidden_dim), nn.LayerNorm(hidden_dim), nn.GELU())
@@ -591,7 +615,8 @@ class LadderNet(ColdWarNetV2):
             if input_mode == "flat":
                 raise ValueError("branch_head reads the card nodes; the flat input mode has none")
             self.branch_head_net = nn.Sequential(
-                nn.Linear(hidden_dim + 110, 128), nn.GELU(), nn.Linear(128, BRANCH_BLOCK))
+                nn.Linear(hidden_dim + 110 + (self.token_dim if self.token_main else 0), 128), nn.GELU(),
+                nn.Linear(128, BRANCH_BLOCK))
             out = self.branch_head_net[-1]
             assert isinstance(out, nn.Linear)
             nn.init.zeros_(out.weight)
@@ -607,7 +632,8 @@ class LadderNet(ColdWarNetV2):
             if input_mode == "flat":
                 raise ValueError("play_mode_head reads the card nodes; the flat input mode has none")
             self.play_mode_head_net = nn.Sequential(
-                nn.Linear(hidden_dim + 110, 128), nn.GELU(), nn.Linear(128, PLAY_MODE_BLOCK))
+                nn.Linear(hidden_dim + 110 + (self.token_dim if self.token_main else 0), 128), nn.GELU(),
+                nn.Linear(128, PLAY_MODE_BLOCK))
             out = self.play_mode_head_net[-1]
             assert isinstance(out, nn.Linear)
             nn.init.zeros_(out.weight)
@@ -741,7 +767,8 @@ class LadderNet(ColdWarNetV2):
             c = self.tok_country_in(board_raw.view(b, 84, self.board_features)) + self.tok_country_id
             k = self.tok_card_in(card_raw.view(b, 110, self.card_features)) + self.tok_card_id
             g = self.tok_global_in(glob).unsqueeze(1)
-            out = self.tok_norm(self.tok_enc(torch.cat([g, c, k], dim=1)))
+            x = torch.cat([g, c, k], dim=1)
+            out = self.tok_main(x) if self.token_main else self.tok_norm(self.tok_enc(x))
         return out.float()
 
     # ------------------------------------------------------------------ config
@@ -829,6 +856,8 @@ class LadderNet(ColdWarNetV2):
             **({"logit_cap_leak_up": self.logit_cap_leak_up} if self.logit_cap_leak_up > 0.0 else {}),
             **({"region_attn_dim": self.region_attn_dim, "region_attn_heads": self.region_attn_heads}
                if self.region_attn_dim else {}),
+            **({"token_main": True, "token_heads": self.token_heads, "token_mlp_mult": self.token_mlp_mult}
+               if self.token_main else {}),
         )
 
 
@@ -869,7 +898,11 @@ class LadderNet(ColdWarNetV2):
             return logits
         assert tokens is not None
         card_nodes = tokens[3]
-        x = torch.cat([h, (card_nodes[..., ACTIVE_CARD_SLOT] > 0.95).to(h.dtype)], dim=-1)   # (B, H + 110)
+        active = (card_nodes[..., ACTIVE_CARD_SLOT] > 0.95).to(h.dtype)
+        x = torch.cat([h, active], dim=-1)   # (B, H + 110)
+        if self.token_main:
+            # "Event or Ops for this card" reads this card's own token (zero when no card is active).
+            x = torch.cat([x, (tokens[2] * active.unsqueeze(-1)).sum(dim=1)], dim=-1)
         zero = logits.new_zeros(())
         pm = (self._mlp_head("play_mode_head_net", x).to(logits.dtype) if self.play_mode_head
               else zero.expand(logits.shape[0], PLAY_MODE_BLOCK))
@@ -941,18 +974,23 @@ class LadderNet(ColdWarNetV2):
             board_raw = obs[:, :self.BOARD_SIZE]
             card_raw = obs[:, self.CARD_OFFSET:self.CARD_OFFSET + self.CARD_SIZE]
             glob = obs[:, self.GLOBAL_OFFSET:self.GLOBAL_OFFSET + self.GLOBAL_SIZE]
-            e_board = self.lad_board(torch.index_select(
-                board_raw, 1, cast(torch.Tensor, self.board_keep_idx)))
-            e_card = self.lad_card(torch.index_select(
-                card_raw, 1, cast(torch.Tensor, self.card_keep_idx)))
-            pre = torch.cat([e_board, e_card, self.global_proj(glob)], dim=-1)
-            if self.card_lookup:
-                pre = torch.cat([pre, self._card_lookup(card_raw, pre, b)], dim=-1)
             tok_country = tok_cards = None
-            if self.token_layers:
+            if self.token_main:
                 t_out = self._token_path(board_raw, card_raw, glob, b)
                 tok_country, tok_cards = t_out[:, 1:85], t_out[:, 85:]
-                pre = torch.cat([pre, t_out[:, 0]], dim=-1)
+                pre = torch.cat([t_out[:, 0], tok_country.mean(dim=1), tok_cards.mean(dim=1)], dim=-1)
+            else:
+                e_board = self.lad_board(torch.index_select(
+                    board_raw, 1, cast(torch.Tensor, self.board_keep_idx)))
+                e_card = self.lad_card(torch.index_select(
+                    card_raw, 1, cast(torch.Tensor, self.card_keep_idx)))
+                pre = torch.cat([e_board, e_card, self.global_proj(glob)], dim=-1)
+                if self.card_lookup:
+                    pre = torch.cat([pre, self._card_lookup(card_raw, pre, b)], dim=-1)
+                if self.token_layers:
+                    t_out = self._token_path(board_raw, card_raw, glob, b)
+                    tok_country, tok_cards = t_out[:, 1:85], t_out[:, 85:]
+                    pre = torch.cat([pre, t_out[:, 0]], dim=-1)
             h = self.fusion_in(pre)
             if self.raw_tokens:
                 # The tokens are the raw slots themselves. `_policy_logits` concatenates
@@ -1057,10 +1095,11 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         input_mode = "flat"
     elif "lad_board_enc.0.weight" in sd:
         input_mode = "entity"
-    elif "lad_board.0.weight" in sd:
+    elif "lad_board.0.weight" in sd or "tok_main.heads_buf" in sd:
         input_mode = "grouped"
     else:
         return None
+    token_main = "tok_main.heads_buf" in sd
 
     fusion = sd["fusion_in.0.weight"]
     hidden_dim = int(fusion.shape[0])
@@ -1071,6 +1110,10 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
     if input_mode == "flat":
         proj = sd["lad_in.0.weight"]
         in_width = int(proj.shape[1])
+        entity_dim, aggregation = 0, "flatten"
+    elif token_main:
+        proj = None
+        in_width = 0
         entity_dim, aggregation = 0, "flatten"
     else:
         proj = sd["lad_board.0.weight"]
@@ -1126,7 +1169,8 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
     identity_dim = int(ident.shape[1]) if ident is not None else 0
     tok_in = sd.get("tok_country_in.weight")
     token_dim = int(tok_in.shape[0]) if tok_in is not None else 0
-    token_layers = len({k.split(".")[2] for k in sd if k.startswith("tok_enc.layers.")})
+    token_layers = (len({k.split(".")[2] for k in sd if k.startswith("tok_main.blocks.")}) if token_main
+                    else len({k.split(".")[2] for k in sd if k.startswith("tok_enc.layers.")}))
     per_entity_heads = (int(pe.shape[0]) if pe is not None
                         else int(sd["pe_country.0.weight"].shape[0]) if has_country
                         else int(sd["pe_card.0.weight"].shape[0]) if has_card else 0)
@@ -1165,7 +1209,7 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         drop_static=drop_static,
         hidden_dim=hidden_dim,
         num_res_blocks=len(blocks),
-        entity_proj_dim=int(proj.shape[0]),
+        entity_proj_dim=int(proj.shape[0]) if proj is not None else 0,
         num_attn_heads=4,
         head_center="pe_center" in sd,
         categorical_value=any(k.startswith("value_dist_head") for k in sd),
@@ -1186,6 +1230,9 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         **({"head_norm": True} if any(k.startswith("head_norms.") for k in sd) else {}),
         **({"region_attn_dim": int(sd["region_attn.qkv.weight"].shape[0]) // 3,
             "region_attn_heads": int(sd["region_attn.n_heads"])} if "region_attn.qkv.weight" in sd else {}),
+        **({"token_main": True, "token_heads": int(sd["tok_main.heads_buf"]),
+            "token_mlp_mult": int(sd["tok_main.blocks.0.mlp_card.0.weight"].shape[0]) // token_dim}
+           if token_main else {}),
     )
 
 def create_ladder_net(device: torch.device | str, **config: Any) -> LadderNet:
