@@ -713,7 +713,7 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
         "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
     assert rows == [[p, f"{estimate[p]['rating']:.0f}"] for p in reversed(players)]
     note = page.inner_text("#lb-note")
-    assert note.startswith("Estimates only, not ratings from the Playdek app")
+    assert note.startswith("Estimates based on self-reported human ratings, not ratings from the Playdek app")
     assert "a model's rating there could differ" in note and "7 clean games against 3 people" in note
     assert "scale=playdek" in page.url
     assert "anchor" not in page.inner_text("#lb-scale").lower()

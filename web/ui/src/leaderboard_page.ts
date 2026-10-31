@@ -454,8 +454,8 @@ class LeaderboardPage {
     const ep = this.ep;
     const pd = this.data.playdek;
     $("lb-note").textContent = this.mode === "playdek" && pd
-      ? `Estimates only, not ratings from the Playdek app: the games behind them were played on this site, not in the app, and a model's rating there could differ. `
-        + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, using the Playdek ratings those people entered themselves, with takebacks allowed. `
+      ? `Estimates based on self-reported human ratings, not ratings from the Playdek app: each person typed in their own Playdek rating, the games were played on this site rather than in the app, and a model's rating there could differ. `
+        + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, with takebacks allowed. `
         + `Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider.`
       : ANCHOR_NOTE + (pd ? ESTIMATE_POINTER : "");
     const anchor = this.mode === "playdek" ? "" : `Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}. `;
