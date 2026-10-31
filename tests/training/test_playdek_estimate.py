@@ -89,10 +89,31 @@ def test_people_can_move_a_gap_the_leaderboard_gave() -> None:
     games = _beaten("strong", 40, wins_of_ten=5) + _beaten("weak", 40)
     shifted = fit(games, position, networks, 0.0, 0.0)
     moved = fit(games, position, networks)
-    assert moved.networks["B"] + moved.configs["weak"] < moved.networks["A"] + moved.configs["strong"] - 50.0
+    assert moved.networks["B"] + moved.configs["weak"] < moved.networks["A"] + moved.configs["strong"] - 15.0
     assert not shifted.networks and not shifted.configs
-    tight = fit(games, position, networks, 25.0, 10.0)
+    tight = fit(games, position, networks, 10.0, 5.0)
     assert abs(tight.networks["B"]) < abs(moved.networks["B"]), "a tighter prior moves it less"
+
+
+def test_one_game_cannot_override_a_measured_gap() -> None:
+    """One loss to someone rated well below it barely moves a player, and a 50-point gap holds."""
+    position = {"measured": 1600.0, "newcomer": 1650.0}
+    networks = {"measured": "A", "newcomer": "B"}
+    games = _beaten("measured", 60, rating=1650.0, wins_of_ten=5)
+    rating = lambda f, p: position[p] + f.offset + f.networks.get(networks[p], 0.0) + f.configs.get(p, 0.0)
+    without = fit(games, position, networks)
+    with_loss = fit(games + [HumanGame("one", 1300.0, 1.0, "newcomer")], position, networks)
+    gap = rating(with_loss, "newcomer") - rating(with_loss, "measured")
+    assert gap == pytest.approx(rating(without, "newcomer") - rating(without, "measured"), abs=6.0)
+    assert gap > 40.0
+
+
+def test_many_games_can_still_move_a_gap() -> None:
+    position = {"measured": 1600.0, "newcomer": 1650.0}
+    networks = {"measured": "A", "newcomer": "B"}
+    games = _beaten("measured", 200, rating=1650.0, wins_of_ten=5) + _beaten("newcomer", 200, rating=1650.0, wins_of_ten=9)
+    moved = fit(games, position, networks)
+    assert moved.networks["B"] + moved.configs["newcomer"] < moved.networks["A"] + moved.configs["measured"] - 20.0
 
 
 def test_games_against_one_search_move_its_network_more_than_its_own_part() -> None:

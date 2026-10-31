@@ -474,9 +474,9 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
   replay here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
   and nothing new can claim to predate that. A player's estimate is its leaderboard Elo on the newest
   epoch's scale (an older epoch's through the newer one's anchor) + one shared offset + a deviation
-  shared by its network, N(0, `--network-sd`^2, default 100) + its own, N(0, `--config-sd`^2, default
-  50): games against people move a player and its network's other players as far as their number
-  justifies, and a player with none takes its network's deviation, with the priors in its uncertainty.
+  shared by its network, N(0, `--network-sd`^2, default 20) + its own, N(0, `--config-sd`^2, default
+  10): many games against people can move a player and its network's other players, and one cannot
+  override a gap the leaderboard measured (removing any one game moves a gap by about 3 points), and a player with none takes its network's deviation, with the priors in its uncertainty.
   There is no seat term: how a model plays each seat is part of its strength. The ± and interval are
   a bootstrap over the people. The output
   and the log hold aggregates only; the logins stay in memory.

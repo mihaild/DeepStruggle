@@ -41,8 +41,11 @@ from tools.lib.player_spec import spec_from_dict, workbench_search
 
 _C = math.log(10.0) / 400.0
 #: The sds of a network's and of a configuration's deviation from the leaderboard, in rating points.
-DEFAULT_NETWORK_SD = 100.0
-DEFAULT_CONFIG_SD = 50.0
+#: Tight on purpose: a gap the leaderboard measured over thousands of games should yield to many games
+#: against people, not to one. At these, removing any one game moves a gap by about 3 points; at 100
+#: and 50, one loss took a player from 50 points above another to 26 below (owner, 2026-10-31).
+DEFAULT_NETWORK_SD = 20.0
+DEFAULT_CONFIG_SD = 10.0
 #: The prior on the offset, around the mean of (human rating - position).
 OFFSET_PRIOR_SD = 400.0
 BOOTSTRAP = 1000
