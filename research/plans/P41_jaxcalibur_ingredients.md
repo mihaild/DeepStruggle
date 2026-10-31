@@ -101,5 +101,13 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
 * **Arm S stopped at 17,737M** (owner, 2026-10-30): 51.6 / 53.4 / 54.3 / 54.6% at 16,400-17,600M
   ([P40](P40_capacity_or_signal.md)). So J8a's bar is that trend: above the base's band on two consecutive reads.
 * **`E8-A8-R95-S44`**, the base, continued in place from 2,000M toward its plateau (10,000M budget) since 2026-10-30 20:06 UTC.
+* **Setups (2026-10-31; greedy, every 800M on J1 and R94's lineage, and the policy along them).** They move with the
+  recipe and stay near ties on the US side (R94 drifted from WG 4 Italy 3 to WG 4 Canada 2 Italy 2 with no gain); the USSR
+  sits at Czechoslovakia 3 Poland 3 on most of the lineage (Czechoslovakia 3 Yugoslavia 3 at 8,000-10,000M, until R48's
+  switch), Arm S unmoved. **A forced Yugoslavia is not followed up**: next P(Yugoslavia) 0.5-0.7% on J1, ~0-0.1% on R94
+  and the base; the setup behaves as a script over the placement count. Opening probabilities at T=1: Czechoslovakia 3
+  Poland 3 is 67% on J1, 97.6% on R94, 100% on the base (J1 off-book 1 USSR game in 3); Yugoslavia 1 Poland 4 East Germany
+  1 is 2e-8 on J1. **Owner: the network must discover openings itself** (no seeding, P40a not run). The candidate, J1 +
+  `--setup-mc-credit`, comes after J5: "major architecture overhaul can change a lot."
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
