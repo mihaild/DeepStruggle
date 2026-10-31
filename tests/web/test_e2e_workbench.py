@@ -686,7 +686,7 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
     estimate = {p: {"rating": 1000.0 + 10 * k, "se": 40.0, "lo": 900.0, "hi": 1100.0, "games": k, "humans": 1,
                     "w": k, "d": 0, "l": 0} for k, p in enumerate(players)}
     with_estimate = {**data, "playdek": {"as_of": "2026-10-31", "games": 7, "humans": 3, "excluded": {}, "offset": 1.0,
-                                         "deviation_sd": 100.0, "reference_epoch": epoch, "players": estimate}}
+                                         "network_sd": 100.0, "config_sd": 50.0, "reference_epoch": epoch, "players": estimate}}
     served = {"body": json.dumps(data)}
     page = browser.new_page(viewport={"width": 1280, "height": 900})
     errors: List[str] = []

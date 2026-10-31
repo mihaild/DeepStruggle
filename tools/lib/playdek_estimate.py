@@ -4,17 +4,21 @@ The leaderboard's Elo comes only from games between models. The stats database (
 holds games against people, each with the human's Playdek rating, and those games place the players
 on Playdek's scale:
 
-    P(human scores) = 1 / (1 + 10^((position + b + d - rating) / 400))
+    P(human scores) = 1 / (1 + 10^((position + b + n + c - rating) / 400))
 
 `position` is the player's leaderboard Elo on the newest epoch's scale (an older epoch's rating
-reaches it through the newer epoch's anchor, which is rated on both), `b` is one offset shared by
-every player, and `d` is the player's own deviation, drawn from N(0, deviation_sd^2). So a gap
-between two players is not simply carried over from the leaderboard: people's games against a
-configuration move it, as far as their number justifies. A player nobody has played has d = 0, the
-leaderboard's gap, and carries deviation_sd in its uncertainty.
+reaches it through the newer epoch's anchor, which is rated on both), so the models' strength
+against each other is where every player starts. `b` is one offset shared by every player. `n`,
+drawn from N(0, network_sd^2), is shared by all the players on one network, and `c`, drawn from
+N(0, config_sd^2), is the player's own: people's games against one search of a network say most
+about that network's other searches too, and less about how the searches differ, which the
+leaderboard has measured over thousands of games. So a gap moves as far as the number of games
+against people justifies, and a player with none takes its network's `n` (0 if nobody has played
+that network) with the priors in its uncertainty.
 
 se and interval come from a bootstrap over the people, whose games are not independent of each
-other. Humans play at their stated rating, with no seat advantage. Which games count is the
+other. Humans play at their stated rating. There is no seat term: how a model plays each seat is
+its own property, part of its strength (owner, 2026-10-31). Which games count is the
 caller's (tools/playdek_estimate.py), under the same check as `tools/game_stats.py rating`; takebacks
 are allowed (owner, 2026-10-31).
 
@@ -28,14 +32,17 @@ import math
 import random
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, TypedDict
+
+import numpy as np
 
 from tools.lib.leaderboard import Board, LeaderboardError, fit_epoch
 from tools.lib.player_spec import spec_from_dict, workbench_search
 
 _C = math.log(10.0) / 400.0
-#: The sd of a player's deviation from its leaderboard gap, in rating points.
-DEFAULT_DEVIATION_SD = 100.0
+#: The sds of a network's and of a configuration's deviation from the leaderboard, in rating points.
+DEFAULT_NETWORK_SD = 100.0
+DEFAULT_CONFIG_SD = 50.0
 #: The prior on the offset, around the mean of (human rating - position).
 OFFSET_PRIOR_SD = 400.0
 BOOTSTRAP = 1000
@@ -70,7 +77,8 @@ class Estimate(TypedDict):
     #: Why a game does not count, with how many.
     excluded: Dict[str, int]
     offset: float
-    deviation_sd: float
+    network_sd: float
+    config_sd: float
     #: The epoch whose scale `position` is on.
     reference_epoch: str
     players: Dict[str, PlayerEstimate]
@@ -101,8 +109,9 @@ class HumanGame:
 @dataclass(frozen=True)
 class Fit:
     offset: float
-    #: Only the players with games in the fit.
-    deviations: Dict[str, float]
+    #: Only what has games in the fit.
+    networks: Dict[str, float]
+    configs: Dict[str, float]
 
 
 def positions(board: Board) -> Tuple[str, Dict[str, float]]:
@@ -167,42 +176,39 @@ def rated_games(played: Sequence[PlayedGame], board: Board,
     return games, dict(excluded)
 
 
-def fit(games: Sequence[HumanGame], position: Mapping[str, float], deviation_sd: float) -> Fit:
-    """The posterior mode of the offset and the played players' deviations (Newton: an arrowhead
-    system, the offset against one diagonal entry per player). deviation_sd 0 is the plain shift."""
-    players = sorted({g.player for g in games})
-    column = {p: i for i, p in enumerate(players)}
-    rows = [(g.rating - position[g.player], g.score, column[g.player]) for g in games]
-    mu = sum(r[0] for r in rows) / len(rows)
-    n = len(players) if deviation_sd > 0.0 else 0
-    prior = 1.0 / deviation_sd ** 2 if n else 0.0
-    b = mu
-    d = [0.0] * len(players)
+def fit(games: Sequence[HumanGame], position: Mapping[str, float], network_of: Mapping[str, str],
+        network_sd: float = DEFAULT_NETWORK_SD, config_sd: float = DEFAULT_CONFIG_SD) -> Fit:
+    """The posterior mode of the offset and the deviations of what was played (Newton). An sd of 0
+    fixes that part at 0; both 0 is the plain shift."""
+    players = sorted({g.player for g in games}) if config_sd > 0.0 else []
+    networks = sorted({network_of[g.player] for g in games}) if network_sd > 0.0 else []
+    net_at = {n: 1 + k for k, n in enumerate(networks)}
+    config_at = {p: 1 + len(networks) + k for k, p in enumerate(players)}
+    x = np.zeros((len(games), 1 + len(networks) + len(players)))
+    x[:, 0] = 1.0
+    for row, g in enumerate(games):
+        if networks:
+            x[row, net_at[network_of[g.player]]] = 1.0
+        if players:
+            x[row, config_at[g.player]] = 1.0
+    margin = np.array([g.rating - position[g.player] for g in games])
+    score = np.array([g.score for g in games])
+    mu = float(margin.mean())
+    prior = np.array([1.0 / OFFSET_PRIOR_SD ** 2] + [1.0 / max(network_sd, 1e-9) ** 2] * len(networks)
+                     + [1.0 / max(config_sd, 1e-9) ** 2] * len(players))
+    centre = np.zeros(x.shape[1])
+    centre[0] = mu
+    theta = centre.copy()
     for _ in range(100):
-        grad_b = -(b - mu) / OFFSET_PRIOR_SD ** 2
-        info_b = 1.0 / OFFSET_PRIOR_SD ** 2
-        grad_d = [-d[k] * prior for k in range(n)]
-        info_d = [prior] * n
-        for margin, score, k in rows:
-            p = 1.0 / (1.0 + math.exp(-_C * (margin - b - d[k])))
-            g = -_C * (score - p)
-            w = _C ** 2 * p * (1.0 - p)
-            grad_b += g
-            info_b += w
-            if n:
-                grad_d[k] += g
-                info_d[k] += w
-        # The cross term of the offset and a deviation is that deviation's information from games.
-        cross = [info_d[k] - prior for k in range(n)]
-        schur = info_b - sum(cross[k] ** 2 / info_d[k] for k in range(n))
-        step_b = (grad_b - sum(cross[k] * grad_d[k] / info_d[k] for k in range(n))) / schur
-        steps = [(grad_d[k] - cross[k] * step_b) / info_d[k] for k in range(n)]
-        b += step_b
-        for k in range(n):
-            d[k] += steps[k]
-        if max([abs(step_b), *map(abs, steps)]) < 1e-7:
+        p = 1.0 / (1.0 + np.exp(-_C * (margin - x @ theta)))
+        grad = -_C * (x.T @ (score - p)) - prior * (theta - centre)
+        info = _C ** 2 * (x.T * (p * (1.0 - p))) @ x + np.diag(prior)
+        step = np.linalg.solve(info, grad)
+        theta = theta + step
+        if float(np.abs(step).max()) < 1e-7:
             break
-    return Fit(b, dict(zip(players, d)))
+    return Fit(float(theta[0]), {n: float(theta[k]) for n, k in net_at.items()},
+               {p: float(theta[k]) for p, k in config_at.items()})
 
 
 def _percentile(ordered: Sequence[float], q: float) -> float:
@@ -212,9 +218,14 @@ def _percentile(ordered: Sequence[float], q: float) -> float:
     return ordered[lo] + (ordered[hi] - ordered[lo]) * (at - lo)
 
 
+def _networks(board: Board, players: Iterable[str]) -> Dict[str, str]:
+    """Each player's network; a player with none (a bot) stands alone."""
+    return {p: board.players[p]["network"] or p for p in players}
+
+
 def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: str, board: Board,
-             is_before_keyed_default: Callable[[str], Optional[bool]], deviation_sd: float = DEFAULT_DEVIATION_SD,
-             bootstrap: int = BOOTSTRAP, seed: int = 0) -> Estimate:
+             is_before_keyed_default: Callable[[str], Optional[bool]], network_sd: float = DEFAULT_NETWORK_SD,
+             config_sd: float = DEFAULT_CONFIG_SD, bootstrap: int = BOOTSTRAP, seed: int = 0) -> Estimate:
     """Every player the newest epoch's scale reaches, on Playdek's scale. `left_out` counts the games
     that did not pass the check, by reason. Raises when no game counts."""
     reference, position = positions(board)
@@ -225,7 +236,8 @@ def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: s
         excluded[NOT_ON_BOARD] = excluded.get(NOT_ON_BOARD, 0) + len(games) - len(placed)
     if not placed:
         raise LeaderboardError("no game against a person counts towards the Playdek estimate")
-    point = fit(placed, position, deviation_sd)
+    network_of = _networks(board, position)
+    point = fit(placed, position, network_of, network_sd, config_sd)
 
     by_login: Dict[str, List[HumanGame]] = {}
     for g in placed:
@@ -235,11 +247,13 @@ def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: s
     draws: Dict[str, List[float]] = {p: [] for p in position}
     for _ in range(bootstrap):
         sample = [g for _ in logins for g in by_login[logins[rng.randrange(len(logins))]]]
-        one = fit(sample, position, deviation_sd)
+        one = fit(sample, position, network_of, network_sd, config_sd)
+        # What has no games in this draw has nothing to say how it deviates: the prior does.
+        shared = {n: one.networks[n] if n in one.networks else rng.gauss(0.0, network_sd)
+                  for n in set(network_of.values())}
         for p, e in position.items():
-            # A player absent from this draw has no games to say how it deviates: the prior does.
-            d = one.deviations[p] if p in one.deviations else rng.gauss(0.0, deviation_sd)
-            draws[p].append(e + one.offset + d)
+            own = one.configs[p] if p in one.configs else rng.gauss(0.0, config_sd)
+            draws[p].append(e + one.offset + shared[network_of[p]] + own)
 
     players: Dict[str, PlayerEstimate] = {}
     for p, e in position.items():
@@ -247,7 +261,7 @@ def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: s
         ordered = sorted(draws[p])
         mean = sum(ordered) / len(ordered)
         players[p] = {
-            "rating": round(e + point.offset + point.deviations.get(p, 0.0), 1),
+            "rating": round(e + point.offset + point.networks.get(network_of[p], 0.0) + point.configs.get(p, 0.0), 1),
             "se": round(math.sqrt(sum((x - mean) ** 2 for x in ordered) / max(1, len(ordered) - 1)), 1),
             "lo": round(_percentile(ordered, 0.025), 1), "hi": round(_percentile(ordered, 0.975), 1),
             "games": len(mine), "humans": len({g.login for g in mine}),
@@ -256,5 +270,5 @@ def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: s
             "l": sum(g.score == 1.0 for g in mine),
         }
     return {"as_of": as_of[:10], "games": len(placed), "humans": len(logins),
-            "excluded": excluded, "offset": round(point.offset, 1), "deviation_sd": deviation_sd,
+            "excluded": excluded, "offset": round(point.offset, 1), "network_sd": network_sd, "config_sd": config_sd,
             "reference_epoch": reference, "players": players}

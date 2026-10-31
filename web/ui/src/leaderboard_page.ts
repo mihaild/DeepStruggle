@@ -17,7 +17,7 @@
  * When the build could read the stats database, leaderboard.json also holds each player's estimate on
  * Playdek's scale (tools/lib/playdek_estimate.py), and a switch shows those in the table. It is one
  * estimate per player whatever the epoch shown, and is not the anchored Elo shifted: games against
- * people move a played configuration away from its leaderboard gap.
+ * people move a player and, more loosely, its network's other players away from their leaderboard gaps.
  */
 
 import { hfCatalog } from "./analysis/hf_catalog";
@@ -112,7 +112,8 @@ interface PlaydekEstimate {
   humans: number;
   excluded: Record<string, number>;
   offset: number;
-  deviation_sd: number;
+  network_sd: number;
+  config_sd: number;
   reference_epoch: string;
   players: Record<string, PlayerEstimate>;
 }
@@ -379,7 +380,7 @@ class LeaderboardPage {
     const est = this.estimateOf(pid);
     const estLine = !est ? "" : `<p>Playdek estimate <b>${est.rating.toFixed(0)}</b> ± ${est.se.toFixed(0)} (95%: ${est.lo.toFixed(0)}–${est.hi.toFixed(0)}) · ${
       est.games ? `${est.games} games against ${est.humans} ${est.humans === 1 ? "person" : "people"}, the model ${est.w}-${est.d}-${est.l}`
-        : "no games against people: its leaderboard gap to the players they did face"}.</p>`;
+        : "no games against people of its own: placed by its leaderboard gaps and any games against its network"}.</p>`;
     box.innerHTML = `
       <h2>${esc(pid)}</h2>
       <p>${desc}${old}</p>
@@ -455,7 +456,7 @@ class LeaderboardPage {
     $("lb-note").textContent = this.mode === "playdek" && pd
       ? `Estimates only, not ratings from the Playdek app: the games behind them were played on this site, not in the app, and a model's rating there could differ. `
         + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, using the Playdek ratings those people entered themselves, with takebacks allowed. `
-        + `A player people have faced is placed by those games and its leaderboard gaps together; a player nobody has faced by its gaps alone, so its ± is wider.`
+        + `Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider.`
       : ANCHOR_NOTE + (pd ? ESTIMATE_POINTER : "");
     $("lb-scale").innerHTML = `${esc(ep.description)} Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}.
       The main players are fitted on their games against each other; everyone else against them, held fixed,

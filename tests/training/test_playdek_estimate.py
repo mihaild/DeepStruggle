@@ -1,5 +1,5 @@
 """The leaderboard's players on Playdek's scale: which player a game was against, the fit with its
-per-player deviations, and what may be published. Synthetic games on a small synthetic board; the
+deviations by network and by player, and what may be published. Synthetic games on a small synthetic board; the
 database and its logins are private, so no test reads them."""
 from __future__ import annotations
 
@@ -69,37 +69,61 @@ def test_an_older_epoch_reaches_the_newest_scale_through_its_anchor(board: lb.Bo
 
 
 def test_no_deviations_is_the_plain_shift() -> None:
-    """deviation_sd 0 fits one offset, what fit_rating's one rating is for a single player."""
+    """Both sds 0 fit one offset, what fit_rating's one rating is for a single player."""
     games = [HumanGame("a", 1500.0, 1.0, "p"), HumanGame("b", 1700.0, 0.0, "p"), HumanGame("c", 1600.0, 0.5, "p")]
-    got = fit(games, {"p": 1400.0}, 0.0)
+    got = fit(games, {"p": 1400.0}, {"p": "n"}, 0.0, 0.0)
     want, _ = _map_rating([RatedGame(g.login, g.rating, "US", g.score) for g in games], 0.0, 1600.0, 400.0)
     assert got.offset + 1400.0 == pytest.approx(want, abs=1e-3)
-    assert got.deviations["p"] == 0.0
+    assert not got.networks and not got.configs
+
+
+def _beaten(player: str, games: int, rating: float = 1700.0, wins_of_ten: int = 9) -> List[HumanGame]:
+    return [HumanGame(f"{player}{k}", rating, 1.0 if k % 10 < wins_of_ten else 0.0, player) for k in range(games)]
 
 
 def test_people_can_move_a_gap_the_leaderboard_gave() -> None:
-    """Humans beat `weak` more than its gap says: the gap widens, by less than a free fit would,
-    and the shift alone could not widen it at all."""
-    position = {"strong": 1700.0, "weak": 1600.0, "unplayed": 1650.0}
-    games: List[HumanGame] = []
-    for k in range(40):
-        games.append(HumanGame(f"s{k}", 1700.0, float(k % 2), "strong"))
-        games.append(HumanGame(f"w{k}", 1700.0, 1.0 if k % 10 else 0.0, "weak"))
-    shifted = fit(games, position, 0.0)
-    moved = fit(games, position, 100.0)
-    gap = position["strong"] + moved.deviations["strong"] - position["weak"] - moved.deviations["weak"]
-    assert gap > 150.0
-    assert shifted.deviations["strong"] == shifted.deviations["weak"] == 0.0
-    assert abs(moved.deviations["weak"]) > abs(moved.deviations["strong"])
-    # Shrinkage: a tight prior moves it less.
-    tight = fit(games, position, 25.0)
-    assert abs(tight.deviations["weak"]) < abs(moved.deviations["weak"])
-    assert "unplayed" not in moved.deviations
+    """Humans beat `weak` more than its gap says: the gap widens as far as the prior allows, which the
+    shift alone could not do at all."""
+    position = {"strong": 1700.0, "weak": 1600.0}
+    networks = {"strong": "A", "weak": "B"}
+    games = _beaten("strong", 40, wins_of_ten=5) + _beaten("weak", 40)
+    shifted = fit(games, position, networks, 0.0, 0.0)
+    moved = fit(games, position, networks)
+    assert moved.networks["B"] + moved.configs["weak"] < moved.networks["A"] + moved.configs["strong"] - 50.0
+    assert not shifted.networks and not shifted.configs
+    tight = fit(games, position, networks, 25.0, 10.0)
+    assert abs(tight.networks["B"]) < abs(moved.networks["B"]), "a tighter prior moves it less"
 
 
-def test_an_unplayed_player_sits_at_its_gap_with_a_wider_interval(board: lb.Board) -> None:
+def test_games_against_one_search_move_its_network_more_than_its_own_part() -> None:
+    position = {"a32": 1600.0, "other": 1600.0}
+    networks = {"a32": "A", "other": "B"}
+    moved = fit(_beaten("a32", 40) + _beaten("other", 40, wins_of_ten=5), position, networks)
+    assert abs(moved.networks["A"]) > abs(moved.configs["a32"]) > 0.0
+
+
+def test_a_players_strength_among_its_network_survives_a_few_games(board: lb.Board) -> None:
+    """The stronger search of a network stays above the weaker when people played only the weaker,
+    the order the models' own games measured; the unshared fit put it below after two games."""
     _, position = positions(board)
-    unplayed = next(p for p in position if p not in (KEYED, OLD))
+    networks = {p: board.players[p]["network"] or p for p in position}
+    strong = next(p for p in position if "race=16" in p and "@12720..12800M" in p)
+    weak = next(p for p in position if networks[p] == networks[strong] and "worlds=32" in p)
+    assert position[strong] > position[weak]
+    games = [played(login=f"h{k}", rating=1600.0, score=float(k % 2)) for k in range(30)]
+    two = [played(login="one", rating=1787.0, score=0.0, label=networks[weak]),
+           played(login="one", rating=1787.0, score=0.5, label=networks[weak])]
+    est = estimate(games + two, {}, "2026-10-31T00:00:00Z", board, lambda _: False, bootstrap=20)
+    assert est["players"][strong]["rating"] > est["players"][weak]["rating"]
+    assert est["players"][strong]["games"] == 0 and est["players"][weak]["games"] == 2
+    # The network's games reach the player nobody faced.
+    assert est["players"][strong]["rating"] > position[strong] + est["offset"]
+
+
+def test_a_player_of_an_unplayed_network_sits_at_its_gap_with_a_wider_interval(board: lb.Board) -> None:
+    _, position = positions(board)
+    networks = {p: board.players[p]["network"] or p for p in position}
+    unplayed = next(p for p in position if networks[p] != NET)
     games = [played(login=f"h{k}", rating=1600.0 + 10 * k, score=float(k % 2)) for k in range(30)]
     est = estimate(games, {}, "2026-10-31T00:00:00Z", board, lambda _: False, bootstrap=100)
     assert est["players"][unplayed]["rating"] == pytest.approx(position[unplayed] + est["offset"], abs=0.11)

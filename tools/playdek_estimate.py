@@ -23,7 +23,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
 from tools.lib.game_stats import SubmissionDict, rated_game, rating_check
 from tools.lib.leaderboard import LeaderboardError, ROOT, load
-from tools.lib.playdek_estimate import DEFAULT_DEVIATION_SD, KEYED_DEFAULT_COMMIT, Estimate, PlayedGame, estimate
+from tools.lib.playdek_estimate import (DEFAULT_CONFIG_SD, DEFAULT_NETWORK_SD, KEYED_DEFAULT_COMMIT, Estimate, PlayedGame,
+                                        estimate)
 
 #: The D1 database's name in web/stats_worker/wrangler.toml.
 DATABASE = "ts-game-stats"
@@ -88,7 +89,7 @@ def build_precedes_keyed_default(cache: Dict[str, Optional[bool]], commit: str) 
 def summary(est: Estimate) -> str:
     excluded = ", ".join(f"{n} {why}" for why, n in sorted(est["excluded"].items())) or "none"
     lines = [f"playdek: {est['games']} games against {est['humans']} people, to {est['as_of']}; left out: {excluded}",
-             f"playdek: offset {est['offset']:+.1f} on {est['reference_epoch']}'s scale, deviation sd {est['deviation_sd']:g}"]
+             f"playdek: offset {est['offset']:+.1f} on {est['reference_epoch']}'s scale, network sd {est['network_sd']:g}, configuration sd {est['config_sd']:g}"]
     played = [(pid, p) for pid, p in est["players"].items() if p["games"]]
     for pid, p in sorted(played, key=lambda x: -x[1]["rating"]):
         lines.append(f"  {p['rating']:6.0f} +- {p['se']:3.0f}  {p['w']}-{p['d']}-{p['l']:<3d} {pid}")
@@ -101,8 +102,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--output", required=True, help="where to write the estimate (JSON, aggregates only)")
     ap.add_argument("--export", default=None, help="a dump of the games table with received_at and body, "
                                                    "instead of reading the database")
-    ap.add_argument("--deviation-sd", type=float, default=DEFAULT_DEVIATION_SD,
-                    help="how far a played player may stray from its leaderboard gap, in rating points")
+    ap.add_argument("--network-sd", type=float, default=DEFAULT_NETWORK_SD,
+                    help="how far a network may stray from its leaderboard rating, in rating points")
+    ap.add_argument("--config-sd", type=float, default=DEFAULT_CONFIG_SD,
+                    help="how far one of its configurations may stray further, in rating points")
     a = ap.parse_args(argv)
     try:
         if a.export:
@@ -115,7 +118,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         played, left_out = counted_games(rows, engine_fingerprint())
         cache: Dict[str, Optional[bool]] = {}
         est = estimate(played, left_out, max(r[0] for r in rows), load(),
-                       lambda c: build_precedes_keyed_default(cache, c), deviation_sd=a.deviation_sd)
+                       lambda c: build_precedes_keyed_default(cache, c), network_sd=a.network_sd,
+                       config_sd=a.config_sd)
     except LeaderboardError as e:
         print(f"playdek_estimate: {e}", file=sys.stderr)
         return 1
