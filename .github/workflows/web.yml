@@ -21,7 +21,7 @@ env:
 
 jobs:
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       EMSDK_VERSION: "6.0.10"   # pinned, as tools/scripts/install_emsdk.sh and pages.yml are
     steps:

@@ -55,7 +55,7 @@ env:
 jobs:
   plan:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.p.outputs.parts }}
@@ -65,14 +65,14 @@ jobs:
 
   run:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Fetch the model, the template and the bank
         env:
@@ -103,7 +103,7 @@ jobs:
           if [ -n "$RELEASE" ]; then bank=(--bank input/bank.jsonl.gz); fi
           OMP_NUM_THREADS=4 PYTHONPATH=.:build/release python tools/search_bank.py "$STAGE" --model "$pt" \
             "${bank[@]}" --part "${{ matrix.part }}/$RUNNERS" --out "out/part-${{ matrix.part }}.jsonl.gz" $ARGS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: search-bank-part-${{ github.run_id }}-${{ matrix.part }}
@@ -113,10 +113,10 @@ jobs:
   pool:
     needs: [plan, run]
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: search-bank-part-${{ github.run_id }}-*
           path: parts
@@ -135,7 +135,7 @@ jobs:
             echo "rows: $(zcat "report/$STAGE.jsonl.gz" | wc -l)"
           } > report/provenance.txt
           cat report/provenance.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: search-bank-${{ github.run_id }}
           path: report/

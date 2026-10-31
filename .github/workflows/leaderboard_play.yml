@@ -53,12 +53,12 @@ env:
 jobs:
   plan:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       jobs: ${{ steps.p.outputs.jobs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -81,14 +81,14 @@ jobs:
 
   play:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         job: ${{ fromJson(needs.plan.outputs.jobs) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Fetch the two networks
         env:
@@ -119,7 +119,7 @@ jobs:
             --batch-chunk-size $((2 * CHUNK)) --device cpu
           tail -n +$((before + 1)) "leaderboard/matches/$EPOCH.jsonl" > "out/records-${{ matrix.job.i }}.jsonl"
           test -s "out/records-${{ matrix.job.i }}.jsonl"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: leaderboard-play-${{ github.run_id }}-${{ matrix.job.i }}
           path: out/
@@ -128,14 +128,14 @@ jobs:
   pool:
     needs: [plan, play]
     if: always() && github.event_name == 'workflow_dispatch' && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           build-engine: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: leaderboard-play-${{ github.run_id }}-*
           path: out
@@ -148,7 +148,7 @@ jobs:
           cat "report/$EPOCH.new.jsonl" >> "leaderboard/matches/$EPOCH.jsonl"
           python tools/leaderboard.py show > report/leaderboard.md
           { cat report/provenance.txt; echo; cat report/leaderboard.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: leaderboard-play-${{ github.run_id }}
           path: report/

@@ -98,7 +98,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.p.outputs.parts }}
@@ -132,14 +132,14 @@ jobs:
   targets:
     needs: plan
     if: needs.plan.result == 'success' && inputs.targets_from == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Fetch the base
         run: |
@@ -153,7 +153,7 @@ jobs:
             --target "$TARGET" --rollout-spec "$ROLLOUT_SPEC" --gumbel-sims $SIMS --node-filter all --subsample "$SUBSAMPLE" \
             --temperature "$TEMPERATURE" --device cpu --seed-offset $(( ${{ matrix.part }} * 10000000 )) \
             --output-path "out/targets-${{ matrix.part }}.jsonl.gz"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gchoice-targets-${{ github.run_id }}-${{ matrix.part }}
           path: out/
@@ -162,10 +162,10 @@ jobs:
   heldout:
     needs: plan
     if: needs.plan.result == 'success' && inputs.targets_from == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Fetch the base
         run: mkdir -p work && curl -sSfL --retry 3 -o work/base.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL"
@@ -177,7 +177,7 @@ jobs:
             --target "$TARGET" --rollout-spec "$ROLLOUT_SPEC" --gumbel-sims $SIMS --node-filter all --subsample "$SUBSAMPLE" \
             --temperature "$TEMPERATURE" --device cpu --seed-offset 990000000 \
             --output-path out/heldout.jsonl.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gchoice-heldout-${{ github.run_id }}
           path: out/
@@ -189,28 +189,28 @@ jobs:
       always() && needs.plan.result == 'success'
       && (needs.targets.result == 'success' || needs.targets.result == 'skipped')
       && (needs.heldout.result == 'success' || needs.heldout.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         arm: ${{ fromJson(needs.plan.outputs.arms) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # This run's targets, or with targets_from another run's (run-id + token reads across runs).
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: inputs.targets_from == ''
         with:
           pattern: gchoice-targets-${{ github.run_id }}-*
           path: targets
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: inputs.targets_from == ''
         with:
           name: gchoice-heldout-${{ github.run_id }}
           path: heldout
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: inputs.targets_from != ''
         with:
           pattern: gchoice-targets-${{ inputs.targets_from }}-*
@@ -218,7 +218,7 @@ jobs:
           merge-multiple: true
           run-id: ${{ inputs.targets_from }}
           github-token: ${{ github.token }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: inputs.targets_from != ''
         with:
           name: gchoice-heldout-${{ inputs.targets_from }}
@@ -247,7 +247,7 @@ jobs:
               --model "out/$name.pt" --budget "$b" --out "out/$name.check$b.json"
           done
           sha256sum "out/$name.pt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gchoice-arm-${{ github.run_id }}-${{ matrix.arm.name }}
           path: out/
@@ -256,16 +256,16 @@ jobs:
   play:
     needs: [plan, distill]
     if: always() && needs.plan.result == 'success' && needs.distill.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.play_parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: gchoice-arm-${{ github.run_id }}-*
           path: arms
@@ -279,7 +279,7 @@ jobs:
             --models $(ls models/*.pt | sort) --games-per-side "$GAMES_PER_SIDE" --device cpu \
             --workers 0 --shard-pairs 1 --temperature 0 \
             --part "${{ matrix.part }}/$PLAY_RUNNERS" --output-part "parts/part-${{ matrix.part }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gchoice-play-${{ github.run_id }}-${{ matrix.part }}
           path: parts/
@@ -288,17 +288,17 @@ jobs:
   pool:
     needs: [plan, distill, play]
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: gchoice-play-${{ github.run_id }}-*
           path: parts
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: gchoice-arm-${{ github.run_id }}-*
           path: arms
@@ -320,7 +320,7 @@ jobs:
           } > report/provenance.txt
           { echo '```'; cat report/provenance.txt; echo '```'; echo '## Held-out checks';
             cat report/*.check*.md 2>/dev/null; echo '## Tournament'; cat report/tournament.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gchoice-distill-${{ github.run_id }}
           path: report/

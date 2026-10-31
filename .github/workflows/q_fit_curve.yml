@@ -53,7 +53,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       cells: ${{ steps.p.outputs.cells }}
@@ -67,7 +67,7 @@ jobs:
 
   fit:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -78,7 +78,7 @@ jobs:
       RECIPE: ${{ matrix.cell.recipe }}
       SEED: ${{ matrix.cell.seed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Targets and network
         run: |
@@ -100,7 +100,7 @@ jobs:
             2>&1 | tee "out/fit.log"
           run=$(ls -d data/checkpoints/*-A23-"$RECIPE$SUFFIX"_*)
           cp "$run"/metadata.json "$run"/q_fit_metrics.jsonl out/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: q-fit-curve-part-${{ github.run_id }}-${{ matrix.cell.recipe }}-${{ matrix.cell.seed }}
           path: out/
@@ -109,10 +109,10 @@ jobs:
   pool:
     needs: fit
     if: always() && needs.fit.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: q-fit-curve-part-${{ github.run_id }}-*
           path: parts
@@ -143,7 +143,7 @@ jobs:
               print(f"| {share:g} | {seed} | {n:,} | {b['r_dis']:.3f} | {b['r_within_dis']:.3f} | {g('0.02')} | "
                     f"{g('0.04')} | {g('0.08')} | {b['depart_0.04']:.3f} | {100 * on_base:+.2f} |")
           EOF
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: q-fit-curve-${{ github.run_id }}
           path: res/

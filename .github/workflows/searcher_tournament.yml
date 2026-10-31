@@ -53,16 +53,16 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
       parts: ${{ steps.p.outputs.parts }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - id: p
         run: echo "parts=$(python3 -c "import json,os; print(json.dumps(list(range(1, int(os.environ['RUNNERS']) + 1))))")" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: inputs.labels_run != ''
         with:
           name: value-probe-labels-${{ inputs.labels_run }}
@@ -93,7 +93,7 @@ jobs:
             curl -sSfL --retry 3 -o models/model2.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL2"
           fi
           (cd models && sha256sum *.pt) | tee models/sha256.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: searcher-models-${{ github.run_id }}
           path: models/
@@ -101,16 +101,16 @@ jobs:
 
   play:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.build.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: searcher-models-${{ github.run_id }}
           path: models
@@ -123,7 +123,7 @@ jobs:
           tools/scripts/check_engine_fresh.sh && python tools/tournament.py --models $specs \
             --games-per-side "$GAMES" --device cpu --workers 0 --shard-pairs 1 --temperature 0 \
             --part "${{ matrix.part }}/$RUNNERS" --output-part "parts/part-${{ matrix.part }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: searcher-play-${{ github.run_id }}-${{ matrix.part }}
           path: parts/
@@ -132,17 +132,17 @@ jobs:
   pool:
     needs: [build, play]
     if: always() && needs.build.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: searcher-play-${{ github.run_id }}-*
           path: parts
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: searcher-models-${{ github.run_id }}
           path: models
@@ -160,7 +160,7 @@ jobs:
             echo "checkpoint sha256:"; cat models/sha256.txt
           } > report/provenance.txt
           { echo '```'; cat report/provenance.txt; echo '```'; cat report/tournament.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: searcher-tournament-${{ github.run_id }}
           path: report/

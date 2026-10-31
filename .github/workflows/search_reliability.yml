@@ -75,7 +75,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.p.outputs.parts }}
@@ -84,10 +84,10 @@ jobs:
         run: echo "parts=$(python3 -c "import json,os; print(json.dumps(list(range(1, int(os.environ['RUNNERS']) + 1))))")" >> "$GITHUB_OUTPUT"
 
   models:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: The bank and the model(s), once for every runner
         run: |
@@ -106,7 +106,7 @@ jobs:
             curl -sSfL --retry 3 -o models/model2.pt "https://huggingface.co/$HF_REPO/resolve/main/$MODEL2"
           fi
           (cd models && sha256sum *.pt bank.jsonl.gz) | tee models/sha256.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reliability-models-${{ github.run_id }}
           path: models/
@@ -114,16 +114,16 @@ jobs:
 
   search:
     needs: [plan, models]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: reliability-models-${{ github.run_id }}
           path: models
@@ -135,7 +135,7 @@ jobs:
           tools/scripts/check_engine_fresh.sh && OMP_NUM_THREADS=4 python tools/search_reliability.py search \
             --bank models/bank.jsonl.gz --model models/model1.pt "${m2[@]}" "${specs[@]}" --seeds "$SEEDS" \
             --part "${{ matrix.part }}/$RUNNERS" --out "out/search-${{ matrix.part }}.jsonl.gz"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reliability-search-${{ github.run_id }}-${{ matrix.part }}
           path: out/
@@ -144,20 +144,20 @@ jobs:
   playouts:
     needs: [plan, models, search]
     if: always() && needs.plan.result == 'success' && needs.search.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: reliability-models-${{ github.run_id }}
           path: models
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: reliability-search-${{ github.run_id }}-*
           path: search
@@ -171,7 +171,7 @@ jobs:
               --search search/search-*.jsonl.gz --model "models/model$j.pt" \
               --pairs "$PAIRS" --part "${{ matrix.part }}/$RUNNERS" --out "out/playouts-j$j-${{ matrix.part }}.jsonl.gz"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reliability-playouts-${{ github.run_id }}-${{ matrix.part }}
           path: out/
@@ -180,23 +180,23 @@ jobs:
   report:
     needs: [plan, models, search, playouts]
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           build-engine: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: reliability-models-${{ github.run_id }}
           path: models
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: reliability-search-${{ github.run_id }}-*
           path: search
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: reliability-playouts-${{ github.run_id }}-*
           path: playouts
@@ -226,7 +226,7 @@ jobs:
             echo "sha256:"; cat models/sha256.txt
           } > report/provenance.txt
           { echo '```'; cat report/provenance.txt; echo '```'; cat report/report-j*.md; [ ! -f report/transfer.md ] || cat report/transfer.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: search-reliability-${{ github.run_id }}
           path: |

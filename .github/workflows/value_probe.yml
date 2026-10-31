@@ -45,7 +45,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.p.outputs.parts }}
@@ -55,14 +55,14 @@ jobs:
 
   label:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
         part: ${{ fromJson(needs.plan.outputs.parts) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Rebuild the model from its export
         run: |
@@ -79,7 +79,7 @@ jobs:
           OMP_NUM_THREADS=4 python tools/value_probe.py label --model "data/checkpoints/hf/$(basename "${MODEL%.onnx}").pt" \
             --games "$GAMES" --rate "$RATE" --k "$K" --pairs "$PAIRS" \
             --part "${{ matrix.part }}/$RUNNERS" --out "out/label-${{ matrix.part }}.jsonl.gz"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: value-probe-part-${{ github.run_id }}-${{ matrix.part }}
           path: out/
@@ -88,10 +88,10 @@ jobs:
   pool:
     needs: [plan, label]
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: value-probe-part-${{ github.run_id }}-*
           path: labels
@@ -105,7 +105,7 @@ jobs:
             echo "parts: $(ls labels/label-*.jsonl.gz | wc -l)"
           } > labels/provenance.txt
           cat labels/provenance.txt >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: value-probe-labels-${{ github.run_id }}
           path: labels/

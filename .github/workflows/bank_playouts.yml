@@ -73,7 +73,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.p.outputs.parts }}
@@ -83,7 +83,7 @@ jobs:
 
   run:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
     strategy:
       fail-fast: false
@@ -116,7 +116,7 @@ jobs:
           python "tools/scripts/$tool" "$STAGE" --input input/*.jsonl* \
             "${model_flag[@]}" \
             --part "${{ matrix.part }}/$RUNNERS" --out "out/playouts-${{ matrix.part }}.jsonl.gz" $ARGS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bank-playouts-part-${{ github.run_id }}-${{ matrix.part }}
           path: out/
@@ -127,12 +127,12 @@ jobs:
   pool:
     needs: [plan, run]
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: bank-playouts-part-${{ github.run_id }}-*
           path: parts
@@ -149,7 +149,7 @@ jobs:
             echo "model: $HF_REPO $MODEL  pairs: $PAIRS  runners: $RUNNERS"
             echo "parts: $(cat report/playouts.jsonl.gz.parts.json)"
           } > report/provenance.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bank-playouts-${{ github.run_id }}
           path: report/
