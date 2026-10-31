@@ -146,11 +146,15 @@ def test_a_player_of_an_unplayed_network_sits_at_its_gap_with_a_wider_interval(b
     networks = {p: board.players[p]["network"] or p for p in position}
     unplayed = next(p for p in position if networks[p] != NET)
     games = [played(login=f"h{k}", rating=1600.0 + 10 * k, score=float(k % 2)) for k in range(30)]
-    est = estimate(games, {}, "2026-10-31T00:00:00Z", board, lambda _: False, bootstrap=100)
-    assert est["players"][unplayed]["rating"] == pytest.approx(position[unplayed] + est["offset"], abs=0.11)
-    assert est["players"][unplayed]["games"] == 0
-    assert est["players"][unplayed]["se"] > est["players"][KEYED]["se"]
-    assert est["players"][KEYED]["games"] == 30 and est["players"][KEYED]["humans"] == 30
+    # Priors well above the bootstrap's own noise: at the tight defaults the two se differ by less than
+    # a hundred draws can tell, and the order follows the platform's random stream.
+    for seed in range(5):
+        est = estimate(games, {}, "2026-10-31T00:00:00Z", board, lambda _: False, network_sd=100.0, config_sd=50.0,
+                       bootstrap=100, seed=seed)
+        assert est["players"][unplayed]["rating"] == pytest.approx(position[unplayed] + est["offset"], abs=0.11)
+        assert est["players"][unplayed]["games"] == 0
+        assert est["players"][unplayed]["se"] > est["players"][KEYED]["se"] + 20.0
+        assert est["players"][KEYED]["games"] == 30 and est["players"][KEYED]["humans"] == 30
 
 
 def test_the_estimate_is_reproducible_and_holds_no_login(board: lb.Board) -> None:
