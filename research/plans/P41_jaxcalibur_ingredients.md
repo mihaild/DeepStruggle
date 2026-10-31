@@ -179,6 +179,10 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   the state; the flag is in every observation): choosing a coup target, P(battleground) **J1 10.3 -> 78.8%**, base 6.4 -> 6.2%, R94 7.6
   -> 7.7%; coup on offer, P(coup) **J1 6.5 -> 26.0%**, base 3.8 -> 3.8%, R94 2.1 -> 2.3%. J1 has learned what the card does; the
   plateaued networks show no response to it. The clearest sign yet of what the saturation term buys.
+  **As the USSR (the US's card; its event fires for the opponent), greedy, ~1,300 games:** share of plays at AR7 **J1 44%**, base 5%, R94 6%;
+  held at AR1 J1 chooses it 1.7% (base 28%, R94 18%) and it stays in hand to AR7 373 times (base 49, R94 60). Modes in J1: influence 58%,
+  event 26%, coup 12%. **Setups at 4,000M:** USSR Poland 3 Yugoslavia 3, US WG 4 Italy 2 Spain/Portugal 2 Iran 1 (59%) or WG 4 Italy 3 Iran 1
+  Spain/Portugal 1 (41%); the base at 6,000M: USSR Poland 6, US France 3 Italy 2 South Korea 2 Spain/Portugal 2.
 * **J1 passes at 4,000M (2026-10-31).** 47.8% against A13+R48's SWA (the base 44.1%). **Head to head 53.4% ± 1.1** (US 50.4 / USSR 54.5; the
   control's self-play bar at 4,000M US 46.1 / USSR 52.3: above it in both seats), held from 52.8% at 2,000M. Saturation: median
   top-two gap **1.23 against 3.50**, mean P(top) 0.64 against 0.85. Rare cards, greedy: Nuclear Subs US event 18% against 0%; One Small
