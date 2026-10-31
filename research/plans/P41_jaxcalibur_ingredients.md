@@ -174,5 +174,10 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   that step in 38-61%. **What J1 does cost:** own DEFCON 1 ends 9.9% of its temperature-1 games (R94 3.4%, base under 1.3%),
   and held scoring ends 3.4% of its greedy games (base 0.9%), both from ~600 games, the first training noise, the second
   in play.
+* **Nuclear Subs (2026-10-31).** J1 at 3,600M events it as the US 21% of the time, P(event) 21.1% (2,000M: 14%, 16.9%); the base and
+  R94 0%, P(event) 0.3%. **Paired test at DEFCON 2** (US decisions from sampled games, read with the Subs flag off and on in a copy of
+  the state; the flag is in every observation): choosing a coup target, P(battleground) **J1 10.3 -> 78.8%**, base 6.4 -> 6.2%, R94 7.6
+  -> 7.7%; coup on offer, P(coup) **J1 6.5 -> 26.0%**, base 3.8 -> 3.8%, R94 2.1 -> 2.3%. J1 has learned what the card does; the
+  plateaued networks show no response to it. The clearest sign yet of what the saturation term buys.
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
