@@ -120,7 +120,7 @@ def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: 
         verified.append(sub["id"])
         return Verdict("ok", "unit fixture")
 
-    monkeypatch.setattr(cli, "verify", accept)
+    monkeypatch.setattr("tools.lib.game_stats.verify", accept)
     subs = [_submission(i, f"p{i % 3}", 1600 + 50 * (i % 3), "US" if i % 2 else "USSR",
                         "USSR" if i % 2 else "US") for i in range(12)]  # the model wins every game
     subs.append(_submission(100, "p0", 1600, "US", "US", human_for_model=True))

@@ -677,6 +677,47 @@ def test_the_leaderboard_page_filters_one_fit(browser: Any, static_site: str) ->
     assert not errors
 
 
+def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_site: str) -> None:
+    """The estimate comes with the build only if it could read the stats database, so a synthetic one
+    is served here. No estimate: no switch. With one: its numbers, in its own order, kept in the link."""
+    data, epoch, rated = _leaderboard_data()
+    data.pop("playdek", None)
+    players = sorted(rated)
+    estimate = {p: {"rating": 1000.0 + 10 * k, "se": 40.0, "lo": 900.0, "hi": 1100.0, "games": k, "humans": 1,
+                    "w": k, "d": 0, "l": 0} for k, p in enumerate(players)}
+    with_estimate = {**data, "playdek": {"as_of": "2026-10-31", "games": 7, "humans": 3, "excluded": {}, "offset": 1.0,
+                                         "deviation_sd": 100.0, "reference_epoch": epoch, "players": estimate}}
+    served = {"body": json.dumps(data)}
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    errors: List[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/leaderboard.json", lambda route: route.fulfill(content_type="application/json", body=served["body"]))
+    page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all&scale=playdek")
+    page.wait_for_selector("#lb-body tr")
+    assert not page.is_visible("#lb-scale-mode")
+    assert page.text_content("#lb-th-elo") == "Elo" and "scale=playdek" not in page.url
+
+    served["body"] = json.dumps(with_estimate)
+    page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
+    page.wait_for_selector("#lb-body tr")
+    assert page.is_visible("#lb-scale-mode") and page.text_content("#lb-th-elo") == "Elo"
+    page.check("input[name=lb-mode][value=playdek]")
+    assert page.text_content("#lb-th-elo") == "Playdek est."
+    rows = page.eval_on_selector_all(
+        "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
+    assert rows == [[p, f"{estimate[p]['rating']:.0f}"] for p in reversed(players)]
+    assert "7 clean games against 3 people" in page.inner_text("#lb-note")
+    assert "scale=playdek" in page.url
+    page.click(f"#lb-body tr[data-player='{players[-1]}']")
+    assert "Playdek estimate" in page.inner_text("#lb-detail")
+    page.reload()
+    page.wait_for_selector("#lb-body tr")
+    assert page.is_checked("input[name=lb-mode][value=playdek]"), "the scale is kept in the link"
+    page.check("input[name=lb-mode][value=anchor]")
+    assert page.text_content("#lb-th-elo") == "Elo" and "scale=playdek" not in page.url
+    assert not errors
+
+
 #: The workbench's built-in default search (analysis/rollout_spec.ts DEFAULT_ROLLOUT), spelled out: what a
 #: page that cannot read the repo's default plays.
 BUILTIN_SEARCH = "rollout:4:32:4:z2:earlier:own:keyed:aligned:box4"

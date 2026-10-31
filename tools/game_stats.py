@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, cast
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
-from tools.lib.game_stats import (BAD_LOG, RatedGame, SubmissionDict, decode_log, fit_rating, load_export,
+from tools.lib.game_stats import (RatedGame, rating_check, SubmissionDict, decode_log, fit_rating, load_export,
                                   outcome, play_step, player_key, rated_game, start_state, summarize_submission,
                                   verify)
 from web.server.replay import ReplayLogger, replays_dir
@@ -46,7 +46,7 @@ def cmd_fetch(a: argparse.Namespace) -> int:
     or with --local the one `wrangler dev` keeps in web/stats_worker/.wrangler/."""
     out = subprocess.run(
         ["npx", "wrangler", "d1", "execute", DATABASE, "--local" if a.local else "--remote", "--json",
-         "--command", "SELECT body FROM games ORDER BY received_at"],
+         "--command", "SELECT received_at, body FROM games ORDER BY received_at"],
         cwd=WORKER_DIR, capture_output=True, text=True)
     if out.returncode != 0:
         print(out.stderr or out.stdout, file=sys.stderr)
@@ -132,34 +132,18 @@ def cmd_rating(a: argparse.Namespace) -> int:
     require_fresh()
     by_player: Dict[str, List[RatedGame]] = {}
     skipped: Dict[str, int] = {}
-    # Every game that would count is re-driven on this build, whatever engine it names: the record's
-    # fingerprint is the submitter's claim. Most games outlive an engine change and replay here;
-    # one that does not cannot be told from a forgery, so it counts only with --include-unverified.
     other_engine_replayed = 0
     unverified = 0
     fingerprint = engine_fingerprint()
     for sub in load_export(a.export):
-        try:
-            s = summarize_submission(sub)
-        except BAD_LOG:
-            skipped["verification: bad-log"] = skipped.get("verification: bad-log", 0) + 1
-            continue
-        # The cheap checks first, so a game left out anyway is never re-driven.
-        why = ("not clean" if not s["clean"] else
-               "too many undos" if a.max_undos is not None and s["undos"] > a.max_undos else
-               "no rating" if sub["playdek"]["rating"] <= 0 else None)
-        if why is None:
-            verdict = verify(sub, fingerprint, replay_other_engine=True)
-            if verdict.status == "ok" and sub["build"]["engine_fingerprint"] != fingerprint:
-                other_engine_replayed += 1
-            elif verdict.status == "other-engine" and a.include_unverified:
-                unverified += 1
-            elif verdict.status != "ok":
-                why = f"verification: {verdict.status}"
-        if why:
+        check = rating_check(sub, fingerprint, max_undos=a.max_undos, include_unverified=a.include_unverified)
+        other_engine_replayed += check.other_engine_replayed
+        unverified += check.unverified
+        if check.why is not None or check.summary is None:
+            why = check.why or "no summary"
             skipped[why] = skipped.get(why, 0) + 1
             continue
-        by_player.setdefault(player_key(sub, s), []).append(rated_game(sub, s))
+        by_player.setdefault(player_key(sub, check.summary), []).append(rated_game(sub, check.summary))
     fits = [fit_rating(p, gs, ussr_advantage=a.ussr_advantage, prior_mean=a.prior_mean, prior_sd=a.prior_sd,
                        bootstrap=a.bootstrap)
             for p, gs in sorted(by_player.items()) if len(gs) >= a.min_games]

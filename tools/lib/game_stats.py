@@ -360,6 +360,39 @@ def rated_game(sub: SubmissionDict, summary: SummaryDict) -> RatedGame:
                      "US" if side == "US" else "USSR", 0.5 if w == "DRAW" else 1.0 if w == side else 0.0)
 
 
+@dataclass(frozen=True)
+class RatingCheck:
+    """Whether a submitted game counts towards a rating."""
+    summary: Optional[SummaryDict]
+    #: Why it does not count; None when it does.
+    why: Optional[str]
+    other_engine_replayed: bool = False
+    unverified: bool = False
+
+
+def rating_check(sub: SubmissionDict, fingerprint: str, *, max_undos: Optional[int] = None,
+                 include_unverified: bool = False) -> RatingCheck:
+    """Every game that would count is re-driven on this build, whatever engine it names: the record's
+    fingerprint is the submitter's claim. Most games outlive an engine change and replay here; one
+    that does not cannot be told from a forgery, so it counts only with `include_unverified`."""
+    try:
+        s = summarize_submission(sub)
+    except BAD_LOG:
+        return RatingCheck(None, "verification: bad-log")
+    # The cheap checks first, so a game left out anyway is never re-driven.
+    why = ("not clean" if not s["clean"] else
+           "too many undos" if max_undos is not None and s["undos"] > max_undos else
+           "no rating" if sub["playdek"]["rating"] <= 0 else None)
+    if why is not None:
+        return RatingCheck(s, why)
+    verdict = verify(sub, fingerprint, replay_other_engine=True)
+    if verdict.status == "ok":
+        return RatingCheck(s, None, other_engine_replayed=sub["build"]["engine_fingerprint"] != fingerprint)
+    if verdict.status == "other-engine" and include_unverified:
+        return RatingCheck(s, None, unverified=True)
+    return RatingCheck(s, f"verification: {verdict.status}")
+
+
 def _map_rating(games: Sequence[RatedGame], ussr_advantage: float, prior_mean: float,
                 prior_sd: float) -> Tuple[float, float]:
     """The posterior mode of the model's rating and its curvature's standard error (Newton)."""

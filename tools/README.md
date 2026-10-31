@@ -462,6 +462,22 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
   many games count as one person's evidence. The ratings people type are noisy and the games
   people choose to submit are not a random sample of the games played -- read a fit with both in
   mind.
+* `tools/playdek_estimate.py` puts every leaderboard player on Playdek's scale, for the leaderboard
+  page's "Playdek estimate" switch (`pages.yml` runs it; `web/stats_worker/README.md` has its
+  secrets; `TS_PLAYDEK_ESTIMATE` hands its output to `build_web.sh`):
+
+  ```bash
+  PYTHONPATH=.:build/release python tools/playdek_estimate.py --export <dump> --output playdek.json
+  ```
+
+  Its games pass the same check as `rating`, except that a game from another engine that does not
+  replay here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
+  and nothing new can claim to predate that. A player's estimate is its leaderboard Elo on the newest
+  epoch's scale (an older epoch's through the newer one's anchor) + one shared offset + its own
+  deviation, N(0, `--deviation-sd`^2, default 100): games against a configuration move it from its
+  leaderboard gap as far as their number justifies, and a player nobody has faced keeps its gap, with
+  the deviation in its uncertainty. The ± and interval are a bootstrap over the people. The output
+  and the log hold aggregates only; the logins stay in memory.
 
 ---
 

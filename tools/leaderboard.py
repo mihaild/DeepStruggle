@@ -54,7 +54,11 @@ def cmd_validate(_: argparse.Namespace) -> int:
 
 def cmd_fit(a: argparse.Namespace) -> int:
     board = _checked_board()
-    data = site_data(board, commit=a.commit or _head_commit())
+    playdek = None
+    if a.playdek:
+        with open(a.playdek, encoding="utf-8") as f:
+            playdek = json.load(f)
+    data = site_data(board, commit=a.commit or _head_commit(), playdek=playdek)
     text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
     if a.output:
         os.makedirs(os.path.dirname(os.path.abspath(a.output)), exist_ok=True)
@@ -156,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("fit", help="fit every epoch and write the page's data")
     p.add_argument("--output", default=None, help="where to write leaderboard.json (default: stdout)")
     p.add_argument("--commit", default=None, help="the commit to stamp (default: HEAD)")
+    p.add_argument("--playdek", default=None, help="tools/playdek_estimate.py's output, for the page's Playdek scale")
     p.set_defaults(fn=cmd_fit)
     p = sub.add_parser("show", help="print the ratings as a markdown table")
     p.add_argument("--epoch", default=None)

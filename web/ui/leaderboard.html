@@ -34,9 +34,13 @@
         <label><input type="radio" name="lb-view" value="lineage"> Main + lineages</label>
         <label><input type="radio" name="lb-view" value="all"> All players</label>
       </div>
+      <div class="lb-view" id="lb-scale-mode" role="radiogroup" aria-label="Which rating scale to show" hidden>
+        <label><input type="radio" name="lb-mode" value="anchor" checked> Anchor scale</label>
+        <label><input type="radio" name="lb-mode" value="playdek"> Playdek estimate</label>
+      </div>
       <div class="lb-lineages" id="lb-lineages" hidden></div>
     </section>
-    <p class="lb-note">These ratings come only from games between the models listed here, on a scale
+    <p class="lb-note" id="lb-note">These ratings come only from games between the models listed here, on a scale
       anchored at one of them. They do not correspond to human Elo ratings, such as those of the
       Playdek Twilight Struggle app: no game against a human contributes to them.</p>
     <p class="lb-scale" id="lb-scale"></p>
@@ -44,8 +48,8 @@
       <table class="lb-table" id="lb-table">
         <thead>
           <tr>
-            <th class="num">#</th><th>Player</th><th class="num">Elo</th><th class="num lb-hide-narrow">±</th>
-            <th class="num lb-hide-narrow">Games</th><th class="num">Score</th><th class="lb-hide-narrow">Links</th>
+            <th class="num">#</th><th>Player</th><th class="num" id="lb-th-elo">Elo</th><th class="num lb-hide-narrow">±</th>
+            <th class="num lb-hide-narrow" id="lb-th-games">Games</th><th class="num" id="lb-th-score">Score</th><th class="lb-hide-narrow">Links</th>
           </tr>
         </thead>
         <tbody id="lb-body"></tbody>

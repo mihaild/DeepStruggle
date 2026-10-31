@@ -70,7 +70,13 @@ if [[ $ENGINE_ONLY == 1 ]]; then
 fi
 # The leaderboard page's data: fitted from the records in leaderboard/, never committed. Plain
 # python, no torch or engine needed -- on CI this is the runner's python3.
-PYTHONPATH="$ROOT" "$PY" "$ROOT/tools/leaderboard.py" fit --output "$ROOT/web/ui/public/leaderboard.json"
+# TS_PLAYDEK_ESTIMATE names tools/playdek_estimate.py's output; without it the page has no Playdek scale.
+PLAYDEK_ARGS=()
+if [[ -n "${TS_PLAYDEK_ESTIMATE:-}" ]]; then
+    PLAYDEK_ARGS=(--playdek "$TS_PLAYDEK_ESTIMATE")
+fi
+PYTHONPATH="$ROOT" "$PY" "$ROOT/tools/leaderboard.py" fit --output "$ROOT/web/ui/public/leaderboard.json" \
+    ${PLAYDEK_ARGS[@]+"${PLAYDEK_ARGS[@]}"}
 cd "$ROOT/web/ui"
 # Install when missing, and again when package-lock.json has changed since the last install
 # (npm records that install in node_modules/.package-lock.json): a checkout whose node_modules

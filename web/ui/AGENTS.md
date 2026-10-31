@@ -62,7 +62,9 @@ web/ui/
 │   │                           # opens on the newest epoch with games played (?epoch= names another);
 │   │                           # play links open each player's search; tags HF DEFAULT on the player
 │   │                           # that is the repo's default model and search, read live from
-│   │                           # models.json (hf_catalog.ts) after render
+│   │                           # models.json (hf_catalog.ts) after render; with an estimate in its data
+│   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) a switch shows the
+│   │                           # players on Playdek's scale, in that scale's order (?scale=playdek)
 │   └── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
 ├── public/engine/              # ts_engine.mjs + .wasm, not committed (tools/scripts/build_web.sh)
 ├── public/leaderboard.json     # fitted from leaderboard/ by build_web.sh (tools/leaderboard.py fit), not committed

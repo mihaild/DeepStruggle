@@ -11,7 +11,8 @@ database run on Cloudflare's free plan (100k requests and 100k rows written a da
   double click, a retried request). 400 for a malformed game, 403 for an origin not in
   `ALLOWED_ORIGINS`, 429 past `RATE_PER_HOUR` submissions from one address.
 * `GET /health` -- `{"ok": true}`.
-* Nothing reads games back over HTTP: the Playdek logins stay with the database's owner.
+* Nothing reads games back over HTTP: the Playdek logins stay with the database's owner. The
+  leaderboard publishes only aggregates fitted from them (below).
 
 The checks are against junk and accidents, not cheating -- anyone can post anything, and
 re-driving a game in the engine (`tools/game_stats.py verify`) is what tells a game from a story.
@@ -75,6 +76,19 @@ PYTHONPATH=.:build/release python tools/game_stats.py verify /tmp/local_games.js
 The deployed Worker can be tried the same way (`TS_STATS_ENDPOINT=https://ts-game-stats.<subdomain>.workers.dev
 npm run dev`): those games go into the real table. Remove them afterwards with
 `npx wrangler d1 execute ts-game-stats --remote --command "DELETE FROM games WHERE playdek_login = '<the login you typed>'"`.
+
+## The leaderboard's Playdek scale (GitHub Actions)
+
+`.github/workflows/pages.yml` fits the leaderboard's players on Playdek's scale from this database
+each time it publishes the page (each push to main, or "Run workflow"). It needs two repository
+secrets (Settings -> Secrets and variables -> Actions); without them, or if the fit fails, the page
+is published without that scale and the run shows a warning:
+
+* `CLOUDFLARE_API_TOKEN`: an API token with the account's D1 read permission and nothing else.
+* `CLOUDFLARE_ACCOUNT_ID`: the account's id, as `npx wrangler whoami` prints it.
+
+Only that one step of the workflow holds them, and only aggregates leave it: the logins stay private.
+The fit is `tools/playdek_estimate.py` (`tools/README.md`, "Games against people").
 
 ## Reading it
 

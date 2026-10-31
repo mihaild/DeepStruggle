@@ -757,9 +757,10 @@ def player_report(board: Board, pid: str) -> Optional[str]:
     return board.networks[pl["network"]]["report"]
 
 
-def site_data(board: Board, commit: Optional[str] = None) -> Dict[str, object]:
+def site_data(board: Board, commit: Optional[str] = None, playdek: Optional[object] = None) -> Dict[str, object]:
     """Everything the leaderboard page shows, fitted: `leaderboard.json`, built by CI from the
-    records rather than committed."""
+    records rather than committed. `playdek` is tools/playdek_estimate.py's output, when the build
+    could read the stats database; without it the page has only the anchored scale."""
     epochs: Dict[str, object] = {}
     for name, ep in board.epochs.items():
         fit = fit_epoch(board, name)
@@ -798,8 +799,12 @@ def site_data(board: Board, commit: Optional[str] = None) -> Dict[str, object]:
                         "description": pl["description"], "report": player_report(board, pid),
                         # how the workbench plays it: its `play` link's search=, null if it cannot
                         "workbench_search": workbench_search(spec)}
-    return {"schema": 1, "commit": commit, "hf_repo": HF_REPO, "github": GITHUB_REPO,
-            "networks": board.networks, "players": players, "epochs": epochs, "codes": codes_data(board)}
+    data: Dict[str, object] = {"schema": 1, "commit": commit, "hf_repo": HF_REPO, "github": GITHUB_REPO,
+                               "networks": board.networks, "players": players, "epochs": epochs,
+                               "codes": codes_data(board)}
+    if playdek is not None:
+        data["playdek"] = playdek
+    return data
 
 
 def markdown_table(board: Board, ratings: Sequence[Rating]) -> str:

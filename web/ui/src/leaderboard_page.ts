@@ -13,6 +13,11 @@
  * with its default search (models.json, set by `tools/publish_hf.py default --player`) -- is tagged,
  * read from the repo when the page opens rather than fitted in, so the tag follows the repo without a
  * rebuild.
+ *
+ * When the build could read the stats database, leaderboard.json also holds each player's estimate on
+ * Playdek's scale (tools/lib/playdek_estimate.py), and a switch shows those in the table. It is one
+ * estimate per player whatever the epoch shown, and is not the anchored Elo shifted: games against
+ * people move a played configuration away from its leaderboard gap.
  */
 
 import { hfCatalog } from "./analysis/hf_catalog";
@@ -88,6 +93,30 @@ interface Codes {
   by_network: Record<string, { architecture: string | null; recipe: string | null }>;
 }
 
+/** One player on Playdek's scale; its record is the model's, against people. */
+interface PlayerEstimate {
+  rating: number;
+  se: number;
+  lo: number;
+  hi: number;
+  games: number;
+  humans: number;
+  w: number;
+  d: number;
+  l: number;
+}
+
+interface PlaydekEstimate {
+  as_of: string;
+  games: number;
+  humans: number;
+  excluded: Record<string, number>;
+  offset: number;
+  deviation_sd: number;
+  reference_epoch: string;
+  players: Record<string, PlayerEstimate>;
+}
+
 interface LeaderboardData {
   schema: number;
   commit: string | null;
@@ -98,10 +127,13 @@ interface LeaderboardData {
   epochs: Record<string, Epoch>;
   /** Absent from a leaderboard.json fitted before the codes tab existed. */
   codes?: Codes;
+  /** Absent when the build could not read the stats database. */
+  playdek?: PlaydekEstimate;
 }
 
 type View = "main" | "lineage" | "all";
 type Tab = "ratings" | "codes";
+type Mode = "anchor" | "playdek";
 
 /** `--flag value` as the command line spells it: `--x` for true, `--no-x` for false, lists spaced. */
 function flagText(name: string, value: unknown): string {
@@ -128,6 +160,10 @@ function defaultEpoch(epochs: Record<string, { pairs: unknown[] }>): string {
 
 const HF_TAG = `<span class="lb-tag hf" title="The default on Hugging Face: the workbench plays this network with this search when a link names neither">HF DEFAULT</span>`;
 
+const ANCHOR_NOTE = `These ratings come only from games between the models listed here, on a scale
+  anchored at one of them. They do not correspond to human Elo ratings, such as those of the
+  Playdek Twilight Struggle app: no game against a human contributes to them.`;
+
 const KIND_LABEL: Record<string, string> ={ policy: "", gumbel: "Gumbel", rollout: "rollout", search: "PUCT", bot: "bot" };
 
 class LeaderboardPage {
@@ -137,6 +173,7 @@ class LeaderboardPage {
   private selected: string | null = null;
   private tab: Tab = "ratings";
   private allCodes = false;
+  private mode: Mode = "anchor";
   /** The Hugging Face repo's default model (an .onnx path), once read; null until then or if none. */
   private hfDefault: string | null = null;
   /** Its default search (null: the policy): the repo's, else the workbench's built-in one. */
@@ -152,6 +189,12 @@ class LeaderboardPage {
     this.selected = params.get("player");
     this.tab = params.get("tab") === "codes" ? "codes" : "ratings";
     this.allCodes = params.get("codes") === "all";
+    this.mode = data.playdek && params.get("scale") === "playdek" ? "playdek" : "anchor";
+    $("lb-scale-mode").hidden = !data.playdek;
+    for (const r of document.querySelectorAll<HTMLInputElement>("input[name=lb-mode]")) {
+      r.checked = r.value === this.mode;
+      r.addEventListener("change", () => { if (r.checked) { this.mode = r.value as Mode; this.render(); } });
+    }
 
     const sel = $<HTMLSelectElement>("lb-epoch");
     sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
@@ -225,9 +268,17 @@ class LeaderboardPage {
 
   private ratingsShown(): Rating[] {
     const ep = this.ep;
-    if (this.view === "all") return ep.ratings;
-    if (this.view === "main") return ep.ratings.filter(r => r.main);
-    return ep.ratings.filter(r => r.main || this.lineages.has(this.data.players[r.player]?.lineage ?? ""));
+    const shown = this.view === "all" ? ep.ratings
+      : this.view === "main" ? ep.ratings.filter(r => r.main)
+      : ep.ratings.filter(r => r.main || this.lineages.has(this.data.players[r.player]?.lineage ?? ""));
+    if (this.mode !== "playdek") return shown;
+    // Its own order: games against people can reorder players. One it cannot place goes last.
+    const at = (r: Rating) => this.estimateOf(r.player)?.rating ?? -Infinity;
+    return [...shown].sort((x, y) => at(y) - at(x));
+  }
+
+  private estimateOf(pid: string): PlayerEstimate | undefined {
+    return this.data.playdek?.players[pid];
   }
 
   private links(pid: string): string {
@@ -270,17 +321,26 @@ class LeaderboardPage {
 
   private renderTable(): void {
     const rows = this.ratingsShown();
+    const playdek = this.mode === "playdek";
+    $("lb-th-elo").textContent = playdek ? "Playdek est." : "Elo";
+    $("lb-th-games").textContent = playdek ? "Human games" : "Games";
+    $("lb-th-score").textContent = playdek ? "W-D-L" : "Score";
     $("lb-body").innerHTML = rows.map((r, k) => {
       const pl = this.data.players[r.player];
       const kind = KIND_LABEL[pl?.kind ?? ""] ?? pl?.kind ?? "";
       const pct = r.games ? (100 * r.score / r.games).toFixed(1) + "%" : "";
+      const est = this.estimateOf(r.player);
+      const eloCell = !playdek ? r.elo.toFixed(0) : est ? est.rating.toFixed(0) : "–";
+      const seCell = !playdek ? (r.player === this.ep.anchor ? "anchor" : r.se.toFixed(0)) : est ? est.se.toFixed(0) : "";
+      const gamesCell = !playdek ? r.games.toLocaleString("en-US") : est?.games ? String(est.games) : "–";
+      const scoreCell = !playdek ? pct : est?.games ? `${est.w}-${est.d}-${est.l}` : "";
       return `<tr data-player="${esc(r.player)}" class="${r.player === this.selected ? "selected" : ""}">
         <td class="num lb-dim">${k + 1}</td>
         <td><span class="lb-player">${esc(r.player)}</span>${r.main ? `<span class="lb-tag main">MAIN</span>` : ""}${kind ? `<span class="lb-tag kind">${esc(kind)}</span>` : ""}${this.isHfDefault(r.player) ? HF_TAG : ""}</td>
-        <td class="num lb-elo">${r.elo.toFixed(0)}</td>
-        <td class="num lb-dim lb-hide-narrow">${r.player === this.ep.anchor ? "anchor" : r.se.toFixed(0)}</td>
-        <td class="num lb-hide-narrow">${r.games.toLocaleString("en-US")}</td>
-        <td class="num">${pct}</td>
+        <td class="num lb-elo">${eloCell}</td>
+        <td class="num lb-dim lb-hide-narrow">${seCell}</td>
+        <td class="num lb-hide-narrow">${gamesCell}</td>
+        <td class="num">${scoreCell}</td>
         <td class="lb-links lb-hide-narrow">${this.links(r.player)}</td>
       </tr>`;
     }).join("");
@@ -315,6 +375,10 @@ class LeaderboardPage {
     const codeLine = nc && (nc.architecture || nc.recipe)
       ? `<p class="lb-codes-line">${nc.architecture ? `Architecture ${this.codeLink(nc.architecture)}` : ""}${nc.architecture && nc.recipe ? " · " : ""}${nc.recipe ? `recipe ${this.codeLink(nc.recipe)}` : ""}</p>`
       : "";
+    const est = this.estimateOf(pid);
+    const estLine = !est ? "" : `<p>Playdek estimate <b>${est.rating.toFixed(0)}</b> ± ${est.se.toFixed(0)} (95%: ${est.lo.toFixed(0)}–${est.hi.toFixed(0)}) · ${
+      est.games ? `${est.games} games against ${est.humans} ${est.humans === 1 ? "person" : "people"}, the model ${est.w}-${est.d}-${est.l}`
+        : "no games against people: its leaderboard gap to the players they did face"}.</p>`;
     box.innerHTML = `
       <h2>${esc(pid)}</h2>
       <p>${desc}${old}</p>
@@ -322,6 +386,7 @@ class LeaderboardPage {
       ${codeLine}
       ${links ? `<p class="lb-links">${links}</p>` : ""}
       <p>Elo <b>${rating.elo.toFixed(0)}</b>${pid === this.ep.anchor ? " (the anchor)" : ` ± ${rating.se.toFixed(0)}`} · ${rating.games.toLocaleString("en-US")} games against ${rating.opponents} opponents, ${rating.main_opponents} of them main players.</p>
+      ${estLine}
       <div class="lb-table-wrap"><table class="lb-table">
         <thead><tr><th>Against</th><th class="num">Elo</th><th class="num">Games</th><th class="num">Score</th>
           <th class="num lb-hide-narrow">as US</th><th class="num lb-hide-narrow">as USSR</th></tr></thead>
@@ -385,6 +450,12 @@ class LeaderboardPage {
 
   private renderScale(): void {
     const ep = this.ep;
+    const pd = this.data.playdek;
+    $("lb-note").textContent = this.mode === "playdek" && pd
+      ? `Estimates, from ${pd.games} clean games against ${pd.humans} people on the workbench to ${pd.as_of}, at the Playdek ratings they gave; takebacks are allowed. `
+        + `A player people have faced is placed by those games and its leaderboard gaps together; a player nobody has faced by its gaps alone, so its ± is wider. `
+        + `This is not a rating Playdek has issued.`
+      : ANCHOR_NOTE;
     $("lb-scale").innerHTML = `${esc(ep.description)} Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}.
       The main players are fitted on their games against each other; everyone else against them, held fixed,
       so a rating does not move with the view. The US seat is worth ${ep.seat_us >= 0 ? "+" : ""}${ep.seat_us.toFixed(0)} ± ${ep.seat_us_se.toFixed(0)} Elo.
@@ -421,6 +492,7 @@ class LeaderboardPage {
     if (this.view !== "main") params.set("view", this.view);
     if (this.view === "lineage" && this.lineages.size) params.set("lineage", [...this.lineages].sort().join(","));
     if (this.selected) params.set("player", this.selected);
+    if (this.mode === "playdek") params.set("scale", "playdek");
     history.replaceState(null, "", `?${params}`);
   }
 }
