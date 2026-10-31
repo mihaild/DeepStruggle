@@ -32,11 +32,59 @@ plateau (10,000M budget) in the next free slot.
 | **J2** | **the opponent's next-action head**: at the learner's decision, predict the opponent's next entry decision (its next card play, the flat action) from the observation; cross-entropy at weight w; the target is the rollout's own record | the auxiliary that "made the bot substantially stronger"; here an opponent model the trunk lacks (P33f: public information only) |
 | **J3** | **the hidden-hand head**: predict the opponent's hand (sigmoids over the hidden pool) from the observation; the true hand from the engine state as the target (a recipe: the policy never reads it); weight w | their item/ability/move predictions as targets; ours is the belief the trunk does not hold. Read on its own target against the probes' numbers (prior 0.3914, public probe 0.3780, the policy-likelihood posterior 0.3363): does the trunk learn a belief when asked to |
 | **J4** | J2 + J3 together | their setting; only if each is at least level alone |
-| **J5** | **the token encoder on the R95 recipe**: two attention layers over country and card tokens (the `--ladder-token-layers` path, pre-norm) on A8's heads, with the per-entity-type MLPs the ladder already has (their position-type mixture of experts), µP per-layer rates, the stability checks at 60M | P38 rung 4 with its prior raised: a transformer over entities trained under PPO self-play is their whole architecture, and it did not need hyperspherical machinery |
+| **J5** | **superseded by the design below (owner, 2026-10-31)**; as first written, the token encoder on the R95 recipe: two attention layers over country and card tokens (the `--ladder-token-layers` path, pre-norm) on A8's heads, with the per-entity-type MLPs the ladder already has (their position-type mixture of experts), µP per-layer rates, the stability checks at 60M | P38 rung 4 with its prior raised: a transformer over entities trained under PPO self-play is their whole architecture, and it did not need hyperspherical machinery |
 | **J6** | **history tokens** (the owner's decision): the last 16 decisions of the game -- side, decision type, card or country -- as an appended `obs_features` block of integer codes (16 × 3 floats), embedded network-side; into J5's network, not A8's | their 16 event tokens; the cheapest memory, 48 floats |
 | **J7** | **matchup features** (the owner's decision, lower priority): per held card, the engine's event and Ops summary against the board (P30's T2/T4: VP, DEFCON and regional deltas if the event fires, countries the Ops could control), ≤ 9 cards × ~10 floats as an appended block | their matchup tokens: pairwise structure handed over rather than learned |
 | **J8** | **training against search, repeated on top**: Arm S's searched opponent (`--searched-opponent-spec 4:4:1:z2:earlier:own:keyed:aligned:box4:graphs`, one game in eight) (a) as a branch from the new base's plateau -- Arm S's form, replicated; (b) at the same share from the start of the best combination, gated as R69 was (search joins when the root beats its raw snapshot ≥ 55% in a 200-game check every 40M) | the one P40 result that moved a plateau; it must be shown to hold on the new base, and whether it helps from the start is untested |
 | **J9** | **length**: the best combination run to twice the steps its control plateaued at if still rising | their ~100M games are ~45,000M of our steps; our plateaus are at 12,000M |
+
+## J5's design: the token transformer as the main path (owner, 2026-10-31: option B; for review, not built)
+
+The row above (A33, attention beside the grouped trunk) is not the run: it costs a transformer's compute and tests only
+"attention beside the trunk", and its relatives were level (E7-09-44 by 400M, A18 grown onto a plateau). What Jaxcalibur
+publishes: a non-causal transformer, pre-RMSNorm, different MLP weights per position type, 60 tokens, 8.5M parameters;
+**no depth, width, heads or optimiser settings**, so those are ours to choose.
+
+**The network (a new A code; no observation, action-space or engine change).**
+
+* **Tokens:** 195, as the token path has them: 1 global, 84 countries, 110 cards, each type's own projection of its raw
+  row plus a learned identity per country and card (`tok_*_in`, `tok_*_id`).
+* **Blocks:** L pre-RMSNorm blocks: full self-attention shared by all tokens, then an **MLP per token type** (global,
+  country, card), only the token's own running: parameters triple, compute does not.
+* **Main path:** the grouped projections and fusion input go. The trunk `h` is `fusion_in` over the global token's output
+  alone, so everything reaches the trunk through attention.
+* **Heads, unchanged:** base policy and value from `h`; per-country and per-card heads each from their own token, raw row
+  and the trunk context; branch and play-mode heads as now. The 220-wide flat action space is untouched.
+* **Readouts zeroed** (R95). `--mup` scales nothing at these widths unless a base is defined for the token path: left off the build.
+* **Flags:** `--ladder-token-main` (drop the grouped path), `--ladder-token-mlp-mult`, per-type MLP and RMSNorm under
+  it; recovered from a state dict as every axis is; ONNX export tested (the workbench must still run it).
+
+**Size: cost per row, measured** (a prototype, bf16, batch 1,024 beside two trainers, so ±~30%: its 2x128
+read slower than its 3x128). One forward plus four updates per row; A8's 9.9 µs matches its ~107k steps/s alone, so
+steps/s below is 10^6 / cost.
+
+| cell | parameters | µs per row | × A33 | ~steps/s alone | 800M | 2,000M |
+|:---|:---|:---|:---|:---|:---|:---|
+| A8 | 1.48M | 9.9 | 0.07 | ~100k | -- | -- |
+| A33 (2 × 128, shared MLP) | 1.86M | 137 | 1.0 | ~7k (measured 4-10k) | 1.3 d | 3 d |
+| 3 × 128, per-type MLP ×2 | 1.06M | 295 | 2.1 | ~3.4k | 2.7 d | 7 d |
+| **3 × 192, per-type MLP ×2** | **2.11M** | **456** | **3.3** | **~2.2k** | **4 d** | **10.5 d** |
+| 3 × 256, per-type MLP ×2 | 3.55M | 595 | 4.3 | ~1.7k | 5.5 d | 14 d |
+| 4 × 256, per-type MLP ×4 (Jaxcalibur's size) | 7.75M | 829 | 6.0 | ~1.2k | 8 d | 19 d |
+
+**Proposed: 3 × 192**, with the larger cells open if the build runs faster than the prototype. The GPU is the limit: 9.9
+GB per 1,024 rows at 4 × 256 means passes of ~1,024 rows at the 16k minibatch (`--ladder-token-chunk`), and a neighbour
+slows it badly (A18: 4.7k beside R57, which fell from 69k to 10-20k). It runs with the GPU to itself or one light neighbour.
+
+**Recipe:** R95, plus J1's term if J1 holds at 4,000M. Its step size is unknown: lr 3e-4 first, 1e-4 if the 60M check fails.
+
+**Reads and rules (earlier than the plan's 2,000M, at this cost).** 60M: per-update KL, head-input rank >= 2x fresh, heads not
+dormant; lr once, then stop. Reads at 200, 400 and 800M against A13+R48's SWA beside the control at matched steps. **At 800M
+(~4 days): continue only if at least level with the control then in the base recipe** (A8-R95 18.9%, J1 30.4%), the gap
+closing; then to 2,000M for P41's pass rule. E7-09-44's lead was gone by 400M, so an early lead alone decides nothing.
+
+**After it:** J6's history tokens become 16 more tokens in this encoder (the owner's block); J1 + `--setup-mc-credit` for
+discovering openings on whichever network this leaves as the base.
 
 ## Measure
 
