@@ -179,5 +179,10 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   the state; the flag is in every observation): choosing a coup target, P(battleground) **J1 10.3 -> 78.8%**, base 6.4 -> 6.2%, R94 7.6
   -> 7.7%; coup on offer, P(coup) **J1 6.5 -> 26.0%**, base 3.8 -> 3.8%, R94 2.1 -> 2.3%. J1 has learned what the card does; the
   plateaued networks show no response to it. The clearest sign yet of what the saturation term buys.
+* **J1 passes at 4,000M (2026-10-31).** 47.8% against A13+R48's SWA (the base 44.1%). **Head to head 53.4% ± 1.1** (US 50.4 / USSR 54.5; the
+  control's self-play bar at 4,000M US 46.1 / USSR 52.3: above it in both seats), held from 52.8% at 2,000M. Saturation: median
+  top-two gap **1.23 against 3.50**, mean P(top) 0.64 against 0.85. Rare cards, greedy: Nuclear Subs US event 18% against 0%; One Small
+  Step ~0% for both, Wargames 34% against 29%: the first rare card moved, not all. Endings, greedy, ~740 games: held scoring 1.7% against
+  3.2% (2,800M's reversal gone), own DEFCON 1.1% against 1.6%; at T=1 own DEFCON still 8.1% against 1.2%. It keeps running past 4,000M.
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
