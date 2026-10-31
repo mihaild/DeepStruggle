@@ -219,7 +219,7 @@ you use it.
 ```bash
 # RL self-play + live snapshot evals (+ optional post-training tournament). Shape only: take the
 # architecture/recipe flags from launch_flags.py on the parent run, never from here.
-TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
+TRITON_CACHE_DIR=.triton_cache PYTHONPATH=.:build/release .venv/bin/python tools/train.py \
   --arch ladder <A-code flags> <R-code flags, incl. the opponent pool of invariant 14> \
   --run-name E<n>-A<n>-R<n>-S<n> --description "..." \
   --train-steps <N> --snapshot-every-steps 10000000 \
@@ -228,7 +228,7 @@ TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
 #   then --warmup-checkpoint <warmup.pt> ONLY for a deliberately warm-started arm
 
 # Standalone tournament / Elo evaluation over a checkpoint directory
-PYTHONPATH=. .venv/bin/python tools/tournament.py \
+PYTHONPATH=.:build/release .venv/bin/python tools/tournament.py \
   --checkpoint-dir <run-dir> --games-per-side 500 \
   --anchor-model HeuristicBot --anchor-elo 1500.0 \
   --output-report <run-dir>/tournament_report.md
@@ -245,7 +245,7 @@ PYTHONPATH=. .venv/bin/python tools/leaderboard.py show --main-only   # or --lin
 PYTHONPATH=.:build/release .venv/bin/python tools/publish_hf.py run <run-dir> --dry-run
 
 # Single match / replay generation (also --us human for interactive CLI play)
-PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategic
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us heuristic --ussr strategic
 
 # Web workbench: rebuild the page after an engine change (it runs its own copy of the engine)
 tools/scripts/build_web.sh

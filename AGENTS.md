@@ -342,7 +342,7 @@ no checkpoint) into a temp dir and points the server at it through `TS_REPLAYS_D
 second. Schema changes are caught by `tests/bindings/replay_schema.golden.json`, regenerated
 deliberately with `PYTHONPATH=.:build/release .venv/bin/python tests/bindings/test_replay_schema_golden.py`.
 For workbench replays during development, generate them:
-`PYTHONPATH=. .venv/bin/python tools/play_match.py --us heuristic --ussr strategic --game-id scratch`.
+`PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us heuristic --ussr strategic --game-id scratch`.
 
 ---
 

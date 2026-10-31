@@ -172,9 +172,11 @@ for Arm S to finish.
 16,400 / 16,800 / 17,200 / 17,600M -- the last two above R94's band (49.4-53.3%), none clearly above the 55% bar. The
 searched opponent moved the plateau a little (~+2 points over R94's 52.8%, flattening) where every training-mode change
 had not moved it at all; the learner's ~26% against its searched opponent never rose, the root's edge held as the
-snapshot followed the learner. Not tested head to head against R94.
+snapshot followed the learner. **Head to head against R94 (owner, 2026-10-31): 51.5% ± 1.1** (17,520-17,600M SWA against
+15,920-16,000M, US 49.1 / USSR 52.7, `data/reports/arms_vs_r94.json`), ~+10 Elo at 1.4 standard errors: **the gain is not confirmed.**
 
 **Where P40 ends.** Capacity (Arm C): a deep network distilled from the bar held the bar under RL (50.7% at 400M) and
 gained nothing past it in the reads taken -- no evidence capacity binds; from scratch every bigger network lost to A8.
-Signal (Arm S): the one lever that moved the plateau at all, modestly, at ~2.5x a plain step's cost.
+Signal (Arm S): the reads against the fixed reference rose past the band, but head to head it is not significantly
+stronger than the network it branched from, at ~2.5x a plain step's cost: a possible small gain, not an established one.
 

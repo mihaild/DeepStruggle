@@ -18,7 +18,7 @@ distillation (`--mode distill`, §7c), with live snapshot evaluation.
 `metadata.json`). The skeleton below only shows the shape:
 
 ```bash
-TRITON_CACHE_DIR=.triton_cache PYTHONPATH=. .venv/bin/python tools/train.py \
+TRITON_CACHE_DIR=.triton_cache PYTHONPATH=.:build/release .venv/bin/python tools/train.py \
   --arch v2 --run-name E<n>-A<n>-R<n>-S<n> --description "..." \
   --train-steps 160000000 --snapshot-every-steps 10000000 \
   --opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12 \
@@ -252,9 +252,9 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
 
 ```bash
 # head-to-head
-PYTHONPATH=. .venv/bin/python tools/tournament.py --models <checkpoint.pt> heuristic --games-per-side 50
+PYTHONPATH=.:build/release .venv/bin/python tools/tournament.py --models <checkpoint.pt> heuristic --games-per-side 50
 # round robin over a directory
-PYTHONPATH=. .venv/bin/python tools/tournament.py --checkpoint-dir <run-dir> --games-per-side 500 \
+PYTHONPATH=.:build/release .venv/bin/python tools/tournament.py --checkpoint-dir <run-dir> --games-per-side 500 \
   --anchor-model HeuristicBot --anchor-elo 1500.0 --output-report <run-dir>/tournament_report.md
 ```
 
@@ -471,9 +471,9 @@ Plays any pair of agents, including interactive terminal play, and writes `.tslo
 for the workbench (`http://localhost:8000/?replay=<file>.tslog.json`).
 
 ```bash
-PYTHONPATH=. .venv/bin/python tools/play_match.py --us <a.pt> --ussr <b.pt> --game-id a_vs_b
-PYTHONPATH=. .venv/bin/python tools/play_match.py --us human --ussr heuristic
-PYTHONPATH=. .venv/bin/python tools/play_match.py --us strategic --ussr event_heavy --commentary
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us <a.pt> --ussr <b.pt> --game-id a_vs_b
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us human --ussr heuristic
+PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us strategic --ussr event_heavy --commentary
 PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --agent <ckpt.pt> --opening human --seed 305
 PYTHONPATH=.:build/release .venv/bin/python tools/play_match.py --us <ckpt.pt> --ussr heuristic --trace
 ```

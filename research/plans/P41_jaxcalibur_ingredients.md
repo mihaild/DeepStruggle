@@ -162,5 +162,9 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   Poland 3 is 67% on J1, 97.6% on R94, 100% on the base (J1 off-book 1 USSR game in 3); Yugoslavia 1 Poland 4 East Germany
   1 is 2e-8 on J1. **Owner: the network must discover openings itself** (no seeding, P40a not run). The candidate, J1 +
   `--setup-mc-credit`, comes after J5: "major architecture overhaul can change a lot."
+* **Decisions (owner, 2026-10-31).** J1 reaches 4,000M: if it passes there, **J1′ runs next**; if not, nothing is launched and the
+  owner reads the numbers to decide J5's configuration. **The base stops** when three reads in a row fail to beat the best
+  earlier read by more than 2 points. **J5 before the base's gap-penalty branch.** J5's sizes are measured when the current runs
+  have finished, on a free GPU; nothing is paused for it.
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
