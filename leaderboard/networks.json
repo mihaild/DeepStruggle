@@ -147,7 +147,7 @@
     "sha256": "c024e6a31cf740f89bc0928bfa64a225dbd88a90bac7cbd14f8daa6a0b27812e",
     "description": "SWA (weight average) of P40 Arm S's 17,520-17,600M snapshots: R94 (R48 + PPO clip 0.1) at 16,000M branched with the searched opponent (R98), in the last eighth of the envs a 50M-lagged snapshot of the learner, greedy, with the rollout root at its entry decisions.",
     "old_names": [],
-    "hf": null,
+    "hf": "E8-A8-R1-S44@10010M+R48@13200M+R94@16000M+R98_20261030_045109/swa_17520-17600M.pt",
     "report": "research/log/per_checkpoint/E8-A8-R1-S44_10010M+R48_13200M+R94_16000M+R98_17520..17600M.md"
   }
 }
