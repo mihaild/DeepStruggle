@@ -130,24 +130,6 @@
     "description": "The rollout root at 64 worlds with playouts stopping at the earlier of 4 boundaries and the turn's end, each leaf played on to the mover's own next decision (P33)",
     "report": null
   },
-  "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,belief=2048,aligned=true,box4=true)": {
-    "network": "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M",
-    "inference": {
-      "kind": "rollout",
-      "k": 4,
-      "worlds": 64,
-      "horizon": 4,
-      "rule": "z2",
-      "stop": "earlier",
-      "leaf": "own",
-      "chance": "keyed",
-      "belief": 2048,
-      "aligned": true,
-      "box4": true
-    },
-    "description": "The corrected keyed root with belief worlds at 64 worlds: aligned and box4 as the keyed corrected root, the worlds dealt from the policy-likelihood belief over the opponent's hand (2,048 hands, bindings/belief.hpp). What the workbench plays as search=rollout:4:64:4:z2:earlier:own:keyed:aligned:box4:belief2048, which people have played on it (owner, 2026-10-31).",
-    "report": null
-  },
   "E7-A8-R1-S44@6400M+(S44,45,46)@6720..6800M": {
     "network": "E7-A8-R1-S44@6400M+(S44,45,46)@6720..6800M",
     "inference": {
