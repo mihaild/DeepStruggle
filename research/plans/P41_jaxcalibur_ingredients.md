@@ -189,5 +189,6 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   top-two gap **1.23 against 3.50**, mean P(top) 0.64 against 0.85. Rare cards, greedy: Nuclear Subs US event 18% against 0%; One Small
   Step ~0% for both, Wargames 34% against 29%: the first rare card moved, not all. (Event shares on an opponent's card are an order, event before or after the Ops, not whether it fires.) Endings, greedy, ~740 games: held scoring 1.7% against
   3.2% (2,800M's reversal gone), own DEFCON 1.1% against 1.6%; at T=1 own DEFCON still 8.1% against 1.2%. It keeps running past 4,000M.
+* **The base stopped at 7,610M (48.5%, its rule); J1′ launched 2026-11-01 03:27 UTC.** J1 is level with R94's read at 5,600M (52.9%), behind it head to head at 5,200M (47.5%).
 * **J1, `E8-A8-R102-S44`**: built (`--zero-avoid-coef`, `zero_avoid_kl` in `ai/training/nash_pg.py`), launched 2026-10-30
   20:08 UTC at c = 0.01, to 2,000M. The term is on the learner's rows only, as the entropy bonus.
