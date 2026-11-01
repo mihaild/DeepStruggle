@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import pytest
 import torch
 
 import ts_engine as ts
@@ -165,6 +166,37 @@ def test_the_c_record_is_the_python_record() -> None:
 
     _play(2, 91, 300, step)
     assert checked[0] > 10
+
+
+def test_the_ussr_does_not_read_the_us_headline_from_its_choice() -> None:
+    """The US chooses first and its card stays in its hand until the USSR has chosen. The record must leave
+    that choice out, or every hand that could have made it -- those holding the card -- takes all the
+    weight, and the USSR's worlds always hold the US's unrevealed headline."""
+    tr = BeliefTracker(_model(), torch.device("cpu"), particles=128, seed=9)
+    held: List[float] = []
+    uniform: List[float] = []
+    after_reveal = [0]
+
+    def step(live: List[int], states: List[ts.GameState], acts: List[int], players: List[int]) -> None:
+        hands = tr.worlds(live, states, 128)
+        for st, p, h in zip(states, players, hands):
+            hidden = st.current_phase == ts.Phase.HEADLINE and int(st.headline_stage) == 0
+            if h is None or side(p) != 2:
+                continue
+            if hidden and int(st.headline_us_card):
+                now = Now.of(st, 2)
+                held.append(float(h[:, int(st.headline_us_card) - 1].mean()))
+                uniform.append(now.hand / float(now.pool.sum()))
+            elif not hidden and st.current_phase == ts.Phase.ACTION_ROUND and int(st.turn) >= 1:
+                after_reveal[0] += 1
+        tr.observe(live, states, acts, players)
+
+    _play(8, 123, 1500, step)
+    assert len(held) >= 12
+    # With the leak this is exactly 1.0 at every position; without it, the prior's rate.
+    assert np.mean(held) < 0.75 and np.mean(held) == pytest.approx(np.mean(uniform), abs=0.15)
+    assert sum(x > 0.99 for x in held) <= len(held) // 4
+    assert after_reveal[0] > 0
 
 
 def test_the_temperature_weights_are_the_evidence_softmax() -> None:

@@ -5,7 +5,8 @@
 // A tracker sees every decision of every game it is given (`observe`). At a root decision it lists
 // the opponent's decisions this turn that fit the hand (`record`: a hypothesis for the hand now fixes the
 // hand at each earlier decision of the turn -- the hypothesis plus the cards that have left the
-// decider's hidden pool since, for anywhere but the decider's own hand), draws `particles` hands of the
+// decider's hidden pool since, for anywhere but the decider's own hand), leaving out an opposing headline
+// the decider cannot have seen yet, draws `particles` hands of the
 // opponent's unseen size uniformly from the hidden pool, and asks for the network's log-probability of
 // each recorded decision under each hand at each temperature of kTemperatures. From those it weighs the
 // hands, and the temperatures by how well each explains this opponent's choices so far in the game

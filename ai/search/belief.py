@@ -72,12 +72,14 @@ class Now:
     locs: np.ndarray         # every card's location
     pool: np.ndarray         # 110 booleans: the decider's hidden pool (the opponent's unknown hand, the deck)
     hand: int                # the opponent's unknown hand size
+    headline_hidden: bool = False   # an opposing headline chosen now is not revealed to the decider
 
     @staticmethod
     def of(st: ts.GameState, me: int) -> "Now":
         locs = card_locations(st)
         opp = 3 - me
-        return Now(me, locs, (locs == DECK) | (locs == UNKNOWN[opp]), int((locs == UNKNOWN[opp]).sum()))
+        return Now(me, locs, (locs == DECK) | (locs == UNKNOWN[opp]), int((locs == UNKNOWN[opp]).sum()),
+                   st.current_phase == ts.Phase.HEADLINE and int(st.headline_stage) == 0)
 
 
 def left_since(d: Decision, now: Now) -> Optional[np.ndarray]:
@@ -102,6 +104,9 @@ def record(log: Sequence[Decision], now: Now, all_decisions: bool) -> List[Tuple
     for d in log:
         if d.decider != opp:
             continue
+        if now.headline_hidden and d.state.current_phase == ts.Phase.HEADLINE and int(d.state.headline_stage) == 0 \
+                and d.state.ctx().decision_type == ts.DecisionType.SELECT_CARD and int(d.state.ctx().resolving_card) == 0:
+            continue   # chosen but not revealed: it stays in the hand, and would deal into every world
         if not all_decisions and int(d.state.ctx().decision_type) not in (
                 int(ts.DecisionType.SELECT_CARD), int(ts.DecisionType.SELECT_PLAY_MODE)):
             continue

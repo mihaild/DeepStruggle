@@ -112,10 +112,15 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
         job.game = games[p];
         job.me = me;
         job.key = key;
+        // The opponent's headline, chosen but not revealed: the card stays in its hand until both sides
+        // have chosen, so conditioning on the choice would deal it into every world.
+        const bool headline_hidden = s.current_phase == Phase::HEADLINE && s.headline_stage == 0 && !revealed;
         for (uint32_t i = 0; i < g.log.size(); ++i) {
             const Decision& d = g.log[i];
             if (d.decider != other(me)) continue;
             const DecisionType t = d.state.ctx().decision_type;
+            if (headline_hidden && d.state.current_phase == Phase::HEADLINE && d.state.headline_stage == 0 &&
+                t == DecisionType::SELECT_CARD && d.state.ctx().resolving_card == 0) continue;
             if (!all_decisions_ && t != DecisionType::SELECT_CARD && t != DecisionType::SELECT_PLAY_MODE) continue;
             std::array<uint8_t, 110> left{};
             if (!left_since(d, me, now, left)) continue;

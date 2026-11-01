@@ -235,7 +235,9 @@ are cited from elsewhere; keep them.
   held equal to the Python rebuild by `tests/training/test_belief.py`.
 - [`belief.hpp`](belief.hpp): **the belief tracker** (`ts.BeliefTracker`, compiled into
   `ts_rollout_batch` so the browser build has it too). Per game it keeps the turn's decisions; at a
-  root decision it records the opponent's decisions that fit the hand, draws `particles` hands keyed by
+  root decision it records the opponent's decisions that fit the hand -- never an opposing headline
+  chosen but not yet revealed, which stays in the hand until both sides have chosen and would deal
+  itself into every world (2026-11-01; every belief number before it carries that leak) -- draws `particles` hands keyed by
   the seed and the position (a game's worlds do not depend on the batch -- tested), lists the rows
   (`rows_patch` for a device, `hypothesis_rows` per decision for a full build), takes the caller's
   log-probabilities at every temperature of `kTemperatures`, weighs the hands and the temperatures

@@ -294,6 +294,10 @@ selfplay`: 256 of the network's own games at T = 1):
 It finds the opponent unasked: on the network's games it keeps the whole gain, on humans it avoids the harm
 (a small gain instead of −11.7%). This is the belief mode for the leaderboard and the browser alike.
 
+**(2026-11-01: every belief-root number in this file and in P36 predates a fix: as the USSR, the root's
+worlds always held the US's unrevealed headline, because the tracker conditioned on that choice. Read them
+as upper bounds. `bindings/belief.cpp` no longer does.)**
+
 **The shared belief root, re-measured (2026-10-19): 55.0%.** The belief as built for both the leaderboard
 and the browser (`bindings/belief.hpp`, commits `38da571`, `abfbf43`: the temperature model-averaged from
 the opponent's choices, draws keyed by the position, 2,048 hands, every opposing decision of the turn),
