@@ -164,8 +164,8 @@ product (not adopted), regret matching and HP binning (simultaneous moves; not o
   `--setup-mc-credit`, comes after J5: "major architecture overhaul can change a lot."
 * **Decisions (owner, 2026-10-31).** **J1 continues past 4,000M while it improves** (the base's stop rule), and **J1′ runs when the base
   finishes**: whether training can be simplified is settled before J5 starts. If J1 fails at 4,000M, nothing new is launched and the
-  owner reads the numbers to decide J5's configuration. **The base stops** when none of the last three reads beats the best read
-  from before them by more than 0.5 points (0.5 is a real gain if it accumulates). **J5 before the base's gap-penalty branch.** J5's sizes are measured when the current runs
+  owner reads the numbers to decide J5's configuration. **The stop rule (owner, as amended 2026-11-01):** a run stops when, at two reads in a row, none of the last three reads beats the best
+  read from before them by more than 0.5 points (0.5 is a real gain if it accumulates; one firing alone stopped J1 on a low read at 6,800M, and its next read was its best). **J5 before the base's gap-penalty branch.** J5's sizes are measured when the current runs
   have finished, on a free GPU; nothing is paused for it.
 * **Lose-now moves (2026-10-31).** Equilibrium of PPO + c KL(uniform ‖ π): π = c / (n Δ), Δ = (1 + v) / raw advantage std (0.21);
   measured at DEFCON <= 2 on J1 at 2,800M: median 1.4e-3 summed over a position's losing moves, predicted 1.1e-3 (base 1e-16,
