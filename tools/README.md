@@ -343,7 +343,7 @@ player never move a main rating.
 PYTHONPATH=. python tools/leaderboard.py add-network <name> <file.pt> --description "..."   # --replace refuses new weights for a network with recorded pairings unless --rewrite-history
 PYTHONPATH=. python tools/leaderboard.py add-player '<name>~gumbel(sims=256,k=8)'   # --report, --replace
 tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release python tools/leaderboard_play.py \
-  --epoch E9 --players '<player-id>' --games-per-side 1000    # --opponents ..., --round-robin, --base-seed
+  --epoch E8 --players '<player-id>' --games-per-side 1000    # --opponents ..., --round-robin, --base-seed
 PYTHONPATH=. python tools/leaderboard.py show --main-only            # or --lineage E7-A8-R1-S44
 PYTHONPATH=. python tools/leaderboard.py validate                    # what tests/training checks
 ```

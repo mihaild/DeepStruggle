@@ -238,7 +238,7 @@ PYTHONPATH=.:build/release .venv/bin/python tools/tournament.py \
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py add-network <name> <file.pt> --description "..."
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py add-player '<name>[~gumbel(sims=256,k=8)]'
 tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release .venv/bin/python \
-  tools/leaderboard_play.py --epoch E9 --players '<player-id>' --games-per-side 1000
+  tools/leaderboard_play.py --epoch E8 --players '<player-id>' --games-per-side 1000
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py show --main-only   # or --lineage <run-name>
 # Publish to Hugging Face (repo mirrors data/checkpoints/; .onnx only for the final snapshot,
 # the final SWA, soups and leaderboard networks): tools/README.md §2c

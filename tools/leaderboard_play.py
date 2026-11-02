@@ -2,7 +2,7 @@
 """Play leaderboard pairings and record them in `leaderboard/matches/<epoch>.jsonl`.
 
     tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release python tools/leaderboard_play.py \\
-        --epoch E9 --players <player-id> ... [--opponents <player-id> ... | --round-robin] \\
+        --epoch E8 --players <player-id> ... [--opponents <player-id> ... | --round-robin] \\
         --games-per-side 1000
 
 Every player plays every opponent (the epoch's main players unless --opponents is given; `--strong`:

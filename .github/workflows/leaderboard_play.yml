@@ -24,7 +24,7 @@ on:
         description: "A registered player id (leaderboard/players.json)"
         required: true
       epoch:
-        default: "E9"
+        default: "E8"
       opponents:
         description: "Space-separated player ids (empty: the epoch's main players)"
         default: ""
