@@ -488,3 +488,19 @@ Held by `CardEdgeCasesTest.Deal_AlternatesSoAShortDeckIsShared`, `Deal_USSRDraws
 The behaviour digest is unchanged except for the We Will Bury You DEFCON-1 classification (its
 `runner` section hashes each game's ending reason); no decision or result moved. Tests:
 `tests/test_review_fixes.cpp`.
+
+## 16. A card played on a pushed frame (ENG-6, E9, 2026-11-02)
+
+Events nest on `ctx_stack`, and Ops finishing on a pushed frame were taken to be Ops an Event granted.
+Grain Sales fired through another card's Event breaks that: the card it draws is played on the frame
+pushed for Grain Sales, a real play. The drawn card used for Ops stayed in the US hand, playable again;
+an opponent's card's Event never fired, behind the depth guard; and a card played as its Event or for
+Space went on to the next action round with the frame still pushed. In stats game b97d05b2, at turn 10's
+headline, the US headlines Star Wars, takes Grain Sales, draws NORAD and places three Influence, and
+NORAD was still in hand at the end of the game.
+
+`advance_after_ops` now settles such a card first (`settle_card_played_on_pushed_frame`): still in a
+hand is what separates it from granted Ops, whose card is placed as soon as its Event is triggered --
+the same test the base frame uses. `finish_play_without_ops` unwinds the Event and Space endings. The
+depth guards on the base frame's owed Event stay: a pushed frame starts zeroed, which reads as
+OPS_FIRST. Tests: `PushedFrame.*` in `engine/tests/test_rules_audit.cpp`.

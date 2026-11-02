@@ -331,10 +331,68 @@ bool event_occurred_on_ops_play(const GameState& state, uint8_t card, Player p) 
     return state.ctx().suppress_op_card_event == 0;
 }
 
+// Ops spent on a pushed frame are usually granted by an Event, whose card was placed as soon as
+// the Event was triggered. But Grain Sales fired through another card's Event -- Star Wars, Five
+// Year Plan, Missile Envy -- plays the card it drew on the frame that was pushed for it, and that is
+// a real play: the card is still in the hand it was drawn into, and nothing else will place it. At
+// turn 10's headline of stats game b97d05b2 the US headlines Star Wars, takes Grain Sales, draws
+// NORAD and places three Influence with it, and NORAD stayed in the US hand, playable again; drawn
+// from the USSR, a card's Event never happened either. So "still in a hand" -- the test the frame
+// underneath uses -- separates this from granted Ops, at any depth.
+//
+// Returns true when the frame must stop here: the card's Event has asked a question, whose answer
+// unwinds this frame when it finishes, or the game ended.
+bool settle_card_played_on_pushed_frame(GameState& state) noexcept {
+    const uint8_t card = state.ctx().pending_op_card;
+    if (card == 0 || card > 110 || card == card_ids::THE_CHINA_CARD ||
+        card == state.headline_first_card || card == state.headline_second_card ||
+        !is_in_any_hand(state.card_locations[card])) {
+        return false;
+    }
+    const Player spender = state.ctx().decision_player;
+    if (!state.ctx().suppress_op_card_event &&
+        state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
+        CardData::is_opponent_card(card, spender)) {
+        const Player opp = get_opponent(spender);
+        state.ctx().decision_player = opp;
+        state.ctx().resolving_card = card;
+        state.ctx().timing_branch = 255; // cleared
+        state.ctx().allow_early_stop = 0;  // an Event starts from none, as below
+        const bool fired = CardHandlers::event_has_effect(state, card, opp);
+        const bool done = CardHandlers::trigger_event(state, card, opp);
+        CardHandlers::relocate_played_card(state, card, fired, CardHandlers::Handover::Respect);
+        if (!done || state.current_phase == Phase::GAME_OVER) return true;
+        state.ctx().resolving_card = 0;
+        return false;
+    }
+    CardHandlers::relocate_played_card(state, card, event_occurred_on_ops_play(state, card, spender),
+                                       CardHandlers::Handover::Ignore);
+    return false;
+}
+
 } // namespace
+
+// A play that ended without Ops -- an Event, a Space attempt -- has to leave the frames it was
+// played in. Without this, Star Wars firing Grain Sales, whose drawn card was played as its Event,
+// went on to the next action round one frame deep.
+void StateMachine::finish_play_without_ops(GameState& state) noexcept {
+    while (state.ctx_stack_depth > 0) {
+        state.pop_context();
+        if (state.ctx().decision_type == DecisionType::SELECT_OP_MODE) {
+            return;   // the player's own Ops are still owed
+        }
+        state.ctx().resolving_card = 0;
+    }
+    if (state.current_phase == Phase::HEADLINE) {
+        advance_headline_step(state);
+    } else {
+        advance_after_action_round(state);
+    }
+}
 
 void StateMachine::advance_after_ops(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
+    if (state.ctx_stack_depth > 0 && settle_card_played_on_pushed_frame(state)) return;
     if (state.current_phase == Phase::HEADLINE) {
         // An opponent's card played for Operations still owes its Event, in a headline exactly
         // as in an action round. The two orderings are a choice, and OPS_FIRST leaves the
@@ -1255,8 +1313,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
                     bool done = CardHandlers::trigger_event(state, card, p);
                     CardHandlers::relocate_played_card(state, card, fired, CardHandlers::Handover::Respect);
                     if (done && state.current_phase != Phase::GAME_OVER) {
-                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
-                        else advance_after_action_round(state);
+                        finish_play_without_ops(state);
                     }
                     return true;
                 }
@@ -1322,7 +1379,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
                     state.ctx().pending_op_card, state.ctx().event_granted_ops);
                 if (action.is_confirm_done() || action.primary_id == 255 ||
                     (action.primary_id == 0 && free_action_bars_influence)) {
-                    if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
+                    if (state.current_phase == Phase::HEADLINE && state.ctx_stack_depth == 0) advance_headline_step(state);
                     else advance_after_ops(state);
                     return true;
                 }
@@ -1498,8 +1555,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
                     Player space_player = roll_actor;
                     SpaceRace::attempt_space(state, space_player, card, forced_actor);
                     if (state.current_phase != Phase::GAME_OVER) {
-                        if (state.current_phase == Phase::HEADLINE) advance_headline_step(state);
-                        else advance_after_action_round(state);
+                        finish_play_without_ops(state);
                     }
                     return true;
                 }

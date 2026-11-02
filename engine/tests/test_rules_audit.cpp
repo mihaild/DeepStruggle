@@ -309,3 +309,102 @@ TEST(RulesAudit, OlympicBoycottUnderVietnamRevoltsAndPurge_FallsBackToTheModifie
     ASSERT_EQ(s.ctx().pending_ops_value, 3);
     ASSERT_EQ(s.ctx().remaining_steps, 2);
 }
+
+// --- A card played on a pushed frame (ENG-6) ---------------------------------------------------
+//
+// Grain Sales fired through another card's Event plays the card it draws on the frame pushed for it.
+// Ops spent on a pushed frame used to be taken for Ops an Event granted: the card stayed in the hand
+// it was drawn into, playable again, and an opponent's card owed no Event.
+
+namespace {
+
+void take(GameState& s, DecisionType t, uint8_t id) {
+    ASSERT_TRUE(StateMachine::step(s, MicroAction{t, id, 0, 0}));
+}
+
+// The US plays Star Wars as its Event and takes Grain Sales, which draws `drawn`, the only card the
+// USSR holds. Filler keeps the US in the turn.
+GameState star_wars_into_grain_sales(uint8_t drawn) {
+    GameState s = action_round_for(Player::US);
+    s.turn = 9;
+    s.us_space_track = 4;
+    s.ussr_space_track = 1;
+    s.card_locations[card_ids::STAR_WARS] = hand_of(Player::US);
+    s.card_locations[card_ids::GRAIN_SALES] = CardLocation::DISCARD_PILE;
+    s.card_locations[card_ids::DUCK_AND_COVER] = hand_of(Player::US);
+    s.card_locations[drawn] = hand_of(Player::USSR);
+    take(s, DecisionType::SELECT_CARD, card_ids::STAR_WARS);
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT));
+    take(s, DecisionType::SELECT_CARD, card_ids::GRAIN_SALES);
+    ASSERT_EQ(s.ctx_stack_depth, 1);
+    ASSERT_EQ(s.ctx().pending_op_card, drawn);
+    return s;
+}
+
+void spend_on_canada(GameState& s) {
+    for (int i = 0; i < 8 && s.ctx().decision_player == Player::US &&
+                    s.ctx().decision_type == DecisionType::POINT_NODE; ++i) {
+        take(s, DecisionType::POINT_NODE, countries::CANADA);
+    }
+}
+
+} // namespace
+
+TEST(PushedFrame, StarWarsGrainSales_ANeutralCardSpentForOpsIsDiscarded) {
+    GameState s = star_wars_into_grain_sales(card_ids::NUCLEAR_TEST_BAN);
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_INFLUENCE));
+    spend_on_canada(s);
+    ASSERT_EQ(s.card_locations[card_ids::NUCLEAR_TEST_BAN], CardLocation::DISCARD_PILE);
+    ASSERT_EQ(s.card_locations[card_ids::GRAIN_SALES], CardLocation::DISCARD_PILE);
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+}
+
+TEST(PushedFrame, StarWarsGrainSales_AUSSRCardFiresItsEventOnceAndIsRemoved) {
+    GameState s = star_wars_into_grain_sales(card_ids::NASSER);
+    const int before = s.countries[countries::EGYPT].ussr_influence;
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_INFLUENCE));
+    spend_on_canada(s);
+    ASSERT_EQ(s.card_locations[card_ids::NASSER], CardLocation::REMOVED_FROM_GAME);
+    ASSERT_EQ(s.countries[countries::EGYPT].ussr_influence, before + 2);
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+    ASSERT_EQ(s.ctx().resolving_card, 0);
+}
+
+TEST(PushedFrame, StarWarsGrainSales_AStarredUSCardSpentForOpsIsOnlyDiscarded) {
+    // The US's own card for Ops: its Event never happened, so a starred card is not removed.
+    GameState s = star_wars_into_grain_sales(card_ids::MARSHALL_PLAN);
+    ASSERT_TRUE(CardData::get_card(card_ids::MARSHALL_PLAN).one_time);
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::OPS_INFLUENCE));
+    spend_on_canada(s);
+    ASSERT_EQ(s.card_locations[card_ids::MARSHALL_PLAN], CardLocation::DISCARD_PILE);
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+}
+
+TEST(PushedFrame, StarWarsGrainSales_AFriendlyCardsEventLeavesNoFrameBehind) {
+    GameState s = star_wars_into_grain_sales(card_ids::NUCLEAR_TEST_BAN);
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT));
+    ASSERT_EQ(s.card_locations[card_ids::NUCLEAR_TEST_BAN], CardLocation::DISCARD_PILE);
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+    ASSERT_EQ(s.ctx().decision_type, DecisionType::SELECT_CARD);
+}
+
+TEST(PushedFrame, StarWarsGrainSales_ASpaceAttemptLeavesNoFrameBehind) {
+    GameState s = star_wars_into_grain_sales(card_ids::NUCLEAR_TEST_BAN);
+    take(s, DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::SPACE));
+    ASSERT_TRUE(StateMachine::step(s, MicroAction{DecisionType::ROLL_DIE, 1, 0, 0}));
+    ASSERT_NE(s.card_locations[card_ids::NUCLEAR_TEST_BAN], hand_of(Player::US));
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+}
+
+TEST(PushedFrame, GrainSalesOwnTwoOpsAtDepthDoNotFireAnything) {
+    // The decline: Ops really granted by an Event, on a pushed frame. Nothing changes here.
+    GameState s = star_wars_into_grain_sales(card_ids::NASSER);
+    const int before = s.countries[countries::EGYPT].ussr_influence;
+    ASSERT_TRUE(StateMachine::step(s, MicroAction{DecisionType::SELECT_PLAY_MODE, 0, 0, action_flags::CONFIRM_DONE}));
+    ASSERT_EQ(s.card_locations[card_ids::NASSER], hand_of(Player::USSR, /*known=*/true));
+    take(s, DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(OpMode::INFLUENCE));
+    spend_on_canada(s);
+    ASSERT_EQ(s.card_locations[card_ids::NASSER], hand_of(Player::USSR, /*known=*/true));
+    ASSERT_EQ(s.countries[countries::EGYPT].ussr_influence, before);
+    ASSERT_EQ(s.ctx_stack_depth, 0);
+}
