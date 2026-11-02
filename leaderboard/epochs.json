@@ -64,5 +64,20 @@
         "why": "The 2026-10-28 review fixes (engine/AGENTS.md section 15): only the runner section moves, because a US forced into DEFCON 1 off We Will Bury You's Ops is now recorded as provoked (its ending reason); no decision or result in the digest changed. The other changes -- We Will Bury You paying on an empty-handed or passed US round, a finished game's score no longer moving -- reach no digest game and were ruled too rare to matter (owner, 2026-10-29)."
       }
     ]
+  },
+  "E9": {
+    "description": "The E9 engine: ENG-6 (2026-11-02), a card played through a pushed frame -- Grain Sales fired by Star Wars, Five Year Plan or Missile Envy -- is placed, owes its Event and leaves the stack. A player's name gives the engine its network was trained on; its games here are played under E9's rules, so earlier networks play on it unchanged. The main set starts as E8's anchor alone, at the same rating, until main-vs-main games on E9 let the owner choose the rest; greedy unless a player's id says otherwise.",
+    "behaviour": {
+      "version": 3,
+      "runner": "08cbfb1865a6cfc206d10c0eedc0a78453383dbb63baa1027ca2da2948b1a998",
+      "state": "6bafaed944ad82285d51177af2e7c57437a5ee9b03dec19130d42ad9ce9b1996",
+      "rollout": "a886ce1c52c75c5771de398a01c0009e3e56d57f0405b0a0bf485d604d20c817",
+      "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
+    },
+    "anchor": "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)",
+    "anchor_elo": 1600.0,
+    "main": [
+      "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)"
+    ]
   }
 }
