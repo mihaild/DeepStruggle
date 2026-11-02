@@ -62,6 +62,16 @@
           "mcts": "156879ec0bd11af706306b27eea804cdb857813eae60ca7e69f4187ff1f8b00b"
         },
         "why": "The 2026-10-28 review fixes (engine/AGENTS.md section 15): only the runner section moves, because a US forced into DEFCON 1 off We Will Bury You's Ops is now recorded as provoked (its ending reason); no decision or result in the digest changed. The other changes -- We Will Bury You paying on an empty-handed or passed US round, a finished game's score no longer moving -- reach no digest game and were ruled too rare to matter (owner, 2026-10-29)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "08cbfb1865a6cfc206d10c0eedc0a78453383dbb63baa1027ca2da2948b1a998",
+          "state": "6bafaed944ad82285d51177af2e7c57437a5ee9b03dec19130d42ad9ce9b1996",
+          "rollout": "a886ce1c52c75c5771de398a01c0009e3e56d57f0405b0a0bf485d604d20c817",
+          "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
+        },
+        "why": "ENG-6 (engine/AGENTS.md section 16): a card played through a pushed frame -- Grain Sales fired by Star Wars, Five Year Plan or Missile Envy -- is now placed, owes its Event and leaves the stack. Games reaching that path do differ, which is why runner, rollout and mcts move, but it is rare; the owner ruled it too minor for a new epoch, changing E8's engine in place, and stored games no longer valid are discarded (owner, 2026-11-02)."
       }
     ]
   }

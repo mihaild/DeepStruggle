@@ -489,7 +489,7 @@ The behaviour digest is unchanged except for the We Will Bury You DEFCON-1 class
 `runner` section hashes each game's ending reason); no decision or result moved. Tests:
 `tests/test_review_fixes.cpp`.
 
-## 16. A card played on a pushed frame (ENG-6, E9, 2026-11-02)
+## 16. A card played on a pushed frame (ENG-6, E8 in place, 2026-11-02)
 
 Events nest on `ctx_stack`, and Ops finishing on a pushed frame were taken to be Ops an Event granted.
 Grain Sales fired through another card's Event breaks that: the card it draws is played on the frame
