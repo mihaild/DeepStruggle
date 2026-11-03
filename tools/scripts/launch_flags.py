@@ -58,6 +58,7 @@ _RENAMED = {
     "aux_vp_coef": ("aux_vp_margin", lambda v: v),
     "aux_card_coef": ("aux_card_events", lambda v: v),
     "token_chunk": ("ladder_token_chunk", lambda v: v),
+    "token_compile": ("ladder_token_compile", lambda v: v),
 }
 #: keys of the `ladder_config` dict and the `--ladder-*` flag each one came from.
 _LADDER = {

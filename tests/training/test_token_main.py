@@ -1,6 +1,6 @@
 """P41 J5: the token transformer as the main path. No grouped path, the same 220 outputs, every token type reaching the
-logits, the play-mode and branch heads reading the active card's token, chunking unchanged, the configuration recovered
-from the weights, A33 untouched, a training step, and the ONNX export the workbench runs."""
+logits, the play-mode and branch heads reading the active card's token, chunking unchanged, the fused RMSNorm and the
+compiled blocks the same function, the configuration recovered from the weights, A33 untouched, a training step, and the ONNX export the workbench runs."""
 
 from pathlib import Path
 from typing import Any
@@ -11,7 +11,7 @@ import torch
 
 from ai.models.ladder_net import ACTIVE_CARD_SLOT, create_ladder_net, ladder_config_from_state_dict
 from ai.models.mup import base_shapes_for, mup_lr_mults
-from ai.models.token_transformer import TokenBlock
+from ai.models.token_transformer import RMSNorm, TokenBlock
 from ai.training import NashPGTrainer
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import TsVectorizedEnv
@@ -75,6 +75,25 @@ def test_chunked_passes_are_the_same_function() -> None:
         whole = net(o, None)[0]
         net.token_chunk = 2
         assert torch.allclose(net(o, None)[0], whole, atol=1e-5)
+
+
+def test_the_fused_rms_norm_is_the_formula() -> None:
+    norm = RMSNorm(32)
+    torch.nn.init.normal_(norm.gain)
+    x = torch.randn(4, 7, 32)
+    expected = norm.gain * x / torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + norm.eps)
+    assert torch.allclose(norm(x), expected, atol=1e-6)
+
+
+def test_compiled_blocks_are_the_same_function_and_the_same_weights() -> None:
+    net = _net()
+    o = _obs(4)
+    keys = list(net.state_dict())
+    with torch.no_grad():
+        eager = net(o, None)[0]
+        net.tok_main.compiled = True
+        assert torch.allclose(net(o, None)[0], eager, atol=1e-5)
+    assert list(net.state_dict()) == keys
 
 
 def test_the_configuration_comes_back_from_the_weights() -> None:

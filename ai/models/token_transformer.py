@@ -25,7 +25,8 @@ class RMSNorm(nn.Module):
         self.eps = float(eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.gain * x / torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        # The fused kernel: the same function as gain * x / sqrt(mean(x^2) + eps), one kernel instead of five.
+        return F.rms_norm(x, (x.shape[-1],), self.gain, self.eps)
 
 
 class TokenBlock(nn.Module):
@@ -69,8 +70,20 @@ class TokenTransformer(nn.Module):
         self.norm = RMSNorm(dim)
         # In the weights so the configuration is recovered from them: heads leave no shape of their own.
         self.register_buffer("heads_buf", torch.tensor(int(heads), dtype=torch.int64))
+        #: Run the blocks through torch.compile (--ladder-token-compile): a plain attribute, not state, so the weights
+        #: and their names are the same either way; copies (the reference, pool snapshots) share the one compiled code.
+        self.compiled = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for block in self.blocks:
-            x = block(x)
-        return self.norm(x)
+        return _run_compiled(self, x) if self.compiled else _run(self, x)
+
+
+def _run(net: TokenTransformer, x: torch.Tensor) -> torch.Tensor:
+    for block in net.blocks:
+        x = block(x)
+    return net.norm(x)
+
+
+#: One compiled function for every TokenTransformer: dynamo reads a module's parameters as inputs, so the learner,
+#: its reference and its pool snapshots share the code instead of each compiling its own.
+_run_compiled = torch.compile(_run)

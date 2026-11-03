@@ -1073,6 +1073,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "(recomputed in the backward, not held): the same function at a fraction of the "
                              "memory, for --ladder-token-layers at a large --batch-size (A18 at 16,384 needs "
                              "~20 GB without it). 0 (default): one pass.")
+    parser.add_argument("--ladder-token-compile", action="store_true",
+                        help="P41 J5: run the token transformer's blocks through torch.compile (fused elementwise "
+                             "kernels; the same function and the same weights). Needs --ladder-token-main.")
     parser.add_argument("--z-loss-coef", type=float, default=0.0,
                         help="z-loss: coef * mean(logsumexp(policy logits)^2) in the update (PaLM uses "
                              "1e-4). Bounds the logits' level, which the softmax leaves free and which "
@@ -1539,6 +1542,7 @@ def main():
             logit_gap=args.logit_gap,
             phase_lock=args.phase_lock,
             token_chunk=args.ladder_token_chunk,
+            token_compile=args.ladder_token_compile,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
             gamma=args.gamma,
