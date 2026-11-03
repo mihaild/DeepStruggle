@@ -1,6 +1,7 @@
 """P41 J1, the zero-avoiding term: KL(uniform || pi) over the legal moves. Zero at the uniform policy and at a forced
 move, unbounded as a legal move's probability goes to zero, blind to masked moves, read on the selected rows only, and
-its gradient lifts the starved move; a trainer with the coefficient logs it, and without it logs nothing."""
+its gradient lifts the starved move; under scope 'setup' only the learner's setup placements count; a trainer
+with the coefficient logs it, and without it logs nothing."""
 
 import math
 
@@ -9,7 +10,8 @@ import torch
 
 from ai.models.ladder_net import create_ladder_net
 from ai.training import NashPGTrainer
-from ai.training.nash_pg import zero_avoid_kl
+from ai.training.nash_pg import zero_avoid_kl, zero_avoid_weight
+from ai.training.rollout_buffer import setup_phase_slot
 from bindings.ts_env import TsVectorizedEnv
 
 CFG = dict(input_mode="grouped", aggregation="flatten", entity_dim=16, entity_proj_dim=64,
@@ -85,3 +87,18 @@ def test_the_trainer_logs_it_when_on_and_nothing_when_off() -> None:
     off = _trainer(0.0)
     off.collect_rollouts()
     assert off.train_step()["zero_avoid_kl"] == 0.0
+
+
+def test_scope_setup_keeps_only_the_learners_setup_rows() -> None:
+    obs = torch.full((4, 3824), 0.5)
+    obs[:2, setup_phase_slot()] = 0.0                     # rows 0 and 1 are in SETUP
+    own = torch.tensor([1.0, 0.0, 1.0, 0.0])              # rows 0 and 2 are the learner's
+    assert torch.equal(zero_avoid_weight(own, obs, "all"), own)
+    assert torch.equal(zero_avoid_weight(own, obs, "setup"), torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+
+def test_an_unknown_scope_is_refused() -> None:
+    with pytest.raises(ValueError, match="zero_avoid_scope"):
+        NashPGTrainer(active_net=create_ladder_net("cpu", **CFG), env=TsVectorizedEnv(num_envs=2, base_seed=3), num_envs=2,
+                      buffer_size=16, batch_size=16, cuda_graphs=False, device=torch.device("cpu"), zero_avoid_coef=0.01,
+                      zero_avoid_scope="late")

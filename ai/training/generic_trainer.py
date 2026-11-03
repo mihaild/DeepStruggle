@@ -1926,6 +1926,7 @@ def train_pipeline(
     z_loss_coef: float = 0.0,
     logit_gap_coef: float = 0.0,
     zero_avoid_coef: float = 0.0,
+    zero_avoid_scope: str = "all",
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2303,6 +2304,7 @@ def train_pipeline(
         "logit_gap_coef": float(logit_gap_coef),
         "logit_gap": float(logit_gap),
         "zero_avoid_coef": float(zero_avoid_coef),
+        "zero_avoid_scope": str(zero_avoid_scope),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2686,6 +2688,7 @@ def train_pipeline(
         z_loss_coef=z_loss_coef,
         logit_gap_coef=logit_gap_coef,
         zero_avoid_coef=zero_avoid_coef,
+        zero_avoid_scope=zero_avoid_scope,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -2963,8 +2966,9 @@ def train_pipeline(
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
     if zero_avoid_coef > 0.0:
-        print(f"[zero-avoiding] coef {zero_avoid_coef:g} on KL(uniform || pi) over the legal moves, the learner's rows "
-              f"(--zero-avoid-coef, P41 J1)", flush=True)
+        print(f"[zero-avoiding] coef {zero_avoid_coef:g} on KL(uniform || pi) over the legal moves, "
+              f"{'the learner' + chr(39) + 's rows' if zero_avoid_scope == 'all' else 'only the learner' + chr(39) + 's setup placements'} "
+              f"(--zero-avoid-coef / --zero-avoid-scope, P41)", flush=True)
     if logit_gap_coef > 0.0:
         print(f"[logit gap] coef {logit_gap_coef:g} on legal logits more than {logit_gap:g} below the "
               f"top (--logit-gap-coef / --logit-gap)", flush=True)

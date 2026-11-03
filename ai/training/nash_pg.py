@@ -512,6 +512,7 @@ class BaseNashPGTrainer:
         logit_gap_coef: float = 0.0,   # gap penalty: coef * mean relu(top - z - gap)^2 over legal moves
         logit_gap: float = 7.0,
         zero_avoid_coef: float = 0.0,   # P41 J1: coef * KL(uniform || pi) over the legal moves, learner rows
+        zero_avoid_scope: str = "all",  # 'setup': only the learner's setup placements (P41 exploiters)
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1091,6 +1092,11 @@ class BaseNashPGTrainer:
         if zero_avoid_coef < 0.0:
             raise ValueError(f"zero_avoid_coef must be >= 0, got {zero_avoid_coef}")
         self.zero_avoid_coef = float(zero_avoid_coef)
+        if zero_avoid_scope not in ("all", "setup"):
+            raise ValueError(f"zero_avoid_scope must be 'all' or 'setup', got {zero_avoid_scope!r}")
+        #: 'setup' keeps the floor on the opening placements only, so an opening the policy rarely plays stays
+        #: reachable while every later decision trains without it (P41's exploiters of J1, owner 2026-11-03).
+        self.zero_avoid_scope = str(zero_avoid_scope)
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -2479,6 +2485,14 @@ def zero_avoid_kl(logits: torch.Tensor, mask: torch.Tensor, weight: torch.Tensor
     return (kl * w).sum() / w.sum().clamp(min=1.0)
 
 
+def zero_avoid_weight(own: torch.Tensor, obs: torch.Tensor, scope: str) -> torch.Tensor:
+    """The rows the zero-avoiding term covers: the learner's own (`own`), or under scope 'setup' only its setup
+    placements, recognised from the observation's phase slot (exactly 0 in SETUP)."""
+    if scope == "all":
+        return own
+    return own * (obs[:, setup_phase_slot()] < (0.5 / 6.0)).to(own.dtype)
+
+
 class NashPGTrainer(BaseNashPGTrainer):
     """Standard NashPG Trainer for ColdWarNet V1, V2, and V3."""
 
@@ -2964,7 +2978,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if self.zero_avoid_coef > 0.0:
                     # Over the learner's own rows, as the entropy bonus: the opponent's choices are the
                     # environment. Masked logits are -1e9, so their log-probabilities are zeroed out, not summed.
-                    _za_loss = zero_avoid_kl(cur_logits, b_mask, _own_f)
+                    _za_loss = zero_avoid_kl(cur_logits, b_mask, zero_avoid_weight(_own_f, b_obs, self.zero_avoid_scope))
                     policy_loss = policy_loss + self.zero_avoid_coef * _za_loss
                     with torch.no_grad():
                         za_loss_t += _za_loss.detach().double()
