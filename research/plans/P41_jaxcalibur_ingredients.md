@@ -175,7 +175,23 @@ so every cell below is on J1's recipe R102.
 | **B5** | **the head norm** on J1 (`--ladder-head-norm`, A31's +3 at the plateau) | one flag |
 | **B6** | **in-place growth** of J1 at its plateau (sphere blocks and width at identity, P39 arm 6) | its blocker, saturated heads, is gone |
 
-**Order:** B0 and B1 now (B0 is hours; B1 takes a slot for half a day); then B2's pair; B3's leg and
+**B0 result (2026-11-03, R108 US / R109 USSR: R106/R107 with no human opening shown, 400M each, own
+seat against J1's 13,600M SWA greedy, the bars 47.3 / 52.7).** US **52.8% (+5.5)**, USSR **54.8% (+2.1)**
+(shown: +4.1 / +4.0; the differences within ±2.2). **Unshown, the US exploiter finds West Germany on its
+own** (France 3, West Germany 3, Italy 2, Iran 1 in 75%; shown, it went to West Germany 4); **the USSR
+exploiter does not find the human opening** (Finland 3, Poland 3 in 100%). **The margin is not J1's
+opening:** J1 forced to the human opening scores US 46.6 / USSR 53.2 against itself, within its bars, and
+the exploiters keep their margins against the forced J1 (R106 +8.0, R107 +3.0). It is play after the
+setup: the USSR exploiter goes for West Germany and Europe (first USSR influence in West Germany on turn
+1 in 30% against 3% in J1's self-play; first to control it 48% against 12%; ever controls Europe 8.7%
+against 3.2%; Europe-control wins 4.4% against 2.1%, about +2.3 of its +4); the US exploiter holds West
+Germany (80% at the end of turn 3 against 53%) and wins through 20 VP and final scoring. So the human
+share bought the opening's *form*, not strength, and the hole is **Europe left uncontested**, the owner's
+"Europe control underestimated" measured: a learner finds it in 400M and self-play never punishes it. B2's
+league uses the unshown exploiters (R108/R109) and reads J1's West Germany and Europe-control rates
+beside the reference; B4's setup credit is no longer motivated by these openings.
+
+**Order:** B0 done, B1 running (launched 2026-11-03 22:03 UTC, alone); then B2's pair; B3's leg and
 cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 launches on B1's answer**, on
 R102 plus whatever passed, at the size B1 picks; the peer's recommendation of 3×128 stands if B1 says
 distilled. **Rules:** the per-seat rule against J1 at matched steps for the from-scratch cells, against
