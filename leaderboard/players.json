@@ -501,6 +501,15 @@
     "description": "P40 Arm S (SWA 17,520-17,600M) under the corrected keyed root at 64 worlds, raced: every candidate on the first 16 worlds, the rest of the 64 only for the network's move and the challengers not trailing it.",
     "report": null
   },
+  "E8-A8-R102-S44@13520..13600M": {
+    "network": "E8-A8-R102-S44@13520..13600M",
+    "inference": {
+      "kind": "policy",
+      "temperature": 0.0
+    },
+    "description": "P41 J1's best SWA (13,520-13,600M), greedy.",
+    "report": null
+  },
   "E8-A8-R102-S44@13520..13600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true,race=16)": {
     "network": "E8-A8-R102-S44@13520..13600M",
     "inference": {
