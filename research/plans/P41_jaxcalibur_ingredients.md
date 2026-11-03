@@ -169,7 +169,7 @@ so every cell below is on J1's recipe R102.
 |:---|:---|:---|
 | **B0** | **the exploiters without the human share**: R106/R107 with `--forced-openings-frac 0`, 400M each, same reads; plus a behaviour report of each exploiter at its best read, and the exploiter against J1 *forced to the human opening* | the confound: does a learner find the opening unshown, and is the margin the opening. Decides whether forced openings as environment are a tool and what the league is punishing. ~2 h |
 | **B1** | **the deep trunk under the term**: A30 on R95 + `--zero-avoid-coef 0.01`, from scratch, 2,000M against J1's own curve at matched steps | the capacity verdict taken under saturation, re-asked; **decides J5's form and size**: level with J1 at 2,000M → J5 from scratch at 3×192; still lagging → J5 at 3×128, distilled from J1 (Arm C's pipeline), and the capacity story stays closed. ~12 h alone |
-| **B2** | **the two punishers from J1's plateau, side by side**: (a) the league -- the B0 exploiters published into J1's pool at the P24 share, the main continuing; (b) Arm S's searched opponent (J8a) at one game in eight | the signal question on a plastic base. Read on the fixed reference, the own-past gain, and **the margin a fresh exploiter finds afterwards** (the league's own metric), plus J1's openings under each |
+| **B2** | **the league from J1's plateau**: the unshown exploiters R108 (US) / R109 (USSR) as one fixed league member (a seat pair: R108 deciding as US, R109 as USSR, since each one's untrained seat collapsed to 3–8%) in J1's pool at the P24 share, the main continuing. **(b), Arm S's searched opponent as the comparator, is dropped (owner, 2026-11-04): the recipe stays simple, and an opponent from another lineage is not simple.** The league itself waits for the owner's word under the same rule | the signal question on a plastic base. Read on the fixed reference, the own-past gain, **the margin a fresh exploiter finds afterwards** (the league's own metric), and J1's West Germany and Europe-control rates |
 | **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
 | **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
 | **B5** | **the head norm** on J1 (`--ladder-head-norm`, A31's +3 at the plateau) | one flag |
@@ -191,7 +191,9 @@ share bought the opening's *form*, not strength, and the hole is **Europe left u
 league uses the unshown exploiters (R108/R109) and reads J1's West Germany and Europe-control rates
 beside the reference; B4's setup credit is no longer motivated by these openings.
 
-**Order:** B0 done, B1 running (launched 2026-11-03 22:03 UTC, alone); then B2's pair; B3's leg and
+**Order:** B0 done, B1 running (launched 2026-11-03 22:03 UTC, alone; the owner's present interest, 2026-11-04:
+does the deep network train at all and how does it compare with the shallow one -- B1 against J1 at matched
+steps is that read); then B2's league if the owner confirms it under "a simple recipe"; B3's leg and
 cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 is postponed (owner, 2026-11-03
 ~23:45 UTC):** B1 still reads to 2,000M; nothing about J5 launches until the owner says so. As first written: **J5 launches on B1's answer**, on
 R102 plus whatever passed, at the size B1 picks; the peer's recommendation of 3×128 stands if B1 says
