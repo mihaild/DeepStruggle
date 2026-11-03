@@ -142,6 +142,47 @@ codes, embedded network-side, tokens in J5's encoder) once approved; then the tw
 with their targets in the rollout buffer (the opponent's next action from the rollout's record; the
 opponent's hand from the engine state, never into the observation).
 
+## Before J5: the J1 batch (owner, 2026-11-03)
+
+**Why a batch on J1 first.** J1 changed the regime rather than a number: saturation gone (median gap
+1.23 against 3.50), Nuclear Subs learned unaided, no plateau at 12,000M (a 2,400M flat stretch then +4),
+the E8 board's top (greedy 1539, +83 over the previous best raw network; under the 64-world root 1693).
+Every verdict taken under saturation that depended on its symptoms is open again: depth (the sphere
+trunk's heads died of saturation), grown-in-place capacity (new capacity under saturated heads), the
+league (a saturated main could not take the exploiter's lesson). J5 at 3×128 is ~3.2k steps/s, 3×192
+~2.1k, so a 2,000M read is a week to ten days of the GPU alone; the J1 line runs at ~110k. A week of
+J1-line cells, two slots, sets J5's form and size and tests the reopened verdicts.
+
+**The exploiters (R106 US / R107 USSR, from J1's 15,210M state, the zero-avoiding term on setup placements
+only, one frozen greedy opponent = J1's 13,520–13,600M SWA, 20% of games with the human opening forced
+on the learner's side as environment).** First read at +390M: **US 51.4% against J1's own bar 47.3
+(+4.1); USSR 56.7% against 52.7 (+4.0)**, ±1.6 each. Openings: the US exploiter plays West Germany 4,
+France 2, Italy 2, Iran 1 in 94% (J1: France 3, Italy 3, Canada 2, Iran 1, West Germany empty); the USSR
+exploiter Poland 4, East Germany +1, Finland +1 in 72% (J1: Finland 3, Poland 3) -- the human opening
+with Finland for Yugoslavia. **Confound:** both moved to the forced openings within ~400M and no run
+without the 20% share exists, so whether an exploiter *discovers* the hole or copies the shown opening
+is unmeasured; and whether the +4 is the opening or better seat play in general is unmeasured (the E7
+exploiter's +11.6 was a third general US play). J1′ lost the recipe match (42.5% against J1's best SWA),
+so every cell below is on J1's recipe R102.
+
+| cell | what | why first / what it decides |
+|:---|:---|:---|
+| **B0** | **the exploiters without the human share**: R106/R107 with `--forced-openings-frac 0`, 400M each, same reads; plus a behaviour report of each exploiter at its best read, and the exploiter against J1 *forced to the human opening* | the confound: does a learner find the opening unshown, and is the margin the opening. Decides whether forced openings as environment are a tool and what the league is punishing. ~2 h |
+| **B1** | **the deep trunk under the term**: A30 on R95 + `--zero-avoid-coef 0.01`, from scratch, 2,000M against J1's own curve at matched steps | the capacity verdict taken under saturation, re-asked; **decides J5's form and size**: level with J1 at 2,000M → J5 from scratch at 3×192; still lagging → J5 at 3×128, distilled from J1 (Arm C's pipeline), and the capacity story stays closed. ~12 h alone |
+| **B2** | **the two punishers from J1's plateau, side by side**: (a) the league -- the B0 exploiters published into J1's pool at the P24 share, the main continuing; (b) Arm S's searched opponent (J8a) at one game in eight | the signal question on a plastic base. Read on the fixed reference, the own-past gain, and **the margin a fresh exploiter finds afterwards** (the league's own metric), plus J1's openings under each |
+| **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
+| **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
+| **B5** | **the head norm** on J1 (`--ladder-head-norm`, A31's +3 at the plateau) | one flag |
+| **B6** | **in-place growth** of J1 at its plateau (sphere blocks and width at identity, P39 arm 6) | its blocker, saturated heads, is gone |
+
+**Order:** B0 and B1 now (B0 is hours; B1 takes a slot for half a day); then B2's pair; B3's leg and
+cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 launches on B1's answer**, on
+R102 plus whatever passed, at the size B1 picks; the peer's recommendation of 3×128 stands if B1 says
+distilled. **Rules:** the per-seat rule against J1 at matched steps for the from-scratch cells, against
+J1's plateau band for the branches; B2's winner is the punisher whose fresh-exploiter margin shrinks
+most with the reference gain not behind the own-past gain. **A distilled J5 is not run first** (Arm C
+held its start and did not gain; the transformer's fit alone is ~2 days at 456 µs a row).
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
