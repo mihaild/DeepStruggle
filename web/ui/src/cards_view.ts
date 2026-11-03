@@ -103,20 +103,20 @@ export const EFFECT_INFO_MAP: Record<string, EffectInfo> = {
     description: "Taiwan counts as a Battleground country for Asia Scoring until China Card played."
   },
   CMC_ACTIVE_US: {
-    name: "Cuban Missile Crisis (US)",
+    name: "Cuban Missile Crisis (played by US)",
     cardId: 40,
     cardName: "Cuban Missile Crisis",
     side: "US",
     duration: "TURN",
-    description: "US cannot perform Coups anywhere unless removing 2 influence from W. Germany/Turkey."
+    description: "A USSR Coup loses the game this turn, unless the USSR cancels the crisis by removing 2 influence from Cuba."
   },
   CMC_ACTIVE_USSR: {
-    name: "Cuban Missile Crisis (USSR)",
+    name: "Cuban Missile Crisis (played by USSR)",
     cardId: 40,
     cardName: "Cuban Missile Crisis",
     side: "USSR",
     duration: "TURN",
-    description: "USSR cannot perform Coups anywhere unless removing 2 influence from Cuba."
+    description: "A US Coup loses the game this turn, unless the US cancels the crisis by removing 2 influence from West Germany or Turkey."
   },
   NUCLEAR_SUBS_ACTIVE: {
     name: "Nuclear Subs Active",
