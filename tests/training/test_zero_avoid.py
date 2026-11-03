@@ -10,7 +10,7 @@ import torch
 
 from ai.models.ladder_net import create_ladder_net
 from ai.training import NashPGTrainer
-from ai.training.nash_pg import zero_avoid_kl, zero_avoid_weight
+from ai.training.nash_pg import zero_avoid_kl, zero_avoid_loss, zero_avoid_weight
 from ai.training.rollout_buffer import setup_phase_slot
 from bindings.ts_env import TsVectorizedEnv
 
@@ -102,3 +102,15 @@ def test_an_unknown_scope_is_refused() -> None:
         NashPGTrainer(active_net=create_ladder_net("cpu", **CFG), env=TsVectorizedEnv(num_envs=2, base_seed=3), num_envs=2,
                       buffer_size=16, batch_size=16, cuda_graphs=False, device=torch.device("cpu"), zero_avoid_coef=0.01,
                       zero_avoid_scope="late")
+
+
+def test_a_setup_row_weighs_what_it_does_under_scope_all() -> None:
+    torch.manual_seed(0)
+    logits = torch.randn(4, 6)
+    mask = torch.ones(4, 6, dtype=torch.uint8)
+    obs = torch.full((4, 3824), 0.5)
+    obs[:1, setup_phase_slot()] = 0.0                     # row 0 is a setup placement
+    own = torch.ones(4)
+    per_row = torch.stack([zero_avoid_kl(logits[i:i + 1], mask[i:i + 1], ALL) for i in range(4)])
+    assert zero_avoid_loss(logits, mask, own, obs, "all") == pytest.approx(float(per_row.mean()), rel=1e-6)
+    assert zero_avoid_loss(logits, mask, own, obs, "setup") == pytest.approx(float(per_row[0] / 4), rel=1e-6)

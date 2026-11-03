@@ -2493,6 +2493,15 @@ def zero_avoid_weight(own: torch.Tensor, obs: torch.Tensor, scope: str) -> torch
     return own * (obs[:, setup_phase_slot()] < (0.5 / 6.0)).to(own.dtype)
 
 
+def zero_avoid_loss(logits: torch.Tensor, mask: torch.Tensor, own: torch.Tensor, obs: torch.Tensor,
+                    scope: str) -> torch.Tensor:
+    """The zero-avoiding term as the update adds it: KL(uniform || pi) summed over the rows `scope` covers and divided
+    by all of the learner's rows, so a covered row weighs the same under scope 'setup' as under 'all' (J1's) --
+    a mean over the setup rows alone would put the whole coefficient on them, a floor ~7x stronger per placement."""
+    w = zero_avoid_weight(own, obs, scope)
+    return zero_avoid_kl(logits, mask, w) * (w.sum() / own.sum().clamp(min=1.0))
+
+
 class NashPGTrainer(BaseNashPGTrainer):
     """Standard NashPG Trainer for ColdWarNet V1, V2, and V3."""
 
@@ -2978,7 +2987,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if self.zero_avoid_coef > 0.0:
                     # Over the learner's own rows, as the entropy bonus: the opponent's choices are the
                     # environment. Masked logits are -1e9, so their log-probabilities are zeroed out, not summed.
-                    _za_loss = zero_avoid_kl(cur_logits, b_mask, zero_avoid_weight(_own_f, b_obs, self.zero_avoid_scope))
+                    _za_loss = zero_avoid_loss(cur_logits, b_mask, _own_f, b_obs, self.zero_avoid_scope)
                     policy_loss = policy_loss + self.zero_avoid_coef * _za_loss
                     with torch.no_grad():
                         za_loss_t += _za_loss.detach().double()
