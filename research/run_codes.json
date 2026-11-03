@@ -2110,6 +2110,50 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R104": {
+   "description": "P41 J1's US exploiter: R102 against one frozen opponent only (J1's 13,520-13,600M SWA, greedy: --opponent-checkpoints, --opponent-frac 1.0, --opponent-temperature 0, no self pool), the learner locked to the US; 20% of games open West Germany 4, Italy 3, Iran 2 on the US side as environment (--forced-openings-frac 0.2)",
+   "first": "E8-A8-R102-S44@15210M+R104_20261103_131401",
+   "flags": {
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "forced_openings_frac": 0.2,
+    "forced_openings_us": [
+     "us_wg4_it3_ir2"
+    ],
+    "forced_openings_ussr": [],
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384
+   }
+  },
+  "R105": {
+   "description": "P41 J1's USSR exploiter: R104 with the learner locked to the USSR and the forced opening East Germany +1, Poland 4, Yugoslavia 1 on the USSR side",
+   "first": "E8-A8-R102-S44@15210M+R105_20261103_131530",
+   "flags": {
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "forced_openings_frac": 0.2,
+    "forced_openings_us": [],
+    "forced_openings_ussr": [
+     "ussr_eg1_pl4_yu1"
+    ],
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2357,7 +2401,9 @@
   "E8-A30-R100-S44_20261030_112517": "E8-A30-R100-S44",
   "E8-A30-R101-S44_20261030_130725": "E8-A30-R101-S44",
   "E8-A8-R102-S44_20261030_200841": "E8-A8-R102-S44",
-  "E8-A8-R103-S44_20261101_032746": "E8-A8-R103-S44"
+  "E8-A8-R103-S44_20261101_032746": "E8-A8-R103-S44",
+  "E8-A8-R102-S44@15210M+R104_20261103_131401": "E8-A8-R102-S44@15210M+R104",
+  "E8-A8-R102-S44@15210M+R105_20261103_131530": "E8-A8-R102-S44@15210M+R105"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
