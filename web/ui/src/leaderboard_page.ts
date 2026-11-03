@@ -12,7 +12,9 @@
  * written by the fit). The player that is the Hugging Face repo's default -- its default model, played
  * with its default search (models.json, set by `tools/publish_hf.py default --player`) -- is tagged,
  * read from the repo when the page opens rather than fitted in, so the tag follows the repo without a
- * rebuild.
+ * rebuild. So are the players twilightstruggle.app offers as its AI's levels (site_models.json in the
+ * same repo): each is tagged with its level, and its card adds the site's description of it. Either
+ * read failing leaves the page without those tags, and nothing else.
  *
  * When the build could read the stats database, leaderboard.json also holds each player's estimate on
  * Playdek's scale (tools/lib/playdek_estimate.py), and a switch shows those in the table. It is one
@@ -20,7 +22,7 @@
  * people move a player and, more loosely, its network's other players away from their leaderboard gaps.
  */
 
-import { hfCatalog } from "./analysis/hf_catalog";
+import { SiteLevel, fetchSiteLevels, hfCatalog } from "./analysis/hf_catalog";
 import { DEFAULT_ROLLOUT, RolloutSpec, parseSearchParam, rolloutParam, specEqual } from "./analysis/rollout_spec";
 
 interface Seat { w: number; l: number; d: number }
@@ -161,6 +163,12 @@ function defaultEpoch(epochs: Record<string, { pairs: unknown[] }>): string {
 
 const HF_TAG = `<span class="lb-tag hf" title="The default on Hugging Face: the workbench plays this network with this search when a link names neither">HF DEFAULT</span>`;
 
+const SITE_URL = "https://twilightstruggle.app/ai/";
+
+function siteTag(level: SiteLevel): string {
+  return `<span class="lb-tag site" title="${esc(`The ${level.name} level of the AI on twilightstruggle.app`)}">SITE: ${esc(level.name.toUpperCase())}</span>`;
+}
+
 const ANCHOR_NOTE = `These ratings come only from games between the models listed here, on a scale
   anchored at one of them. They do not correspond to human Elo ratings, such as those of the
   Playdek Twilight Struggle app.`;
@@ -180,6 +188,8 @@ class LeaderboardPage {
   private hfDefault: string | null = null;
   /** Its default search (null: the policy): the repo's, else the workbench's built-in one. */
   private hfDefaultSearch: RolloutSpec | null = DEFAULT_ROLLOUT;
+  /** twilightstruggle.app's levels, once read; empty until then or if they cannot be. */
+  private siteLevels: SiteLevel[] = [];
 
   constructor(private readonly data: LeaderboardData) {
     const params = new URLSearchParams(location.search);
@@ -237,6 +247,34 @@ class LeaderboardPage {
     });
     this.render();
     void this.loadHfDefault();
+    void this.loadSiteLevels();
+  }
+
+  /** twilightstruggle.app's levels, read after the first render as the default is: without them the
+   *  page has no site tags. */
+  private async loadSiteLevels(): Promise<void> {
+    try {
+      this.siteLevels = await fetchSiteLevels(this.data.hf_repo);
+    } catch (e) {
+      console.warn(`leaderboard: twilightstruggle.app's levels could not be read: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    if (this.siteLevels.length) this.render();
+  }
+
+  /** The site's levels that are `pid`: its network the level's model (the .onnx beside the .pt), played
+   *  with the level's search. */
+  private siteLevelsOf(pid: string): SiteLevel[] {
+    const pl = this.data.players[pid];
+    const hf = pl?.network ? this.data.networks[pl.network]?.hf : null;
+    if (!hf || !pl.workbench_search) return [];
+    const search = parseSearchParam(pl.workbench_search);
+    if (search === undefined) return [];
+    return this.siteLevels.filter(l => {
+      if (l.path !== hf.replace(/\.pt$/, ".onnx")) return false;
+      const want = parseSearchParam(l.search);
+      return want !== undefined && (search === null || want === null ? search === want : specEqual(search, want));
+    });
   }
 
   /** The repo's default model, read after the first render: the table does not wait for Hugging
@@ -338,7 +376,7 @@ class LeaderboardPage {
       const scoreCell = !playdek ? pct : est?.games ? `${est.w}-${est.d}-${est.l}` : "";
       return `<tr data-player="${esc(r.player)}" class="${r.player === this.selected ? "selected" : ""}">
         <td class="num lb-dim">${k + 1}</td>
-        <td><span class="lb-player">${esc(r.player)}</span>${r.main ? `<span class="lb-tag main">MAIN</span>` : ""}${kind ? `<span class="lb-tag kind">${esc(kind)}</span>` : ""}${this.isHfDefault(r.player) ? HF_TAG : ""}</td>
+        <td><span class="lb-player">${esc(r.player)}</span>${r.main ? `<span class="lb-tag main">MAIN</span>` : ""}${kind ? `<span class="lb-tag kind">${esc(kind)}</span>` : ""}${this.isHfDefault(r.player) ? HF_TAG : ""}${this.siteLevelsOf(r.player).map(siteTag).join("")}</td>
         <td class="num lb-elo">${eloCell}</td>
         <td class="num lb-dim lb-hide-narrow">${seCell}</td>
         <td class="num lb-hide-narrow">${gamesCell}</td>
@@ -385,6 +423,8 @@ class LeaderboardPage {
       <h2>${esc(pid)}</h2>
       <p>${desc}${old}</p>
       ${this.isHfDefault(pid) ? `<p>${HF_TAG} The default on Hugging Face: the workbench plays this network with this search when a link names neither.</p>` : ""}
+      ${this.siteLevelsOf(pid).map(l => `<p>${siteTag(l)} The ${esc(l.name)} level on <a href="${SITE_URL}">twilightstruggle.app</a>${
+        l.description ? `: ${esc(l.description)}` : "."}</p>`).join("")}
       ${codeLine}
       ${links ? `<p class="lb-links">${links}</p>` : ""}
       <p>Elo <b>${rating.elo.toFixed(0)}</b>${pid !== this.ep.anchor ? ` ± ${rating.se.toFixed(0)}` : this.mode === "playdek" ? "" : " (the anchor)"} · ${rating.games.toLocaleString("en-US")} games against ${rating.opponents} opponents, ${rating.main_opponents} of them main players.</p>

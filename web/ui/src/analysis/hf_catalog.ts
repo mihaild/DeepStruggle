@@ -183,3 +183,37 @@ export async function fetchHfDefault(repo: string, revision: string): Promise<st
   }
   return model;
 }
+
+/** One level of the AI on twilightstruggle.app/ai: a model of the repo played with a search. */
+export interface SiteLevel {
+  id: string;
+  name: string;
+  description: string;
+  /** The .onnx's path in the repo (the site pins it to a commit; the path names the network). */
+  path: string;
+  /** Its `search=` value: "policy" or a rollout spec. */
+  search: string;
+}
+
+/**
+ * The levels twilightstruggle.app offers, from `site_models.json` in the repo, which that site reads
+ * as its pages open (its ai/ui/src/analysis/site_models.ts describes the file). Only the levels it
+ * offers -- not those it keeps only for games begun at them -- and only those on `repo`'s models. A
+ * level this page cannot read is left out rather than failing the rest.
+ */
+export async function fetchSiteLevels(repo: string): Promise<SiteLevel[]> {
+  checkRepoName(repo);
+  const res = await fetch(hfFileUrl(repo, "main", "site_models.json"));
+  if (!res.ok) throw new Error(`site_models.json: HTTP ${res.status}`);
+  const doc = (await res.json()) as { schema?: unknown; levels?: unknown } | null;
+  if (doc?.schema !== 1 || !Array.isArray(doc.levels)) throw new Error(`${repo}'s site_models.json is not schema 1`);
+  const out: SiteLevel[] = [];
+  for (const l of doc.levels as Array<Record<string, unknown> | null>) {
+    const c = l?.checkpoint as Record<string, unknown> | undefined;
+    if (!l || l.hidden === true || typeof l.id !== "string" || typeof l.name !== "string" || typeof l.search !== "string"
+        || !c || c.repo !== repo || typeof c.path !== "string" || !c.path.endsWith(".onnx")) continue;
+    out.push({ id: l.id, name: l.name, description: typeof l.description === "string" ? l.description : "",
+               path: c.path, search: l.search });
+  }
+  return out;
+}

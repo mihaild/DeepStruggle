@@ -414,6 +414,12 @@ and its search as the workbench plays it (`player_spec.workbench_search`) -- and
 tags that player HF DEFAULT. The default is the best player the workbench can play. Files uploaded
 another way appear after `index`.
 
+`site_models.json`, beside it, is not written by this tool: it is the list of the AI's levels on
+twilightstruggle.app, which that site reads as its pages open (each level a name, a description, an
+`.onnx` pinned to a commit and a `search=` value; the site's `ai/ui/src/analysis/site_models.ts`
+describes it), edited and uploaded by hand. The leaderboard page tags the player each offered level
+is (its network's `.onnx`, its search) SITE: <LEVEL> and adds the level's description to its card.
+
 ---
 
 ## 2d. Games against people (`tools/game_stats.py`)

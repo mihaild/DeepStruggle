@@ -819,6 +819,65 @@ def test_the_leaderboard_tags_the_hugging_face_default_player(browser: Any, stat
     page.close()
 
 
+def test_the_leaderboard_tags_the_players_twilightstruggle_app_offers(browser: Any, static_site: str) -> None:
+    """site_models.json (read when the page opens) lists the AI's levels on twilightstruggle.app: the
+    player each offered level is -- its network's .onnx, played with the level's search -- is tagged
+    with the level, and its card adds the site's description, as text. A hidden level or one on another
+    repo tags nothing; a file the page cannot read tags nothing and breaks nothing."""
+    data, epoch, rated = _leaderboard_data()
+    players = data["players"]
+    pid = next(p for p in sorted(rated) if (players[p]["workbench_search"] or "").startswith("rollout")
+               and data["networks"][players[p]["network"]]["hf"])
+    net = players[pid]["network"]
+    onnx = data["networks"][net]["hf"].removesuffix(".pt") + ".onnx"
+    greedy = {p for p in rated if players[p]["network"] == net and players[p]["workbench_search"] == "policy"}
+    search = players[pid]["workbench_search"]
+
+    def level(id: str, name: str, search: str, repo: str = "mihaild/deepstruggle", **extra: Any) -> Dict[str, Any]:
+        return {"id": id, "name": name, "description": f"The {name} <b>level</b>.", "search": search,
+                "checkpoint": {"repo": repo, "revision": "0123abcd", "path": onnx}, **extra}
+
+    levels = {"schema": 1, "default": "strong", "analysis": "strong", "levels": [
+        level("strong", "Strong", search), level("quick", "Quick", "policy"),
+        level("old", "Old", search, hidden=True), level("elsewhere", "Elsewhere", search, repo="someone/else")]}
+
+    def opened(status: int) -> Any:
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        errors: List[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.route("https://huggingface.co/mihaild/deepstruggle/resolve/main/models.json",
+                   lambda route: route.fulfill(content_type="application/json", body=json.dumps({"schema": 1, "models": []})))
+        page.route("https://huggingface.co/mihaild/deepstruggle/resolve/main/site_models.json",
+                   lambda route: route.fulfill(status=status, content_type="application/json", body=json.dumps(levels)))
+        page.errors = errors  # type: ignore[attr-defined]
+        return page
+
+    def tagged(page: Any, text: str) -> Set[str]:
+        return set(page.eval_on_selector_all(
+            "#lb-body tr", f"rs => rs.filter(r => [...r.querySelectorAll('.lb-tag.site')].some(t => t.textContent === {json.dumps(text)}))"
+            ".map(r => r.dataset.player)"))
+
+    page = opened(200)
+    page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
+    page.wait_for_selector("#lb-body .lb-tag.site")
+    assert tagged(page, "SITE: STRONG") == {pid}
+    assert tagged(page, "SITE: QUICK") == greedy
+    assert not tagged(page, "SITE: OLD") and not tagged(page, "SITE: ELSEWHERE")
+    page.click(f"#lb-body tr[data-player='{pid}']")
+    detail = page.inner_text("#lb-detail")
+    assert "The Strong level on twilightstruggle.app: The Strong <b>level</b>." in detail, "the description is text"
+    assert "Quick" not in detail
+    assert not page.errors
+    page.close()
+
+    page = opened(500)
+    with page.expect_console_message(lambda m: "levels could not be read" in m.text):
+        page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
+    page.wait_for_selector("#lb-body tr")
+    assert not page.query_selector("#lb-body .lb-tag.site") and not page.errors
+    page.close()
+
+
 def test_every_leaderboard_search_reads_in_the_workbench_as_python_wrote_it(browser: Any, static_site: str) -> None:
     """tools/lib/player_spec.workbench_search writes each player's search; the page parses it
     (analysis/rollout_spec.ts). Every one on the board must come back as the same spec, field by field
