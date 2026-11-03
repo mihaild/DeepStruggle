@@ -2157,7 +2157,7 @@
   },
   "R106": {
    "description": "R104 with the zero-avoiding term on the learner's setup placements only (--zero-avoid-scope setup): P41's US exploiter of J1 as run -- the openings stay reachable, every later decision trains without the floor (owner, 2026-11-03; R104 stopped at ~+310M)",
-   "first": "E8-A8-R102-S44@15210M+R106_20261103_145532",
+   "first": "E8-A8-R102-S44@15210M+R106_20261103_151830",
    "flags": {
     "opponent_frac": 1.0,
     "opponent_checkpoints": [
@@ -2180,7 +2180,7 @@
   },
   "R107": {
    "description": "R105 with the zero-avoiding term on the learner's setup placements only (--zero-avoid-scope setup): P41's USSR exploiter of J1 as run (owner, 2026-11-03; R105 stopped at ~+310M)",
-   "first": "E8-A8-R102-S44@15210M+R107_20261103_145702",
+   "first": "E8-A8-R102-S44@15210M+R107_20261103_152000",
    "flags": {
     "opponent_frac": 1.0,
     "opponent_checkpoints": [
