@@ -192,7 +192,8 @@ league uses the unshown exploiters (R108/R109) and reads J1's West Germany and E
 beside the reference; B4's setup credit is no longer motivated by these openings.
 
 **Order:** B0 done, B1 running (launched 2026-11-03 22:03 UTC, alone); then B2's pair; B3's leg and
-cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 launches on B1's answer**, on
+cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 is postponed (owner, 2026-11-03
+~23:45 UTC):** B1 still reads to 2,000M; nothing about J5 launches until the owner says so. As first written: **J5 launches on B1's answer**, on
 R102 plus whatever passed, at the size B1 picks; the peer's recommendation of 3×128 stands if B1 says
 distilled. **Rules:** the per-seat rule against J1 at matched steps for the from-scratch cells, against
 J1's plateau band for the branches; B2's winner is the punisher whose fresh-exploiter margin shrinks
