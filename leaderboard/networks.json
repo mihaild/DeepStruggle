@@ -156,6 +156,6 @@
     "description": "SWA (weight average) of P41 J1's 13,520-13,600M snapshots, its best read: A8 from scratch on R102 (R95 -- 16,384 minibatch, PPO clip 0.1, muP -- plus the zero-avoiding term, 0.01 x KL(uniform || pi) over the legal moves, beside the entropy bonus). Trained on E8 to 12,000M and on E8 with ENG-6 after; stopped at 15,210M by the stop rule. 63.5% against A13+R48's SWA at 13,600M; 55.8% head to head against Arm S's 17,520-17,600M SWA at 12,000M.",
     "old_names": [],
     "hf": null,
-    "report": null
+    "report": "research/log/per_checkpoint/E8-A8-R102-S44_13520..13600M.md"
   }
 }
