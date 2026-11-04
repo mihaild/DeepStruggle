@@ -2737,3 +2737,63 @@ TEST(CardEdgeCasesTest, OpsModifiers_VietnamRevolts_BeyondTheCaps_PurgeFloorOnTh
     // Vietnam Revolts is the USSR's alone.
     ASSERT_EQ(Operations::get_effective_ops_in(s3, card_ids::DUCK_AND_COVER, Player::US, burma), 3);
 }
+
+// ENG-7: Space Walk discards a held card, never a scoring card -- those may not be held, and
+// discarding one escaped the loss for holding it, which the held-card check only makes after.
+TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_CannotDiscardAScoringCard) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.turn = 2;
+    state.action_round = 6;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.us_space_track = 6;
+    state.ussr_space_track = 5;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (ts::is_in_any_hand(state.card_locations[i])) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+    }
+    state.card_locations[ts::card_ids::EUROPE_SCORING] = ts::hand_of(ts::Player::US);
+    state.card_locations[ts::card_ids::RED_SCARE_PURGE] = ts::hand_of(ts::Player::US);
+
+    ts::StateMachine::advance_after_action_round(state);
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+
+    uint8_t mask[ts::flat_slots::SIZE] = {};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    ASSERT_EQ(mask[ts::card_ids::EUROPE_SCORING - 1], 0);
+    ASSERT_EQ(mask[ts::card_ids::RED_SCARE_PURGE - 1], 1);
+    ASSERT_FALSE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::EUROPE_SCORING, 0, 0}));
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+
+    // Discarding the other card leaves the scoring card held, and holding it loses.
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0}));
+    ASSERT_EQ(state.current_phase, ts::Phase::GAME_OVER);
+    ASSERT_EQ(state.victory_points, -20);
+}
+
+TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_HoldingOnlyAScoringCardOffersOnlyThePass) {
+    ts::GameState state{};
+    ts::StateMachine::init_new_game(state, 42);
+    state.turn = 2;
+    state.action_round = 6;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.phasing_player = ts::Player::US;
+    state.us_space_track = 6;
+    state.ussr_space_track = 5;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (ts::is_in_any_hand(state.card_locations[i])) state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+    }
+    state.card_locations[ts::card_ids::ASIA_SCORING] = ts::hand_of(ts::Player::US);
+    ts::StateMachine::advance_after_action_round(state);
+    ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
+    if (state.ctx().resolving_card == ts::card_ids::SPACE_WALK_DISCARD) {
+        uint8_t mask[ts::flat_slots::SIZE] = {};
+        ts::ActionMask::generate_flat_mask_212(state, mask);
+        size_t legal = 0;
+        for (size_t i = 0; i < ts::flat_slots::SIZE; ++i) legal += mask[i];
+        ASSERT_EQ(legal, 1u);   // the pass
+        ASSERT_EQ(mask[ts::card_ids::ASIA_SCORING - 1], 0);
+    }
+    ASSERT_NE(state.card_locations[ts::card_ids::ASIA_SCORING], ts::CardLocation::DISCARD_PILE);
+}

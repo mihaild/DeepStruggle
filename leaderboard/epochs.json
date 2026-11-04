@@ -72,6 +72,16 @@
           "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
         },
         "why": "ENG-6 (engine/AGENTS.md section 16): a card played through a pushed frame -- Grain Sales fired by Star Wars, Five Year Plan or Missile Envy -- is now placed, owes its Event and leaves the stack. Games reaching that path do differ, which is why runner, rollout and mcts move, but it is rare; the owner ruled it too minor for a new epoch, changing E8's engine in place, and stored games no longer valid are discarded (owner, 2026-11-02)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "34543647dfd87a4e80f066f278471638a5eda7de51f341d524fcb4a669283f53",
+          "state": "6bafaed944ad82285d51177af2e7c57437a5ee9b03dec19130d42ad9ce9b1996",
+          "rollout": "22b2be6636b9bf4dd8abc58c149fb7410f3424489c7783e3d113c2a7f369a68f",
+          "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
+        },
+        "why": "ENG-7 on top of ENG-6 (engine/AGENTS.md section 17): Space Race box 6's end-of-turn discard no longer offers a held scoring card, which escaped the loss for holding one. E8's top network used it in 29 of 30 chances (0.73% of sampled self-play games), so runner and rollout move; the owner ruled it a fix in place, and stored games no longer valid are discarded (owner, 2026-11-04)."
       }
     ]
   }
