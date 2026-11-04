@@ -216,7 +216,7 @@ the anchor restrains the direction without freezing the weights. **400M: 60.7% �
 (US 57.4 / USSR 62.4); B3 at the matched RL step (15,610M) 61.9% -- **level with J1, within noise**: the deep
 network holds J1's level through 400M of RL, which no warm start did before. The anchor phase ended at 410M;
 it continues as `E8-A30-R116-S44@410M+R115` (the plain release: R115's cadence and η 0.1), reads every 400M
-of RL from 800M against the reference and B3 (61.9 / 61.9 / 61.0 / 60.7 / 64.3% at 15,600–17,200M). The release is
+of RL from 800M against the reference and B3 (61.9 / 61.9 / 61.0 / 60.7 / 64.3% at 15,600–17,200M; the 17,200M high is not a gain: 50.2% against its own 16,800M SWA, and J1′ scores 43.3 against it against 42.5 against 13,600M). The release is
 the point at which D6's collapse mechanism returns; a match against J1 at +10M and +60M after it is the
 check, and a clear fall restores the anchor (the 50M cadence at η 0.1 first). The question from here is gain
 past J1's trajectory, not the hold. **The full release fails (2026-11-04, `E8-A30-R116-S44@410M+R115`):** against J1 32.9% at 420M and 25.8% at 470M -- D6's collapse returns as soon as π_ref follows the policy again, after 400M of RL, so the anchor is not a warm-up that the network outgrows. Stopped by PID at ~470M; **the anchor is restored (owner): `E8-A30-R116-S44@410M+R117`, π_ref every 50M at η 0.1 (R117)** from the 410M state, with the same +10M / +60M checks against J1 and reads every 400M from 800M. If η 0.1 also loses the start, the next step is the 50M cadence at η 0.25 to 0.5; if it holds, the open question is whether a 50M-cadence π_ref still lets the deep network gain past J1 or only holds it there. ~12 h alone |
