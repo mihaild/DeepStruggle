@@ -2276,6 +2276,21 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R113": {
+   "description": "R95 at lr 1.5e-4 with the zero-avoiding term at 0.01 ramped in linearly from 0 over the first 1,600M steps (--zero-avoid-ramp-steps): the deep-trunk search, option B (owner, 2026-11-04)",
+   "first": "E8-A30-R113-S44_20261104_120435",
+   "flags": {
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_ramp_steps": 1600000000,
+    "block_lambda": "off",
+    "lr": 0.00015,
+    "mup": true,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2535,7 +2550,8 @@
   "E8-A30-R102-S44_20261103_220324": "E8-A30-R102-S44",
   "E8-A30-R110-S44_20261104_003243": "E8-A30-R110-S44",
   "E8-A30-R111-S44_20261104_023608": "E8-A30-R111-S44",
-  "E8-A30-R112-S44_20261104_082839": "E8-A30-R112-S44"
+  "E8-A30-R112-S44_20261104_082839": "E8-A30-R112-S44",
+  "E8-A30-R113-S44_20261104_120435": "E8-A30-R113-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
