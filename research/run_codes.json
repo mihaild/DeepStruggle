@@ -2336,6 +2336,22 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R117": {
+   "description": "R115 with pi_ref refreshed every 50M (--ref-update-freq 50000000) at eta 0.1: P41 D6b's staged release (owner, 2026-11-04) -- the full release to R115 lost the distilled start within 10M",
+   "first": "E8-A30-R116-S44@410M+R117_20261104_210700",
+   "flags": {
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "entropy_coef": 0.0,
+    "ref_update_freq": 50000000,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "lr": 0.00015,
+    "mup": true,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2601,7 +2617,8 @@
   "E8-A30-R115-S44_20261104_155319": "E8-A30-R115-S44",
   "E8-A30-R116-S44_20261104_171011": "E8-A30-R116-S44",
   "E8-A30-R116-S44@400M+R115_20261104_203346": "E8-A30-R116-S44@410M+R115",
-  "E8-A30-R116-S44@410M+R115_20261104_203504": "E8-A30-R116-S44@410M+R115"
+  "E8-A30-R116-S44@410M+R115_20261104_203504": "E8-A30-R116-S44@410M+R115",
+  "E8-A30-R116-S44@410M+R117_20261104_210700": "E8-A30-R116-S44@410M+R117"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
