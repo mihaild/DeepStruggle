@@ -191,16 +191,31 @@ share bought the opening's *form*, not strength, and the hole is **Europe left u
 league uses the unshown exploiters (R108/R109) and reads J1's West Germany and Europe-control rates
 beside the reference; B4's setup credit is no longer motivated by these openings.
 
-**Order:** B0 done, B1 running (launched 2026-11-03 22:03 UTC, alone; the owner's present interest, 2026-11-04:
-does the deep network train at all and how does it compare with the shallow one -- B1 against J1 at matched
-steps is that read); then B2's league if the owner confirms it under "a simple recipe"; B3's leg and
-cells and B4 interleaved; B5 and B6 when a slot is between reads. **J5 is postponed (owner, 2026-11-03
-~23:45 UTC):** B1 still reads to 2,000M; nothing about J5 launches until the owner says so. As first written: **J5 launches on B1's answer**, on
-R102 plus whatever passed, at the size B1 picks; the peer's recommendation of 3×128 stands if B1 says
-distilled. **Rules:** the per-seat rule against J1 at matched steps for the from-scratch cells, against
-J1's plateau band for the branches; B2's winner is the punisher whose fresh-exploiter margin shrinks
-most with the reference gain not behind the own-past gain. **A distilled J5 is not run first** (Arm C
-held its start and did not gain; the transformer's fit alone is ~2 days at 456 µs a row).
+**Order (owner, 2026-11-04 ~00:10 UTC):**
+
+1. **B1 -- understand the deep network first** (running since 2026-11-03 22:03 UTC, alone): does it train
+   at all, and how does it compare with the shallow one -- B1 against J1 at matched steps, to 2,000M.
+2. **B3 -- make sure J1's ceiling is reached**: the extra leg, the coefficient cells, the late anneal.
+3. **B6 -- in-place growth, only if B1 fails.**
+4. **B2 -- the league** (still planned, as the seat-pair member): after what can be reached without it
+   is understood.
+5. **B4 -- setup credit**: after B2, and only if the exploiters cannot shift the openings themselves.
+
+**B5 (the head norm) -- the evidence, read against it (running session, 2026-11-04):** A31's revival of
+R48's dead heads (dormant 12.2% → 0.7%, rank 89.8 → 101.7) came with reads of 51.0 / 50.4 / 50.2% against
+R48's own 52.4% at the same step -- no matched-step gain; the "+3" was against R48's earlier band. A32,
+the same norm on the deep A30 trunk from scratch, failed the 400M rank check (102.7 → 74.9, 7.1% against
+A30's 8.3%). And neither J1's heads (0.3% dormant) nor B1's (0.0%) are dying. **B5 is dropped, kept only
+as a remedy if B1's heads start to die** (recommended by the running session; the owner's decision
+pending).
+
+**J5 is postponed (owner, 2026-11-03 ~23:45 UTC):** nothing about J5 launches until the owner says so.
+As first written: **J5 launches on B1's answer**, on R102 plus whatever passed, at the size B1 picks; the
+peer's recommendation of 3×128 stands if B1 says distilled. **Rules:** the per-seat rule against J1 at
+matched steps for the from-scratch cells, against J1's plateau band for the branches; B2 passes if a
+fresh exploiter's margin shrinks with the reference gain not behind the own-past gain. **A distilled J5
+is not run first** (Arm C held its start and did not gain; the transformer's fit alone is ~2 days at
+456 µs a row).
 
 ## Not in this plan
 
