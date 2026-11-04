@@ -46,6 +46,8 @@ BRANCH_BLOCK = ActionEncoder.FLAT_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET
 PLAY_MODE_BLOCK = 5
 #: Card-feature slot 13: 1.0 for the card the decision is about (engine/include/ts/game_state.hpp).
 ACTIVE_CARD_SLOT = 13
+#: The card row's "in my hand" slot (card_slots::MY_HAND): the asymmetric token layout's hand slots read it.
+MY_HAND_SLOT = 1
 
 #: Countries the ownership head predicts: all 84 (P29 bet 2).
 #: Width of each optional observation block, by ts.OBS_FEATURE_* bit (engine/include/ts/game_state.hpp,
@@ -211,6 +213,7 @@ class LadderNet(ColdWarNetV2):
                  token_main: bool = False,
                  token_heads: int = 4,
                  token_mlp_mult: int = 2,
+                 token_card_memory: int = 0,
                  region_attn_dim: int = 0,
                  region_attn_heads: int = 4,
                  **kwargs: Any) -> None:
@@ -235,6 +238,10 @@ class LadderNet(ColdWarNetV2):
         if token_main and not (token_layers and per_entity_heads):
             raise ValueError("token_main makes the token path the network's main path: it needs token_layers and "
                              "the per-entity heads that read the tokens")
+        if token_card_memory and not token_main:
+            raise ValueError("token_card_memory is a layout of the main token path; it needs token_main")
+        if token_card_memory < 0:
+            raise ValueError(f"token_card_memory is a count of hand slots, got {token_card_memory}")
         if token_main and entity_proj_dim:
             raise ValueError("token_main drops the grouped projections; --ladder-entity-proj-dim must be 0, not "
                              f"{entity_proj_dim}: refused rather than silently ignored")
@@ -326,6 +333,10 @@ class LadderNet(ColdWarNetV2):
         self.token_main = bool(token_main)
         self.token_heads = int(token_heads)
         self.token_mlp_mult = int(token_mlp_mult)
+        #: The asymmetric layout (owner, 2026-11-04): this many hand slots as active card tokens, the 110 cards as a
+        #: read-only memory. 0 = every card a token (the 195-token layout).
+        self.token_card_memory = int(token_card_memory)
+        self.tok_empty_slot: nn.Parameter | None = None
         if self.token_main:
             setattr(self, "global_proj", None)
 
@@ -449,7 +460,13 @@ class LadderNet(ColdWarNetV2):
             self.tok_country_id = nn.Parameter(torch.randn(84, t) * 0.02)
             self.tok_card_id = nn.Parameter(torch.randn(110, t) * 0.02)
             if self.token_main:
-                self.tok_main = TokenTransformer(t, self.token_layers, self.token_heads, self.token_mlp_mult)
+                self.tok_main = TokenTransformer(t, self.token_layers, self.token_heads, self.token_mlp_mult,
+                                                 memory=self.token_card_memory > 0)
+                if self.token_card_memory:
+                    # An unused hand slot: the "empty" status, learned. The count is in the weights for config recovery.
+                    self.tok_empty_slot = nn.Parameter(torch.randn(t) * 0.02)
+                    self.register_buffer("tok_mem_slots_buf",
+                                         torch.tensor(self.token_card_memory, dtype=torch.int64))
                 # The trunk reads the global token's output and the mean of each entity type's.
                 fused_width = 3 * t
             else:
@@ -770,9 +787,39 @@ class LadderNet(ColdWarNetV2):
             c = self.tok_country_in(board_raw.view(b, 84, self.board_features)) + self.tok_country_id
             k = self.tok_card_in(card_raw.view(b, 110, self.card_features)) + self.tok_card_id
             g = self.tok_global_in(glob).unsqueeze(1)
-            x = torch.cat([g, c, k], dim=1)
-            out = self.tok_main(x) if self.token_main else self.tok_norm(self.tok_enc(x))
+            if self.token_card_memory:
+                out = self._asymmetric_pass(g, c, k, card_raw.view(b, 110, self.card_features))
+            else:
+                x = torch.cat([g, c, k], dim=1)
+                out = self.tok_main(x) if self.token_main else self.tok_norm(self.tok_enc(x))
         return out.float()
+
+    def _asymmetric_pass(self, g: torch.Tensor, c: torch.Tensor, k: torch.Tensor,
+                         rows: torch.Tensor) -> torch.Tensor:
+        """The asymmetric layout: the global token, the 84 countries and `token_card_memory` hand slots are the active
+        tokens; all 110 card tokens are the read-only memory they attend. A hand slot holds a card in my hand or in play
+        (its ACTIVE_CARD slot above zero: the play-mode and branch heads read that card's output), in card order; an
+        unused slot holds the learned empty status. Returns the same (B, 1 + 84 + 110, t) as the full layout: each card
+        that held a slot gets that slot's output, every other card its normalised memory entry."""
+        n = self.token_card_memory
+        t = k.shape[-1]
+        held = (rows[..., MY_HAND_SLOT] > 0.5) | (rows[..., ACTIVE_CARD_SLOT] > 0.05)
+        if not (torch.jit.is_tracing() or torch.onnx.is_in_onnx_export()):
+            # Asynchronous: no host sync per forward. More held cards than slots would drop one silently.
+            torch._assert_async(held.sum(dim=1).max() <= n,
+                                f"more cards in hand or in play than the {n} hand slots of the asymmetric layout")
+        # float32: bf16 holds integers exactly only to 256, so a score like 1000 - 109 would tie and reorder.
+        order = torch.arange(110, device=rows.device, dtype=torch.float32)
+        idx = (held.float() * 1000.0 - order).topk(n, dim=1).indices                # held cards first, in card order
+        used = held.gather(1, idx).unsqueeze(-1)
+        at = idx.unsqueeze(-1).expand(-1, -1, t)
+        empty = self.tok_empty_slot
+        assert empty is not None
+        slots = torch.where(used, k.gather(1, at), empty.to(k.dtype))
+        out = self.tok_main(torch.cat([g, c, slots], dim=1), k)
+        head, hand, mem = out[:, :85], out[:, 85:85 + n], out[:, 85 + n:]
+        cards = mem.scatter(1, at, torch.where(used, hand, mem.gather(1, at)))
+        return torch.cat([head, cards], dim=1)
 
     # ------------------------------------------------------------------ config
 
@@ -861,6 +908,7 @@ class LadderNet(ColdWarNetV2):
                if self.region_attn_dim else {}),
             **({"token_main": True, "token_heads": self.token_heads, "token_mlp_mult": self.token_mlp_mult}
                if self.token_main else {}),
+            **({"token_card_memory": self.token_card_memory} if self.token_card_memory else {}),
         )
 
 
@@ -1236,6 +1284,7 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         **({"token_main": True, "token_heads": int(sd["tok_main.heads_buf"]),
             "token_mlp_mult": int(sd["tok_main.blocks.0.mlp_card.0.weight"].shape[0]) // token_dim}
            if token_main else {}),
+        **({"token_card_memory": int(sd["tok_mem_slots_buf"])} if "tok_mem_slots_buf" in sd else {}),
     )
 
 def create_ladder_net(device: torch.device | str, **config: Any) -> LadderNet:

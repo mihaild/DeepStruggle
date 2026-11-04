@@ -137,6 +137,8 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
         # P41 J5. Recorded only when on.
         **({"token_main": True, "token_heads": int(args.ladder_token_heads),
             "token_mlp_mult": int(args.ladder_token_mlp_mult)} if getattr(args, "ladder_token_main", False) else {}),
+        **({"token_card_memory": int(args.ladder_token_card_memory)}
+           if getattr(args, "ladder_token_card_memory", 0) else {}),
         # Owner 2026-10-06. Recorded only when on, as the token path.
         **({"branch_head": True} if getattr(args, "ladder_branch_head", False) else {}),
         # Owner 2026-10-16 (Cell A). Recorded only when on.
@@ -353,6 +355,12 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Attention heads with --ladder-token-main (must divide --ladder-token-dim).")
     lad.add_argument("--ladder-token-mlp-mult", type=int, default=2,
                      help="MLP width over token width with --ladder-token-main.")
+    lad.add_argument("--ladder-token-card-memory", type=int, default=0, metavar="SLOTS",
+                     help="P41 J5's asymmetric layout (owner, 2026-11-04), with --ladder-token-main: the active tokens are "
+                          "the global token, the 84 countries and SLOTS hand slots (cards in my hand or in play, the "
+                          "learned empty status for unused ones); the 110 cards are a read-only memory every block "
+                          "attends (keys and values only, no FFN, no update). ~half the 195-token cost. 0 (default): "
+                          "every card a token.")
     lad.add_argument("--ladder-head-center", action=argparse.BooleanOptionalAction, default=None,
                      help="Centre the per-entity heads' hidden features across entities before "
                           "their final projection, removing the country-logit shift the E4 policy "
