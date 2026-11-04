@@ -204,7 +204,12 @@ moves with the policy; the cell that has not been run is **D6b: the RL from the 
 at that start (`--ref-update-freq` ≥ 50M) and η raised (0.5–1.0) for the first 400M, then the normal cadence**,
 at the normal rate, with the match against the start at 10M and 60M as the check. Hold-and-gain → capacity pays
 on J1's signal and "distil, then anchor, then train" is the route; hold-and-nothing → Arm C's answer stands in
-the new regime. D5 resumed in its slot at ~16:30 UTC; D6b needs a slot (B3's end). ~12 h alone |
+the new regime. **D6b runs now in D5's slot (owner, 2026-11-04); D5 is paused again, resumable, and goes back in
+when a slot frees.** Settings: R115's start and recipe with `--ref-update-freq 50000000` and `--eta 0.5` for
+the first 400M, then the normal cadence and η as a continuation with a change; the warm-start check is the
+match against J1's 13,600M SWA at 10 / 20 / 40 / 60M (held if 60M is within noise of the fit's 50.8%; stopped
+at the first read clearly below ~45%), with the KL to π_ref logged; then the 400M reads against the reference
+and B3. If η 0.5 holds the start but nothing moves, η 0.25 next; if it still loses the start, η 1.0. ~12 h alone |
 | **B2** | **the league from J1's plateau**: the unshown exploiters R108 (US) / R109 (USSR) as one fixed league member (a seat pair: R108 deciding as US, R109 as USSR, since each one's untrained seat collapsed to 3–8%) in J1's pool at the P24 share, the main continuing. **(b), Arm S's searched opponent as the comparator, is dropped (owner, 2026-11-04): the recipe stays simple, and an opponent from another lineage is not simple.** The league itself waits for the owner's word under the same rule | the signal question on a plastic base. Read on the fixed reference, the own-past gain, **the margin a fresh exploiter finds afterwards** (the league's own metric), and J1's West Germany and Europe-control rates |
 | **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
 | **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
