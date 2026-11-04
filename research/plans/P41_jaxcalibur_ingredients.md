@@ -209,7 +209,17 @@ when a slot frees.** Settings: R115's start and recipe with `--ref-update-freq 5
 the first 400M, then the normal cadence and η as a continuation with a change; the warm-start check is the
 match against J1's 13,600M SWA at 10 / 20 / 40 / 60M (held if 60M is within noise of the fit's 50.8%; stopped
 at the first read clearly below ~45%), with the KL to π_ref logged; then the 400M reads against the reference
-and B3. If η 0.5 holds the start but nothing moves, η 0.25 next; if it still loses the start, η 1.0. ~12 h alone |
+and B3. If η 0.5 holds the start but nothing moves, η 0.25 next; if it still loses the start, η 1.0.
+**D6b holds (2026-11-04, `E8-A30-R116-S44`, R116):** against J1's 13,600M SWA 48.1 / 51.3 / 49.8 / 49.8% at
+10 / 20 / 40 / 60M (the fit 50.8; D6 23.5 at 10M), KL to π_ref ~0.02 and not climbing, per-update KL 0.003 --
+the anchor restrains the direction without freezing the weights. **400M: 60.7% ± 1.1 against the reference**
+(US 57.4 / USSR 62.4); B3 at the matched RL step (15,610M) 61.9% -- **level with J1, within noise**: the deep
+network holds J1's level through 400M of RL, which no warm start did before. The anchor phase ended at 410M;
+it continues as `E8-A30-R116-S44@410M+R115` (the plain release: R115's cadence and η 0.1), reads every 400M
+of RL from 800M against the reference and B3 (61.9 / 61.9 / 61.0 / 60.7% at 15,600–16,800M). The release is
+the point at which D6's collapse mechanism returns; a match against J1 at +10M and +60M after it is the
+check, and a clear fall restores the anchor (the 50M cadence at η 0.1 first). The question from here is gain
+past J1's trajectory, not the hold. ~12 h alone |
 | **B2** | **the league from J1's plateau**: the unshown exploiters R108 (US) / R109 (USSR) as one fixed league member (a seat pair: R108 deciding as US, R109 as USSR, since each one's untrained seat collapsed to 3–8%) in J1's pool at the P24 share, the main continuing. **(b), Arm S's searched opponent as the comparator, is dropped (owner, 2026-11-04): the recipe stays simple, and an opponent from another lineage is not simple.** The league itself waits for the owner's word under the same rule | the signal question on a plastic base. Read on the fixed reference, the own-past gain, **the margin a fresh exploiter finds afterwards** (the league's own metric), and J1's West Germany and Europe-control rates |
 | **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
 | **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
