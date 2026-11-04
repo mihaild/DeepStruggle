@@ -190,7 +190,21 @@ learn the late gain itself, D6 whether a deep trunk that has it can use its capa
 on random labels under its own head, trunk frozen (a fresh network's number; Arm C's fit 97.0%, a trained
 teacher ~32%). **RL launched 15:53 UTC as `E8-A30-R115-S44` (R115):** the warm start, lr 1.5e-4, entropy 0, the
 term at 0.01, µP with the distilled readouts kept; 60M check against J1's 0.0018 / ~1.25, then reads every 400M of
-RL against the reference and against B3 at matched RL steps (B3: 61.9 / 61.9 / 61.0% at 15,600–16,400M). ~12 h alone |
+RL against the reference and against B3 at matched RL steps (B3: 61.9 / 61.9 / 61.0% at 15,600–16,400M).
+**D6's RL lost its start inside 10M (2026-11-04), stopped at ~75M:** each snapshot against J1's 13,600M SWA greedy
+50.8 (the fit) → 23.5 (10M) → 18.7 (20M) → 21.4 (40M) → 18.7% (60M) -- a collapse, not a drift back to a line.
+**Every check we run stayed normal while it fell:** per-update KL 0.0042 flat, entropy 1.17–1.27 flat, rank 4.1× fresh,
+no dormant units, logits bounded. So the 60M step-and-entropy check cannot see this failure; only a match against
+the starting point does, and **a warm start's checks must include one from 10M on.** Arm C's failure repeated
+without the entropy bonus and at lr 1.5e-4 (R99 held its start only at lr 5e-5 with entropy 0.002, and then did
+not gain). With R44 (RL from the soup's weights, lost in 10M) that is four times the same shape: **the first PPO
+updates at a normal rate destroy weights produced by another objective**, and the record has never tried the
+standard remedy for it -- a frozen anchor. NashPG's π_ref refreshes every 200k steps (three iterations), so it
+moves with the policy; the cell that has not been run is **D6b: the RL from the distilled start with π_ref frozen
+at that start (`--ref-update-freq` ≥ 50M) and η raised (0.5–1.0) for the first 400M, then the normal cadence**,
+at the normal rate, with the match against the start at 10M and 60M as the check. Hold-and-gain → capacity pays
+on J1's signal and "distil, then anchor, then train" is the route; hold-and-nothing → Arm C's answer stands in
+the new regime. D5 resumed in its slot at ~16:30 UTC; D6b needs a slot (B3's end). ~12 h alone |
 | **B2** | **the league from J1's plateau**: the unshown exploiters R108 (US) / R109 (USSR) as one fixed league member (a seat pair: R108 deciding as US, R109 as USSR, since each one's untrained seat collapsed to 3–8%) in J1's pool at the P24 share, the main continuing. **(b), Arm S's searched opponent as the comparator, is dropped (owner, 2026-11-04): the recipe stays simple, and an opponent from another lineage is not simple.** The league itself waits for the owner's word under the same rule | the signal question on a plastic base. Read on the fixed reference, the own-past gain, **the margin a fresh exploiter finds afterwards** (the league's own metric), and J1's West Germany and Europe-control rates |
 | **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
 | **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
