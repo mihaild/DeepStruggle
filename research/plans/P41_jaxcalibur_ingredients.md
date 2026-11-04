@@ -184,7 +184,13 @@ entropy; reads every 400M of RL against the reference and against **J1's own con
 steps**. **Pass:** above J1's trajectory at matched steps after 800–1,600M of RL. D5 resumes in the first slot that
 frees (B3's end) and reaches its gate a day later. D5 and D6 are complementary: D5 asks whether the deep trunk can
 learn the late gain itself, D6 whether a deep trunk that has it can use its capacity beyond it; D6 passing makes
-"distil, then train" the route for deeper networks and J5's start. ~12 h alone |
+"distil, then train" the route for deeper networks and J5's start.
+**D6's fit passes (2026-11-04, `E8-A30-R114-S44`, R114):** held-out argmax agreement 92.6% (KL 0.0150, value MSE
+0.0006) at 400M positions; against J1's 13,600M SWA greedy 50.1% ± 1.1 (US 45.8 / USSR 52.9); plasticity 99.0%
+on random labels under its own head, trunk frozen (a fresh network's number; Arm C's fit 97.0%, a trained
+teacher ~32%). **RL launched 15:53 UTC as `E8-A30-R115-S44` (R115):** the warm start, lr 1.5e-4, entropy 0, the
+term at 0.01, µP with the distilled readouts kept; 60M check against J1's 0.0018 / ~1.25, then reads every 400M of
+RL against the reference and against B3 at matched RL steps (B3: 61.9 / 61.9 / 61.0% at 15,600–16,400M). ~12 h alone |
 | **B2** | **the league from J1's plateau**: the unshown exploiters R108 (US) / R109 (USSR) as one fixed league member (a seat pair: R108 deciding as US, R109 as USSR, since each one's untrained seat collapsed to 3–8%) in J1's pool at the P24 share, the main continuing. **(b), Arm S's searched opponent as the comparator, is dropped (owner, 2026-11-04): the recipe stays simple, and an opponent from another lineage is not simple.** The league itself waits for the owner's word under the same rule | the signal question on a plastic base. Read on the fixed reference, the own-past gain, **the margin a fresh exploiter finds afterwards** (the league's own metric), and J1's West Germany and Europe-control rates |
 | **B3** | **J1's ceiling and coefficient**: one more leg to 20,000M on the flat-then-jump precedent (the stop rule fired once on a low read whose next was J1's best); c = 0.003 and 0.03 from scratch to 2,000M; a late anneal of c from J1's plateau (the floor costs 9.9% of temperature-1 games to the player's own DEFCON 1, R94 3.4%) | whether the term is tuned and whether J1 was stopped early |
 | **B4** | **setup credit** (`--setup-mc-credit`) on J1 with the term on setup placements (`--zero-avoid-scope setup` keeps openings reachable) | the owner's candidate for openings; the critic's −11 at turn 1 on an unplayed opening is its mechanism; read on the openings and the exploiter margin |
