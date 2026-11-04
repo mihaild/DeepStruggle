@@ -274,6 +274,36 @@ fresh exploiter's margin shrinks with the reference gain not behind the own-past
 is not run first** (Arm C held its start and did not gain; the transformer's fit alone is ~2 days at
 456 µs a row).
 
+## J5 now, from scratch (owner, 2026-11-04 evening)
+
+**Why now.** The warm-start route is closed: D6b bleeds under the anchor (45.9% against its own start at
+410M, 43.8% at 470M; level with J1 on the E7 reference was the blunter instrument) and D7, the same
+procedure on a fresh A8, heads the same way -- the loss is in distil-then-RL, not in depth. J1's own heads
+lose plasticity by its plateau (11.6% dormant, 36.7% random-label fit) and B3 is flat at it. So the
+transformer gets no shortcut from J1 and is run from scratch, with the GPU to itself: B3 stopped, D5 left
+paused.
+
+**The run.** 3×128 per-type-MLP token transformer as built (`ai/models/token_transformer.py`, the main
+path), on J1's recipe R102 (16k, clip 0.1, the zero-avoiding term, the pool at frac 0.3), readouts zeroed,
+coefficient and rate set by the transfer rule at the 60M checks (per-update KL and entropy matched to J1's
+0.0018–0.0022 / ~1.25; start at 0.01 and 3e-4, relaunch lower rather than continue if the step is clearly
+above J1's). Reads at 200M and every 400M against the reference beside J1's curve at matched steps (11.8 /
+16.0 / 30.4 / 33.5 / 35.5 / 38.6% at 200–2,000M): **400M the preliminary verdict, 800M the meaningful one
+(E7-09-44's lead was gone by 400M), 2,000M the gate.** The compiled token path is benchmarked first.
+
+**Timings alone at 3×128 as the code stood (3.2k steps/s):** 60M ~5 h, 200M ~17 h, 400M ~1.5 d, 800M ~3 d,
+2,000M ~7 d; 3×192 (2.06k) ~1.5× longer. The compiled path and the asymmetric layout each roughly halve
+them; with both, 400M in ~13 h and the gate in under 3 days. An H100 multiplies by 3–4.
+
+**J5's second shape, built in parallel (the asymmetric layout):** 84 country tokens, up to 10 hand-slot
+tokens (an empty status for unused slots), the global token, and the 110 cards as a **read-only memory**
+-- card identity plus status embedding projected to keys and values once per forward, no FFN, no
+self-update -- attended by the active tokens at every layer; the per-card head reads the hand slots and the
+memory. In the bandwidth-bound regime the token transformer runs in (295 µs a row at 3×128 against a
+FLOP-bound ~65), cost scales with tokens processed, so ~2× on cost and on activation memory; the
+country-to-country and card-to-country attention it keeps is the cheap part. It replaces the run if the
+60M checks fail, else it is the next run.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
