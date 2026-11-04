@@ -1934,6 +1934,7 @@ def train_pipeline(
     logit_gap_coef: float = 0.0,
     zero_avoid_coef: float = 0.0,
     zero_avoid_scope: str = "all",
+    zero_avoid_ramp_steps: int = 0,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2312,6 +2313,7 @@ def train_pipeline(
         "logit_gap": float(logit_gap),
         "zero_avoid_coef": float(zero_avoid_coef),
         "zero_avoid_scope": str(zero_avoid_scope),
+        "zero_avoid_ramp_steps": int(zero_avoid_ramp_steps),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -3137,6 +3139,13 @@ def train_pipeline(
     if lr_warmup_steps > 0:
         print(f"[lr warmup] linear from 0 to the scheduled rate over the first {int(lr_warmup_steps):,} steps; "
               f"now {_lr_now(int(trainer.total_env_steps)):g}", flush=True)
+    _za_full = float(zero_avoid_coef)
+    if zero_avoid_ramp_steps > 0:
+        if _za_full <= 0.0:
+            raise ValueError("--zero-avoid-ramp-steps ramps --zero-avoid-coef in; give a coefficient > 0.")
+        print(f"[zero-avoiding] ramped linearly from 0 to {_za_full:g} over the first {int(zero_avoid_ramp_steps):,} steps; "
+              f"now {_za_full * warmup_factor(int(trainer.total_env_steps), int(zero_avoid_ramp_steps)):g} "
+              f"(--zero-avoid-ramp-steps)", flush=True)
     # The rated model: the weight average under --ema-weights, the live weights otherwise. It is
     # what snapshots, pool members and evaluations see; the live weights keep training.
     ema: Optional[WeightEMA] = None
@@ -3283,8 +3292,13 @@ def train_pipeline(
         if lr_schedule != "constant" or lr_warmup_steps > 0:
             for _g in trainer.optimizer.param_groups:
                 _g["lr"] = _cur_lr * float(_g.get("lr_mult", 1.0))
+        if zero_avoid_ramp_steps > 0:
+            setattr(trainer, "zero_avoid_coef",
+                    _za_full * warmup_factor(int(trainer.total_env_steps), int(zero_avoid_ramp_steps)))
         _steps_before = int(trainer.total_env_steps)
         iteration_metrics = trainer.train_iteration()
+        if zero_avoid_ramp_steps > 0:
+            iteration_metrics["zero_avoid_coef_now"] = float(getattr(trainer, "zero_avoid_coef"))
         if ema is not None:
             ema.update(model, int(trainer.total_env_steps) - _steps_before)
         iteration_metrics["lr"] = _cur_lr

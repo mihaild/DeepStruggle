@@ -1071,6 +1071,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Where --zero-avoid-coef applies: every learner row (all, J1) or only the learner's "
                              "setup placements (setup: the floor keeps rarely played openings reachable while every "
                              "later decision trains without it; P41's exploiters).")
+    parser.add_argument("--zero-avoid-ramp-steps", type=int, default=0, metavar="N",
+                        help="Raise --zero-avoid-coef linearly from 0 over the first N env steps (counted from 0, as "
+                             "--lr-warmup-steps); 0 (default): the full coefficient from the start. The deep-trunk "
+                             "recipe search: the term helps A8 and holds the deep trunk back early.")
     parser.add_argument("--logit-gap", type=float, default=7.0,
                         help="The logit gap below the top legal move that --logit-gap-coef starts at.")
     parser.add_argument("--phase-lock", type=str, default=None, metavar="PATH",
@@ -1549,6 +1553,7 @@ def main():
             logit_gap_coef=args.logit_gap_coef,
             zero_avoid_coef=args.zero_avoid_coef,
             zero_avoid_scope=args.zero_avoid_scope,
+            zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,
             phase_lock=args.phase_lock,
             token_chunk=args.ladder_token_chunk,
