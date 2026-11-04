@@ -227,9 +227,15 @@ beside the reference; B4's setup credit is no longer motivated by these openings
 R48's dead heads (dormant 12.2% → 0.7%, rank 89.8 → 101.7) came with reads of 51.0 / 50.4 / 50.2% against
 R48's own 52.4% at the same step -- no matched-step gain; the "+3" was against R48's earlier band. A32,
 the same norm on the deep A30 trunk from scratch, failed the 400M rank check (102.7 → 74.9, 7.1% against
-A30's 8.3%). And neither J1's heads (0.3% dormant) nor B1's (0.0%) are dying. **B5 is dropped, kept only
-as a remedy if B1's heads start to die** (recommended by the running session; the owner's decision
-pending).
+A30's 8.3%). And neither J1's heads (0.3% dormant) nor B1's (0.0%) are dying -- **corrected (running
+session, 2026-11-04): the 0.3% was J1 at 60M.** The full probe on J1's 13,600M SWA: **11.6% dormant head
+units at τ 0.1** (5.6% at 0.025), head norms 14–34× a fresh head's, random labels under its own head with the
+trunk frozen 36.7% against 99.1% for a fresh head on the same trunk, P36c's targets 73.6%. J1's heads have
+lost much of their plasticity by its plateau, the pattern A31's head norm addressed on R48 -- so B5 has a
+mechanism on J1, though A31 still showed no matched-step gain. **B5 stays dropped on the strength evidence,
+with the mechanism now present on J1; a remedy cell if J1's continuation (B3) stalls.** D6's distilled deep
+network on the same probe: own head 99.0%, fresh head 99.2%, P36c targets 97.6%, dormant 0.0% -- a fresh
+network's plasticity carrying J1's play.
 
 **J5 is postponed (owner, 2026-11-03 ~23:45 UTC):** nothing about J5 launches until the owner says so.
 As first written: **J5 launches on B1's answer**, on R102 plus whatever passed, at the size B1 picks; the
