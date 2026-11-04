@@ -2319,6 +2319,23 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R116": {
+   "description": "R115 with the distilled start held by a frozen anchor: pi_ref refreshed every 50M (--ref-update-freq 50000000) and eta 0.5 for the first 400M: P41 D6b (owner, 2026-11-04) -- R115 lost the start inside 10M",
+   "first": "E8-A30-R116-S44_20261104_171011",
+   "flags": {
+    "eta": 0.5,
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "entropy_coef": 0.0,
+    "ref_update_freq": 50000000,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "lr": 0.00015,
+    "mup": true,
+    "batch_size": 16384
+   }
   }
  },
  "overrides": {
@@ -2581,7 +2598,8 @@
   "E8-A30-R112-S44_20261104_082839": "E8-A30-R112-S44",
   "E8-A30-R113-S44_20261104_120435": "E8-A30-R113-S44",
   "E8-A30-R114-S44_20261104_124530": "E8-A30-R114-S44",
-  "E8-A30-R115-S44_20261104_155319": "E8-A30-R115-S44"
+  "E8-A30-R115-S44_20261104_155319": "E8-A30-R115-S44",
+  "E8-A30-R116-S44_20261104_171011": "E8-A30-R116-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
