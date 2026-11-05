@@ -864,6 +864,35 @@
     "per_entity_heads": 64,
     "drop_static": true
    }
+  },
+  "A35": {
+   "description": "P41 J5 (owner, 2026-11-04): the token transformer as the main path -- 195 tokens (the global one, 84 countries, 110 cards), 3 pre-RMSNorm layers at width 128, 4 heads, an MLP (2x) per token type, no grouped projections; the trunk (fusion 480) reads the global token and each type's mean, the per-entity heads their own tokens, the play-mode and branch heads the active card's token; chunked at 1,024 rows and compiled (--ladder-token-compile, the same function)",
+   "first": "E8-A35-R102-S44_20261105_005750",
+   "flags": {
+    "arch": "ladder",
+    "ladder_input_mode": "grouped",
+    "ladder_aggregation": "flatten",
+    "ladder_entity_dim": 16,
+    "ladder_entity_proj_dim": 0,
+    "ladder_card_self_attention": false,
+    "ladder_cross_attention": false,
+    "ladder_head_entities": "country",
+    "ladder_head_center": true,
+    "ladder_hidden_dim": 480,
+    "ladder_res_blocks": 0,
+    "ladder_card_lookup": false,
+    "ladder_card_lookup_heads": 0,
+    "ladder_card_lookup_dim": 0,
+    "ladder_card_lookup_identity_dim": 0,
+    "ladder_token_layers": 3,
+    "ladder_token_main": true,
+    "ladder_branch_head": true,
+    "ladder_play_mode_head": true,
+    "per_entity_heads": 64,
+    "drop_static": true,
+    "ladder_token_chunk": 1024,
+    "ladder_token_compile": true
+   }
   }
  },
  "recipes": {
@@ -2618,7 +2647,10 @@
   "E8-A30-R116-S44_20261104_171011": "E8-A30-R116-S44",
   "E8-A30-R116-S44@400M+R115_20261104_203346": "E8-A30-R116-S44@410M+R115",
   "E8-A30-R116-S44@410M+R115_20261104_203504": "E8-A30-R116-S44@410M+R115",
-  "E8-A30-R116-S44@410M+R117_20261104_210700": "E8-A30-R116-S44@410M+R117"
+  "E8-A30-R116-S44@410M+R117_20261104_210700": "E8-A30-R116-S44@410M+R117",
+  "E8-A8-R114-S44_20261104_214736": "E8-A8-R114-S44",
+  "E8-A8-R116-S44_20261104_223312": "E8-A8-R116-S44",
+  "E8-A35-R102-S44_20261105_005750": "E8-A35-R102-S44"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
