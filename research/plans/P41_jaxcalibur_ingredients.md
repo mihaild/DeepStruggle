@@ -322,6 +322,23 @@ eager, and absent without autocast or with the workspace off (A8, fp32, survives
 in `824b0c9` (the workspace off whenever a token network runs under graphs; 6,626 steps/s after, so no
 cost) and resumed in place from 60.03M at 03:42 UTC; nothing lost, the 60M checks run at 65M.
 
+**J5's 60M checks (2026-11-05, at 65M, J1 at matched steps in brackets): the step passes, no relaunch,
+lr 3e-4 and c 0.01 unchanged.** Per-update KL 0.0025 / 0.0025 at 40–60M (0.0023 / 0.0022, +10%); clip
+fraction 0.216 (0.219); window-KL max 0.014–0.016 (0.012–0.015); entropy 1.25 (1.38) -- the transfer
+rule's ~1.25; head-input rank 39.8 of 480, 1.8× fresh (21.9), just under the 2× bar but rising and above
+J1's own 1.2× (57.0 vs 46.2); dormant 2.3% (0.5%); head norms 1.3–2.5× fresh (1.4–2.9×); |lse| max 13.5
+(11.8); explained variance 0.81 (0.82). **Flagged: setup entropy 0.53 against J1's 1.09**, 0.84 at 20–40M
+and still falling -- the transformer settles its openings about twice as fast as J1 did. **Planning
+position: hold.** The whole-policy entropy is on the rule; the setup component is a diagnostic, not a
+read, and what matters is *which* openings it settles into, not how fast (J1's own odd openings were not
+what the exploiters punished -- the margin was post-setup play). Raising the coefficient or adding the
+setup-scoped term mid-run would also break the matched-step comparison with J1, which is the point of
+the run. The 200M read (~9 h) carries the decision: if J5 is at or above J1's 11.8% the sharpening
+costs nothing visible and stays as is; if it is below and the behaviour report's openings are
+degenerate (one setup repeated, a seat without its West Germany / Poland core), the remedy is a
+**branch** (`@200M+` with `--zero-avoid-scope setup` at a higher coefficient, the B4-style term), never a
+change in place, so J5 proper keeps its curve. The owner decides either way.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
