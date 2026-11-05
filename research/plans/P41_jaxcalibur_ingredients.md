@@ -355,6 +355,25 @@ uncontrolled battlegrounds at turn 8; forced wins taken 53–67% vs 34–52%; he
 Walk), then resumed in place** -- a minor fix inside the epoch, so the run keeps its name and curve;
 the 400M read slips by the pause.
 
+**J5's 400M read (2026-11-06): 23.4% ± 0.9 (US 18.0 / USSR 28.1) against J1's 16.0% at 400M -- the
+preliminary verdict is still ahead at matched steps, by 7.4 points.** Three flags, together the
+pattern of a rate that has become too high. *Slope:* 21.1 → 23.4 over 200–400M (+2.3) against J1's
++4.2; the US seat is flat (18.9 → 18.0) and the gain is all USSR; J1 reached 30.4% at 800M, and at
+J5's slope it would be ~26–28 there, so J1 would overtake by the meaningful read -- E7-09-44's pattern.
+*Step size:* per-update KL 0.0033 at 340–400M against J1's 0.0014 (2.3×; 1.1× at 60M and rising
+steadily), clip fraction 0.225 vs 0.174; entropy 1.32 vs 1.24; explained variance 0.85 vs 0.80. The
+transfer rule matched at 60M and no longer holds: the same rate takes a growing step as the policy
+sharpens. *Openings flipped* (400M SWA, 100 deals): the US dropped West Germany for five Italy /
+Canada / France setups (Italy 3, Canada 2, France 2, Iran 1, South Korea 1 in 46%); the USSR moved to
+Poland 3 / Yugoslavia 3 in 100%, the owner's preferred. The USSR flip is fine and the US one is not a
+read in itself, but a flat US seat that abandons a sound opening it had settled on is what a step too
+large looks like, not exploration. **Planning position: branch now, keep J5 proper.** The step-size
+question is the transfer rule's own, so it is tested the way the rule says: `E8-A35-R102-S44@400M+`
+at lr 1.5e-4, same coefficient, read at 800M beside J5 proper's 800M (J1 30.4%). Sharing the GPU,
+both reach 800M in ~34 h instead of J5 alone in ~17 h; the cost is the 800M read's delay, the gain
+is that the 800M read answers the rate question at the same time as the architecture one. Changing
+J5 in place would lose the curve. The owner decides; nothing launched.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
