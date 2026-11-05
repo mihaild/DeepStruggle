@@ -374,6 +374,18 @@ both reach 800M in ~34 h instead of J5 alone in ~17 h; the cost is the 800M read
 is that the 800M read answers the rate question at the same time as the architecture one. Changing
 J5 in place would lose the curve. The owner decides; nothing launched.
 
+**Decided (owner, 2026-11-06): J5 continues at 3e-4 to 800M, no lower-rate branch now; decide again
+at the 800M read** (J1 30.4%; projected 26–28%). The supporting check: this is not a one-seat
+collapse. Self-play US win share 51–55%; critic AUC rising 0.67 → 0.78 and explained variance 0.76 →
+0.85, both above J1's at every window from 120M; per-seat KL, entropy and advantage symmetric. The
+step drift is J5's own: J1's per-update KL fell 2.3 → 1.4 ×10⁻³ over 0–400M (clip fraction 0.23 →
+0.16) while J5's rose 2.5 → 3.3 (clip stuck at 0.22) -- a rate too high for the maturing transformer,
+not a seat failing. The flat US seat (18.9 → 18.0 while the USSR gained 5.7) coincides with the US
+opening churn (West Germany in every setup at 200M, gone by 400M). What the 800M read decides: at or
+above J1's 30.4% the rate stands and the run goes to the 2,000M gate; below it with the drift still
+rising, the branch at 1.5e-4 from the 800M state (or from 400M, if the gap is wide enough to want the
+earlier start) is the next run.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
