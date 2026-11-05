@@ -306,6 +306,15 @@ memory. In the bandwidth-bound regime the token transformer runs in (295 µs a r
 FLOP-bound ~65), cost scales with tokens processed, so ~2× on cost and on activation memory; the
 country-to-country and card-to-country attention it keeps is the cheap part. It replaces the run if the
 60M checks fail, else it is the next run.
+**Measured (2026-11-05, `--ladder-token-card-memory 16`, compiled, alone):** the compiled full layout runs
+**6,470 steps/s at 3×128** (3,200 before: fused RMSNorm 4,760, then compile; 2.02×) and 4,028 at 3×192
+(1.96×), peak memory unchanged; **the asymmetric layout 7,844 and 5,012 -- 1.2×, not 2×.** Attention
+keys still number 211 (101 active + 110 memory), every layer still projects all 110 cards to keys and
+values, and the input projections, heads, value head and environment do not shrink, so the token work
+that goes away is a smaller share of a step than the FLOP count suggested. It stays the next run, not a
+replacement; a once-per-forward memory projection shared across layers would recover a little more.
+**J5 (`E8-A35-R102-S44`, 3×128 compiled) launched 2026-11-05: 60M ≈ 2.6 h, 400M ≈ 17 h, 800M ≈ 1.4 d,
+2,000M ≈ 3.6 d.**
 
 ## Not in this plan
 
