@@ -797,3 +797,92 @@ TEST(EraTransitionKeepsTheDiscard, LateWarJoinsTheDeckAndTheDiscardStays) {
         ASSERT_NE(state.card_locations[i], CardLocation::UNAVAILABLE);
     }
 }
+
+// ENG-9: the play-mode mask's opponent-card branch offered EVENT unconditionally, so NATO in USSR
+// hands (Missile Envy trades cards) could be "played as an event" before its prerequisite --
+// "requires prior play of either the 'Warsaw Pact Formed' or 'Marshall Plan' Event(s) in order to
+// be played as an Event", whichever side holds the card. The event then silently did nothing
+// (run_trigger_event returns at its unmet-prerequisite check) and the play degenerated into an
+// Ops play of the same card, so an illegal choice was on offer and nothing else.
+TEST(RegressionTest, NATOEventFromOpponentHandRequiresItsPrerequisite) {
+    GameState state{};
+    Engine::init_game(state, 42);
+
+    state.card_locations[card_ids::NATO] = ts::hand_of(ts::Player::USSR);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::NATO;
+
+    ASSERT_FALSE(CardHandlers::can_trigger_event(state, card_ids::NATO, Player::USSR));
+
+    // Without Warsaw Pact Formed or Marshall Plan the EVENT slot is not on offer; the Ops play of
+    // the same card still is. The step refuses one too, since the mask decides legality.
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(out_size, static_cast<size_t>(Resolution::COUNT));
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::OPS_INFLUENCE)], 1);
+    ASSERT_FALSE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
+
+    // After Warsaw Pact Formed the Event play is legal, the event actually fires (NATO goes onto
+    // the board and out of the game) and the play continues into NATO's deferred 4 Ops.
+    state.set_flag(effect_bits::WARSAW_PACT_PLAYED);
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
+    ASSERT_TRUE(state.has_flag(effect_bits::NATO_ACTIVE));
+    ASSERT_EQ(state.card_locations[card_ids::NATO], CardLocation::REMOVED_FROM_GAME);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, card_ids::NATO);
+    ASSERT_EQ(state.ctx().pending_ops_value, 4);
+}
+
+// The gate is not a ban on opponent-card Events: a card with no prerequisite still offers EVENT
+// in the opponent's hand, event-first as before.
+TEST(RegressionTest, OpponentCardWithoutPrerequisiteStillOffersEvent) {
+    GameState state{};
+    Engine::init_game(state, 42);
+
+    state.card_locations[card_ids::FIDEL] = ts::hand_of(ts::Player::US);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::US;
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::FIDEL;
+
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+}
+
+// Solidarity is the same gate's other prerequisite card ("John Paul II Elected Pope"), and it
+// reaches USSR hands the same way NATO does. The opponent branch bypassed can_trigger_event for
+// it too; the fix gates both branches on the one test.
+TEST(RegressionTest, SolidarityEventFromOpponentHandRequiresJohnPaulII) {
+    GameState state{};
+    Engine::init_game(state, 42);
+
+    state.card_locations[card_ids::SOLIDARITY] = ts::hand_of(ts::Player::USSR);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::SOLIDARITY;
+
+    ASSERT_FALSE(CardHandlers::can_trigger_event(state, card_ids::SOLIDARITY, Player::USSR));
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+
+    state.set_flag(effect_bits::JOHN_PAUL_II_PLAYED);
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+}
