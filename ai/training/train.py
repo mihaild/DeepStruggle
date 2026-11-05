@@ -1335,6 +1335,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    if getattr(args, "ladder_token_layers", 0) and not args.no_cuda_graphs:
+        # The token path runs in bf16 under autocast, whose GEMMs take a cuBLASLt workspace; inside the first graph
+        # capture it lands in that graph's private pool and later captures reuse its address, so the pool's first
+        # eviction freed memory every newer graph still wrote to -- J5 (E8-A35-R102-S44) died with an illegal memory
+        # access on the first rollout after it (60M), and an eviction stress test failed on the 14th member every
+        # time, compiled or not, and survived with this workspace off. Off costs nothing measurable (6,626 against
+        # 6,470 steps/s at 3x128 compiled). Set before CUDA starts, where cuBLASLt reads it.
+        os.environ.setdefault("CUBLASLT_WORKSPACE_SIZE", "0")
+        print(f"[cuda graphs] token path: cuBLASLt workspace {os.environ['CUBLASLT_WORKSPACE_SIZE']} (graph-eviction safety)")
 
     if args.mode in ["train", "curriculum"]:
         eff_reward_scheme = "curriculum" if args.mode == "curriculum" else args.reward_scheme

@@ -29,6 +29,13 @@ eagerly, from the ordinary allocator, before any capture; every graph then share
 workspace, which is safe because replays are serial, and dropping a graph frees nothing another
 graph uses.
 
+**The cuBLASLt workspace has the same hazard and is switched off for the token path** (bf16 under autocast, whose GEMMs
+use cuBLASLt): warming up on the capture stream did not keep it out of the first capture's pool, so the opponent pool's
+first eviction freed it under every later graph -- J5 (E8-A35-R102-S44) died at 60M with an illegal memory access, and a
+capture/evict/replay stress test of the token network failed at the 14th member, compiled or eager, with any attention
+backend, and survived only without autocast or with `CUBLASLT_WORKSPACE_SIZE=0`. `ai/training/train.py` sets that
+before CUDA starts whenever a token network runs under graphs (no measurable cost).
+
 A graph reads the network's parameters by address. The optimiser updates them in place, so a
 replay always sees the current weights, and `load_state_dict` copies into the existing tensors.
 Anything that REPLACES a parameter or buffer tensor (a `.to()` onto another device, assigning a new
