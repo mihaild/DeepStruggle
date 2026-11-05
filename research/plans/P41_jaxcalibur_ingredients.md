@@ -314,7 +314,13 @@ values, and the input projections, heads, value head and environment do not shri
 that goes away is a smaller share of a step than the FLOP count suggested. It stays the next run, not a
 replacement; a once-per-forward memory projection shared across layers would recover a little more.
 **J5 (`E8-A35-R102-S44`, 3×128 compiled) launched 2026-11-05: 60M ≈ 2.6 h, 400M ≈ 17 h, 800M ≈ 1.4 d,
-2,000M ≈ 3.6 d.**
+2,000M ≈ 3.6 d.** It crashed at 60.03M on the opponent pool's first eviction (capacity 12, a member
+every 5M): the token path's bf16 GEMMs take a cuBLASLt workspace, which landed in the first CUDA graph's
+private pool, and dropping that graph freed memory the later graphs still wrote to -- the class of E4's
+cuBLAS bug, reproduced by a capture/evict/replay stress test at the 14th member every time, compiled or
+eager, and absent without autocast or with the workspace off (A8, fp32, survives the same test). Fixed
+in `824b0c9` (the workspace off whenever a token network runs under graphs; 6,626 steps/s after, so no
+cost) and resumed in place from 60.03M at 03:42 UTC; nothing lost, the 60M checks run at 65M.
 
 ## Not in this plan
 
