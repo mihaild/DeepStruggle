@@ -339,6 +339,22 @@ degenerate (one setup repeated, a seat without its West Germany / Poland core), 
 **branch** (`@200M+` with `--zero-avoid-scope setup` at a higher coefficient, the B4-style term), never a
 change in place, so J5 proper keeps its curve. The owner decides either way.
 
+**J5's 200M read (2026-11-05): 21.1% ± 0.9 against A13+R48's SWA (US 18.9 / USSR 22.4), against J1's
+11.8% at 200M -- about 9 points ahead at matched steps**, the first architecture to lead J1 on its own
+recipe at any step. The caveat stands in the plan: E7-09-44's early lead was gone by 400M, so 400M is
+the preliminary verdict and 800M the meaningful one (J1 16.0 / 30.4). *Openings* (80M-window SWA,
+greedy, 100 deals): US **West Germany 4, Italy 3, Iran 2 -- the human opening -- in 82%**, Italy 4 /
+West Germany 4 / Iran 1 in 18%, West Germany 4 in every US setup from ~120M; USSR **East Germany 3,
+Poland 3 in 100%** (the owner reads it as weaker than Poland 3 / Yugoslavia 3, which keeps the route to
+Italy; tracked at each read for whether it settles or flips). J1 at 200M: France 5 / Italy 3 / Iran 1
+and Poland 3 / Yugoslavia 3. So the low setup entropy at 60M was J5 converging on a sound US opening,
+and the hold was right; the setup-scoped term stays unneeded. *Style against J1 to 180M:* Wargames
+endings 7.5% vs 0.9%; Europe control 1.3% vs 7.0%; final scoring 19% vs 26%; about 2–3 more
+uncontrolled battlegrounds at turn 8; forced wins taken 53–67% vs 34–52%; heuristic ~100% for both.
+**Paused at its next resume state (~210M) for the owner's sync onto main's engine fix (ENG-7, Space
+Walk), then resumed in place** -- a minor fix inside the epoch, so the run keeps its name and curve;
+the 400M read slips by the pause.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
