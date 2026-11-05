@@ -277,8 +277,11 @@ is not run first** (Arm C held its start and did not gain; the transformer's fit
 ## J5 now, from scratch (owner, 2026-11-04 evening)
 
 **Why now.** The warm-start route is closed: D6b bleeds under the anchor (45.9% against its own start at
-410M, 43.8% at 470M; level with J1 on the E7 reference was the blunter instrument) and D7, the same
-procedure on a fresh A8, heads the same way -- the loss is in distil-then-RL, not in depth. J1's own heads
+410M, 43.8% at 470M; level with J1 on the E7 reference was the blunter instrument) and **D7, the same
+procedure on a fresh A8 (J1 → A8 by R114, then RL on R116), bleeds the same way: 43.1% ± 1.1 against its
+own start and 43.6% against J1 at 410M** (checks 47.2 / 47.9 / 48.1 / 46.1 at 10–60M from a level, plastic
+start) -- **the loss is in distil-then-RL as a procedure, not in depth; D6b says nothing against the deep
+trunk.** B3 stopped at 17,600M (63.3%); D7 at 410M. J1's own heads
 lose plasticity by its plateau (11.6% dormant, 36.7% random-label fit) and B3 is flat at it. So the
 transformer gets no shortcut from J1 and is run from scratch, with the GPU to itself: B3 stopped, D5 left
 paused.
