@@ -71,10 +71,12 @@ def test_two_southeast_asian_placements_are_affordable() -> None:
 def test_leaving_southeast_asia_withdraws_the_bonus() -> None:
     """The ladder still applies: step outside and the extra Op is gone."""
     state = _ussr_action_round()
+    # So a placement there is legal at all: before the Ops begin, since only Influence held at the
+    # start of the action round opens a country to them.
+    state.set_country(CANADA, 0, 5)
     _name_cia_created(state)
     ts.Engine.step(state, ts.MicroAction(
         ts.DecisionType.SELECT_OP_MODE, int(ts.OpMode.INFLUENCE), 0, 0))
-    state.set_country(CANADA, 0, 5)          # so a placement there is legal at all
     ts.Engine.step(state, ts.MicroAction(ts.DecisionType.POINT_NODE, CANADA, 0, 0))
     assert int(state.ctx().remaining_steps) == 0, (
         "leaving Southeast Asia forfeits the Vietnam Revolts bonus")

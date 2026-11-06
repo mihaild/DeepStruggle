@@ -233,10 +233,44 @@ struct alignas(64) DecisionContext {
         else if (node < 84) start_influence_nodes[1] |= (1ULL << (node - 64));
     }
 
+    inline void clear_start_influence(uint8_t node) noexcept {
+        if (node < 64) start_influence_nodes[0] &= ~(1ULL << node);
+        else if (node < 84) start_influence_nodes[1] &= ~(1ULL << (node - 64));
+    }
+
     inline bool has_start_influence(uint8_t node) const noexcept {
         if (node < 64) return (start_influence_nodes[0] & (1ULL << node)) != 0;
         if (node < 84) return (start_influence_nodes[1] & (1ULL << (node - 64))) != 0;
         return false;
+    }
+
+    // Whose influence the snapshot holds, in two of the bits above country 83 (nodes 126 and 127).
+    // A snapshot without either bit -- one restored from a save made before the bits existed --
+    // still gates adjacency, but not the target country (Operations::can_place_influence).
+    //
+    // PENDING (node 125) marks a snapshot taken before an event-first Event whose Ops have not
+    // begun: it answers its owner's question, but gates the other side's only once the Ops begin,
+    // which is when a snapshot has always started gating it.
+    static constexpr uint64_t START_INFLUENCE_PENDING    = 1ULL << 61;
+    static constexpr uint64_t START_INFLUENCE_OWNER_US   = 1ULL << 62;
+    static constexpr uint64_t START_INFLUENCE_OWNER_USSR = 1ULL << 63;
+
+    inline bool has_start_influence_snapshot() const noexcept {
+        return start_influence_nodes[0] != 0 || start_influence_nodes[1] != 0;
+    }
+
+    inline bool start_influence_pending() const noexcept {
+        return (start_influence_nodes[1] & START_INFLUENCE_PENDING) != 0;
+    }
+
+    inline void set_start_influence_owner(Player p) noexcept {
+        start_influence_nodes[1] |= (p == Player::US) ? START_INFLUENCE_OWNER_US : START_INFLUENCE_OWNER_USSR;
+    }
+
+    inline bool start_influence_owned_by(Player p) const noexcept {
+        if (p == Player::NONE) return false;
+        return (start_influence_nodes[1] &
+                ((p == Player::US) ? START_INFLUENCE_OWNER_US : START_INFLUENCE_OWNER_USSR)) != 0;
     }
 
     inline void mark_visited(uint8_t node) noexcept {

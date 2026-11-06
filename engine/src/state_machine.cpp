@@ -794,6 +794,11 @@ void StateMachine::finish_end_turn(GameState& state) noexcept {
     }
 }
 
+// Where `p` may place Influence is fixed by the board at the start of the action round (rules.md,
+// Adjacency Requirement): the target or a neighbour must have held friendly Influence then. The
+// snapshot is taken when the Ops begin, except on an opponent's card played event-first, where it
+// is taken before the Event so that Influence the Event gives `p` -- The Iron Lady's USSR point in
+// Argentina -- opens nothing (ENG-8).
 static void snapshot_op_influence(GameState& state, Player p) noexcept {
     state.ctx().start_influence_nodes = {};
     for (uint8_t i = 0; i < 84; ++i) {
@@ -801,6 +806,7 @@ static void snapshot_op_influence(GameState& state, Player p) noexcept {
             state.ctx().set_start_influence(i);
         }
     }
+    state.ctx().set_start_influence_owner(p);
 }
 
 // P17 helpers. The merged resolution node and the deferred Ops node reach the same three Ops
@@ -865,8 +871,19 @@ static bool begin_op_mode(GameState& state, Player p, OpMode op_mode) noexcept {
         return true;
     }
 
+    // An event-first play took its snapshot before the Event (snapshot_op_influence); the Ops
+    // beginning puts it in force. A country the Event emptied leaves it too, as it always has: the
+    // fix withholds what the Event gave, and gives nothing back that the Event took.
     if (op_mode == OpMode::INFLUENCE) {
-        snapshot_op_influence(state, p);
+        if (state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::EVENT_FIRST) &&
+            state.ctx().start_influence_owned_by(p)) {
+            state.ctx().start_influence_nodes[1] &= ~DecisionContext::START_INFLUENCE_PENDING;
+            for (uint8_t i = 0; i < 84; ++i) {
+                if (state.countries[i].get_influence(p) == 0) state.ctx().clear_start_influence(i);
+            }
+        } else {
+            snapshot_op_influence(state, p);
+        }
     }
     state.ctx().decision_type = DecisionType::POINT_NODE;
     state.ctx().remaining_steps = ops;
@@ -1330,6 +1347,8 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
                     // Event-first is still a play for Operations, so it owes the same charges.
                     if (!commit_card_to_ops(state, p, card)) return true;   // game ended
                     state.ctx().timing_branch = static_cast<uint8_t>(TimingBranch::EVENT_FIRST);
+                    snapshot_op_influence(state, p);   // the board before the Event (ENG-8)
+                    state.ctx().start_influence_nodes[1] |= DecisionContext::START_INFLUENCE_PENDING;
                     Operations::grant_card_ops_to_ctx(state, card, p);
                     state.ctx().decision_type = DecisionType::SELECT_OP_MODE;
                     state.ctx().decision_player = p;

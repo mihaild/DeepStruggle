@@ -82,6 +82,16 @@
           "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
         },
         "why": "ENG-7 on top of ENG-6 (engine/AGENTS.md section 17): Space Race box 6's end-of-turn discard no longer offers a held scoring card, which escaped the loss for holding one. E8's top network used it in 29 of 30 chances (0.73% of sampled self-play games), so runner and rollout move; the owner ruled it a fix in place, and stored games no longer valid are discarded (owner, 2026-11-04)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "19c50df4aa112c682fbef4186ea4b4a61d0176ae39797e98ddfb64d1f9a414bc",
+          "state": "d215621c232a2b8270feaf81d7bb5a42979a96e10952a293207533735ad8659c",
+          "rollout": "3bcd31c5a2d56e5dbec2e40cac777457ba35986c64c699c407e1168b92d27210",
+          "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
+        },
+        "why": "ENG-8 on top of ENG-7 (engine/AGENTS.md section 18): Influence an event-first Event gives the phasing player -- The Iron Lady's USSR point in Argentina -- no longer opens that country or its neighbours to the Ops that follow. 1 of 2,000 seeded random games plays differently (an Iron Lady), so runner, state and rollout move; the owner ruled it a minor fix that stays in E8, and stored games no longer valid are discarded (owner, 2026-11-06)."
       }
     ]
   }

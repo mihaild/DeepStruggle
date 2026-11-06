@@ -32,6 +32,77 @@ TEST(LateCardsTest, Card83_TheIronLady) {
     ASSERT_TRUE(state.has_flag(ts::effect_bits::IRON_LADY_PLAYED));
 }
 
+// ENG-8. Influence placed by Operations must be in, or next to, a country holding friendly
+// Influence at the start of the action round. The USSR playing The Iron Lady event-first gets a
+// point in Argentina from the Event before its Ops; that point opened Argentina and its neighbours
+// to the Ops, so the USSR could stack all three there.
+namespace {
+ts::GameState iron_lady_in_ussr_hand() {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 42);
+    state.turn = 8;
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::USSR;
+    state.ctx().decision_player = ts::Player::USSR;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    state.card_locations[ts::card_ids::THE_IRON_LADY] = ts::hand_of(ts::Player::USSR);
+    for (uint8_t c : {ts::countries::ARGENTINA, ts::countries::CHILE, ts::countries::URUGUAY,
+                      ts::countries::PARAGUAY}) {
+        state.countries[c].ussr_influence = 0;
+    }
+    return state;
+}
+
+void play_iron_lady(ts::GameState& state, ts::Resolution resolution) {
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::THE_IRON_LADY, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(resolution), 0, 0}));
+    if (resolution == ts::Resolution::EVENT) {
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+        ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    }
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+}
+}  // namespace
+
+TEST(LateCardsTest, Card83_TheIronLady_EventFirst_ArgentinaOpensNothingToTheOps) {
+    ts::GameState state = iron_lady_in_ussr_hand();
+    play_iron_lady(state, ts::Resolution::EVENT);
+    ASSERT_EQ(state.countries[ts::countries::ARGENTINA].ussr_influence, 1);   // the Event's point
+
+    for (uint8_t c : {ts::countries::ARGENTINA, ts::countries::CHILE, ts::countries::URUGUAY,
+                      ts::countries::PARAGUAY}) {
+        ASSERT_FALSE(ts::Operations::can_place_influence(state, ts::Player::USSR, c));
+    }
+    ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 0, 0}));
+    ASSERT_EQ(state.countries[ts::countries::ARGENTINA].ussr_influence, 1);
+
+    // Countries the USSR held at the start still take the Ops.
+    ASSERT_TRUE(ts::Operations::can_place_influence(state, ts::Player::USSR, ts::countries::POLAND));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::POLAND, 0, 0}));
+}
+
+TEST(LateCardsTest, Card83_TheIronLady_EventFirst_NeighbourHeldAtStartStillOpensArgentina) {
+    ts::GameState state = iron_lady_in_ussr_hand();
+    state.countries[ts::countries::CHILE].ussr_influence = 1;
+    play_iron_lady(state, ts::Resolution::EVENT);
+
+    ASSERT_TRUE(ts::Operations::can_place_influence(state, ts::Player::USSR, ts::countries::ARGENTINA));
+    // Uruguay and Paraguay neighbour only Argentina's new point, not Chile.
+    ASSERT_FALSE(ts::Operations::can_place_influence(state, ts::Player::USSR, ts::countries::URUGUAY));
+    ASSERT_FALSE(ts::Operations::can_place_influence(state, ts::Player::USSR, ts::countries::PARAGUAY));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 0, 0}));
+    ASSERT_EQ(state.countries[ts::countries::ARGENTINA].ussr_influence, 2);
+}
+
+TEST(LateCardsTest, Card83_TheIronLady_OpsFirst_ArgentinaUnreachable) {
+    ts::GameState state = iron_lady_in_ussr_hand();
+    play_iron_lady(state, ts::Resolution::OPS_INFLUENCE);
+    ASSERT_FALSE(ts::Operations::can_place_influence(state, ts::Player::USSR, ts::countries::ARGENTINA));
+    ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ARGENTINA, 0, 0}));
+}
+
 // Card 84: Reagan Bombs Libya
 TEST(LateCardsTest, Card84_ReaganBombsLibya) {
     ts::GameState state{};

@@ -112,14 +112,23 @@ bool Operations::can_place_influence(const GameState& state, Player p, uint8_t c
         }
     }
 
-    // Has influence already
-    if (state.countries[country_id].get_influence(p) > 0) return true;
+    // Has influence already -- and had it at the start of the action round when `p` is spending
+    // Ops, so that Influence an event-first Event gave `p` there does not count (ENG-8, The Iron
+    // Lady). The same test as for a neighbour below.
+    if (state.countries[country_id].get_influence(p) > 0 &&
+        (!state.ctx().start_influence_owned_by(p) || state.ctx().has_start_influence(country_id))) {
+        return true;
+    }
 
     // Superpower adjacent
     if (c_info.superpower_adjacent == p) return true;
 
-    // Adjacent to friendly influence (must have had influence at start of Op if snapshot exists)
-    bool has_snapshot = (state.ctx().start_influence_nodes[0] != 0 || state.ctx().start_influence_nodes[1] != 0);
+    // Adjacent to friendly influence (must have had influence at start of Op if snapshot exists).
+    // Once the Ops begin the gate applies to either side's question, as it always has: the
+    // observation asks it of both players, and changing what the other side's answer reads is a
+    // separate decision. A pending snapshot (taken before an event-first Event) gates only its owner.
+    const bool has_snapshot = state.ctx().has_start_influence_snapshot() &&
+        (!state.ctx().start_influence_pending() || state.ctx().start_influence_owned_by(p));
     for (uint8_t i = 0; i < c_info.num_neighbors; ++i) {
         uint8_t n_id = c_info.neighbors[i];
         if (state.countries[n_id].get_influence(p) > 0) {

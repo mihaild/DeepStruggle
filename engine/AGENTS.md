@@ -515,3 +515,23 @@ E8's top network had learned to: holding a scoring card at that decision, it dis
 held (rules.md, the held-card invariant), so the mask now leaves them out; holding only a scoring card,
 the pass is all there is, and the check then ends the game. The step refuses one too, since the mask
 decides legality. Tests: `SpaceRace_Box6_SpaceWalk_*` in `engine/tests/test_card_edge_cases.cpp`.
+
+## 18. An event-first Event opens nothing to the Ops after it (ENG-8, E8 in place, 2026-11-06)
+
+Influence placed by Operations goes in, or next to, a country holding friendly Influence at the start
+of the action round (rules.md, Adjacency Requirement). `begin_op_mode` took that snapshot
+(`DecisionContext::start_influence_nodes`) when the Ops began, which on an opponent's card played
+event-first is after the Event, and `Operations::can_place_influence` tested the target country against
+the current board. So the USSR playing The Iron Lady event-first, with nothing in or next to Argentina,
+could stack all its Ops there and reach Chile, Uruguay and Paraguay off the Event's own point.
+
+Now the event-first branch of `SELECT_PLAY_MODE` takes the snapshot on the Ops frame before it pushes
+the Event, and `begin_op_mode` keeps it, dropping any country the Event emptied: the fix withholds what
+the Event gave and gives back nothing it took, so removal Events play as before. The target country,
+like a neighbour, must hold friendly Influence now *and* in the snapshot. Bits above country 83 mark
+the snapshot's owner (an unmarked one, from an older save, gates neighbours only) and a *pending* one,
+taken before the Event: it answers its owner at once but gates the other side's question -- the
+observation asks both -- only once the Ops begin, when a snapshot always has. The observation therefore
+moves only where an Event gave the phasing player Influence; `test_observation_golden.py` is unchanged.
+1 of 2,000 seeded random games plays differently. Tests: `Card83_TheIronLady_*` in
+`engine/tests/test_cards_late.cpp`.
