@@ -1,5 +1,7 @@
 # How much an early read says, and how to read strength faster (2026-11-06)
 
+**Owner's verdict (2026-11-06): the protocol below is not adopted.** It adds nothing to the standing rule -- wait longer on big changes unless there is a clear problem early. The data sections stand as the evidence for that rule; the validation in §6 was not run.
+
 **Conclusion.** The owner's suspicion is half right. A read against A13+R48's SWA is *not* noise:
 its read-to-read scatter is 1.3–1.6 points (SD; the binomial floor is 1.1), and across the twelve
 from-scratch E8 arms the 400M read already ranks the 2,000M reads with Spearman 0.93. What the
