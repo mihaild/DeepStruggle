@@ -427,6 +427,7 @@ class BaseNashPGTrainer:
         max_grad_norm: float = 1.0,
         slice_turn_boundaries: bool = False,
         blunder_window: bool = True,
+        held_scoring_blunder: bool = True,
         same_perspective_bootstrap: bool = False,
         per_player_gae: bool = False,
         priority_alpha: float = 0.0,
@@ -727,6 +728,8 @@ class BaseNashPGTrainer:
         self.max_grad_norm = max_grad_norm
         self.slice_turn_boundaries = slice_turn_boundaries
         self.blunder_window = blunder_window
+        #: Arm the blunder window for held-scoring losses (False: --no-held-scoring-blunder, an ordinary loss).
+        self.held_scoring_blunder = bool(held_scoring_blunder)
         #: Bootstrap from V(s_{t+1}, p_t) instead of -V(s_{t+1}, p_{t+1}). Off by default: it
         #: changes what the critic is trained on, so it is an arm, not a correction applied
         #: silently. See `RolloutBuffer.compute_gae`.
@@ -1983,8 +1986,10 @@ class BaseNashPGTrainer:
                 learner=learner_t.float(),
                 turns=torch.from_numpy(self._info["turns"]).to(self.device) if "turns" in self._info else None,
                 vps=torch.from_numpy(self._info["victory_points"]).float().to(self.device) if "victory_points" in self._info else None,
-                held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device) if "held_scoring_us" in self._info else None,
-                held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device) if "held_scoring_ussr" in self._info else None,
+                held_scoring_us=torch.from_numpy(self._info["held_scoring_us"]).to(self.device)
+                if ("held_scoring_us" in self._info and self.held_scoring_blunder) else None,
+                held_scoring_ussr=torch.from_numpy(self._info["held_scoring_ussr"]).to(self.device)
+                if ("held_scoring_ussr" in self._info and self.held_scoring_blunder) else None,
                 defcon_blunder=torch.from_numpy(self._info["defcon_blunder"]).to(self.device) if "defcon_blunder" in self._info else None,
                 next_values_own=next_own_t,
                 rngs=_rngs_np,

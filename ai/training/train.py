@@ -770,6 +770,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off and relies on per-episode blunder windowing instead.")
     parser.add_argument("--no-blunder-window", action="store_true",
                         help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
+    parser.add_argument("--no-held-scoring-blunder", action="store_true",
+                        help="Treat a held-scoring loss (rule 4.4) as an ordinary loss: the zero-sum terminal reward "
+                             "(winner +1, loser -1) and no blunder window, so its credit runs back through the whole game. "
+                             "By default it is a blunder: the holder -1 on that turn's decisions only, the winner shielded. "
+                             "Unprovoked DEFCON 1 keeps its blunder treatment either way.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
     parser.add_argument("--seat-balance", action="store_true", default=False,
@@ -1587,6 +1592,7 @@ def main():
             token_compile=args.ladder_token_compile,
             cuda_graphs=not args.no_cuda_graphs,
             blunder_window=not args.no_blunder_window,
+            held_scoring_blunder=not args.no_held_scoring_blunder,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,
             tensorboard=args.tensorboard,

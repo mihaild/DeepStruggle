@@ -91,8 +91,11 @@ class BlunderAwareRewardCalculator:
     the ending mix is the guardrail to watch.
     """
 
-    def __init__(self, decisiveness_turns: float = 0.0) -> None:
+    def __init__(self, decisiveness_turns: float = 0.0, held_scoring_blunder: bool = True) -> None:
         self.decisiveness_turns = float(decisiveness_turns)
+        #: Rule 4.4 held-scoring losses as blunders (the holder -1, the winner shielded at 0). False
+        #: (--no-held-scoring-blunder) scores them as any other loss: winner +1, loser -1.
+        self.held_scoring_blunder = bool(held_scoring_blunder)
 
     def terminal_scale(self, state: Optional[ts.GameState]) -> float:
         """Multiplier on the terminal magnitude; 1.0 when disabled or the turn is unknown."""
@@ -143,7 +146,7 @@ class BlunderAwareRewardCalculator:
                     continue
                 else:
                     # Check Rule 4.4 held scoring cards at game end (strictly after end of turn)
-                    if ts.Engine.is_held_scoring_game_over(st):
+                    if self.held_scoring_blunder and ts.Engine.is_held_scoring_game_over(st):
                         p_enum = ts.Player.US if p_act == 1 else (ts.Player.USSR if p_act == -1 else ts.Player.NONE)
                         if ts.Engine.is_held_scoring_loss(st, p_enum):
                             rewards[i] = -1.0 * scale

@@ -1823,6 +1823,7 @@ def train_pipeline(
     same_perspective_bootstrap: bool = False,
     per_player_gae: bool = False,
     blunder_window: bool = True,
+    held_scoring_blunder: bool = True,
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
     defcon_coef: float = 0.0,
@@ -2402,6 +2403,7 @@ def train_pipeline(
         "priority_alpha": float(priority_alpha),
         "defcon_coef": float(defcon_coef),
         "no_blunder_window": not bool(blunder_window),
+        "held_scoring_blunder": bool(held_scoring_blunder),
         "slice_turn_boundaries": {None: "auto", True: "on", False: "off"}[slice_turn_boundaries],
         "eval_games_per_side": int(eval_games_per_side),
         "eval_max_snapshot_opponents": int(max_snapshot_opponents),
@@ -2499,7 +2501,8 @@ def train_pipeline(
     if is_curriculum or reward_scheme == "useful_actions":
         reward_calc = UsefulActionsReward(decisiveness_turns=decisiveness_turns)
     elif reward_scheme == "blunder_aware":
-        reward_calc = BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns)
+        reward_calc = BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns,
+                                                   held_scoring_blunder=held_scoring_blunder)
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
     else:
@@ -2650,6 +2653,7 @@ def train_pipeline(
         # the outcome signal from clean wins too -- so it is opt-in for ablations only.
         slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
         blunder_window=blunder_window,
+        held_scoring_blunder=held_scoring_blunder,
         same_perspective_bootstrap=same_perspective_bootstrap,
         per_player_gae=per_player_gae,
         search_ce_coef=search_ce_coef,
@@ -3344,7 +3348,8 @@ def train_pipeline(
                 and trainer.total_env_steps >= curriculum_switch_at):
             curriculum_switched = True
             trainer.set_reward_calculator(
-                BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns))
+                BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns,
+                                             held_scoring_blunder=held_scoring_blunder))
             trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with "
