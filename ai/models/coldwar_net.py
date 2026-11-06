@@ -25,7 +25,7 @@ class ColdWarNet(nn.Module):
     GLOBAL_SIZE = 100
 
     TOTAL_OBS_SIZE = 3824
-    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
+    ACTION_SPACE_SIZE = ActionEncoder.BASE_ACTION_SIZE
 
     def __init__(self, hidden_dim: int = 512, num_res_blocks: int = 4):
         super().__init__()

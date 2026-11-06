@@ -23,6 +23,8 @@ export class WasmEngine {
   readonly fingerprint: string;
   readonly obsSize: number;
   readonly actionSize: number;
+  /** The base slots (E4 / E4.1); slots from here up are P42's until-control slots, one per country. */
+  readonly baseActionSize: number;
   readonly layout: ActionLayout;
   private readonly stateSize: number;
 
@@ -30,6 +32,7 @@ export class WasmEngine {
     this.fingerprint = this.str(M._ts_fingerprint());
     this.obsSize = M._ts_obs_size();
     this.actionSize = M._ts_action_size();
+    this.baseActionSize = M._ts_base_action_size();
     this.layout = JSON.parse(this.str(M._ts_action_layout_json()));
     this.stateSize = M._ts_state_size();
     setEngineLayout(this.layout);
@@ -136,10 +139,18 @@ export class WasmEngine {
     return ok ? null : this.lastError();
   }
 
-  /** The flat legal mask in an action view, under the rule bits each side is seated with. */
-  mask(merged: boolean): Uint8Array {
-    const p = this.M._ts_mask(merged ? 1 : 0);
+  /**
+   * The flat legal mask in a model's action view -- E4, E4.1's merged influence, or P42's macro view --
+   * under the rule bits each side is seated with.
+   */
+  mask(merged: boolean, macro = false): Uint8Array {
+    const p = this.M._ts_mask(merged ? 1 : macro ? 2 : 0);
     return this.M.HEAPU8.slice(p, p + this.actionSize);
+  }
+
+  /** P42: the influence points the until-control slot `idx` places here (0 where it is not offered). */
+  macroPoints(idx: number): number {
+    return this.M._ts_macro_points(idx);
   }
 
   /** Every rule bit (obs_features::RULES): the current rules, which a person plays. */

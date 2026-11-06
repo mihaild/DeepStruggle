@@ -145,6 +145,33 @@ bool Engine::step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
     return true;
 }
 
+void Engine::get_flat_action_mask(const GameState& state, uint8_t* mask, ActionView view) noexcept {
+    switch (view) {
+        case ActionView::MERGED: ActionMask::generate_flat_mask_merged(state, mask); return;
+        case ActionView::MACRO:  ActionMask::generate_flat_mask_macro(state, mask); return;
+        case ActionView::E4:     break;
+    }
+    ActionMask::generate_flat_mask_212(state, mask);
+}
+
+bool Engine::step_flat(GameState& state, uint16_t action_idx, bool auto_advance, ActionView view) noexcept {
+    if (view == ActionView::MERGED) return step_flat(state, action_idx, auto_advance, true);
+    if (view == ActionView::E4 || !ActionMask::is_macro_action(action_idx)) {
+        return step_flat(state, action_idx, auto_advance);
+    }
+    // An until-control slot is not in the base mask StateMachine::step validates against, so it is
+    // validated against the macro view first, then applied as the one-point steps that define it.
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_macro(state, mask);
+    if (!mask[action_idx]) return false;
+    const GameState before = state;
+    const int placed = ActionMask::apply_macro_expansion(
+        state, static_cast<uint8_t>(action_idx - flat_slots::MACRO_NODE));
+    if (placed < 2) { state = before; return false; }
+    if (auto_advance) auto_advance_step(state);
+    return true;
+}
+
 size_t Engine::auto_advance_step(GameState& state, size_t max_steps) noexcept {
     return auto_advance_step(state, max_steps, nullptr, nullptr);
 }

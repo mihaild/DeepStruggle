@@ -309,7 +309,10 @@ web/ui/
      a model whose observation width differs from the one the engine writes for the model's own
      `ts.obs_features` (`WasmEngine.obsSizeFor`), or that reads a feature bit this engine does not
      know, is refused; one exported next to another engine build is flagged.
-   - **Every forward is built in the model's own view**: its action view (`ts.merged_influence`)
+   - **Every forward is built in the model's own view**: its action view (`ts.merged_influence`,
+     `ts.macro_influence`; the engine's masks are 304 wide, a base export's 220 logits see the base slots and are
+     padded by `Model.run`, a macro export reads all 304, and a macro move is applied as the one-point placements it
+     expands into, `WasmEngine.macroPoints`)
      and its observation features (`Model.obsFeatures` -> `engine.observation(player, features)`,
      the same `extract_observation_features` Python calls). `HEADLINE_REVEAL`, E8's default, has no
      width, so a base-layout observation handed to such a model would run and misread Space Race
@@ -401,8 +404,8 @@ web/ui/
      full in WebAssembly and runs it through onnxruntime in chunks of 256: slow at 2,048 hands, but
      the leaderboard's player (`tests/web/test_wasm_engine.py` holds the tracker equal to Python's).
      The panel shows each candidate's mean value and paired lead and marks the pick; the favourite
-     and auto-play take the pick and wait for it. A model in the merged (E4.1) view is refused for
-     search.
+     and auto-play take the pick and wait for it. A model in the merged (E4.1) or macro (P42) view is
+     refused for search.
    - **The address bar is the share link.** `syncUrl()` writes `pos` (the engine's save JSON,
      zlib, base64url -- `game/position.ts`, interchangeable with Python's zlib), `model`
      (`local:` / `hf:` source, or `off`; a dropped file has no address), `auto` and `view`, with

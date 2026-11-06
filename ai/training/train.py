@@ -139,6 +139,8 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
             "token_mlp_mult": int(args.ladder_token_mlp_mult)} if getattr(args, "ladder_token_main", False) else {}),
         **({"token_card_memory": int(args.ladder_token_card_memory)}
            if getattr(args, "ladder_token_card_memory", 0) else {}),
+        # P42: the policy covers the until-control slots (a copy of --macro-influence). Recorded only when on.
+        **({"macro_influence": True} if getattr(args, "macro_influence", False) else {}),
         # Owner 2026-10-06. Recorded only when on, as the token path.
         **({"branch_head": True} if getattr(args, "ladder_branch_head", False) else {}),
         # Owner 2026-10-16 (Cell A). Recorded only when on.
@@ -1122,6 +1124,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "state and observation are unchanged. Recorded in metadata.json with "
                              "the step it starts from, so pool members and later evaluations use "
                              "each checkpoint's own view.")
+    parser.add_argument("--macro-influence", action="store_true", default=False,
+                        help="P42: decide in the macro view, where slot 220+c places influence in c point by "
+                             "point until the side controls it or runs out of points (offered only where that is "
+                             "at least 2 points). The policy grows to 304 slots; rules, state and observation are "
+                             "unchanged. --resume from a base (E4) state grows it in place: the new slots start at "
+                             "bias -12 and every base logit is unchanged. Recorded in metadata.json with the step "
+                             "it starts from. Exclusive with --merged-influence.")
     parser.add_argument("--gae-lambda", type=float, default=0.98,
                         help="GAE lambda. Credit decays by lambda per decision over the joint stream of both players' decisions (unless --per-player-gae), so at 0.98 the effective horizon is ~50 decisions, about 1.3 game turns.")
     parser.add_argument("--gamma", type=float, default=1.0,
@@ -1478,6 +1487,7 @@ def main():
             ref_update_freq=args.ref_update_freq,
             gae_lambda=args.gae_lambda,
             merged_influence=args.merged_influence,
+            macro_influence=args.macro_influence,
             seat_balance=args.seat_balance,
             seat_balance_max_frac=args.seat_balance_max_frac,
             league_dirs=args.league_dirs,

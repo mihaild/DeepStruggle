@@ -23,11 +23,12 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
   const obsSize = engine.obsSizeFor(features);
   const act = engine.actionSize;
   const merged = model.meta.mergedInfluence;
+  const macro = model.meta.macroInfluence;
   const decider = engine.isTerminal() ? 0 : engine.decisionPlayer();
 
   const obs = new Float32Array(3 * obsSize);
   const masks = new Uint8Array(3 * act).fill(1);
-  const legalMask = decider !== 0 ? engine.mask(merged) : null;
+  const legalMask = decider !== 0 ? engine.mask(merged, macro) : null;
   if (decider !== 0 && legalMask) {
     obs.set(engine.observation(decider, features), 0);
     masks.set(legalMask, 0);
@@ -57,6 +58,14 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
         : "Ops → Influence, place nothing";
       return [idx, { composed: true, ma: commit, name }];
     }
+    if (macro && idx >= engine.baseActionSize) {
+      // P42: an until-control slot -- one action for the model, that many placements in one country for a person.
+      // Its MicroAction fields name the first placement.
+      const node = idx - engine.baseActionSize + L.offsets.node;
+      const points = engine.macroPoints(idx);
+      return [idx, { composed: true, ma: engine.decodeFlat(node),
+                     name: `Influence in ${engine.countryName(node - L.offsets.node)} until control (${points} points)` }];
+    }
     return [idx, { composed: false, ma: engine.decodeFlat(idx), name: actionName(engine, idx, shown) }];
   }));
 
@@ -70,7 +79,7 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
     at: "position",
   };
   const analysis: LiveAnalysis = {
-    model: modelKey, label: model.meta.label, merged_influence: merged, critic, choices: [],
+    model: modelKey, label: model.meta.label, merged_influence: merged, macro_influence: macro, critic, choices: [],
   };
   if (decider === 0 || !legalMask) return analysis;
 

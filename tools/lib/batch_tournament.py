@@ -29,6 +29,12 @@ SCORING_CARD_IDS: frozenset[int] = frozenset(
     c for c in range(1, 111) if bool(ts.CardData.get_card_info(c)["is_scoring"]))
 
 
+
+def _action_view_code(agent: Any) -> int:
+    """The runner's action view for an agent: 0 E4, 1 merged (E4.1, P23), 2 macro (P42)."""
+    v = agent_view(agent)
+    return 1 if v.merged_influence else 2 if v.macro_influence else 0
+
 def categorize_flat_action_detailed(action_idx: int) -> str:
     """Categorizes a flat action into human-readable semantic categories."""
     if action_idx == ActionEncoder.CONFIRM_DONE_INDEX:
@@ -623,12 +629,12 @@ class BatchMatchRunner:
             # P23 / E4.1: each side decides in its own agent's action view. Envs < cur_half seat
             # A as USSR and B as US; the rest the reverse. Only neural agents trained in the
             # merged view use it -- bots and searchers act in E4 terms.
-            mv_a = agent_view(agent_a).merged_influence
-            mv_b = agent_view(agent_b).merged_influence
+            mv_a = _action_view_code(agent_a)
+            mv_b = _action_view_code(agent_b)
             if mv_a or mv_b:
                 first = np.arange(cur_games) < cur_half
-                runner.set_merged_influence([bool(x) for x in np.where(first, mv_b, mv_a)],
-                                            [bool(x) for x in np.where(first, mv_a, mv_b)])
+                runner.set_action_views([int(x) for x in np.where(first, mv_b, mv_a)],
+                                        [int(x) for x in np.where(first, mv_a, mv_b)])
             # The view spec's observation half, set the same way: each seat in its agent's view.
             fa, fb = _agent_features(agent_a), _agent_features(agent_b)
             if fa or fb:
@@ -885,10 +891,9 @@ class BatchMatchRunner:
         ussr_agent = np.where(a_is_ussr, a_idx, b_idx)
         us_agent = np.where(a_is_ussr, b_idx, a_idx)
 
-        mv = np.array([agent_view(ag).merged_influence for ag in agents])
+        mv = np.array([_action_view_code(ag) for ag in agents], dtype=np.int64)
         if mv.any():
-            runner.set_merged_influence([bool(x) for x in mv[us_agent]],
-                                        [bool(x) for x in mv[ussr_agent]])
+            runner.set_action_views([int(x) for x in mv[us_agent]], [int(x) for x in mv[ussr_agent]])
         fv = np.array([_agent_features(ag) for ag in agents], dtype=np.int64)
         if fv.any():
             runner.set_obs_features([int(x) for x in fv[us_agent]], [int(x) for x in fv[ussr_agent]])

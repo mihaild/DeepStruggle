@@ -37,6 +37,14 @@ public:
     [[nodiscard]] static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
                                         bool merged_influence) noexcept;
 
+    // The flat mask and step in any view (ActionMask::ActionView). E4 and MERGED are the two
+    // overloads above; MACRO (P42) offers the until-control slots at a POINT_NODE and applies one as
+    // ActionMask::apply_macro_expansion, atomically -- on refusal the state is restored and false
+    // returned. A base slot steps exactly as in E4.
+    static void get_flat_action_mask(const GameState& state, uint8_t* mask, ActionView view) noexcept;
+    [[nodiscard]] static bool step_flat(GameState& state, uint16_t action_idx, bool auto_advance,
+                                        ActionView view) noexcept;
+
     // Automatically advances deterministic decisions (chance rolls, single valid action,
     // and deterministic event targets) until a choice requiring player discretion is reached.
     static size_t auto_advance_step(GameState& state, size_t max_steps = 128) noexcept;

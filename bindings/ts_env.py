@@ -123,6 +123,8 @@ class AgentView(NamedTuple):
     """
     features: int
     merged_influence: bool
+    #: P42: the macro view (the until-control slots); exclusive with merged_influence.
+    macro_influence: bool = False
 
 
 def agent_view(agent: Any) -> AgentView:
@@ -144,7 +146,8 @@ def agent_view(agent: Any) -> AgentView:
     else:
         model = getattr(agent, "model", None)
         features = model_obs_features(model if model is not None else agent)
-    return AgentView(features, bool(getattr(agent, "merged_influence", False)))
+    return AgentView(features, bool(getattr(agent, "merged_influence", False)),
+                     bool(getattr(agent, "macro_influence", False)))
 
 
 def observe(state: "ts.GameState", player: "ts.Player", features: int) -> np.ndarray:
@@ -172,15 +175,17 @@ def seat_tree(state: "ts.GameState", features: int) -> None:
         state.seat_obs_features(p, int(features))
 
 
-def legal_mask(state: "ts.GameState", merged_influence: bool, features: Optional[int]) -> np.ndarray:
+def legal_mask(state: "ts.GameState", merged_influence: bool, features: Optional[int],
+               macro_influence: bool = False) -> np.ndarray:
     """The flat legal mask (uint8) of `state` for a model deciding it in the given action view and
     feature set, both required so no harness defaults either. `features` seats the decider first
     (`seat_decider`); None seats nobody, for a caller listing a position's actions rather than
-    letting a model decide it.
+    letting a model decide it. P42's macro view is `macro_influence` (exclusive with the merged one).
     """
     if features is not None:
         seat_decider(state, features)
-    return np.asarray(ts.Engine.get_flat_action_mask(state, bool(merged_influence)), dtype=np.uint8)
+    return np.asarray(ts.Engine.get_flat_action_mask(state, bool(merged_influence), bool(macro_influence)),
+                      dtype=np.uint8)
 
 
 def credits_defcon_blunder(state: "ts.GameState", window_provoked: bool) -> bool:
@@ -273,6 +278,9 @@ class TsVectorizedEnv:
         # which would otherwise silently return every side to the E4 view.
         self.merged_us = np.zeros(num_envs, dtype=bool)
         self.merged_ussr = np.zeros(num_envs, dtype=bool)
+        #: Each env's per-side action view (0 E4, 1 merged, 2 macro; P23 / P42). merged_* mirror view == 1.
+        self.view_us = np.zeros(num_envs, dtype=np.int8)
+        self.view_ussr = np.zeros(num_envs, dtype=np.int8)
         # The view spec's observation half: per env and side, the ts.OBS_FEATURE_* bits that
         # side's model reads (0 = the base layout). Held here for the same reason as the merged
         # flags -- a new runner on `reset_all(base_seed)` would otherwise drop them.
@@ -300,19 +308,30 @@ class TsVectorizedEnv:
         self.observation_size = int(self.runner.obs_width)
 
     def set_merged_influence(self, us: np.ndarray | bool, ussr: np.ndarray | bool) -> None:
-        """Set every env's per-side view at once (a bool applies to all envs)."""
-        self.merged_us[:] = us
-        self.merged_ussr[:] = ussr
-        self.runner.set_merged_influence([bool(x) for x in self.merged_us],
-                                         [bool(x) for x in self.merged_ussr])
+        """Set every env's per-side view at once (a bool applies to all envs): merged or E4."""
+        self.set_action_views(np.where(np.asarray(us, dtype=bool), 1, 0), np.where(np.asarray(ussr, dtype=bool), 1, 0))
 
     def set_merged_influence_env(self, env_idx: int, us: bool, ussr: bool) -> None:
-        """One env's per-side view; only that env's cached mask is rebuilt."""
-        if bool(self.merged_us[env_idx]) == us and bool(self.merged_ussr[env_idx]) == ussr:
+        """One env's per-side view, merged or E4; only that env's cached mask is rebuilt."""
+        self.set_action_views_env(env_idx, 1 if us else 0, 1 if ussr else 0)
+
+    def set_action_views(self, us: np.ndarray | int, ussr: np.ndarray | int) -> None:
+        """Every env's per-side action view at once (0 E4, 1 merged, 2 macro; an int applies to all envs)."""
+        self.view_us[:] = us
+        self.view_ussr[:] = ussr
+        self.merged_us[:] = self.view_us == 1
+        self.merged_ussr[:] = self.view_ussr == 1
+        self.runner.set_action_views([int(x) for x in self.view_us], [int(x) for x in self.view_ussr])
+
+    def set_action_views_env(self, env_idx: int, us: int, ussr: int) -> None:
+        """One env's per-side action view; only that env's cached mask is rebuilt."""
+        if int(self.view_us[env_idx]) == us and int(self.view_ussr[env_idx]) == ussr:
             return
-        self.merged_us[env_idx] = us
-        self.merged_ussr[env_idx] = ussr
-        self.runner.set_merged_influence_env(env_idx, us, ussr)
+        self.view_us[env_idx] = us
+        self.view_ussr[env_idx] = ussr
+        self.merged_us[env_idx] = us == 1
+        self.merged_ussr[env_idx] = ussr == 1
+        self.runner.set_action_views_env(env_idx, int(us), int(ussr))
 
     def reset_all(self, base_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         """Reset all environments."""
@@ -321,9 +340,8 @@ class TsVectorizedEnv:
         if base_seed is not None:
             self.base_seed = base_seed
             self.runner = ts.VectorizedBatchRunner(self.num_envs, self.base_seed)
-            if self.merged_us.any() or self.merged_ussr.any():
-                self.runner.set_merged_influence([bool(x) for x in self.merged_us],
-                                                 [bool(x) for x in self.merged_ussr])
+            if self.view_us.any() or self.view_ussr.any():
+                self.runner.set_action_views([int(x) for x in self.view_us], [int(x) for x in self.view_ussr])
             if self.obs_features_us.any() or self.obs_features_ussr.any():
                 self.runner.set_obs_features([int(x) for x in self.obs_features_us],
                                              [int(x) for x in self.obs_features_ussr])

@@ -15,7 +15,8 @@ from bindings.action_encoder import ActionEncoder
 
 class TestActionEncoderAndMasks:
     def test_flat_action_space_bounds(self):
-        assert ActionEncoder.FLAT_ACTION_SIZE == 220
+        assert ActionEncoder.FLAT_ACTION_SIZE == 304          # P42: base 220 + 84 until-control slots
+        assert ActionEncoder.BASE_ACTION_SIZE == 220
         assert ActionEncoder.CONFIRM_DONE_INDEX == 208
 
     def test_initial_state_mask_and_codec_bijection(self):

@@ -43,6 +43,7 @@ import numpy as np
 import torch
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 from ai.search.rollout_root import RolloutConfig, RolloutRoot
 from bindings.ts_env import model_obs_features
 from tools.lib import leaderboard
@@ -56,7 +57,7 @@ from tools.lib.player_agent import NeuralAgent
 from tools.scripts.blunder_bank import Unprovable, exact_value
 from tools.scripts.run_codes import labelling_code
 
-A = 220
+A = ActionEncoder.BASE_ACTION_SIZE
 #: A position's id is game * PLY_SPAN + ply.
 PLY_SPAN = 100_000
 REGIONS = ("europe", "asia", "middle_east", "africa", "central_america", "south_america", "southeast_asia")

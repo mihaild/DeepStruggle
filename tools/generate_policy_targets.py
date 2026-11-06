@@ -52,6 +52,7 @@ import time
 import numpy as np
 import torch
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 from bindings.ts_env import observe
 from tools.lib.merged_targets import (after_influence_commit, factorised_policy, is_merged_op_choice,
@@ -135,7 +136,9 @@ def _probs(model: Any, obs: torch.Tensor, mask: np.ndarray, dev: torch.device) -
     m = torch.from_numpy(np.asarray(mask)).to(dev)
     with torch.no_grad():
         logits, _, _ = model(obs, m)
-    return torch.softmax(logits.float().masked_fill(m <= 0, float("-inf")), dim=-1).cpu().numpy()
+    # The E4/E4.1 targets are stored over the base slots (P42's macro slots are never legal in either view).
+    p = torch.softmax(logits.float().masked_fill(m <= 0, float("-inf")), dim=-1).cpu().numpy()
+    return p[:, :ActionEncoder.BASE_ACTION_SIZE]
 
 
 def _merged_targets(model: Any, features: int, runner: Any, idx: List[int], obs_t: torch.Tensor,
@@ -146,8 +149,9 @@ def _merged_targets(model: Any, features: int, runner: Any, idx: List[int], obs_
     the E4 policy itself, and the two masks must be identical there -- checked, because a
     difference would mean the translation is being applied at a node it does not describe."""
     states = [runner.get_state(i) for i in idx]
-    merged = np.asarray(merged_masks[idx])
-    e4 = np.stack([np.asarray(ts.Engine.get_flat_action_mask(st, False)) for st in states])
+    # Both views here (E4, E4.1) live in the base slots; P42's macro slots are never legal in either.
+    merged = np.asarray(merged_masks[idx])[:, :ActionEncoder.BASE_ACTION_SIZE]
+    e4 = np.stack([np.asarray(ts.Engine.get_flat_action_mask(st, False))[:ActionEncoder.BASE_ACTION_SIZE] for st in states])
     p_e4 = _probs(model, obs_t, e4, dev)
     out = p_e4.astype(np.float64)
     ops = [j for j, st in enumerate(states) if is_merged_op_choice(st)]

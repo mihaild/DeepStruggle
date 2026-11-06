@@ -28,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import POLICY_HEAD_MODULES, create_like
 from ai.eval.loading import load_for_eval
@@ -43,7 +44,7 @@ TREND = {
 }
 TRUNK = ("lad_board", "lad_card", "global_proj", "tok_main", "fusion_in", "res_blocks")
 POLICY_HEAD = POLICY_HEAD_MODULES
-A = 220
+A = ActionEncoder.BASE_ACTION_SIZE
 
 
 def load(path: str) -> nn.Module:

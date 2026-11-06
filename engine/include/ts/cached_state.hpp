@@ -62,6 +62,8 @@ public:
     // through Engine::step_flat's own path (its mask is another view); everything else is the E4
     // step, validated against the cached mask.
     [[nodiscard]] bool step_flat(uint16_t action_idx, bool merged_influence = false) noexcept;
+    // The same in any view; MACRO applies an until-control slot as Engine::step_flat does.
+    [[nodiscard]] bool step_flat(uint16_t action_idx, ActionView view) noexcept;
     // Engine::auto_advance_step, leaving the mask of the decision it stops at cached.
     size_t auto_advance(size_t max_steps = 128) noexcept;
 

@@ -23,7 +23,7 @@ from ai.search.heuristic_mcts import HeuristicMCTSConfig, make_heuristic_mcts_ag
 from ai.search.rollout_root import (EntryRolloutAgent, RolloutRootAgent, SparseRolloutAgent, rollout_spec_config,
                                     rollout_spec_leaf)
 from bindings.ts_env import check_obs_width, legal_mask, model_obs_features, observe
-from tools.lib.action_view import checkpoint_merged_influence
+from tools.lib.action_view import checkpoint_macro_influence, checkpoint_merged_influence
 from tools.lib.checkpoint_id import checkpoint_label
 from tools.lib.openings import OPENINGS
 from tools.lib.player_spec import Gumbel, Search
@@ -239,11 +239,14 @@ class NeuralAgent:
         name: str = "NeuralBot",
         device: Optional[Union[torch.device, str]] = None,
         merged_influence: bool = False,
+        macro_influence: bool = False,
     ):
         #: P23 / E4.1: whether this network decides in the merged-influence view. Every harness
         #: that builds masks for it must use this view (tools/lib/action_view.py). Set from the
         #: checkpoint's run directory by `from_checkpoint`.
         self.merged_influence = bool(merged_influence)
+        #: P42: whether it decides in the macro view (the until-control slots); set the same way.
+        self.macro_influence = bool(macro_influence)
         self.device = resolve_device(device) if device is not None else next(model.parameters()).device
         self.model = cast(ColdWarModel, model.to(self.device))
         # There is one observation layout, so there is nothing to select -- but a model whose
@@ -268,6 +271,11 @@ class NeuralAgent:
 
         agent = cls._load_checkpoint(checkpoint_path, name=name, device=device)
         agent.merged_influence = checkpoint_merged_influence(checkpoint_path)
+        # P42: the macro view is in the weights (a 304-wide policy); the run directory must agree where it says so.
+        agent.macro_influence = bool(getattr(agent.model, "macro_influence", False))
+        if checkpoint_macro_influence(checkpoint_path) and not agent.macro_influence:
+            raise ValueError(f"{checkpoint_path}: its run records the macro view, but the weights are a base "
+                             f"network's (220 slots)")
         return agent
 
     @classmethod
@@ -370,7 +378,7 @@ class NeuralAgent:
     ) -> int:
         # In the model's own view (the view spec): its observation feature set and action view.
         obs = observe(state, player, self.obs_features)
-        mask = legal_mask(state, self.merged_influence, self.obs_features)
+        mask = legal_mask(state, self.merged_influence, self.obs_features, self.macro_influence)
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
@@ -426,12 +434,16 @@ class OnnxAgent:
                 f"{path} reads an observation of width {self.obs_size}, but this engine emits "
                 f"{expected} for its feature set {self.obs_features:#x}: it was exported from a "
                 f"retired layout (or with a wrong ts.obs_size) and would misread every slot")
-        action_size = int(meta.get("ts.action_size", ActionEncoder.FLAT_ACTION_SIZE))
-        if action_size != ActionEncoder.FLAT_ACTION_SIZE:
+        action_size = int(meta.get("ts.action_size", ActionEncoder.BASE_ACTION_SIZE))
+        if action_size not in (ActionEncoder.BASE_ACTION_SIZE, ActionEncoder.FLAT_ACTION_SIZE):
             raise ValueError(f"{path} has {action_size} actions, this engine "
-                             f"{ActionEncoder.FLAT_ACTION_SIZE}")
+                             f"{ActionEncoder.BASE_ACTION_SIZE} base / {ActionEncoder.FLAT_ACTION_SIZE} in all")
+        #: Its logits' width: a base export's are padded to the mask's width (P42).
+        self.action_size = action_size
         #: P23 / E4.1: decides in the merged-influence view; read by every harness building masks.
         self.merged_influence = meta.get("ts.merged_influence") == "true"
+        #: P42: decides in the macro view.
+        self.macro_influence = meta.get("ts.macro_influence") == "true"
         self.name = name or meta.get("ts.label") or os.path.splitext(os.path.basename(path))[0]
         self.engine_fingerprint = meta.get("ts.engine_fingerprint", "")
         self.rng = np.random.default_rng(seed)
@@ -440,9 +452,16 @@ class OnnxAgent:
         self.rng = np.random.default_rng(seed)
 
     def logits(self, obs: np.ndarray, masks: np.ndarray) -> np.ndarray:
+        """Masked logits as wide as `masks`: a base (220) export sees the base slots and its logits
+        are padded with the mask's fill, as `pad_to_mask` pads a base model's (P42)."""
         out = self.session.run(["logits"], {"obs": np.ascontiguousarray(obs, dtype=np.float32),
-                                            "mask": np.ascontiguousarray(masks, dtype=np.uint8)})
-        return np.asarray(out[0], dtype=np.float64)
+                                            "mask": np.ascontiguousarray(masks[:, :self.action_size],
+                                                                         dtype=np.uint8)})
+        logits = np.asarray(out[0], dtype=np.float64)
+        if logits.shape[1] < masks.shape[1]:
+            pad = np.full((len(logits), masks.shape[1] - logits.shape[1]), -1e9)
+            logits = np.concatenate([logits, pad], axis=1)
+        return logits
 
     def act_batch(self, obs: np.ndarray, masks: np.ndarray, temperature: float,
                   greedy: bool) -> np.ndarray:
@@ -465,7 +484,7 @@ class OnnxAgent:
     def select_action(self, state: ts.GameState, player: ts.Player,
                       temperature: float = 0.1) -> int:
         obs = observe(state, player, self.obs_features)[None, :]
-        mask = legal_mask(state, self.merged_influence, self.obs_features)[None, :]
+        mask = legal_mask(state, self.merged_influence, self.obs_features, self.macro_influence)[None, :]
         return int(self.act_batch(obs, mask, temperature, temperature <= 0.05)[0])
 
 
@@ -556,11 +575,12 @@ def _e4_network(agent: NeuralAgent, spec: str) -> NeuralAgent:
     (E4.1, P23) checkpoint's composed actions are absent from those masks, so it would be searched
     as a different policy than the one that trained, without any error.
     """
-    if agent.merged_influence:
+    if agent.merged_influence or agent.macro_influence:
+        view = "merged-influence (E4.1)" if agent.merged_influence else "macro (P42)"
         raise ValueError(
-            f"{spec!r}: {agent.name} decides in the merged-influence (E4.1) view, and this player "
+            f"{spec!r}: {agent.name} decides in the {view} view, and this player "
             f"builds its masks in the E4 view only. Play the network directly, or teach the "
-            f"searcher the merged view first.")
+            f"searcher that view first.")
     return agent
 
 

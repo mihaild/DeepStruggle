@@ -34,6 +34,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+from bindings.action_encoder import ActionEncoder
 import torch.nn.functional as F
 
 import ts_engine as ts
@@ -43,7 +44,7 @@ from ai.training.npz_mmap import load_npz_mmap
 from ai.training.value_fit import Codes, _git
 from tools.lib.engine_fingerprint import check_raw_states
 
-ACTIONS = 220
+ACTIONS = ActionEncoder.BASE_ACTION_SIZE
 
 
 @dataclass
@@ -119,7 +120,7 @@ def reinit_policy_heads(model: nn.Module, fresh: nn.Module) -> int:
 def masks_of(states: np.ndarray) -> np.ndarray:
     out = np.empty((states.shape[0], ACTIONS), dtype=np.uint8)
     for i in range(states.shape[0]):
-        out[i] = np.asarray(ts.ActionMask.generate_flat_mask(ts.state_from_raw_bytes(states[i].tobytes())))
+        out[i] = np.asarray(ts.ActionMask.generate_flat_mask(ts.state_from_raw_bytes(states[i].tobytes())))[:ACTIONS]
     return out
 
 

@@ -20,6 +20,7 @@ from typing import Callable, List
 
 import numpy as np
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 #: Flat slots: SELECT_OP_MODE's influence commit, the NODE block, and the POINT_NODE "done".
 INFL, CONFIRM = 112, 208
@@ -51,13 +52,13 @@ def post_commit_policy(states_after: List["ts.GameState"],
     CONFIRM_DONE, which factorised_policy routes to the commit. Asking the network at a terminal
     state instead gives a softmax over an empty mask, NaN, which poisoned targets before this.
     `policy_fn(states) -> probs` evaluates the non-terminal ones in one batch."""
-    out = np.zeros((len(states_after), 220), dtype=np.float64)
+    out = np.zeros((len(states_after), ActionEncoder.BASE_ACTION_SIZE), dtype=np.float64)
     live = [j for j, t in enumerate(states_after) if not ts.Engine.is_terminal(t)]
     for j in range(len(states_after)):
         if j not in set(live):
             out[j, CONFIRM] = 1.0
     if live:
-        out[live] = np.asarray(policy_fn([states_after[j] for j in live]), dtype=np.float64)
+        out[live] = np.asarray(policy_fn([states_after[j] for j in live]), dtype=np.float64)[:, :ActionEncoder.BASE_ACTION_SIZE]
     return out
 
 

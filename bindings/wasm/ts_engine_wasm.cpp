@@ -164,6 +164,8 @@ static_assert(static_cast<size_t>(ts::rollout::Leaf::kOwn) + 1 == std::size(kLea
 TS_API const char* ts_fingerprint() { return TS_ENGINE_FINGERPRINT; }
 TS_API int ts_obs_size() { return static_cast<int>(ts::OBS_SIZE_V23); }
 TS_API int ts_action_size() { return static_cast<int>(ts::FLAT_ACTION_SPACE_SIZE); }
+// The base slots (E4 and E4.1); a base network's logits are this wide and padded to ts_action_size (P42).
+TS_API int ts_base_action_size() { return static_cast<int>(ts::flat_slots::BASE_SIZE); }
 
 // The flat action space's layout, so the page never keeps its own copy of these offsets.
 TS_API const char* ts_action_layout_json() {
@@ -556,9 +558,10 @@ TS_API int ts_step(int decision_type, int primary, int secondary, int flags, int
     return apply(a, forced_die);
 }
 
-// The flat legal mask in either action view (E4, or E4.1's merged influence).
-TS_API const uint8_t* ts_mask(int merged) {
-    ts::Engine::get_flat_action_mask(g_state, g_mask, merged != 0);
+// The flat legal mask in an action view: 0 E4, 1 E4.1's merged influence, 2 P42's macro (until-control) view.
+TS_API const uint8_t* ts_mask(int view) {
+    if (view < 0 || view > 2) view = 0;
+    ts::Engine::get_flat_action_mask(g_state, g_mask, static_cast<ts::ActionView>(view));
     return g_mask;
 }
 
@@ -575,6 +578,18 @@ TS_API const int32_t* ts_decode_flat(int idx) {
     g_decoded[2] = a.secondary_id;
     g_decoded[3] = a.flags;
     return g_decoded;
+}
+
+// P42: how many influence points the until-control slot `idx` places here (0 where it is not offered). The page
+// applies a macro move as that many one-point placements in its country, which is what the engine's expansion is.
+TS_API int ts_macro_points(int idx) {
+    if (!ts::ActionMask::is_macro_action(static_cast<uint16_t>(idx < 0 ? 0 : idx))) return 0;
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE];
+    ts::Engine::get_flat_action_mask(g_state, mask, ts::ActionView::MACRO);
+    if (!mask[idx]) return 0;
+    ts::GameState copy = g_state;
+    return static_cast<int>(ts::ActionMask::apply_macro_expansion(
+        copy, static_cast<uint8_t>(idx - static_cast<int>(ts::flat_slots::MACRO_NODE))));
 }
 
 // Whether a flat index is an E4.1 composed action here ("Ops for influence, first point at X").

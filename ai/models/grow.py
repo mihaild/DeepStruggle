@@ -164,3 +164,71 @@ def grow_tokens_optimizer_state(saved: Dict[str, Any], names: Sequence[str], tok
     groups = [dict(g) for g in saved["param_groups"]]
     groups[0]["params"] = list(range(len(names)))
     return {"state": state, "param_groups": groups}
+
+
+#: P42: the dense policy output, which grows from the base flat width to the macro view's.
+POLICY_OUT = ("policy_head.3.weight", "policy_head.3.bias")
+#: The macro view's per-country head, absent from a base network.
+MACRO_HEAD = "pe_macro."
+#: The grown until-control rows' bias: on J5's 700M positions -10 left up to 1.8e-4 of probability on them, past the
+#: identity bar of 1e-4; -12 is ~e^-2 of that.
+MACRO_START_BIAS = -12.0
+
+
+def grow_macro_state_dict(saved: Mapping[str, torch.Tensor], target: Mapping[str, torch.Tensor],
+                          base_size: int, bias: float = MACRO_START_BIAS) -> Dict[str, torch.Tensor]:
+    """The state dict of `target` -- the saved base network in P42's macro view -- that plays what the saved one
+    did on every base slot: every saved tensor kept, the dense policy output's new rows (the until-control slots)
+    at weight 0 and bias `bias`, and the macro head as `target` initialised it (its output layer is zero). The
+    until-control slots then start at ~e^bias against the base options, and the zero-avoiding term lifts them."""
+    extra = sorted(set(saved) - set(target) - {"keep_idx"})
+    if extra:
+        raise ValueError(f"the saved state has tensors the grown network lacks: {extra[:5]}")
+    out: Dict[str, torch.Tensor] = {}
+    for name, t in target.items():
+        s = saved.get(name)
+        if s is not None and s.shape == t.shape:
+            out[name] = s.clone()
+        elif name in POLICY_OUT and s is not None and s.shape[0] == base_size and t.shape[0] > base_size:
+            new = t.new_full((t.shape[0] - base_size,) + tuple(t.shape[1:]),
+                             0.0 if name.endswith("weight") else bias)
+            out[name] = torch.cat([s.to(t.dtype), new], dim=0)
+        elif s is None and name.startswith(MACRO_HEAD):
+            out[name] = t.clone()
+        else:
+            raise ValueError(f"cannot grow {name} into the macro view: saved "
+                             f"{None if s is None else tuple(s.shape)}, target {tuple(t.shape)}")
+    return out
+
+
+def grow_macro_optimizer_state(saved: Dict[str, Any], names: Sequence[str], sizes: Mapping[str, int],
+                               base_size: int) -> Dict[str, Any]:
+    """Adam's state for the grown network: `names` are its parameter names in `named_parameters()` order, `sizes`
+    the grown dense output's row count per name. The saved state indexed the same names less the macro head; the
+    dense output's moments get zero rows for the new slots, the macro head starts without state. The groups come back
+    as one in model order, which the trainer maps onto its own (per-rate) groups, as for any added head."""
+    old = [n for n in names if not n.startswith(MACRO_HEAD)]
+    new_index = {name: i for i, name in enumerate(names)}
+    state: Dict[Any, Any] = {}
+    for j, name in enumerate(old):
+        st = saved["state"].get(j)
+        if st is None:
+            continue
+        new_st = dict(st)
+        if name in POLICY_OUT:
+            for key in ("exp_avg", "exp_avg_sq"):
+                m = st.get(key)
+                if m is None:
+                    continue
+                if m.shape[0] != base_size:
+                    raise ValueError(f"{name}'s moments have {m.shape[0]} rows, expected {base_size}")
+                pad = m.new_zeros((sizes[name] - base_size,) + tuple(m.shape[1:]))
+                new_st[key] = torch.cat([m, pad], dim=0)
+        state[new_index[name]] = new_st
+    flat = [int(i) for g in saved["param_groups"] for i in g["params"]]
+    if flat != list(range(len(old))):
+        raise ValueError(f"the saved optimizer does not index the {len(old)} parameters of the network less its macro "
+                         f"head in model order")
+    group = dict(saved["param_groups"][0])
+    group["params"] = list(range(len(names)))
+    return {"state": state, "param_groups": [group]}

@@ -22,7 +22,12 @@ namespace flat_slots {
     constexpr uint16_t CONFIRM_DONE  = 208;  //   1: the single "nothing happens" index
     constexpr uint16_t DEFCON_VALUE  = 209;  //   5 wide: set DEFCON to 1..5 (Summit, How I Learned)
     constexpr uint16_t REGION        = 214;  //   6 wide: Europe..South America (Chernobyl)
-    constexpr uint16_t SIZE          = 220;
+    // The base slots end here: every view decodes [0, BASE_SIZE) the same way.
+    constexpr uint16_t BASE_SIZE     = 220;
+    // P42, the macro view only: 84 wide, country id -- "place in this country until the deciding
+    // side controls it, or until its points here run out". Masked off in every other view.
+    constexpr uint16_t MACRO_NODE    = 220;
+    constexpr uint16_t SIZE          = 304;
 
     // OPS_INFLUENCE at the resolution node; OP_MODE's first slot is the same index.
     constexpr uint16_t OPS_INFLUENCE = RESOLUTION + 2;  // 112
@@ -36,6 +41,11 @@ namespace flat_slots {
 }
 
 constexpr size_t FLAT_ACTION_SPACE_SIZE = flat_slots::SIZE;
+
+// Which actions a decider sees. E4 is the base view (slots 0..219); MERGED is P23's E4.1, which
+// folds the influence choice into its first placement; MACRO is P42's, which adds the until-control
+// slots. Nothing in GameState records the view: it belongs to whoever is deciding.
+enum class ActionView : uint8_t { E4 = 0, MERGED = 1, MACRO = 2 };
 
 class ActionMask {
 public:
@@ -72,6 +82,23 @@ public:
     // True when a flat index at this state is one of the composed actions above -- i.e. it must
     // go through Engine::step_flat's merged path rather than a single decode.
     static bool is_merged_influence_action(const GameState& state, uint16_t action_idx) noexcept;
+
+    // P42: the macro view of the flat mask. Identical to generate_flat_mask_212 except at a
+    // POINT_NODE, where MACRO_NODE + c is offered for every legal country c whose until-control
+    // expansion (apply_macro_expansion) would place at least two points -- where it differs from
+    // the one-point slot. The count is read off a copy of the state, so no placement rule is
+    // re-implemented.
+    static void generate_flat_mask_macro(const GameState& state, uint8_t* mask) noexcept;
+
+    // True for the 84 until-control slots.
+    static bool is_macro_action(uint16_t action_idx) noexcept;
+
+    // P42's definition of an until-control slot: place one point in `country` for the deciding
+    // side through StateMachine::step, again and again, while the decision is still that side's
+    // POINT_NODE, the point is accepted, the game is not over and the side does not control the
+    // country. Returns the points placed; `state` is left after the last accepted point. Costs,
+    // legality and control are the engine's own at every point.
+    static int apply_macro_expansion(GameState& state, uint8_t country) noexcept;
 };
 
 } // namespace ts

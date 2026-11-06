@@ -36,6 +36,45 @@ def run_view(run_dir: str) -> Tuple[bool, int]:
     return bool(meta.get("merged_influence", False)), int(meta.get("merged_influence_from_step", 0))
 
 
+#: The action views (ts.ActionView): E4 is the base view, MERGED P23's E4.1, MACRO P42's until-control view.
+VIEW_E4, VIEW_MERGED, VIEW_MACRO = 0, 1, 2
+
+
+def run_macro_view(run_dir: str) -> Tuple[bool, int]:
+    """(macro_influence, macro_influence_from_step) for a run directory: P42's view, recorded like the merged one."""
+    try:
+        with open(os.path.join(run_dir, "metadata.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return False, 0
+    return bool(meta.get("macro_influence", False)), int(meta.get("macro_influence_from_step", 0))
+
+
+def _in_view_from(path: str, from_step: int) -> bool:
+    """Whether the checkpoint at `path` was taken after `from_step` (the step its run began deciding in a view)."""
+    name = os.path.basename(path)
+    m = _SNAPSHOT_STEPS.search(name)
+    if m:
+        return int(m.group(1)) > from_step
+    if name == "snapshot_final.pt":
+        return True
+    return from_step == 0
+
+
+def checkpoint_macro_influence(path: str) -> bool:
+    """Whether the checkpoint at `path` was trained to decide in P42's macro view (the until-control slots)."""
+    macro, from_step = run_macro_view(os.path.dirname(os.path.abspath(path)))
+    return macro and _in_view_from(path, from_step)
+
+
+def checkpoint_action_view(path: str) -> int:
+    """The view (VIEW_E4 / VIEW_MERGED / VIEW_MACRO) the checkpoint at `path` decides in."""
+    merged, macro = checkpoint_merged_influence(path), checkpoint_macro_influence(path)
+    if merged and macro:
+        raise ValueError(f"{path}: its run records both the merged and the macro view; they are exclusive")
+    return VIEW_MERGED if merged else VIEW_MACRO if macro else VIEW_E4
+
+
 def checkpoint_merged_influence(path: str) -> bool:
     """Whether the checkpoint at `path` was trained to decide in the merged-influence view."""
     merged, from_step = run_view(os.path.dirname(os.path.abspath(path)))

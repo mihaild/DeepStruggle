@@ -2,6 +2,7 @@
 // the Python side compares against the native build.
 //   node wasm_parity.mjs <ts_engine.mjs> selftest <games>
 //   node wasm_parity.mjs <ts_engine.mjs> walk <actions.json>
+//   node wasm_parity.mjs <ts_engine.mjs> macro <actions.json>
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -222,6 +223,46 @@ if (mode === "obs") {
     for (const p of [1, -1]) out[`${f}:${p}`] = createHash("sha256").update(featureObs(p, f)).digest("hex");
   }
   console.log(JSON.stringify({ obs: out, unknown_width: M._ts_obs_size_for(1 << 30) }));
+  process.exit(0);
+}
+
+// macro: {seed, actions} -- P42's view along a walk: the macro mask at every step, and for each until-control slot it
+// offers, the save JSON after the page's expansion of it (ts_macro_points one-point placements in its country, as
+// session.applyFlat applies it), the position restored after each.
+if (mode === "macro") {
+  const { seed, actions } = JSON.parse(readFileSync(arg, "utf8"));
+  const ACT = M._ts_action_size(), BASE = M._ts_base_action_size();
+  const NODE = JSON.parse(M.UTF8ToString(M._ts_action_layout_json())).offsets.node;
+  const hash = createHash("sha256");
+  const enc = new TextEncoder();
+  let expansions = 0;
+  M._ts_new_game(seed >>> 0, 0);
+  const record = () => {
+    const mask = new Uint8Array(M.HEAPU8.buffer, M._ts_mask(2), ACT).slice();
+    hash.update(mask);
+    for (let idx = BASE; idx < ACT; idx++) {
+      if (!mask[idx]) continue;
+      const before = M.stringToNewUTF8(M.UTF8ToString(M._ts_save_json()));
+      const k = M._ts_macro_points(idx);
+      const d = new Int32Array(M.HEAP32.buffer, M._ts_decode_flat(NODE + idx - BASE), 4).slice();
+      for (let j = 0; j < k; j++) {
+        if (!M._ts_step(d[0], d[1], d[2], d[3], 0)) throw new Error(`point ${j} of slot ${idx} refused`);
+      }
+      hash.update(enc.encode(`${idx}:${M.UTF8ToString(M._ts_save_json())}`));
+      if (!M._ts_load_save_json(before)) throw new Error(M.UTF8ToString(M._ts_last_error()));
+      M._free(before);
+      expansions += 1;
+    }
+  };
+  record();
+  for (const [t, p, s, f] of actions) {
+    if (!M._ts_step(t, p, s, f, 0)) {
+      console.log(JSON.stringify({ error: `refused: ${M.UTF8ToString(M._ts_last_error())}` }));
+      process.exit(0);
+    }
+    record();
+  }
+  console.log(JSON.stringify({ digest: hash.digest("hex"), expansions }));
   process.exit(0);
 }
 

@@ -124,6 +124,47 @@ def test_the_page_sees_exactly_what_python_sees(seed: int, tmp_path) -> None:
         assert wasm["ending"] == ts.game_ending_reason(state)
 
 
+@pytest.mark.parametrize("seed", [11, 58])
+def test_the_page_expands_an_until_control_move_as_the_engine_does(seed: int, tmp_path) -> None:
+    """P42: along a game, the page's macro mask is the native one, and every until-control slot it offers, applied as
+    the page applies it (ts_macro_points one-point placements), reaches the position the native expansion reaches."""
+    state = ts.GameState()
+    ts.Engine.init_game(state, seed)
+    drain_chance(state)
+    rng = random.Random(seed)
+    h = hashlib.sha256()
+    base = int(ts.FLAT_BASE_SIZE)
+    expansions = 0
+
+    def record() -> None:
+        nonlocal expansions
+        mask = np.asarray(ts.get_flat_action_mask(state, False, True), dtype=np.uint8)
+        h.update(mask.tobytes())
+        for idx in np.nonzero(mask[base:])[0] + base:
+            after = state.clone()
+            ts.Engine.step_flat(after, int(idx), False, False, True)
+            h.update(f"{int(idx)}:{after.to_save_json()}".encode())
+            expansions += 1
+
+    record()
+    actions: List[List[int]] = []
+    while not ts.Engine.is_terminal(state) and len(actions) < 1500:
+        legal = [int(i) for i in np.nonzero(ts.get_flat_action_mask(state, False))[0]]
+        ma = ts.decode_flat_action(state, rng.choice(legal))
+        actions.append([int(ma.decision_type), int(ma.primary_id), int(ma.secondary_id), int(ma.flags)])
+        ts.Engine.step(state, ma)
+        drain_chance(state)
+        record()
+
+    path = tmp_path / "actions.json"
+    path.write_text(json.dumps({"seed": seed, "actions": actions}))
+    wasm = _node("macro", str(path))
+    assert "error" not in wasm, wasm.get("error")
+    assert expansions > 0, "the walk never offered an until-control slot"
+    assert wasm["expansions"] == expansions
+    assert wasm["digest"] == h.hexdigest(), "the page's until-control moves and the engine's diverged"
+
+
 class _PlayOuts:
     """The batch's live rows played to their horizons under a fixed synthetic policy, then their leaves
     valued by a fixed synthetic critic, every observation and mask into `h` -- as wasm_parity.mjs's

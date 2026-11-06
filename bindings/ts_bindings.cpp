@@ -164,11 +164,20 @@ ts::GameState game_state_from_save_json(const std::string& text) {
 // The flat legal mask as an owned numpy array. One implementation behind the three spellings
 // Python has for it (ts.get_flat_action_mask, Engine.get_flat_action_mask,
 // ActionMask.generate_flat_mask).
+// The action view a Python call names: merged_influence is P23's E4.1, macro_influence P42's; at most one.
+ts::ActionView view_of(bool merged_influence, bool macro_influence) {
+    if (merged_influence && macro_influence) {
+        throw std::invalid_argument("merged_influence and macro_influence are separate views; pass at most one");
+    }
+    return merged_influence ? ts::ActionView::MERGED : macro_influence ? ts::ActionView::MACRO : ts::ActionView::E4;
+}
+
 nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>> flat_mask_array(const ts::GameState& state,
-                                                             bool merged_influence) {
+                                                             bool merged_influence, bool macro_influence) {
     size_t shape[1] = { ts::FLAT_ACTION_SPACE_SIZE };
+    const ts::ActionView view = view_of(merged_influence, macro_influence);
     uint8_t* data = new uint8_t[ts::FLAT_ACTION_SPACE_SIZE];
-    ts::Engine::get_flat_action_mask(state, data, merged_influence);
+    ts::Engine::get_flat_action_mask(state, data, view);
     nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<uint8_t*>(p); });
     return nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(data, 1, shape, owner);
 }
@@ -595,24 +604,26 @@ NB_MODULE(ts_engine, m) {
             return res;
         })
         .def_static("get_flat_action_mask", &flat_mask_array,
-           nb::arg("state"), nb::arg("merged_influence") = false,
+           nb::arg("state"), nb::arg("merged_influence") = false, nb::arg("macro_influence") = false,
            "The flat legal mask. merged_influence=True is the E4.1 view (P23): at an op-choice "
-           "node, NODE slot X means 'influence, first point in X'.")
+           "node, NODE slot X means 'influence, first point in X'. macro_influence=True is P42's: at a "
+           "POINT_NODE, MACRO_NODE + c means 'place in c until control', offered where it differs from one point.")
         .def_static("try_step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance,
-                                        bool merged_influence) {
-            return ts::Engine::step_flat(state, action_idx, auto_advance, merged_influence);
+                                        bool merged_influence, bool macro_influence) {
+            return ts::Engine::step_flat(state, action_idx, auto_advance, view_of(merged_influence, macro_influence));
         }, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
-           nb::arg("merged_influence") = false,
+           nb::arg("merged_influence") = false, nb::arg("macro_influence") = false,
            "Advance one flat action, returning False if the engine refuses it. For probing only.")
         .def_static("step_flat", [](ts::GameState& state, uint16_t action_idx, bool auto_advance,
-                                    bool merged_influence) {
-            if (!ts::Engine::step_flat(state, action_idx, auto_advance, merged_influence)) {
+                                    bool merged_influence, bool macro_influence) {
+            if (!ts::Engine::step_flat(state, action_idx, auto_advance, view_of(merged_influence, macro_influence))) {
                 throw_illegal_action(state, "flat action " + std::to_string(static_cast<int>(action_idx)));
             }
         }, nb::arg("state"), nb::arg("action_idx"), nb::arg("auto_advance") = false,
-           nb::arg("merged_influence") = false,
+           nb::arg("merged_influence") = false, nb::arg("macro_influence") = false,
            "Advance one flat action, raising RuntimeError if the engine refuses it. "
-           "merged_influence=True applies a composed E4.1 action as the two E4 steps it names.")
+           "merged_influence=True applies a composed E4.1 action as the two E4 steps it names; "
+           "macro_influence=True applies an until-control slot as the one-point steps that define it.")
         .def_static("auto_advance_step",
                     nb::overload_cast<ts::GameState&, size_t>(&ts::Engine::auto_advance_step),
                     nb::arg("state"), nb::arg("max_steps") = 128);
@@ -1417,7 +1428,7 @@ NB_MODULE(ts_engine, m) {
 
     // Flat Action Mask & Codec exports
     m.def("get_flat_action_mask", &flat_mask_array,
-          nb::arg("state"), nb::arg("merged_influence") = false);
+          nb::arg("state"), nb::arg("merged_influence") = false, nb::arg("macro_influence") = false);
 
     m.def("decode_flat_action", &checked_decode,
           "The MicroAction a flat index stands for here. Raises ValueError outside the space.");
@@ -1490,6 +1501,8 @@ NB_MODULE(ts_engine, m) {
     m.attr("FLAT_CONFIRM_DONE") = static_cast<int>(ts::flat_slots::CONFIRM_DONE);
     m.attr("FLAT_DEFCON_VALUE") = static_cast<int>(ts::flat_slots::DEFCON_VALUE);
     m.attr("FLAT_REGION") = static_cast<int>(ts::flat_slots::REGION);
+    m.attr("FLAT_BASE_SIZE") = static_cast<int>(ts::flat_slots::BASE_SIZE);
+    m.attr("FLAT_MACRO_NODE") = static_cast<int>(ts::flat_slots::MACRO_NODE);
 
     //: Which compiler built this extension, e.g. "clang 21.1.8". The engine is built with clang
     //: (root CMakeLists.txt); tests/bindings/test_build_toolchain.py checks the module actually
@@ -1504,8 +1517,9 @@ NB_MODULE(ts_engine, m) {
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", &flat_mask_array,
-                    nb::arg("state"), nb::arg("merged_influence") = false)
+                    nb::arg("state"), nb::arg("merged_influence") = false, nb::arg("macro_influence") = false)
         .def_static("is_merged_influence_action", &ts::ActionMask::is_merged_influence_action)
+        .def_static("is_macro_action", &ts::ActionMask::is_macro_action)
         .def_static("decode_flat_action", &checked_decode)
         .def_static("encode_micro_action", &checked_encode);
 
@@ -1523,8 +1537,9 @@ NB_MODULE(ts_engine, m) {
         // because a tournament puts an E4 agent and an E4.1 agent in the same game. The cached mask
         // is built for whoever decides next, and a step is applied in the view of whoever made it.
         // All zero is exactly E4.
-        std::vector<uint8_t> merged_us;
-        std::vector<uint8_t> merged_ussr;
+        // The action view each side decides in, per env (ts::ActionView as a byte: E4, MERGED, MACRO).
+        std::vector<uint8_t> view_us;
+        std::vector<uint8_t> view_ussr;
         size_t num_envs;
         //: The widest observation any env's decider is configured for: the base layout plus the
         //: blocks of the largest feature set in use. Every row is written in its own decider's
@@ -1608,10 +1623,10 @@ NB_MODULE(ts_engine, m) {
             else refresh_single(idx);
         }
 
-        bool merged_for(size_t idx, ts::Player p) const {
-            if (p == ts::Player::US) return merged_us[idx] != 0;
-            if (p == ts::Player::USSR) return merged_ussr[idx] != 0;
-            return false;
+        ts::ActionView view_for(size_t idx, ts::Player p) const {
+            if (p == ts::Player::US) return static_cast<ts::ActionView>(view_us[idx]);
+            if (p == ts::Player::USSR) return static_cast<ts::ActionView>(view_ussr[idx]);
+            return ts::ActionView::E4;
         }
 
         ts::Player decider(size_t idx) const {
@@ -1624,16 +1639,41 @@ NB_MODULE(ts_engine, m) {
                 throw std::invalid_argument("set_merged_influence: one flag per env for each side");
             }
             for (size_t i = 0; i < num_envs; ++i) {
-                merged_us[i] = us[i] ? 1 : 0;
-                merged_ussr[i] = ussr[i] ? 1 : 0;
+                view_us[i] = static_cast<uint8_t>(us[i] ? ts::ActionView::MERGED : ts::ActionView::E4);
+                view_ussr[i] = static_cast<uint8_t>(ussr[i] ? ts::ActionView::MERGED : ts::ActionView::E4);
             }
             refresh_all();  // cached masks were built in the previous view
         }
 
         void set_merged_influence_env(size_t idx, bool us, bool ussr) {
             if (idx >= num_envs) throw std::out_of_range("set_merged_influence_env: env index");
-            merged_us[idx] = us ? 1 : 0;
-            merged_ussr[idx] = ussr ? 1 : 0;
+            view_us[idx] = static_cast<uint8_t>(us ? ts::ActionView::MERGED : ts::ActionView::E4);
+            view_ussr[idx] = static_cast<uint8_t>(ussr ? ts::ActionView::MERGED : ts::ActionView::E4);
+            refresh_single(idx);
+        }
+
+        static uint8_t checked_view(int v) {
+            if (v < 0 || v > static_cast<int>(ts::ActionView::MACRO)) {
+                throw std::invalid_argument("action view must be 0 (E4), 1 (merged, E4.1) or 2 (macro, P42)");
+            }
+            return static_cast<uint8_t>(v);
+        }
+
+        void set_action_views(const std::vector<int>& us, const std::vector<int>& ussr) {
+            if (us.size() != num_envs || ussr.size() != num_envs) {
+                throw std::invalid_argument("set_action_views: one view per env for each side");
+            }
+            for (size_t i = 0; i < num_envs; ++i) {
+                view_us[i] = checked_view(us[i]);
+                view_ussr[i] = checked_view(ussr[i]);
+            }
+            refresh_all();
+        }
+
+        void set_action_views_env(size_t idx, int us, int ussr) {
+            if (idx >= num_envs) throw std::out_of_range("set_action_views_env: env index");
+            view_us[idx] = checked_view(us);
+            view_ussr[idx] = checked_view(ussr);
             refresh_single(idx);
         }
 
@@ -1642,8 +1682,8 @@ NB_MODULE(ts_engine, m) {
             slots.resize(n);
             obs_buffer.resize(n * obs_width);
             mask_buffer.resize(n * ts::FLAT_ACTION_SPACE_SIZE);
-            merged_us.assign(n, 0);
-            merged_ussr.assign(n, 0);
+            view_us.assign(n, static_cast<uint8_t>(ts::ActionView::E4));
+            view_ussr.assign(n, static_cast<uint8_t>(ts::ActionView::E4));
             feat_us.assign(n, 0u);
             feat_ussr.assign(n, 0u);
             for (size_t i = 0; i < n; ++i) {
@@ -1681,8 +1721,9 @@ NB_MODULE(ts_engine, m) {
             const size_t w = ts::extract_observation_features(st(idx), p, features_for(idx, p), row);
             if (w < obs_width) std::memset(row + w, 0, (obs_width - w) * sizeof(float));
             uint8_t* mask_row = &mask_buffer[idx * ts::FLAT_ACTION_SPACE_SIZE];
-            if (merged_for(idx, p)) {
-                ts::Engine::get_flat_action_mask(st(idx), mask_row, true);   // another view: not cached
+            const ts::ActionView view = view_for(idx, p);
+            if (view != ts::ActionView::E4) {
+                ts::Engine::get_flat_action_mask(st(idx), mask_row, view);   // another view: not cached
             } else {
                 std::memcpy(mask_row, slots[idx].legal_mask(), ts::FLAT_ACTION_SPACE_SIZE);
             }
@@ -1708,7 +1749,7 @@ NB_MODULE(ts_engine, m) {
                 // atomically; anything else is the E4 step, validated against the cached mask.
                 // Chance nodes are drained below exactly as for any other action.
                 const bool ok = slots[i].step_flat(
-                    actions[i], merged_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))));
+                    actions[i], view_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))));
                 if (ok) {
                     if (auto_advance) {
                         if (capture_predeal) {
@@ -1906,6 +1947,11 @@ NB_MODULE(ts_engine, m) {
         .def("set_merged_influence", &VectorizedBatchRunner::set_merged_influence, nb::arg("us"), nb::arg("ussr"),
              "P23 / E4.1: per env and side, whether that side decides in the merged-influence view. "
              "Rebuilds the cached masks.")
+        .def("set_action_views", &VectorizedBatchRunner::set_action_views, nb::arg("us"), nb::arg("ussr"),
+             "Per env and side, the action view that side decides in: 0 E4, 1 merged (E4.1, P23), "
+             "2 macro (P42: the until-control slots). Masks are rebuilt; steps apply each view's composed actions.")
+        .def("set_action_views_env", &VectorizedBatchRunner::set_action_views_env, nb::arg("idx"), nb::arg("us"),
+             nb::arg("ussr"))
         .def("set_merged_influence_env", &VectorizedBatchRunner::set_merged_influence_env,
              nb::arg("env_index"), nb::arg("us"), nb::arg("ussr"),
              "P23 / E4.1: the same for one env; rebuilds only that env's cached mask.")

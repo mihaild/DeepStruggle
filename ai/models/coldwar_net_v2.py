@@ -16,8 +16,20 @@ VP_LIMIT: int = 20
 VALUE_ATOMS: int = 2 * VP_LIMIT + 1
 
 
+def pad_to_mask(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    """`logits` padded with -1e9 to the mask's width when the mask is wider (P42: a base model has no output for
+    the macro view's slots, which its own view never offers); unchanged otherwise."""
+    if mask is None or mask.shape[-1] <= logits.shape[-1]:
+        return logits
+    return F.pad(logits, (0, mask.shape[-1] - logits.shape[-1]), value=-1e9)
+
+
 def mask_logits(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     """`logits` with every illegal action (mask 0/False) set to -1e9; unchanged without a mask.
+
+    A mask wider than the logits (P42: the flat space is 304 wide, a base model outputs its 220 base
+    slots) pads the logits with -1e9 first: the slots a model has no output for are slots its view
+    never offers, so the distribution is unchanged and every consumer sees the mask's width.
 
     masked_fill, not torch.where against torch.tensor(-1e9, device=...): building that scalar is a
     blocking host-to-device copy, which stalled the CPU on the GPU at every forward pass -- 14.4 s
@@ -25,6 +37,7 @@ def mask_logits(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor
     """
     if mask is None:
         return logits
+    logits = pad_to_mask(logits, mask)
     mask_bool = mask if mask.dtype == torch.bool else mask.bool()
     return logits.masked_fill(~mask_bool, -1e9)
 
@@ -163,7 +176,8 @@ class ColdWarNetV2(nn.Module):
     HIST_SIZE = 16 * 32  # 512
 
     TOTAL_OBS_SIZE = 3824
-    ACTION_SPACE_SIZE = ActionEncoder.FLAT_ACTION_SIZE
+    #: The policy head's width: the base slots (P42's macro slots are a macro-view model's extension).
+    ACTION_SPACE_SIZE = ActionEncoder.BASE_ACTION_SIZE
 
     # Declared for the type checker: `value_support` is a registered buffer, and the two scalar
     # heads are None on a categorical instance (and the distribution head None on a scalar one).
@@ -469,7 +483,7 @@ class ColdWarNetV2(nn.Module):
         double the cost of every update. `None` on a scalar-headed model.
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(self._policy_logits(h, tokens), mask)
+        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
         masked_logits = mask_logits(raw_logits, mask)
         v_win, v_vp = self._value_scalars(h)
         value_logits = None
@@ -662,7 +676,7 @@ class ColdWarNetV2(nn.Module):
             v_vp: (B, 1) float tensor in [-20, 20].
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(self._policy_logits(h, tokens), mask)
+        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
 
         masked_logits = mask_logits(raw_logits, mask)
 
@@ -678,7 +692,7 @@ class ColdWarNetV2(nn.Module):
         other caller depends on, is untouched.
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(self._policy_logits(h, tokens), mask)
+        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
         masked_logits = mask_logits(raw_logits, mask)
         v_win, v_vp = self._value_scalars(h)
         return masked_logits, v_win, v_vp, self.defcon_risk_head(h)

@@ -42,6 +42,8 @@ export interface LiveAnalysis {
   model: string;
   label?: string;
   merged_influence?: boolean;
+  /** P42: the model decides in the macro (until-control) view. */
+  macro_influence?: boolean;
   decision_player?: "US" | "USSR";
   decision_type?: number;
   critic?: CriticTrace;
@@ -530,7 +532,7 @@ export class AnalysisPanel {
       this.body.innerHTML = `<div class="trace-empty">Loading ${esc(what)}…${note}</div>`;
       return;
     }
-    this.badge.textContent = a.merged_influence ? "E4.1 view" : "E4 view";
+    this.badge.textContent = a.merged_influence ? "E4.1 view" : a.macro_influence ? "macro view" : "E4 view";
     if (!this.readoutOnScreen()) {
       this.body.innerHTML = this.readoutOffNote(a);
       return;

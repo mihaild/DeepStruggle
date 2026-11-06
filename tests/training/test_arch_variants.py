@@ -161,7 +161,7 @@ def test_shared_actions_still_come_from_the_trunk() -> None:
     shared = torch.cat([logits[:, ActionEncoder.PLAY_MODE_OFFSET:ActionEncoder.NODE_OFFSET],
                         logits[:, ActionEncoder.BRANCH_OFFSET:]], dim=-1)
     expected = ((ActionEncoder.NODE_OFFSET - ActionEncoder.PLAY_MODE_OFFSET)
-                + (ActionEncoder.FLAT_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET))
+                + (ActionEncoder.BASE_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET))
     assert shared.shape == (4, expected)
     assert bool(torch.isfinite(shared).all())
 

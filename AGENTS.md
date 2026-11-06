@@ -269,8 +269,12 @@ Numbered as in `CLAUDE.md`.
 2. **One flat action space.** Every policy head and mask uses the flat space of
    `bindings.ActionEncoder` / `ActionMask::generate_flat_mask_212` (220 slots since P17; the name is
    historical). The E4.1 merged-influence view (P23) is not a second encoding: same slots, composed
-   actions *defined* as the E4 steps they name. A checkpoint's view is read from its run directory
-   (`tools/lib/action_view.py`), and every harness builds masks in the deciding agent's view.
+   actions *defined* as the E4 steps they name. P42's macro view is not one either: slots 220..303
+   (304 wide in all) are "until control in country c", *defined* as the one-point steps they expand into,
+   and a base network's 220 logits are padded to the mask. A checkpoint's view is read from its run directory
+   (`tools/lib/action_view.py`; the macro view also from its weights, a 304-wide policy), and every harness builds
+   masks in the deciding agent's view. `tools/train.py --macro-influence --resume <base state>` grows a base network
+   into it in place (`ai/models/grow.py`: new rows at bias -12, every base logit unchanged).
 3. **NashPG reference regularization.** The active policy is regularized against a frozen snapshot
    π_ref with fixed η; the reference update is never coupled to the active policy's gradient step,
    which is what keeps the dynamics from cycling.

@@ -56,8 +56,7 @@ export class RolloutRunner {
       this.workerReady = new Promise<void>((resolve, reject) => {
         this.loadWaiters = { resolve, reject };
         // A copy: the page keeps using its own bytes-backed session.
-        w.postMessage({ type: "load", base: this.base, bytes: model.bytes.slice(), source: model.source,
-                        actionSize: model.meta.actionSize });
+        w.postMessage({ type: "load", base: this.base, bytes: model.bytes.slice(), source: model.source });
       });
       void this.workerReady.catch(e => {
         if (this.worker === w) this.stopWorker(e instanceof Error ? e : new Error(String(e)));

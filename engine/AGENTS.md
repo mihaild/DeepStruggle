@@ -99,6 +99,17 @@ field or observation slot changes, and with the view off everything is bit-ident
 anywhere else a commit that does not reach the mover's placement offers no influence and calls
 `report_anomaly` — it composes, it never substitutes (never seen over 96,010 influence-legal nodes).
 
+**P42: the macro (until-control) view.** The flat space is **304** wide (`flat_slots::SIZE`; the base views use
+slots 0..219, `flat_slots::BASE_SIZE`, and never offer the rest). In `ActionView::MACRO` slot `220 + c`
+(`flat_slots::MACRO_NODE + c`) means "place influence in country c, point by point, until the mover controls it or
+the placement ends" — **defined** as repeated one-point `POINT_NODE c` steps through `StateMachine::step`
+(`ActionMask::apply_macro_expansion`), stopping at game end, at a change of decision type or decider, or at control.
+`generate_flat_mask_macro` offers it at a legal node only where that expansion places **at least 2 points** (where
+one point controls, the base slot already says it). `Engine::step_flat(state, idx, auto_advance, ActionView::MACRO)`
+expands it, restores the state on any refusal, then auto-advances. Exclusive with E4.1. No rule, `GameState` field or
+observation slot changes, the replay records the base steps, and with the view off everything is bit-identical to
+E4 (`tests/test_macro_view.cpp`: base views never offer 220..303; every macro step equals its base steps).
+
 **`ROLL_DIE` is the one decision whose `primary_id` is data, not an index**: the acting player's
 forced die, `secondary_id` the opponent's, **0 meaning "roll normally"**. So the flat mask cannot
 constrain it — the range is checked in `StateMachine::step` beside the `decision_type` guard; it is

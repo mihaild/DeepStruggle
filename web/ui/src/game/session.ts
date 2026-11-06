@@ -291,10 +291,24 @@ export class GameSession {
    * exactly as Engine::step_flat composes it, each logged and undoable like a click; if the
    * second is refused the first is taken back too.
    */
-  applyFlat(idx: number, merged: boolean, forcedDie = 0, how: MoveHow = HUMAN): string | null {
-    const mask = this.engine.mask(merged);
+  applyFlat(idx: number, merged: boolean, forcedDie = 0, how: MoveHow = HUMAN, macro = false): string | null {
+    const mask = this.engine.mask(merged, macro);
     if (!(idx >= 0 && idx < mask.length && mask[idx])) {
-      return `flat action ${idx} is not legal here (${merged ? "E4.1" : "E4"} view)`;
+      return `flat action ${idx} is not legal here (${merged ? "E4.1" : macro ? "macro" : "E4"} view)`;
+    }
+    if (macro && idx >= this.engine.baseActionSize) {
+      // P42: "until control" is that many one-point placements in its country, which is what the engine expands it
+      // into; each is logged and undoable like a click, and a refusal takes the earlier ones back.
+      const points = this.engine.macroPoints(idx);
+      const node = this.engine.decodeFlat(idx - this.engine.baseActionSize + this.engine.layout.offsets.node);
+      for (let k = 0; k < points; k++) {
+        const refused = this.apply(node, 0, how);
+        if (refused) {
+          for (let j = 0; j < k; j++) this.undo(false);
+          return refused;
+        }
+      }
+      return null;
     }
     if (merged && this.engine.isMergedInfluenceAction(idx)) {
       const L = this.engine.layout;

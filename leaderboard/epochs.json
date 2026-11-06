@@ -102,6 +102,16 @@
           "mcts": "6ced30e6a225eb206c23e7a9a2cc1f7410a9bfc19290004444d96296793dffab"
         },
         "why": "ENG-10 on top of ENG-8 (engine/AGENTS.md section 20): the influence and realignment masks offer a target only if its cost fits the Ops budget that spending there keeps, so the China Card under Vietnam Revolts can no longer place five Ops in Southeast Asia and the sixth elsewhere in Asia, and the last bonus Op of either region bonus can no longer be rolled as a realignment outside its region. 19 of 2,000 seeded random games play differently (random play realigns often), so runner, rollout and mcts move; the owner ruled it a fix in place, and stored games no longer valid are discarded (owner, 2026-11-07)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "ad6db8b6b5139058190da147bbbc2b511130f59f9fdc8dcf77a864c72eaba623",
+          "state": "b12f367387dfd16ce5a2490bcfe6b00d1047ab96e82ce8467e39b77df57b8c01",
+          "rollout": "f80f06f537b469eaa3738ccc0066d8a83e978d3a06f1d6c927cb5cac2089f54e",
+          "mcts": "5340fa0b58c294e5b0998b4e7ff373dbdbabf5e0b25a554e27528ffee0d5f0cf"
+        },
+        "why": "P42 on top of ENG-10 (engine/AGENTS.md section 4): a third action view, the until-control macro, and with it a flat space 304 wide (220 base slots, never offered in the E4 and E4.1 views). Every digest moves because it hashes the masks, now 304 wide; the games do not: 3,625 seeded base-view games through the batch runner are bit-identical to the ENG-10 build's (observations, base-slot masks, rewards, endings), so it stays in E8 (the owner approved the P42 engine work, 2026-11-06)."
       }
     ]
   }

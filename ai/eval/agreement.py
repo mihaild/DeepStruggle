@@ -52,7 +52,7 @@ from ai.training.warmup_dataset_loader import WarmupDataset
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import model_obs_features
 
-MASK_BITS_ = ActionEncoder.FLAT_ACTION_SIZE
+MASK_BITS_ = ActionEncoder.BASE_ACTION_SIZE
 
 
 @dataclass

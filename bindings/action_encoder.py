@@ -31,6 +31,10 @@ class ActionEncoder:
     """
 
     FLAT_ACTION_SIZE: int = ts.FLAT_ACTION_SPACE_SIZE
+    #: The base slots, the same in every view (0..219): a base model's output width and a stored mask's bits.
+    BASE_ACTION_SIZE: int = ts.FLAT_BASE_SIZE
+    #: P42's until-control slots, the macro view only: MACRO_NODE_OFFSET + country_id.
+    MACRO_NODE_OFFSET: int = ts.FLAT_MACRO_NODE
 
     CARD_OFFSET: int = ts.FLAT_CARD
     PLAY_MODE_OFFSET: int = ts.FLAT_RESOLUTION
@@ -121,10 +125,18 @@ class ActionEncoder:
             # Summit / How I Learned to Stop Worrying: set DEFCON to 1..5.
             return f"SetDEFCON {action_idx - ActionEncoder.DEFCON_VALUE_OFFSET + 1}"
 
-        if action_idx < ActionEncoder.FLAT_ACTION_SIZE:
+        if action_idx < ActionEncoder.BASE_ACTION_SIZE:
             # Chernobyl's region, in ts::Region order.
             region_id = action_idx - ActionEncoder.REGION_OFFSET
             name = REGION_NAMES[region_id] if region_id < len(REGION_NAMES) else "?"
             return f"Region #{region_id} ({name})"
+
+        if action_idx < ActionEncoder.FLAT_ACTION_SIZE:
+            # P42's until-control slots (the macro view only).
+            country_id = action_idx - ActionEncoder.MACRO_NODE_OFFSET
+            try:
+                return f"UntilControl #{country_id} ({ts.MapData.get_country_name(country_id)})"
+            except Exception:
+                return f"UntilControl #{country_id}"
 
         return f"UnknownAction #{action_idx}"

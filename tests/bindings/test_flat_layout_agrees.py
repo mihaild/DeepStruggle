@@ -27,7 +27,8 @@ def _fresh() -> ts.GameState:
 
 def test_the_two_sides_agree_on_the_width() -> None:
     engine_width = len(ts.Engine.get_flat_action_mask(_fresh()))
-    assert engine_width == ActionEncoder.FLAT_ACTION_SIZE == 220
+    assert engine_width == ActionEncoder.FLAT_ACTION_SIZE == 304
+    assert ActionEncoder.BASE_ACTION_SIZE == 220
 
 
 def test_the_vectorized_runner_agrees_too() -> None:
@@ -49,7 +50,10 @@ def test_the_blocks_are_contiguous_and_ordered() -> None:
     assert A.CONFIRM_DONE_INDEX == A.BRANCH_OFFSET + 8
     assert A.DEFCON_VALUE_OFFSET == A.CONFIRM_DONE_INDEX + 1
     assert A.REGION_OFFSET == A.DEFCON_VALUE_OFFSET + 5
-    assert A.FLAT_ACTION_SIZE == A.REGION_OFFSET + 6
+    assert A.BASE_ACTION_SIZE == A.REGION_OFFSET + 6
+    # P42: the until-control slots follow the base slots, one per country.
+    assert A.MACRO_NODE_OFFSET == A.BASE_ACTION_SIZE
+    assert A.FLAT_ACTION_SIZE == A.MACRO_NODE_OFFSET + 84
 
 
 @pytest.mark.parametrize("country", [0, 1, 42, 83])

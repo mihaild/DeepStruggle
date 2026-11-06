@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from tools.lib.ts_replayer_convert import DecisionSample
 
 OBS_DTYPE = np.float16
-MASK_BITS = ActionEncoder.FLAT_ACTION_SIZE
+MASK_BITS = ActionEncoder.BASE_ACTION_SIZE
 _COLUMNS = ("obs", "mask", "action", "win", "vp", "has_outcome", "side", "game",
             "play")
 _META = "meta.json"

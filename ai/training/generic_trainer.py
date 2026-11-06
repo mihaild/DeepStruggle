@@ -27,7 +27,8 @@ import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
 from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_coldwar_net_v2, create_like,
                                       fresh_policy_head_norms, policy_head_norms)
-from ai.models.grow import (grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
+from ai.models.grow import (MACRO_START_BIAS, POLICY_OUT, grow_macro_optimizer_state, grow_macro_state_dict,
+                            grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
                             widen_optimizer_state, widen_state_dict)
 from ai.models.hyperspherical import SphereTrunk
 from ai.models.ladder_net import LadderNet, create_ladder_net
@@ -50,7 +51,7 @@ from bindings.ts_env import ENDING_REASON_KEYS, model_obs_features
 from ai.eval.blunders import RULES as BLUNDER_RULES
 from ai.itsc_reference import ITSC_GAMES, ITSC_REFERENCE, reference_for
 from tools.lib.player_agent import PlayerAgent, NeuralAgent, load_agent, resolve_device
-from tools.lib.action_view import checkpoint_merged_influence, run_view
+from tools.lib.action_view import checkpoint_merged_influence, run_macro_view, run_view
 from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.checkpoint_utils import discover_checkpoints
 from tools.lib.data_root import checkpoints_dir
@@ -738,7 +739,7 @@ class _HumanInjector:
 
     def _next(self):
         idx = np.sort(self._rng.choice(self.train_idx, size=self.batch_size, replace=False))
-        mask = np.unpackbits(np.asarray(self._mask[idx]), axis=1)[:, :ActionEncoder.FLAT_ACTION_SIZE]
+        mask = np.unpackbits(np.asarray(self._mask[idx]), axis=1)[:, :ActionEncoder.BASE_ACTION_SIZE]
         return (
             torch.from_numpy(np.asarray(self._obs[idx], dtype=np.float32)).to(self.device),
             torch.from_numpy(mask.astype(np.uint8)).to(self.device),
@@ -1022,12 +1023,14 @@ def evaluate_and_log_snapshot(
     max_snapshot_opponents: int = 4,
     merged_influence: bool = False,
     forced_opening: Optional[str] = None,
+    macro_influence: bool = False,
 ) -> Dict[str, float]:
     dev = resolve_device(device)
     snap_name = f"snapshot_{elapsed_seconds}s"
-    # The model is evaluated in the action view it trains in (P23), probes included.
+    # The model is evaluated in the action view it trains in (P23), probes included -- except P42's macro view,
+    # whose probes still build base masks: they read its base policy, a diagnostic; its matches play the macro view.
     current_agent = NeuralAgent(model=model, device=dev, name=snap_name,
-                                merged_influence=merged_influence)
+                                merged_influence=merged_influence, macro_influence=macro_influence)
     if forced_opening:
         # --forced-opening: the run never learns its setup, so its match evals play the opening
         # it trained from. (The probes below still let the model set up for itself.)
@@ -1550,9 +1553,15 @@ def reset_policy_head(model: nn.Module, optimizer: torch.optim.Optimizer, seed: 
     return done
 
 
+def _is_macro(net: Any) -> bool:
+    """Whether a network decides in P42's macro view: its policy covers the until-control slots."""
+    return bool(getattr(net, "macro_influence", False))
+
+
 def load_resume_state(path: str, model: nn.Module, trainer: Any,
                       seed: Optional[int] = None, widen: bool = False, grow_tokens: bool = False,
-                      reset_head: bool = False, grow_sphere: bool = False) -> Dict[str, Any]:
+                      reset_head: bool = False, grow_sphere: bool = False,
+                      grow_macro: bool = False) -> Dict[str, Any]:
     """Restore a run in place and return where it left off.
 
     `seed` is the seed the *resuming* run was given. Where it differs from the one the state was
@@ -1616,6 +1625,27 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
             raise ValueError("--resume-grow-sphere: the resume state already has a sphere trunk")
         if blob.get("ema_state_dict") is not None:
             raise ValueError("--resume-grow-sphere does not grow an --ema-weights average")
+    if grow_macro:
+        # P42: a base (E4) state continued in the macro view. The dense policy output gains the 84 until-control
+        # rows (weight 0, bias MACRO_START_BIAS) and the macro head starts at zero, in the network and pi_ref alike, so every
+        # base slot's logit is what it was (ai/models/grow.py); Adam's moments get zero rows to match.
+        if not getattr(model, "macro_influence", False):
+            raise ValueError("growing into the macro view needs a model built with macro_influence")
+        if any(k.startswith("pe_macro.") for k in blob["model_state_dict"]):
+            raise ValueError("the resume state is already in the macro view")
+        if blob.get("ema_state_dict") is not None:
+            raise ValueError("growing into the macro view does not grow an --ema-weights average")
+        target = model.state_dict()
+        names = [n for n, _ in model.named_parameters()]
+        base = ActionEncoder.BASE_ACTION_SIZE
+        blob["model_state_dict"] = grow_macro_state_dict(blob["model_state_dict"], target, base)
+        blob["reference_state_dict"] = grow_macro_state_dict(blob["reference_state_dict"], target, base)
+        blob["optimizer_state_dict"] = grow_macro_optimizer_state(
+            blob["optimizer_state_dict"], names, {n: int(target[n].shape[0]) for n in POLICY_OUT}, base)
+        print(f"[resume grow-macro] the policy grows {base} -> {int(target[POLICY_OUT[1]].shape[0])} slots: the "
+              f"until-control rows start at bias {MACRO_START_BIAS:g} and the macro head at zero, so every base logit "
+              f"is unchanged",
+              flush=True)
     _grown = ("sphere.",) if grow_sphere else ()
     added = _load_allowing_added_heads(model, blob["model_state_dict"], _grown)
     if added:
@@ -1949,6 +1979,7 @@ def train_pipeline(
     ref_update_freq: int = 200_000,
     gae_lambda: float = 0.98,
     merged_influence: bool = False,
+    macro_influence: bool = False,
     tensorboard: bool = True,
     lr_schedule: str = "constant",
     lr_schedule_start: Optional[int] = None,
@@ -1975,6 +2006,10 @@ def train_pipeline(
     if int(snapshot_every_steps) <= 0:
         raise ValueError(
             f"snapshot_every_steps must be positive, got {snapshot_every_steps}.")
+    if merged_influence and macro_influence:
+        raise ValueError("--merged-influence and --macro-influence are separate action views; pick one")
+    if macro_influence and not (ladder_config and ladder_config.get("macro_influence")):
+        raise ValueError("--macro-influence needs --arch ladder built with it (its policy covers the 304 slots)")
     if ladder_config and ladder_config.get("head_center") and merged_influence:
         raise ValueError(
             "--ladder-head-center removes the common shift of the country logits, which is "
@@ -2088,6 +2123,25 @@ def train_pipeline(
                 _rb = torch.load(_res_file, map_location="cpu", weights_only=False)
                 merged_from_step = int(_rb["total_env_steps"])
                 del _rb
+    # P42: the same record for the macro view. A base lineage continued in it is grown at its resume step
+    # (ai/models/grow.py); a macro run resumed keeps its source's switch step.
+    macro_from_step = 0
+    grow_macro = False
+    if resume:
+        _src_macro, _src_macro_from = run_macro_view(os.path.dirname(os.path.abspath(resolve_resume(resume))))
+        if _src_macro and not macro_influence:
+            raise ValueError("resuming a --macro-influence run without --macro-influence is not supported: its "
+                             "policy covers slots the base view never offers")
+        if macro_influence:
+            if _src_macro:
+                macro_from_step = _src_macro_from
+            else:
+                _rb = torch.load(resolve_resume(resume), map_location="cpu", weights_only=False)
+                macro_from_step = int(_rb["total_env_steps"])
+                del _rb
+                grow_macro = True
+    if resume_weights and macro_influence:
+        raise ValueError("--resume-weights into the macro view is not supported; branch with --resume")
 
     metadata_path = os.path.join(out_dir, "metadata.json")
     metadata_info = {
@@ -2360,6 +2414,9 @@ def train_pipeline(
         "gae_lambda": gae_lambda,
         "merged_influence": bool(merged_influence),
         "merged_influence_from_step": int(merged_from_step),
+        "macro_influence": bool(macro_influence),
+        "macro_influence_from_step": int(macro_from_step),
+        "resume_grow_macro": bool(grow_macro),
         "description": description or f"Self-play RL training with arch={arch}, reward={reward_scheme}, budget={train_steps:,} steps.",
     }
     if in_place and os.path.isfile(metadata_path):
@@ -2624,6 +2681,7 @@ def train_pipeline(
         setup_explore_frac=setup_explore_frac,
         rollout_temps=rollout_temps,
         merged_influence=merged_influence,
+        macro_influence=macro_influence,
         per_seat_adv_norm=per_seat_adv_norm,
         adv_norm_learner_only=adv_norm_learner_only,
         opponent_temperature=opponent_temperature,
@@ -2753,7 +2811,7 @@ def train_pipeline(
                 continue
             m = LEAGUE_SNAPSHOT_RE.search(os.path.basename(q))
             pool.add(net, int(m.group(1)) if m else 0, merged=checkpoint_merged_influence(q),
-                     path=q, group="league")
+                     path=q, group="league", macro=_is_macro(net))
             added += 1
         if added:
             print(f"[league] +{added} member(s); league group now "
@@ -2771,6 +2829,7 @@ def train_pipeline(
         if opponent_checkpoints:
             _seed_nets = load_pool(opponent_checkpoints, dev)
             _seed_merged = [checkpoint_merged_influence(p) for p in opponent_checkpoints]
+            _seed_macro = [_is_macro(n) for n in _seed_nets]
             _src = f"{len(opponent_checkpoints)} fixed snapshot(s)"
         elif not opponent_self_pool:
             # P24: a pool made only of other runs' snapshots -- the main exploiter's, which plays
@@ -2785,6 +2844,7 @@ def train_pipeline(
             _new = _found[-int(league_pool_size):]
             _seed_nets = load_pool(_new, dev)
             _seed_merged = [checkpoint_merged_influence(p) for p in _new]
+            _seed_macro = [_is_macro(n) for n in _seed_nets]
             _seed_groups = ["league"] * len(_new)
             _seed_steps = [int(m.group(1)) if (m := LEAGUE_SNAPSHOT_RE.search(os.path.basename(q))) else 0
                            for q in _new]
@@ -2848,6 +2908,7 @@ def train_pipeline(
                 # Each member keeps the action view it was trained in (P23): E4-era snapshots of
                 # a lineage continued as E4.1 go on being shown E4 masks.
                 _seed_merged = [checkpoint_merged_influence(p) for p in _seed_paths]
+                _seed_macro = [_is_macro(n) for n in _seed_nets]
                 _span = _seed_steps[-1] - _seed_steps[0]
                 _how = "restored" if _saved_pool else "rebuilt"
                 _src = (f"{len(_seed_nets)} snapshot(s) of this run, spanning "
@@ -2858,6 +2919,7 @@ def train_pipeline(
                 # which is exactly what the pool is made of thereafter.
                 _seed_nets = [_copy.deepcopy(model).to(dev)]
                 _seed_merged = [bool(merged_influence)]
+                _seed_macro = [bool(macro_influence)]
                 _src = "self (seeded from the initial policy)"
                 if resume and not reset_opponent_pool:
                     # For a RESUMED run this branch is never what anyone wanted: the run has a
@@ -2884,6 +2946,7 @@ def train_pipeline(
             pfsp_weighting=opponent_pfsp_weighting,
             pfsp_uniform_mix=opponent_pfsp_uniform_mix,
             merged=_seed_merged,
+            macro=_seed_macro,
             seat_balance=seat_balance,
             seat_balance_max_frac=seat_balance_max_frac,
             groups=_seed_groups,
@@ -2891,10 +2954,11 @@ def train_pipeline(
             league_frac=league_frac,
             obs_features=trainer.obs_features,
         )
-        if any(_seed_merged) or merged_influence:
-            print(f"[opponent pool] action views (P23): learner "
-                  f"{'E4.1' if merged_influence else 'E4'}, members "
-                  f"{sum(_seed_merged)} E4.1 / {len(_seed_merged) - sum(_seed_merged)} E4", flush=True)
+        if any(_seed_merged) or any(_seed_macro) or merged_influence or macro_influence:
+            print(f"[opponent pool] action views (P23 / P42): learner "
+                  f"{'E4.1' if merged_influence else 'macro' if macro_influence else 'E4'}, members "
+                  f"{sum(_seed_merged)} E4.1 / {sum(_seed_macro)} macro / "
+                  f"{len(_seed_merged) - sum(_seed_merged) - sum(_seed_macro)} E4", flush=True)
         if opponent_self_pool and not opponent_checkpoints and _saved_pool:
             trainer.opponent_pool.load_state_dict(_saved_pool, _seed_steps, _seed_paths)
         elif _seed_groups is not None:
@@ -3079,7 +3143,7 @@ def train_pipeline(
         src = resolve_resume(resume)
         state = load_resume_state(src, model, trainer, seed=seed, widen=resume_widen,
                                   grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head,
-                                  grow_sphere=resume_grow_sphere)
+                                  grow_sphere=resume_grow_sphere, grow_macro=grow_macro)
         _ema_state = state.get("ema_state_dict")
         # --seed-env drives the game seeds: restore the generator a continuation saved; a state without one (written
         # before it existed, or a branch under another seed) keys a fresh one by the seed and the step, so two resume
@@ -3163,6 +3227,7 @@ def train_pipeline(
     evaluate_and_log_snapshot(
         model=model,
         merged_influence=merged_influence,
+        macro_influence=macro_influence,
         forced_opening=forced_opening,
         opponents=opponents,
         elapsed_seconds=0,
@@ -3503,7 +3568,8 @@ def train_pipeline(
                                                 weights_only=True))
                 trainer.opponent_pool.add(_opp.to(dev), total_env_steps,
                                           merged=bool(merged_influence),
-                                          path=os.path.abspath(member_path))
+                                          path=os.path.abspath(member_path),
+                                          macro=bool(macro_influence))
             except Exception as _e:
                 # A pool that fails to grow is a degraded experiment, not a dead one --
                 # say so loudly and keep training rather than losing the run.
@@ -3536,6 +3602,7 @@ def train_pipeline(
             decisive = evaluate_and_log_snapshot(
                 model=rated,
                 merged_influence=merged_influence,
+                macro_influence=macro_influence,
                 forced_opening=forced_opening,
                 opponents=opponents,
                 elapsed_seconds=int(elapsed),
@@ -3580,6 +3647,7 @@ def train_pipeline(
     evaluate_and_log_snapshot(
         model=rated,
         merged_influence=merged_influence,
+        macro_influence=macro_influence,
         forced_opening=forced_opening,
         opponents=opponents,
         elapsed_seconds=int(time.time() - t_start),

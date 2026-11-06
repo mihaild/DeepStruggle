@@ -434,6 +434,7 @@ class BaseNashPGTrainer:
         setup_explore_frac: float = 0.0,
         rollout_temps: Optional[Sequence[float]] = None,
         merged_influence: bool = False,
+        macro_influence: bool = False,
         per_seat_adv_norm: bool = False,
         opponent_temperature: Optional[float] = None,
         adv_norm_learner_only: bool = False,
@@ -530,6 +531,12 @@ class BaseNashPGTrainer:
         # `_apply_views`. The searcher builds E4 masks for its targets, so the two are not
         # combined until it learns the other view -- refused here rather than mis-targeted.
         self.merged_influence = bool(merged_influence)
+        # P42: the learner decides in the macro view (the until-control slots); exclusive with the merged view.
+        self.macro_influence = bool(macro_influence)
+        if self.merged_influence and self.macro_influence:
+            raise ValueError("--merged-influence and --macro-influence are separate action views; pick one")
+        #: The learner's action view as the runner takes it: 0 E4, 1 merged (E4.1), 2 macro (P42).
+        self.action_view = 1 if self.merged_influence else 2 if self.macro_influence else 0
         # R49 (P33): the rollout root's greedy-continuation value as v_win's target, with no policy target.
         rollout_values = search_rollout_horizon > 0 and search_value_beta > 0.0 and search_ce_coef <= 0.0
         if rollout_values and (search_gumbel_k > 0 or search_workers > 0 or search_teacher_policy):
@@ -553,6 +560,9 @@ class BaseNashPGTrainer:
         if self.merged_influence and (search_ce_coef > 0.0 or search_value_beta > 0.0):
             raise ValueError("--merged-influence with search CE is not supported: the searcher's "
                              "targets are built in the E4 view (P23)")
+        if self.macro_influence and (search_ce_coef > 0.0 or search_value_beta > 0.0):
+            raise ValueError("--macro-influence with search CE is not supported: the searcher's "
+                             "targets are built in the E4 view (P42)")
 
         if reference_net is not None:
             self.reference_net = reference_net.to(self.device)
@@ -1026,9 +1036,9 @@ class BaseNashPGTrainer:
         self._cf_has: Optional[torch.Tensor] = None
         self._cf_stats: Dict[str, float] = {}
         if self.mode_cf_coef > 0.0:
-            if self.merged_influence:
-                raise ValueError("--mode-cf-coef with --merged-influence is not supported: the "
-                                 "playouts step E4 actions")
+            if self.merged_influence or self.macro_influence:
+                raise ValueError("--mode-cf-coef with --merged-influence or --macro-influence is not supported: "
+                                 "the playouts step E4 actions")
             self.mode_cf = ModeCounterfactual(int(mode_cf_subsample), int(mode_cf_playouts),
                                               auto_advance=bool(getattr(self.env, "_auto_advance", True)),
                                               obs_features=int(model_obs_features(self.active_net)))
@@ -1039,9 +1049,9 @@ class BaseNashPGTrainer:
         # turn at each rollout's end; their improved targets trained on after each PPO update.
         self.turn_credit: Optional[TurnCredit] = None
         if turn_credit_coef > 0.0:
-            if self.merged_influence:
-                raise ValueError("--turn-credit-coef with --merged-influence is not supported: the "
-                                 "pricing steps E4 actions")
+            if self.merged_influence or self.macro_influence:
+                raise ValueError("--turn-credit-coef with --merged-influence or --macro-influence is not "
+                                 "supported: the pricing steps E4 actions")
             self.turn_credit = TurnCredit(
                 turn_credit_coef, budget=turn_credit_budget, worlds=turn_credit_worlds, beta=turn_credit_beta,
                 k_se=turn_credit_k, floor=turn_credit_floor, nested_p=turn_credit_nested_p,
@@ -1213,24 +1223,24 @@ class BaseNashPGTrainer:
             self._sg.refresh(self.reference_net)
         print(f"\n[NashPG Outer Loop] Updated reference policy π_ref at {self.total_env_steps:,} total steps (Round {self.total_iterations})", flush=True)
 
-    def _side_views(self, env_idx: int) -> Tuple[bool, bool]:
-        """(US decides merged, USSR decides merged) for one env this iteration."""
-        mine = self.merged_influence
+    def _side_views(self, env_idx: int) -> Tuple[int, int]:
+        """(US's action view, USSR's action view) for one env this iteration: 0 E4, 1 merged, 2 macro."""
+        mine = self.action_view
         pool = self.opponent_pool
         if pool is None or not pool.is_mixed[env_idx]:
             return mine, mine
-        theirs = bool(pool.current_merged)
+        theirs = int(pool.current_view)
         return (mine, theirs) if int(pool.learner_side[env_idx]) == 1 else (theirs, mine)
 
-    def _uniform_view(self) -> Optional[bool]:
-        """The single view every side of every env is in, or None when they differ."""
+    def _uniform_view(self) -> Optional[int]:
+        """The single action view every side of every env is in, or None when they differ."""
         pool = self.opponent_pool
-        if pool is None or not pool.is_mixed.any() or bool(pool.current_merged) == self.merged_influence:
-            return self.merged_influence
+        if pool is None or not pool.is_mixed.any() or int(pool.current_view) == self.action_view:
+            return self.action_view
         return None
 
     def _apply_views(self) -> None:
-        """P23: point every env's two sides at the right action view for this iteration.
+        """P23 / P42: point every env's two sides at the right action view for this iteration.
 
         A no-op for an all-E4 run, so E4 training is untouched. The env skips a runner call when
         nothing changed, and a uniform view is set in one call.
@@ -1239,22 +1249,22 @@ class BaseNashPGTrainer:
             return
         uniform = self._uniform_view()
         if uniform is not None:
-            if uniform or self.env.merged_us.any() or self.env.merged_ussr.any():
-                if not (np.all(self.env.merged_us == uniform) and np.all(self.env.merged_ussr == uniform)):
-                    self.env.set_merged_influence(uniform, uniform)
+            if uniform or self.env.view_us.any() or self.env.view_ussr.any():
+                if not (np.all(self.env.view_us == uniform) and np.all(self.env.view_ussr == uniform)):
+                    self.env.set_action_views(uniform, uniform)
             return
-        us = np.zeros(self.num_envs, dtype=bool)
-        ussr = np.zeros(self.num_envs, dtype=bool)
+        us = np.zeros(self.num_envs, dtype=np.int8)
+        ussr = np.zeros(self.num_envs, dtype=np.int8)
         for i in range(self.num_envs):
             us[i], ussr[i] = self._side_views(i)
-        self.env.set_merged_influence(us, ussr)
+        self.env.set_action_views(us, ussr)
 
     def _apply_view_env(self, env_idx: int) -> None:
-        if self.env is None or (not self.merged_influence and self.opponent_pool is not None
-                                and not any(self.opponent_pool.merged)):
+        if self.env is None or (self.action_view == 0 and self.opponent_pool is not None
+                                and not any(self.opponent_pool.merged) and not any(self.opponent_pool.macro)):
             return
         us, ussr = self._side_views(env_idx)
-        self.env.set_merged_influence_env(env_idx, us, ussr)
+        self.env.set_action_views_env(env_idx, us, ussr)
 
     def _update_entropy_ceiling(self, metrics: Dict[str, Any]) -> None:
         """3k: move each seat's entropy coefficient toward keeping its rollout entropy at or below

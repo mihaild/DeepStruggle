@@ -4,6 +4,7 @@
 #include "ts/card_data.hpp"
 #include "ts/card_handlers.hpp"
 #include "ts/ops.hpp"
+#include "ts/scoring.hpp"
 #include "ts/space_race.hpp"
 #include "ts/state_machine.hpp"
 #include <cstring>
@@ -771,6 +772,37 @@ bool ActionMask::is_merged_influence_action(const GameState& state, uint16_t act
            (is_node_slot(action_idx) || action_idx == flat_slots::OPS_INFLUENCE);
 }
 
+int ActionMask::apply_macro_expansion(GameState& state, uint8_t country) noexcept {
+    if (country >= flat_slots::NODE_COUNT || state.ctx().decision_type != DecisionType::POINT_NODE) return 0;
+    const Player side = state.ctx().decision_player;
+    int placed = 0;
+    // A country takes at most a stability's worth plus the opponent's influence; 64 bounds any
+    // play by far, and only guards against a step that is accepted without ever ending.
+    for (int guard = 0; guard < 64; ++guard) {
+        const MicroAction point = decode_flat_action_212(state, flat_slots::NODE + country);
+        if (!StateMachine::step(state, point)) break;
+        ++placed;
+        if (is_game_over(state)) break;
+        if (state.ctx().decision_type != DecisionType::POINT_NODE || state.ctx().decision_player != side) break;
+        if (Scoring::get_country_control(state, country) == side) break;
+    }
+    return placed;
+}
+
+void ActionMask::generate_flat_mask_macro(const GameState& state, uint8_t* mask) noexcept {
+    generate_flat_mask_212(state, mask);
+    if (!mask || state.ctx().decision_type != DecisionType::POINT_NODE) return;
+    for (uint8_t c = 0; c < flat_slots::NODE_COUNT; ++c) {
+        if (!mask[flat_slots::NODE + c]) continue;
+        GameState copy = state;
+        if (apply_macro_expansion(copy, c) >= 2) mask[flat_slots::MACRO_NODE + c] = 1;
+    }
+}
+
+bool ActionMask::is_macro_action(uint16_t action_idx) noexcept {
+    return action_idx >= flat_slots::MACRO_NODE && action_idx < flat_slots::MACRO_NODE + flat_slots::NODE_COUNT;
+}
+
 MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t action_idx) noexcept {
     const auto& ctx = state.ctx();
 
@@ -823,7 +855,7 @@ MicroAction ActionMask::decode_flat_action_212(const GameState& state, uint16_t 
                            static_cast<uint8_t>(action_idx - flat_slots::DEFCON_VALUE + 1),
                            0, action_flags::DEFCON_VALUE};
     }
-    if (action_idx >= flat_slots::REGION && action_idx < flat_slots::SIZE) {
+    if (action_idx >= flat_slots::REGION && action_idx < flat_slots::BASE_SIZE) {
         return MicroAction{DecisionType::CHOOSE_BRANCH,
                            static_cast<uint8_t>(action_idx - flat_slots::REGION),
                            0, action_flags::REGION};

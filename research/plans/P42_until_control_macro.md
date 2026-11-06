@@ -71,19 +71,32 @@ influence view cost 235 Elo on A2).
 The owner (2026-11-06): in-place growth has worked, so grow from J5 rather than start from scratch.
 
 * Branch at a J5 resume state chosen at the 800M decision: the policy head's dense output grows 220 → 304 with the
-  84 new rows at weight 0, bias **−10**, and the per-entity country correction emits a second (zero-initialised)
-  output for the macro slot; every base logit is unchanged, so the network starts as J5 (macro probability
-  ~e^-10 against the base options). The zero-avoiding term then lifts the macro slots to the floor -- the
-  exploration this is for.
+  84 new rows at weight 0, bias **−12** (−10 in the first draft: it left up to 1.8e-4 of probability on the macro
+  slots at J5's 700M positions, past the identity bar below; −12 leaves 3.7e-5), and a per-country macro head
+  (`pe_macro`, zero output layer) beside the one-point correction; every base logit is unchanged, so the network
+  starts as J5. The zero-avoiding term then lifts the macro slots to the floor -- the exploration this is for.
 * Identity test before launch: on positions from J5 self-play, base-slot log-probs equal J5's to float tolerance and
   the macro slots' total probability is < 1e-4.
-* Name: a view was an engine sub-version (E4.1), so `E8.1-A35-R102-S44@<step>M+…` by precedent; the owner
-  confirms the name and the R code at launch (`run_codes --update` / `--run`).
+* Name: a view was an engine sub-version (E4.1); the run-name grammar takes it as a change field, so the branch is
+  `E8-A35-R102-S44@<step>M+E8.1` (`E8.1-A35-…@…` is refused for a branch); the owner confirms the name and the R
+  code at launch (`run_codes --update` / `--run`).
 * Reads at +200 / +400 / +800M against J5 proper's continuation at matched steps; the 60M-style checks against J5's
   own numbers (per-update KL, entropy, head rank).
 * What the macro should move, read at each step: West Germany's setup probability and share of sampled setups
   (`wg_prob.py`), the continuation probe, uncontrolled battlegrounds at turn 8, Europe-control endings by side, and
   the share of placements spent through the macro.
+
+## Build (2026-11-06)
+
+Built and merged onto main's ENG-8 (`tools/train.py --macro-influence`; `--resume` from a base state grows it):
+the engine view and its C++ tests (443 pass, 10,000 fuzz games), the bindings (an int view per env and side), the
+304-wide flat space with base models padded at the mask (`pad_to_mask`; stored dataset masks stay 220 bits), LadderNet's
+macro head, the pool / env / trainer / agents / tournament / ONNX export / web page in the deciding agent's view, and
+growth (`ai/models/grow.py`). Checks: identity on J5's 700M weights over 19,200 decisions (base log-probs bit-identical,
+macro mass <= 3.7e-5); a CPU branch from J5 700M grew, restored J5's pool, trained and played its matches in the view,
+and its resume kept the switch step without regrowing; the page's until-control move reaches the engine's position
+(`tests/web/test_wasm_engine.py`); 3,625 seeded base-view games are bit-identical to the ENG-8 build's, so E8 accepts
+the new digest. Not launched: the branch waits for the owner.
 
 ## Rejected: merging card and play mode
 

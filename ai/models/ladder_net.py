@@ -41,7 +41,7 @@ from ai.models.hyperspherical import SphereTrunk
 from bindings.action_encoder import ActionEncoder
 
 #: The branch block of the flat action space (event branches, CONFIRM_DONE, DEFCON values, regions).
-BRANCH_BLOCK = ActionEncoder.FLAT_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET
+BRANCH_BLOCK = ActionEncoder.BASE_ACTION_SIZE - ActionEncoder.BRANCH_OFFSET
 #: The play-mode block (EVENT, SPACE, OPS_INFLUENCE, OPS_COUP, OPS_REALIGN).
 PLAY_MODE_BLOCK = 5
 #: Card-feature slot 13: 1.0 for the card the decision is about (engine/include/ts/game_state.hpp).
@@ -214,6 +214,7 @@ class LadderNet(ColdWarNetV2):
                  token_heads: int = 4,
                  token_mlp_mult: int = 2,
                  token_card_memory: int = 0,
+                 macro_influence: bool = False,
                  region_attn_dim: int = 0,
                  region_attn_heads: int = 4,
                  **kwargs: Any) -> None:
@@ -336,6 +337,9 @@ class LadderNet(ColdWarNetV2):
         #: The asymmetric layout (owner, 2026-11-04): this many hand slots as active card tokens, the 110 cards as a
         #: read-only memory. 0 = every card a token (the 195-token layout).
         self.token_card_memory = int(token_card_memory)
+        #: P42: the network decides in the macro view -- its policy covers the 84 until-control slots too.
+        self.macro_influence = bool(macro_influence)
+        self.pe_macro: nn.Sequential | None = None
         self.tok_empty_slot: nn.Parameter | None = None
         if self.token_main:
             setattr(self, "global_proj", None)
@@ -503,13 +507,21 @@ class LadderNet(ColdWarNetV2):
             self.pe_card = (nn.Sequential(nn.Linear(tok_w + c_raw + ctx_w, k), nn.GELU(),
                                           nn.Linear(k, 1))
                             if self.head_entities in ("both", "card") else None)
-            for head in (self.pe_country, self.pe_card):
+            if self.macro_influence and self.pe_country is not None:
+                # The until-control slot of each country, read from that country's own input and the trunk
+                # context, like its one-point slot: "take it" and "one point" are separate judgements.
+                self.pe_macro = nn.Sequential(nn.Linear(tok_w + b_raw + ctx_w, k), nn.GELU(), nn.Linear(k, 1))
+            for head in (self.pe_country, self.pe_card, self.pe_macro):
                 if head is None:
                     continue
                 out = head[-1]
                 assert isinstance(out, nn.Linear)
                 nn.init.zeros_(out.weight)
                 nn.init.zeros_(out.bias)
+        if self.macro_influence:
+            last = self.policy_head[-1]
+            assert isinstance(last, nn.Linear)
+            self.policy_head[-1] = nn.Linear(last.in_features, ActionEncoder.FLAT_ACTION_SIZE)
         # --ladder-head-center: the per-entity heads' hidden features are centred across entities
         # before the final projection, so a head's output has no common component except its
         # final bias. In E4 a decision's legal set never mixes countries with non-country actions,
@@ -909,6 +921,7 @@ class LadderNet(ColdWarNetV2):
             **({"token_main": True, "token_heads": self.token_heads, "token_mlp_mult": self.token_mlp_mult}
                if self.token_main else {}),
             **({"token_card_memory": self.token_card_memory} if self.token_card_memory else {}),
+            **({"macro_influence": True} if self.macro_influence else {}),
         )
 
 
@@ -959,9 +972,9 @@ class LadderNet(ColdWarNetV2):
               else zero.expand(logits.shape[0], PLAY_MODE_BLOCK))
         br = (self._mlp_head("branch_head_net", x).to(logits.dtype) if self.branch_head
               else zero.expand(logits.shape[0], BRANCH_BLOCK))
-        a, b = ActionEncoder.PLAY_MODE_OFFSET, ActionEncoder.BRANCH_OFFSET
+        a, b, e = ActionEncoder.PLAY_MODE_OFFSET, ActionEncoder.BRANCH_OFFSET, ActionEncoder.BASE_ACTION_SIZE
         return torch.cat([logits[:, :a], logits[:, a:a + PLAY_MODE_BLOCK] + pm,
-                          logits[:, a + PLAY_MODE_BLOCK:b], logits[:, b:] + br], dim=-1)
+                          logits[:, a + PLAY_MODE_BLOCK:b], logits[:, b:e] + br, logits[:, e:]], dim=-1)
 
     def _entity_policy_logits(self, h: torch.Tensor,
                               tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
@@ -992,7 +1005,7 @@ class LadderNet(ColdWarNetV2):
         card_block = base[:, :_A.PLAY_MODE_OFFSET]
         gap_mid = base[:, _A.PLAY_MODE_OFFSET:_A.NODE_OFFSET] * 0.0
         country_block = base[:, _A.NODE_OFFSET:_A.BRANCH_OFFSET]
-        gap_end = base[:, _A.BRANCH_OFFSET:] * 0.0
+        gap_end = base[:, _A.BRANCH_OFFSET:_A.BASE_ACTION_SIZE] * 0.0
 
         card_corr = (self._entity_out(self.pe_card, torch.cat([h_cards, card_nodes], dim=-1), ctx,
                                       self._head_norm("pe_card"))
@@ -1002,7 +1015,12 @@ class LadderNet(ColdWarNetV2):
             country_in = self.region_attn(country_in)
         country_corr = (self._entity_out(self.pe_country, country_in, ctx, self._head_norm("pe_country"))
                         if self.pe_country is not None else country_block * 0.0)
-        return base + torch.cat([card_corr, gap_mid, country_corr, gap_end], dim=-1)
+        parts = [card_corr, gap_mid, country_corr, gap_end]
+        if base.shape[-1] > _A.BASE_ACTION_SIZE:      # P42's until-control slots
+            macro_block = base[:, _A.BASE_ACTION_SIZE:]
+            parts.append(self._entity_out(self.pe_macro, country_in, ctx, None)
+                         if self.pe_macro is not None else macro_block * 0.0)
+        return base + torch.cat(parts, dim=-1)
 
     # ----------------------------------------------------------------- encoder
 
@@ -1285,6 +1303,8 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
             "token_mlp_mult": int(sd["tok_main.blocks.0.mlp_card.0.weight"].shape[0]) // token_dim}
            if token_main else {}),
         **({"token_card_memory": int(sd["tok_mem_slots_buf"])} if "tok_mem_slots_buf" in sd else {}),
+        **({"macro_influence": True}
+           if int(sd["policy_head.3.weight"].shape[0]) > ActionEncoder.BASE_ACTION_SIZE else {}),
     )
 
 def create_ladder_net(device: torch.device | str, **config: Any) -> LadderNet:

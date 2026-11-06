@@ -105,7 +105,7 @@ _LADDER = {
 #: neither this set nor `_LADDER` is a setting the diff cannot see, and fails the command.
 _LADDER_NOT_FLAGS = frozenset({
     "num_attn_heads", "aux_heads", "card_aux", "opp_legal_aux", "obs_features",
-    "per_entity_heads", "identity_dim", "drop_static", "categorical_value",
+    "per_entity_heads", "identity_dim", "drop_static", "categorical_value", "macro_influence",
 })
 
 

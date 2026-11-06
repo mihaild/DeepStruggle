@@ -88,6 +88,7 @@ class OpponentPool:
                  capacity: int = 12, pfsp: bool = False, pfsp_weighting: str = "var",
                  pfsp_uniform_mix: float = 0.25, pfsp_prior: float = 4.0,
                  merged: Optional[Sequence[bool]] = None,
+                 macro: Optional[Sequence[bool]] = None,
                  seat_balance: bool = False, seat_balance_max_frac: float = 0.8,
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
                  league_frac: Optional[float] = None, obs_features: Optional[int] = None) -> None:
@@ -148,6 +149,12 @@ class OpponentPool:
         if merged is not None and len(merged) != len(self.nets):
             raise ValueError("merged must give one flag per seed net")
         self.merged: List[bool] = [bool(x) for x in merged] if merged is not None else [False] * len(self.nets)
+        #: P42: whether each member decides in the macro view (the until-control slots), parallel to self.nets.
+        if macro is not None and len(macro) != len(self.nets):
+            raise ValueError("macro must give one flag per seed net")
+        self.macro: List[bool] = [bool(x) for x in macro] if macro is not None else [False] * len(self.nets)
+        if any(a and b for a, b in zip(self.merged, self.macro)):
+            raise ValueError("a pool member cannot decide in both the merged and the macro view")
         #: "self" for the run's own history, "league" for another run's snapshots (P24).
         self.groups: List[str] = [str(g) for g in groups] if groups is not None else ["self"] * len(self.nets)
         self.league_capacity = int(league_capacity)
@@ -192,6 +199,12 @@ class OpponentPool:
         self.current: Any = self.nets[0]
         self.current_id: int = self.ids[0]
         self.current_merged: bool = self.merged[0]
+        self.current_macro: bool = self.macro[0]
+
+    @property
+    def current_view(self) -> int:
+        """The action view of the current opponent: 0 E4, 1 merged (E4.1), 2 macro (P42)."""
+        return 1 if self.current_merged else 2 if self.current_macro else 0
 
     def _check_obs_features(self, net: Any) -> None:
         actual = model_obs_features(net)
@@ -292,7 +305,7 @@ class OpponentPool:
         return 1 if self.rng.random() < 0.5 else -1
 
     def add(self, net: Any, steps: int, merged: bool = False, path: str = "",
-            group: str = "self") -> None:
+            group: str = "self", macro: bool = False) -> None:
         """Add a snapshot taken at `steps`, evicting to stay within capacity.
 
         The net is frozen in place. Callers pass a freshly loaded copy, not the live training
@@ -311,6 +324,7 @@ class OpponentPool:
         self.steps.append(int(steps))
         self.paths.append(str(path))
         self.merged.append(bool(merged))
+        self.macro.append(bool(macro))
         self.groups.append(group)
         self._register()
 
@@ -341,6 +355,7 @@ class OpponentPool:
         self.steps.pop(victim)
         self.paths.pop(victim)
         self.merged.pop(victim)
+        self.macro.pop(victim)
         self.groups.pop(victim)
         dead = self.ids.pop(victim)
         self.wins.pop(dead, None)
@@ -381,6 +396,7 @@ class OpponentPool:
         self.current = self.nets[idx]
         self.current_id = self.ids[idx]
         self.current_merged = self.merged[idx]
+        self.current_macro = self.macro[idx]
         for i in range(self.num_envs):
             if self.is_mixed[i]:
                 env = self._exposure[i]
@@ -535,6 +551,7 @@ class OpponentPool:
         self.current = self.nets[0]
         self.current_id = self.ids[0]
         self.current_merged = self.merged[0]
+        self.current_macro = self.macro[0]
 
     def learner_acts(self, decision_players: np.ndarray) -> np.ndarray:
         """Per environment: is the learner the one to move?

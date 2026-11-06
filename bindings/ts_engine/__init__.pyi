@@ -703,21 +703,21 @@ class Engine:
     def get_legal_action_indices(arg: GameState, /) -> list: ...
 
     @staticmethod
-    def get_flat_action_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]:
+    def get_flat_action_mask(state: GameState, merged_influence: bool = False, macro_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]:
         """
-        The flat legal mask. merged_influence=True is the E4.1 view (P23): at an op-choice node, NODE slot X means 'influence, first point in X'.
+        The flat legal mask. merged_influence=True is the E4.1 view (P23): at an op-choice node, NODE slot X means 'influence, first point in X'. macro_influence=True is P42's: at a POINT_NODE, MACRO_NODE + c means 'place in c until control', offered where it differs from one point.
         """
 
     @staticmethod
-    def try_step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False) -> bool:
+    def try_step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False, macro_influence: bool = False) -> bool:
         """
         Advance one flat action, returning False if the engine refuses it. For probing only.
         """
 
     @staticmethod
-    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False) -> None:
+    def step_flat(state: GameState, action_idx: int, auto_advance: bool = False, merged_influence: bool = False, macro_influence: bool = False) -> None:
         """
-        Advance one flat action, raising RuntimeError if the engine refuses it. merged_influence=True applies a composed E4.1 action as the two E4 steps it names.
+        Advance one flat action, raising RuntimeError if the engine refuses it. merged_influence=True applies a composed E4.1 action as the two E4 steps it names; macro_influence=True applies an until-control slot as the one-point steps that define it.
         """
 
     @staticmethod
@@ -1127,7 +1127,7 @@ def state_from_save_json(text: str) -> GameState:
     state_from_save_dict for the JSON text to_save_json writes (or any JSON of that shape). Raises ValueError for text that is not JSON or not a save.
     """
 
-def get_flat_action_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+def get_flat_action_mask(state: GameState, merged_influence: bool = False, macro_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
 
 def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction:
     """
@@ -1167,7 +1167,7 @@ OBS_SIZE_V23: int = 3824
 
 OBS_SIZE: int = 3824
 
-FLAT_ACTION_SPACE_SIZE: int = 220
+FLAT_ACTION_SPACE_SIZE: int = 304
 
 FLAT_CARD: int = 0
 
@@ -1187,14 +1187,21 @@ FLAT_DEFCON_VALUE: int = 209
 
 FLAT_REGION: int = 214
 
+FLAT_BASE_SIZE: int = 220
+
+FLAT_MACRO_NODE: int = 220
+
 BUILD_COMPILER: str
 
 class ActionMask:
     @staticmethod
-    def generate_flat_mask(state: GameState, merged_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
+    def generate_flat_mask(state: GameState, merged_influence: bool = False, macro_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
 
     @staticmethod
     def is_merged_influence_action(arg0: GameState, arg1: int, /) -> bool: ...
+
+    @staticmethod
+    def is_macro_action(arg: int, /) -> bool: ...
 
     @staticmethod
     def decode_flat_action(arg0: GameState, arg1: int, /) -> MicroAction: ...
@@ -1291,6 +1298,13 @@ class VectorizedBatchRunner:
         """
         P23 / E4.1: per env and side, whether that side decides in the merged-influence view. Rebuilds the cached masks.
         """
+
+    def set_action_views(self, us: Sequence[int], ussr: Sequence[int]) -> None:
+        """
+        Per env and side, the action view that side decides in: 0 E4, 1 merged (E4.1, P23), 2 macro (P42: the until-control slots). Masks are rebuilt; steps apply each view's composed actions.
+        """
+
+    def set_action_views_env(self, idx: int, us: int, ussr: int) -> None: ...
 
     def set_merged_influence_env(self, env_index: int, us: bool, ussr: bool) -> None:
         """

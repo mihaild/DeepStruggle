@@ -64,6 +64,16 @@ bool CachedState::step_flat(uint16_t action_idx, bool merged_influence) noexcept
     return step(ActionMask::decode_flat_action_212(state_, action_idx));
 }
 
+bool CachedState::step_flat(uint16_t action_idx, ActionView view) noexcept {
+    if (view == ActionView::MERGED) return step_flat(action_idx, true);
+    if (view == ActionView::MACRO && ActionMask::is_macro_action(action_idx)) {
+        bool ok = false;
+        modify([&](GameState& g) { ok = Engine::step_flat(g, action_idx, false, ActionView::MACRO); });
+        return ok;
+    }
+    return step_flat(action_idx, false);
+}
+
 size_t CachedState::auto_advance(size_t max_steps) noexcept {
     size_t advanced = 0;
     bool final_mask = false;

@@ -924,7 +924,8 @@ export class TSApp {
     this.analysisPanel.setLoading(pick.source);
     try {
       const engine = this.engine!;
-      const m = await Model.fetch(pick.source, f => engine.obsSizeFor(f), engine.actionSize, pick.bytes);
+      const m = await Model.fetch(pick.source, f => engine.obsSizeFor(f), engine.actionSize, pick.bytes,
+                                  engine.baseActionSize);
       // The file's own hash names the model in a game's record: a revision like `main` moves.
       const sha = await sha256Hex(m.bytes).catch(() => "");
       if (load !== this.modelLoads) return;   // another pick superseded this one
@@ -1315,7 +1316,8 @@ export class TSApp {
     }
     this.noteSettings();
     const how = this.moveHow(auto ? "auto" : "suggested");
-    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false, forcedDie, how);
+    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false, forcedDie, how,
+                                       this.model?.meta.macroInfluence ?? false);
     if (why) {
       this.refused(why);
       return;

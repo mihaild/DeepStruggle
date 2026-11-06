@@ -37,6 +37,12 @@ are cited from elsewhere; keep them.
     `set_merged_influence_env(i, us, ussr)`) because a tournament can seat an E4 and an E4.1 agent in
     one game; its cached mask is built for whoever decides next. Off everywhere by default (exactly
     E4); `TsVectorizedEnv` keeps the flags across `reset_all(base_seed)`.
+  - **The macro view** (P42, [`engine/AGENTS.md`](../engine/AGENTS.md) §4): `macro_influence=False` beside
+    `merged_influence` on the same calls, `ActionMask.is_macro_action`, `FLAT_BASE_SIZE` (220) and `FLAT_MACRO_NODE`.
+    Every mask is **304** wide (`ActionEncoder.FLAT_ACTION_SIZE`; `BASE_ACTION_SIZE` is 220); a base network still
+    outputs 220 logits and `pad_to_mask` fills the rest with the mask's fill, so base checkpoints run unchanged.
+    Stored dataset masks stay 220 bits. The runner's per-env, per-side view is an int (0 E4, 1 merged, 2 macro):
+    `set_action_views(us, ussr)` / `set_action_views_env(i, us, ussr)`; `set_merged_influence*` remain as wrappers.
   - **Game seeds** (`TsVectorizedEnv`): `base_seed` seeds each env's first game; every later game's seed comes
     from `next_game_seed()` -- the env's own generator when it was built with `game_seed` (training passes
     `--seed-env`; `game_rng_state` / `set_game_rng_state` carry it through a resume), else the global numpy RNG,
@@ -270,8 +276,8 @@ are cited from elsewhere; keep them.
 - [`ts_env.py`](ts_env.py): `TsVectorizedEnv`, the batch-runner environment for PyTorch RL loops;
   `check_obs_width(model)`, `model_obs_features(model)`, and the view helpers every harness builds a
   model's inputs with: `observe(state, player, features)` (the observation in a feature set),
-  `legal_mask(state, merged_influence)` (the mask in an action view) and `agent_view(agent)` ->
-  `AgentView(features, merged_influence)`. A bare `ts.extract_observation` is the feature set 0 and
+  `legal_mask(state, merged_influence, macro_influence=False)` (the mask in an action view) and `agent_view(agent)` ->
+  `AgentView(features, merged_influence, macro_influence)`. A bare `ts.extract_observation` is the feature set 0 and
   nothing refuses it for a featured model: `HEADLINE_REVEAL` (the E8 default) has no width, so the
   base observation loads, runs and misreads. Per env and side, `TsVectorizedEnv.set_obs_features`,
   `set_merged_influence` and `set_capture_predeal` survive `reset_all(base_seed)`, and

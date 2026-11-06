@@ -13,7 +13,8 @@ def test_the_late_slots_have_names() -> None:
     assert not [n for n in names if n.startswith("UnknownAction")]
     assert names[ActionEncoder.DEFCON_VALUE_OFFSET] == "SetDEFCON 1"
     assert names[ActionEncoder.REGION_OFFSET] == "Region #0 (Europe)"
-    assert names[ActionEncoder.FLAT_ACTION_SIZE - 1] == f"Region #5 ({REGION_NAMES[5]})"
+    assert names[ActionEncoder.BASE_ACTION_SIZE - 1] == f"Region #5 ({REGION_NAMES[5]})"
+    assert names[ActionEncoder.MACRO_NODE_OFFSET + 7].startswith("UntilControl #7 (")
 
 
 def test_region_names_follow_the_engine_enum() -> None:

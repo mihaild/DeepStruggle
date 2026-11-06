@@ -12,6 +12,7 @@ must know before it runs a model travels inside the file, as ONNX metadata_props
     ts.obs_size           observation width the network reads -- the page refuses a mismatch
     ts.action_size        flat action space width
     ts.merged_influence   "true" for an E4.1 (P23) network, which decides in the merged view
+    ts.macro_influence    "true" for a P42 network, which decides in the macro view (ts.action_size 304)
     ts.label              run-attributed name, e.g. "E4-08-03-160M.11@240M"
     ts.checkpoint         the checkpoint's run/file name, and ts.checkpoint_sha256 its digest
     ts.engine_fingerprint the engine sources this export was made next to
@@ -56,10 +57,10 @@ class ExportRefused(RuntimeError):
     """The export would not be the checkpoint."""
 
 
-def _positions(n: int, merged: bool, features: int,
+def _positions(n: int, merged: bool, features: int, macro: bool = False,
                seed: int = 20260925) -> Tuple[np.ndarray, np.ndarray]:
     """Real decision nodes from random games, in the network's own view: observations in its
-    feature set, masks in its action view."""
+    feature set, masks in its action view and at its width (a base network's are the 220 base slots)."""
     rng = random.Random(seed)
     obs: List[np.ndarray] = []
     masks: List[np.ndarray] = []
@@ -72,7 +73,8 @@ def _positions(n: int, merged: bool, features: int,
             p = s.ctx().decision_player
             if p != ts.Player.NONE and rng.random() < 0.25:
                 obs.append(observe(s, p, features))
-                masks.append(legal_mask(s, merged, None))
+                m = legal_mask(s, merged, None, macro)
+                masks.append(m if macro else m[:ActionEncoder.BASE_ACTION_SIZE])
             ts.Engine.step_flat(s, rng.choice(ActionEncoder.get_legal_indices(s)))
             drain_chance(s)
         game += 1
@@ -91,7 +93,7 @@ def export(checkpoint: str, out: str, *, positions: int = 128) -> Dict[str, str]
     """Write `checkpoint` as ONNX to `out`, verified. Returns the metadata written."""
     agent = NeuralAgent.from_checkpoint(checkpoint, device="cpu")
     model = agent.model.eval()
-    obs, masks = _positions(positions, agent.merged_influence, agent.obs_features)
+    obs, masks = _positions(positions, agent.merged_influence, agent.obs_features, agent.macro_influence)
     obs_t, masks_t = torch.from_numpy(obs), torch.from_numpy(masks)
 
     with torch.no_grad():
@@ -107,8 +109,9 @@ def export(checkpoint: str, out: str, *, positions: int = 128) -> Dict[str, str]
     meta = {
         "ts.format": FORMAT,
         "ts.obs_size": str(int(ts.obs_size_for(agent.obs_features))),
-        "ts.action_size": str(int(ActionEncoder.FLAT_ACTION_SIZE)),
+        "ts.action_size": str(int(masks.shape[1])),
         "ts.merged_influence": "true" if agent.merged_influence else "false",
+        "ts.macro_influence": "true" if agent.macro_influence else "false",
         # The obs_features bits the network reads (0: the base layout): the page's rollout root
         # hands them to the engine's batch so its rows are the width this network expects.
         "ts.obs_features": str(int(agent.obs_features)),
@@ -167,7 +170,8 @@ def main(argv: List[str]) -> int:
         print(f"export_onnx: refused: {e}", file=sys.stderr)
         return 1
     print(f"export_onnx: {meta['ts.label']} -> {args.out} ({os.path.getsize(args.out) / 1e6:.1f} MB, "
-          f"{'E4.1' if meta['ts.merged_influence'] == 'true' else 'E4'} view)")
+          f"{'E4.1' if meta['ts.merged_influence'] == 'true' else 'macro' if meta['ts.macro_influence'] == 'true' else 'E4'}"
+          f" view)")
     return 0
 
 

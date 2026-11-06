@@ -70,6 +70,7 @@ set(TEST_SOURCES
     tests/test_rules_audit.cpp
     tests/test_cached_state.cpp
     tests/test_review_fixes.cpp
+    tests/test_macro_view.cpp
 )
 
 add_executable(ts_tests ${TEST_SOURCES})

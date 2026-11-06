@@ -111,8 +111,9 @@ async function weighBelief(engine: WasmEngine, model: Model, width: number): Pro
  * Returns null when no decision is open or the network has a single legal move.
  */
 export async function rolloutRoot(engine: WasmEngine, model: Model, spec: RolloutSpec, seed: number): Promise<SearchResult | null> {
-  if (model.meta.mergedInfluence) {
-    throw new Error("the rollout root plays in the E4 action view; this model decides in the merged (E4.1) view");
+  if (model.meta.mergedInfluence || model.meta.macroInfluence) {
+    throw new Error(`the rollout root plays in the E4 action view; this model decides in the `
+      + `${model.meta.mergedInfluence ? "merged (E4.1)" : "macro (until-control)"} view`);
   }
   if (engine.isTerminal()) return null;
   const decider = engine.decisionPlayer();
