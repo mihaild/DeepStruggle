@@ -30,6 +30,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from ai.training.run_name import LEGACY_RUN_NAME_RE, is_run_name, parse_run_name  # noqa: E402
+from ai.training.generic_trainer import RULE_FEATURES  # noqa: E402
 from ai.training.train import build_parser  # noqa: E402
 
 #: metadata keys that describe the outcome rather than the request, so they are never flags.
@@ -39,9 +40,25 @@ _NOT_FLAGS = {
 }
 
 
+#: Settings derived from another one's recorded value rather than recorded themselves.
+_DERIVED = {"obs_rules": "obs_features"}
+
+
+def _split_rules(flags: dict) -> dict:
+    """`obs_features` without its rule bits, which go to `obs_rules`: a rule bit is the rule the
+    network's seat plays -- the engine's minor version (E8.1), as merged_influence is E4.1's -- and not
+    an observation its A code names. Reported apart, a diff still shows a legacy run against a gated
+    one, and a run from before the first rule bit keeps the codes it had."""
+    if "obs_features" in flags and flags["obs_features"] is not None:
+        names = list(flags["obs_features"])
+        flags["obs_features"] = [n for n in names if n not in RULE_FEATURES]
+        flags["obs_rules"] = [n for n in names if n in RULE_FEATURES]
+    return flags
+
+
 def _defaults() -> dict:
     parser = build_parser()
-    return {a.dest: a.default for a in parser._actions if a.dest != "help"}
+    return _split_rules({a.dest: a.default for a in parser._actions if a.dest != "help"})
 
 
 def _metadata(run_dir: str) -> dict:
@@ -271,7 +288,7 @@ def recorded(run_dir: str) -> dict:
     # was the sharpening bands; since then the bands actually used are always recorded.
     if "rollout_temps" in meta and meta["rollout_temps"] is None:
         out["rollout_temps"] = [0.15, 0.50, 0.10, 0.35]
-    return out
+    return _split_rules(out)
 
 
 def unmapped_ladder_keys(run_dir: str) -> List[str]:

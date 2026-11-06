@@ -1024,7 +1024,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "rule, an opponent's card offering its Event only where the Event "
                              "can fire; without it, the rule every earlier network learned, where "
                              "the Event was offered anyway and fizzled into Ops. The list "
-                             "replaces the default, which since E8 is headline_reveal: name both to "
+                             "replaces the default, headline_reveal and opp_event_gated (E8.1, since "
+                             "2026-11-06; an E8 run is headline_reveal alone): name them all to "
                              "have both, and give the flag with no names for none (what every run "
                              "before E8 read). Recorded in the run's metadata and in the weights; "
                              "every evaluator then builds this view for the model. Ladder only.")

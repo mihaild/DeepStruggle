@@ -315,7 +315,10 @@ base floats, so existing checkpoints keep running. A model's set is recorded in 
 (LadderNet's `obs_features` buffer) and in `metadata.json`, and chosen with
 `tools/train.py --obs-features`, whose default since **E8 is `headline_reveal`** (owner, 2026-10-20;
 the flag with no names gives none, what every earlier run read; `launch_flags.py` compares each run
-against its own epoch's default, so earlier codes hold). The engine has no default:
+against its own epoch's default, so earlier codes hold) **plus, since 2026-11-06, the rule bit
+`opp_event_gated`** (owner): a run playing it is **E8.1** (the minor version, like E4.1), and
+`launch_flags.py` reports rule bits as `obs_rules`, outside the A code. **Continuing an E8 run needs
+`--obs-features headline_reveal`**; the resume refuses the default for it. The engine has no default:
 `ts.extract_observation_features(state, perspective, features)` requires the set
 (`bindings.ts_env.model_obs_features(model)`),
 `ts.obs_size_for(features)` is the width, and the batch runner holds a set per env and side
