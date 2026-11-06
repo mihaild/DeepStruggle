@@ -416,6 +416,89 @@ next run is one branch from 800M with both** (lr 1.5e-4 and the setup-scoped ter
 question, and attribution is a second branch only if the first works. If the US has come back on its
 own, the rate alone is the remedy question, as decided.
 
+## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
+
+**The proposal.** An influence-placement action that places in one country *until control* (or until
+the play's points run out) as a single policy decision, beside the one-point action. The case, measured
+on J5 at 520M (`data/reports/`): a takeover is several consistent placements, so exploring it from the
+floor is a product of probabilities -- J5 starts West Germany at 1.8% of placements and continues at
+24% (J1 6.1% / 65.5%; persistence in general 43.8%, J1 55.3%), so a four-point takeover is
+~0.018 × 0.24³ ≈ 0.03% per opportunity (J1 ≈ 1.7%). A macro makes the plan one choice at the floor
+and gives PPO one decision to credit. Four forms were considered: (a) a second "1 or until control?"
+decision (doubles placement steps), (b) independent country and amount heads (cannot pair them),
+(c) one softmax over 84 × 2 (country, amount) slots, flat 220 → 304, (d) the running session's
+proposal -- the country softmax as now plus a per-country Bernoulli amount, P(c, ∞) = softmax(sel)_c ·
+σ(amt_c), with the amount carried in the micro-action's flags and expanded by the engine.
+
+**Assessment.**
+
+1. *The idea is sound and the game is unchanged.* Within a play the points of one side go down with
+   no opponent decision and no chance between them, and the same holds in setup, so "until control"
+   is a deterministic expansion into the base one-point steps the engine already takes; a macro
+   trajectory is a base trajectory. What changes is the policy class (a mixture over decompositions)
+   and the exploration geometry: one floor draw instead of a product. The credit half alone was
+   tried as P4's setup credit (λ = 1 inside a placement block): it fixed Poland, never West Germany,
+   and froze the setup at flat temperature; the macro adds the exploration half, which is the part
+   that was missing.
+
+2. *(c), the joint softmax, is the cheapest form, not (d).* Everything downstream assumes one flat
+   action per step with one categorical log-prob over one mask: the rollout buffer (`actions`
+   `(T, envs)`, `log_probs` `(T, envs)`, `masks` `(T, envs, 220)`), the NashPG loss (one
+   `Categorical.log_prob`), MCTS priors, the Gumbel root's per-action logits, the rollout root's KL
+   rule and its top-k over the logits, the ONNX export's `("logits", "v_win", "v_vp")` and the web
+   page. (d) breaks every one of them: each consumer must form the joint anyway to sample, to mask
+   or to take a log-prob, so (d) saves nothing but 84 head parameters and costs a two-part action
+   through the whole stack. With (c) the only change is the width, and the amount's exploration
+   floor, its masking and its entropy come free from the existing term over the legal joint slots --
+   no separate floor, no separate machinery. The owner's concern about the action space is about
+   the *legal* choices per placement decision, which roughly double in either form; the 304 slots
+   themselves cost nothing a 220-wide softmax does not already pay.
+
+3. *Expand in the view layer, not the engine.* P23's merged view is the precedent: `Engine::step_flat`
+   composes two base steps and the mask is read off the committed state; the state machine, the
+   4-byte micro-action and the engine's decision stream are untouched. The macro should be the same:
+   a view in which slot 220 + cid means "POINT_NODE cid, repeated until control or
+   `remaining_steps` = 0", with the mask offering it where it differs from one point (not already
+   controlled by us, more than one point left, one point would not already control). Then
+   invariant 11 is not touched, the replayer is untouched (it emits one base action per point from an
+   unordered per-play multiset, and the macro never has to decide an order), human agreement
+   scoring is untouched (it already treats a play as a multiset), and a macro model's replay is its
+   base steps plus the view, as E4.1's was. The only expansion the engine side needs is the loop in
+   `step_flat` and the per-view mask.
+
+4. *What it breaks, and the cost.* The width: 220 is a compiled constant in `rollout_batch.cpp`,
+   `batched_search.hpp`, the action encoder, the buffer, the export and the page, and the batch
+   runner pads observations per env and side but not actions, so the width becomes per view, as
+   the observation set already is. The merged view (E4.1) is not in current use (A2 only, −235 Elo in
+   P29) and must not be combined with this one. Datasets: a macro model's `(seed, actions)` are in
+   its view and expand deterministically to base steps; the reverse is not unique, so BC from the
+   human set (D1) needs a canonical rule (a run of ≥ 2 same-country points that reaches control is
+   the macro) -- it matters only for D-code warm starts, which the ladder does not use. P29's lesson
+   does not recur: the merged node could not see the Ops it was spending, but the macro decides at
+   a POINT_NODE, where the base observation's `REMAINING_STEPS` global shows the points left. Estimate:
+   several days of the running session's work across bindings, search, trainer, export, page and
+   tests, all before the first run; a representation change, so the owner's spec and approval.
+
+5. *The open questions.* "Until control or out of points", one macro, not "all remaining" (a second,
+   worse macro; add later only if the first earns it). The cheapest control path is moot: one
+   country, the cost per point fixed by the state. No amount floor: the joint term covers it. The
+   term's interaction: legal slots at placement decisions roughly double, so the floor per slot
+   halves; keep c = 0.01 and read the 60M checks (per-update KL, entropy, setup entropy) against
+   J5's own, not J1's. In setup the macro applies as it does in play (West Germany 4 is one choice).
+
+6. *Where it sits.* **After the 800M decision, never instead of it.** J5's hole is a regression under
+   a too-large step (100% of setups had West Germany at 300M; J1 re-finds takeovers at 1.7% with the
+   same floor), and the cheap remedies -- the rate and the setup-scoped term, a branch with no code --
+   are untested. The macro is the general bet for the product-of-probabilities problem, which J1's
+   plateau may or may not be limited by; the evidence is indirect (Our Man in Tehran and Chernobyl
+   are single-choice holes the macro cannot touch). Spec and build it while the 800M branch runs;
+   its first run is **from scratch on the then-best J5 recipe with the view**, read at 200M / 400M /
+   800M against J5's own curve (21.1 / 23.4 / …) -- same architecture and recipe, the view the only
+   change -- not grown from J5: identity-preserving growth is milder than distillation but is still
+   a warm start, and D6/D7 is the record on those; a from-scratch 400M is 17 h. Naming by precedent:
+   a view was an engine sub-version (E4.1), so **E8.1**, and the run `E8.1-A35-R<n>-S44` (owner to
+   confirm the code).
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
