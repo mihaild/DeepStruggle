@@ -37,6 +37,7 @@ still resolve.
 | [`measurement_bugs.md`](measurement_bugs.md) | every instrument that reported confident nonsense, and what stops each recurring |
 | [`variance_and_noise.md`](variance_and_noise.md) | tournament noise (~1.5 points), within-run oscillation, seed spread (~15 Elo) |
 | [`seed_variance_and_pooling.md`](seed_variance_and_pooling.md) | the seed spread that withdrew the first pooling result; the US decay 80M → 160M |
+| [`held_scoring_losses.md`](held_scoring_losses.md) | the zero-avoiding term doubles held-scoring losses in training games (J1 4-6% vs R95 2-3%) through sampling noise at the forced card choice; risk by scoring cards held and by the VP the card would cost |
 | [`j5_attention.md`](j5_attention.md) | what J5's transformer attends to at 260M and 830M: regional layer 1, West Germany the layer-2 hub, by 830M the scoring cards (Europe Scoring above all) the deep layers' backbone |
 | [`read_reliability_and_faster_reads.md`](read_reliability_and_faster_reads.md) | how much an early read predicts (ranks far-apart arms, not close ones: 3 of 9 pairs within 4 points at 800M reversed), J1/J5's non-transitive triangle, and a read protocol: matched-step head-to-head, own-past pace, margin-gated rules |
 
