@@ -1,0 +1,48 @@
+# What J5's transformer attends to: 260M against 830M (2026-11-06)
+
+J5 (`E8-A35-R102-S44`, 3 token layers x 128, 195 tokens: the global token, 84 countries, 110 cards) read on 24 greedy
+self-play games per snapshot (3,483 positions at 260M, 3,865 at 830M), attention averaged over heads and positions.
+Attention is where a token reads from, not what decides the move; read the shifts, not single cells. Data:
+`data/reports/j5_attention_{260M,830M}.txt` (hubs, strongest pairs, by side), `j5_scoring_attention_{260M,830M}.txt`
+(what each scoring card reads), `j5_attention_by_location_{260M,830M}.txt` (attention to cards by where they are, as a
+multiple of uniform), `j5_{260M,830M}_layer1_top.md` (each card's and country's top card and country in layer 1).
+
+## What held from 260M
+
+* **Layer 1 is regional and the scoring cards summarise regions:** a country's strongest card is its region's scoring
+  card (Egypt, Libya, Saudi Arabia, Lebanon, Israel, Iran -> Middle East Scoring 3.9-4.7%), a country's strongest
+  country a neighbour (Syria -> Lebanon, Uruguay / Colombia / Bolivia -> Brazil).
+* **West Germany is the layer-2 hub** (4.3% of all layer-2 attention at 830M, 4.5% at 260M), for both sides -- even
+  though the US has placed nothing there at setup since 360M. Late-war cards read it most (Chernobyl, Aldrich Ames,
+  Yuri and Samantha, Reagan Bombs Libya, Iran-Contra -> West Germany 3.1-3.8%), and the global token's top country is
+  West Germany (2.8%; at 260M Italy, 2.4%).
+* **Location gating:** in layer 2 the countries and the global token read the card in play; in layer 3 the cards read the
+  mover's hand.
+
+## What changed by 830M
+
+* **The scoring cards became the network's backbone.** Layer-3 hubs: Europe Scoring 10.3% (260M 3.7%), Asia Scoring 7.2%
+  (4.8%), South America 4.2%, Middle East 3.7%; countries have nearly left the layer-3 hub list (Italy, Poland, East
+  Germany at 2.1-2.4% at 260M; at 830M only Honduras 2.0%, and Poland 3.5% when the US moves). The most-read token over
+  the whole rollout is Europe Scoring (2.9%), then the global token.
+* **The scoring cards read each other far more:** Middle East Scoring's layer-3 attention to Europe Scoring 33.7% (260M,
+  Asia Scoring -> Europe Scoring 4.6%); Asia -> Europe 25.0%; every scoring card's top three in layers 2-3 are other
+  scoring cards. Almost every held card's strongest read over the rollout is Europe Scoring (5-7%).
+* **Layer-1 hub:** the global token (3.9%) instead of Europe Scoring; Poland enters the list (1.2-1.3%) -- the USSR's
+  setup moved to Poland.
+* **Layer-2 hubs:** Italy, Poland and East Germany (2.4-3.7% at 260M) are replaced by scoring cards (Europe 2.9, Asia
+  2.6, Middle East 2.4%), Jordan (2.2%) and, when the USSR moves, The Cambridge Five (3.5%).
+* **Gating sharpened in layer 2:** countries read the card in play at 31.5x uniform (260M 13.1x), the global token at
+  40x (18.5x); cards read the opponent's known cards more (an opponent-known card reads others like it at 9.5x).
+* **Layer 3 by location:** cards read the mover's hand at 7-10x uniform whatever their own location (260M 6-10x, the hand
+  cards themselves only 6.5x, now 8.4x); countries moved from the hand (6.2x -> 1.8x) to the opponent's known cards
+  (4.2x -> 4.5x) and the card in play (3.0x -> 4.6x).
+
+## Reading
+
+By 830M the deep layers compute mostly over the six scoring cards and Europe Scoring in particular -- a small,
+tightly coupled sub-network that every card consults -- while country-level detail lives in layers 1-2. That fits the
+play: scoring timing and Europe (the USSR's Europe-control wins, the US's empty West Germany) are where J5's games are
+decided. Whether the concentration is a strength (a compact game-state summary) or a bottleneck (country detail
+squeezed through six tokens) is not something attention alone can say; an ablation (masking the scoring-card tokens in
+layer 3) would.
