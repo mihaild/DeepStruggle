@@ -426,7 +426,7 @@ class BaseNashPGTrainer:
         ref_update_freq: int = 200_000,# Outer-loop reference update frequency in steps
         max_grad_norm: float = 1.0,
         slice_turn_boundaries: bool = False,
-        blunder_window: bool = True,
+        blunder_window: bool = False,
         held_scoring_blunder: bool = True,
         same_perspective_bootstrap: bool = False,
         per_player_gae: bool = False,

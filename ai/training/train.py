@@ -743,7 +743,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "better off, the graph convolution seeing real adjacency.\n"
                              "Model-side only: the observation is untouched.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
-    parser.add_argument("--reward-scheme", type=str, default="blunder_aware", choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"], help="Reward calculation scheme")
+    parser.add_argument("--reward-scheme", type=str, default="terminal",
+                        choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"],
+                        help="Reward calculation scheme. Default (owner, 2026-11-06): terminal -- winner +1, loser -1, draw 0, "
+                             "whatever the ending. blunder_aware was the default before: a held-scoring loss or an unprovoked "
+                             "DEFCON 1 punished the blunderer only and shielded the winner; on J1 at 14,000M and from scratch the "
+                             "plain loss matched it in strength and halved held-scoring losses (R118, R119; "
+                             "research/log/held_scoring_losses.md).")
     parser.add_argument("--curriculum-switch-steps", type=int, default=None,
                         help="Env step at which the curriculum switches to the BlunderAware "
                              "reward (default: --curriculum-switch-fraction of --train-steps)")
@@ -768,8 +774,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "step and changes what the critic is trained on, so it is an arm.")
     parser.add_argument("--slice-turn-boundaries", type=str, default="auto", choices=["auto", "on", "off"],
                         help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off and relies on per-episode blunder windowing instead.")
-    parser.add_argument("--no-blunder-window", action="store_true",
-                        help="Disable per-episode blunder windowing. By default an unprovoked blunder loss (held scoring card, or self-inflicted DEFCON 1) only penalises the blunderer within that turn and shields the opponent from the windfall.")
+    parser.add_argument("--no-blunder-window", dest="no_blunder_window", action="store_true", default=True,
+                        help="No per-episode blunder windowing -- the default since 2026-11-06 (owner): a loss is credited "
+                             "back through the whole game like any other. Accepted for older launch commands.")
+    parser.add_argument("--blunder-window", dest="no_blunder_window", action="store_false",
+                        help="Per-episode blunder windowing, the default before 2026-11-06: an unprovoked blunder loss (held "
+                             "scoring card, or self-inflicted DEFCON 1) penalises only the blunderer's decisions in that turn "
+                             "and pins the opponent's advantage there to zero.")
     parser.add_argument("--no-held-scoring-blunder", action="store_true",
                         help="Treat a held-scoring loss (rule 4.4) as an ordinary loss: the zero-sum terminal reward "
                              "(winner +1, loser -1) and no blunder window, so its credit runs back through the whole game. "

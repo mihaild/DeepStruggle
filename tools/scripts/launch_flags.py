@@ -54,9 +54,17 @@ def _split_rules(flags: dict) -> dict:
     return flags
 
 
+#: Settings whose CLI default changed without an engine epoch, compared against the value they had before the change for
+#: every run: a code is a set of flags, so a run that takes today's default still names it, and every run launched before
+#: keeps its code. Pure win/loss became the default on 2026-11-06 (owner): a run that takes it is R119, not R102.
+_CODE_BASELINE = {"reward_scheme": "blunder_aware", "no_blunder_window": False}
+
+
 def _defaults() -> dict:
     parser = build_parser()
-    return _split_rules({a.dest: a.default for a in parser._actions if a.dest != "help"})
+    out = _split_rules({a.dest: a.default for a in parser._actions if a.dest != "help"})
+    out.update(_CODE_BASELINE)
+    return out
 
 
 def _metadata(run_dir: str) -> dict:
