@@ -44,7 +44,7 @@ from ai.search.dmcts import determinize
 from ai.search.gumbel_root import GumbelRoot, GumbelStats
 from ai.search.pimcts import PIMCTSConfig, acting_player, drain_chance_nodes
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe, seat_decider
+from bindings.ts_env import model_obs_features, observe, seat_decider, seat_tree
 
 _UINT64 = 1 << 64
 _US = int(ts.Player.US)
@@ -582,6 +582,7 @@ class BatchedMCTS:
         out: List[ts.GameState] = []
         for st in states:
             s = st.clone()
+            seat_tree(s, self.features)
             if self.cfg.advance_root:
                 settle(s, self.cfg.auto_advance)
             if self.cfg.determinize and not ts.Engine.is_terminal(s):
@@ -864,7 +865,7 @@ class BatchedMCTSAgent:
         unaffordable.
         """
         states = list(states)
-        for st in states:   # this agent decides every root, under its own rules
+        for st in states:   # it decides every root, under its own rules
             seat_decider(st, self.mcts.features)
         want = [self.mcts.should_search(st) for st in states]
         out: List[int] = [0] * len(states)

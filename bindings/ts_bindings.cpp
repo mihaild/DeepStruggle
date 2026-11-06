@@ -1538,11 +1538,8 @@ NB_MODULE(ts_engine, m) {
             if (p == ts::Player::USSR) return feat_ussr[idx];
             return 0u;
         }
-        // A seat plays the rule bits of the feature set it is observed in (obs_features::RULES,
-        // GameState::seat_rules): a model whose observation is right plays the rules it was
-        // trained with, and feature set 0 -- every network before the first rule bit -- plays the
-        // rules from before it. Applied wherever a slot's state is replaced: init_new_game would
-        // leave feature set 0's seats, and set_state the seats of whoever saved the position.
+        // Each side plays the rule bits of the feature set it is observed in; reapplied wherever a
+        // slot's state is replaced (init_new_game leaves none, set_state the saver's).
         void seat(size_t idx) {
             slots[idx].modify([&](ts::GameState& g) {
                 ts::seat_obs_features(g, ts::Player::US, feat_us[idx]);

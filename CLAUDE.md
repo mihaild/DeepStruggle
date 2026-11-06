@@ -329,8 +329,9 @@ learner's exact feature bits; equal observation widths are insufficient. Blocks 
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
 2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
 change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
-Event (`engine/AGENTS.md` §18). A seat plays the rule bits of the feature set it is observed in; a seat
-no one seated, and feature set 0, play the rule from before every bit, so the unseated engine is E8's.
+Event (`engine/AGENTS.md` §19). A seat plays the rule bits of the feature set it is observed in, a
+search both sides of its tree under its own network's, and a person in the web page every rule bit; an
+unseated side plays the rule from before every bit, so the unseated engine is E8's.
 Adding a block still needs the owner.
 
 **AI (`ai/`):** the current lineage is LadderNet (`models/ladder_net.py`, `--arch ladder`), the

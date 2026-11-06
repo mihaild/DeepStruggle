@@ -598,9 +598,8 @@ TS_API int ts_obs_size_for(uint32_t features) {
     return static_cast<int>(ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features));
 }
 
-// Seat a model of obs_features set `features` at `player` (player_from_int: 1 US, -1 USSR): that seat plays the rule bits the set names, the pre-fix rule of each it lacks
-// (GameState::seat_rules). The page seats the model it lets decide; a seat no one seated plays feature
-// set 0's rules, the rules from before every rule bit. Returns 0 and sets the error on an unknown bit.
+// Seat a model of obs_features set `features` at `player` (1 US, -1 USSR): that side plays the set's
+// rule bits (GameState::seat_rules). Returns 0 and sets the error on an unknown bit or no player.
 TS_API int ts_seat_obs_features(int player, uint32_t features) {
     if (features & ~ts::obs_features::ALL) { g_error = "unknown obs_features bit"; return 0; }
     const ts::Player p = player_from_int(player);
@@ -608,6 +607,16 @@ TS_API int ts_seat_obs_features(int player, uint32_t features) {
     ts::seat_obs_features(g_state, p, features);
     return 1;
 }
+
+// The rule bits `player` plays now (-1 and the error for no player).
+TS_API int ts_seat_rules(int player) {
+    const ts::Player p = player_from_int(player);
+    if (p == ts::Player::NONE) { g_error = "a seat is US or USSR"; return -1; }
+    return static_cast<int>(g_state.seat_rules[ts::seat_index(p)]);
+}
+
+// Every rule bit: the current rules, which a person plays.
+TS_API uint32_t ts_obs_features_rules() { return ts::obs_features::RULES; }
 
 // The observation in a model's own view: the base layout as the bits `features` edit and extend it
 // (extract_observation_features, the same call Python makes for that model), ts_obs_size_for(features)

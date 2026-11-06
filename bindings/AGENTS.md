@@ -54,18 +54,19 @@ are cited from elsewhere; keep them.
     decider's set and zero-pads to the widest (`obs_width`); `TsVectorizedEnv.set_obs_features`
     keeps the sets across `reset_all`, and `ts_env.model_obs_features(model)` reads a model's set
     from its weights.
-  - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §18): an `obs_features` bit in
+  - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §19): an `obs_features` bit in
     `OBS_FEATURES_RULES` (so far `OBS_FEATURE_OPP_EVENT_GATED`, ENG-9) is the rule a seat plays, held
-    in the state per seat (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`). A seat
-    no one seated plays feature set 0's rule, the one from before every rule bit. **A seat plays the
-    rule bits of the feature set it is observed in**: the runner seats both sides of an env from its
-    per-side sets at construction, `set_obs_features(_env)`, `reset_game` and `set_state`;
-    `ts_env.legal_mask(state, merged_influence, features)` seats the decider before building its mask
-    (`features=None` seats nobody, for a caller enumerating a position rather than deciding it), and
-    `ts_env.seat_decider` is what the searchers call on their roots. `(seed, actions)` datasets record
-    `us_obs_features` / `ussr_obs_features` and `WarmupDataset` seats them on replay (absent: feature
-    set 0). Inside `ai/search/batched_mcts.py`'s rollouts both sides play the searcher's own rules,
-    as both are played by its own network. The wasm build exports `ts_seat_obs_features`.
+    per seat in the state (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`); an
+    unseated side plays the rule from before every bit. **A seat plays the rule bits of the feature
+    set it is observed in**: the runner seats both sides of an env from its per-side sets
+    (construction, `set_obs_features`, `reset_game`, `set_state`), and
+    `ts_env.legal_mask(state, merged_influence, features)` seats the decider (`None`: nobody, for a
+    caller listing a position's actions). **A search plays both sides of its tree under its network's
+    rules**, whatever the real opponent plays: `BatchedSearch.reset` and `RolloutBatch.add` seat both
+    sides of their root copies, and the Python trees (`batched_mcts`, `pimcts`, the Gumbel root) call
+    `ts_env.seat_tree`; `seat_decider` seats the real position's decider. `(seed, actions)` datasets
+    record `us_obs_features` / `ussr_obs_features`, which `WarmupDataset` seats (absent: 0). The wasm
+    build exports `ts_seat_obs_features`, `ts_seat_rules` and `ts_obs_features_rules`.
   - **`BatchedSearch`** ([`batched_search.hpp`](batched_search.hpp)): the C++ tree behind
     `ai/search/batched_mcts.py` (`backend="cpp"`), Python-only. Up to `capacity` PUCT searches in
     lockstep, split into `num_groups` evaluation groups: `reset(roots, simulations, rng_state,

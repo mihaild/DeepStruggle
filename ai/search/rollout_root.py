@@ -508,7 +508,7 @@ class RolloutRootAgent:
     def select_actions_games(self, games: Sequence[int], states: Sequence[ts.GameState]) -> List[int]:
         """`select_actions_batch` with each position's game, which the belief keys its record by."""
         states = list(states)
-        for st in states:   # this agent decides every root, under its own rules
+        for st in states:   # it decides every root, under its own rules
             seat_decider(st, self.root.features)
         hands = None if self.belief is None else self.belief.worlds(list(games), states, self.root.cfg.worlds)
         return self._checked(states, self.root.choose(states, hands))
@@ -517,7 +517,7 @@ class RolloutRootAgent:
         if self.belief is not None:
             raise RuntimeError("a belief root needs its games: call select_actions_games (the tournament's hook)")
         states = list(states)
-        for st in states:   # this agent decides every root, under its own rules
+        for st in states:   # it decides every root, under its own rules
             seat_decider(st, self.root.features)
         return self._checked(states, self.root.choose(states))
 

@@ -54,7 +54,7 @@ from ai.search.dmcts import determinize
 from ai.search.pimcts import acting_player
 from bindings.action_encoder import ActionEncoder
 from bindings.settle import SettleMode, settle
-from bindings.ts_env import observe
+from bindings.ts_env import observe, seat_tree
 
 if TYPE_CHECKING:
     from ai.search.batched_mcts import BatchedMCTS, _BNode
@@ -271,6 +271,7 @@ class GumbelRoot:
                 searched.append(i)
                 for share in world_shares(per, cfg.gumbel_worlds):
                     world = st.clone()
+                    seat_tree(world, mcts.features)
                     if cfg.determinize and not ts.Engine.is_terminal(world):
                         world = determinize(world, ts.Player(movers[i]), mcts._rng)
                     world.rng_state = mcts._rng.getrandbits(64) % _UINT64

@@ -158,25 +158,25 @@ def observe(state: "ts.GameState", player: "ts.Player", features: int) -> np.nda
 
 def seat_decider(state: "ts.GameState", features: int) -> None:
     """Seat a model of feature set `features` at the player deciding `state` (no one at a chance
-    node): that seat plays the rule bits the set names (`ts.OBS_FEATURES_RULES`) from here on, in
-    every mask, step and search of this state and its copies. A searcher calls it on its roots, so
-    a single-state caller that never built a mask for it still has it play its own rules.
-    """
+    node): that seat plays the set's rule bits (`ts.OBS_FEATURES_RULES`) in this state and its copies."""
     p = state.ctx().decision_player
     if p != ts.Player.NONE:
         state.seat_obs_features(p, int(features))
 
 
+def seat_tree(state: "ts.GameState", features: int) -> None:
+    """Seat both sides of a search's own copy of a position with its network's rule bits: the
+    network models both players, so its tree plays both under its rules, whatever the real opponent
+    plays (the C++ BatchedSearch and RolloutBatch do the same to the roots they are given)."""
+    for p in (ts.Player.US, ts.Player.USSR):
+        state.seat_obs_features(p, int(features))
+
+
 def legal_mask(state: "ts.GameState", merged_influence: bool, features: Optional[int]) -> np.ndarray:
     """The flat legal mask (uint8) of `state` for a model deciding it in the given action view and
-    observation feature set. Both are required, so no harness builds a mask for a model in a view
-    or under rules it was not trained in by default.
-
-    `features` seats the decider (`GameState.seat_obs_features`): its rule bits
-    (`ts.OBS_FEATURES_RULES`) are the rules that seat then plays, here and in every step and search
-    from this state, until another model is seated there. None seats nobody and reads the mask
-    under the rules the seats already play -- for a caller enumerating a position's actions rather
-    than letting a model decide it, which must not unseat the model that will.
+    feature set, both required so no harness defaults either. `features` seats the decider first
+    (`seat_decider`); None seats nobody, for a caller listing a position's actions rather than
+    letting a model decide it.
     """
     if features is not None:
         seat_decider(state, features)

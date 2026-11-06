@@ -32,7 +32,7 @@ import torch
 import ts_engine as ts
 from bindings.settle import SettleMode, settle
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe, seat_decider
+from bindings.ts_env import model_obs_features, observe, seat_decider, seat_tree
 
 _UINT64 = 1 << 64
 
@@ -195,6 +195,7 @@ class PIMCTSAgent:
     def search(self, state: ts.GameState) -> tuple:
         """Returns (actions, visit_counts) at the root."""
         root_state = state.clone()
+        seat_tree(root_state, self.features)
         drain_chance_nodes(root_state)
         root = self._evaluate(root_state)
         if root.terminal or not root.actions:

@@ -1703,21 +1703,16 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
     }
 
 
-#: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits.
-#: `opp_event_gated` is a rule bit (no width; ts.OBS_FEATURES_RULES): the network plays ENG-9's
-#: rule, an opponent's card offering its Event only where it can fire. Without it a seat plays the
-#: rule every earlier network learned, where the Event was offered anyway and fizzled into Ops.
+#: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits. `opp_event_gated` is
+#: a rule bit (ENG-9): no width, the rule the network's seat plays.
 OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
                                     "opp_event_gated": 1 << 3}
-#: What a new network reads when `--obs-features` is not given: since E8 (owner, 2026-10-20), Space Race
-#: box 4's revealed headline; since 2026-11-06 (owner) also ENG-9's rule, opp_event_gated. Before E8 the
-#: default was none; tools/scripts/launch_flags.py compares each run against its own epoch's default
-#: (_EPOCH_DEFAULTS), so earlier runs keep their codes.
+#: A new network's set when `--obs-features` is not given: headline_reveal since E8 (owner, 2026-10-20),
+#: plus opp_event_gated since 2026-11-06 (E8.1). launch_flags.py compares each run against its own
+#: epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.
 DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated"]
-#: The rule bits among OBS_FEATURE_BITS (ts.OBS_FEATURES_RULES): what a network's seat plays, not what it
-#: reads. A rule bit is the engine's minor version -- a network trained with opp_event_gated is an E8.1
-#: run (research/method/run_nomenclature.md) -- so launch_flags reports them as `obs_rules`, apart from
-#: the observation features its A code names.
+#: The rule bits among them: the engine's minor version (E8.1), reported by launch_flags as `obs_rules`,
+#: outside the A code.
 RULE_FEATURES: List[str] = ["opp_event_gated"]
 
 

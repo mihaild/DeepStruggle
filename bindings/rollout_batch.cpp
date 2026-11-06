@@ -200,9 +200,12 @@ void RolloutBatch::settle_and_mark(Row& r) noexcept {
     if (at_stop(r)) r.done = true;
 }
 
-size_t RolloutBatch::add(const GameState& base, const uint16_t* candidates, size_t k, size_t worlds,
+size_t RolloutBatch::add(const GameState& given, const uint16_t* candidates, size_t k, size_t worlds,
                          const uint8_t* hands) {
     error_ = "";
+    // The network plays both sides of every playout, so both seats play its rule bits.
+    GameState base = given;
+    seat_both(base, cfg_.features);
     uint8_t base_mask[A];
     ActionMask::generate_flat_mask_212(base, base_mask);
     for (size_t c = 0; c < k; ++c) {

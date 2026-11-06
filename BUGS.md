@@ -4,8 +4,8 @@ Defects that are known, reproducible, and not yet fixed. A bug leaves this file 
 and has a regression test, not when it is understood. Missing features and unfinished work belong
 in the documentation for the area they concern.
 
-Fixed bugs keep a one-line entry at the end, because code and research documents cite their IDs;
-the full write-up is in git history.
+A fixed bug is removed: its ID and write-up stay in this file's history (search it for the ID), and
+the rule it fixed is documented with the code.
 
 ---
 
@@ -27,7 +27,7 @@ collectable but broken: a suite that aborts the run is worse than one that is ho
 
 **Area:** human replay conversion / eval · **Severity:** low · **Status:** open, owner's decision
 
-The converter fix itself is done (below). But of the 100 positions in
+The converter fix itself is done (`8aec4db`). But of the 100 positions in
 `ai/eval/banks/disagreement_verdicts.jsonl`, 34 are no longer produced by the current converter:
 nearly all differ in what the network observes (the mover's hand holds other cards, or fewer),
 and one (replay 147, turn 9) is in a turn now left out as untrusted. 28 of the first 33 carry
@@ -36,7 +36,7 @@ judged those exact positions, so the verdicts were not moved; carrying them to t
 positions, or re-reviewing, is the owner's call. `tests/training/test_disagreement_bank.py`
 checks that each position loads and each mark is legal, not that the converter still produces it.
 
-They also predate CONV-2: 94 of the 100 positions hold in the discard pile a card the log had not
+They also predate CONV-2 (`0f112d7`): 94 of the 100 positions hold in the discard pile a card the log had not
 spent by that turn, 7.1 on average, and the network observes the pile.
 
 ---
@@ -60,7 +60,7 @@ record the traceback here.
 
 **Area:** human replay conversion · **Severity:** low · **Status:** open
 
-Since CONV-2 and CONV-4 the discard pile at a converted decision is the log's through turn 3
+Since CONV-2 (`0f112d7`) and CONV-4 (`de64176`) the discard pile at a converted decision is the log's through turn 3
 (`tests/replayer/test_replay_deck_and_discards.py`), and since ENG-4 all 469 of the corpus's
 `*RESHUFFLE*` markers fall on the entry where the engine reshuffles. From turn 4 a decision's pile
 can still hold cards the log has not spent and lack ones it has: 0.15 and 0.03 per decision,
@@ -79,22 +79,3 @@ The engine also reshuffles at five entries with no marker (replays 201, 221, 256
 of them wrong. Each is the last entry the conversion reaches, at the end of a turn, and the engine
 deals the next turn; in 201 and 256 the log's next entry, which the conversion stops before,
 carries the marker.
-
----
-
-## Fixed (kept for the IDs cited elsewhere)
-
-| ID | what it was | fixed in |
-|:---|:---|:---|
-| ENG-1 | UN Intervention's companion mask offered every card in hand (the correct filter in `action_mask.cpp` was unreachable); an illegal pick silently cost the action round | `3ef2d92` (P17 6a); `engine/AGENTS.md` §9, test in `engine/tests/test_cards_early.cpp` |
-| ENG-2 | 2026-09-28 rules audit: seven rare-situation rules wrong (war-roll defender, Vietnam Revolts ladder, UN Intervention as an event, We Will Bury You on a trapped round, NORAD at 2, Grain Sales→UN with U-2, Summit counting scoring-only cards). Defines engine **E7** | `acc68d6`; `engine/AGENTS.md` §12, `engine/tests/test_rules_audit.cpp`, `research/findings/engine/engine_revisions.md` |
-| ENG-4 | Our Man in Tehran drew at most what the deck held, and Ask Not's replacement draws left an emptied deck for the next deal to reshuffle: the humans' game reshuffled inside the draw (ts-replayer 156 turn 6 AR4, 207 turn 7 AR2 and 314 turn 7 AR6, Tehran; 272 turn 7 AR7, Ask Not), the engine a turn or two later, with every pile in between wrong. Both now reshuffle the moment the deck runs out, as the deal does, and reveal what an empty deck reveals there: all 469 of the corpus's `*RESHUFFLE*` markers fall where the engine reshuffles (465 before), and the pile holds 0.15 unspent cards per decision (0.25). 10 of 2,000 non-suicidal random games play differently, all from the first Ask Not or Tehran that runs the deck out. Moves the behaviour digest. Defines engine **E8** | `380358d`; `engine/AGENTS.md` §13, `Card108_OurManInTehran_*`, `Card77_AskNot_*` in `engine/tests/test_cards_mid.cpp` |
-| ENG-5 | The deal filled the USSR hand to the limit before dealing the US any card. The order shows only when the deck runs out mid-deal, which it does on every turn 3: the USSR got nearly every Early War card left in the old deck and the US drew from the reshuffled pile, so a card the USSR missed on turn 2 nearly always reached it on turn 3 (the bots valued a USSR turn-2 Op at 0.05 pp, against 1.3 on other turns). The rules name no order; the human corpus alternates (the US's turn-3 hand holds 3.8 never-discarded Early War cards on average, ≥3 in 247 of 274 games) and so does struggler. Now one card at a time, USSR first. Every seed deals different hands; moves the behaviour digest in every section, so it needs a new engine epoch | `pr/engine-alternate-deal`; `engine/AGENTS.md` §14, `Deal_*` in `engine/tests/test_card_edge_cases.cpp` |
-| ENG-6 | Grain Sales fired through another card's Event (Star Wars, Five Year Plan) plays the card it draws on the frame pushed for it, and Ops spent on a pushed frame were taken for Ops an Event granted: the card stayed in the US hand, playable again, an opponent's card's Event never fired, and a card played as its Event or for Space left a frame behind. Stats game b97d05b2, turn 10's headline (NORAD) | E8 in place (owner: too minor for an epoch); `engine/AGENTS.md` §16
-| ENG-7 | Space Race box 6 (Space Walk) offered a held scoring card for its end-of-turn discard, which runs before the held-card check, so discarding one escaped the loss for holding it. E8's top network used it in 29 of 30 chances in self-play (0.73% of sampled games); no human game did | E8 in place (owner); `engine/AGENTS.md` §17
-| ENG-8 | Influence placed by Ops must be in or next to a country holding friendly Influence at the start of the action round, but the snapshot of that board was taken when the Ops began, after an event-first Event, and the target country itself was checked against the current board: the USSR playing The Iron Lady event-first could put all its Ops into Argentina, and into Chile, Uruguay and Paraguay, off the Event's own point. 1 of 2,000 seeded random games differs | E8 in place (owner); `engine/AGENTS.md` §18
-| ENG-9 | The play-mode mask's opponent-card branch offered EVENT unconditionally, skipping `can_trigger_event`: an opponent's card whose prerequisite is unmet (NATO before Warsaw Pact Formed or the Marshall Plan, Arab-Israeli War after Camp David, The Cambridge Five in the Late War, Star Wars with the US not ahead, Solidarity, the flag-gated Events) could be played as an Event that fizzled into an Ops play of the same card. Every pre-fix network plays it (about once a game; EVENT 21-35% of the time, the deferred Ops differing in 12-28% of those), so the fix is a rule bit a model is trained with, `obs_features::OPP_EVENT_GATED`; unseated, the engine is E8's (same digest) | rule bit (owner, 2026-11-06); `engine/AGENTS.md` §19, `tests/bindings/test_obs_rule_bits.py`, `*OpponentEvent*`/`*NATOEvent*`/`*Solidarity*` in `engine/tests/test_bugs_regression.cpp` |
-| CONV-1 | the human-log converter seated cards in hands the player never held (Our Man in Tehran peeks, reveals not used as evidence, late arrivals placed at AR1): over-limit hands in trusted turns 178 games / 2,590 decisions → 39 / 186. Rebuild anything made from converted human positions after it | `8aec4db`; `tests/replayer/test_replay_hand_contents.py` |
-| CONV-2 | the human-log converter put every card the solved hands leave out in the discard pile, not the deck: at 99.7% of converted decisions the pile held cards nobody had played (14.2 on average) and the engine reshuffled where the humans had not, 24 games losing a SALT pick to it. Terrorism's random discard was never steered, and Five Year Plan's took the wrong card in 5 of 237 entries. Now 0.34 per decision from turn 4 (CONV-3), none before. Rebuild anything made from converted human positions after it | `0f112d7`; `tests/replayer/test_replay_deck_and_discards.py`, `tests/replayer/test_replay_five_year_plan_discard.py` |
-| CONV-4 | the hand solver freed a starred card its event had removed at the next `*RESHUFFLE*`, like any spent card, and the converter seated it out of the engine's removed cards: a removed card was back in a hand or the deck at 19.1% of converted decisions, in 252 of the 300 games. Each one left the engine's deck a card bigger than the humans', so the turn-7 deals of replays 59, 119, 228 and 302 did not reshuffle where the log does. Our Man in Tehran's peek was seeded from every discard in its entry, so in replay 277 Our Man in Tehran, fired by a Five Year Plan discard, went into its own peek and on to the pile. Now none; the pile holds 0.25 unspent cards per decision, from 0.34, and 465 of 469 markers match, from 461. Rebuild anything made from converted human positions after it | `de64176`; `tests/replayer/test_replay_removed_cards.py` |
-| TODO (forced deal) | no way to drive a deal from a recording, so replays could not survive a shuffle change | `dfadce5`: `GameState.set_forced_deal` / `get_forced_deal_remaining`; `tests/bindings/test_forced_deal.py` |

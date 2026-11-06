@@ -45,10 +45,8 @@ _DERIVED = {"obs_rules": "obs_features"}
 
 
 def _split_rules(flags: dict) -> dict:
-    """`obs_features` without its rule bits, which go to `obs_rules`: a rule bit is the rule the
-    network's seat plays -- the engine's minor version (E8.1), as merged_influence is E4.1's -- and not
-    an observation its A code names. Reported apart, a diff still shows a legacy run against a gated
-    one, and a run from before the first rule bit keeps the codes it had."""
+    """Move the rule bits of `obs_features` to `obs_rules`: they are the engine's minor version (E8.1),
+    not an observation the A code names, so earlier runs keep their codes."""
     if "obs_features" in flags and flags["obs_features"] is not None:
         names = list(flags["obs_features"])
         flags["obs_features"] = [n for n in names if n not in RULE_FEATURES]

@@ -314,11 +314,12 @@ web/ui/
      the same `extract_observation_features` Python calls). `HEADLINE_REVEAL`, E8's default, has no
      width, so a base-layout observation handed to such a model would run and misread Space Race
      box 4's headline; `tests/web/test_wasm_engine.py` holds each feature set's view to Python's.
-   - **...and its rules**: `WasmEngine.mask(merged, features)` seats the decider with the model's
-     `obsFeatures` first (`ts_seat_obs_features`), so a seat the model analyses or moves for plays the
-     rule bits it was trained with (`engine/AGENTS.md` §18) -- a network from before
-     `OPP_EVENT_GATED` keeps the opponent-card Event that fizzles into Ops. `null` seats nobody;
-     `Session.applyFlat(idx, merged, features, ...)` takes the model's bits.
+   - **...and its rules**: each side plays the rule bits (`engine/AGENTS.md` §19) of whoever plays
+     it -- `TSApp.seatSides()`, on every refresh and when the model or the auto-play side changes: the
+     auto-play side its model's `obsFeatures`, a person's side every rule bit
+     (`WasmEngine.currentRules`). So nothing a person is offered or suggested, readout and search
+     included, is an Event that cannot fire, while an older model on the auto-play side keeps the
+     rule it was trained with. `WasmEngine.mask(merged)` reads the seats and changes nothing.
    - **The repo's catalogue (`hfCatalog`, `analysis/hf_catalog.ts`, re-exported by `model.ts`) is one
      request**: `models.json`
      at the repo root, written by `tools/publish_hf.py` on every publish (each `.onnx` with its

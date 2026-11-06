@@ -39,15 +39,9 @@ def _side_merged(game: Dict[str, Any], player: "ts.Player") -> bool:
 
 
 def _side_obs_features(game: Dict[str, Any], player: "ts.Player") -> int:
-    """The feature set `player`'s seat played a game in, whose rule bits (`ts.OBS_FEATURES_RULES`)
-    are the rules it played.
-
-    The generators record `us_obs_features` / `ussr_obs_features` since the first rule bit
-    (OPP_EVENT_GATED, 2026-11-06). A game without them was played before it, under the rule from
-    before every rule bit, which is feature set 0's -- and a mask of that rule offers everything
-    the current one does, so a game played under the current rules (a converted human game) still
-    replays whole.
-    """
+    """The feature set `player`'s seat played a game in, whose rule bits are the rules it played.
+    Absent (games from before the first rule bit, converted human games): 0, the pre-bit rule,
+    whose mask offers everything the current one does, so such a game replays whole."""
     key = "us_obs_features" if player == ts.Player.US else "ussr_obs_features"
     return int(game.get(key, 0))
 

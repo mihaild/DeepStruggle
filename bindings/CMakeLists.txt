@@ -43,6 +43,7 @@ if(EMSCRIPTEN)
         _ts_belief_prepare _ts_belief_decisions _ts_belief_action _ts_belief_rows _ts_belief_set_log_likelihoods
         _ts_belief_temperature_weights _ts_belief_worlds _ts_rollout_add_belief
         _ts_rollout_race _ts_rollout_in_race _ts_obs_size_for _ts_observation_features _ts_click_event_tracks_json
+        _ts_seat_obs_features _ts_seat_rules _ts_obs_features_rules
         _malloc _free)
     list(JOIN TS_WASM_EXPORTS "," TS_WASM_EXPORTS_CSV)
     target_link_options(ts_engine_wasm PRIVATE

@@ -304,19 +304,11 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
 
             // EVENT means "the event resolves now". For a friendly or neutral card that is the
-            // whole play. For an OPPONENT's card it is event-first: the event fires, for its
-            // owner, and the Ops choice is deferred until afterwards.
-            //
-            // Whether the Event may be played at all is can_trigger_event, asked for the player
-            // it fires for -- the card's owner on an opponent's card, as the dispatcher asks it
-            // (ENG-9). Before ENG-9 the opponent-card branch skipped the test, so a prerequisite
-            // card in the opponent's hand -- NATO before Warsaw Pact Formed or the Marshall Plan,
-            // Arab-Israeli War after Camp David, The Cambridge Five in the Late War, Star Wars
-            // with the US not ahead -- offered an EVENT that fizzled into an Ops play of the same
-            // card. Every network trained before the fix plays that option, about once a game,
-            // and does not choose the same Ops without it, so the pre-fix rule stays available to
-            // a seat that plays without obs_features::OPP_EVENT_GATED (GameState::seat_rules) --
-            // which is any seat no one seated, as feature set 0 plays it.
+            // whole play; for an OPPONENT's card it is event-first: the event fires, for its
+            // owner, and the Ops choice is deferred. Either way it is offered only where
+            // can_trigger_event allows it for the player it fires for (ENG-9) -- except to a seat
+            // playing the pre-ENG-9 rule (no OPP_EVENT_GATED), where an opponent's card always
+            // offered it and an unmet prerequisite fizzled into Ops.
             if (CardData::is_opponent_card(card, p)) {
                 if (!seat_plays_rule(state, p, obs_features::OPP_EVENT_GATED) ||
                     CardHandlers::can_trigger_event(state, card, get_opponent(p))) {

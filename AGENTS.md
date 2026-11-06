@@ -83,7 +83,7 @@ graph TD
 .
 ├── CMakeLists.txt              # Root CMake: orchestrates engine/ and bindings/; clang only
 ├── pyrefly.toml / pytest.ini   # Static typing and test configuration
-├── BUGS.md                     # Open and recently fixed defects (ENG-*, TEST-*, CONV-*, BIND-*)
+├── BUGS.md                     # Open defects (TEST-*, CONV-*, BIND-*)
 │
 ├── engine/                     # C++20 simulation engine (engine/AGENTS.md)
 │   ├── include/ts/             # Headers: GameState, MicroAction, ActionMask, CachedState, ...

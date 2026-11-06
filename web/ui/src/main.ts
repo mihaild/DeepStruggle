@@ -147,6 +147,7 @@ export class TSApp {
       (pick: ModelPick | null) => this.loadModel(pick),
       (flatIdx: number) => this.sendFlatAction(flatIdx),
       () => {
+        if (this.seatSides()) return this.refresh();   // the readout was taken under the old rules
         this.syncUrl();
         this.ensureSearch();   // the new auto side's decision may not have been searched
         this.maybeAutoPlay();
@@ -772,6 +773,7 @@ export class TSApp {
       this.state = this.liveState;
       renderTracePanel([], 0);
     }
+    if (this.seatSides()) return this.refresh();   // the auto side moved: its rules did too
     this.renderState();
     this.syncUrl();
     // The readout is the same in every view, but which decisions are searched is not: search the
@@ -837,6 +839,7 @@ export class TSApp {
    */
   private refresh() {
     if (!this.session) return;
+    this.seatSides();
     const version = ++this.version;
     this.liveState = this.session.state();
     this.liveAnalysis = undefined;
@@ -853,6 +856,26 @@ export class TSApp {
       this.syncUrl();
     });
     this.runAnalysis(version);
+  }
+
+  /**
+   * Each side plays the rules of whoever plays it: the auto-play side its model's own rule bits,
+   * a person's side the current rules -- so nothing a person is offered or suggested, the readout
+   * included, is a move those rules forbid (an Event that cannot fire). True if that changed what
+   * the open decision offers, so a readout taken before is stale.
+   */
+  private seatSides(): boolean {
+    const engine = this.engine;
+    if (!engine) return false;
+    const auto = this.analysisPanel.autoSide;
+    const offered = () => [engine.mask(false), engine.mask(true)].map(m => m.join("")).join("|");
+    const before = offered();
+    let changed = false;
+    for (const [side, player] of [["US", 1], ["USSR", -1]] as const) {
+      const features = side === auto && this.model ? this.model.obsFeatures : engine.currentRules;
+      changed = engine.seat(player, features) || changed;
+    }
+    return changed && offered() !== before;
   }
 
   private async runAnalysis(version: number) {
@@ -893,6 +916,7 @@ export class TSApp {
       this.modelSha = "";
       this.runner?.setModel(null, "");
       this.analysisPanel.setOff();
+      if (this.seatSides()) return this.refresh();
       this.renderState();
       this.syncUrl();
       return;
@@ -926,6 +950,7 @@ export class TSApp {
       this.modelSha = "";
       this.analysisPanel.setError(e instanceof Error ? e.message : String(e));
     }
+    if (this.seatSides()) return this.refresh();
     this.syncUrl();
     this.runAnalysis(this.version);
   }
@@ -1290,8 +1315,7 @@ export class TSApp {
     }
     this.noteSettings();
     const how = this.moveHow(auto ? "auto" : "suggested");
-    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false,
-                                         this.model?.obsFeatures ?? 0, forcedDie, how);
+    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false, forcedDie, how);
     if (why) {
       this.refused(why);
       return;

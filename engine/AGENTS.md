@@ -334,7 +334,7 @@ player lose regardless of who drove DEFCON down. That is the rule.
 
 The companion decision offers only opponent-associated, non-scoring cards (a `UN_INTERVENTION` case
 in `get_event_action_mask`'s `SELECT_CARD` switch); since the audit (§12) UN Intervention is not
-offered as an Event at all without such a card. History: `BUGS.md` ENG-1.
+offered as an Event at all without such a card. History: ENG-1, in `BUGS.md`'s history.
 
 ## 9a. Not an issue: "UN Intervention for Ops dead-ends the game" (retracted 2026-09-23)
 
@@ -540,26 +540,25 @@ moves only where an Event gave the phasing player Influence; `test_observation_g
 
 ## 19. An opponent-held card's Event is offered only where it can fire -- a rule bit (ENG-9, 2026-11-06)
 
-Before ENG-9 the play-mode mask's opponent-card branch offered EVENT unconditionally and skipped
-`can_trigger_event`, so an opponent's card whose prerequisite is unmet -- NATO before Warsaw Pact
-Formed or the Marshall Plan, Arab-Israeli War after Camp David, The Cambridge Five in the Late War,
-Star Wars with the US not ahead, Solidarity, the flag-gated Events -- offered an EVENT that fizzled
-into an event-first Ops play of the same card. The fix asks `can_trigger_event` for the player the
-Event fires for (the card's owner, as the dispatcher asks it).
+Before ENG-9 the play-mode mask offered EVENT on an opponent's card unconditionally, so one whose
+prerequisite is unmet (NATO before Warsaw Pact Formed or the Marshall Plan, Solidarity, the flag-gated
+Events, The Cambridge Five in the Late War, Star Wars with the US not ahead) fizzled into an
+event-first Ops play. The fix asks `can_trigger_event` for the player the Event fires for.
 
-It is a **rule bit**, not an in-place fix: `obs_features::OPP_EVENT_GATED` (bit 3, no width, one of
-`obs_features::RULES`). Every network trained before it plays the fizzle -- in greedy-ish self-play
-of five E7/E8 lineages the node comes up about once a game, the networks take EVENT there 21-35% of
-the time, and in 12-28% of those the deferred Ops choice differs from what they pick directly -- so a
-network must play the rule it was trained with. The rule bits each seat plays live in the state,
-`GameState::seat_rules` (indexed by `seat_index`), which every mask, step validation, auto-advance,
-search tree and rollout reads; `seat_obs_features(state, p, features)` seats a model,
-`seat_plays_rule(state, p, rule)` reads it. **Zero is the rule from before every rule bit**, what
-`GameState{}` and `init_new_game` give: a bare state, a runner side with feature set 0 and every
-pre-bit network play the same rule, and the engine unseated is behaviour-identical to E8 (its digest
-is E8's). Harnesses seat models from their feature set (`bindings/AGENTS.md`); the fix reaches a game
-only through a seat whose model was trained with `--obs-features ... opp_event_gated`.
+It is a **rule bit**, `obs_features::OPP_EVENT_GATED` (bit 3, no width, in `obs_features::RULES`):
+every earlier network plays the fizzle (about once a game) and chooses its Ops differently without it,
+so a network plays the rule it was trained with. Each seat's rule bits live in
+`GameState::seat_rules`, which every mask, step validation and auto-advance reads
+(`seat_obs_features`, `seat_both`, `seat_plays_rule`). **Zero is the rule from before every rule
+bit**: a bare state and every pre-bit network play it, and the unseated engine's digest is E8's.
 
-Tests: `NATOEventFromOpponentHandRequiresItsPrerequisite`, `SolidarityEventFromOpponentHandRequiresJohnPaulII`,
-`OpponentCardWithoutPrerequisiteStillOffersEvent` (a gated seat), `LegacySeatStillOffersTheFizzledOpponentEvent`,
-`OpponentEventRuleIsPerSeat`, `UnseatedStatePlaysThePreFixRule` in `engine/tests/test_bugs_regression.cpp`.
+Who sets the seats: a harness seats each model from its feature set (`bindings/AGENTS.md`); a
+**search plays both sides of its tree under its own network's rules** -- `BatchedSearch::reset` and
+`RolloutBatch::add` `seat_both` the roots they copy, the Python trees `ts_env.seat_tree` -- since the
+network models both players, so an old and a new model can search against each other; the web page
+seats a person's side with every rule bit (the current rules) and only the auto-play side with its
+model's (`web/ui/AGENTS.md`).
+
+Tests: `*OpponentEvent*`, `*NATOEvent*`, `*Solidarity*`, `UnseatedStatePlaysThePreFixRule` in
+`engine/tests/test_bugs_regression.cpp`; `tests/bindings/test_obs_rule_bits.py`,
+`tests/training/test_search_mixed_rules.py`.

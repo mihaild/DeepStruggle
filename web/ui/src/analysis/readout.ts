@@ -27,7 +27,7 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
 
   const obs = new Float32Array(3 * obsSize);
   const masks = new Uint8Array(3 * act).fill(1);
-  const legalMask = decider !== 0 ? engine.mask(merged, features) : null;
+  const legalMask = decider !== 0 ? engine.mask(merged) : null;
   if (decider !== 0 && legalMask) {
     obs.set(engine.observation(decider, features), 0);
     masks.set(legalMask, 0);

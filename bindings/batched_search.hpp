@@ -216,7 +216,10 @@ public:
                 std::vector<Edge>().swap(t.edges);
             }
             t.nodes.reserve(need);
-            t.nodes.push_back(make_node(roots[i]));
+            // The network models both sides, so the tree plays both under its rule bits.
+            ts::GameState root = roots[i];
+            ts::seat_both(root, features_);
+            t.nodes.push_back(make_node(root));
             t.remaining = 0;
             t.leaf = -1;
             t.row = -1;

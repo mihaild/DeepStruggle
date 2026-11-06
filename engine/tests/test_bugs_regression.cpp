@@ -798,13 +798,8 @@ TEST(EraTransitionKeepsTheDiscard, LateWarJoinsTheDeckAndTheDiscardStays) {
     }
 }
 
-// ENG-9, for a seat that plays obs_features::OPP_EVENT_GATED: the play-mode mask's opponent-card
-// branch offered EVENT unconditionally, so NATO in USSR
-// hands (Missile Envy trades cards) could be "played as an event" before its prerequisite --
-// "requires prior play of either the 'Warsaw Pact Formed' or 'Marshall Plan' Event(s) in order to
-// be played as an Event", whichever side holds the card. The event then silently did nothing
-// (run_trigger_event returns at its unmet-prerequisite check) and the play degenerated into an
-// Ops play of the same card, so an illegal choice was on offer and nothing else.
+// ENG-9, for a seat that plays obs_features::OPP_EVENT_GATED: NATO in USSR hands was offered as an
+// Event before Warsaw Pact Formed or the Marshall Plan, and the play fizzled into Ops.
 TEST(RegressionTest, NATOEventFromOpponentHandRequiresItsPrerequisite) {
     GameState state{};
     Engine::init_game(state, 42);
