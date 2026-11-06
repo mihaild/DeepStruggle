@@ -95,3 +95,22 @@ So in the clean case the term's floor is visible (0.13-0.22% per non-scoring car
 J5 about 0.4 points per such node over R95 (1.46 against 1.04% lost) -- about the size of the floor's median mass
 (0.21-0.37%). The rest of the losses, in all three networks, come from a few percent of nodes where the network puts real
 weight on another card; J1 at 2,000M has the most of those.
+
+## What the non-scoring plays at that round are
+
+`data/reports/held_scoring_last_us_detail.{json,txt}` (`held_last_us_detail.py`; 6,144 T=1 games per network): the US's last
+round with no eighth round, one scoring card held, a non-scoring card played -- J5 121 nodes, J1 199, R95 130.
+
+* **The non-losses are almost all one trick: Aldrich Ames Remix.** Played by the US at its last round with the scoring card
+  the only other card in hand, its event makes the USSR discard a card from the US hand -- the scoring card -- and the turn
+  passes (or turn 10 goes to final scoring). R95 does it deliberately (P(scoring) 0-9%; 52 of its 130 non-scoring plays),
+  J1 31 of 199, J5 7 of 121.
+* **The other non-losses are losses by another name:** "Lone Gunman" (and once Ortega, We Will Bury You) at DEFCON 2 -- the
+  USSR coups a battleground with the event's Ops and DEFCON 1 falls on the US's round (J5 6, J1 4, R95 1), J5 at 96% on
+  the scoring card: sampled.
+* **The losses are not gambles to win.** War cards 7 (J5), 3 (J1), 7 (R95); space attempts 13 (J5), 7 (J1), 0 (R95) -- none
+  can win the game from where the US stands (mean VP -6 to -7). The largest single group is **The China Card played
+  instead of the scoring card** (J5 17, J1 16, R95 12): it does not count toward the hand, so the scoring card stays held.
+  A quarter of the losses (J5 26 of 108, J1 42 of 163, R95 22 of 77) would have lost by 20 VP had the card been scored;
+  most of the rest are ordinary Ops plays (influence, coups, realignments) when the held card would cost the US 4-6 VP --
+  for J5 mostly sampled (76% on the scoring card on average), for R95 meant (18%).
