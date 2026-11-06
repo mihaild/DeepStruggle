@@ -46,3 +46,23 @@ play: scoring timing and Europe (the USSR's Europe-control wins, the US's empty 
 decided. Whether the concentration is a strength (a compact game-state summary) or a bottleneck (country detail
 squeezed through six tokens) is not something attention alone can say; an ablation (masking the scoring-card tokens in
 layer 3) would.
+
+## Does anything look for a specific card? (830M)
+
+`data/reports/j5_card_seek_830M.txt` (`j5_card_seek.py`): attention to card c averaged only over positions where c sits in
+one place -- unseen by the mover (deck / opponent's unknown hand) or visible (own hand, opponent-known, discard,
+removed) -- so the location gating above does not masquerade as interest, and a query's pull compared with what the other
+queries of its kind give c there (lift). Scoring cards excluded as targets.
+
+* **Rule-shaped pulls exist, a handful:** Pakistan, North Korea, Thailand -> The China Card (visible, layer 1, ~3x
+  uniform, lift 3-4; the China Card's Asia bonus); Gulf States -> OPEC (visible, layer 1); Finland, Turkey, the United
+  Kingdom -> Truman Doctrine while it is unseen (layer 2, 12-13x uniform; Truman strips USSR influence from an
+  uncontrolled European country); Poland -> Warsaw Pact Formed while unseen (layer 2, 10x uniform, lift 10), and Europe
+  Scoring -> Warsaw Pact Formed / Five Year Plan / SALT / Nuclear Test Ban while unseen (layer 3, lifts 22-51).
+* **A few cards are tracked by everyone:** Wargames (unseen and visible; Southeast Asia Scoring reads it at 36x uniform
+  when visible), The Cambridge Five, CIA Created, Aldrich Ames Remix (the most-read unseen card in layer 3, 6.3x), The
+  Iron Lady (5.3x) -- hand-information and game-ending cards.
+* **Most of the strongest pulls carry no rule:** Dominican Republic / Ecuador -> Wargames, Allende, AWACS; Terrorism ->
+  Aldrich Ames / Pershing II / "An Evil Empire" (7-15x uniform); Turkey and Spain/Portugal -> Allende. These look like
+  tokens of absent or irrelevant cards serving as scratch registers, not card knowledge; 24 games, so single cells are
+  noisy.
