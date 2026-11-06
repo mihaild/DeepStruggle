@@ -1290,7 +1290,8 @@ export class TSApp {
     }
     this.noteSettings();
     const how = this.moveHow(auto ? "auto" : "suggested");
-    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false, forcedDie, how);
+    const why = this.session.applyFlat(flatIdx, this.model?.meta.mergedInfluence ?? false,
+                                         this.model?.obsFeatures ?? 0, forcedDie, how);
     if (why) {
       this.refused(why);
       return;

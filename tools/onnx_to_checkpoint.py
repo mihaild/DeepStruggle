@@ -114,7 +114,7 @@ def verify(sd: Dict[str, torch.Tensor], onnx_path: str, n: int, tol: float) -> T
     mover = [s.ctx().decision_player if s.ctx().decision_player != ts.Player.NONE else s.phasing_player
              for s in states]
     obs = np.stack([observe(s, m, features) for s, m in zip(states, mover)])
-    masks = np.stack([legal_mask(s, merged) for s in states])
+    masks = np.stack([legal_mask(s, merged, None) for s in states])
     lo, vw, vv = (np.asarray(x, dtype=np.float64) for x in
                   sess.run(["logits", "v_win", "v_vp"], {"obs": obs, "mask": masks}))
     with torch.no_grad():

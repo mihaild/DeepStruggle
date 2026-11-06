@@ -60,7 +60,8 @@ ARCH_FLAGS = frozenset({
     "graph_layers", "per_entity_heads", "attn_readout",
 })
 #: Neither network nor training: where files go, cadence, evals, budget, seeds, other modes.
-#: `merged_influence` is the engine's minor version (E4.1, P23), not a recipe.
+#: `merged_influence` is the engine's minor version (E4.1, P23), not a recipe; so are `obs_rules`, the
+#: rule bits a network plays (E8.1 = E8 with opp_event_gated, ENG-9).
 BOOKKEEPING = frozenset({
     "mode", "resume", "resume_every_snapshot", "resume_every_steps", "snapshot_every_steps",
     "train_steps", "eval_max_snapshot_opponents", "eval_opponents", "eval_games_per_side",
@@ -68,7 +69,7 @@ BOOKKEEPING = frozenset({
     "run_name", "description", "device", "tensorboard", "seed", "seed_init", "seed_sampling",
     "seed_env", "seed_pool", "warmup_checkpoint", "warmup_dataset", "distill_dataset",
     "distill_epochs", "distill_lr", "bc_epochs", "curriculum_switch_fraction", "no_cuda_graphs",
-    "merged_influence", "new_directory", "turn_credit_workers", "search_workers", "resume_widen", "resume_grow_sphere",
+    "merged_influence", "obs_rules", "new_directory", "turn_credit_workers", "search_workers", "resume_widen", "resume_grow_sphere",
     "resume_grow_tokens",
     # a value fit's shape change: the network it builds is recorded as ladder_config, the A code's
     "value_arch", "policy_arch",
@@ -557,6 +558,14 @@ def main() -> int:
         if is_run_name(launched) and not LEGACY_RUN_NAME_RE.match(launched):
             ok = parse_run_name(launched).text() == name
             print(f"  launched as {launched}: {'agrees' if ok else 'DISAGREES -- its flags say ' + name}")
+            # The rule bits are the minor version: a run that plays opp_event_gated is E8.1, and an
+            # E8.1 name on a run that does not is wrong (research/method/run_nomenclature.md).
+            gated = "opp_event_gated" in (lf.recorded(a.run).get("obs_rules") or [])
+            e = parse_run_name(launched).fields()["E"]
+            if e.startswith("8") and gated != (e == "8.1"):
+                print(f"  DISAGREES -- E{e}, but the run {'plays' if gated else 'does not play'} "
+                      f"opp_event_gated (E8.1 is E8 with it)")
+                return 1
             return 0 if ok else 1
         return 0
     for line in missing:

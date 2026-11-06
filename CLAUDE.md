@@ -315,7 +315,10 @@ base floats, so existing checkpoints keep running. A model's set is recorded in 
 (LadderNet's `obs_features` buffer) and in `metadata.json`, and chosen with
 `tools/train.py --obs-features`, whose default since **E8 is `headline_reveal`** (owner, 2026-10-20;
 the flag with no names gives none, what every earlier run read; `launch_flags.py` compares each run
-against its own epoch's default, so earlier codes hold). The engine has no default:
+against its own epoch's default, so earlier codes hold) **plus, since 2026-11-06, the rule bit
+`opp_event_gated`** (owner): a run playing it is **E8.1** (the minor version, like E4.1), and
+`launch_flags.py` reports rule bits as `obs_rules`, outside the A code. **Continuing an E8 run needs
+`--obs-features headline_reveal`**; the resume refuses the default for it. The engine has no default:
 `ts.extract_observation_features(state, perspective, features)` requires the set
 (`bindings.ts_env.model_obs_features(model)`),
 `ts.obs_size_for(features)` is the width, and the batch runner holds a set per env and side
@@ -324,7 +327,11 @@ a batch. Training pools require every member, including fixed and league opponen
 learner's exact feature bits; equal observation widths are insufficient. Blocks so far:
 `OPS_BUDGET` (bit 1, 3 floats; P30 C4) and `HEADLINE_REVEAL` (bit 2, no width:
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
-2026-10-20). Adding a block still needs the owner.
+2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
+change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
+Event (`engine/AGENTS.md` §18). A seat plays the rule bits of the feature set it is observed in; a seat
+no one seated, and feature set 0, play the rule from before every bit, so the unseated engine is E8's.
+Adding a block still needs the owner.
 
 **AI (`ai/`):** the current lineage is LadderNet (`models/ladder_net.py`, `--arch ladder`), the
 configurable P21 backbone whose required structural flags make up the A codes;

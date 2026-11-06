@@ -74,6 +74,7 @@ def test_every_training_setting_is_recorded_by_the_trainer() -> None:
     written |= {dest for key, (dest, _c) in lf._RENAMED.items() if f'"{key}":' in src}
     if '"ladder_config":' in src:
         written |= set(lf._LADDER.values())
+    written |= {d for d, source in lf._DERIVED.items() if source in written}
     missing = sorted(set(lf._defaults()) - written - set(lf.UNCHECKED_BY_DESIGN))
     assert not missing, f"train.py flags the trainer never records in metadata.json: {missing}"
 
@@ -103,7 +104,7 @@ def test_an_epoch_default_is_read_as_the_runs_own_epoch_had_it() -> None:
     then read no optional feature, so it is still at its default -- its A code does not move -- while
     an E8 run that named none departs from E8's."""
     lf = _lf()
-    assert lf._defaults()["obs_features"] == ["headline_reveal"]
+    assert lf._defaults()["obs_features"] == ["headline_reveal"]   # its rule bits are obs_rules
     e7 = _run({"run_name": "E7-A8-R1-S44", "obs_features": []})
     e7_branch = _run({"run_name": "E7-A8-R1-S44@6400M+R34", "obs_features": []})
     legacy = _run({"run_name": "E7-20-44", "obs_features": []})
@@ -129,10 +130,25 @@ def test_the_diff_compares_the_view_each_run_actually_read() -> None:
     assert lf.epoch_default_rows(e7, e8_none) == []
 
 
+def test_a_rule_bit_is_the_minor_version_not_a_code() -> None:
+    """opp_event_gated (ENG-9, the default since 2026-11-06) is the rule the network plays: reported
+    as `obs_rules`, apart from obs_features. An E8 run from before it keeps the code it had -- its
+    obs_features are E8's default -- and only obs_rules says it plays the pre-fix rule."""
+    lf = _lf()
+    assert lf._defaults()["obs_rules"] == ["opp_event_gated"]
+    e8 = _run({"run_name": "E8-A8-R1-S44", "obs_features": ["headline_reveal"]})
+    e81 = _run({"run_name": "E8.1-A8-R1-S44", "obs_features": ["headline_reveal", "opp_event_gated"]})
+    assert "obs_features" not in lf.non_default(e8) and "obs_features" not in lf.non_default(e81)
+    assert lf.non_default(e8)["obs_rules"] == []
+    assert "obs_rules" not in lf.non_default(e81)
+    assert lf.recorded(e81)["obs_features"] == ["headline_reveal"]
+
+
 def test_obs_features_default_and_opt_out_on_the_cli() -> None:
-    """Since E8 a new network reads headline_reveal; the list replaces the default, and the flag with
-    no names is none -- E7's view, which continuing an E7 run needs."""
+    """A new network reads headline_reveal (since E8) and plays opp_event_gated (E8.1, since
+    2026-11-06); the list replaces the default, and the flag with no names is none -- E7's view,
+    which continuing an E7 run needs, as continuing an E8 run needs headline_reveal alone."""
     p = build_parser()
-    assert p.parse_args([]).obs_features == ["headline_reveal"]
+    assert p.parse_args([]).obs_features == ["headline_reveal", "opp_event_gated"]
     assert p.parse_args(["--obs-features"]).obs_features == []
     assert p.parse_args(["--obs-features", "ops_budget"]).obs_features == ["ops_budget"]

@@ -195,7 +195,9 @@ def generate(checkpoint: str, total_games: int, batch_size: int, sims: int,
             runner = ts.VectorizedBatchRunner(n, base_seed)
             hist: List[Dict[str, Any]] = [
                 {"game_id": f"x4a_{seed_offset}_{games_done + i:06d}", "seed": base_seed + i * 10007 + 1,
-                 "actions": []} for i in range(n)]
+                 "actions": [],
+                 # The runner is given no feature sets, so both seats play feature set 0's rules.
+                 "us_obs_features": 0, "ussr_obs_features": 0} for i in range(n)]
             done = [False] * n
 
             for _ in range(max_steps):

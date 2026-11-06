@@ -314,6 +314,11 @@ web/ui/
      the same `extract_observation_features` Python calls). `HEADLINE_REVEAL`, E8's default, has no
      width, so a base-layout observation handed to such a model would run and misread Space Race
      box 4's headline; `tests/web/test_wasm_engine.py` holds each feature set's view to Python's.
+   - **...and its rules**: `WasmEngine.mask(merged, features)` seats the decider with the model's
+     `obsFeatures` first (`ts_seat_obs_features`), so a seat the model analyses or moves for plays the
+     rule bits it was trained with (`engine/AGENTS.md` §18) -- a network from before
+     `OPP_EVENT_GATED` keeps the opponent-card Event that fizzles into Ops. `null` seats nobody;
+     `Session.applyFlat(idx, merged, features, ...)` takes the model's bits.
    - **The repo's catalogue (`hfCatalog`, `analysis/hf_catalog.ts`, re-exported by `model.ts`) is one
      request**: `models.json`
      at the repo root, written by `tools/publish_hf.py` on every publish (each `.onnx` with its

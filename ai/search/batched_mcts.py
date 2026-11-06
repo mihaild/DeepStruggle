@@ -44,7 +44,7 @@ from ai.search.dmcts import determinize
 from ai.search.gumbel_root import GumbelRoot, GumbelStats
 from ai.search.pimcts import PIMCTSConfig, acting_player, drain_chance_nodes
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe
+from bindings.ts_env import model_obs_features, observe, seat_decider
 
 _UINT64 = 1 << 64
 _US = int(ts.Player.US)
@@ -864,6 +864,8 @@ class BatchedMCTSAgent:
         unaffordable.
         """
         states = list(states)
+        for st in states:   # this agent decides every root, under its own rules
+            seat_decider(st, self.mcts.features)
         want = [self.mcts.should_search(st) for st in states]
         out: List[int] = [0] * len(states)
 
@@ -915,6 +917,7 @@ class BatchedMCTSAgent:
         return out
 
     def select_action(self, state: ts.GameState, player, temperature: float = 0.1) -> int:
+        seat_decider(state, self.mcts.features)
         action = int(self.mcts.best_actions([state])[0])
         # Fail loudly rather than hand back something the caller will have rejected. The engine
         # already returns False for a mismatched action and leaves the state untouched, so a

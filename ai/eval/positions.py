@@ -127,13 +127,13 @@ def legal_mask(state: ts.GameState) -> np.ndarray:
     """The E4-view mask. Deliberately not the merged-influence (E4.1) view: every position and
     claim built here names E4 action slots (`PLAY_MODE_ACTION`), so a merged-view network cannot
     be scored on them and its callers refuse it at load (tools/behavioral_test.py)."""
-    return np.asarray(bindings_legal_mask(state, False))
+    return np.asarray(bindings_legal_mask(state, False, None))
 
 
 def select_card_action(state: ts.GameState, card: int) -> Optional[int]:
     """The legal flat action that selects `card` at this state's SELECT_CARD node (E4 view), or
     None when the card is not selectable here -- the mask-checked form of `card_action`."""
-    mask = np.asarray(bindings_legal_mask(state, False))
+    mask = np.asarray(bindings_legal_mask(state, False, None))
     for a in np.flatnonzero(mask):
         ma = ts.decode_flat_action(state, int(a))
         if ma.decision_type == ts.DecisionType.SELECT_CARD and int(ma.primary_id) == card:

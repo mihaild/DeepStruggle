@@ -304,11 +304,24 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
 
             // EVENT means "the event resolves now". For a friendly or neutral card that is the
-            // whole play. For an OPPONENT's card it is event-first: the event fires and the Ops
-            // choice is deferred until afterwards, which is why it is legal exactly when Ops play
-            // is -- the old CHOOSE_TIMING_BRANCH offered EVENT_FIRST unconditionally there.
+            // whole play. For an OPPONENT's card it is event-first: the event fires, for its
+            // owner, and the Ops choice is deferred until afterwards.
+            //
+            // Whether the Event may be played at all is can_trigger_event, asked for the player
+            // it fires for -- the card's owner on an opponent's card, as the dispatcher asks it
+            // (ENG-9). Before ENG-9 the opponent-card branch skipped the test, so a prerequisite
+            // card in the opponent's hand -- NATO before Warsaw Pact Formed or the Marshall Plan,
+            // Arab-Israeli War after Camp David, The Cambridge Five in the Late War, Star Wars
+            // with the US not ahead -- offered an EVENT that fizzled into an Ops play of the same
+            // card. Every network trained before the fix plays that option, about once a game,
+            // and does not choose the same Ops without it, so the pre-fix rule stays available to
+            // a seat that plays without obs_features::OPP_EVENT_GATED (GameState::seat_rules) --
+            // which is any seat no one seated, as feature set 0 plays it.
             if (CardData::is_opponent_card(card, p)) {
-                mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
+                if (!seat_plays_rule(state, p, obs_features::OPP_EVENT_GATED) ||
+                    CardHandlers::can_trigger_event(state, card, get_opponent(p))) {
+                    mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
+                }
             } else if (CardHandlers::can_trigger_event(state, card, p)) {
                 mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
             }

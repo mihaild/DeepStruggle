@@ -23,7 +23,7 @@ function chooser(seed: number) {
   let x = seed >>> 0;
   return () => {
     x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
-    const m = engine.mask(false);
+    const m = engine.mask(false, null);
     const legal: number[] = [];
     m.forEach((v, i) => { if (v) legal.push(i); });
     return legal[x % legal.length];
@@ -42,7 +42,7 @@ function side(): "US" | "USSR" | "" {
  */
 function move(s: GameSession, pick: () => number, die: number, how: MoveHow): void {
   for (let tries = 0; tries < 50; tries++) {
-    const why = s.applyFlat(pick(), false, die, how);
+    const why = s.applyFlat(pick(), false, 0, die, how);
     if (why) throw new Error(why);
     if (!engine.isTerminal() || engine.display().turn >= 10 || tries === 49) return;
     s.undo(false);

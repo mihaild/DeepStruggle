@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 import ts_engine as ts
 
-from bindings.ts_env import model_obs_features, observe
+from bindings.ts_env import legal_mask as bindings_legal_mask, model_obs_features, observe
 from ai.eval.positions import PLAY_MODE_ACTION, PositionBuilder, card_action, legal_mask, step_to_play_mode
 
 
@@ -196,9 +196,9 @@ def torch_policy(net: torch.nn.Module, device: str = "cpu") -> PolicyFn:
     feats = model_obs_features(net)
 
     def fn(state: ts.GameState, obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        del obs
+        del obs, mask   # both rebuilt in the network's own set: its observation, and its rules' mask
         o = torch.from_numpy(observe(state, state.ctx().decision_player, feats)).unsqueeze(0).to(device)
-        m = torch.from_numpy(mask).unsqueeze(0).to(device)
+        m = torch.from_numpy(bindings_legal_mask(state.clone(), False, feats)).unsqueeze(0).to(device)
         with torch.no_grad():
             logits, _, _ = net(o, m)
             return F.softmax(logits, dim=-1).squeeze(0).cpu().numpy()

@@ -162,7 +162,7 @@ def check_checkpoints(paths: Sequence[str], games: int, seed: int, max_positions
     if len(states) > max_positions:
         states = [states[i] for i in sorted(rng.choice(len(states), size=max_positions, replace=False))]
     dtypes = [str(s.ctx().decision_type).split(".")[-1] for s in states]
-    masks = torch.tensor(np.stack([legal_mask(s, False).astype(bool) for s in states]))
+    masks = torch.tensor(np.stack([legal_mask(s, False, None).astype(bool) for s in states]))
     report: Dict[str, Any] = {"positions": len(states), "games": games, "seed": seed, "networks": {}}
     for path, m in zip(paths, models):
         feats = model_obs_features(m)

@@ -366,6 +366,16 @@ struct alignas(64) GameState {
     uint8_t china_card_playable;       // 1 if face up / playable, 0 if face down
 
     // -------------------------------------------------------------------------
+    // 4. The rules each seat plays under (obs_features rule bits; ENG-9, 2026-11-06)
+    // -------------------------------------------------------------------------
+    // The rule bits of obs_features (obs_features::RULES) this seat plays, indexed by seat_index().
+    // A bit clear is the rule from before it, which every model trained before the bit existed
+    // learned. Zero -- what GameState{} and init_new_game give -- is feature set 0's rules, the rules
+    // from before every rule bit, exactly as a model of feature set 0 plays them: one default for a
+    // bare state, a runner and a model alike. A harness seats a model with seat_obs_features().
+    uint32_t seat_rules[2] = {0u, 0u};
+
+    // -------------------------------------------------------------------------
     // 5. Persistent Board Flags & Parametric Effects (64-bit bitfield)
     // -------------------------------------------------------------------------
     uint64_t persistent_effects;
@@ -576,13 +586,40 @@ namespace obs_features {
     // only a model trained with the bit reads them so; the base layout of every other model is
     // unchanged.
     constexpr uint32_t HEADLINE_REVEAL = 1u << 2;
-    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL;
+    // A rule bit, at no width (owner, 2026-11-06): what the engine OFFERS the model, not what it
+    // shows it. Set, an opponent's card offers its Event only where the Event can fire
+    // (can_trigger_event for the player it fires for, ENG-9); clear, the pre-ENG-9 rule every
+    // earlier network learned, where it offered the Event unconditionally and an unmet prerequisite
+    // made it fizzle into an Ops play. The two lead to different games -- a network that learned to
+    // play the fizzle and then choose its Ops does not choose the same Ops when the fizzle is gone
+    // -- so a model plays the rule it was trained with: its seat's bits live in the state
+    // (GameState::seat_rules), which every mask, step and search reads. A seat no one seated plays
+    // the pre-ENG-9 rule, as feature set 0 does.
+    constexpr uint32_t OPP_EVENT_GATED = 1u << 3;
+    // The rule bits: obs_features bits that change the rules a seat plays rather than its
+    // observation. A state's seats default to none of them, the rules feature set 0 plays.
+    constexpr uint32_t RULES       = OPP_EVENT_GATED;
+    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 
     constexpr size_t extra_width(uint32_t features) noexcept {
         return ((features & OPS_BUDGET) ? OPS_BUDGET_WIDTH : 0);
     }
+}
+
+// GameState::seat_rules' index for a seat: 0 for the US, 1 for the USSR.
+constexpr size_t seat_index(Player p) noexcept { return p == Player::USSR ? 1 : 0; }
+
+// Seat a model of feature set `features` at `p`: that seat plays exactly the rule bits the set
+// names, and the pre-fix rule of every rule bit it lacks. Observation bits are ignored here.
+inline void seat_obs_features(GameState& state, Player p, uint32_t features) noexcept {
+    state.seat_rules[seat_index(p)] = obs_features::RULES & features;
+}
+
+// Does the seat `p` play rule bit `rule` (the fix), rather than the rule from before it?
+inline bool seat_plays_rule(const GameState& state, Player p, uint32_t rule) noexcept {
+    return (state.seat_rules[seat_index(p)] & rule) != 0;
 }
 
 namespace ctx_slots {

@@ -26,7 +26,7 @@ if _root not in sys.path:
 import ts_engine as ts  # noqa: E402
 from ai.eval.behavioral_suite import PolicyFn, SuiteResult, run_suite  # noqa: E402
 from ai.eval.claims import build_claims  # noqa: E402
-from bindings.ts_env import observe  # noqa: E402
+from bindings.ts_env import legal_mask, observe  # noqa: E402
 from tools.lib.player_agent import NeuralAgent, PlayerAgent, load_agent  # noqa: E402
 
 BASELINES = ("random", "heuristic", "heuristic_v2")
@@ -60,9 +60,9 @@ def network_policy(agent: NeuralAgent) -> PolicyFn:
     device = next(agent.model.parameters()).device
 
     def fn(state: "ts.GameState", obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        del obs
+        del obs, mask   # both rebuilt in the network's own set: its observation, and its rules' mask
         o = torch.from_numpy(observe(state, state.ctx().decision_player, agent.obs_features))
-        m = torch.from_numpy(np.asarray(mask, dtype=np.uint8))
+        m = torch.from_numpy(legal_mask(state.clone(), False, agent.obs_features))
         with torch.no_grad():
             logits, _, _ = agent.model(o.unsqueeze(0).to(device), m.unsqueeze(0).to(device))
             return F.softmax(logits, dim=-1).squeeze(0).cpu().numpy()

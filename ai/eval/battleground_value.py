@@ -87,7 +87,7 @@ def value_of(model: Any, state: ts.GameState, mover: ts.Player, device: Any) -> 
     """`v_win` from the mover's point of view, read in the model's own observation feature set
     (the value heads ignore the mask; the E4 one is passed)."""
     obs = observe(state, mover, model_obs_features(model))[None, :]
-    mask = legal_mask(state, False)[None, :]
+    mask = legal_mask(state, False, model_obs_features(model))[None, :]
     with torch.no_grad():
         _logits, v_win, _v_vp = model(torch.from_numpy(obs).to(device),
                                       torch.from_numpy(mask).to(device))

@@ -438,6 +438,21 @@ NB_MODULE(ts_engine, m) {
         .def_rw("persistent_effects", &ts::GameState::persistent_effects)
         .def_rw("ctx_stack_depth", &ts::GameState::ctx_stack_depth)
         .def_rw("rng_state", &ts::GameState::rng_state)
+        // The rule bits each seat plays (obs_features::RULES; GameState::seat_rules). A harness
+        // seats the model it lets decide at `player`; a seat no one seated plays feature set 0's.
+        .def("seat_obs_features", [](ts::GameState& s, ts::Player player, uint32_t features) {
+            if (player != ts::Player::US && player != ts::Player::USSR)
+                throw std::invalid_argument("seat_obs_features: a seat is US or USSR");
+            if (features & ~ts::obs_features::ALL)
+                throw std::invalid_argument("seat_obs_features: unknown observation feature bits");
+            ts::seat_obs_features(s, player, features);
+        }, nb::arg("player"), nb::arg("features"),
+           "Seat a model of feature set `features` at `player`: that seat plays the rule bits the set "
+           "names and the pre-fix rule of each it lacks. Observation bits are ignored.")
+        .def("seat_plays_rule", [](const ts::GameState& s, ts::Player player, uint32_t rule) {
+            return ts::seat_plays_rule(s, player, rule);
+        }, nb::arg("player"), nb::arg("rule"),
+           "Whether the seat `player` plays rule bit `rule` (the fix) rather than the rule before it.")
         .def("set_flag", &ts::GameState::set_flag)
         .def("clear_flag", &ts::GameState::clear_flag)
         // reference_internal: the context lives inside the state, so the state must outlive it.
@@ -1452,6 +1467,8 @@ NB_MODULE(ts_engine, m) {
        "extract_observation(state, perspective).");
     m.attr("OBS_FEATURE_OPS_BUDGET") = static_cast<uint32_t>(ts::obs_features::OPS_BUDGET);
     m.attr("OBS_FEATURE_HEADLINE_REVEAL") = static_cast<uint32_t>(ts::obs_features::HEADLINE_REVEAL);
+    m.attr("OBS_FEATURE_OPP_EVENT_GATED") = static_cast<uint32_t>(ts::obs_features::OPP_EVENT_GATED);
+    m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);
 
     m.attr("OBS_FLAG_STAGED_CARDS") = static_cast<uint32_t>(ts::obs_flags::STAGED_CARDS);
@@ -1521,6 +1538,17 @@ NB_MODULE(ts_engine, m) {
             if (p == ts::Player::USSR) return feat_ussr[idx];
             return 0u;
         }
+        // A seat plays the rule bits of the feature set it is observed in (obs_features::RULES,
+        // GameState::seat_rules): a model whose observation is right plays the rules it was
+        // trained with, and feature set 0 -- every network before the first rule bit -- plays the
+        // rules from before it. Applied wherever a slot's state is replaced: init_new_game would
+        // leave feature set 0's seats, and set_state the seats of whoever saved the position.
+        void seat(size_t idx) {
+            slots[idx].modify([&](ts::GameState& g) {
+                ts::seat_obs_features(g, ts::Player::US, feat_us[idx]);
+                ts::seat_obs_features(g, ts::Player::USSR, feat_ussr[idx]);
+            });
+        }
         void resize_obs() {
             size_t w = ts::OBS_SIZE_V23;
             for (size_t i = 0; i < num_envs; ++i) {
@@ -1561,6 +1589,7 @@ NB_MODULE(ts_engine, m) {
                     throw std::invalid_argument("set_obs_features: unknown observation feature bits");
                 feat_us[i] = us[i];
                 feat_ussr[i] = ussr[i];
+                seat(i);
             }
             resize_obs();
             refresh_all();
@@ -1572,6 +1601,7 @@ NB_MODULE(ts_engine, m) {
             const size_t before = obs_width;
             feat_us[idx] = us;
             feat_ussr[idx] = ussr;
+            seat(idx);
             size_t w = ts::OBS_SIZE_V23;
             for (size_t i = 0; i < num_envs; ++i) {
                 w = std::max(w, ts::OBS_SIZE_V23 + ts::obs_features::extra_width(feat_us[i]));
@@ -1622,6 +1652,7 @@ NB_MODULE(ts_engine, m) {
             for (size_t i = 0; i < n; ++i) {
                 const uint64_t seed = base_seed + i * 10007 + 1;
                 slots[i].modify([&](ts::GameState& g) { ts::StateMachine::init_new_game(g, seed); });
+                seat(i);
             }
             refresh_all();
         }
@@ -1629,6 +1660,7 @@ NB_MODULE(ts_engine, m) {
         void reset_game(size_t idx, uint64_t seed) {
             if (idx >= num_envs) throw std::out_of_range("reset_game: env index out of range");
             slots[idx].modify([&](ts::GameState& g) { ts::StateMachine::init_new_game(g, seed); });
+            seat(idx);
             refresh_single(idx);
         }
 
@@ -1923,6 +1955,7 @@ NB_MODULE(ts_engine, m) {
         .def("set_state", [](VectorizedBatchRunner& self, size_t idx, const ts::GameState& s) {
             if (idx >= self.num_envs) throw nb::index_error("env index out of range");
             self.slots[idx] = ts::CachedState(s);
+            self.seat(idx);   // the position's seats are this env's models, whoever saved it
         }, nb::arg("idx"), nb::arg("state"))
         .def("compute_useful_actions_potentials", [](VectorizedBatchRunner& self, const std::vector<int8_t>& acting_players) {
             size_t n = self.num_envs;

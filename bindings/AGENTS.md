@@ -54,6 +54,18 @@ are cited from elsewhere; keep them.
     decider's set and zero-pads to the widest (`obs_width`); `TsVectorizedEnv.set_obs_features`
     keeps the sets across `reset_all`, and `ts_env.model_obs_features(model)` reads a model's set
     from its weights.
+  - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §18): an `obs_features` bit in
+    `OBS_FEATURES_RULES` (so far `OBS_FEATURE_OPP_EVENT_GATED`, ENG-9) is the rule a seat plays, held
+    in the state per seat (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`). A seat
+    no one seated plays feature set 0's rule, the one from before every rule bit. **A seat plays the
+    rule bits of the feature set it is observed in**: the runner seats both sides of an env from its
+    per-side sets at construction, `set_obs_features(_env)`, `reset_game` and `set_state`;
+    `ts_env.legal_mask(state, merged_influence, features)` seats the decider before building its mask
+    (`features=None` seats nobody, for a caller enumerating a position rather than deciding it), and
+    `ts_env.seat_decider` is what the searchers call on their roots. `(seed, actions)` datasets record
+    `us_obs_features` / `ussr_obs_features` and `WarmupDataset` seats them on replay (absent: feature
+    set 0). Inside `ai/search/batched_mcts.py`'s rollouts both sides play the searcher's own rules,
+    as both are played by its own network. The wasm build exports `ts_seat_obs_features`.
   - **`BatchedSearch`** ([`batched_search.hpp`](batched_search.hpp)): the C++ tree behind
     `ai/search/batched_mcts.py` (`backend="cpp"`), Python-only. Up to `capacity` PUCT searches in
     lockstep, split into `num_groups` evaluation groups: `reset(roots, simulations, rng_state,

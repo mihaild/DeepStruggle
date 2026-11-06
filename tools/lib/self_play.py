@@ -162,6 +162,9 @@ def generate_self_play_replay(
 
     state = ts.GameState()
     ts.Engine.init_game(state, seed)
+    # The model plays both seats, so both play the rules its feature set names (obs_features::RULES).
+    state.seat_obs_features(ts.Player.US, features)
+    state.seat_obs_features(ts.Player.USSR, features)
 
     replay_logger = ReplayLogger(
         game_id=gid,
@@ -241,13 +244,13 @@ def generate_self_play_replay(
                 if trace:
                     # A scripted opening overrode a real choice, so there is no distribution to
                     # report and none is invented -- only the fact that the policy was overruled.
-                    n_legal = int(legal_mask(st, merged).sum())
+                    n_legal = int(legal_mask(st, merged, features).sum())
                     self.last_policy = unasked_readout(action_idx, st, source="scripted",
                                                        n_legal=n_legal)
             else:
                 # In the policy's own view: its feature set and its action view.
                 obs = observe(st, p_enum, features).reshape(1, -1)
-                mask = legal_mask(st, merged).reshape(1, -1)
+                mask = legal_mask(st, merged, features).reshape(1, -1)
                 obs_t = torch.from_numpy(obs).float().to(dev)
                 mask_t = torch.from_numpy(mask).to(dev)
                 if trace and hasattr(active_model, "sample_action"):

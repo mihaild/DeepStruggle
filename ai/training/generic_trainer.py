@@ -1515,7 +1515,8 @@ def check_state_obs_features(model: nn.Module, state_dict: Mapping[str, Any], so
     goes on building the view it was built with (model_obs_features reads the attribute): with two
     sets of one width the weights would be trained on a view their own record does not name. Since
     E8 the default set is headline_reveal, so continuing an earlier run needs `--obs-features` with
-    the set it was trained on -- none for any run before E8.
+    the set it was trained on -- none for any run before E8, headline_reveal for an E8 run (E8.1 adds
+    opp_event_gated, the default since 2026-11-06).
     """
     saved = int(state_dict["obs_features"]) if "obs_features" in state_dict else 0
     built = model_obs_features(model)
@@ -1524,7 +1525,8 @@ def check_state_obs_features(model: nn.Module, state_dict: Mapping[str, Any], so
         raise ValueError(f"{source} reads observation features {saved:#x} ({names}); the model was built "
                          f"for {built:#x} ({', '.join(_obs_feature_names(built)) or 'none'}). Pass "
                          f"--obs-features {' '.join(_obs_feature_names(saved))} to train it on its own view"
-                         f" (E8's default is headline_reveal; the flag with no names is none)")
+                         f" (the default is headline_reveal opp_event_gated, E8.1's; an E8 run is"
+                         f" headline_reveal alone; the flag with no names is none)")
 
 
 def reset_policy_head(model: nn.Module, optimizer: torch.optim.Optimizer, seed: int = 0) -> List[str]:
@@ -1702,11 +1704,21 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 
 
 #: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits.
-OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2}
+#: `opp_event_gated` is a rule bit (no width; ts.OBS_FEATURES_RULES): the network plays ENG-9's
+#: rule, an opponent's card offering its Event only where it can fire. Without it a seat plays the
+#: rule every earlier network learned, where the Event was offered anyway and fizzled into Ops.
+OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
+                                    "opp_event_gated": 1 << 3}
 #: What a new network reads when `--obs-features` is not given: since E8 (owner, 2026-10-20), Space Race
-#: box 4's revealed headline. Before E8 the default was none; tools/scripts/launch_flags.py compares each
-#: run against its own epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.
-DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal"]
+#: box 4's revealed headline; since 2026-11-06 (owner) also ENG-9's rule, opp_event_gated. Before E8 the
+#: default was none; tools/scripts/launch_flags.py compares each run against its own epoch's default
+#: (_EPOCH_DEFAULTS), so earlier runs keep their codes.
+DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated"]
+#: The rule bits among OBS_FEATURE_BITS (ts.OBS_FEATURES_RULES): what a network's seat plays, not what it
+#: reads. A rule bit is the engine's minor version -- a network trained with opp_event_gated is an E8.1
+#: run (research/method/run_nomenclature.md) -- so launch_flags reports them as `obs_rules`, apart from
+#: the observation features its A code names.
+RULE_FEATURES: List[str] = ["opp_event_gated"]
 
 
 def _obs_feature_names(bits: int) -> List[str]:

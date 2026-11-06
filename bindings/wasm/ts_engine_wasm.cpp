@@ -598,6 +598,17 @@ TS_API int ts_obs_size_for(uint32_t features) {
     return static_cast<int>(ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features));
 }
 
+// Seat a model of obs_features set `features` at `player` (player_from_int: 1 US, -1 USSR): that seat plays the rule bits the set names, the pre-fix rule of each it lacks
+// (GameState::seat_rules). The page seats the model it lets decide; a seat no one seated plays feature
+// set 0's rules, the rules from before every rule bit. Returns 0 and sets the error on an unknown bit.
+TS_API int ts_seat_obs_features(int player, uint32_t features) {
+    if (features & ~ts::obs_features::ALL) { g_error = "unknown obs_features bit"; return 0; }
+    const ts::Player p = player_from_int(player);
+    if (p == ts::Player::NONE) { g_error = "a seat is US or USSR"; return 0; }
+    ts::seat_obs_features(g_state, p, features);
+    return 1;
+}
+
 // The observation in a model's own view: the base layout as the bits `features` edit and extend it
 // (extract_observation_features, the same call Python makes for that model), ts_obs_size_for(features)
 // floats; null for an unknown bit. HEADLINE_REVEAL has no width, so only this tells its view apart.

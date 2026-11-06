@@ -15,7 +15,9 @@ branch point on the way to it:
     E7-A4-R1-S44@4390M+A7-R23@4800M+R24            two changes in a row
     E7-A4-R1-S44-2                                 a same-seed replicate of the first
 
-- **`E`** — the engine revision, as below (`E8` since 2026-10-20, with ENG-5's alternating deal folded in on 2026-10-23 -- owner -- so an E8 run launched before then dealt the old way; a minor version is `E4.1`). An
+- **`E`** — the engine revision, as below (`E8` since 2026-10-20, with ENG-5's alternating deal folded in on 2026-10-23 -- owner -- so an E8 run launched before then dealt the old way; a minor version is `E4.1`, and `E8.1` is E8 with ENG-9's rule bit `opp_event_gated`, the default for a
+  new network since 2026-11-06 -- owner -- which `tools/scripts/run_codes.py --run` checks against the
+  run's recorded `obs_rules`). An
   engine revision can also move a training default: since E8 a new network reads
   `headline_reveal` unless its A code lists `--obs-features`.
 - **`A`** — the **architecture**: the network's shape, what it reads (its observation features)
@@ -160,7 +162,9 @@ Directories launched earlier keep their old names because research cites them by
 * **branch** — a resume under a new seed: `E4-17-06-50M.11` (`.`, because `_` separates the
   timestamp);
 * **minor version** — `E4.1` (P23) is E4 with an opt-in action view: same game, so E4 and E4.1
-  numbers compare directly.
+  numbers compare directly. `E8.1` is E8 with the rule bit `opp_event_gated` (ENG-9): the unseated
+  engine is E8's, and an E8.1 network plays its own seat under the gated rule, so E8 and E8.1
+  networks play each other directly.
 
 ## Rules that hold in both schemes
 

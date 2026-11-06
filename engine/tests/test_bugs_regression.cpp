@@ -797,3 +797,180 @@ TEST(EraTransitionKeepsTheDiscard, LateWarJoinsTheDeckAndTheDiscardStays) {
         ASSERT_NE(state.card_locations[i], CardLocation::UNAVAILABLE);
     }
 }
+
+// ENG-9, for a seat that plays obs_features::OPP_EVENT_GATED: the play-mode mask's opponent-card
+// branch offered EVENT unconditionally, so NATO in USSR
+// hands (Missile Envy trades cards) could be "played as an event" before its prerequisite --
+// "requires prior play of either the 'Warsaw Pact Formed' or 'Marshall Plan' Event(s) in order to
+// be played as an Event", whichever side holds the card. The event then silently did nothing
+// (run_trigger_event returns at its unmet-prerequisite check) and the play degenerated into an
+// Ops play of the same card, so an illegal choice was on offer and nothing else.
+TEST(RegressionTest, NATOEventFromOpponentHandRequiresItsPrerequisite) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    seat_obs_features(state, Player::USSR, obs_features::OPP_EVENT_GATED);
+
+    state.card_locations[card_ids::NATO] = ts::hand_of(ts::Player::USSR);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::NATO;
+
+    ASSERT_FALSE(CardHandlers::can_trigger_event(state, card_ids::NATO, Player::USSR));
+
+    // Without Warsaw Pact Formed or Marshall Plan the EVENT slot is not on offer; the Ops play of
+    // the same card still is. The step refuses one too, since the mask decides legality.
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(out_size, static_cast<size_t>(Resolution::COUNT));
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::OPS_INFLUENCE)], 1);
+    ASSERT_FALSE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
+
+    // After Warsaw Pact Formed the Event play is legal, the event actually fires (NATO goes onto
+    // the board and out of the game) and the play continues into NATO's deferred 4 Ops.
+    state.set_flag(effect_bits::WARSAW_PACT_PLAYED);
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
+    ASSERT_TRUE(state.has_flag(effect_bits::NATO_ACTIVE));
+    ASSERT_EQ(state.card_locations[card_ids::NATO], CardLocation::REMOVED_FROM_GAME);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, card_ids::NATO);
+    ASSERT_EQ(state.ctx().pending_ops_value, 4);
+}
+
+// The gate is not a ban on opponent-card Events: a card with no prerequisite still offers EVENT
+// in the opponent's hand, event-first as before.
+TEST(RegressionTest, OpponentCardWithoutPrerequisiteStillOffersEvent) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    seat_obs_features(state, Player::US, obs_features::OPP_EVENT_GATED);
+
+    state.card_locations[card_ids::FIDEL] = ts::hand_of(ts::Player::US);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::US;
+    state.ctx().decision_player = Player::US;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::FIDEL;
+
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+}
+
+// Solidarity is the same gate's other prerequisite card ("John Paul II Elected Pope"), and it
+// reaches USSR hands the same way NATO does. The opponent branch bypassed can_trigger_event for
+// it too; the fix gates both branches on the one test.
+TEST(RegressionTest, SolidarityEventFromOpponentHandRequiresJohnPaulII) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    seat_obs_features(state, Player::USSR, obs_features::OPP_EVENT_GATED);
+
+    state.card_locations[card_ids::SOLIDARITY] = ts::hand_of(ts::Player::USSR);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::SOLIDARITY;
+
+    ASSERT_FALSE(CardHandlers::can_trigger_event(state, card_ids::SOLIDARITY, Player::USSR));
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+
+    state.set_flag(effect_bits::JOHN_PAUL_II_PLAYED);
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+}
+
+// ENG-9 is a rule bit (obs_features::OPP_EVENT_GATED): a seat that plays without it -- a network
+// trained before the fix -- keeps the pre-fix rule, where an opponent's card offered its Event
+// unconditionally and an unmet prerequisite made it fizzle into an event-first Ops play.
+TEST(RegressionTest, LegacySeatStillOffersTheFizzledOpponentEvent) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    seat_obs_features(state, Player::USSR, obs_features::HEADLINE_REVEAL);   // no OPP_EVENT_GATED
+
+    state.card_locations[card_ids::NATO] = ts::hand_of(ts::Player::USSR);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card_ids::NATO;
+
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+
+    // The fizzle: no NATO on the board, NATO discarded rather than removed, and the USSR's 4 Ops
+    // still to choose at the deferred node.
+    ASSERT_TRUE(Engine::step(state, MicroAction(DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0)));
+    ASSERT_FALSE(state.has_flag(effect_bits::NATO_ACTIVE));
+    ASSERT_EQ(state.card_locations[card_ids::NATO], CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().decision_player, Player::USSR);
+    ASSERT_EQ(state.ctx().pending_ops_value, 4);
+}
+
+// Each seat plays its own rule: the bits are per seat, so a legacy network and a current one play
+// each other in one game, each offered what it was trained with.
+TEST(RegressionTest, OpponentEventRuleIsPerSeat) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    seat_obs_features(state, Player::US, obs_features::NONE);                  // legacy
+    seat_obs_features(state, Player::USSR, obs_features::OPP_EVENT_GATED);     // current
+
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+
+    // The USSR holding NATO, a US card whose prerequisite is unmet: not offered.
+    state.card_locations[card_ids::NATO] = ts::hand_of(ts::Player::USSR);
+    state.phasing_player = Player::USSR;
+    state.ctx().decision_player = Player::USSR;
+    state.ctx().pending_op_card = card_ids::NATO;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+
+    // The US holding Arab-Israeli War, a USSR card, after Camp David: offered, as before ENG-9.
+    state.set_flag(effect_bits::CAMP_DAVID_PLAYED);
+    state.card_locations[card_ids::ARAB_ISRAELI_WAR] = ts::hand_of(ts::Player::US);
+    state.phasing_player = Player::US;
+    state.ctx().decision_player = Player::US;
+    state.ctx().pending_op_card = card_ids::ARAB_ISRAELI_WAR;
+    ASSERT_FALSE(CardHandlers::can_trigger_event(state, card_ids::ARAB_ISRAELI_WAR, Player::USSR));
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 1);
+
+    // The friendly-card rule never depended on the bit: the US's own NATO is gated either way.
+    state.card_locations[card_ids::NATO] = ts::hand_of(ts::Player::US);
+    state.ctx().pending_op_card = card_ids::NATO;
+    ActionMask::generate_mask(state, mask, &out_size);
+    ASSERT_EQ(mask[static_cast<uint8_t>(Resolution::EVENT)], 0);
+}
+
+// A seat nobody seated plays feature set 0's rules, the rules from before every rule bit: one
+// default for a bare state, a runner and a model alike. init_new_game returns to it.
+TEST(RegressionTest, UnseatedStatePlaysThePreFixRule) {
+    GameState state{};
+    Engine::init_game(state, 7);
+    ASSERT_FALSE(seat_plays_rule(state, Player::US, obs_features::OPP_EVENT_GATED));
+    ASSERT_FALSE(seat_plays_rule(state, Player::USSR, obs_features::OPP_EVENT_GATED));
+    seat_obs_features(state, Player::US, obs_features::HEADLINE_REVEAL | obs_features::OPP_EVENT_GATED);
+    ASSERT_TRUE(seat_plays_rule(state, Player::US, obs_features::OPP_EVENT_GATED));
+    ASSERT_FALSE(seat_plays_rule(state, Player::USSR, obs_features::OPP_EVENT_GATED));
+    Engine::init_game(state, 7);
+    ASSERT_FALSE(seat_plays_rule(state, Player::US, obs_features::OPP_EVENT_GATED));
+}

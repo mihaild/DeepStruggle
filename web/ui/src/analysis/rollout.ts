@@ -120,7 +120,7 @@ export async function rolloutRoot(engine: WasmEngine, model: Model, spec: Rollou
   const t0 = performance.now();
   const act = engine.actionSize;
   // The root: the network's logits at the real position, from the decider's side.
-  const mask = engine.mask(false);
+  const mask = engine.mask(false, model.obsFeatures);
   const root = await model.run(engine.observation(decider, model.obsFeatures), mask, 1);
   let rows = 1;
   const logits = root.logits.slice(0, act);

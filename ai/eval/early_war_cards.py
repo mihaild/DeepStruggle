@@ -99,7 +99,7 @@ def _mode_node(state: ts.GameState, card: int) -> Optional[ts.GameState]:
 def _mode_actions(state: ts.GameState) -> Dict[int, int]:
     """Legal play modes at a SELECT_PLAY_MODE node, as {mode: flat action}."""
     out: Dict[int, int] = {}
-    for a in np.flatnonzero(legal_mask(state, False)):
+    for a in np.flatnonzero(legal_mask(state, False, None)):
         ma = ts.decode_flat_action(state, int(a))
         if ma.decision_type != ts.DecisionType.SELECT_PLAY_MODE:
             continue
