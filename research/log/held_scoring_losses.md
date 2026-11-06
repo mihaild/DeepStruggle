@@ -45,3 +45,27 @@ scoring card with near certainty when it means to and its non-scoring choices at
 often when the scoring would cost it; J1 and J5 keep a floor of probability on the other cards even when sure, and at T=1
 that floor is drawn. Under greedy play the floor costs nothing; it costs training games, a few per hundred, whose outcome
 is a sampling accident.
+
+## Does the non-scoring probability match the term's floor?
+
+The term c KL(uniform || pi) (c = 0.01) pulls every legal move's logit toward 1/n with gradient c(1/n - pi_b); against a policy
+gradient pushing a bad move down at pi_b * Delta (Delta its advantage gap in normalised units) it settles at
+pi_b ~ c / (n Delta), a total of ~c / Delta on the bad moves whatever n. `data/reports/held_scoring_floor_J5_J1_R95.{json,txt}`
+(`held_floor.py`; 1,024 T=1 games per network): at the forced choices (scoring cards held >= rounds left), the probability of
+each non-scoring legal card, against each network's own floor (the smallest legal-card probability at all its card choices):
+
+| n legal cards | J5 floor / forced per-card median | J1 floor / forced per-card median | R95 floor / forced per-card median | c/n |
+|---:|---:|---:|---:|---:|
+| 2 | 12.4% / 0.198% | 10.0% / 0.183% | 0.174% / 0.000% | 0.50% |
+| 3 | 3.73% / 0.167% | 2.62% / 0.123% | 0.006% / 0.000% | 0.33% |
+| 4 | 2.49% / 0.127% | 1.70% / 0.133% | 0.005% / 0.000% | 0.25% |
+
+* **The bulk matches the floor.** Without the term (R95) the forced non-scoring cards sit at 0.000% at the median; with it,
+  at 0.13-0.20% each, falling with n as c/(n Delta) predicts, for an implied Delta ~ 2 (playing the scoring card against
+  losing the game); the total median mass is 0.2-0.35%. The networks do push these cards far below their usual minimum
+  (10-60x under the floor of their ordinary card choices); they cannot push them to zero.
+* **It accounts for under one point.** ~2.6 forced choices per game x ~0.28% gives ~0.7% of games lost to the floor alone --
+  J5 against R95 in the first probe is 4.1 against 3.3% (+0.8). J1's larger excess at 2,000M (6.0%) comes from a tail of
+  forced choices with real non-scoring mass (mean mass 4.8%, 5.7% of them above 20%; J5 2.2%), and R95 has such a tail too
+  (7.9% above 20%) yet loses least -- so part of what this classifies as forced is not (North Sea Oil's eighth round is not
+  counted; an opponent's event may take the card; the game may end first), and the tail is not readable as risk.
