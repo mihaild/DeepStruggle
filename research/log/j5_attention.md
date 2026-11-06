@@ -87,3 +87,28 @@ queries of its kind give c there (lift). Scoring cards excluded as targets.
   card gives the opponent's events beside it in hand relative to its own/neutral cards: UN Intervention 1.88 (US) and
   2.02 (USSR) in layer 2, against medians 0.81 and 1.13 (rank 14 of 104 and 24 of 100) -- above typical, not the top (the
   top ratios, e.g. Soviets Shoot Down KAL-007 at 118, come from a handful of hands).
+
+## Dead card tokens as scratch space (830M)
+
+Owner's observation: Southeast Asia Scoring (played by turn 7, then removed) reading Wargames (enters at turn 8) pairs two
+tokens that almost never coexist as live cards -- the token of a dead card doing work. J5's trunk reads the global token
+and the MEAN of the 110 card tokens, so a removed or not-yet-dealt card's token can carry computed state to the trunk.
+`data/reports/j5_dead_tokens_830M.txt` (`j5_dead_tokens.py`; 2,555 positions, ~53 dead card tokens per position):
+
+| intervention on card tokens (every block) | tokens | policy KL (mean / median) | top move changes | mean abs value change |
+|:---|---:|---:|---:|---:|
+| mean-ablate the dead ones (each replaced by its card's average dead state) | 52.7 | 0.046 / 0.017 | 12.9% | 0.113 |
+| freeze the dead ones | 52.7 | 0.057 / 0.021 | 14.1% | 0.117 |
+| freeze unseen ones (deck / opponent's unknown hand) | 26.7 | 0.043 / 0.012 | 11.0% | 0.071 |
+| freeze the own hand | 5.1 | 0.049 / 0.009 | 12.6% | 0.045 |
+| freeze 5 random dead ones | 5.1 | 0.004 / 0.000 | 3.0% | 0.016 |
+
+Removing only the position-specific content of the dead tokens moves the policy about as much as freezing the whole hand
+and the value 2.5x as much: J5 computes in its dead card tokens and reads the result through the card mean. The use is
+spread thin -- five dead tokens matter a tenth of five hand tokens -- and it is not the high-norm artifact of vision
+transformers (removed cards 93, deck 78, hand 97, countries 169 in norm before the final norm; no outliers), nor an
+attention sink (attention *to* removed and absent cards stays at 0.3-1.2x uniform): the dead tokens work as queries
+and write into the mean. This is the behaviour "Vision Transformers Need Registers" (Darcet et al., 2023) reports for
+low-information patches, and what register / memory tokens (Burtsev et al., 2020) provide on purpose. The cost here
+specific to the game: the dead set changes -- mid- and late-war cards enter at turns 4 and 8, cards are removed every
+turn -- so scratch kept in a card's token must move when that card becomes live.
