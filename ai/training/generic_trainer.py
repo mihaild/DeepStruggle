@@ -2403,7 +2403,7 @@ def train_pipeline(
         "priority_alpha": float(priority_alpha),
         "defcon_coef": float(defcon_coef),
         "no_blunder_window": not bool(blunder_window),
-        "held_scoring_blunder": bool(held_scoring_blunder),
+        "no_held_scoring_blunder": not bool(held_scoring_blunder),
         "slice_turn_boundaries": {None: "auto", True: "on", False: "off"}[slice_turn_boundaries],
         "eval_games_per_side": int(eval_games_per_side),
         "eval_max_snapshot_opponents": int(max_snapshot_opponents),
