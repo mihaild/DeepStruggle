@@ -71,7 +71,7 @@ def positions(n: int, seed: int, features: int) -> Dict[str, Any]:
         if bytes(st.raw_bytes()) != raw:
             raise SystemExit(f"position {idx[i]}: raw bytes do not round-trip on this build")
         decoded.append(st)
-        masks[i] = legal_mask(st, False)
+        masks[i] = legal_mask(st, False, None)
     # In the feature set of the network these are first fed to (the plateau, and its fresh copy
     # and head); a network of another set reads `observations(d["states"], its set)` instead.
     obs = observations(decoded, features)

@@ -38,6 +38,20 @@ def _side_merged(game: Dict[str, Any], player: "ts.Player") -> bool:
     return bool(game.get(key, False))
 
 
+def _side_obs_features(game: Dict[str, Any], player: "ts.Player") -> int:
+    """The feature set `player`'s seat played a game in, whose rule bits (`ts.OBS_FEATURES_RULES`)
+    are the rules it played.
+
+    The generators record `us_obs_features` / `ussr_obs_features` since the first rule bit
+    (OPP_EVENT_GATED, 2026-11-06). A game without them was played before it, under the rule from
+    before every rule bit, which is feature set 0's -- and a mask of that rule offers everything
+    the current one does, so a game played under the current rules (a converted human game) still
+    replays whole.
+    """
+    key = "us_obs_features" if player == ts.Player.US else "ussr_obs_features"
+    return int(game.get(key, 0))
+
+
 class WarmupDataset:
     """
     Forward-compatible Warmup Dataset Loader.
@@ -86,11 +100,14 @@ class WarmupDataset:
         for game in self._games(max_games):
             st = ts.GameState()
             ts.Engine.init_game(st, game["seed"])
+            for seat in (ts.Player.US, ts.Player.USSR):
+                st.seat_obs_features(seat, _side_obs_features(game, seat))
             for rec in game["actions"]:
                 drain_chance(st)
                 p = st.ctx().decision_player if st.ctx().decision_player != ts.Player.NONE else st.phasing_player
                 view = _side_merged(game, p) if merged is None else merged
-                mask = legal_mask(st, view)
+                # The seats were seated from the record above; the replay must not reseat them.
+                mask = legal_mask(st, view, None)
                 flat_act = int(rec["flat_action"])
                 if mask.sum() == 0 or flat_act < 0 or flat_act >= mask.shape[0] or mask[flat_act] == 0:
                     break

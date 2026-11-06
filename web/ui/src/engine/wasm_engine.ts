@@ -136,7 +136,19 @@ export class WasmEngine {
     return ok ? null : this.lastError();
   }
 
-  mask(merged: boolean): Uint8Array {
+  /**
+   * The flat legal mask in an action view, for a model deciding with the obs_features bits
+   * `features`: those seat the decider first (ts_seat_obs_features), so it plays the rule bits its
+   * model was trained with -- a network from before OPP_EVENT_GATED keeps the opponent-card Event
+   * that fizzles into Ops. `null` seats nobody and reads the seats' rules as they stand (the state's
+   * own until a model is seated: feature set 0's, the rules from before every rule bit).
+   */
+  mask(merged: boolean, features: number | null): Uint8Array {
+    const decider = this.decisionPlayer();
+    // Loose on purpose: a page-side script calling mask(false) passes undefined, which seats nobody.
+    if (features != null && decider !== 0 && !this.M._ts_seat_obs_features(decider, features >>> 0)) {
+      throw new Error(this.lastError());
+    }
     const p = this.M._ts_mask(merged ? 1 : 0);
     return this.M.HEAPU8.slice(p, p + this.actionSize);
   }

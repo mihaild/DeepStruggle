@@ -77,7 +77,7 @@ class CostResult:
 
 def _greedy(model: Any, state: ts.GameState, mover: ts.Player, device: Any) -> int:
     obs = observe(state, mover, model_obs_features(model))[None, :]
-    mask = legal_mask(state, False)[None, :]
+    mask = legal_mask(state, False, model_obs_features(model))[None, :]
     with torch.no_grad():
         logits = model(torch.from_numpy(obs).to(device),
                        torch.from_numpy(mask).to(device))[0]
@@ -89,7 +89,7 @@ def _drain(state: ts.GameState) -> None:
 
 
 def _space_action(state: ts.GameState) -> Optional[int]:
-    mask = legal_mask(state, False)
+    mask = legal_mask(state, False, None)
     for a in np.flatnonzero(mask):
         ma = ts.decode_flat_action(state, int(a))
         if ma.decision_type != ts.DecisionType.SELECT_PLAY_MODE:

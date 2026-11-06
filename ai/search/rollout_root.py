@@ -56,7 +56,7 @@ from ai.search.belief import BeliefTracker
 from ai.search.gumbel_root import sigma_completed
 from ai.search.pimcts import acting_player
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe
+from bindings.ts_env import model_obs_features, observe, seat_decider
 
 #: A playout that has not met its horizon in this many plies is an error, not a leaf: reading an
 #: unfinished rollout where it stands would value it silently at a depth nobody asked for.
@@ -508,6 +508,8 @@ class RolloutRootAgent:
     def select_actions_games(self, games: Sequence[int], states: Sequence[ts.GameState]) -> List[int]:
         """`select_actions_batch` with each position's game, which the belief keys its record by."""
         states = list(states)
+        for st in states:   # this agent decides every root, under its own rules
+            seat_decider(st, self.root.features)
         hands = None if self.belief is None else self.belief.worlds(list(games), states, self.root.cfg.worlds)
         return self._checked(states, self.root.choose(states, hands))
 
@@ -515,6 +517,8 @@ class RolloutRootAgent:
         if self.belief is not None:
             raise RuntimeError("a belief root needs its games: call select_actions_games (the tournament's hook)")
         states = list(states)
+        for st in states:   # this agent decides every root, under its own rules
+            seat_decider(st, self.root.features)
         return self._checked(states, self.root.choose(states))
 
     def _checked(self, states: List[ts.GameState], picks: List[int]) -> List[int]:

@@ -324,7 +324,11 @@ a batch. Training pools require every member, including fixed and league opponen
 learner's exact feature bits; equal observation widths are insufficient. Blocks so far:
 `OPS_BUDGET` (bit 1, 3 floats; P30 C4) and `HEADLINE_REVEAL` (bit 2, no width:
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
-2026-10-20). Adding a block still needs the owner.
+2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
+change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
+Event (`engine/AGENTS.md` §18). A seat plays the rule bits of the feature set it is observed in; a seat
+no one seated, and feature set 0, play the rule from before every bit, so the unseated engine is E8's.
+Adding a block still needs the owner.
 
 **AI (`ai/`):** the current lineage is LadderNet (`models/ladder_net.py`, `--arch ladder`), the
 configurable P21 backbone whose required structural flags make up the A codes;

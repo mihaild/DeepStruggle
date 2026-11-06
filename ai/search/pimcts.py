@@ -32,7 +32,7 @@ import torch
 import ts_engine as ts
 from bindings.settle import SettleMode, settle
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe
+from bindings.ts_env import model_obs_features, observe, seat_decider
 
 _UINT64 = 1 << 64
 
@@ -211,6 +211,7 @@ class PIMCTSAgent:
 
     def select_action(self, state: ts.GameState, player: ts.Player,
                       temperature: float = 0.1) -> int:
+        seat_decider(state, self.features)   # it decides here, under its own rules
         actions, visits = self.search(state)
         if not actions:
             raise RuntimeError(

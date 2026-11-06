@@ -8,7 +8,8 @@ temperature profiles (assigned round-robin over the games). Every network decide
 observations in its feature set (`set_obs_features`) and masks in its action view
 (`set_merged_influence`); each game records both seats' views (`us_merged_influence`,
 `ussr_merged_influence`) so `WarmupDataset` replays a merged-view seat's composed actions in that
-view.
+view, and both seats' feature sets (`us_obs_features`, `ussr_obs_features`), whose rule bits are the
+rules each seat played (`ts.OBS_FEATURES_RULES`).
 """
 import argparse
 import gzip
@@ -120,6 +121,10 @@ def generate_warmup_dataset(
                     "us_model": batch_us_models[i],
                     "us_merged_influence": agents[batch_us_models[i]].merged_influence,
                     "ussr_merged_influence": agents[batch_ussr_models[i]].merged_influence,
+                    # Each seat's feature set, whose rule bits are the rules it played
+                    # (WarmupDataset seats them on replay).
+                    "us_obs_features": agents[batch_us_models[i]].obs_features,
+                    "ussr_obs_features": agents[batch_ussr_models[i]].obs_features,
                     "actions": [],
                 }
                 for i in range(current_batch)

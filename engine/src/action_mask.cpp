@@ -304,27 +304,25 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             }
 
             // EVENT means "the event resolves now". For a friendly or neutral card that is the
-            // whole play. For an OPPONENT's card it is event-first: the event fires and the Ops
-            // choice is deferred until afterwards, which is why it is legal exactly when Ops play
-            // is -- the old CHOOSE_TIMING_BRANCH offered EVENT_FIRST unconditionally there.
+            // whole play. For an OPPONENT's card it is event-first: the event fires, for its
+            // owner, and the Ops choice is deferred until afterwards.
             //
-            // Whether the Event may be played at all is can_trigger_event, whichever side holds
-            // the card. The opponent-card branch used to skip that test, so a prerequisite card
-            // that reached the opponent's hand -- the deal deals US and USSR cards out freely,
-            // and Missile Envy and Grain Sales move them afterwards -- was offered an EVENT that
-            // could not happen. NATO is the confirmed case (ENG-9): its text "requires
-            // prior play of either the 'Warsaw Pact Formed' or 'Marshall Plan' Event(s) in order
-            // to be played as an Event" holds whoever holds it, and the USSR could "play NATO as
-            // an event" before either -- the event then silently did nothing (run_trigger_event
-            // returns at its unmet-prerequisite check) and the play degenerated into an Ops play
-            // of the same card. Solidarity (John Paul II) and the flag-gated Events (Socialist
-            // Governments, Arab-Israeli War, Muslim Revolution, OPEC, Willy Brandt, Flower Power)
-            // are the same class; the one player-keyed gate, Defectors', cannot disagree here --
-            // Defectors is a US card, so this branch only ever sees it in USSR hands, where it
-            // and the owner-side call it will be re-asked with when the Event fires both say yes.
-            // run_trigger_event refuses every one of these plays, and the mask decides legality
-            // (P14), so it must not offer one.
-            if (CardHandlers::can_trigger_event(state, card, p)) {
+            // Whether the Event may be played at all is can_trigger_event, asked for the player
+            // it fires for -- the card's owner on an opponent's card, as the dispatcher asks it
+            // (ENG-9). Before ENG-9 the opponent-card branch skipped the test, so a prerequisite
+            // card in the opponent's hand -- NATO before Warsaw Pact Formed or the Marshall Plan,
+            // Arab-Israeli War after Camp David, The Cambridge Five in the Late War, Star Wars
+            // with the US not ahead -- offered an EVENT that fizzled into an Ops play of the same
+            // card. Every network trained before the fix plays that option, about once a game,
+            // and does not choose the same Ops without it, so the pre-fix rule stays available to
+            // a seat that plays without obs_features::OPP_EVENT_GATED (GameState::seat_rules) --
+            // which is any seat no one seated, as feature set 0 plays it.
+            if (CardData::is_opponent_card(card, p)) {
+                if (!seat_plays_rule(state, p, obs_features::OPP_EVENT_GATED) ||
+                    CardHandlers::can_trigger_event(state, card, get_opponent(p))) {
+                    mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
+                }
+            } else if (CardHandlers::can_trigger_event(state, card, p)) {
                 mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
             }
 

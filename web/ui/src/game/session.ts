@@ -107,7 +107,7 @@ export class GameSession {
     s.can_undo = this.history.length > 0;
     // Muslim Revolution with US Influence in one of its eight countries takes that one and then
     // offers only CONFIRM_DONE: the removal is mandatory, so there is no early stop to say so.
-    s.legal_actions.can_confirm_done = !!this.engine.mask(false)[this.engine.layout.confirm_done_index];
+    s.legal_actions.can_confirm_done = !!this.engine.mask(false, null)[this.engine.layout.confirm_done_index];
     s.players = { US: "US", USSR: "USSR" };
     return s;
   }
@@ -289,10 +289,11 @@ export class GameSession {
    * Apply a flat action in the given action view -- a model's move. A composed E4.1 action
    * ("Ops for influence, first point at X") is applied as the two E4 steps it is defined as,
    * exactly as Engine::step_flat composes it, each logged and undoable like a click; if the
-   * second is refused the first is taken back too.
+   * second is refused the first is taken back too. `features` is the model's obs_features bits:
+   * its seat plays the rules they name (WasmEngine.mask).
    */
-  applyFlat(idx: number, merged: boolean, forcedDie = 0, how: MoveHow = HUMAN): string | null {
-    const mask = this.engine.mask(merged);
+  applyFlat(idx: number, merged: boolean, features: number, forcedDie = 0, how: MoveHow = HUMAN): string | null {
+    const mask = this.engine.mask(merged, features);
     if (!(idx >= 0 && idx < mask.length && mask[idx])) {
       return `flat action ${idx} is not legal here (${merged ? "E4.1" : "E4"} view)`;
     }

@@ -207,7 +207,10 @@ def main() -> int:
             if a.merged_view:
                 runner.set_merged_influence([True] * n, [True] * n)
             hist: List[Dict[str, Any]] = [
-                {"seed": base_seed + i * 10007 + 1, "actions": []} for i in range(n)]
+                {"seed": base_seed + i * 10007 + 1, "actions": [],
+                 # The rules each seat played: its feature set's rule bits (WarmupDataset).
+                 "us_obs_features": agents[1].obs_features,
+                 "ussr_obs_features": agents[-1].obs_features} for i in range(n)]
             done = [False] * n
 
             for step in range(MAX_STEPS + 1):

@@ -370,7 +370,7 @@ class NeuralAgent:
     ) -> int:
         # In the model's own view (the view spec): its observation feature set and action view.
         obs = observe(state, player, self.obs_features)
-        mask = legal_mask(state, self.merged_influence)
+        mask = legal_mask(state, self.merged_influence, self.obs_features)
 
         obs_t = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         mask_t = torch.from_numpy(mask).unsqueeze(0).to(self.device)
@@ -465,7 +465,7 @@ class OnnxAgent:
     def select_action(self, state: ts.GameState, player: ts.Player,
                       temperature: float = 0.1) -> int:
         obs = observe(state, player, self.obs_features)[None, :]
-        mask = legal_mask(state, self.merged_influence)[None, :]
+        mask = legal_mask(state, self.merged_influence, self.obs_features)[None, :]
         return int(self.act_batch(obs, mask, temperature, temperature <= 0.05)[0])
 
 

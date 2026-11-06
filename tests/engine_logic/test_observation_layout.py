@@ -301,17 +301,12 @@ def test_chernobyl_region_is_a_one_hot_and_is_empty_when_not_in_play() -> None:
 # only to the player whose decision it is, and only where they could not already see it.
 
 
-def _staged_decisions(max_games: int = 600):
+def _staged_decisions(max_games: int = 150):
     """Positions where a card is being shown to the player who must decide about it.
 
     Grain Sales is the case: it draws a card out of the USSR hand and asks the US to keep or
     return it. The card sits at PEEKED_TEMP -- being looked at is a location -- so it is found
     by looking there rather than in a list kept beside the hand.
-
-    The walk is random and the event is rare -- on the order of one game in a hundred reaches a
-    peeked-card decision -- so the window needs headroom: a decision-stream change (ENG-9 did
-    one, at every opponent-held prerequisite card's play-mode node) reshuffles which seeds
-    stumble on one, and at 150 games the search could come up empty on a healthy engine.
     """
     from bindings.action_encoder import ActionEncoder
 

@@ -215,7 +215,9 @@ from it the same way, with `ASAN_OPTIONS=detect_leaks=0`.
 ## 6a. The observation is not yours to change
 
 Adding a feature, removing one, changing what a slot means or changing the width are representation
-decisions that belong to the project owner. Ask first. A network reads fixed slices, so a changed
+decisions that belong to the project owner. (An `obs_features` bit may also be a *rule bit*,
+`obs_features::RULES`: no width and no change to the observation, but the rule a model's seat plays,
+recorded with the model like any feature -- section 19.) Ask first. A network reads fixed slices, so a changed
 observation never raises — the checkpoint loads and misreads, and a content change at unchanged
 width slips past the width checks — and every checkpoint and `(seed, actions)` dataset is
 invalidated (`CLAUDE.md`, "Never change the observation without asking"). Two standing
@@ -536,28 +538,28 @@ moves only where an Event gave the phasing player Influence; `test_observation_g
 1 of 2,000 seeded random games plays differently. Tests: `Card83_TheIronLady_*` in
 `engine/tests/test_cards_late.cpp`.
 
-## 19. An opponent-held card's Event is offered only where it can fire (ENG-9, 2026-11-05)
+## 19. An opponent-held card's Event is offered only where it can fire -- a rule bit (ENG-9, 2026-11-06)
 
-The play-mode mask's opponent-card branch offered EVENT unconditionally -- event-first is "legal
-exactly when Ops play is", and Ops play of a non-scoring card always is -- and so skipped
-`can_trigger_event`, which the friendly-card branch asks. A prerequisite card in the opponent's
-hands was therefore offered an EVENT that could not happen. NATO is the confirmed case: its text
-requires prior play of Warsaw Pact Formed or Marshall Plan "in order to be played as an Event",
-whichever side holds the card, and the USSR holds US cards routinely (the deal, Missile Envy,
-Grain Sales' draw), so the USSR could "play NATO as an event" at turn 1. Nothing corrupted --
-`run_trigger_event` returns at its unmet-prerequisite check, so the event silently did nothing
-(NATO went to the discard unfired) and the play continued into NATO's 4 Ops, exactly what the
-mask's Ops play offered anyway -- but an illegal choice was in the legal set, which neither the
-card text nor the reference engine has. Solidarity (John Paul II) and the flag-gated Events
-(Socialist Governments, Arab-Israeli War, Muslim Revolution, OPEC, Willy Brandt, Flower Power)
-are the same class; the one player-keyed gate, Defectors', cannot disagree, since Defectors is a
-US card and the branch only ever sees it in USSR hands, where it and the owner-side call the
-event will be re-asked with both say yes. Both branches now ask `can_trigger_event`, so the mask
-never offers what the dispatcher refuses. The step has no opinion of its own here -- it enforces
-the mask (P14), which is why fixing the mask alone also makes it refuse what it used to accept.
+Before ENG-9 the play-mode mask's opponent-card branch offered EVENT unconditionally and skipped
+`can_trigger_event`, so an opponent's card whose prerequisite is unmet -- NATO before Warsaw Pact
+Formed or the Marshall Plan, Arab-Israeli War after Camp David, The Cambridge Five in the Late War,
+Star Wars with the US not ahead, Solidarity, the flag-gated Events -- offered an EVENT that fizzled
+into an event-first Ops play of the same card. The fix asks `can_trigger_event` for the player the
+Event fires for (the card's owner, as the dispatcher asks it).
 
-The repo's own deterministic golden walk shows the fix directly: at game 1 decision 38 the USSR
-holds NATO from the deal at turn 1 AR4 with neither prerequisite played, and the walk's lowest
-legal action used to be the EVENT fizzle; it is now the Ops play. Tests: `NATOEventFromOpponentHandRequiresItsPrerequisite`,
-`OpponentCardWithoutPrerequisiteStillOffersEvent`, `SolidarityEventFromOpponentHandRequiresJohnPaulII`
-in `engine/tests/test_bugs_regression.cpp`.
+It is a **rule bit**, not an in-place fix: `obs_features::OPP_EVENT_GATED` (bit 3, no width, one of
+`obs_features::RULES`). Every network trained before it plays the fizzle -- in greedy-ish self-play
+of five E7/E8 lineages the node comes up about once a game, the networks take EVENT there 21-35% of
+the time, and in 12-28% of those the deferred Ops choice differs from what they pick directly -- so a
+network must play the rule it was trained with. The rule bits each seat plays live in the state,
+`GameState::seat_rules` (indexed by `seat_index`), which every mask, step validation, auto-advance,
+search tree and rollout reads; `seat_obs_features(state, p, features)` seats a model,
+`seat_plays_rule(state, p, rule)` reads it. **Zero is the rule from before every rule bit**, what
+`GameState{}` and `init_new_game` give: a bare state, a runner side with feature set 0 and every
+pre-bit network play the same rule, and the engine unseated is behaviour-identical to E8 (its digest
+is E8's). Harnesses seat models from their feature set (`bindings/AGENTS.md`); the fix reaches a game
+only through a seat whose model was trained with `--obs-features ... opp_event_gated`.
+
+Tests: `NATOEventFromOpponentHandRequiresItsPrerequisite`, `SolidarityEventFromOpponentHandRequiresJohnPaulII`,
+`OpponentCardWithoutPrerequisiteStillOffersEvent` (a gated seat), `LegacySeatStillOffersTheFizzledOpponentEvent`,
+`OpponentEventRuleIsPerSeat`, `UnseatedStatePlaysThePreFixRule` in `engine/tests/test_bugs_regression.cpp`.

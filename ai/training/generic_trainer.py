@@ -1702,7 +1702,11 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 
 
 #: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits.
-OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2}
+#: `opp_event_gated` is a rule bit (no width; ts.OBS_FEATURES_RULES): the network plays ENG-9's
+#: rule, an opponent's card offering its Event only where it can fire. Without it a seat plays the
+#: rule every earlier network learned, where the Event was offered anyway and fizzled into Ops.
+OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
+                                    "opp_event_gated": 1 << 3}
 #: What a new network reads when `--obs-features` is not given: since E8 (owner, 2026-10-20), Space Race
 #: box 4's revealed headline. Before E8 the default was none; tools/scripts/launch_flags.py compares each
 #: run against its own epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.

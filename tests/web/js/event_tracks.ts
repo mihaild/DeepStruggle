@@ -31,7 +31,7 @@ for (const [name, c] of Object.entries(cases)) {
   }
   const clicks = s.logs.length;
   while (c.finish && engine.display().current_phase_name === "HEADLINE") {
-    const first = engine.mask(false).findIndex(v => v);
+    const first = engine.mask(false, null).findIndex(v => v);
     const why = s.applyFlat(first, false);
     if (why) throw new Error(`${name}: ${why}`);
   }

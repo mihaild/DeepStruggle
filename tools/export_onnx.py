@@ -72,7 +72,7 @@ def _positions(n: int, merged: bool, features: int,
             p = s.ctx().decision_player
             if p != ts.Player.NONE and rng.random() < 0.25:
                 obs.append(observe(s, p, features))
-                masks.append(legal_mask(s, merged))
+                masks.append(legal_mask(s, merged, None))
             ts.Engine.step_flat(s, rng.choice(ActionEncoder.get_legal_indices(s)))
             drain_chance(s)
         game += 1

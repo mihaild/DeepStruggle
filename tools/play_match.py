@@ -154,7 +154,7 @@ class _NetworkBot(BaseBot):
                 raise ValueError(f"{self.agent.name}: --trace needs a torch checkpoint, not an ONNX export")
             dev = next(self.model.parameters()).device
             obs_t = torch.from_numpy(observe(state, player, self.agent.obs_features)).unsqueeze(0).to(dev)
-            mask_t = torch.from_numpy(legal_mask(state, self.agent.merged_influence)).unsqueeze(0).to(dev)
+            mask_t = torch.from_numpy(legal_mask(state, self.agent.merged_influence, self.agent.obs_features)).unsqueeze(0).to(dev)
             flat, self.last_readout = read_policy(self.model, obs_t, mask_t,
                                                   temperature=self.temperature, deterministic=False)
         else:

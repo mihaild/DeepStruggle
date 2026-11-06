@@ -112,7 +112,7 @@ def policy(model: Any, state: ts.GameState, mover: ts.Player, device: Any) -> np
     """The policy's masked distribution at `state` for `mover`: the observation in the model's own
     feature set, the mask in the E4 view (human-corpus nodes; load with merged_ok=False)."""
     obs = observe(state, mover, model_obs_features(model))[None, :]
-    mask = legal_mask(state, False)[None, :]
+    mask = legal_mask(state, False, model_obs_features(model))[None, :]
     with torch.no_grad():
         logits = model(torch.from_numpy(obs).to(device), torch.from_numpy(mask).to(device))[0]
         probs = torch.softmax(logits, dim=-1).squeeze(0).cpu().numpy()
@@ -195,7 +195,7 @@ def probe(model: Any, node: Node, card: int, device: Any, mover: Optional[ts.Pla
     if action is not None:
         out.card_prob = float(probs[action])
         # Rank among the cards it could play, not among all 212 actions.
-        cards = [a for a in np.flatnonzero(legal_mask(state, False))
+        cards = [a for a in np.flatnonzero(legal_mask(state, False, model_obs_features(model)))
                  if ts.decode_flat_action(state, int(a)).decision_type
                  == ts.DecisionType.SELECT_CARD]
         out.playable = len(cards)

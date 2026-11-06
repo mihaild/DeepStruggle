@@ -578,6 +578,16 @@ class GameState:
     @rng_state.setter
     def rng_state(self, arg: int, /) -> None: ...
 
+    def seat_obs_features(self, player: Player, features: int) -> None:
+        """
+        Seat a model of feature set `features` at `player`: that seat plays the rule bits the set names and the pre-fix rule of each it lacks. Observation bits are ignored.
+        """
+
+    def seat_plays_rule(self, player: Player, rule: int) -> bool:
+        """
+        Whether the seat `player` plays rule bit `rule` (the fix) rather than the rule before it.
+        """
+
     def set_flag(self, arg: int, /) -> None: ...
 
     def clear_flag(self, arg: int, /) -> None: ...
@@ -1145,7 +1155,11 @@ OBS_FEATURE_OPS_BUDGET: int = 2
 
 OBS_FEATURE_HEADLINE_REVEAL: int = 4
 
-OBS_FEATURES_ALL: int = 6
+OBS_FEATURE_OPP_EVENT_GATED: int = 8
+
+OBS_FEATURES_RULES: int = 8
+
+OBS_FEATURES_ALL: int = 14
 
 OBS_FLAG_STAGED_CARDS: int = 1
 
