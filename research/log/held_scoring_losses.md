@@ -114,3 +114,23 @@ round with no eighth round, one scoring card held, a non-scoring card played -- 
   A quarter of the losses (J5 26 of 108, J1 42 of 163, R95 22 of 77) would have lost by 20 VP had the card been scored;
   most of the rest are ordinary Ops plays (influence, coups, realignments) when the held card would cost the US 4-6 VP --
   for J5 mostly sampled (76% on the scoring card on average), for R95 meant (18%).
+
+## Correction: turn 10, and what is played instead when scoring was safe
+
+On turn 10 "would scoring lose by 20 VP" is the wrong test: the final scoring follows the last round and counts every
+region again, so a negative scoring card played then counts twice. `data/reports/held_scoring_last_us_detail2.json`
+(the same probe, 6,144 games per network, with the US's VP after scoring the held card and the final scoring) and
+`held_scoring_last_us_safe.txt` (`held_safe_analyse.py`):
+
+* **Turn 10 holds are lost either way.** Of the non-scoring plays at the turn-10 last round (Aldrich Ames excluded), scoring
+  would still have lost or drawn the final scoring in J5 24 of 25, J1 70 of 70, R95 35 of 37. These are not errors -- they
+  are the bulk of what the networks "meant" in the earlier tables.
+* **Where scoring was safe** (turns 1-9 above -20; turn 10 ahead after the final scoring), the non-scoring plays are J5 66,
+  J1 58, R95 21 (of ~6,500 such nodes each). J5's are mostly sampled: 23 at < 1% on the card played, 31 at 1-20%, 12 at
+  20% or more; J1 41 sampled, 17 meant; R95 7 sampled, 14 meant.
+* **The meant ones** (12 / 17 / 14) are turns 3-9, mostly 7-9, with the US behind (VP -4 to -19) and the held card costing it
+  2-11 VP -- South America and Europe Scoring most often. The card played instead: The China Card (several in each network,
+  and R95's two genuine turn-10 errors, final VP +2 and +9 had it scored), Yuri and Samantha, AWACS Sale to Saudis (J1 4),
+  Summit, Kitchen Debates, Blockade, Formosan Resolution, East European Unrest; once a Quagmire discard (Ortega) instead
+  of the scoring card. Ops for influence, coups and realignments -- avoiding the VP the card would cost, at the price of the
+  game.
