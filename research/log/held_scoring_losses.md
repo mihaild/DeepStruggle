@@ -134,3 +134,26 @@ region again, so a negative scoring card played then counts twice. `data/reports
   Summit, Kitchen Debates, Blockade, Formosan Resolution, East European Unrest; once a Quagmire discard (Ortega) instead
   of the scoring card. Ops for influence, coups and realignments -- avoiding the VP the card would cost, at the price of the
   game.
+
+## Avoidable held-scoring losses (the classifier)
+
+A held-scoring loss counts as **avoidable** only if scoring every scoring card the loser held would not have lost the game
+anyway: before turn 10, not reaching 20 VP against the loser (Europe control is scored as 20); on turn 10, not being behind
+after the final scoring that follows (a draw counts as avoided). The terminal state cannot answer this: when the loss fires
+the engine overwrites the VP with -20 / +20 / 0 (`StateMachine::finish_end_turn`). `held_avoidable_rate.py` keeps each
+game's state before every step and, for a held-scoring ending, replays the final step with the other held scoring cards set
+aside (the one being played, if any, kept), which gives the VP the turn really ended at; the loser's held cards are then
+scored on that board. `data/reports/held_scoring_avoidable_rates.{json,txt}` (2,048 T=1 games per network, every loss
+replayed):
+
+| | J5 830M | J1 2,000M | R95 2,000M |
+|:---|---:|---:|---:|
+| held-scoring losses | 4.15% (85) | 6.59% (135) | 2.98% (61) |
+| **avoidable** | **2.39%** (49) | **3.37%** (69) | **1.76%** (36) |
+| lost anyway, turn 10 | 22 | 52 | 21 |
+| lost anyway, turns 1-9 | 14 | 14 | 4 |
+| avoidable on turn 10 | 0 | 9 | 6 |
+
+About 40-50% of held-scoring losses were lost anyway. Counted by the classifier, the term costs J5 ~0.6 points of games
+against R95 (2.39 against 1.76%) and J1 at 2,000M ~1.6. The training metric `ending_frac_held_scoring` cannot be split
+this way from the terminal state alone; it needs the VP before the overwrite.
