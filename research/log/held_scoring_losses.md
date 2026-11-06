@@ -69,3 +69,29 @@ each non-scoring legal card, against each network's own floor (the smallest lega
   forced choices with real non-scoring mass (mean mass 4.8%, 5.7% of them above 20%; J5 2.2%), and R95 has such a tail too
   (7.9% above 20%) yet loses least -- so part of what this classifies as forced is not (North Sea Oil's eighth round is not
   counted; an opponent's event may take the card; the game may end first), and the tail is not readable as risk.
+
+## The clean case: the US's last action round, no eighth round
+
+`data/reports/held_scoring_last_us_ar.{json,txt}` (`held_last_us.py`; 3,072 T=1 games per network): the US's AR6 (turns
+1-3) or AR7 (turns 4-10, neither North Sea Oil nor the space-station AR8) holding a scoring card, so the scoring card must be
+played now or the turn is lost. Quagmire is tagged: the engine's trap mask offers the scoring card when the scoring cards held
+are at least the rounds left or nothing is worth 2 Ops to discard (`action_mask.cpp`), and it did at every trapped node.
+
+| one scoring card, no Quagmire | J5 830M | J1 2,000M | R95 2,000M |
+|:---|---:|---:|---:|
+| nodes | 3,288 | 3,507 | 3,165 |
+| P(scoring): mean / median | 98.24 / 99.717% | 96.83 / 99.737% | 98.16 / 100.000% |
+| per non-scoring card P, median (n = 2 / 3 / 4) | 0.214 / 0.169 / 0.223% | 0.189 / 0.157 / 0.130% | 0.000 / 0.000 / 0.000% |
+| non-scoring mass > 5% (n = 2 / 3) | 4.8 / 8.6% | 6.6 / 9.2% | 2.0 / 4.0% |
+| played a non-scoring card | 1.76% | 3.11% | 1.71% |
+| ... and lost the game that turn | 48 of 58 (1.46% of nodes) | 89 of 109 (2.54%) | 33 of 54 (1.04%) |
+| lost after playing the scoring card | 0 of 3,230 | 0 of 3,398 | 0 of 3,111 |
+
+The non-scoring plays that did not lose ended the game inside that round (R95 21 of 54 -- deliberate winning plays). With
+Quagmire (19-27 nodes per network) the scoring card was legal every time; J5 discarded instead 3 times of 27, all lost.
+Two or more scoring cards at the last round (10-18 nodes) lose whatever is played.
+
+So in the clean case the term's floor is visible (0.13-0.22% per non-scoring card with the term, 0.000% without) and costs
+J5 about 0.4 points per such node over R95 (1.46 against 1.04% lost) -- about the size of the floor's median mass
+(0.21-0.37%). The rest of the losses, in all three networks, come from a few percent of nodes where the network puts real
+weight on another card; J1 at 2,000M has the most of those.
