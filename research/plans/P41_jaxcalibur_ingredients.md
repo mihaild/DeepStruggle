@@ -418,6 +418,17 @@ own, the rate alone is the remedy question, as decided.
 
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
+**Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
+needs the owner's approval, after the 800M decision). P42 takes form (c) at flat 304, the expansion in
+`Engine::step_flat` through the engine's own steps, the macro mask only where the expansion places ≥ 2
+points, setup included, "until control" only, no separate floor, exclusive with E4.1. Two owner decisions
+override the note below: **the first run is a growth branch from J5** (new rows at weight 0, bias −10, a
+zero second output on the country correction, an identity test before launch, `E8.1-A35-R102-S44@<step>M+…`
+by precedent, read at +200 / +400 / +800M against J5 proper's continuation) rather than a from-scratch run;
+and **merging card and play mode is rejected** (the event holes are single choices with no product to
+collapse, the joint floor would fall from 5 modes to ~36 pairs, and E4.1's −235). The event-mode holes get a
+separate proposal sized by the leak census.
+
 **The proposal.** An influence-placement action that places in one country *until control* (or until
 the play's points run out) as a single policy decision, beside the one-point action. The case, measured
 on J5 at 520M (`data/reports/`): a takeover is several consistent placements, so exploring it from the
