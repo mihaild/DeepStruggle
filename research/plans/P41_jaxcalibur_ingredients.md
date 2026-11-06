@@ -386,6 +386,16 @@ above J1's 30.4% the rate stands and the run goes to the 2,000M gate; below it w
 rising, the branch at 1.5e-4 from the 800M state (or from 400M, if the gap is wide enough to want the
 earlier start) is the next run.
 
+*520M, interim:* self-play has begun to punish the US hole. The US settled on France 3 / Canada 2 /
+Italy 2 (+Iran 1, Philippines 1; 95%) with West Germany empty since 360M, the USSR on Poland 3 /
+Yugoslavia 3 since 240M; USSR Europe-control endings 0.1–0.2% of its self-play wins through 490M, then
+2.7% at 500–510M and 6.7% at 510–520M. In 200 greedy games at 520M the US controls West Germany at no
+turn end in any game; the 12 USSR Europe-control wins all run through the USSR holding West Germany
+(40% from turn 3) and then France (70% at turn 3, 14% in the other games). The 800M census says
+whether the US comes back to West Germany -- the thing that would tell the opening churn from a seat
+the rate has stopped. Events at 520M: Our Man in Tehran 0% by the US (5% at 260M); Chernobyl 0% (J1
+the same until 8–10B); Nuclear Subs 24% (headline 22%).
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
