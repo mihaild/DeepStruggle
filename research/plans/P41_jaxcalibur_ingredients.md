@@ -396,6 +396,26 @@ whether the US comes back to West Germany -- the thing that would tell the openi
 the rate has stopped. Events at 520M: Our Man in Tehran 0% by the US (5% at 260M); Chernobyl 0% (J1
 the same until 8–10B); Nuclear Subs 24% (headline 22%).
 
+*520M, the West Germany census* (the policy's own masked softmax; `data/reports/j5_wg_probability.txt`):
+West Germany is nearly extinct in J5's US policy, and it reads as an exploration hole, not a settled
+judgement. At setup P(WG) is 0.2–0.5% at each US placement (mean 0.30%, max 1.4%) and 1.5% of
+setups sampled at T=1 put anything there (J5 at 300M: 88% at the first placement, 100% of sampled
+setups; J1 at 520M: 98.5%). At 2,447 later US placements with WG legal and empty the mean is 0.38%
+against 2.8% uniform over the legal targets -- actively avoided, never taken greedily (1.2% with 1–2
+USSR influence there, 3.7% with 3+). The zero-avoiding floor at c = 0.01 holds WG at ~0.3%, so
+self-play rarely puts the US there, the critic has little data on it, and the USSR's new
+Europe-control punishment can reach the US only through that 1.5% of sampled setups. **This splits
+the remedy.** The rate explains the drift and why the policy overshot out of West Germany; it does
+not refill a hole already below the floor, so a lower-rate branch alone would carry the hole on. The
+setup-scoped term at a higher coefficient (`--zero-avoid-scope setup`, B4's floor, no seeding: it
+keeps openings reachable, the network still chooses) raises the floor where the hole is so the
+punishment can reach it; alone it leaves the drift to open the next hole. They are complementary,
+prevention and cure. **If the 800M census shows the US still out of West Germany, the recommended
+next run is one branch from 800M with both** (lr 1.5e-4 and the setup-scoped term raised), read at
+1,200M against J5 proper and J1's 33.5%: the question is whether J5 can be rescued, one match per
+question, and attribution is a second branch only if the first works. If the US has come back on its
+own, the rate alone is the remedy question, as decided.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
