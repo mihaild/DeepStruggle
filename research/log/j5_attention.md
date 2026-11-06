@@ -66,3 +66,24 @@ queries of its kind give c there (lift). Scoring cards excluded as targets.
   Aldrich Ames / Pershing II / "An Evil Empire" (7-15x uniform); Turkey and Spain/Portugal -> Allende. These look like
   tokens of absent or irrelevant cards serving as scratch registers, not card knowledge; 24 games, so single cells are
   noisy.
+
+## By side, and cards reading cards (830M)
+
+`data/reports/j5_card_card_830M.txt` (`j5_card_card.py`; 1,950 US and 1,915 USSR positions).
+
+* **The rule-shaped pulls are side-specific:** European countries (and Australia) read an unseen Truman Doctrine at 24-28x
+  uniform when the US moves; Poland and North Korea read an unseen Warsaw Pact Formed at 20x when the USSR moves; Europe
+  Scoring reads an unseen Warsaw Pact Formed when the US moves (lift 56) and an unseen Five Year Plan when the USSR moves
+  (lift 25). Southeast Asia Scoring reading a visible Wargames (35-37x) is the same for both.
+* **Held cards mostly do not read rule-related cards.** For fifteen cards whose rules name other cards (UN Intervention,
+  The China Card, Missile Envy, Grain Sales, Star Wars, Ask Not, Five Year Plan, Blockade, Red Scare, CIA Created,
+  Aldrich Ames, Defectors, Cambridge Five, Wargames, Lone Gunman), what each reads in its own hand, among unseen cards, in
+  the discard and among removed cards is mostly unrelated cards (Star Wars, which retrieves from the discard, reads
+  Wargames and The Iron Lady there; Grain Sales reads Colonial Rear Guards and Junta). 34-1,040 positions per card and
+  side, so cells are noisy.
+* **UN Intervention is the partial exception.** Held by the US, its strongest reads in its own hand in layer 3 are three
+  USSR events -- Romanian Abdication (lift 10), Korean War (6.8), Fidel (2.4) -- the cards it exists to play; held by the
+  USSR, Special Relationship (a US event, lift 3.7) and Captured Nazi Scientist. Over every held card, the attention a
+  card gives the opponent's events beside it in hand relative to its own/neutral cards: UN Intervention 1.88 (US) and
+  2.02 (USSR) in layer 2, against medians 0.81 and 1.13 (rank 14 of 104 and 24 of 100) -- above typical, not the top (the
+  top ratios, e.g. Soviets Shoot Down KAL-007 at 118, come from a handful of hands).
