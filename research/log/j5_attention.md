@@ -90,6 +90,8 @@ queries of its kind give c there (lift). Scoring cards excluded as targets.
 
 ## Dead card tokens as scratch space (830M)
 
+**Owner (2026-11-06): the "dead" set is wrongly defined, so this section does not show scratch use.** Removed cards are not dead: whether a card's event has already happened (NATO's, Solidarity's, Star Wars' prerequisites, which threats are spent) is exactly what many decisions need, and it lives in those tokens. Only cards not yet in the game (mid war before turn 4, late war before turn 8) are inert; the test below mixes the two.
+
 Owner's observation: Southeast Asia Scoring (played by turn 7, then removed) reading Wargames (enters at turn 8) pairs two
 tokens that almost never coexist as live cards -- the token of a dead card doing work. J5's trunk reads the global token
 and the MEAN of the 110 card tokens, so a removed or not-yet-dealt card's token can carry computed state to the trunk.
