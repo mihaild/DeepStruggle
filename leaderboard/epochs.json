@@ -92,6 +92,16 @@
           "mcts": "8f45f5c625bda4463ff998336073af7519d49e69be5f5e587f38a0e649eb7ea2"
         },
         "why": "ENG-8 on top of ENG-7 (engine/AGENTS.md section 18): Influence an event-first Event gives the phasing player -- The Iron Lady's USSR point in Argentina -- no longer opens that country or its neighbours to the Ops that follow. 1 of 2,000 seeded random games plays differently (an Iron Lady), so runner, state and rollout move; the owner ruled it a minor fix that stays in E8, and stored games no longer valid are discarded (owner, 2026-11-06)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "a16b8e409e9ddfac980ef5dff6ad8c438538cb4564e7bb47d8a565de595284d2",
+          "state": "d215621c232a2b8270feaf81d7bb5a42979a96e10952a293207533735ad8659c",
+          "rollout": "f11aebb26e67cbfac0db2d4a15a2f28ac597e70b3611b3d0ec01dbe6fcaddc87",
+          "mcts": "6ced30e6a225eb206c23e7a9a2cc1f7410a9bfc19290004444d96296793dffab"
+        },
+        "why": "ENG-10 on top of ENG-8 (engine/AGENTS.md section 20): the influence and realignment masks offer a target only if its cost fits the Ops budget that spending there keeps, so the China Card under Vietnam Revolts can no longer place five Ops in Southeast Asia and the sixth elsewhere in Asia, and the last bonus Op of either region bonus can no longer be rolled as a realignment outside its region. 19 of 2,000 seeded random games play differently (random play realigns often), so runner, rollout and mcts move; the owner ruled it a fix in place, and stored games no longer valid are discarded (owner, 2026-11-07)."
       }
     ]
   }

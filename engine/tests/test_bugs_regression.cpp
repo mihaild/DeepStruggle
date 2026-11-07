@@ -969,3 +969,105 @@ TEST(RegressionTest, UnseatedStatePlaysThePreFixRule) {
     Engine::init_game(state, 7);
     ASSERT_FALSE(seat_plays_rule(state, Player::US, obs_features::OPP_EVENT_GATED));
 }
+
+// ENG-10: a target is offered only if its cost fits the budget that spending there keeps.
+// The region bonuses were withdrawn only after the Op was spent, so the last one could go
+// anywhere: the China Card under Vietnam Revolts placed five Ops in Southeast Asia and the
+// sixth in India, and a realignment's final bonus roll could be taken outside the region.
+namespace {
+// USSR to play `card` for Ops in `mode`, with a foothold in Thailand (Southeast Asia), India
+// (Asia) and Iran (outside Asia) -- and, to realign against, US Influence there; a placement
+// there then costs 2, so the Influence plays leave them uncontrolled.
+void open_region_bonus_play(GameState& s, uint8_t card, bool vietnam, Resolution mode) {
+    const bool realign = (mode == Resolution::OPS_REALIGN);
+    Engine::init_game(s, 4242);
+    s.current_phase = Phase::ACTION_ROUND;
+    s.action_round = 1;
+    s.phasing_player = Player::USSR;
+    s.defcon = 5;
+    for (uint8_t c : {countries::THAILAND, countries::INDIA, countries::IRAN}) {
+        s.countries[c].us_influence = realign ? 40 : 0;
+        s.countries[c].ussr_influence = 1;
+    }
+    if (vietnam) s.set_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE);
+    if (card == card_ids::THE_CHINA_CARD) {
+        s.china_card_holder = Player::USSR;
+        s.china_card_playable = 1;
+    } else {
+        s.card_locations[card] = ts::hand_of(Player::USSR);
+    }
+    s.ctx().decision_player = Player::USSR;
+    s.ctx().decision_type = DecisionType::SELECT_CARD;
+    ASSERT_TRUE(Engine::step(s, MicroAction(DecisionType::SELECT_CARD, card, 0, 0)));
+    ASSERT_TRUE(Engine::step(s, MicroAction(DecisionType::SELECT_PLAY_MODE,
+                                            static_cast<uint8_t>(mode), 0, 0)));
+    ASSERT_EQ(static_cast<int>(s.ctx().decision_type), static_cast<int>(DecisionType::POINT_NODE));
+}
+
+void spend_in(GameState& s, uint8_t cid, int times) {
+    for (int i = 0; i < times; ++i) {
+        ASSERT_TRUE(Engine::step(s, MicroAction(DecisionType::POINT_NODE, cid, 0, 0)));
+        if (s.ctx().decision_type == DecisionType::ROLL_DIE) {
+            ASSERT_TRUE(Engine::step(s, MicroAction(DecisionType::ROLL_DIE, 0, 1, 1)));
+        }
+    }
+}
+
+// Thailand, India, Iran: which the node mask offers.
+void expect_targets(const GameState& s, bool thailand, bool india, bool iran) {
+    uint8_t mask[84];
+    size_t n = 0;
+    ActionMask::generate_mask(s, mask, &n);
+    ASSERT_EQ(mask[countries::THAILAND], thailand ? 1 : 0);
+    ASSERT_EQ(mask[countries::INDIA], india ? 1 : 0);
+    ASSERT_EQ(mask[countries::IRAN], iran ? 1 : 0);
+}
+} // namespace
+
+TEST(RegionBonusBudget, ChinaUnderVietnamRevoltsSixthInfluenceStaysInSoutheastAsia) {
+    GameState s{};
+    open_region_bonus_play(s, card_ids::THE_CHINA_CARD, true, Resolution::OPS_INFLUENCE);
+    ASSERT_EQ(s.ctx().pending_ops_value, 6);
+    spend_in(s, countries::THAILAND, 4);
+    expect_targets(s, true, true, false);   // a fifth in India keeps the China Op
+    spend_in(s, countries::THAILAND, 1);
+    ASSERT_EQ(s.ctx().remaining_steps, 1);
+    expect_targets(s, true, false, false);  // the sixth is Vietnam Revolts' alone
+}
+
+TEST(RegionBonusBudget, ChinaUnderVietnamRevoltsFifthInIndiaEndsTheOps) {
+    GameState s{};
+    open_region_bonus_play(s, card_ids::THE_CHINA_CARD, true, Resolution::OPS_INFLUENCE);
+    spend_in(s, countries::THAILAND, 4);
+    spend_in(s, countries::INDIA, 1);
+    ASSERT_EQ(static_cast<int>(s.ctx().decision_type), static_cast<int>(DecisionType::SELECT_CARD));
+    ASSERT_EQ(s.countries[countries::INDIA].ussr_influence, 2);
+}
+
+TEST(RegionBonusBudget, ChinaUnderVietnamRevoltsLastRealignmentStaysInSoutheastAsia) {
+    GameState s{};
+    open_region_bonus_play(s, card_ids::THE_CHINA_CARD, true, Resolution::OPS_REALIGN);
+    spend_in(s, countries::THAILAND, 4);
+    expect_targets(s, true, true, false);
+    spend_in(s, countries::THAILAND, 1);
+    ASSERT_EQ(s.ctx().remaining_steps, 1);
+    expect_targets(s, true, false, false);
+}
+
+TEST(RegionBonusBudget, VietnamRevoltsLastRealignmentStaysInSoutheastAsia) {
+    GameState s{};
+    open_region_bonus_play(s, card_ids::COMECON, true, Resolution::OPS_REALIGN);
+    ASSERT_EQ(s.ctx().pending_ops_value, 4);
+    spend_in(s, countries::THAILAND, 2);
+    expect_targets(s, true, true, true);
+    spend_in(s, countries::THAILAND, 1);
+    expect_targets(s, true, false, false);
+}
+
+TEST(RegionBonusBudget, ChinaCardLastRealignmentStaysInAsia) {
+    GameState s{};
+    open_region_bonus_play(s, card_ids::THE_CHINA_CARD, false, Resolution::OPS_REALIGN);
+    ASSERT_EQ(s.ctx().pending_ops_value, 5);
+    spend_in(s, countries::INDIA, 4);
+    expect_targets(s, true, true, false);
+}

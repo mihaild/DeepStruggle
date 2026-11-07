@@ -569,37 +569,21 @@ static bool settle_we_will_bury_you(GameState& state, bool un_event) noexcept {
 // version that rewrote remaining_steps against a recomputed base while leaving
 // pending_ops_value at the optimistic figure charged the next withdrawal a second time.
 //
-// The bonuses form a ladder. All Ops in Southeast Asia keeps both; stepping out to Asia
-// forfeits Vietnam Revolts; leaving Asia forfeits the China Card bonus as well, and doing it
-// in one step forfeits both.
+// The ladder itself is Operations::budget_if_spent_in, which the influence and realignment
+// masks also ask (mask_region_budget), so no target is offered whose cost the withdrawal
+// would leave unpaid.
 //
 // Only engaged when a conditional bonus is actually in play, and only when pending_ops_value
 // is being maintained. Event-driven placements set remaining_steps directly and leave
 // pending_ops_value at 0; recomputing from a zero budget there would wipe out the remaining Ops.
 static void withdraw_conditional_ops_bonus(GameState& state, Player p, uint8_t cid) noexcept {
-    const uint8_t op_card = state.ctx().pending_op_card;
-    const bool china_card = (op_card == card_ids::THE_CHINA_CARD);
-    const bool vietnam_bonus =
-        (p == Player::USSR && state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE));
-    if (!(china_card || vietnam_bonus) || state.ctx().pending_ops_value == 0) return;
-
-    const auto& c_info = MapData::get_country(cid);
-    uint8_t budget = state.ctx().pending_ops_value;
+    const uint8_t budget = state.ctx().pending_ops_value;
+    const uint8_t keep = Operations::budget_if_spent_in(state, p, cid);
+    if (keep == budget) return;
     const uint8_t spent = static_cast<uint8_t>(
         (budget > state.ctx().remaining_steps) ? (budget - state.ctx().remaining_steps) : 0);
-
-    const uint8_t plain = Operations::plain_budget(state, op_card, p);
-    const uint8_t asia_ok = static_cast<uint8_t>(plain + (china_card ? 1 : 0));
-
-    if (vietnam_bonus && !c_info.in_southeast_asia) {
-        budget = std::min<uint8_t>(budget, asia_ok);
-    }
-    if (china_card && c_info.region != Region::ASIA) {
-        budget = std::min<uint8_t>(budget, plain);
-    }
-
-    state.ctx().pending_ops_value = budget;
-    state.ctx().remaining_steps = (spent >= budget) ? 0 : static_cast<uint8_t>(budget - spent);
+    state.ctx().pending_ops_value = keep;
+    state.ctx().remaining_steps = (spent >= keep) ? 0 : static_cast<uint8_t>(keep - spent);
 }
 
 void StateMachine::advance_after_action_round(GameState& state) noexcept {

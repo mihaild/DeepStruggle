@@ -562,3 +562,19 @@ model's (`web/ui/AGENTS.md`).
 Tests: `*OpponentEvent*`, `*NATOEvent*`, `*Solidarity*`, `UnseatedStatePlaysThePreFixRule` in
 `engine/tests/test_bugs_regression.cpp`; `tests/bindings/test_obs_rule_bits.py`,
 `tests/training/test_search_mixed_rules.py`.
+
+## 20. A region bonus pays only for Ops spent in its region (ENG-10, E8 in place, 2026-11-07)
+
+The China Card's Asia bonus and Vietnam Revolts' Southeast Asia bonus are granted up front and
+withdrawn on the first Op spent outside their region -- the ladder: all in Southeast Asia keeps both,
+elsewhere in Asia forfeits Vietnam Revolts, outside Asia forfeits the China Card's too. The withdrawal
+ran only *after* the Op was spent, and the masks checked the ladder only in part: the influence mask
+asked the China Card's rule *or* Vietnam Revolts', never both, and the realignment mask asked neither.
+So the last bonus Op could go anywhere -- with the China Card under Vietnam Revolts, five Ops in
+Southeast Asia and the sixth in India; a realignment's final bonus roll in Iran.
+
+The ladder is now one function, `Operations::budget_if_spent_in(state, player, country)`, which the
+withdrawal (`withdraw_conditional_ops_bonus`) applies and `Operations::mask_region_budget` asks for
+every influence and realignment target: a target is offered only if the Ops already spent plus its
+cost (its Influence cost, or 1 for a roll) fit the budget spending there keeps. 19 of 2,000 seeded
+random games play differently. Tests: `RegionBonusBudget.*` in `engine/tests/test_bugs_regression.cpp`.

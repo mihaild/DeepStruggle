@@ -55,6 +55,19 @@ public:
     // What the budget in the current frame is worth outside its bonus regions.
     static uint8_t plain_budget(const GameState& state, uint8_t op_card, Player player) noexcept;
 
+    // The region-bonus ladder: the budget the current frame keeps once an Op is spent in
+    // `country_id`. All Ops in Southeast Asia keeps both bonuses; elsewhere in Asia forfeits
+    // Vietnam Revolts; outside Asia forfeits the China Card's as well. The current budget where
+    // no bonus is in play, or where the frame keeps no budget (pending_ops_value 0).
+    static uint8_t budget_if_spent_in(const GameState& state, Player player, uint8_t country_id) noexcept;
+
+    // Clears every target in `mask_84` whose cost -- its Influence cost, or 1 for a
+    // realignment roll -- does not fit the budget that spending there keeps. Withdrawing a bonus
+    // only after the Op was spent let the last one go anywhere: with the China Card under
+    // Vietnam Revolts, five Ops in Southeast Asia and the sixth in India, or the final bonus
+    // Op's realignment roll in Iran.
+    static void mask_region_budget(const GameState& state, Player player, bool influence, uint8_t* mask_84) noexcept;
+
     // Influence Placement
     static bool can_place_influence(const GameState& state, Player p, uint8_t country_id) noexcept;
     static uint8_t get_influence_cost(const GameState& state, Player p, uint8_t country_id) noexcept;

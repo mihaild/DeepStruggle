@@ -99,6 +99,37 @@ uint8_t Operations::plain_budget(const GameState& state, uint8_t op_card, Player
     return get_effective_ops(state, op_card, player, Region::NONE_REGION);
 }
 
+uint8_t Operations::budget_if_spent_in(const GameState& state, Player player,
+                                       uint8_t country_id) noexcept {
+    const uint8_t budget = state.ctx().pending_ops_value;
+    const uint8_t op_card = state.ctx().pending_op_card;
+    const bool china = (op_card == card_ids::THE_CHINA_CARD);
+    const bool vietnam = (player == Player::USSR &&
+                          state.has_flag(effect_bits::VIETNAM_REVOLTS_ACTIVE));
+    if (budget == 0 || !(china || vietnam) || country_id >= 84) return budget;
+
+    const auto& c = MapData::get_country(country_id);
+    const uint8_t plain = plain_budget(state, op_card, player);
+    uint8_t keep = budget;
+    if (vietnam && !c.in_southeast_asia) keep = std::min<uint8_t>(keep, plain + (china ? 1 : 0));
+    if (china && c.region != Region::ASIA) keep = std::min<uint8_t>(keep, plain);
+    return keep;
+}
+
+void Operations::mask_region_budget(const GameState& state, Player player, bool influence,
+                                    uint8_t* mask_84) noexcept {
+    const uint8_t budget = state.ctx().pending_ops_value;
+    const uint8_t remaining = state.ctx().remaining_steps;
+    const uint8_t spent = (budget > remaining) ? static_cast<uint8_t>(budget - remaining) : 0;
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (!mask_84[i]) continue;
+        const uint8_t keep = budget_if_spent_in(state, player, i);
+        if (keep == budget) continue;
+        const uint8_t cost = influence ? get_influence_cost(state, player, i) : 1;
+        if (spent + cost > keep) mask_84[i] = 0;
+    }
+}
+
 bool Operations::can_place_influence(const GameState& state, Player p, uint8_t country_id) noexcept {
     if (country_id >= 84 || p == Player::NONE) return false;
 
