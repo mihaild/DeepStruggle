@@ -632,6 +632,11 @@ NB_MODULE(ts_engine, m) {
     nb::class_<ts::MapData>(m, "MapData")
         .def_static("get_country_name", [](uint8_t id) { return std::string(ts::MapData::get_country_name(id)); })
         .def_static("get_country_by_name", [](const std::string& name) { return ts::MapData::get_country_by_name(name); })
+        .def_static("placement_rank", [](uint8_t id) {
+            if (id >= 84) throw std::out_of_range("Country ID must be 0..83");
+            return ts::MapData::placement_rank(id);
+        }, "P43: the rank a canonical placement run (CANONICAL_SETUP) follows, a permutation of 0..83, "
+           "most important last.")
         .def_static("get_country_info", [](uint8_t id) {
             if (id >= 84) throw std::out_of_range("Country ID must be 0..83");
             const auto& c = ts::MapData::get_country(id);
@@ -1479,7 +1484,9 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_FEATURE_OPS_BUDGET") = static_cast<uint32_t>(ts::obs_features::OPS_BUDGET);
     m.attr("OBS_FEATURE_HEADLINE_REVEAL") = static_cast<uint32_t>(ts::obs_features::HEADLINE_REVEAL);
     m.attr("OBS_FEATURE_OPP_EVENT_GATED") = static_cast<uint32_t>(ts::obs_features::OPP_EVENT_GATED);
+    m.attr("OBS_FEATURE_CANONICAL_SETUP") = static_cast<uint32_t>(ts::obs_features::CANONICAL_SETUP);
     m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
+    m.attr("OBS_FEATURES_PERSON_RULES") = static_cast<uint32_t>(ts::obs_features::PERSON_RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);
 
     m.attr("OBS_FLAG_STAGED_CARDS") = static_cast<uint32_t>(ts::obs_flags::STAGED_CARDS);

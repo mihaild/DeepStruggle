@@ -287,6 +287,52 @@ uint8_t MapData::get_country_by_name(std::string_view name) noexcept {
     return 255;
 }
 
+namespace {
+
+std::array<uint8_t, 84> build_placement_ranks() noexcept {
+    // Scoring weight, least first: the region order of MapData::placement_rank.
+    auto region_order = [](Region r) -> int {
+        switch (r) {
+            case Region::AFRICA:          return 0;
+            case Region::SOUTH_AMERICA:   return 1;
+            case Region::CENTRAL_AMERICA: return 2;
+            case Region::ASIA:            return 3;
+            case Region::MIDDLE_EAST:     return 4;
+            case Region::EUROPE:          return 5;
+            default:                      return 6;
+        }
+    };
+    const std::array<std::string_view, 5> europe_last = {"Italy", "France", "West Germany", "East Germany", "Poland"};
+    auto key = [&](uint8_t id) -> int {
+        const CountryInfo& c = COUNTRIES[id];
+        int tail = 0;   // 1..5 for Europe's named battlegrounds, in their listed order
+        for (size_t k = 0; k < europe_last.size(); ++k) {
+            if (c.name == europe_last[k]) tail = static_cast<int>(k) + 1;
+        }
+        return ((region_order(c.region) * 2 + (c.battleground ? 1 : 0)) * 8 + tail) * 128 + id;
+    };
+    std::array<uint8_t, 84> order{};
+    for (uint8_t i = 0; i < 84; ++i) order[i] = i;
+    // Insertion sort: 84 entries, once.
+    for (size_t i = 1; i < order.size(); ++i) {
+        const uint8_t v = order[i];
+        size_t j = i;
+        while (j > 0 && key(order[j - 1]) > key(v)) { order[j] = order[j - 1]; --j; }
+        order[j] = v;
+    }
+    std::array<uint8_t, 84> rank{};
+    for (uint8_t r = 0; r < 84; ++r) rank[order[r]] = r;
+    return rank;
+}
+
+const std::array<uint8_t, 84> PLACEMENT_RANKS = build_placement_ranks();
+
+}  // namespace
+
+uint8_t MapData::placement_rank(uint8_t id) noexcept {
+    return (id < 84) ? PLACEMENT_RANKS[id] : 0;
+}
+
 const std::array<uint64_t, 2>& MapData::get_region_mask(Region r) noexcept {
     size_t idx = static_cast<size_t>(r);
     return (idx < 6) ? REGION_MASKS[idx] : REGION_MASKS[0];

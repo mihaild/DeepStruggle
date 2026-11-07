@@ -61,7 +61,8 @@ are cited from elsewhere; keep them.
     keeps the sets across `reset_all`, and `ts_env.model_obs_features(model)` reads a model's set
     from its weights.
   - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §19): an `obs_features` bit in
-    `OBS_FEATURES_RULES` (so far `OBS_FEATURE_OPP_EVENT_GATED`, ENG-9) is the rule a seat plays, held
+    `OBS_FEATURES_RULES` (`OBS_FEATURE_OPP_EVENT_GATED`, ENG-9; `OBS_FEATURE_CANONICAL_SETUP`, P43 phase
+    A, §21 -- each setup run in non-decreasing `MapData.placement_rank`) is the rule a seat plays, held
     per seat in the state (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`); an
     unseated side plays the rule from before every bit. **A seat plays the rule bits of the feature
     set it is observed in**: the runner seats both sides of an env from its per-side sets
@@ -72,7 +73,8 @@ are cited from elsewhere; keep them.
     sides of their root copies, and the Python trees (`batched_mcts`, `pimcts`, the Gumbel root) call
     `ts_env.seat_tree`; `seat_decider` seats the real position's decider. `(seed, actions)` datasets
     record `us_obs_features` / `ussr_obs_features`, which `WarmupDataset` seats (absent: 0). The wasm
-    build exports `ts_seat_obs_features`, `ts_seat_rules` and `ts_obs_features_rules`.
+    build exports `ts_seat_obs_features`, `ts_seat_rules` and `ts_obs_features_rules`, the rules a
+    person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but `CANONICAL_SETUP`.
   - **`BatchedSearch`** ([`batched_search.hpp`](batched_search.hpp)): the C++ tree behind
     `ai/search/batched_mcts.py` (`backend="cpp"`), Python-only. Up to `capacity` PUCT searches in
     lockstep, split into `num_groups` evaluation groups: `reset(roots, simulations, rng_state,

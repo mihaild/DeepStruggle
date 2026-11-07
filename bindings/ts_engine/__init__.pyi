@@ -731,6 +731,12 @@ class MapData:
     def get_country_by_name(arg: str, /) -> int: ...
 
     @staticmethod
+    def placement_rank(arg: int, /) -> int:
+        """
+        P43: the rank a canonical placement run (CANONICAL_SETUP) follows, a permutation of 0..83, most important last.
+        """
+
+    @staticmethod
     def get_country_info(arg: int, /) -> CountryInfo:
         """Static map data for one country. See `CountryInfo`."""
 
@@ -1157,9 +1163,13 @@ OBS_FEATURE_HEADLINE_REVEAL: int = 4
 
 OBS_FEATURE_OPP_EVENT_GATED: int = 8
 
-OBS_FEATURES_RULES: int = 8
+OBS_FEATURE_CANONICAL_SETUP: int = 16
 
-OBS_FEATURES_ALL: int = 14
+OBS_FEATURES_RULES: int = 24
+
+OBS_FEATURES_PERSON_RULES: int = 8
+
+OBS_FEATURES_ALL: int = 30
 
 OBS_FLAG_STAGED_CARDS: int = 1
 

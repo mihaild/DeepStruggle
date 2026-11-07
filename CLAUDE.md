@@ -329,7 +329,10 @@ learner's exact feature bits; equal observation widths are insufficient. Blocks 
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
 2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
 change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
-Event (`engine/AGENTS.md` §19). A seat plays the rule bits of the feature set it is observed in, a
+Event (`engine/AGENTS.md` §19). `CANONICAL_SETUP` (bit 4, `canonical_setup`, 2026-11-07, P43 phase A)
+is another: the seat places each setup run in non-decreasing country rank, one sequence per setup
+(`engine/AGENTS.md` §21); a branch adds it with `--resume-add-rules canonical_setup`, and a person does not
+play it. A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
 Adding a block still needs the owner.

@@ -1511,6 +1511,19 @@ def _optimizer_state_with_added(model: nn.Module, added: Sequence[str], saved: D
     return out
 
 
+def add_rule_bits_to(net: nn.Module, bits: int) -> None:
+    """Make `net` play the rule bits `bits` as well as its own (P43 --resume-add-rules): its recorded feature set,
+    which model_obs_features reads and the runner seats. Refuses a bit that has width -- that would change what the
+    network reads."""
+    if bits & ~sum(OBS_FEATURE_BITS[n] for n in RULE_FEATURES):
+        raise ValueError(f"only rule bits can be added to a trained network, not {bits:#x}")
+    new = int(getattr(net, "obs_feature_bits", 0) or 0) | int(bits)
+    object.__setattr__(net, "obs_feature_bits", new)   # a plain int attribute, not a parameter or module
+    buf = getattr(net, "obs_features", None)
+    if isinstance(buf, torch.Tensor):
+        buf.fill_(new)
+
+
 def check_state_obs_features(model: nn.Module, state_dict: Mapping[str, Any], source: str) -> None:
     """Refuse weights trained on another observation view than the one the model was built for.
 
@@ -1561,7 +1574,7 @@ def _is_macro(net: Any) -> bool:
 def load_resume_state(path: str, model: nn.Module, trainer: Any,
                       seed: Optional[int] = None, widen: bool = False, grow_tokens: bool = False,
                       reset_head: bool = False, grow_sphere: bool = False,
-                      grow_macro: bool = False) -> Dict[str, Any]:
+                      grow_macro: bool = False, add_rules: int = 0) -> Dict[str, Any]:
     """Restore a run in place and return where it left off.
 
     `seed` is the seed the *resuming* run was given. Where it differs from the one the state was
@@ -1574,6 +1587,22 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
     honouring the flag is less surprising than silently ignoring it.
     """
     blob = torch.load(path, map_location=trainer.device, weights_only=False)
+    if add_rules:
+        # --resume-add-rules: the branch plays rule bits its weights were not trained with. A rule bit has no
+        # width and changes nothing the network reads, only the rule its seat plays, so the bits are added to
+        # the recorded set of the network, pi_ref and any average (the restored pool's members get them where
+        # they are loaded).
+        for key in ("model_state_dict", "reference_state_dict", "ema_state_dict"):
+            sd = blob.get(key)
+            if sd is None or "obs_features" not in sd:
+                continue
+            had = int(sd["obs_features"])
+            if had & add_rules:
+                raise ValueError(f"--resume-add-rules: the resume state's {key} already plays "
+                                 f"{', '.join(_obs_feature_names(had & add_rules))}")
+            sd["obs_features"] = torch.tensor(had | add_rules, dtype=torch.int64)
+        print(f"[resume add rules] {', '.join(_obs_feature_names(add_rules))}: added to the network, pi_ref and "
+              f"the pool; the weights are unchanged", flush=True)
     check_state_obs_features(model, blob["model_state_dict"], f"the resume state {path}")
     if widen:
         # --resume-widen: the model's grouped projections are k times wider than the state's. The
@@ -1734,16 +1763,17 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 
 
 #: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits. `opp_event_gated` is
-#: a rule bit (ENG-9): no width, the rule the network's seat plays.
+#: a rule bit (ENG-9): no width, the rule the network's seat plays. So is `canonical_setup` (P43 phase A):
+#: each setup run placed in non-decreasing country rank, one action sequence per setup.
 OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
-                                    "opp_event_gated": 1 << 3}
+                                    "opp_event_gated": 1 << 3, "canonical_setup": 1 << 4}
 #: A new network's set when `--obs-features` is not given: headline_reveal since E8 (owner, 2026-10-20),
 #: plus opp_event_gated since 2026-11-06 (E8.1). launch_flags.py compares each run against its own
 #: epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.
 DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated"]
 #: The rule bits among them: the engine's minor version (E8.1), reported by launch_flags as `obs_rules`,
 #: outside the A code.
-RULE_FEATURES: List[str] = ["opp_event_gated"]
+RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_setup"]
 
 
 def _obs_feature_names(bits: int) -> List[str]:
@@ -1875,6 +1905,7 @@ def train_pipeline(
     resume_widen: bool = False,
     resume_grow_sphere: bool = False,
     resume_grow_tokens: bool = False,
+    resume_add_rules: Optional[List[str]] = None,
     resume_reset_policy_head: bool = False,
     teacher_checkpoint: Optional[str] = None,
     teacher_coef: float = 0.0,
@@ -2124,6 +2155,15 @@ def train_pipeline(
                 _rb = torch.load(_res_file, map_location="cpu", weights_only=False)
                 merged_from_step = int(_rb["total_env_steps"])
                 del _rb
+    # P43: --resume-add-rules names rule bits the branch plays and its resume state does not. They must be rule
+    # bits, and in the feature set the model is built for (--obs-features), or the check refuses the state.
+    add_rule_bits = 0
+    for _name in resume_add_rules or []:
+        if _name not in RULE_FEATURES:
+            raise ValueError(f"--resume-add-rules takes rule bits ({', '.join(RULE_FEATURES)}), not {_name!r}")
+        if not resume:
+            raise ValueError("--resume-add-rules is for a branch: it needs --resume")
+        add_rule_bits |= OBS_FEATURE_BITS[_name]
     # P42: the same record for the macro view. A base lineage continued in it is grown at its resume step
     # (ai/models/grow.py); a macro run resumed keeps its source's switch step.
     macro_from_step = 0
@@ -2230,6 +2270,7 @@ def train_pipeline(
         "resume_widen": bool(resume_widen),
         "resume_grow_sphere": bool(resume_grow_sphere),
         "resume_grow_tokens": bool(resume_grow_tokens),
+        "resume_add_rules": list(resume_add_rules or []),
         "resume_reset_policy_head": bool(resume_reset_policy_head),
         "teacher_checkpoint": teacher_checkpoint,
         "teacher_coef": float(teacher_coef),
@@ -2909,6 +2950,11 @@ def train_pipeline(
 
             if _seed_paths:
                 _seed_nets = load_pool(_seed_paths, dev)
+                if add_rule_bits:
+                    # --resume-add-rules: the run's own past selves play the branch's rules too, so the pool keeps
+                    # the learner's exact feature set (a rule bit has no width; the weights are untouched).
+                    for _n in _seed_nets:
+                        add_rule_bits_to(_n, add_rule_bits)
                 # Each member keeps the action view it was trained in (P23): E4-era snapshots of
                 # a lineage continued as E4.1 go on being shown E4 masks.
                 _seed_merged = [checkpoint_merged_influence(p) for p in _seed_paths]
@@ -3147,7 +3193,8 @@ def train_pipeline(
         src = resolve_resume(resume)
         state = load_resume_state(src, model, trainer, seed=seed, widen=resume_widen,
                                   grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head,
-                                  grow_sphere=resume_grow_sphere, grow_macro=grow_macro)
+                                  grow_sphere=resume_grow_sphere, grow_macro=grow_macro,
+                                  add_rules=add_rule_bits)
         _ema_state = state.get("ema_state_dict")
         # --seed-env drives the game seeds: restore the generator a continuation saved; a state without one (written
         # before it existed, or a branch under another seed) keys a fresh one by the seed and the step, so two resume

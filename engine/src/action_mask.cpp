@@ -450,6 +450,14 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         }
                     }
                 }
+                // P43: a seat playing CANONICAL_SETUP places each run in non-decreasing rank. A
+                // setup run has no cap per country and no cost, so the last country placed stays
+                // legal and no run can dead-end.
+                if (ctx.canon_floor != 0 && seat_plays_rule(state, p, obs_features::CANONICAL_SETUP)) {
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        if (MapData::placement_rank(i) + 1 < ctx.canon_floor) mask_out[i] = 0;
+                    }
+                }
                 return;
             }
 

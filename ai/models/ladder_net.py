@@ -56,7 +56,8 @@ MY_HAND_SLOT = 1
 #: OPP_EVENT_GATED (1 << 3) is a rule bit (ts.OBS_FEATURES_RULES): no width, and nothing in the
 #: observation changes -- it is the rule the network's seat plays, which it is trained with.
 OBS_FEATURE_WIDTHS: Dict[int, int] = {1 << 1: 3, 1 << 2: 0,   # OPS_BUDGET, HEADLINE_REVEAL (no width)
-                                      1 << 3: 0}             # OPP_EVENT_GATED (no width)
+                                      1 << 3: 0,             # OPP_EVENT_GATED (no width)
+                                      1 << 4: 0}             # CANONICAL_SETUP (P43, a rule bit, no width)
 
 
 def _obs_extra(features: int) -> int:

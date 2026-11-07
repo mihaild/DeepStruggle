@@ -589,3 +589,31 @@ withdrawal (`withdraw_conditional_ops_bonus`) applies and `Operations::mask_regi
 every influence and realignment target: a target is offered only if the Ops already spent plus its
 cost (its Influence cost, or 1 for a roll) fit the budget spending there keeps. 19 of 2,000 seeded
 random games play differently. Tests: `RegionBonusBudget.*` in `engine/tests/test_bugs_regression.cpp`.
+
+## 21. Canonical setup order -- a rule bit (P43 phase A, owner 2026-11-07)
+
+A run of one side's placements reaches the same board in many orders, so a per-step policy has no
+pressure on order (`research/plans/P43_canonical_placement_order.md`). `obs_features::CANONICAL_SETUP`
+(bit 4, no width, in `obs_features::RULES`) makes a seat place each **setup** run -- USSR 6; US 7; US
+2 -- in non-decreasing `MapData::placement_rank`, so every setup board has exactly one action sequence.
+
+* **The order** (`MapData::placement_rank`, a permutation of 0..83): most important last, so a run that
+  strays past a country loses the least -- regions from least to most scoring weight (Africa, South
+  America, Central America, Asia, the Middle East, Europe), non-battlegrounds before battlegrounds within
+  each, Europe's battlegrounds last as Italy, France, West Germany, East Germany, Poland; ties by id.
+* **The floor** is `DecisionContext::canon_floor` (1 + the rank of the last country placed in the run,
+  0 before its first point). It is written only while the placing seat plays the bit, so it stays 0 in
+  every game without it (the behaviour digest is unchanged), and is reset where a setup run hands over to
+  the next. The setup mask drops countries below it; the setup step refuses them. A save writes it only
+  when set.
+* **No dead ends**: a setup run has no cap per country and no cost, so the last country placed stays
+  legal. Once the run reaches a country with nothing legal above it (Poland for the USSR), the rest is
+  forced and auto-advance plays it.
+* **Not in-game runs.** Ops runs pay 2 into an opponent-controlled country, so a canonical order can strand
+  an odd point that free order would spend lower down; that needs an exact completion check (phase B).
+  Event placements with a cap per country (Marshall Plan, one each) can dead-end outright (phase C).
+* **A person does not play it**: it orders a model's clicks, not the game, so the page's current rules
+  are `obs_features::PERSON_RULES` (every rule bit but this one).
+
+Tests: `CanonicalSetup.*` in `engine/tests/test_canonical_setup.cpp` (every USSR and US setup board
+reached by exactly one sequence, exhaustively); `tests/bindings/test_canonical_setup.py`.

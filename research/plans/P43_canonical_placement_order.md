@@ -1,7 +1,9 @@
 # P43 — canonical placement order: one action sequence per board (2026-11-07)
 
-**Status: plan for the owner's approval. Nothing is built.** It changes the legal mask (engine code), so it needs the
-owner's explicit go before the first line (invariant 11). Asked for by the owner on 2026-11-07, after the setup probes.
+**Status: phase A built (owner's go, 2026-11-07)** -- `obs_features::CANONICAL_SETUP` (`canonical_setup`, bit 4),
+the setup only, important-last order (`engine/AGENTS.md` §21); `--resume-add-rules canonical_setup` branches a run
+into it. Phase B (Ops runs) needs the exact completion check below before it can be built; the branch is not launched.
+Asked for by the owner on 2026-11-07, after the setup probes.
 
 ## Why
 
@@ -105,6 +107,27 @@ placement, but it is systematic and depends on the hand-chosen order. Remedies, 
    Fragile, and it puts judgement in the order.
 
 Phase A measures it directly: stray single points by rank, against the free-order control.
+
+## The order: important last (owner's question, 2026-11-07)
+
+Important first lets the factorisation decide the counts that matter before the extras; important last means a
+run that strays past a country loses the least. Under a canonical order a step to rank r forfeits every country
+below r for the rest of the run, so the cost of a stray step (T = 1 sampling, the zero-avoiding floor) is the value
+of what lies below it. With the important countries last, a stray early step into a minor country costs one point
+and the run can still reach every battleground; with them first, a stray step past West Germany loses West Germany
+for the whole setup. Important last also puts the regularisers' high-rank floor bias (above) on the countries where
+an extra point does least harm. The network sees the whole board at every step, so it does not need the important
+countries first to take them into account. Built: regions by scoring weight (Africa, South America, Central
+America, Asia, the Middle East, Europe), non-battlegrounds before battlegrounds, Europe's battlegrounds last (Italy,
+France, West Germany, East Germany, Poland). Learning the order instead is discussed in
+[placement_order_redundancy.md](../log/placement_order_redundancy.md).
+
+**Phase B's open problem: dead ends.** An Ops point into an opponent-controlled country costs 2. A run that jumps to a
+high-ranked country it still cannot afford to keep adding to may strand its last point, where free order would have
+spent it lower down -- an outcome free order cannot reach (CONFIRM_DONE is offered when nothing is legal). The mask
+must therefore offer a country only if the run can still be completed from there exactly as free order could
+(per-country costs are independent, so a small dynamic programme over (country, points left) decides it). Event runs
+with a cap per country (Marshall Plan) need the same check against their caps.
 
 ## Tests (before any run)
 

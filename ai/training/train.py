@@ -402,6 +402,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "trunk context, the branch and play-mode heads) with fresh weights and Adam moments, keeping "
                              "the trunk and the value heads -- P37's last-layer reset, once at the branch point, aimed at "
                              "the policy head's measured plasticity loss (P37a).")
+    parser.add_argument("--resume-add-rules", nargs="+", default=None, metavar="RULE",
+                        help="With --resume: rule bits the branch plays that its resume state was not trained with "
+                             "(canonical_setup, P43; opp_event_gated). A rule bit has no width, so the weights are "
+                             "unchanged: the bits are added to the network, pi_ref and the restored pool. They must "
+                             "also be in --obs-features.")
     parser.add_argument("--resume-grow-tokens", action="store_true", default=False,
                         help="With --resume: the model has --ladder-token-layers the state lacks. The token path "
                              "starts fresh and the fusion layer and per-entity heads read it through zero weights, "
@@ -1049,7 +1054,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "opp_event_gated (no width, a rule bit): the network plays ENG-9's "
                              "rule, an opponent's card offering its Event only where the Event "
                              "can fire; without it, the rule every earlier network learned, where "
-                             "the Event was offered anyway and fizzled into Ops. The list "
+                             "the Event was offered anyway and fizzled into Ops. "
+                             "canonical_setup (no width, a rule bit; P43): each setup run is placed "
+                             "in non-decreasing country rank (most important last), so every setup "
+                             "has one action sequence. The list "
                              "replaces the default, headline_reveal and opp_event_gated (E8.1, since "
                              "2026-11-06; an E8 run is headline_reveal alone): name them all to "
                              "have both, and give the flag with no names for none (what every run "
@@ -1470,6 +1478,7 @@ def main():
             resume_weights=args.resume_weights,
             resume_widen=args.resume_widen,
             resume_grow_tokens=args.resume_grow_tokens,
+            resume_add_rules=args.resume_add_rules,
             resume_grow_sphere=args.resume_grow_sphere,
             resume_reset_policy_head=args.resume_reset_policy_head,
             teacher_checkpoint=args.teacher_checkpoint,

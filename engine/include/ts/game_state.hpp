@@ -192,6 +192,11 @@ struct alignas(64) DecisionContext {
     // predates it, and then the ladder falls back to the card.
     uint8_t  ops_plain;
 
+    // P43 (obs_features::CANONICAL_SETUP): 1 + the placement rank of the last country placed in
+    // this setup run, 0 before its first point. Written only while the placing seat plays the bit,
+    // so it stays 0 in every game without it; reset where a setup run hands over to the next.
+    uint8_t  canon_floor;
+
     static constexpr uint8_t NODE_COUNT_MAX = 3;   // two bits; no card allows more than 2
 
     inline uint8_t node_count(uint8_t node) const noexcept {
@@ -585,9 +590,15 @@ namespace obs_features {
     // A rule bit (no width, owner 2026-11-06): an opponent's card offers its Event only where it can
     // fire (ENG-9). Clear, the pre-ENG-9 rule, where an unmet prerequisite fizzled into Ops.
     constexpr uint32_t OPP_EVENT_GATED = 1u << 3;
+    // A rule bit (no width, owner 2026-11-07, P43 phase A): each setup run (USSR 6; US 7; US 2) is
+    // placed in non-decreasing MapData::placement_rank, so every setup has exactly one action
+    // sequence. It constrains the order of the clicks, never the boards a setup can reach.
+    constexpr uint32_t CANONICAL_SETUP = 1u << 4;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
-    constexpr uint32_t RULES       = OPP_EVENT_GATED;
-    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED;
+    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL_SETUP;
+    // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
+    constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED;
+    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL_SETUP;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 

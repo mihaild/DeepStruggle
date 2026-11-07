@@ -70,7 +70,7 @@ BOOKKEEPING = frozenset({
     "seed_env", "seed_pool", "warmup_checkpoint", "warmup_dataset", "distill_dataset",
     "distill_epochs", "distill_lr", "bc_epochs", "curriculum_switch_fraction", "no_cuda_graphs",
     "merged_influence", "obs_rules", "new_directory", "turn_credit_workers", "search_workers", "resume_widen", "resume_grow_sphere",
-    "resume_grow_tokens",
+    "resume_grow_tokens", "resume_add_rules",
     # a value fit's shape change: the network it builds is recorded as ladder_config, the A code's
     "value_arch", "policy_arch",
     # two arms taking turns on one machine: the wall clock, not the training
