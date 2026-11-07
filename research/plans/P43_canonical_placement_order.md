@@ -2,7 +2,8 @@
 
 **Status: phase A built (owner's go, 2026-11-07)** -- `obs_features::CANONICAL_SETUP` (`canonical_setup`, bit 4),
 the setup only, important-last order (`engine/AGENTS.md` §21); `--resume-add-rules canonical_setup` branches a run
-into it. Phase B (Ops runs) needs the exact completion check below before it can be built; the branch is not launched.
+into it. Its code is **V1** (the view letter, owner 2026-11-07): the phase A branch is
+`E8-A35-R102-S44@930M+R119@<step>M+V1`. Phase B (Ops runs) needs the exact completion check below before it can be built; the branch is not launched.
 Asked for by the owner on 2026-11-07, after the setup probes.
 
 ## Why

@@ -14,6 +14,7 @@ branch point on the way to it:
     E7-A4-R1-S44@4390M+S45                         its 4,390M state, continued under seed 45
     E7-A4-R1-S44@4390M+A7-R23@4800M+R24            two changes in a row
     E7-A4-R1-S44-2                                 a same-seed replicate of the first
+    E8-A35-R102-S44@930M+R119@1300M+V1             a branch into view 1 (canonical setup order)
 
 - **`E`** — the engine revision, as below (`E8` since 2026-10-20, with ENG-5's alternating deal folded in on 2026-10-23 -- owner -- so an E8 run launched before then dealt the old way; a minor version is `E4.1`, and `E8.1` is E8 with ENG-9's rule bit `opp_event_gated`, the default for a
   new network since 2026-11-06 -- owner -- which `tools/scripts/run_codes.py --run` checks against the
@@ -25,6 +26,14 @@ branch point on the way to it:
 - **`R`** — the **recipe**: every other training setting -- reward, loss, opponents, schedules,
   forcing. A code in the same file. An auxiliary head trained only as a target (the card-event
   head) is recipe: the policy never reads it.
+- **`V`** — the **view** (owner, 2026-11-07): how mechanically possible observations and actions are
+  represented, changing neither the network's shape (A), its training (R) nor any game that can be played
+  (E) -- an action view (P42's until-control macro), a canonical placement order (P43's `canonical_setup`
+  rule bit). A code in the same file, a set of view flags (`run_codes.py`'s `VIEW_FLAGS`; the view rule
+  bits are `obs_view`, apart from the engine's `obs_rules`). **Optional**: a name without it is V0, the
+  default view, and V0 is never written in a root (`E8-A35-R102-V1-S44` from scratch, `+V1` at a branch).
+  P23's merged-influence view stays the engine minor version E4.1 / E6.1 for the run that used it; a new
+  merged-influence run takes a V code.
 - **`S`** — the **seed** of the environment, sampling and opponent pool.
 
 **Plans and their experiments use the same letters** (owner, 2026-10-15): a plan combining many
@@ -162,9 +171,10 @@ Directories launched earlier keep their old names because research cites them by
 * **branch** — a resume under a new seed: `E4-17-06-50M.11` (`.`, because `_` separates the
   timestamp);
 * **minor version** — `E4.1` (P23) is E4 with an opt-in action view: same game, so E4 and E4.1
-  numbers compare directly. `E8.1` is E8 with the rule bit `opp_event_gated` (ENG-9): the unseated
-  engine is E8's, and an E8.1 network plays its own seat under the gated rule, so E8 and E8.1
-  networks play each other directly.
+  numbers compare directly (kept for that run; a view is now a V code). `E8.1` is E8 with the rule bit
+  `opp_event_gated` (ENG-9): the unseated engine is E8's, and an E8.1 network plays its own seat under
+  the gated rule, so E8 and E8.1 networks play each other directly. A rule bit that changes a game that
+  can be played is a minor version; one that only orders a model's clicks is a view (V).
 
 ## Rules that hold in both schemes
 

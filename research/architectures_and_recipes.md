@@ -1,6 +1,6 @@
 # Architectures and recipes
 
-The A and R codes of the run names ([`method/run_nomenclature.md`](method/run_nomenclature.md)).
+The A, R and V codes of the run names ([`method/run_nomenclature.md`](method/run_nomenclature.md)).
 A code is a set of `tools/train.py` flags, derived from the runs' own `metadata.json` by
 `tools/scripts/run_codes.py`, which also writes this file; the descriptions are kept in
 [`run_codes.json`](run_codes.json). An architecture is the network -- its shape, its input
@@ -9,6 +9,9 @@ the CLI's defaults: A1 and R1 in full, every other code as its difference from t
 A default that changed at an engine epoch is read as the run's own epoch had it: since E8 a
 network reads `headline_reveal` unless its code lists `--obs-features`, so an A code names
 the same flags on E7 and E8 and the E letter says which view it reads.
+A view (V, owner 2026-11-07) is how mechanically possible observations and actions are represented --
+an action view, a canonical placement order -- changing neither the network's shape nor any game that
+can be played; V0, no view flag, is the default and is never written in a name.
 
 ## Architectures
 
@@ -48,7 +51,7 @@ the same flags on E7 and E8 and the E letter says which view it reads.
 | **A32** | A30 (SimbaV2 trunk, 2 blocks, A26's width, output RMS 0.35) with a LayerNorm after the first layer of the per-entity, branch and play-mode heads (--ladder-head-norm) | `--ladder-branch-head` `--ladder-entity-proj-dim 512` `--ladder-head-norm` `--ladder-hidden-dim 768` `--ladder-play-mode-head` `--ladder-res-blocks 0` `--ladder-sphere-blocks 2` `--ladder-sphere-out-scale 0.35` | E8-A32-R86-S44 |
 | **A33** | P35 item 1's encoder: A8 (card-conditioned heads) with two card/country token-attention layers of width 128 (A6's), at E8's default view (headline_reveal) | `--ladder-branch-head` `--ladder-play-mode-head` `--ladder-res-blocks 0` `--ladder-token-chunk 4096` `--ladder-token-layers 2` |  |
 | **A34** | A22 without dropout in its residual blocks (--ladder-res-dropout 0; the historical 0.05 otherwise): the rollouts act in eval mode and the PPO update in train mode, so with dropout the update's log-probabilities and KL are those of a policy that never played -- the leading suspect for the scaled network's failure (2026-10-22) | `--ladder-branch-head` `--ladder-entity-proj-dim 512` `--ladder-hidden-dim 768` `--ladder-play-mode-head` `--ladder-res-dropout 0.0` |  |
-| **A35** | P41 J5 (owner, 2026-11-04): the token transformer as the main path -- 195 tokens (the global one, 84 countries, 110 cards), 3 pre-RMSNorm layers at width 128, 4 heads, an MLP (2x) per token type, no grouped projections; the trunk (fusion 480) reads the global token and each type's mean, the per-entity heads their own tokens, the play-mode and branch heads the active card's token; chunked at 1,024 rows and compiled (--ladder-token-compile, the same function) | `--ladder-branch-head` `--ladder-entity-proj-dim 0` `--ladder-play-mode-head` `--ladder-res-blocks 0` `--ladder-token-chunk 1024` `--ladder-token-compile` `--ladder-token-layers 3` `--ladder-token-main` | E8-A35-R102-S44 |
+| **A35** | P41 J5 (owner, 2026-11-04): the token transformer as the main path -- 195 tokens (the global one, 84 countries, 110 cards), 3 pre-RMSNorm layers at width 128, 4 heads, an MLP (2x) per token type, no grouped projections; the trunk (fusion 480) reads the global token and each type's mean, the per-entity heads their own tokens, the play-mode and branch heads the active card's token; chunked at 1,024 rows and compiled (--ladder-token-compile, the same function) | `--ladder-branch-head` `--ladder-entity-proj-dim 0` `--ladder-play-mode-head` `--ladder-res-blocks 0` `--ladder-token-chunk 1024` `--ladder-token-compile` `--ladder-token-layers 3` `--ladder-token-main` | E8-A35-R102-S44, E8-A35-R102-S44@930M+R119 |
 
 ## Recipes
 
@@ -172,4 +175,11 @@ the same flags on E7 and E8 and the E letter says which view it reads.
 | **R116** | R115 with the distilled start held by a frozen anchor: pi_ref refreshed every 50M (--ref-update-freq 50000000) and eta 0.5 for the first 400M: P41 D6b (owner, 2026-11-04) -- R115 lost the start inside 10M | `--batch-size 16384` `--clip-eps 0.1` `--entropy-coef 0.0` `--eta 0.5` `--lr 0.00015` `--mup` `--ref-update-freq 50000000` `--zero-avoid-coef 0.01` | E8-A30-R116-S44, E8-A8-R116-S44 |
 | **R117** | R115 with pi_ref refreshed every 50M (--ref-update-freq 50000000) at eta 0.1: P41 D6b's staged release (owner, 2026-11-04) -- the full release to R115 lost the distilled start within 10M | `--batch-size 16384` `--clip-eps 0.1` `--entropy-coef 0.0` `--lr 0.00015` `--mup` `--ref-update-freq 50000000` `--zero-avoid-coef 0.01` | E8-A30-R116-S44@410M+R117 |
 | **R118** | R102 with --no-held-scoring-blunder: a held-scoring loss is an ordinary loss (zero-sum terminal reward, no turn window, credit back through the whole game); DEFCON-suicide handling unchanged (owner, 2026-11-06: is the penalty needed?) | `--batch-size 16384` `--clip-eps 0.1` `--mup` `--no-held-scoring-blunder` `--zero-avoid-coef 0.01` | E8-A8-R102-S44@14000M+R118, E8-A8-R118-S44 |
-| **R119** | R102 trained purely on win/loss: --reward-scheme terminal --no-blunder-window -- no blunder treatment for held scoring or DEFCON 1, winner +1 / loser -1 whatever the ending (owner, 2026-11-06) | `--batch-size 16384` `--clip-eps 0.1` `--mup` `--no-blunder-window` `--reward-scheme terminal` `--zero-avoid-coef 0.01` | E8-A8-R102-S44@14000M+R119, E8-A8-R119-S44 |
+| **R119** | R102 trained purely on win/loss: --reward-scheme terminal --no-blunder-window -- no blunder treatment for held scoring or DEFCON 1, winner +1 / loser -1 whatever the ending (owner, 2026-11-06) | `--batch-size 16384` `--clip-eps 0.1` `--mup` `--no-blunder-window` `--reward-scheme terminal` `--zero-avoid-coef 0.01` | E8-A35-R102-S44@930M+R119, E8-A8-R102-S44@14000M+R119, E8-A8-R119-S44 |
+
+## Views
+
+| code | what it is | flags | runs (old names) |
+|:---|:---|:---|:---|
+| **V0** | the default view: the epoch's action view, free placement order | *(no view flag)* | every run without a V |
+| **V1** | P43 phase A (owner, 2026-11-07): canonical setup order -- each setup run (USSR 6; US 7; US 2) placed in non-decreasing country rank, most important last (the canonical_setup rule bit), one action sequence per setup board | `--obs-features ... canonical_setup` |  |

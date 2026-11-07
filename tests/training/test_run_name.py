@@ -27,6 +27,10 @@ class TestRunNames:
         "E7-A4-R1-S44@4390M+A7-R23@4800M+R24@5200M+R1",
         "E6-A1-R1-S44@560M+E7",
         "E6.1-A2-R1-S44",
+        "E8-A35-R102-V1-S44",
+        "E8-A35-R102-V1-S44-2",
+        "E8-A35-R102-S44@930M+R119@1300M+V1",
+        "E8-A35-R102-S44@930M+R119-V1",
     ])
     def test_round_trip(self, name: str) -> None:
         assert parse_run_name(name).text() == name
@@ -34,14 +38,18 @@ class TestRunNames:
 
     def test_fields_follow_the_branches(self) -> None:
         f = parse_run_name("E7-A4-R1-S44@4390M+A7-R23@4800M+R24").fields()
-        assert f == {"E": "7", "A": "7", "R": "24", "S": "44"}
+        assert f == {"E": "7", "A": "7", "R": "24", "V": "0", "S": "44"}   # no V written: the default view
 
     @pytest.mark.parametrize("bad, why", [
         ("E7-R1-A4-S44", "in that order"),
-        ("E7-A4-R1", "is not E<n>-A<n>-R<n>-S<n>"),
+        ("E7-A4-R1", "is not E<n>-A<n>-R<n>"),
+        ("E8-A35-R102-V0-S44", "V0 is the default view"),
+        ("E8-A35-R102-S44-V1", "in that order"),
+        ("E8-A35-R102-S44@100M+V1-R3", "E, A, R, V, S order"),
+        ("E8-A35-R102-V1-S44@100M+V1", "restates V1"),
         ("E7-A4-R1-S44@100M+S44", "restates S44"),              # a continuation keeps its name
         ("E7-A4-R1-S44@100M+R2-S44", "restates S44"),
-        ("E7-A4-R1-S44@100M+S45-R2", "E, A, R, S order"),
+        ("E7-A4-R1-S44@100M+S45-R2", "E, A, R, V, S order"),
         ("E7-A4-R1-S44@200M+S45@100M+R2", "not after the last branch point"),
         ("E7-A4-R1-S44@100+S45", "absolute steps in millions"),
         ("E7-A4-R1-S44@100M+(S45,S46)", "no group or range"),     # a soup names a model, not a run
@@ -62,6 +70,16 @@ class TestRunNames:
         assert branched.text() == "E8-A8-R1-S44-2@10010M+R87"
         assert branched.branch(10800, {"S": "45"}).text() == "E8-A8-R1-S44-2@10010M+R87@10800M+S45"
         assert parse_run_name("E8-A8-R1-S44@10010M+R87").text() != run.text()
+
+    def test_a_view_branch_and_back(self) -> None:
+        run = parse_run_name("E8-A35-R102-S44@930M+R119").branch(1300, {"V": "1"})
+        assert run.text() == "E8-A35-R102-S44@930M+R119@1300M+V1"
+        assert run.fields()["V"] == "1"
+        assert run.branch(1700, {"V": "0"}).text() == "E8-A35-R102-S44@930M+R119@1300M+V1@1700M+V0"
+
+    def test_a_soup_across_views_is_refused(self) -> None:
+        with pytest.raises(RunNameError, match="across views"):
+            parse_label("E8-A35-R102-S44@1300M+(R119,V1)@1700M")
 
     def test_legacy_names_stay_valid(self) -> None:
         for n in ("E7-20-44", "E7-20-44-4390M.45", "E4-08-01-2", "E4-17-06-5M.11-90M.07"):

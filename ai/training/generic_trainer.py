@@ -1774,6 +1774,10 @@ DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated"]
 #: The rule bits among them: the engine's minor version (E8.1), reported by launch_flags as `obs_rules`,
 #: outside the A code.
 RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_setup"]
+#: The rule bits that are a view rather than a rule (owner, 2026-11-07): they order a model's clicks and change no
+#: game that can be played, so they belong to the run's V code, not to the engine's minor version. launch_flags.py
+#: reports them as `obs_view`, the other rule bits as `obs_rules`.
+VIEW_RULE_FEATURES: List[str] = ["canonical_setup"]
 
 
 def _obs_feature_names(bits: int) -> List[str]:

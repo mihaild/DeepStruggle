@@ -2412,6 +2412,16 @@
    }
   }
  },
+ "views": {
+  "V1": {
+   "description": "P43 phase A (owner, 2026-11-07): canonical setup order -- each setup run (USSR 6; US 7; US 2) placed in non-decreasing country rank, most important last (the canonical_setup rule bit), one action sequence per setup board",
+   "flags": {
+    "obs_view": [
+     "canonical_setup"
+    ]
+   }
+  }
+ },
  "overrides": {
   "E7-26-44_20261006_134532": {
    "void": "stored log mu as PPO's old log-prob; relaunched as E7-28-44 (runs.md)"
@@ -2683,7 +2693,8 @@
   "E8-A8-R102-S44@14000M+R118_20261106_180251": "E8-A8-R102-S44@14000M+R118",
   "E8-A8-R118-S44_20261106_192350": "E8-A8-R118-S44",
   "E8-A8-R102-S44@14000M+R119_20261106_204803": "E8-A8-R102-S44@14000M+R119",
-  "E8-A8-R119-S44_20261106_221420": "E8-A8-R119-S44"
+  "E8-A8-R119-S44_20261106_221420": "E8-A8-R119-S44",
+  "E8-A35-R102-S44@930M+R119_20261106_233719": "E8-A35-R102-S44@930M+R119"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
