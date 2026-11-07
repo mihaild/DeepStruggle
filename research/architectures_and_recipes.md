@@ -182,4 +182,5 @@ can be played; V0, no view flag, is the default and is never written in a name.
 | code | what it is | flags | runs (old names) |
 |:---|:---|:---|:---|
 | **V0** | the default view: the epoch's action view, free placement order | *(no view flag)* | every run without a V |
-| **V1** | P43 phase A (owner, 2026-11-07): canonical setup order -- each setup run (USSR 6; US 7; US 2) placed in non-decreasing country rank, most important last (the canonical_setup rule bit), one action sequence per setup board | `--obs-features ... canonical_setup` |  |
+| **V1** | P43 (owner, 2026-11-07): canonical placement order, most important first -- every placement run (setup, Ops influence, the verified event runs) placed in non-decreasing rank of the important-first order (Poland, East Germany, West Germany, France, Italy, then Europe's other countries, the Middle East, Asia, Central and South America, Africa), one action sequence per board; a run that would strand points releases its floor for that choice | `--obs-features ... canonical_first` |  |
+| **V2** | P43 (owner, 2026-11-07): canonical placement order, most important last -- V1's runs in the reverse order (Africa first, Europe's battlegrounds last) | `--obs-features ... canonical_last` |  |

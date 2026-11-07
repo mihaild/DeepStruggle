@@ -404,7 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "the policy head's measured plasticity loss (P37a).")
     parser.add_argument("--resume-add-rules", nargs="+", default=None, metavar="RULE",
                         help="With --resume: rule bits the branch plays that its resume state was not trained with "
-                             "(canonical_setup, P43; opp_event_gated). A rule bit has no width, so the weights are "
+                             "(canonical_first / canonical_last, P43; opp_event_gated). A rule bit has no width, so the weights are "
                              "unchanged: the bits are added to the network, pi_ref and the restored pool. They must "
                              "also be in --obs-features.")
     parser.add_argument("--resume-grow-tokens", action="store_true", default=False,
@@ -1055,9 +1055,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "rule, an opponent's card offering its Event only where the Event "
                              "can fire; without it, the rule every earlier network learned, where "
                              "the Event was offered anyway and fizzled into Ops. "
-                             "canonical_setup (no width, a rule bit; P43): each setup run is placed "
-                             "in non-decreasing country rank (most important last), so every setup "
-                             "has one action sequence. The list "
+                             "canonical_first / canonical_last (no width, rule bits; P43, at most one): "
+                             "every placement run -- setup, Ops influence, the verified event runs -- "
+                             "is placed in non-decreasing country rank, most important first or last, "
+                             "so every board has one action sequence; a run that would strand points "
+                             "releases its floor for that choice. The list "
                              "replaces the default, headline_reveal and opp_event_gated (E8.1, since "
                              "2026-11-06; an E8 run is headline_reveal alone): name them all to "
                              "have both, and give the flag with no names for none (what every run "

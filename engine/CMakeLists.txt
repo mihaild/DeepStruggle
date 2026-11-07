@@ -71,7 +71,7 @@ set(TEST_SOURCES
     tests/test_cached_state.cpp
     tests/test_review_fixes.cpp
     tests/test_macro_view.cpp
-    tests/test_canonical_setup.cpp
+    tests/test_canonical_placement.cpp
 )
 
 add_executable(ts_tests ${TEST_SOURCES})

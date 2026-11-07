@@ -28,8 +28,8 @@ branch point on the way to it:
   head) is recipe: the policy never reads it.
 - **`V`** — the **view** (owner, 2026-11-07): how mechanically possible observations and actions are
   represented, changing neither the network's shape (A), its training (R) nor any game that can be played
-  (E) -- an action view (P42's until-control macro), a canonical placement order (P43's `canonical_setup`
-  rule bit). A code in the same file, a set of view flags (`run_codes.py`'s `VIEW_FLAGS`; the view rule
+  (E) -- an action view (P42's until-control macro), a canonical placement order (P43's `canonical_first` /
+  `canonical_last` rule bits: V1 / V2). A code in the same file, a set of view flags (`run_codes.py`'s `VIEW_FLAGS`; the view rule
   bits are `obs_view`, apart from the engine's `obs_rules`). **Optional**: a name without it is V0, the
   default view, and V0 is never written in a root (`E8-A35-R102-V1-S44` from scratch, `+V1` at a branch).
   P23's merged-influence view stays the engine minor version E4.1 / E6.1 for the run that used it; a new

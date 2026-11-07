@@ -8,6 +8,7 @@
 #include "ts/ops.hpp"
 #include "ts/prng.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/canonical.hpp"
 #include <algorithm>
 #include <cstring>
 #include "ts/victory_points.hpp"
@@ -837,22 +838,6 @@ static bool commit_card_to_ops(GameState& state, Player p, uint8_t card) noexcep
 
 // Open the POINT_NODE that spends the Ops. `pending_ops_value` must already be set.
 //
-// P43 (obs_features::CANONICAL_SETUP): a seat playing the bit places each setup run in
-// non-decreasing MapData::placement_rank. The step refuses what the mask does not offer, so a caller
-// stepping past the mask cannot place out of order.
-static bool canonical_setup_allows(const GameState& state, Player p, uint8_t cid) noexcept {
-    return state.ctx().canon_floor == 0 || !seat_plays_rule(state, p, obs_features::CANONICAL_SETUP) ||
-           MapData::placement_rank(cid) + 1 >= state.ctx().canon_floor;
-}
-
-// The run's floor moves to the country just placed -- only for a seat playing the bit, so a game
-// without it never writes the field.
-static void note_canonical_setup(GameState& state, Player p, uint8_t cid) noexcept {
-    if (seat_plays_rule(state, p, obs_features::CANONICAL_SETUP)) {
-        state.ctx().canon_floor = static_cast<uint8_t>(MapData::placement_rank(cid) + 1);
-    }
-}
-
 // Realignment is repeatable and keeps its stop; a coup is a single action and does not. Influence
 // has no stop either: every point must be placed, and CONFIRM_DONE is offered only once the board
 // has no legal target left (DecisionContext::is_ops_influence_play, read by the mask). The merged
@@ -895,7 +880,30 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     return step(state, action, nullptr);
 }
 
+// P43 (ts/canonical.hpp): a placement in a covered run moves the run's floor to the country placed,
+// in the placing seat's order. Written only for a seat playing a canonical bit, so a game without one
+// never touches the fields; anything else that happens in the frame clears a floor it left. The step
+// itself is validated against the flat mask, which applies the floor, so a caller cannot place below it.
 bool StateMachine::step(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept {
+    const uint32_t order = canonical::run_order(state);
+    const uint16_t tag = order != 0 ? canonical::run_tag(state) : 0;
+    const uint8_t depth = state.ctx_stack_depth;
+    if (!step_impl(state, action, legal)) return false;
+    if (state.ctx_stack_depth != depth) return true;
+    DecisionContext& c = state.ctx();
+    if (order != 0 && action.decision_type == DecisionType::POINT_NODE && action.primary_id < 84) {
+        c.canon_floor = static_cast<uint8_t>(canonical::rank_in(order, action.primary_id) + 1);
+        c.canon_tag = tag;
+        c.canon_left = c.remaining_steps;
+    } else if (c.canon_floor != 0) {
+        c.canon_floor = 0;
+        c.canon_tag = 0;
+        c.canon_left = 0;
+    }
+    return true;
+}
+
+bool StateMachine::step_impl(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept {
     // Reset ephemeral die roll record for the current step
     state.last_roll = DieRollRecord{};
     state.last_die_roll = 0;
@@ -973,15 +981,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
         if (state.ctx().decision_player == Player::USSR) {
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).in_eastern_europe) {
-                if (!canonical_setup_allows(state, Player::USSR, cid)) return false;
                 state.countries[cid].add_influence(Player::USSR, 1);
                 state.ctx().remaining_steps--;
-                note_canonical_setup(state, Player::USSR, cid);
                 if (state.ctx().remaining_steps == 0) {
                     // Transition to US placing 7 in Western Europe
                     state.ctx().decision_player = Player::US;
                     state.ctx().remaining_steps = 7;
-                    state.ctx().canon_floor = 0;
                 }
                 return true;
             }
@@ -991,15 +996,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
             if (state.ctx().pending_ops_value == 0) {
                 // Stage 0: 7 points in Western Europe
                 if (cid < 84 && MapData::get_country(cid).in_western_europe) {
-                    if (!canonical_setup_allows(state, Player::US, cid)) return false;
                     state.countries[cid].add_influence(Player::US, 1);
                     state.ctx().remaining_steps--;
-                    note_canonical_setup(state, Player::US, cid);
                     if (state.ctx().remaining_steps == 0) {
                         // Transition to US placing 2 bonus influence in countries with existing US presence
                         state.ctx().pending_ops_value = 1; // Stage 1: Bonus placement
                         state.ctx().remaining_steps = 2;
-                        state.ctx().canon_floor = 0;
                     }
                     return true;
                 }
@@ -1007,12 +1009,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
             } else {
                 // Stage 1: 2 bonus influence in any country with existing US influence
                 if (cid < 84 && state.countries[cid].us_influence > 0) {
-                    if (!canonical_setup_allows(state, Player::US, cid)) return false;
                     state.countries[cid].add_influence(Player::US, 1);
                     state.ctx().remaining_steps--;
-                    note_canonical_setup(state, Player::US, cid);
                     if (state.ctx().remaining_steps == 0) {
-                        state.ctx().canon_floor = 0;
                         // Setup complete -> start Turn 1
                         start_turn(state);
                     }

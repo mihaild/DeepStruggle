@@ -795,8 +795,12 @@ Value save(const GameState& state) {
         f.set("roll_actor", I(static_cast<int>(c.roll_actor)));
         f.set("event_stage", I(c.event_stage));
         f.set("ops_plain", I(c.ops_plain));
-        // P43: written only when set, so every save of a game without CANONICAL_SETUP is unchanged.
-        if (c.canon_floor != 0) f.set("canon_floor", I(c.canon_floor));
+        // P43: written only when set, so every save of a game without a canonical bit is unchanged.
+        if (c.canon_floor != 0) {
+            f.set("canon_floor", I(c.canon_floor));
+            f.set("canon_left", I(c.canon_left));
+            f.set("canon_tag", I(c.canon_tag));
+        }
         Value si = Value::array(), vn = Value::array(), nc = Value::array();
         for (uint64_t v : c.start_influence_nodes) si.push(Value(v));
         for (uint64_t v : c.visited_nodes) vn.push(Value(v));
@@ -1025,6 +1029,8 @@ bool load_save(const Value& d, GameState& out, std::string* error) {
             // Absent from saves that predate it; 0 falls back to the card, as it always did.
             c.ops_plain = get<uint8_t>(f, "ops_plain", 0);
             c.canon_floor = get<uint8_t>(f, "canon_floor", 0);
+            c.canon_left = get<uint8_t>(f, "canon_left", 0);
+            c.canon_tag = get<uint16_t>(f, "canon_tag", 0);
             const std::pair<const char*, uint64_t*> bitsets[] = {
                 {"start_influence_nodes", c.start_influence_nodes.data()},
                 {"visited_nodes", c.visited_nodes.data()},

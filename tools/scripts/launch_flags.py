@@ -46,7 +46,7 @@ _DERIVED = {"obs_rules": "obs_features", "obs_view": "obs_features"}
 
 def _split_rules(flags: dict) -> dict:
     """Move the rule bits of `obs_features` out of it: `obs_rules`, the engine's minor version (E8.1), and
-    `obs_view`, the view bits (canonical_setup), which the V code names. Neither is an observation the A code
+    `obs_view`, the view bits (canonical_first / canonical_last), which the V code names. Neither is an observation the A code
     names, so earlier runs keep their codes."""
     if "obs_features" in flags and flags["obs_features"] is not None:
         names = list(flags["obs_features"])

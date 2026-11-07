@@ -105,7 +105,7 @@ def test_a_view_is_its_own_code_and_moves_nothing_else(tmp_path: Any) -> None:
     root = str(tmp_path)
     a = _run(root, "E8-A1-R1-S44", steps=400_000_000, obs_features=["headline_reveal"])
     _run(root, "E8-A1-R1-S44@300M+V1", parent=a, resume="resume_300000000steps.pt",
-         obs_features=["headline_reveal", "canonical_setup"])
+         obs_features=["headline_reveal", "canonical_first"])
     _run(root, "E8-A1-R1-V2-S45", seed=45, obs_features=["headline_reveal"], macro_influence=True)
     _run(root, "E6-09-44", merged_influence=True)
     runs = rc.load_runs(root)

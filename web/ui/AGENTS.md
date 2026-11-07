@@ -339,7 +339,7 @@ web/ui/
    - **...and its rules**: each side plays the rule bits (`engine/AGENTS.md` §19) of whoever plays
      it -- `TSApp.seatSides()`, on every refresh and when the model or the auto-play side changes: the
      auto-play side its model's `obsFeatures`, a person's side every game rule bit
-     (`WasmEngine.currentRules`, the engine's `PERSON_RULES`: not P43's `CANONICAL_SETUP`, which
+     (`WasmEngine.currentRules`, the engine's `PERSON_RULES`: not P43's canonical orders, which
      orders a model's setup clicks, `engine/AGENTS.md` §21). So nothing a person is offered or suggested, readout and search
      included, is an Event that cannot fire, while an older model on the auto-play side keeps the
      rule it was trained with. `WasmEngine.mask(merged)` reads the seats and changes nothing.

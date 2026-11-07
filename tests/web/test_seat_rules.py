@@ -42,9 +42,10 @@ def offered(tmp_path_factory: pytest.TempPathFactory) -> Dict[str, Any]:
 
 
 def test_the_page_knows_the_current_rules(offered: Dict[str, Any]) -> None:
-    # The game rules a person plays: every rule bit but P43's CANONICAL_SETUP, a model's click order.
+    # The game rules a person plays: every rule bit but P43's canonical orders, a model's click order.
     assert offered["rules"] == ts.OBS_FEATURES_PERSON_RULES
-    assert ts.OBS_FEATURES_PERSON_RULES == ts.OBS_FEATURES_RULES & ~ts.OBS_FEATURE_CANONICAL_SETUP
+    assert ts.OBS_FEATURES_PERSON_RULES == ts.OBS_FEATURES_RULES & ~(ts.OBS_FEATURE_CANONICAL_FIRST
+                                                                       | ts.OBS_FEATURE_CANONICAL_LAST)
 
 
 def test_a_person_is_not_offered_the_event(offered: Dict[str, Any]) -> None:

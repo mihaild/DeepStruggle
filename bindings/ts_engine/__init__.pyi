@@ -733,7 +733,7 @@ class MapData:
     @staticmethod
     def placement_rank(arg: int, /) -> int:
         """
-        P43: the rank a canonical placement run (CANONICAL_SETUP) follows, a permutation of 0..83, most important last.
+        P43: the important-last rank a canonical placement run follows (CANONICAL_LAST; CANONICAL_FIRST is 83 minus it), a permutation of 0..83.
         """
 
     @staticmethod
@@ -1163,13 +1163,15 @@ OBS_FEATURE_HEADLINE_REVEAL: int = 4
 
 OBS_FEATURE_OPP_EVENT_GATED: int = 8
 
-OBS_FEATURE_CANONICAL_SETUP: int = 16
+OBS_FEATURE_CANONICAL_FIRST: int = 16
 
-OBS_FEATURES_RULES: int = 24
+OBS_FEATURE_CANONICAL_LAST: int = 32
+
+OBS_FEATURES_RULES: int = 56
 
 OBS_FEATURES_PERSON_RULES: int = 8
 
-OBS_FEATURES_ALL: int = 30
+OBS_FEATURES_ALL: int = 62
 
 OBS_FLAG_STAGED_CARDS: int = 1
 

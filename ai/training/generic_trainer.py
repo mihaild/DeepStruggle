@@ -1763,21 +1763,23 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 
 
 #: Observation feature names (`--obs-features`) and their ts.OBS_FEATURE_* bits. `opp_event_gated` is
-#: a rule bit (ENG-9): no width, the rule the network's seat plays. So is `canonical_setup` (P43 phase A):
-#: each setup run placed in non-decreasing country rank, one action sequence per setup.
+#: a rule bit (ENG-9): no width, the rule the network's seat plays. So are `canonical_first` / `canonical_last`
+#: (P43): every placement run placed in non-decreasing country rank, most important first or last, one action
+#: sequence per board (at most one of the two).
 OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
-                                    "opp_event_gated": 1 << 3, "canonical_setup": 1 << 4}
+                                    "opp_event_gated": 1 << 3, "canonical_first": 1 << 4,
+                                    "canonical_last": 1 << 5}
 #: A new network's set when `--obs-features` is not given: headline_reveal since E8 (owner, 2026-10-20),
 #: plus opp_event_gated since 2026-11-06 (E8.1). launch_flags.py compares each run against its own
 #: epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.
 DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated"]
 #: The rule bits among them: the engine's minor version (E8.1), reported by launch_flags as `obs_rules`,
 #: outside the A code.
-RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_setup"]
+RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_first", "canonical_last"]
 #: The rule bits that are a view rather than a rule (owner, 2026-11-07): they order a model's clicks and change no
 #: game that can be played, so they belong to the run's V code, not to the engine's minor version. launch_flags.py
 #: reports them as `obs_view`, the other rule bits as `obs_rules`.
-VIEW_RULE_FEATURES: List[str] = ["canonical_setup"]
+VIEW_RULE_FEATURES: List[str] = ["canonical_first", "canonical_last"]
 
 
 def _obs_feature_names(bits: int) -> List[str]:
@@ -1788,6 +1790,8 @@ def obs_feature_bits(names: Sequence[str]) -> int:
     unknown = [n for n in names if n not in OBS_FEATURE_BITS]
     if unknown:
         raise ValueError(f"unknown observation features {unknown}; known: {sorted(OBS_FEATURE_BITS)}")
+    if "canonical_first" in names and "canonical_last" in names:
+        raise ValueError("canonical_first and canonical_last are two orders of one rule (P43): name at most one")
     return sum(OBS_FEATURE_BITS[n] for n in set(names))
 
 

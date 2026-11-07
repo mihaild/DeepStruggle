@@ -2,6 +2,7 @@
 #include "ts/invariant.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
+#include "ts/canonical.hpp"
 #include "ts/card_handlers.hpp"
 #include "ts/ops.hpp"
 #include "ts/scoring.hpp"
@@ -450,14 +451,6 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                         }
                     }
                 }
-                // P43: a seat playing CANONICAL_SETUP places each run in non-decreasing rank. A
-                // setup run has no cap per country and no cost, so the last country placed stays
-                // legal and no run can dead-end.
-                if (ctx.canon_floor != 0 && seat_plays_rule(state, p, obs_features::CANONICAL_SETUP)) {
-                    for (uint8_t i = 0; i < 84; ++i) {
-                        if (MapData::placement_rank(i) + 1 < ctx.canon_floor) mask_out[i] = 0;
-                    }
-                }
                 return;
             }
 
@@ -621,6 +614,24 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 if (temp_mask[i]) {
                     mask_212[flat_slots::NODE + i] = 1;
                     any_target = true;
+                }
+            }
+            // P43: a canonical run drops the countries below its floor -- unless that leaves no target
+            // where free order has one, when the floor is released for this choice (ts/canonical.hpp).
+            // CONFIRM_DONE below still follows free order: canonical order never ends a run free order
+            // would continue.
+            if (const uint32_t order = canonical::run_order(state); order != 0 && any_target) {
+                const int floor = canonical::floor_rank(state);
+                if (floor >= 0) {
+                    bool kept = false;
+                    for (uint8_t i = 0; i < 84; ++i) {
+                        if (mask_212[flat_slots::NODE + i] && canonical::rank_in(order, i) >= floor) kept = true;
+                    }
+                    if (kept) {
+                        for (uint8_t i = 0; i < 84; ++i) {
+                            if (canonical::rank_in(order, i) < floor) mask_212[flat_slots::NODE + i] = 0;
+                        }
+                    }
                 }
             }
             if (ctx.allow_early_stop) {

@@ -631,7 +631,7 @@ TS_API int ts_seat_rules(int player) {
 }
 
 // The current rules, which a person plays: every game rule bit, not a model's action order
-// (obs_features::PERSON_RULES leaves out P43's CANONICAL_SETUP).
+// (obs_features::PERSON_RULES leaves out P43's CANONICAL_FIRST / CANONICAL_LAST).
 TS_API uint32_t ts_obs_features_rules() { return ts::obs_features::PERSON_RULES; }
 
 // The observation in a model's own view: the base layout as the bits `features` edit and extend it

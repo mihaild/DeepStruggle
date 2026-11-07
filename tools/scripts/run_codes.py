@@ -63,7 +63,7 @@ ARCH_FLAGS = frozenset({
 })
 #: The view (owner, 2026-11-07): how mechanically possible observations and actions are represented, changing
 #: neither the network's shape nor any game that can be played -- P42's macro action view, and the view rule bits
-#: (`obs_view`: canonical_setup, P43). `merged_influence` joins them for any run named in the current grammar; the
+#: (`obs_view`: canonical_first / canonical_last, P43). `merged_influence` joins them for any run named in the current grammar; the
 #: one legacy run that used it keeps its engine minor version (E6.1 / E4.1, P23).
 VIEW_FLAGS = frozenset({"macro_influence", "obs_view"})
 #: Neither network nor training: where files go, cadence, evals, budget, seeds, other modes.

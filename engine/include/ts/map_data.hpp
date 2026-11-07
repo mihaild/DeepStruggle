@@ -32,8 +32,8 @@ public:
     static const std::array<uint64_t, 2>& get_region_mask(Region r) noexcept;
     static const std::array<uint64_t, 2>& get_battleground_mask() noexcept;
 
-    // P43: the static order a canonical placement run follows (obs_features::CANONICAL_SETUP), a
-    // permutation of 0..83. Most important last, so a run that strays past a country loses the least:
+    // P43: the static order a canonical placement run follows (ts/canonical.hpp), a permutation of
+    // 0..83, most important last (CANONICAL_LAST; CANONICAL_FIRST reverses it):
     // regions from least to most scoring weight (Africa, South America, Central America, Asia, the
     // Middle East, Europe), non-battlegrounds before battlegrounds within each, Europe's battlegrounds
     // last as Italy, France, West Germany, East Germany, Poland; ties by country id.
