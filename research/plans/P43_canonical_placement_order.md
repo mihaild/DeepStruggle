@@ -221,6 +221,31 @@ J1's network and recipe (A8, R119), J1's view plus one canonical bit, against th
   Italy 2, Iran, Philippines; V1 opens USSR Finland 3, Poland 3 and US France 3, Canada 2, West Germany 2; neither
   canonical arm keeps a stray Austria point (1.7% / 0.2% at T = 1).
 
+## The run cursor must be observed (owner, 2026-11-07)
+
+Under free order the board plus `REMAINING_STEPS` is a sufficient state for a placement decision: where the points
+already went in this run changes nothing about what is best next. **Under a canonical order it is not.** The legal
+set at a later step depends on the rank of the last country placed in the run -- the cursor -- and the observation
+does not carry it: there is no "placed this run" and no history input. In the setup the network can recover it
+(the pre-setup board is fixed by the rules and influence is per side, so what it has placed is the difference),
+but in an Ops or event run it cannot, so **the state is hidden from the network in exactly the runs P43 was
+extended to.** Both heads suffer: the critic's value at a mid-run state averages over cursors it cannot see,
+which is the bootstrap and baseline of every step in the run (GAE runs through placement steps), and the policy
+cannot plan the run ("Austria now or it is gone") -- the masked softmax only renormalises its free-order
+preferences over whatever is legal. The free-order network has no such gap, nor does the P42 view. This was raised
+at the build (15:16) and left open; it should be closed before V1/V2 launch.
+
+**Proposal (an observation change: the owner's call, this is the ask).** An appended `obs_features` block,
+`PLACEMENT_CURSOR`, **one float**: (rank of the last country placed in the current run + 1) / 85 in the active view's
+own rank table, 0 outside a run or before its first point. It specifies the hidden state completely under V1 and
+V2 (the table is fixed, so the rank is the mask), so it is not a partial feature; it costs one float; it is appended,
+so J1/J5 checkpoints keep running; a model's set is recorded in its weights and `metadata.json` as today
+(`--obs-features headline_reveal,placement_cursor`), and V1/V2 models are trained with it from their first step.
+Engine (`observation.cpp`) and bindings work, so approval, the C++ suite, `tests/bindings tests/engine_logic`, the
+wasm parity test and the stub regeneration. If V3 (the policy-ordered run) is ever built, a scalar no longer
+suffices -- the excluded set is then the policy's ranking -- and the block becomes the 84 country-legality bits,
+appended as a further block; not now.
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a
