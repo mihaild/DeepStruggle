@@ -246,6 +246,22 @@ wasm parity test and the stub regeneration. If V3 (the policy-ordered run) is ev
 suffices -- the excluded set is then the policy's ranking -- and the block becomes the 84 country-legality bits,
 appended as a further block; not now.
 
+**The better way to close it (running session, 2026-11-07): feed the mask, not a new observation.** LadderNet's
+`forward()` already receives the legal mask; routing its 84 NODE bits into the trunk as an architecture flag (an A
+code) gives both heads the exact legal set under V1, V2 and V3 alike, touches no engine code and no observation
+layout, and leaves every old checkpoint as it is. It supersedes the one-float block above: the block is complete
+only under a fixed table, the mask input is complete under any order rule, and it is Python only. The
+preference stands as: **the mask input first; the observation block only if the owner wants the engine to own it.**
+Either way it has to be in the network before a canonical-order read is clean.
+
+**V1/V2 ran to 400M on A8 before this was raised (owner's order), without the cursor:** V1 (important first)
+16.2% against the free-order control's 17.3% (R119 from scratch), head to head 51.0% for the control -- level;
+V2 (important last) 12.8%. So the order matters (3.4 points between the two tables), which is the evidence V3 waits
+on, and important first is the right end. But both reads are of a canonical order **with the run state hidden**
+from the network in every Ops and event run, so they are a lower bound on what the order can do, not its
+measurement; V1 continues 410 → 810M on the owner's order, and the clean test is V1 with the mask input against
+the same control. V3 is built in a scratch tree, not merged or launched.
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a
