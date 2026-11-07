@@ -28,6 +28,16 @@ model in effect chooses a count per country in a fixed order, and per-step entro
 how Diplomacy agents generate a turn's orders (DipNet, Paquette et al. 2019; the DORA / Cicero line, Bakhtin et al.
 2021-22: one order per unit, autoregressively, in a fixed province order).
 
+**Literature** ([canonical_order_literature.md](../log/canonical_order_literature.md), Fable, 2026-11-07):
+* A fixed order chosen by hand and enforced is standard: the Diplomacy line, and DeepNash's setup sorted by piece type.
+* No source compares free order against canonical order under RL. Phase A would be, as far as was found, the first
+  such measurement under PPO self-play with a per-step entropy bonus.
+* Order matters for learning (Vinyals et al.: ≥ 5% absolute; DipNet: "an order that does not jump across the map").
+  This supports battlegrounds first, then region by region, with plain country id as the control.
+* A canonical order learned without being enforced leaks (GraphGEN: 9.1% canonical), which is why it goes in the mask.
+* Pokémon random singles, Jaxcalibur's game, has one categorical choice per side per turn. It is immune to this
+  problem because of the game's structure, not because of anything in the recipe.
+
 ## Where it applies
 
 A run qualifies only if every order of the same multiset is legal and gives the same state. Checked in the engine:
