@@ -110,6 +110,46 @@ placement, but it is systematic and depends on the hand-chosen order. Remedies, 
 
 Phase A measures it directly: stray single points by rank, against the free-order control.
 
+## The free-order alternative: correct the DAG instead of fixing the order (owner's question, 2026-11-07)
+
+The owner asked whether the variational identity for DAGs replaces the canonical order: Malkin et al. (ICLR 2023,
+*GFlowNets and variational inference*: trajectory balance is hierarchical VI with the backward policy as the
+posterior over paths) and Deleu et al. (UAI 2024, *Discrete probabilistic inference as control in multi-path
+environments*). The identity, in our terms: a free-order run is a DAG -- one board, many sequences -- and any
+objective with an entropy or a per-step divergence lives on sequences, so its optimum gives a board mass
+proportional to its number of sequences (k!/∏mᵢ! for a run of k points, mᵢ per country: spread boards over
+concentrated ones). Deleu's theorem: add α·log P_B(s_t | s_{t+1}) to each transition's reward for any backward
+policy P_B (uniform P_B: −log of the number of countries placed so far in the run), and the MaxEnt optimum's board
+marginal is ∝ exp(R) with no path-count term; the GFlowNet objectives (TB, SubTB, DB) are PCL and soft Q-learning
+with that correction. The correction is loss-side only: a count from the board diff since the run's start, no
+engine, no mask, no dead ends, no run cursor the network cannot see, no re-sorting of human runs for BC, and the
+policy keeps its own order (it may decide West Germany first and look at the board after, the owner's intuition).
+
+**Verdict: not instead of the order. It is the free-order fallback and the justification for remedy 1 above.**
+
+1. *It corrects a bias that is floor-sized here.* We do not run MaxEnt RL; the per-step terms are the zero-avoiding
+   floor (0.13–0.22% per move) and the KL to π_ref, and the only sequence-level bias they carry is the one measured
+   above. The pathology that motivated P43 -- Austria as an independent ~5% at each of four placements, a second
+   point barely devalued -- is not a path-count bias of a regulariser. It is the policy realising one board decision
+   as k separate chances, because order is a flat direction and nothing collapses the k opportunities into one. The
+   canonical order collapses them (Austria is asked once, when its rank comes). The correction leaves them: it changes
+   what the regularisers prefer among the sequences of a board and leaves *when to decide* flat, at zero gradient
+   instead of a small pull toward spreading.
+2. *Where it does apply, the tree makes it exact and free.* Under one sequence per board, log P(board) is the run's
+   sum of per-step log-probs, so remedy 1 (regularise the board) needs no P_B, no lattice and no bound. Under free
+   order the same quantity needs the lattice (remedy 4, ×1.66) or the variational bound, which with a uniform P_B is
+   tight only for a policy uniform over orders -- the opposite of one that has settled on an order -- and otherwise
+   needs a learned P_B (trajectory balance's), a second network.
+3. *The bias's direction bears on P42.* Under free order the regularisers favour spread boards over concentrated ones
+   by the number of orderings (a four-point takeover has one sequence; four single points up to 24), the direction of
+   the West Germany hole; the canonical order removes it, the macro adds the opposite prior. Under the canonical order
+   the macro reintroduces one duplicate per run (until-control against 1+1+1+1 in the same country): harmless to PPO
+   credit, at most ×2 for the regularisers; note it, do not mask it.
+
+When it would be the right tool: if V1/V2 fail on what the canonical order costs -- the run cursor the network cannot
+see in Ops runs, dead-end resets at a rate that matters, or an order that proves wrong both ways -- the free-order
+branch with the P_B-corrected per-step terms is the cheaper fallback than the lattice. Not before.
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a
