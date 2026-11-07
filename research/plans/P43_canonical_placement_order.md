@@ -64,6 +64,38 @@ Not realignments (dice between them, and each changes the next one's modifiers) 
   already receives in `forward` as an input (an architecture flag, not an observation change); (c) an observation
   block (owner; costs floats). Phase A needs none of them.
 
+## The regularisers under a canonical order (owner's question, 2026-11-07)
+
+Does the order make the entropy bonus or the zero-avoiding term prefer low ranks, because those keep the next step's
+choice wide? **Not as implemented:** both are per-decision loss terms (`nash_pg.py`: the bonus on each decision's
+entropy, `zero_avoid_loss` on each decision's legal set), so they shape π(·|s) at each state and never value the
+entropy of the states an action leads to. That would be maximum-entropy RL with entropy in the return, which we do not
+run.
+
+**They do acquire a rank bias, in the other direction:**
+
+* Each decision is pulled toward uniform over its own legal set, and a run's legal set shrinks to the suffix of ranks at
+  or above the last country placed.
+* The highest-ranked countries are legal at every step of a run, the lowest only at its first. So the floor
+  (≈ c/(nΔ) per country, n the legal count, which shrinks along the run) and the entropy pull pile stray mass onto
+  high ranks late in the run.
+* Free order has no rank asymmetry (its per-step uniform target is independent uniform points), though it does favour
+  spread-out boards.
+
+The size is the floor's (0.13-0.22% per move measured for the zero-avoiding term), well below J5's ~5% Austria per
+placement, but it is systematic and depends on the hand-chosen order. Remedies, in order of preference:
+
+1. **Regularise the board, not the step.** With one sequence per board, log P(board) is the sum of the run's per-step
+   log-probs: exact and free, the quantity remedy 4 needs a lattice for. Board entropy (−E log P), the KL to π_ref and
+   a floor can then be taken per run. The correct gradient of board entropy does contain the "keep options open" term
+   (a choice is credited with the entropy that follows it), which here is what makes the target uniform over boards
+   instead of skewed to high ranks.
+2. **Keep the per-step terms only on each run's first decision**, where the legal set is the run's full set.
+3. Accept the bias and choose the order so the high ranks are the countries where a stray point does least harm.
+   Fragile, and it puts judgement in the order.
+
+Phase A measures it directly: stray single points by rank, against the free-order control.
+
 ## Tests (before any run)
 
 * Equivalence, exhaustively on sampled positions: at every placement run of ≤ 4 points (and the setup's 6 / 7 / 2),
