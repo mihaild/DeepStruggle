@@ -269,6 +269,70 @@ TEST(EarlyCardsTest, Card15_Nasser_OddUSInfluence) {
     ASSERT_EQ(state.countries[ts::countries::EGYPT].us_influence, 1); // 3 - (3+1)/2 = 1
 }
 
+// Influence placed by Operations needs friendly Influence in or next to the target both now and
+// at the start of the action round (ENG-8). Nasser played event-first by the US empties Egypt
+// before the Ops, so Libya -- next only to Egypt and an empty Tunisia -- loses its access.
+namespace {
+ts::GameState nasser_in_us_hand() {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = ts::Player::US;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    state.card_locations[ts::card_ids::NASSER] = ts::hand_of(ts::Player::US);
+    state.countries[ts::countries::EGYPT].us_influence = 1;
+    state.countries[ts::countries::LIBYA].us_influence = 0;
+    state.countries[ts::countries::TUNISIA].us_influence = 0;
+    state.countries[ts::countries::ISRAEL].us_influence = 1;
+    return state;
+}
+
+void play_nasser(ts::GameState& state, ts::Resolution resolution) {
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::NASSER, 0, 0}));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(resolution), 0, 0}));
+    if (resolution == ts::Resolution::EVENT) {
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+        ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_OP_MODE, static_cast<uint8_t>(ts::OpMode::INFLUENCE), 0, 0}));
+    }
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::POINT_NODE);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+}
+
+uint8_t offered(const ts::GameState& state, uint8_t country) {
+    uint8_t mask[84];
+    size_t n = 0;
+    ts::ActionMask::generate_mask(state, mask, &n);
+    return mask[country];
+}
+}  // namespace
+
+TEST(EarlyCardsTest, Card15_Nasser_EventFirst_EmptiedEgyptClosesLibya) {
+    ts::GameState state = nasser_in_us_hand();
+    play_nasser(state, ts::Resolution::EVENT);
+    ASSERT_EQ(state.countries[ts::countries::EGYPT].us_influence, 0);   // half of 1, rounded up
+
+    ASSERT_EQ(offered(state, ts::countries::LIBYA), 0);
+    ASSERT_FALSE(ts::Operations::can_place_influence(state, ts::Player::US, ts::countries::LIBYA));
+    ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::LIBYA, 0, 0}));
+
+    // Egypt is the USSR's now (2 against 0), so a point there costs 2 of Nasser's 1 Op; Israel,
+    // held then and now, still takes it.
+    ASSERT_EQ(offered(state, ts::countries::EGYPT), 0);
+    ASSERT_EQ(offered(state, ts::countries::ISRAEL), 1);
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::ISRAEL, 0, 0}));
+    ASSERT_EQ(state.countries[ts::countries::ISRAEL].us_influence, 2);
+}
+
+TEST(EarlyCardsTest, Card15_Nasser_OpsFirst_LibyaStillOpen) {
+    ts::GameState state = nasser_in_us_hand();
+    play_nasser(state, ts::Resolution::OPS_INFLUENCE);
+    ASSERT_EQ(offered(state, ts::countries::LIBYA), 1);
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::POINT_NODE, ts::countries::LIBYA, 0, 0}));
+    ASSERT_EQ(state.countries[ts::countries::LIBYA].us_influence, 1);
+}
+
 // Card 16: Warsaw Pact Formed
 TEST(EarlyCardsTest, Card16_WarsawPact_Branch0_RemoveUS) {
     ts::GameState state{};
