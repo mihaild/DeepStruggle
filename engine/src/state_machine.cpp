@@ -885,20 +885,37 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
 // never touches the fields; anything else that happens in the frame clears a floor it left. The step
 // itself is validated against the flat mask, which applies the floor, so a caller cannot place below it.
 bool StateMachine::step(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept {
-    const uint32_t order = canonical::run_order(state);
+    uint32_t order = canonical::run_order(state);
     const uint16_t tag = order != 0 ? canonical::run_tag(state) : 0;
     const uint8_t depth = state.ctx_stack_depth;
+    const bool placing = action.decision_type == DecisionType::POINT_NODE && action.primary_id < 84;
+    if (order == obs_features::CANONICAL_LEARNED && placing && !canonical::priority_given(state)) {
+        // V3: the harness owes this run its priority before the first choice. Only a forced choice (one legal
+        // target) may go without it, and then sets no floor; anything else is refused, loudly, rather than
+        // played in some order nobody gave.
+        uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+        ActionMask::generate_flat_mask_212(state, mask);
+        int targets = 0;
+        for (int i = 0; i < 84; ++i) targets += mask[flat_slots::NODE + i] ? 1 : 0;
+        if (targets != 1) return false;
+        order = 0;
+    }
     if (!step_impl(state, action, legal)) return false;
     if (state.ctx_stack_depth != depth) return true;
     DecisionContext& c = state.ctx();
-    if (order != 0 && action.decision_type == DecisionType::POINT_NODE && action.primary_id < 84) {
-        c.canon_floor = static_cast<uint8_t>(canonical::rank_in(order, action.primary_id) + 1);
+    if (order != 0 && placing) {
+        c.canon_floor = static_cast<uint8_t>(canonical::rank_in(state, order, action.primary_id) + 1);
         c.canon_tag = tag;
         c.canon_left = c.remaining_steps;
     } else if (c.canon_floor != 0) {
         c.canon_floor = 0;
         c.canon_tag = 0;
         c.canon_left = 0;
+    }
+    // A run's given priority ends with the run.
+    if (state.canon_prio_tag != 0 && state.canon_prio_tag != canonical::run_tag(state)) {
+        state.canon_prio_tag = 0;
+        for (uint8_t& r : state.canon_prio) r = 0;
     }
     return true;
 }

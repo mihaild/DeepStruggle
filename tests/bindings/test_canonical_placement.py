@@ -16,7 +16,8 @@ import ts_engine as ts
 
 from ai.models.ladder_net import create_ladder_net
 from ai.training.generic_trainer import add_rule_bits_to, obs_feature_bits
-from bindings.ts_env import TsVectorizedEnv, legal_mask, model_obs_features
+from bindings.ts_env import (CANONICAL_LEARNED, TsVectorizedEnv, give_run_priorities, give_state_priority,
+                             legal_mask, model_obs_features, priority_ranks)
 
 FIRST = ts.OBS_FEATURE_CANONICAL_FIRST
 LAST = ts.OBS_FEATURE_CANONICAL_LAST
@@ -54,6 +55,9 @@ def test_the_bits_are_rule_bits_of_no_width_a_person_does_not_play() -> None:
     assert sorted(RANK_LAST) == list(range(84))
     with pytest.raises(ValueError, match="at most one"):
         obs_feature_bits(["canonical_first", "canonical_last"])
+    with pytest.raises(ValueError, match="at most one"):
+        obs_feature_bits(["canonical_first", "canonical_learned"])
+    assert CANONICAL_LEARNED & ts.OBS_FEATURES_RULES and not CANONICAL_LEARNED & ts.OBS_FEATURES_PERSON_RULES
 
 
 @pytest.mark.parametrize("order", [FIRST, LAST])
@@ -122,3 +126,43 @@ def test_rule_bits_are_added_to_a_trained_network_without_touching_its_weights()
     for k, v in net.state_dict().items():
         if k != "obs_features":
             assert (v == before[k]).all()
+
+
+def test_priority_ranks_rank_countries_by_logit() -> None:
+    logits = np.zeros((1, 84))
+    logits[0, 10], logits[0, 3] = 5.0, 4.0
+    r = priority_ranks(logits)[0]
+    assert r[10] == 0 and r[3] == 1 and sorted(r.tolist()) == list(range(84))
+    assert r[0] == 2                                            # ties by country id
+
+
+def test_a_learned_run_follows_the_given_priority() -> None:
+    s = _ussr_setup()
+    legal_mask(s, False, REVEAL | CANONICAL_LEARNED)             # seats the decider
+    assert s.run_priority_wanted()
+    with pytest.raises(RuntimeError):
+        ts.Engine.step_flat(s, NODE + EAST_GERMANY)              # no order given: refused, loudly
+    logits = np.zeros(ts.FLAT_ACTION_SPACE_SIZE, dtype=np.float32)
+    prio = list(range(84))[::-1]                                 # country 83 first, then 82, ...
+    for c, p in enumerate(prio):
+        logits[NODE + c] = -p
+    assert give_state_priority(s, logits)
+    assert not s.run_priority_wanted()
+    ts.Engine.step_flat(s, NODE + EAST_GERMANY)
+    m = legal_mask(s, False, None)
+    for c in _eastern_europe():
+        assert m[NODE + c] == int(c <= EAST_GERMANY)             # priority falls with the id here
+
+
+def test_the_runner_takes_run_orders_from_logits() -> None:
+    env = TsVectorizedEnv(num_envs=8, base_seed=901, game_seed=4)
+    env.set_obs_features(np.full(8, CANONICAL_LEARNED), np.full(8, CANONICAL_LEARNED))
+    assert env.any_learned_order
+    _, masks, _ = env.reset_all()
+    wanted = np.asarray(env.runner.priority_wanted(), dtype=bool)
+    assert wanted.all()                                          # every env opens the USSR setup run
+    logits = np.random.default_rng(0).normal(size=(8, np.asarray(masks).shape[1])).astype(np.float32)
+    assert give_run_priorities(env.runner, logits) == 8
+    assert not np.asarray(env.runner.priority_wanted(), dtype=bool).any()
+    acts = [int(np.flatnonzero(np.asarray(masks[i])[:ts.FLAT_BASE_SIZE])[0]) for i in range(8)]
+    env.step(acts)                                               # accepted: each run had its order

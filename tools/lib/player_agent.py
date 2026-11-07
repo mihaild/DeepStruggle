@@ -22,7 +22,8 @@ from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
 from ai.search.heuristic_mcts import HeuristicMCTSConfig, make_heuristic_mcts_agent
 from ai.search.rollout_root import (EntryRolloutAgent, RolloutRootAgent, SparseRolloutAgent, rollout_spec_config,
                                     rollout_spec_leaf)
-from bindings.ts_env import check_obs_width, legal_mask, model_obs_features, observe
+from bindings.ts_env import (CANONICAL_LEARNED, check_obs_width, give_state_priority, legal_mask,
+                             model_obs_features, observe)
 from tools.lib.action_view import checkpoint_macro_influence, checkpoint_merged_influence
 from tools.lib.checkpoint_id import checkpoint_label
 from tools.lib.openings import OPENINGS
@@ -385,6 +386,11 @@ class NeuralAgent:
 
         with torch.no_grad():
             action_t, _, _, _, _ = self.model.sample_action(obs_t, mask_t, temperature=temperature, deterministic=(temperature <= 0.05))
+            if self.obs_features & CANONICAL_LEARNED:
+                # P43 V3: a run opening here takes its order from this network's own logits (the caller steps
+                # this very state, so the order is given on it).
+                logits_t, _, _ = self.model(obs_t, mask_t)
+                give_state_priority(state, logits_t[0].float().cpu().numpy())
         return int(action_t.item())
 
 

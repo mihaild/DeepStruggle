@@ -58,7 +58,9 @@ MY_HAND_SLOT = 1
 OBS_FEATURE_WIDTHS: Dict[int, int] = {1 << 1: 3, 1 << 2: 0,   # OPS_BUDGET, HEADLINE_REVEAL (no width)
                                       1 << 3: 0,             # OPP_EVENT_GATED (no width)
                                       1 << 4: 0,             # CANONICAL_FIRST (P43, a rule bit, no width)
-                                      1 << 5: 0}             # CANONICAL_LAST (P43, a rule bit, no width)
+                                      1 << 5: 0,             # CANONICAL_LAST (P43, a rule bit, no width)
+                                      1 << 6: 0,             # CANONICAL_LEARNED (P43 V3, a rule bit, no width)
+                                      1 << 7: 0}             # PLACEMENT_LEGAL (edits base slot 19, no width)
 
 
 def _obs_extra(features: int) -> int:

@@ -625,11 +625,11 @@ void ActionMask::generate_flat_mask_212(const GameState& state, uint8_t* mask_21
                 if (floor >= 0) {
                     bool kept = false;
                     for (uint8_t i = 0; i < 84; ++i) {
-                        if (mask_212[flat_slots::NODE + i] && canonical::rank_in(order, i) >= floor) kept = true;
+                        if (mask_212[flat_slots::NODE + i] && canonical::rank_in(state, order, i) >= floor) kept = true;
                     }
                     if (kept) {
                         for (uint8_t i = 0; i < 84; ++i) {
-                            if (canonical::rank_in(order, i) < floor) mask_212[flat_slots::NODE + i] = 0;
+                            if (canonical::rank_in(state, order, i) < floor) mask_212[flat_slots::NODE + i] = 0;
                         }
                     }
                 }

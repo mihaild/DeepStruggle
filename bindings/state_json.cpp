@@ -719,6 +719,13 @@ Value save(const GameState& state) {
     Value d = Value::object();
     d.set("format", "ts_save_v2");   // v1 dropped the decision stack; readers must know which
 
+    // P43 V3: a run's given priority, only when set, so every save without CANONICAL_LEARNED is unchanged.
+    if (state.canon_prio_tag != 0) {
+        Value prio = Value::array();
+        for (uint8_t r : state.canon_prio) prio.push(I(r));
+        d.set("canon_prio", std::move(prio));
+        d.set("canon_prio_tag", I(state.canon_prio_tag));
+    }
     d.set("victory_points", I(state.victory_points));
     d.set("defcon", I(state.defcon));
     d.set("turn", I(state.turn));
@@ -932,6 +939,23 @@ bool load_save(const Value& d, GameState& out, std::string* error) {
     Engine::init_game(s, 1);   // a valid baseline; every field below overwrites it
 
     s.victory_points = get<int8_t>(d, "victory_points", s.victory_points);
+    {
+        const Value* prio = nullptr;
+        if (!list_of(d, "canon_prio", &prio, error)) return false;
+        if (prio) {
+            if (prio->items().size() != 84) {
+                if (error) *error = "'canon_prio' must hold 84 ranks";
+                return false;
+            }
+            for (size_t c = 0; c < 84; ++c) {
+                if (!element<uint8_t>(prio->items()[c], &s.canon_prio[c])) {
+                    if (error) *error = "bad element in canon_prio";
+                    return false;
+                }
+            }
+            s.canon_prio_tag = get<uint16_t>(d, "canon_prio_tag", 0);
+        }
+    }
     s.defcon = get<uint8_t>(d, "defcon", s.defcon);
     s.turn = get<uint8_t>(d, "turn", s.turn);
     s.action_round = get<uint8_t>(d, "action_round", s.action_round);

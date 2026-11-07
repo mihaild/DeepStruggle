@@ -1925,6 +1925,9 @@ class BaseNashPGTrainer:
                 self._predeal_on = True
                 print(f"[pre-deal] the critic on both sides at the turn-end park, coef "
                       f"{self.predeal_value_coef}", flush=True)
+            # P43 V3: a CANONICAL_LEARNED run opening now takes its order from the logits of whoever decides it
+            # (learner or pool member, as `logits` holds) before the step. Nothing happens without the bit.
+            self.env.give_run_priorities(logits)
             if _hold is not None:
                 next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(
                     actions_np, hold=_hold)

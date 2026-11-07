@@ -583,6 +583,16 @@ class GameState:
         Seat a model of feature set `features` at `player`: that seat plays the rule bits the set names and the pre-fix rule of each it lacks. Observation bits are ignored.
         """
 
+    def run_priority_wanted(self) -> bool:
+        """
+        P43 V3: whether the pending decision opens a CANONICAL_LEARNED run whose order has not been given.
+        """
+
+    def set_run_priority(self, ranks: Sequence[int]) -> None:
+        """
+        P43 V3: give the pending run its order -- ranks[c] is country c's rank (0 = highest priority).
+        """
+
     def seat_plays_rule(self, player: Player, rule: int) -> bool:
         """
         Whether the seat `player` plays rule bit `rule` (the fix) rather than the rule before it.
@@ -1167,11 +1177,13 @@ OBS_FEATURE_CANONICAL_FIRST: int = 16
 
 OBS_FEATURE_CANONICAL_LAST: int = 32
 
-OBS_FEATURES_RULES: int = 56
+OBS_FEATURE_CANONICAL_LEARNED: int = 64
+
+OBS_FEATURES_RULES: int = 120
 
 OBS_FEATURES_PERSON_RULES: int = 8
 
-OBS_FEATURES_ALL: int = 62
+OBS_FEATURES_ALL: int = 254
 
 OBS_FLAG_STAGED_CARDS: int = 1
 
@@ -1340,6 +1352,16 @@ class VectorizedBatchRunner:
     def get_action_masks(self) -> Annotated[NDArray[numpy.uint8], dict(shape=(None, None))]: ...
 
     def get_decision_players(self) -> list[int]: ...
+
+    def priority_wanted(self) -> list[bool]:
+        """
+        P43 V3: per env, whether its decision opens a CANONICAL_LEARNED run whose order has not been given.
+        """
+
+    def set_run_priority(self, env_index: int, ranks: Sequence[int]) -> None:
+        """
+        P43 V3: give env `env_index`'s pending run its order (ranks[c]: country c's rank, 0 = highest).
+        """
 
     def get_terminals(self) -> list[bool]: ...
 

@@ -36,11 +36,13 @@ inline bool event_covered(uint8_t card) noexcept {
 inline uint32_t seat_order(const GameState& state, Player p) noexcept {
     if (seat_plays_rule(state, p, obs_features::CANONICAL_FIRST)) return obs_features::CANONICAL_FIRST;
     if (seat_plays_rule(state, p, obs_features::CANONICAL_LAST)) return obs_features::CANONICAL_LAST;
+    if (seat_plays_rule(state, p, obs_features::CANONICAL_LEARNED)) return obs_features::CANONICAL_LEARNED;
     return 0;
 }
 
-// A country's place in the seat's order, 0..83.
-inline uint8_t rank_in(uint32_t order, uint8_t country) noexcept {
+// A country's place in the seat's order, 0..83: static for FIRST / LAST, the run's given priority for LEARNED.
+inline uint8_t rank_in(const GameState& state, uint32_t order, uint8_t country) noexcept {
+    if (order == obs_features::CANONICAL_LEARNED) return country < 84 ? state.canon_prio[country] : 0;
     const uint8_t last = MapData::placement_rank(country);
     return order == obs_features::CANONICAL_FIRST ? static_cast<uint8_t>(83 - last) : last;
 }
@@ -78,6 +80,30 @@ inline int floor_rank(const GameState& state) noexcept {
     const DecisionContext& c = state.ctx();
     if (c.canon_floor == 0 || c.canon_tag != run_tag(state) || c.canon_left != c.remaining_steps) return -1;
     return static_cast<int>(c.canon_floor) - 1;
+}
+
+// V3: does the pending run want its priority -- a LEARNED run whose priority has not been given?
+inline bool priority_wanted(const GameState& state) noexcept {
+    return run_order(state) == obs_features::CANONICAL_LEARNED && state.canon_prio_tag != run_tag(state);
+}
+
+// V3: has the pending run its priority?
+inline bool priority_given(const GameState& state) noexcept {
+    return state.canon_prio_tag != 0 && state.canon_prio_tag == run_tag(state);
+}
+
+// V3: give the pending LEARNED run its order -- `ranks[c]` the rank of country c (0 = highest priority), a
+// permutation of 0..83. False, changing nothing, when no LEARNED run is pending or `ranks` is no permutation.
+inline bool set_run_priority(GameState& state, const uint8_t* ranks) noexcept {
+    if (run_order(state) != obs_features::CANONICAL_LEARNED) return false;
+    bool seen[84] = {};
+    for (int c = 0; c < 84; ++c) {
+        if (ranks[c] >= 84 || seen[ranks[c]]) return false;
+        seen[ranks[c]] = true;
+    }
+    for (int c = 0; c < 84; ++c) state.canon_prio[c] = ranks[c];
+    state.canon_prio_tag = run_tag(state);
+    return true;
 }
 
 }  // namespace ts::canonical

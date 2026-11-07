@@ -63,7 +63,12 @@ are cited from elsewhere; keep them.
     from its weights.
   - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §19): an `obs_features` bit in
     `OBS_FEATURES_RULES` (`OBS_FEATURE_OPP_EVENT_GATED`, ENG-9; `OBS_FEATURE_CANONICAL_FIRST` /
-    `OBS_FEATURE_CANONICAL_LAST`, P43, §21 -- every placement run in non-decreasing country rank) is the rule a seat plays, held
+    `OBS_FEATURE_CANONICAL_LAST`, `OBS_FEATURE_CANONICAL_LEARNED`, P43, §21 -- every placement run in
+    non-decreasing country rank; for LEARNED the rank is the deciding network's own priority, which the harness
+    gives at each run's first decision: `GameState.run_priority_wanted()` / `set_run_priority(ranks)`, and per
+    env `VectorizedBatchRunner.priority_wanted()` / `set_run_priority(env, ranks)`; `ts_env.give_run_priorities`,
+    `give_state_priority` and `TsVectorizedEnv.give_run_priorities` do it from logits, and the trainer, the match
+    runner and `NeuralAgent` call them; searches, ONNX agents and the page refuse a LEARNED network for now) is the rule a seat plays, held
     per seat in the state (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`); an
     unseated side plays the rule from before every bit. **A seat plays the rule bits of the feature
     set it is observed in**: the runner seats both sides of an env from its per-side sets

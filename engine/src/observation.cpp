@@ -1,4 +1,5 @@
 #include "ts/observation.hpp"
+#include "ts/action_mask.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
 #include "ts/scoring.hpp"
@@ -485,6 +486,18 @@ size_t extract_observation_features(const GameState& state, Player perspective, 
         out[at + 1] = ops_modifier(state, perspective);
         out[at + 2] = ops_modifier(state, get_opponent(perspective));
         at += obs_features::OPS_BUDGET_WIDTH;
+    }
+    if (features & obs_features::PLACEMENT_LEGAL) {
+        const auto& ctx = state.ctx();
+        if (ctx.decision_type == DecisionType::POINT_NODE && ctx.decision_player == perspective &&
+            (state.current_phase == Phase::SETUP || ctx.op_mode == OpMode::INFLUENCE)) {
+            uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(state, mask);
+            for (uint8_t i = 0; i < 84; ++i) {
+                out[static_cast<size_t>(i) * V23_BOARD_FEATURES + obs_features::BOARD_MY_PLACEABLE] =
+                    mask[flat_slots::NODE + i] ? 1.0f : 0.0f;
+            }
+        }
     }
     if (features & obs_features::HEADLINE_REVEAL) {
         const uint8_t c = SpaceRace::revealed_headline(state, perspective);

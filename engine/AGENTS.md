@@ -617,7 +617,14 @@ has one action sequence. The helpers are `ts/canonical.hpp`.
   country chosen. So a run reaches exactly free order's boards, never more and never fewer; a board
   reached through a release may also have a canonical sequence (uniqueness is lost only there).
   CONFIRM_DONE still follows free order.
-* **A person plays neither** (`obs_features::PERSON_RULES` for the page's current rules).
+* **V3, a learned order** (`obs_features::CANONICAL_LEARNED`, bit 6, owner 2026-11-07): the run's order is
+  the deciding network's own priority, its logits over the 84 countries at the run's first decision,
+  highest first. The engine cannot compute it, so the harness gives it: `canonical::priority_wanted` says a
+  LEARNED run is opening without its order, `canonical::set_run_priority` stores the ranks in
+  `GameState::canon_prio` (tagged with the run, cleared when it ends; saved only when set). A placement in a
+  LEARNED run without its order is **refused** unless it is forced (one legal target), so a harness that forgets
+  fails loudly instead of playing some order nobody gave.
+* **A person plays none of them** (`obs_features::PERSON_RULES` for the page's current rules).
 
 Tests: `CanonicalPlacement.*` in `engine/tests/test_canonical_placement.cpp` -- every setup board reached
 by exactly one sequence, exhaustively, for both orders; and on Ops plays and covered event runs from 120

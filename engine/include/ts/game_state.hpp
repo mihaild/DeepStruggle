@@ -379,6 +379,12 @@ struct alignas(64) GameState {
     // A clear bit is the rule from before it; zero (a bare state) is feature set 0's rules.
     uint32_t seat_rules[2] = {0u, 0u};
 
+    // P43 V3 (obs_features::CANONICAL_LEARNED): the pending run's order, each country's rank in the deciding
+    // network's priority (0 = highest), and the run it belongs to (canonical::run_tag; 0 = none). Given by the
+    // harness at the run's first decision and cleared when the run ends; zero in every game without the bit.
+    uint8_t  canon_prio[84] = {};
+    uint16_t canon_prio_tag = 0;
+
     // -------------------------------------------------------------------------
     // 5. Persistent Board Flags & Parametric Effects (64-bit bitfield)
     // -------------------------------------------------------------------------
@@ -599,11 +605,24 @@ namespace obs_features {
     // They order a model's clicks, never the boards a run can reach. At most one of the two.
     constexpr uint32_t CANONICAL_FIRST = 1u << 4;
     constexpr uint32_t CANONICAL_LAST  = 1u << 5;
+    // P43 V3 (owner, 2026-11-07): the run's order is the deciding network's own priority -- its logits
+    // over countries at the run's first decision, highest first -- given by the harness
+    // (GameState::canon_prio, canonical::set_run_priority) and fixed for the run.
+    constexpr uint32_t CANONICAL_LEARNED = 1u << 6;
+    constexpr uint32_t CANONICAL = CANONICAL_FIRST | CANONICAL_LAST | CANONICAL_LEARNED;
+    // No width (owner, 2026-11-07, with P43): during the perspective's own influence placement or removal
+    // decision -- the setup, an Ops influence play, an event's placement or removal run -- the board's
+    // "I can place here" slot (19) shows exactly the countries its legal mask allows (a canonical run's
+    // floor, cost and budget applied) instead of bare eligibility. Without it a network under a canonical
+    // order cannot see which countries its run has left behind. It edits a base slot, so only a model
+    // trained with the bit reads it so.
+    constexpr uint32_t PLACEMENT_LEGAL = 1u << 7;
+    constexpr size_t BOARD_MY_PLACEABLE = 19;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
-    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL_FIRST | CANONICAL_LAST;
+    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL;
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
     constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED;
-    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL_FIRST | CANONICAL_LAST;
+    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 

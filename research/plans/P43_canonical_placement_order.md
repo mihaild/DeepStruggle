@@ -262,6 +262,17 @@ from the network in every Ops and event run, so they are a lower bound on what t
 measurement; V1 continues 410 → 810M on the owner's order, and the clean test is V1 with the mask input against
 the same control. V3 is built in a scratch tree, not merged or launched.
 
+## V3: the network's own order (owner, 2026-11-07)
+
+At each placement run's first decision the deciding network's logits over the 84 countries, highest first, fix
+that run's order; the run then places in non-decreasing rank of it (higher priority first), one sequence per board,
+with the same dead-end release. Fixed at the run's start rather than recomputed each step, so the order cannot move
+under a run and uniqueness holds. The engine cannot compute logits, so the harness gives the order at the run's
+first decision (`set_run_priority`); a placement without it is refused unless forced. Built: the trainer's
+rollouts (learner and pool members alike, from the logits each env's decider produced), the match runner and
+`NeuralAgent`; searches, ONNX agents and the page refuse a V3 network for now. View code **V3**
+(`canonical_learned`).
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a

@@ -330,7 +330,8 @@ it shows the box-4 holder the opponent's revealed headline in the base's card ro
 2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
 change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
 Event (`engine/AGENTS.md` §19). `CANONICAL_FIRST` / `CANONICAL_LAST` (bits 4 / 5, `canonical_first` /
-`canonical_last`, 2026-11-07, P43; the view codes V1 / V2) are two more: the seat places every placement run in
+`canonical_last`, 2026-11-07, P43; the view codes V1 / V2) and `CANONICAL_LEARNED` (bit 6, V3: the order is
+the deciding network's own logits at each run's start, given to the engine by the harness) are three more: the seat places every placement run in
 non-decreasing country rank, most important first or last, one sequence per board, and a run that would strand
 points releases its floor (`engine/AGENTS.md` §21); a branch adds one with `--resume-add-rules`, and a person
 plays neither. A seat plays the rule bits of the feature set it is observed in, a
