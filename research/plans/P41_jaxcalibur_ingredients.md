@@ -433,6 +433,17 @@ Meanwhile the owner's canonical placement order is built as [P43](P43_canonical_
 V1 `canonical_first` / V2 `canonical_last`, the V code for views; the free-order DAG correction assessed there),
 and P42's build is merged as a view beside it.
 
+**1,200M (2026-11-07, on the R119 continuation; stopped at 1,130M for main's ENG-9/ENG-10 rebase and resumed in
+place): 36.4% ± 1.1 against A13+R48's SWA (US 33.8 / USSR 38.1)** against J1's 33.5 (29.3 / 36.8) and J1′
+(`E8-A8-R103-S44`) 35.8 (30.4 / 40.2) at 1,200M. Raw head to head, 2,000 greedy games: **J5 beats J1 53.1%** (as US
+56.7, as USSR 48.1), J5 against J1′ 50.4%, J1 against J1′ 44.2%; the matched-step series (400 / 800 / 1,200M): J1
+against J5 58.6 / 50.3 / 46.9, J5 against J1′ 40.0 / 46.2 / 50.4 -- **J1′ led early, J5 caught up by 1,200M, J1 is the
+slowest** (`data/reports/j1_j5_j1p_{400,800,1200}M.json`). Setups at 1,200M (T=1): J5's US never controls West
+Germany (any WG 25.5%, WG ≥ 4 0%); J1 at 1,200M 100% WG (89.9% ≥ 4) but J1 at 13,600M also drops it (11.0% any,
+0% ≥ 4); J1′ keeps it (99.9%) and puts Yugoslavia in 99.2% of USSR setups. Next reads 1,600M (~04:30 UTC) and the
+2,000M gate (~22:00 UTC, 2026-11-08). P43 is built for every placement run; its launch waits on the owner's GPU and
+order decision.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
