@@ -106,12 +106,12 @@
       {
         "behaviour": {
           "version": 3,
-          "runner": "ad6db8b6b5139058190da147bbbc2b511130f59f9fdc8dcf77a864c72eaba623",
+          "runner": "31739005c026f3be266e3a4221b30cc24e7dccd4529802d4c34b1fb970aa1bc7",
           "state": "b12f367387dfd16ce5a2490bcfe6b00d1047ab96e82ce8467e39b77df57b8c01",
-          "rollout": "f80f06f537b469eaa3738ccc0066d8a83e978d3a06f1d6c927cb5cac2089f54e",
-          "mcts": "5340fa0b58c294e5b0998b4e7ff373dbdbabf5e0b25a554e27528ffee0d5f0cf"
+          "rollout": "8b593458347177c142e60b7988ee01faf4b9b87245eec934afae474754f97520",
+          "mcts": "82d657a03e816fde58997aeac83bf093c455a9c1d355ea5b4c66c090d435b2af"
         },
-        "why": "P42 on top of ENG-10 (engine/AGENTS.md section 4): a third action view, the until-control macro, and with it a flat space 304 wide (220 base slots, never offered in the E4 and E4.1 views). Every digest moves because it hashes the masks, now 304 wide; the games do not: 3,625 seeded base-view games through the batch runner are bit-identical to the ENG-10 build's (observations, base-slot masks, rewards, endings), so it stays in E8 (the owner approved the P42 engine work, 2026-11-06)."
+        "why": "P42 on top of ENG-10 (engine/AGENTS.md section 4): a third action view, the until-control macro, and with it a flat space 304 wide (220 base slots, never offered in the E4 and E4.1 views). Every digest moves because it hashes the masks, now 304 wide; the games do not: 3,567 seeded base-view games through the batch runner (128 envs, 4,000 steps) are bit-identical to main's ENG-10 build's (observations, base-slot masks, actions, rewards, endings; rebased 2026-11-07), so it stays in E8 (the owner approved the P42 engine work, 2026-11-06)."
       }
     ]
   }
