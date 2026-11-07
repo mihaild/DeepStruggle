@@ -416,6 +416,23 @@ next run is one branch from 800M with both** (lr 1.5e-4 and the setup-scoped ter
 question, and attribution is a second branch only if the first works. If the US has come back on its
 own, the rate alone is the remedy question, as decided.
 
+**J5's 800M read (2026-11-06, from [`../runs.md`](../runs.md)): 33.1% ± 1.1 against A13+R48's SWA (US 28.1 /
+USSR 37.1) against J1's 30.4% -- +9.7 over 400–800M (J1 +14.4), ~3 ahead at matched steps on the SWA read, and the
+US seat recovered (18.0 → 28.1) without West Germany** (US France 3, Canada 2, Italy 2, Iran 1, Philippines 1 in
+66%; USSR Poland 6 in 100%; P(WG) at the US setup still 0.4% per placement, 1.5% of T=1 setups). Raw, the lead
+is gone: 24.6% against J1's raw 25.6% at 800M, and **head to head J1 400M beats J5 400M 58.4% (J5's US without
+West Germany loses 71% to J1's USSR) while 800M against 800M is level, 49.6%.** So J5's lead over J1 is against
+the reference only, and the slowdown read at 400M did not need the branch: the US seat came back on its own,
+and neither the rate branch nor the setup-scoped term was launched. **Paused at 930M (owner, 2026-11-06) and
+branched as `E8-A35-R102-S44@930M+R119`** -- R119 is pure win/loss (`--reward-scheme terminal
+--no-blunder-window`, no held-scoring or DEFCON-1 blunder treatment), the owner's default target from
+`37da536`, after R118 (`--no-held-scoring-blunder`) cost nothing on J1's line (60.6% at 14,400M against 60.4%)
+and halved T=1 held-scoring losses, and R119's branch read level (59.3%); the from-scratch A8 reads are R118 16.9%
+and R119 17.3% at 400M against J1's 16.0%. The 2,000M gate is read on this branch (~22:00 UTC, 2026-11-08).
+Meanwhile the owner's canonical placement order is built as [P43](P43_canonical_placement_order.md) (rule bits
+V1 `canonical_first` / V2 `canonical_last`, the V code for views; the free-order DAG correction assessed there),
+and P42's build is merged as a view beside it.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
