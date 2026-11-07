@@ -196,6 +196,31 @@ by the policy's step-0 distribution, sample at T=1 and count how often the run's
 by an earlier sample, under the policy ranking and under V1's and V2's tables -- the exclusion tax each order
 would charge today, which says how much V3 could gain over V1/V2 before anything is built.
 
+## First runs (2026-11-07): V1 and V2 from scratch on A8, 400M
+
+J1's network and recipe (A8, R119), J1's view plus one canonical bit, against the free-order control
+`E8-A8-R119-S44` (data/reports/p43_*_400M.*):
+
+| | read 200M | read 400M | head to head at 400M | releases / game |
+|---|---:|---:|---|---:|
+| control (free order) | 11.3% | 17.3% | 51.0% vs V1, 60.8% vs V2 | -- |
+| V1, important first | 9.3% | 16.2% | 58.5% vs V2 | 2.34 |
+| V2, important last | 7.8% | 12.8% | | 2.58 |
+
+* **V1 is level with free order at 400M** (51.0% / 49.0% head to head, 1.1 behind on the read, inside its error);
+  by the owner's rule a big change is not judged this early. **V2 is clearly behind.**
+* **Why V2 lags: forced tails.** Once a run reaches the top country of its order, every remaining point is forced
+  there and auto-advance plays it: V2's USSR always opens Poland 6 and its US West Germany 4, France 3, Italy 2 (the
+  human West Germany 4, reached as a tail). Those placements are never decided, so never trained. Important first
+  has the same property only at the bottom of the order, which a run rarely reaches.
+* **Releases are rare where it matters and common in capped event runs.** Ops 0.01% (V1) / 0.22% (V2) of floored
+  decisions, the setup 0%, but Marshall Plan 26%, Comecon 26-27%, East European Unrest 30-39%, Decolonization 9-18%,
+  Colonial Rear Guards 13%, Suez Crisis 12% (V1): in one-per-country runs the policy often picks above the countries
+  it still needs, so uniqueness is lost in a few decisions per game.
+* **Setups moved:** the control opens USSR Poland 5 + Austria 1 (Austria in 93.5% of sampled setups) and US France 5,
+  Italy 2, Iran, Philippines; V1 opens USSR Finland 3, Poland 3 and US France 3, Canada 2, West Germany 2; neither
+  canonical arm keeps a stray Austria point (1.7% / 0.2% at T = 1).
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a
