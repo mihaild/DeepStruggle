@@ -72,9 +72,9 @@ What it changes:
 
 What it costs:
 
-* **Learner compute.** One forward per lattice node instead of one per placement: about 2× for the setup's runs, up
-  to ~4× for a 4-point Ops run with every point in a different country. Applied to every placement run, on the order
-  of +30-60% learner forwards.
+* **Learner compute.** One forward per lattice node instead of one per placement: up to ~4× for a 4-point Ops run with
+  every point in a different country, 127 nodes for Marshall Plan's seven. Measured below: ×1.66 learner evaluations
+  over every run, ×1.37 over runs of at most 4 points.
 * **Buffer plumbing.** Each run's start state (4 KB) goes into the buffer. The lattice states are rebuilt by the
   engine and need their own observations and masks, which are CPU work per sample.
 * **The certificate.** Every order of M must be legal and must give the same state. Orders the mask forbids (if any,
@@ -84,17 +84,25 @@ What it leaves alone: the engine, the mask, the action space and every checkpoin
 search; rollouts.
 
 **Measured cost** (owner's question: too expensive for every placement?). J5 1,200M self-play at T=1, 128 games
-(`placement_runs.py`):
+(`placement_runs2.py`; a run ends where the remaining-points counter resets or the card changes -- a first version
+split only on an intervening decision, merged back-to-back runs into "8-point runs" that do not exist, and was
+corrected by the owner):
 
-* **Volume:** 447 decisions per game, 218 of them influence points (49%), in 97 placement runs.
-* **Run shape:** a run is 2.24 points long on average, over 1.84 distinct countries.
-  * 39% of runs are a single point. A run in one country has one order, so it needs no lattice.
-  * Lattice evaluations per run, by length: 2.7 (length 2), 5.7 (length 3), 11.4 (length 4).
-  * The tail is what's expensive: runs of 5-8 points are 4% of runs but cost about 290 of the 633 evaluations per
-    game. Length 7 means 67 evaluations, length 8 means 209, up to 255.
-* **Whole lattice everywhere:** influence-point evaluations go from 218 to 633 per game (×2.9), all learner evaluations
-  from 447 to 861 (×1.93).
-* **Lattice only for runs of ≤ 4 points** (per step beyond): about 371 influence evaluations, ×1.34 learner overall.
+* **Volume:** 447 decisions per game, 218 of them influence points (49%), in 100 placement runs averaging 2.19 points
+  over 1.80 countries.
+* **Short runs:** 96% of runs are 1-4 points.
+  * 41% are a single point. A run in one country has one order, so it needs no lattice.
+  * Lattice evaluations per run: 2.7 (length 2), 5.7 (length 3), 11.7 (length 4).
+* **Long runs**, per game, as the owner listed them:
+  * USSR setup 6 and US setup 7 (the US's last 2 are a separate run);
+  * Marshall Plan 7 (0.52);
+  * Warsaw Pact 5 (0.40), The China Card 5 (0.10), The Reformer 6 (0.03);
+  * a few event runs that do not set `pending_op_card`.
+* **Marshall Plan and sets in general:** seven distinct countries make the lattice 2^7 − 1 = 127 nodes, against 5,040
+  orders for the same board. A set is where the redundancy is worst, and where canonical order removes the most.
+* **Whole lattice everywhere:** influence-point evaluations go from 218 to 511 per game (×2.34), all learner
+  evaluations from 447 to 740 (×1.66).
+* **Lattice only for runs of ≤ 4 points** (per step beyond): about 382 evaluations, ×1.37 learner overall.
 * **Middle ground:** sample K random orders of the board and self-normalise by P(σ) instead of the full lattice. This
   is a consistent estimate of the posterior-weighted gradient at K× the run length.
 
@@ -106,7 +114,7 @@ Every option adds the engine work of building the extra states' observations and
 |---|---|---|---|---|
 | 1 canonical order | fully | yes (rule bit) | none | hand (static rank) |
 | 2 count actions | only with 1's constraints | yes (action view) | none | hand |
-| 4 order-marginal loss | in credit only; the policy keeps all orders | no | +30-60% learner forwards (all runs) | the policy, unpushed |
+| 4 order-marginal loss | in credit only; the policy keeps all orders | no | ×1.66 learner evaluations (all runs), ×1.37 (runs ≤ 4) | the policy, unpushed |
 
 Recommendation: try 1 on the setup first (cheap, and the setup is the cleanest case). Remedy 4 is the fallback if the
 owner prefers no engine change, or if a hand-fixed order turns out hard to learn in.
