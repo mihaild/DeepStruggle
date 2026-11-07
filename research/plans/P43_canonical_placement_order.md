@@ -150,6 +150,52 @@ When it would be the right tool: if V1/V2 fail on what the canonical order costs
 see in Ops runs, dead-end resets at a rate that matters, or an order that proves wrong both ways -- the free-order
 branch with the P_B-corrected per-step terms is the cheaper fallback than the lattice. Not before.
 
+## A policy-ordered run (owner's proposal, 2026-11-07): the order is the step-0 ranking
+
+The owner's objection to a fixed order: which country is "most important" depends on the board, and wherever
+the fixed order is wrong the model must plan around it ("I need a point here even though the important country is
+elsewhere"). The proposal: at a run's first step take the policy's own distribution over countries, rank them by
+it, and use that ranking as the run's canonical order -- the top choice is placed now or not at all in this run.
+
+**What it is.** The same rule as V1/V2 (a country is legal only if its rank is not below the last placed), with the
+ranking a function of the state through the policy instead of a hand-chosen table. Per state and per snapshot,
+one sequence per board still holds, so the redundancy is gone and the regularisers act on boards as under V1/V2.
+It is "important first" with importance read off the policy in the current state, and it is not what Vinyals' and
+the graph-generation work call a learned order (a free order plus posterior credit, which locks early): it is a
+constraint derived from the policy's first preference, no new output. Every board stays reachable, as under any
+canonical order; "wrong order" costs learning difficulty, never expressiveness (dead ends aside, and the release
+handles those).
+
+**Its one clear advantage: it minimises the exclusion tax.** Under any canonical order, sampling a country ranked
+below a wanted one at step 0 excludes the wanted one for the run (a fixed [West Germany, Italy, …] loses West
+Germany whenever Italy is sampled first). The tax is the same shape under every order; the policy-ranked order
+puts the most likely first choice at the top, so the most likely sample excludes nothing wanted, which no fixed
+order can promise in every state.
+
+**Its costs.**
+
+1. *The mask depends on the network.* V1/V2 are a function of the state, computed in the engine; this needs the
+   policy's ranking supplied to the batch runner per env at each run's start and carried through the run
+   (`set_run_order(env, perm)`-style), and the same from every search harness (rollout root, Gumbel, MCTS: each
+   leaf evaluation at a run start sets the order) and from the page. The replayer stays in free order (human logs
+   are multisets, and legality must not depend on a model); BC would sort each human run by the model's own
+   ranking at training time, per model.
+2. *The mask moves.* Near-ties in the step-0 distribution flip the ranking between updates, so the same state
+   presents different legal sets at later steps from one snapshot to the next, and the network cannot see the
+   ranking except by recomputing it; under a fixed order the exclusions are a function of what has been placed.
+   A learning-stability cost of unknown size.
+3. *It is V1/V2's plumbing plus a policy round-trip*, so it is the more expensive build, with nothing yet showing
+   that the order matters.
+
+**Where it sits: V3, after V1 and V2 have been read.** V1 and V2 are built and are the two ends of the order
+question; their gap against each other and against the free-order control is the measurement of whether the order
+matters at all. If V1 ≈ V2 ≈ free, the question is moot. If the order matters, V3 is the next arm, and it should
+then be compared with the other learned-order route, free order with the order-marginal loss (remedy 4, ×1.66,
+no mask plumbing, the policy keeps any order). **P43a, no training, first:** on free-order J5 self-play runs, rank
+by the policy's step-0 distribution, sample at T=1 and count how often the run's greedy top country is excluded
+by an earlier sample, under the policy ranking and under V1's and V2's tables -- the exclusion tax each order
+would charge today, which says how much V3 could gain over V1/V2 before anything is built.
+
 ## The order: important last (owner's question, 2026-11-07)
 
 Important first lets the factorisation decide the counts that matter before the extras; important last means a
