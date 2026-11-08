@@ -262,6 +262,28 @@ from the network in every Ops and event run, so they are a lower bound on what t
 measurement; V1 continues 410 → 810M on the owner's order, and the clean test is V1 with the mask input against
 the same control. V3 is built in a scratch tree, not merged or launched.
 
+## placement_legal and V3 at 400M (2026-11-08)
+
+Both from scratch on A36 (A8 reading `placement_legal`) and R119, against the free-order control `E8-A8-R119-S44` and V1
+without the slot (`data/reports/p43_pl_*_400M.*`):
+
+| | read 200M | read 400M | control's score head to head | V1's score head to head |
+|---|---:|---:|---:|---:|
+| V1 (no slot) | 9.3% | 16.2% | 51.0% | -- |
+| V1 + placement_legal | 6.9% | 11.4% | 62.4% | 75.0% |
+| V3 + placement_legal | 9.0% | 16.1% | 59.4% | 56.3% |
+
+* **The slot made V1 much worse.** It is correct -- checked in V1+slot's own self-play: at every placement decision it is
+  the mask, nothing else differs, and no other decision changes -- but it differs from bare eligibility at 71% of
+  placement decisions (cost-2 countries a run cannot afford, the budget, the canonical floor), so one input of every
+  country carries two meanings depending on the decision. The likely cost (a hypothesis, untested) is that overloading
+  a slot the network reads everywhere hurts more than the information helps; a separate channel (the mask into the
+  trunk, or an appended 84-bit block) would not overload anything. V1+slot also never found Europe control in training
+  (0.0-0.4% of endings against 6-10% in every other arm), which may be the seed as much as the slot.
+* **V3 with the slot is level with V1 on the read but behind head to head** (43.7% against V1, 40.6% against the
+  control). Its releases are the fewest of any arm (0.86 per game).
+* No canonical arm beats free order at 400M; by the owner's instruction J5 resumed (2026-11-08, from 1,390M).
+
 ## V3: the network's own order (owner, 2026-11-07)
 
 At each placement run's first decision the deciding network's logits over the 84 countries, highest first, fix
