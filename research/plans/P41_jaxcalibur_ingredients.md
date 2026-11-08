@@ -538,6 +538,31 @@ proposal -- the country softmax as now plus a per-country Bernoulli amount, P(c,
    a view was an engine sub-version (E4.1), so **E8.1**, and the run `E8.1-A35-R<n>-S44` (owner to
    confirm the code).
 
+## The regularisers in decided states (owner's question, 2026-11-08)
+
+Should the entropy bonus be scaled by outcome uncertainty, so that where P(win) is near 0 or 1 -- advantages
+near zero -- the loss is not the regularisers alone? The diagnosis is right: with γ = 1 and a terminal reward,
+every action in a decided state has the same return, the policy-gradient term vanishes and only the
+regularisers move the policy there. But the two regularisers behave differently. **The entropy bonus flattens**
+(gradient on every action, toward uniform, nothing opposing it in a decided state; the visible symptom is a won
+position played loosely -- forced wins taken 34–52% by J1 -- because "take the win now" has only the small
+advantage the critic's risk estimate gives it, and the bonus swamps it). **The zero-avoiding term is a floor**
+(gradient ≈ c/(n·π_a), on near-zero actions only): it holds every legal move at ~0.1–0.3% and does nothing to the
+top of the distribution, so it cannot flatten a decided state. **The fix is already running: J1′ (R103) is R102
+with the bonus off and the floor kept, and it is ahead of J1 at matched steps** (35.8 against 33.5 on the
+reference at 1,200M; J1 44.2% head to head). That is the standard in the game-AI line too (AlphaZero, DeepNash
+and Jaxcalibur run no entropy bonus; Jaxcalibur uses the zero-avoiding term in exactly this role; SAC's automatic
+temperature is a global target, not per state). **So: drop the bonus rather than scale it** -- J5's recipe
+(R102 → R119) still carries it at 0.01, and its next branch should take R103's `--entropy-coef 0` (owner's call,
+nothing launched). Scaling the *floor* by uncertainty is not recommended: it costs little where it stands, and
+weighting it by V(1−V) would remove exploration exactly where the critic is confident, including where it is
+confidently wrong -- a sampled off-policy action that changes the result is the only signal that a "decided"
+state was not. **A no-training read first**, on J1, J1′ and J5 at matched steps, decisions binned by |V|: policy
+entropy per bin (J1 against J1′ at |V| > 0.9 shows the bonus's flattening directly), the advantage scale per bin,
+forced wins taken per recipe, and the swindle rate (eventual winner with V < −0.8 at some point). If J1′'s
+decided-state play is sharp and swindles are rare, nothing beyond R103 is warranted; the uncertainty-scaled bonus
+is an arm only if J1′ still plays flat there.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
