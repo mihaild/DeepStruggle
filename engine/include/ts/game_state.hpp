@@ -617,12 +617,19 @@ namespace obs_features {
     // order cannot see which countries its run has left behind. It edits a base slot, so only a model
     // trained with the bit reads it so.
     constexpr uint32_t PLACEMENT_LEGAL = 1u << 7;
+    // No width (owner, 2026-11-08): slot 19 keeps its meaning (access), and during the perspective's own placement
+    // decision in a canonical run the countries its order blocks now read 0.5 instead of 1 (0 no access, 1 access,
+    // 0.5 access but blocked by the order). PLACEMENT_LEGAL's mask-in-the-slot changed the slot at 71% of placement
+    // decisions and made V1 worse; this changes it only where the order blocks.
+    constexpr uint32_t PLACEMENT_ORDER = 1u << 8;
+    constexpr float BOARD_BLOCKED_BY_ORDER = 0.5f;
     constexpr size_t BOARD_MY_PLACEABLE = 19;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
     constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL;
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
     constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED;
-    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL;
+    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL |
+                                     PLACEMENT_ORDER;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 

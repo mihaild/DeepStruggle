@@ -624,6 +624,11 @@ has one action sequence. The helpers are `ts/canonical.hpp`.
   `GameState::canon_prio` (tagged with the run, cleared when it ends; saved only when set). A placement in a
   LEARNED run without its order is **refused** unless it is forced (one legal target), so a harness that forgets
   fails loudly instead of playing some order nobody gave.
+* **Seeing the run's order** (owner): `obs_features::PLACEMENT_LEGAL` (bit 7) puts the decider's legal mask in
+  slot 19 during its placement decisions -- correct, but it changes the slot at 71% of them and made V1 worse at
+  400M. `PLACEMENT_ORDER` (bit 8, 2026-11-08) keeps slot 19 as access and marks only the countries the run's order
+  blocks now as 0.5 (0 no access, 1 access), while a floor is in force and not released. Both edit a base slot at no
+  width, so only a model trained with the bit reads them so.
 * **A person plays none of them** (`obs_features::PERSON_RULES` for the page's current rules).
 
 Tests: `CanonicalPlacement.*` in `engine/tests/test_canonical_placement.cpp` -- every setup board reached

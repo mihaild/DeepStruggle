@@ -1769,7 +1769,7 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
 OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 << 2,
                                     "opp_event_gated": 1 << 3, "canonical_first": 1 << 4,
                                     "canonical_last": 1 << 5, "canonical_learned": 1 << 6,
-                                    "placement_legal": 1 << 7}
+                                    "placement_legal": 1 << 7, "placement_order": 1 << 8}
 #: A new network's set when `--obs-features` is not given: headline_reveal since E8 (owner, 2026-10-20),
 #: plus opp_event_gated since 2026-11-06 (E8.1). launch_flags.py compares each run against its own
 #: epoch's default (_EPOCH_DEFAULTS), so earlier runs keep their codes.

@@ -307,6 +307,11 @@ judged on early reads unless a clear problem shows).
      decider's currently legal countries during its own placement decisions (0 elsewhere). The engine owns it;
      costs 84 floats; needs the owner's approval as an observation change.
 
+   * **built (owner, 2026-11-08): `placement_order`** (obs bit 8, A37 = A8 reading it) -- the slot-19 variant that does
+     not overload: slot 19 stays access, and only the countries the run's order blocks now read 0.5 (0 no access,
+     1 access), while a floor is in force and not released. Cost and budget leave it alone, so it differs from the
+     base only where the order blocks (`CanonicalPlacement.PlacementOrderMarksOnlyWhatTheOrderBlocks`).
+
    Run V1 + the chosen channel from scratch to 400M first (against the control and V1 without it), then to 2,000M if
    it is not behind. V3 (the network's own order) is the natural second arm on the same channel, since it needs the
    legal set even more: its order moves with its own logits.

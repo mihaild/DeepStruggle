@@ -334,7 +334,9 @@ Event (`engine/AGENTS.md` §19). `CANONICAL_FIRST` / `CANONICAL_LAST` (bits 4 / 
 the deciding network's own logits at each run's start, given to the engine by the harness) are three more: the seat places every placement run in
 non-decreasing country rank, most important first or last, one sequence per board, and a run that would strand
 points releases its floor (`engine/AGENTS.md` §21); a branch adds one with `--resume-add-rules`, and a person
-plays neither. A seat plays the rule bits of the feature set it is observed in, a
+plays neither. Two observation bits of no width let a network see its run's order: `PLACEMENT_LEGAL` (bit 7,
+the mask in the "I can place here" slot, made V1 worse) and `PLACEMENT_ORDER` (bit 8, that slot keeps access and
+marks only order-blocked countries 0.5). A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
 Adding a block still needs the owner.

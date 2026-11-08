@@ -1504,6 +1504,8 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_FEATURE_CANONICAL_FIRST") = static_cast<uint32_t>(ts::obs_features::CANONICAL_FIRST);
     m.attr("OBS_FEATURE_CANONICAL_LAST") = static_cast<uint32_t>(ts::obs_features::CANONICAL_LAST);
     m.attr("OBS_FEATURE_CANONICAL_LEARNED") = static_cast<uint32_t>(ts::obs_features::CANONICAL_LEARNED);
+    m.attr("OBS_FEATURE_PLACEMENT_LEGAL") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_LEGAL);
+    m.attr("OBS_FEATURE_PLACEMENT_ORDER") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_ORDER);
     m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
     m.attr("OBS_FEATURES_PERSON_RULES") = static_cast<uint32_t>(ts::obs_features::PERSON_RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);

@@ -407,6 +407,42 @@ TEST(CanonicalPlacement, PlacementLegalShowsTheMaskInTheDecidersPlaceableSlot) {
     ASSERT_TRUE(opp == opp_plain);                            // not the decider: unchanged
 }
 
+TEST(CanonicalPlacement, PlacementOrderMarksOnlyWhatTheOrderBlocks) {
+    // USSR seated with CANONICAL_LAST; after East Germany, Eastern European countries below it in the order read 0.5 in
+    // the decider's slot 19 under PLACEMENT_ORDER, everything else as in the base observation.
+    ts::GameState s = to_ussr_setup(7, of::CANONICAL_LAST, of::CANONICAL_LAST);
+    const uint8_t eg = id("East Germany");
+    ASSERT_TRUE(ts::Engine::step_flat(s, static_cast<uint16_t>(fs::NODE + eg), true));
+    std::vector<float> plain(ts::OBS_SIZE_V23), with(ts::OBS_SIZE_V23), opp(ts::OBS_SIZE_V23), opp_plain(ts::OBS_SIZE_V23);
+    ts::extract_observation_features(s, ts::Player::USSR, 0, plain.data());
+    ts::extract_observation_features(s, ts::Player::USSR, of::PLACEMENT_ORDER, with.data());
+    ts::extract_observation_features(s, ts::Player::US, of::PLACEMENT_ORDER, opp.data());
+    ts::extract_observation_features(s, ts::Player::US, 0, opp_plain.data());
+    size_t blocked = 0;
+    for (uint8_t c = 0; c < 84; ++c) {
+        const size_t k = static_cast<size_t>(c) * ts::V23_BOARD_FEATURES + of::BOARD_MY_PLACEABLE;
+        const bool below = ts::canonical::rank_in(s, of::CANONICAL_LAST, c) < ts::canonical::rank_in(s, of::CANONICAL_LAST, eg);
+        if (plain[k] > 0.0f && below) {
+            ASSERT_EQ(with[k], of::BOARD_BLOCKED_BY_ORDER);
+            ++blocked;
+        } else {
+            ASSERT_EQ(with[k], plain[k]);
+        }
+    }
+    ASSERT_TRUE(blocked > 0);
+    for (size_t k = 0; k < with.size(); ++k) {
+        if (k < 84 * ts::V23_BOARD_FEATURES && k % ts::V23_BOARD_FEATURES == of::BOARD_MY_PLACEABLE) continue;
+        ASSERT_EQ(with[k], plain[k]);
+    }
+    ASSERT_TRUE(opp == opp_plain);
+    // Before the run's first point there is no floor: nothing is marked.
+    ts::GameState t = to_ussr_setup(7, of::CANONICAL_LAST, of::CANONICAL_LAST);
+    std::vector<float> a(ts::OBS_SIZE_V23), b(ts::OBS_SIZE_V23);
+    ts::extract_observation_features(t, ts::Player::USSR, 0, a.data());
+    ts::extract_observation_features(t, ts::Player::USSR, of::PLACEMENT_ORDER, b.data());
+    ASSERT_TRUE(a == b);
+}
+
 TEST(CanonicalPlacement, FullGamesPlayWithEitherOrderOnBothSeats) {
     for (uint32_t order : ORDERS) {
         for (uint64_t seed = 1; seed <= 40; ++seed) {
