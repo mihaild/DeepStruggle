@@ -284,6 +284,33 @@ without the slot (`data/reports/p43_pl_*_400M.*`):
   control). Its releases are the fewest of any arm (0.86 per game).
 * No canonical arm beats free order at 400M; by the owner's instruction J5 resumed (2026-11-08, from 1,390M).
 
+## Next (owner, 2026-11-08): planned, not scheduled
+
+Two experiments, run when the GPU is free of the main line (J5). Both on A8 and R119 from scratch, with the free-order
+control `E8-A8-R119-S44` continued to the same budget beside them, so every comparison is at matched steps; reads every
+400M against A13+R48's SWA and one head-to-head at the end, judged late per the owner's rule (a big change is not
+judged on early reads unless a clear problem shows).
+
+1. **V1 for longer.** V1 (`E8-A8-R119-V1-S44`) was level with free order at 400M (16.2 vs 17.3% read, 51.0% head to
+   head for the control) and read 21.5 / 26.4% at 600 / 800M with no control beside it. Continue V1 in place from
+   810M and the control from 410M, both to 2,000M (the scale at which A8 recipes have been separated before). Watch
+   besides the reads: the release rate per source (Marshall Plan, Comecon and East European Unrest released in 18-30%
+   of their floored decisions at 400M), setup outcomes, and whether the stray single points (Austria, West Germany)
+   stay gone.
+2. **V1 with order-based legality on its own channel.** `placement_legal` reused slot 19 and made V1 worse (75.0% for
+   V1 without it, 400M); the slot was correct but changed meaning at 71% of placement decisions. Give the network the
+   same information without overloading anything. Two candidates, the owner to choose:
+   * **the mask into the trunk** -- LadderNet already receives the legal mask in `forward`; feed its 84 NODE bits
+     (or the whole mask) through a small projection into the trunk. An architecture flag (a new A code), no engine or
+     observation change, old checkpoints untouched;
+   * **an appended observation block** -- an `obs_features` bit whose 84 floats, appended after the base, hold the
+     decider's currently legal countries during its own placement decisions (0 elsewhere). The engine owns it;
+     costs 84 floats; needs the owner's approval as an observation change.
+
+   Run V1 + the chosen channel from scratch to 400M first (against the control and V1 without it), then to 2,000M if
+   it is not behind. V3 (the network's own order) is the natural second arm on the same channel, since it needs the
+   legal set even more: its order moves with its own logits.
+
 ## V3: the network's own order (owner, 2026-11-07)
 
 At each placement run's first decision the deciding network's logits over the 84 countries, highest first, fix
