@@ -35,6 +35,7 @@
     "howILearned": "set DEFCON to any level",
     "default": "choose an option"
   },
+  "optionNumber": "Option {{n}}",
   "mode": {
     "ops": "{{ops}} Ops",
     "cardsOps": "the card's Ops",

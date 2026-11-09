@@ -14,6 +14,7 @@ import { CARDS_METADATA } from "../metadata";
 import { branchMeta } from "./branches";
 import { WasmEngine } from "../engine/wasm_engine";
 import { cardId, namesByValue } from "../engine/layout";
+import { renderEnglish } from "../i18n";
 
 const SIDE = new Map(CARDS_METADATA.map(c => [c.id, c.side]));
 
@@ -157,7 +158,8 @@ export function describeAction(
     const card = ctx?.resolving_card ?? 0;
     const meta = isConfirmDone(action) ? null : branchMeta(card, primary, before);
     if (isConfirmDone(action)) logs.push(`${p} confirms / passes option.`);
-    else if (meta) logs.push(`${p} ${meta.verb} (${engine.cardName(card)})`);
+    // The branch's verb in English: the log is still English text (until i18n phase 2).
+    else if (meta) logs.push(`${p} ${renderEnglish(meta.verb)} (${engine.cardName(card)})`);
     else logs.push(`${p} chooses option: ${primary}`);
   } else {
     logs.push(`${p} action: type=${d} primary=${primary} secondary=${secondary} flags=${flags}`);

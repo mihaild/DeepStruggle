@@ -16,7 +16,7 @@
 import { ActionLogItem, GameState, LogKind, MicroAction } from "../types";
 import type { ReplayStep } from "../replay_controls";
 import { CARDS_METADATA } from "../metadata";
-import { EFFECT_INFO_MAP } from "../cards_view";
+import { effectEnglishName } from "../cards_view";
 import { WasmEngine } from "../engine/wasm_engine";
 import { describeDeltas, describeEventTracks, describeRoll, vpStr } from "./describe";
 import { namesByValue } from "../engine/layout";
@@ -218,7 +218,8 @@ class Board {
     for (const [side, s] of this.space) if (s[0] !== s[1]) out.push([`  • Space Race: ${side} ${s[0]} -> ${s[1]}`, this.stepOf(`space:${side}`)]);
     for (const [flag, net] of this.effects) {
       if (net === 0 || SPACE_ATTEMPT.test(flag)) continue;
-      const name = EFFECT_INFO_MAP[flag]?.name ?? flag;
+      // English, as the rest of the line (until i18n phase 2, which takes effectNameMessage).
+      const name = effectEnglishName(flag);
       out.push([net > 0 ? `  • In effect: ${name}` : `  • No longer in effect: ${name}`, this.stepOf(`effect:${flag}`)]);
     }
     out.push(...this.cardLines(implied));

@@ -1,0 +1,17 @@
+{
+  "confirmDone": "CONFIRM_DONE / PASS",
+  "selectCard": "SelectCard #{{n}} ({{card}})",
+  "resolution": "Resolution: {{resolution}}",
+  "resolutionOrOpMode": "Resolution: {{resolution}} / OpMode: {{opMode}}",
+  "rollDie": "RollDie",
+  "unassigned": "Unassigned #{{idx}}",
+  "pointNode": "PointNode #{{n}} ({{country}})",
+  "branch": "Branch #{{n}}",
+  "setDefcon": "Set DEFCON to {{level}}",
+  "region": "{{region}}",
+  "regionNumber": "Region #{{n}}",
+  "unknown": "UnknownAction #{{idx}}",
+  "opsInfluenceFirst": "Ops → Influence, first point in {{country}}",
+  "opsInfluenceNothing": "Ops → Influence, place nothing",
+  "untilControl": "Influence in {{country}} until control ({{points}} points)"
+}

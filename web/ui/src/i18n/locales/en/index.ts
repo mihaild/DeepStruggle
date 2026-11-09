@@ -14,5 +14,13 @@ import cards from "./cards.json";
 import analysis from "./analysis.json";
 import trace from "./trace.json";
 import leaderboard from "./leaderboard.json";
+import branches from "./branches.json";
+import effects from "./effects.json";
+import enums from "./enums.json";
+import endings from "./endings.json";
+import actions from "./actions.json";
 
-export default { common, game, page, app, debug, replay, result, hud, rolls, region, map, tracks, cards, analysis, trace, leaderboard };
+export default {
+  common, game, page, app, debug, replay, result, hud, rolls, region, map, tracks, cards, analysis, trace, leaderboard,
+  branches, effects, enums, endings, actions,
+};

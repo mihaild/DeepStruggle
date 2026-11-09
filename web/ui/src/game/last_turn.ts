@@ -15,6 +15,7 @@
 import { GameState, LastTurn, LastTurnCountry } from "../types";
 import { ReplayStep } from "../replay_controls";
 import { engineLayout } from "../engine/layout";
+import { Message, message, renderEnglish } from "../i18n";
 
 const N_COUNTRIES = 84;
 
@@ -33,11 +34,12 @@ function owned(before: GameState, step: ReplayStep): Owned {
   return { owner, key: `${before.turn}|${phase}|${before.action_round}|${owner}`, headlineChoice };
 }
 
-function label(before: GameState): string {
+/** Which turn of a side's it was, by the state it began in: "Setup", "T3 Headline", "T3 AR4". */
+export function turnLabel(before: GameState): Message {
   const phase = before.current_phase_name ?? "";
-  if (phase === "SETUP") return "Setup";
-  if (phase === "HEADLINE") return `T${before.turn} Headline`;
-  return `T${before.turn} AR${before.action_round}`;
+  if (phase === "SETUP") return message("common:round.setup");
+  if (phase === "HEADLINE") return message("common:round.headline", { turn: before.turn });
+  return message("common:round.actionRound", { turn: before.turn, ar: before.action_round });
 }
 
 /** The latest turn of `side` in a game's steps (`start` is the state before the first), or null. */
@@ -70,5 +72,6 @@ export function lastTurnOf(start: GameState | null, steps: ReplayStep[], side: "
     if (us || ussr || targeted.has(c.id)) countries.push({ id: c.id, name, us, ussr, targeted: targeted.has(c.id) });
   }
   countries.sort((a, b) => a.name.localeCompare(b.name));
-  return { player: side, label: label(before(first)), countries };
+  const labelMessage = turnLabel(before(first));
+  return { player: side, label: renderEnglish(labelMessage), labelMessage, countries };
 }

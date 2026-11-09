@@ -4,7 +4,7 @@ import { NetSide, regionNet, regionSummaryHtml, standingShort } from "./region_s
 import { CARDS_METADATA, MAP_METADATA } from "./metadata";
 import { engineLayout, namesByValue, titleCase } from "./engine/layout";
 import { escapeHtml } from "./html";
-import { cardDescription, cardName, countryName, onLanguageChange, regionName, sideName, t } from "./i18n";
+import { cardDescription, cardName, countryName, onLanguageChange, regionName, render, sideName, t } from "./i18n";
 
 /** A scoring card's badge and summary: the engine's scoring (RegionScore) with names and colours. */
 export interface RegionScoreAudit {
@@ -829,7 +829,7 @@ export class MapView {
     const what = lt.countries.length
       ? lt.countries.map(lc => `${countryName(lc.id, lc.name)} ${describeLastTurnCountry(lc)}`).join(" · ")
       : t("map:noCountryChanged");
-    el.textContent = t("map:lastTurn", { player: sideName(lt.player), when: lt.label, what });
+    el.textContent = t("map:lastTurn", { player: sideName(lt.player), when: render(lt.labelMessage), what });
   }
 
   /**

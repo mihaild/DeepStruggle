@@ -41,7 +41,8 @@
     "spacePerk": "Space Perk",
     "none": "No active continuous effects",
     "thisTurn": "This turn",
-    "noEffects": "no effects"
+    "noEffects": "no effects",
+    "chipTitle": "{{card}}: {{description}}"
   },
   "perk": {
     "animalInSpace": "{{side}}: Animal in Space (#2)",

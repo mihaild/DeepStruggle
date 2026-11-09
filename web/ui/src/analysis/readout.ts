@@ -11,7 +11,8 @@
  * no value head before it writes a model.
  */
 import { WasmEngine, PLAYER_US, PLAYER_USSR } from "../engine/wasm_engine";
-import { actionName } from "../game/names";
+import { actionLabel, actionName } from "../game/names";
+import { message, renderEnglish } from "../i18n";
 import { GameState } from "../types";
 import { Model } from "./model";
 import { CriticTrace, PolicyTrace } from "../replay_controls";
@@ -53,20 +54,23 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
       // A composed E4.1 action: "Ops for influence" plus its first placement -- one action for
       // the model, two clicks for a person. Its MicroAction fields name the commit half.
       const commit = engine.decodeFlat(L.ops_influence_index);
-      const name = idx !== L.ops_influence_index
-        ? `Ops → Influence, first point in ${engine.countryName(idx - L.offsets.node)}`
-        : "Ops → Influence, place nothing";
-      return [idx, { composed: true, ma: commit, name }];
+      const country = idx - L.offsets.node;
+      const label = idx !== L.ops_influence_index
+        ? message("actions:opsInfluenceFirst", { country: { country, name: engine.countryName(country) } })
+        : message("actions:opsInfluenceNothing");
+      return [idx, { composed: true, ma: commit, name: renderEnglish(label), label }];
     }
     if (macro && idx >= engine.baseActionSize) {
       // P42: an until-control slot -- one action for the model, that many placements in one country for a person.
       // Its MicroAction fields name the first placement.
       const node = idx - engine.baseActionSize + L.offsets.node;
       const points = engine.macroPoints(idx);
-      return [idx, { composed: true, ma: engine.decodeFlat(node),
-                     name: `Influence in ${engine.countryName(node - L.offsets.node)} until control (${points} points)` }];
+      const country = node - L.offsets.node;
+      const label = message("actions:untilControl", { country: { country, name: engine.countryName(country) }, points });
+      return [idx, { composed: true, ma: engine.decodeFlat(node), name: renderEnglish(label), label }];
     }
-    return [idx, { composed: false, ma: engine.decodeFlat(idx), name: actionName(engine, idx, shown) }];
+    return [idx, { composed: false, ma: engine.decodeFlat(idx), name: actionName(engine, idx, shown),
+                   label: actionLabel(engine, idx, shown) }];
   }));
 
   const out = await model.run(obs, masks, 3);
@@ -113,6 +117,7 @@ export async function analyze(engine: WasmEngine, model: Model, modelKey: string
     entry.decision_type = a.ma.decision_type;
     entry.primary_id = a.ma.primary_id;
     entry.name = a.name;
+    entry.label = a.label;
     if (a.composed) {
       entry.composed = true;
       entry.flags = 0;

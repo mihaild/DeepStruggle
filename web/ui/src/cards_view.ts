@@ -3,323 +3,271 @@ import { CARDS_METADATA } from "./metadata";
 import { UNSEEN } from "./game/view";
 import { engineLayout } from "./engine/layout";
 import { escapeHtml, num } from "./html";
-import { cardDescription, cardName, sideName, t } from "./i18n";
+import { cardDescription, cardName, Message, messageIfKnown, render, renderEnglish, sideName, t } from "./i18n";
+import { enumLabel } from "./i18n/enums";
 
+/**
+ * An ongoing effect by the engine's flag: the card it comes from (`cardName` is that card's English,
+ * named by id when shown), whom it favours and how long it lasts. Its words -- its name, what it
+ * does, and for some of this turn's effects a shorter name for the map -- are `effects:<FLAG>.name`,
+ * `.description` and `.short` in the catalog.
+ */
 export interface EffectInfo {
-  name: string;
   cardId?: number;
   cardName: string;
   side: "US" | "USSR" | "BOTH" | "NEUTRAL";
   duration: "PERMANENT" | "TURN" | "CONDITIONAL" | "SPACE_PERK";
-  description: string;
+}
+
+/** An effect's name as a Message, for the action log (i18n phase 2); null for a flag the catalog lacks. */
+export function effectNameMessage(flag: string): Message | null {
+  return EFFECT_INFO_MAP[flag] ? messageIfKnown(`effects:${flag}.name`) : null;
+}
+
+/** An effect's name in English, as the action log still words it (until i18n phase 2); else the flag. */
+export function effectEnglishName(flag: string): string {
+  const m = effectNameMessage(flag);
+  return m ? renderEnglish(m) : flag;
+}
+
+/** An effect's words in the current language, or null for a flag the page has no entry for. */
+export function effectText(flag: string): { name: string; short: string; description: string } | null {
+  const name = effectNameMessage(flag);
+  if (!name) return null;
+  const short = messageIfKnown(`effects:${flag}.short`) ?? name;
+  return { name: render(name), short: render(short), description: render({ key: `effects:${flag}.description` as Message["key"] }) };
 }
 
 export const EFFECT_INFO_MAP: Record<string, EffectInfo> = {
   NATO_ACTIVE: {
-    name: "NATO Active",
     cardId: 21,
     cardName: "NATO",
     side: "US",
-    duration: "PERMANENT",
-    description: "USSR cannot Coup or Realign in US-controlled Western European countries."
+    duration: "PERMANENT"
   },
   NATO_CANCELED_FRANCE: {
-    name: "NATO (France Excluded)",
     cardId: 17,
     cardName: "De Gaulle Leads France",
     side: "NEUTRAL",
-    duration: "PERMANENT",
-    description: "NATO no longer protects France."
+    duration: "PERMANENT"
   },
   NATO_CANCELED_WEST_GERMANY: {
-    name: "NATO (W. Germany Excluded)",
     cardId: 55,
     cardName: "Willy Brandt",
     side: "NEUTRAL",
-    duration: "CONDITIONAL",
-    description: "NATO no longer protects West Germany (canceled by Tear Down This Wall)."
+    duration: "CONDITIONAL"
   },
   MARSHALL_PLAN_PLAYED: {
-    name: "Marshall Plan Played",
     cardId: 23,
     cardName: "Marshall Plan",
     side: "US",
-    duration: "PERMANENT",
-    description: "Prerequisite fulfilled for US to activate NATO."
+    duration: "PERMANENT"
   },
   WARSAW_PACT_PLAYED: {
-    name: "Warsaw Pact Played",
     cardId: 16,
     cardName: "Warsaw Pact Formed",
     side: "USSR",
-    duration: "PERMANENT",
-    description: "Prerequisite fulfilled for US to activate NATO."
+    duration: "PERMANENT"
   },
   US_JAPAN_PACT_ACTIVE: {
-    name: "US/Japan Defense Pact",
     cardId: 27,
     cardName: "US/Japan Mutual Defense Pact",
     side: "US",
-    duration: "PERMANENT",
-    description: "USSR cannot Coup or Realign in Japan. Japan is US-controlled."
+    duration: "PERMANENT"
   },
   CONTAINMENT_ACTIVE: {
-    name: "Containment Active",
     cardId: 25,
     cardName: "Containment",
     side: "US",
-    duration: "TURN",
-    description: "All US Operations receive +1 Op (capped at 4 Ops)."
+    duration: "TURN"
   },
   PURGE_US_ACTIVE: {
-    name: "Red Scare (US)",
     cardId: 31,
     cardName: "Red Scare/Purge",
     side: "US",
-    duration: "TURN",
-    description: "All US Operations receive -1 Op (minimum 1 Op)."
+    duration: "TURN"
   },
   PURGE_USSR_ACTIVE: {
-    name: "Red Scare (USSR)",
     cardId: 31,
     cardName: "Red Scare/Purge",
     side: "USSR",
-    duration: "TURN",
-    description: "All USSR Operations receive -1 Op (minimum 1 Op)."
+    duration: "TURN"
   },
   VIETNAM_REVOLTS_ACTIVE: {
-    name: "Vietnam Revolts",
     cardId: 9,
     cardName: "Vietnam Revolts",
     side: "USSR",
-    duration: "TURN",
-    description: "All USSR Operations in Southeast Asia receive +1 Op for remainder of turn."
+    duration: "TURN"
   },
   FORMOSAN_RESOLUTION_ACTIVE: {
-    name: "Formosan Resolution",
     cardId: 35,
     cardName: "Formosan Resolution",
     side: "US",
-    duration: "CONDITIONAL",
-    description: "Taiwan counts as a Battleground country for Asia Scoring until China Card played."
+    duration: "CONDITIONAL"
   },
   CMC_ACTIVE_US: {
-    name: "Cuban Missile Crisis (played by US)",
     cardId: 40,
     cardName: "Cuban Missile Crisis",
     side: "US",
-    duration: "TURN",
-    description: "A USSR Coup loses the game this turn, unless the USSR cancels the crisis by removing 2 influence from Cuba."
+    duration: "TURN"
   },
   CMC_ACTIVE_USSR: {
-    name: "Cuban Missile Crisis (played by USSR)",
     cardId: 40,
     cardName: "Cuban Missile Crisis",
     side: "USSR",
-    duration: "TURN",
-    description: "A US Coup loses the game this turn, unless the US cancels the crisis by removing 2 influence from West Germany or Turkey."
+    duration: "TURN"
   },
   NUCLEAR_SUBS_ACTIVE: {
-    name: "Nuclear Subs Active",
     cardId: 41,
     cardName: "Nuclear Subs",
     side: "US",
-    duration: "TURN",
-    description: "US Coup Attempts in battleground countries do not degrade DEFCON this turn."
+    duration: "TURN"
   },
   QUAGMIRE_ACTIVE: {
-    name: "Quagmire Active",
     cardId: 42,
     cardName: "Quagmire",
     side: "US",
-    duration: "CONDITIONAL",
-    description: "US must discard a 2+ Ops card and roll 5-6 on each Action Round to exit."
+    duration: "CONDITIONAL"
   },
   BEAR_TRAP_ACTIVE: {
-    name: "Bear Trap Active",
     cardId: 44,
     cardName: "Bear Trap",
     side: "USSR",
-    duration: "CONDITIONAL",
-    description: "USSR must discard a 2+ Ops card and roll 5-6 on each Action Round to exit."
+    duration: "CONDITIONAL"
   },
   SALT_ACTIVE: {
-    name: "SALT Negotiations",
     cardId: 43,
     cardName: "SALT Negotiations",
     side: "BOTH",
-    duration: "TURN",
-    description: "All Coup Attempts by both players suffer -1 to die rolls for remainder of turn."
+    duration: "TURN"
   },
   WE_WILL_BURY_YOU_PENDING: {
-    name: "We Will Bury You (Pending)",
     cardId: 50,
     cardName: "We Will Bury You",
     side: "USSR",
-    duration: "TURN",
-    description: "USSR gains 3 VP at Turn End unless UN Intervention is played by US."
+    duration: "TURN"
   },
   BREZHNEV_DOCTRINE_ACTIVE: {
-    name: "Brezhnev Doctrine",
     cardId: 51,
     cardName: "Brezhnev Doctrine",
     side: "USSR",
-    duration: "TURN",
-    description: "All USSR Operations receive +1 Op (capped at 4 Ops)."
+    duration: "TURN"
   },
   FLOWER_POWER_ACTIVE: {
-    name: "Flower Power Active",
     cardId: 59,
     cardName: "Flower Power",
     side: "USSR",
-    duration: "CONDITIONAL",
-    description: "USSR gains 2 VP for each US War card played for Operations (canceled by An Evil Empire)."
+    duration: "CONDITIONAL"
   },
   U2_INCIDENT_ACTIVE: {
-    name: "U-2 Incident",
     cardId: 60,
     cardName: "U-2 Incident",
     side: "USSR",
-    duration: "TURN",
-    description: "USSR gains 1 VP immediately; +1 additional VP if UN Intervention played this turn."
+    duration: "TURN"
   },
   SHUTTLE_DIPLOMACY_ACTIVE: {
-    name: "Shuttle Diplomacy",
     cardId: 73,
     cardName: "Shuttle Diplomacy",
     side: "US",
-    duration: "CONDITIONAL",
-    description: "Subtracts 1 USSR Battleground from next Asia or Middle East Scoring."
+    duration: "CONDITIONAL"
   },
   DEATH_SQUADS_US: {
-    name: "Death Squads (US)",
     cardId: 69,
     cardName: "Latin American Death Squads",
     side: "US",
-    duration: "TURN",
-    description: "US receives +1 to all Realignment rolls in Central and South America this turn."
+    duration: "TURN"
   },
   DEATH_SQUADS_USSR: {
-    name: "Death Squads (USSR)",
     cardId: 69,
     cardName: "Latin American Death Squads",
     side: "USSR",
-    duration: "TURN",
-    description: "USSR receives +1 to all Realignment rolls in Central and South America this turn."
+    duration: "TURN"
   },
   CAMP_DAVID_PLAYED: {
-    name: "Camp David Accords",
     cardId: 65,
     cardName: "Camp David Accords",
     side: "US",
-    duration: "PERMANENT",
-    description: "Prevents Arab-Israeli War from being played as an Event."
+    duration: "PERMANENT"
   },
   NORTH_SEA_OIL_ACTIVE: {
-    name: "North Sea Oil",
     cardId: 86,
     cardName: "North Sea Oil",
     side: "US",
-    duration: "TURN",
-    description: "Grants US an 8th Action Round for the current turn only."
+    duration: "TURN"
   },
   THE_REFORMER_PLAYED: {
-    name: "The Reformer",
     cardId: 87,
     cardName: "The Reformer",
     side: "US",
-    duration: "PERMANENT",
-    description: "USSR can no longer Coup in Europe. Enables #90 Glasnost to be used for Operations."
+    duration: "PERMANENT"
   },
   IRAN_CONTRA_ACTIVE: {
-    name: "Iran-Contra Scandal",
     cardId: 93,
     cardName: "Iran-Contra Scandal",
     side: "USSR",
-    duration: "TURN",
-    description: "All US Realignment rolls receive -1 to their die roll for remainder of turn."
+    duration: "TURN"
   },
   EVIL_EMPIRE_PLAYED: {
-    name: "An Evil Empire",
     cardId: 97,
     cardName: "“An Evil Empire”",
     side: "US",
-    duration: "PERMANENT",
-    description: "Cancels and prevents the effects of #59 Flower Power."
+    duration: "PERMANENT"
   },
   ALDRICH_AMES_ACTIVE: {
-    name: "Aldrich Ames Remix",
     cardId: 98,
     cardName: "Aldrich Ames Remix",
     side: "USSR",
-    duration: "TURN",
-    description: "US hand of cards remains revealed face-up to USSR for remainder of turn."
+    duration: "TURN"
   },
   JOHN_PAUL_II_PLAYED: {
-    name: "John Paul II Elected Pope",
     cardId: 68,
     cardName: "John Paul II Elected Pope",
     side: "US",
-    duration: "PERMANENT",
-    description: "Prerequisite fulfilled enabling #101 Solidarity to be played as an Event."
+    duration: "PERMANENT"
   },
   NORAD_ACTIVE: {
-    name: "NORAD Active",
     cardId: 106,
     cardName: "NORAD",
     side: "US",
-    duration: "CONDITIONAL",
-    description: "When Canada is US-controlled, US adds 1 Influence whenever DEFCON reaches 2 in an AR."
+    duration: "CONDITIONAL"
   },
   YURI_AND_SAMANTHA_ACTIVE: {
-    name: "Yuri and Samantha",
     cardId: 109,
     cardName: "Yuri and Samantha",
     side: "USSR",
-    duration: "TURN",
-    description: "USSR gains 1 VP for each US Coup Attempt performed during remainder of turn."
+    duration: "TURN"
   },
   AWACS_PLAYED: {
-    name: "AWACS Sale to Saudis",
     cardId: 110,
     cardName: "AWACS Sale to Saudis",
     side: "US",
-    duration: "PERMANENT",
-    description: "Prevents #56 Muslim Revolution from being played as an Event."
+    duration: "PERMANENT"
   },
   // The engine's own name for the bit (bindings/state_json.cpp), shortened there: keyed as
   // `..._PLAYED` this entry never matched and the panel showed the raw flag instead.
   IRANIAN_HOSTAGE_CRISIS_PLAY: {
-    name: "Iranian Hostage Crisis",
     cardId: 82,
     cardName: "Iranian Hostage Crisis",
     side: "USSR",
-    duration: "PERMANENT",
-    description: "Forces US to randomly discard 2 cards instead of 1 when #92 Terrorism is played."
+    duration: "PERMANENT"
   },
   WILLY_BRANDT_PLAYED: {
-    name: "Willy Brandt Played",
     cardId: 55,
     cardName: "Willy Brandt",
     side: "USSR",
-    duration: "CONDITIONAL",
-    description: "Cancels NATO for West Germany (canceled by Tear Down This Wall)."
+    duration: "CONDITIONAL"
   },
   TEAR_DOWN_THIS_WALL_PLAYED: {
-    name: "Tear Down this Wall",
     cardId: 96,
     cardName: "Tear Down this Wall",
     side: "US",
-    duration: "PERMANENT",
-    description: "Cancels and prevents the effects of #55 Willy Brandt."
+    duration: "PERMANENT"
   },
   CHERNOBYL_ACTIVE: {
-    name: "Chernobyl Active",
     cardId: 94,
     cardName: "Chernobyl",
     side: "US",
-    duration: "TURN",
-    description: "USSR cannot add Influence using Operations points in the forbidden region this turn."
+    duration: "TURN"
   }
 };
 
@@ -753,12 +701,13 @@ export class CardsView {
     // 1. Check persistent flags
     flags.forEach(f => {
       const info = EFFECT_INFO_MAP[f];
-      if (info) {
+      const text = effectText(f);
+      if (info && text) {
         effectCards.push({
-          title: info.name,
+          title: text.name,
           side: info.side,
           badge: info.duration === "TURN" ? t("cards:effect.turnOnly") : (info.duration === "PERMANENT" ? t("cards:effect.permanent") : t("cards:effect.conditional")),
-          desc: info.description
+          desc: text.description
         });
       } else {
         effectCards.push({
@@ -821,10 +770,12 @@ export class CardsView {
     if (!strip) return;
     const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const chips = (state.flags || [])
-      .map(f => ({ flag: f, info: EFFECT_INFO_MAP[f] }))
-      .filter(e => e.info && e.info.duration === "TURN")
-      .map(({ flag, info }) =>
-        `<span class="turn-effect side-${info.side.toLowerCase()}" data-flag="${flag}" title="${esc(`${info.cardName}: ${info.description}`)}">${esc(info.name.replace(/ Active$/, ""))}</span>`);
+      .map(f => ({ flag: f, info: EFFECT_INFO_MAP[f], text: effectText(f) }))
+      .filter(e => e.info && e.text && e.info.duration === "TURN")
+      .map(({ flag, info, text }) => {
+        const card = info.cardId ? cardName(info.cardId, info.cardName) : info.cardName;
+        return `<span class="turn-effect side-${info.side.toLowerCase()}" data-flag="${flag}" title="${esc(t("cards:effect.chipTitle", { card, description: text!.description }))}">${esc(text!.short)}</span>`;
+      });
     strip.innerHTML = `<span class="turn-effects-label">${t("cards:effect.thisTurn")}</span>`
       + (chips.length ? chips.join("") : `<span class="turn-effects-none">${t("cards:effect.noEffects")}</span>`);
   }
@@ -838,7 +789,7 @@ export class CardsView {
 
     stackContainer.innerHTML = `
       <div>${t("cards:context.depth", { depth: num(ctx.stack_depth || 0) })}</div>
-      <div>${t("cards:context.decision", { decision: escapeHtml(ctx.decision_type_name || ctx.decision_type), player: escapeHtml(ctx.decision_player) })}</div>
+      <div>${t("cards:context.decision", { decision: escapeHtml(enumLabel("decision", String(ctx.decision_type_name || (ctx.decision_type ?? "")))), player: escapeHtml(ctx.decision_player ? sideName(ctx.decision_player) : "") })}</div>
       ${ctx.pending_op_card ? `<div>${t("cards:context.pendingCard", { card: num(ctx.pending_op_card), ops: num(ctx.pending_ops_value) })}</div>` : ""}
       ${ctx.resolving_card ? `<div>${t("cards:context.resolvingCard", { card: num(ctx.resolving_card), name: escapeHtml(ctx.resolving_card_name || "") })}</div>` : ""}
       ${ctx.remaining_steps ? `<div>${t("cards:context.remainingSteps", { steps: num(ctx.remaining_steps) })}</div>` : ""}

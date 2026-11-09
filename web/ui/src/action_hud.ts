@@ -3,7 +3,8 @@ import { CARDS_METADATA } from "./metadata";
 import { branchMeta } from "./game/branches";
 import { ActionLayout, engineLayout, namesByValue } from "./engine/layout";
 import { escapeHtml, num } from "./html";
-import { cardDescription, cardName, countryName, regionName, sideName, t } from "./i18n";
+import { cardDescription, cardName, countryName, regionName, render, sideName, t } from "./i18n";
+import { enumLabel } from "./i18n/enums";
 
 const CARD_META = new Map(CARDS_METADATA.map(c => [c.id, c]));
 
@@ -153,14 +154,14 @@ export class ActionHud {
     const card = (name: string) => L.card_ids[name] ?? -1;
 
     if (badgeEl) {
-      badgeEl.textContent = dTypeName;
+      badgeEl.textContent = enumLabel("decision", dTypeName);
       badgeEl.className = `badge badge-${playerRaw.toLowerCase().replace(/[^a-z]/g, "")}`;
     }
 
     // A player's view while the other side decides (game/view.ts): its options are its own.
     if (state.view_hidden_decision) {
       this.container.innerHTML = `<div class="hud-waiting">
-        <div>${t("hud:hidden.toMove", { player, phase: escapeHtml(phaseName.toLowerCase().replace("_", " ")) })}</div>
+        <div>${t("hud:hidden.toMove", { player, phase: escapeHtml(enumLabel("phase", phaseName)) })}</div>
         <div class="hud-waiting-note">${t("hud:hidden.note", { view: escapeHtml(sideName(String(state.view))) })}</div>
       </div>`;
       return;
@@ -363,8 +364,9 @@ export class ActionHud {
       validIds.forEach(b => {
         const meta = branchMeta(resolvingCardId, b, state);
         // An event this page has no words for still shows the engine's own label, never just "Option N".
-        const branchTitle = escapeHtml(meta ? meta.title : `${actionLabels[b.toString()] || "Option"} ${b}`);
-        const branchDesc = escapeHtml(meta ? meta.desc : "");
+        const engineLabel = actionLabels[b.toString()];
+        const branchTitle = escapeHtml(meta ? render(meta.title) : engineLabel ? `${engineLabel} ${b}` : t("hud:optionNumber", { n: b }));
+        const branchDesc = escapeHtml(meta ? render(meta.desc) : "");
 
         buttonsHtml += `
           <button class="btn btn-secondary btn-block btn-hud-action btn-choice-card" data-primary="${b}" style="margin-bottom: 8px; text-align: left; padding: 8px 12px;">

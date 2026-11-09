@@ -2,6 +2,8 @@
  * The display state (bindings/state_json.cpp `display_state`, what Python's `GameState.to_dict()`
  * returns and web/server/replay_types.py `GameStateDict` types), plus the fields the page attaches.
  */
+import type { Message } from "./i18n";
+
 export interface CountryNode {
   id: number;
   name: string;
@@ -212,7 +214,10 @@ export interface RegionScores {
 
 /** A die roll and when it was made ("T3 AR4", "T2 Headline"). */
 export interface RecentRoll extends DieRollState {
+  /** In English, as data. */
   when: string;
+  /** The same as a Message (game/rolls.ts `rollWhen`), which the tray shows; `when` without it. */
+  whenMessage?: Message;
 }
 
 /** One country the other side's latest turn changed (influence deltas) or targeted. */
@@ -227,8 +232,10 @@ export interface LastTurnCountry {
 
 export interface LastTurn {
   player: "US" | "USSR";
-  /** "Setup", "Headline" or "T3 AR4". */
+  /** "Setup", "Headline" or "T3 AR4", in English, as data. */
   label: string;
+  /** The same as a Message (game/last_turn.ts `turnLabel`), which the map shows. */
+  labelMessage: Message;
   countries: LastTurnCountry[];
 }
 

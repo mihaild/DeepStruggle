@@ -211,20 +211,36 @@ export interface MessageFormat {
 
 const isMessage = (a: MessageArg): a is Message => typeof a === "object" && "key" in a;
 
-function formatArg(a: MessageArg, how: MessageFormat): string {
+/** What `renderEnglish` asks of every lookup: English, and unmarked even in the pseudo-language. */
+const ENGLISH = { lng: "en", applyPostProcessor: false } as const;
+
+/** A message id with its values, in the current language or (`english`) in English. */
+function lookup(key: string, values: object, english: boolean): string {
+  return (i18next.t as unknown as (k: string, o: object) => string)(key, english ? { ...values, ...ENGLISH } : values);
+}
+
+function formatArg(a: MessageArg, how: MessageFormat, english: boolean): string {
   const text = how.text ?? ((s: string) => s);
   if (typeof a === "string" || typeof a === "number") return text(String(a));
-  if (isMessage(a)) return render(a, how);
+  if (isMessage(a)) return renderIn(a, how, english);
   if ("card" in a) {
-    const name = cardName(a.card, a.name);
+    const name = english ? a.name : cardName(a.card, a.name);
     return how.card ? how.card(a.card, name) : text(name);
   }
   if ("country" in a) {
-    const name = countryName(a.country, a.name);
+    const name = english ? a.name : countryName(a.country, a.name);
     return how.country ? how.country(a.country, name) : text(name);
   }
-  if ("region" in a) return text(regionName(a.region));
-  return text(sideName(a.side));
+  if ("region" in a) return text(english ? a.region : regionName(a.region));
+  return text(english ? lookup(`common:side.${a.side}`, { defaultValue: a.side }, true) : sideName(a.side));
+}
+
+function renderIn(m: Message, how: MessageFormat, english: boolean): string {
+  const values: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(m.params ?? {})) {
+    values[k] = k === "count" && typeof v === "number" ? v : formatArg(v, how, english);
+  }
+  return lookup(m.key, values, english);
 }
 
 /**
@@ -233,9 +249,23 @@ function formatArg(a: MessageArg, how: MessageFormat): string {
  * markup is kept.
  */
 export function render(m: Message, how: MessageFormat = {}): string {
-  const values: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(m.params ?? {})) {
-    values[k] = k === "count" && typeof v === "number" ? v : formatArg(v, how);
-  }
-  return (i18next.t as unknown as (k: string, o: object) => string)(m.key, values);
+  return renderIn(m, how, false);
+}
+
+/**
+ * A message in English whatever the page's language, unmarked even in the pseudo-language, with its
+ * cards, countries and regions under their English names. Only for text that is still built as
+ * English and read back as data -- the action log's lines (game/describe.ts, game/log_view.ts) and
+ * the model's choice names (game/names.ts) -- until the log keeps Messages (i18n phase 2).
+ */
+export function renderEnglish(m: Message, how: MessageFormat = {}): string {
+  return renderIn(m, how, true);
+}
+
+/**
+ * A message id built at run time (a flag's, an enum name's) as a Message, or null when the English
+ * catalog has no such id -- the caller then shows what it showed before there was a catalog.
+ */
+export function messageIfKnown(key: string, params?: Record<string, MessageArg>): Message | null {
+  return i18next.exists(key, { lng: "en" }) ? message(key as MessageKey, params) : null;
 }

@@ -1,0 +1,33 @@
+{
+  "phase": {
+    "SETUP": "setup",
+    "HEADLINE": "headline",
+    "ACTION_ROUND": "action round",
+    "INTERRUPT": "interrupt",
+    "DISCARD": "discard",
+    "END_TURN": "end turn",
+    "GAME_OVER": "game over"
+  },
+  "decision": {
+    "NONE": "NONE",
+    "SELECT_CARD": "SELECT_CARD",
+    "SELECT_PLAY_MODE": "SELECT_PLAY_MODE",
+    "CHOOSE_TIMING_BRANCH": "CHOOSE_TIMING_BRANCH",
+    "SELECT_OP_MODE": "SELECT_OP_MODE",
+    "POINT_NODE": "POINT_NODE",
+    "CHOOSE_BRANCH": "CHOOSE_BRANCH",
+    "ROLL_DIE": "ROLL_DIE"
+  },
+  "resolution": {
+    "EVENT": "EVENT",
+    "SPACE": "SPACE",
+    "OPS_INFLUENCE": "OPS_INFLUENCE",
+    "OPS_COUP": "OPS_COUP",
+    "OPS_REALIGN": "OPS_REALIGN"
+  },
+  "opMode": {
+    "INFLUENCE": "INFLUENCE",
+    "COUP": "COUP",
+    "REALIGN": "REALIGN"
+  }
+}

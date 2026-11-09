@@ -5,60 +5,64 @@
  * branch is a number whose meaning is the event's: Chernobyl's is a region, Summit's and How I
  * Learned to Stop Worrying's the DEFCON level to set (Summit offers the current level and one either
  * side -- choosing the current one leaves DEFCON alone). The page used to show "Option 3" for those.
+ *
+ * The words are Messages (the `branches` namespace), rendered where they are shown, in the language
+ * of that moment.
  */
 import { GameState } from "../types";
 import { engineLayout, namesByValue, titleCase } from "../engine/layout";
+import { Message, MessageArg, message } from "../i18n";
 
 export interface BranchMeta {
   /** The button's title. */
-  title: string;
+  title: Message;
   /** The button's description. */
-  desc: string;
+  desc: Message;
   /** The log's verb phrase: "<player> <verb> (<event>)". */
-  verb: string;
+  verb: Message;
 }
 
-/** A region by the engine's `Region` value (Chernobyl's branch, the region head), in words. */
-export function regionName(region: number): string | undefined {
+/**
+ * A region by the engine's `Region` value (Chernobyl's branch, the region head) under its English
+ * name, the rules' ("Middle East"), which is what `regionName` (src/i18n) translates.
+ */
+export function regionEnglishName(region: number): string | undefined {
   const L = engineLayout();
   const name = L ? namesByValue(L.regions)[region] : undefined;
   return name === undefined ? undefined : titleCase(name);
 }
 
-/** By the event's ts::card_ids name. */
-const FIXED: Record<string, Record<number, BranchMeta>> = {
-  WARSAW_PACT_FORMED: {
-    0: { title: "Remove US influence", desc: "Remove all US influence from up to 4 countries in Eastern Europe.", verb: "removes US influence from Eastern Europe" },
-    1: { title: "Add USSR influence", desc: "Add 5 USSR influence in Eastern Europe (at most 2 per country).", verb: "adds USSR influence in Eastern Europe" },
-  },
-  OLYMPIC_GAMES: {
-    0: { title: "Participate", desc: "Both roll a die, the sponsor +2; the higher roll gains 2 VP.", verb: "participates in the Olympic Games" },
-    1: { title: "Boycott", desc: "DEFCON degrades by 1 and the sponsor conducts 4 Ops.", verb: "boycotts the Olympic Games" },
-  },
-  WARGAMES: {
-    0: { title: "End the game", desc: "Give the opponent 6 VP, then the game ends and is scored as it stands.", verb: "ends the game, giving the opponent 6 VP" },
-    1: { title: "Continue", desc: "Do not end the game.", verb: "declines to end the game" },
-  },
+/** A branch's three messages, all under one id: `branches:<id>.title`, `.desc`, `.verb`. */
+function branch(id: string, params?: Record<string, MessageArg>): BranchMeta {
+  const m = (part: string) => message(`branches:${id}.${part}` as Message["key"], params);
+  return { title: m("title"), desc: m("desc"), verb: m("verb") };
+}
+
+/** By the event's ts::card_ids name: each branch's id in the `branches` namespace. */
+const FIXED: Record<string, Record<number, string>> = {
+  WARSAW_PACT_FORMED: { 0: "warsawPact.remove", 1: "warsawPact.add" },
+  OLYMPIC_GAMES: { 0: "olympics.participate", 1: "olympics.boycott" },
+  WARGAMES: { 0: "wargames.end", 1: "wargames.continue" },
 };
 
 function defconLevel(level: number, current: number): BranchMeta {
   const how = level === current ? "unchanged" : level > current ? "improve" : "degrade";
-  const desc = level === 1 ? "DEFCON 1 ends the game: the phasing player loses."
-    : level === current ? `Leave DEFCON at ${current}.`
-    : `${level > current ? "Improve" : "Degrade"} DEFCON from ${current} to ${level}.`;
-  return { title: `Set DEFCON to ${level} (${how})`, desc, verb: `sets DEFCON to ${level} (${how})` };
+  const meta = branch(`defcon.${how}`, { level, current });
+  return level === 1 ? { ...meta, desc: message("branches:defcon.endsGame") } : meta;
 }
 
-/** The meaning of branch `branch` of `card`'s event in `state`, or null for an event it does not know. */
-export function branchMeta(card: number, branch: number, state: GameState): BranchMeta | null {
+/** The meaning of branch `branchIndex` of `card`'s event in `state`, or null for an event it does not know. */
+export function branchMeta(card: number, branchIndex: number, state: GameState): BranchMeta | null {
   const L = engineLayout();
   if (!L || !card) return null;
   const key = Object.keys(L.card_ids).find(k => L.card_ids[k] === card);
   if (key === "CHERNOBYL") {
-    const region = regionName(branch) ?? `region ${branch}`;
-    return { title: region, desc: `The USSR may not place influence in ${region} with Ops for the rest of the turn.`,
-             verb: `designates ${region}` };
+    const english = regionEnglishName(branchIndex);
+    const region: MessageArg = english !== undefined ? { region: english }
+      : message("branches:chernobyl.regionNumber", { n: branchIndex });
+    return branch("chernobyl", { region });
   }
-  if (key === "SUMMIT" || key === "HOW_I_LEARNED_TO_STOP_WORRYING") return defconLevel(branch, state.defcon);
-  return (key && FIXED[key]?.[branch]) || null;
+  if (key === "SUMMIT" || key === "HOW_I_LEARNED_TO_STOP_WORRYING") return defconLevel(branchIndex, state.defcon);
+  const id = key ? FIXED[key]?.[branchIndex] : undefined;
+  return id ? branch(id) : null;
 }
