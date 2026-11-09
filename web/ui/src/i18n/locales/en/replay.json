@@ -1,0 +1,11 @@
+{
+  "play": "▶ Play",
+  "pause": "⏸ Pause",
+  "stepLabel": "Step {{step}} / {{last}}",
+  "localReplays": "Local replays...",
+  "unreadable": "{{file}} (unreadable: {{error}})",
+  "entry": "{{game}} ({{steps}} steps)",
+  "entryWithWinner": "{{game}} ({{steps}} steps) [Winner: {{winner}}]",
+  "parseFailed": "Failed to parse replay file.",
+  "nothingToExport": "No replay data to export."
+}

@@ -1,0 +1,34 @@
+{
+  "standing": {
+    "none": "None",
+    "presence": "Presence",
+    "domination": "Domination",
+    "control": "Control"
+  },
+  "standingShort": {
+    "none": "—",
+    "presence": "Pres",
+    "domination": "Dom",
+    "control": "Ctrl"
+  },
+  "net": {
+    "winsGame": "{{side}} wins the game",
+    "winsShort": "{{side}} WINS",
+    "vp": "+{{vp}} {{side}}",
+    "even": "even"
+  },
+  "row": {
+    "countriesOneVp": "Countries (1 VP)",
+    "thailandTwoVp": "Thailand (2 VP)",
+    "standing": "Standing",
+    "battlegrounds": "Battlegrounds <small>of {{total}}</small>",
+    "otherCountries": "Other countries",
+    "nextToEnemy": "Next to the enemy",
+    "total": "Total"
+  },
+  "title": "{{region}} Scoring",
+  "controls": "{{side}} controls",
+  "none": "none",
+  "shuttleDiplomacy": "Shuttle Diplomacy: one USSR battleground is not counted in this scoring",
+  "cardWhere": "{{card}}: {{where}}"
+}

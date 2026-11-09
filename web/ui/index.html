@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Twilight Struggle Engine Workbench</title>
+  <title data-i18n="page:title">Twilight Struggle Engine Workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
@@ -13,10 +13,10 @@
   <div id="app">
     <div class="disclaimer-bar" id="disclaimer-bar" role="note">
       <div class="brand">
-        <span class="brand-title">TWILIGHT STRUGGLE</span>
-        <span class="brand-badge">ENGINE WORKBENCH</span>
+        <span class="brand-title" data-i18n="common:brand">TWILIGHT STRUGGLE</span>
+        <span class="brand-badge" data-i18n="page:brandBadge">ENGINE WORKBENCH</span>
       </div>
-      <span class="disclaimer-text">
+      <span class="disclaimer-text" data-i18n="common:disclaimer">
         Unofficial fan project, not affiliated with or endorsed by GMT Games.
         Twilight Struggle® is a registered trademark of GMT Games, LLC.
       </span>
@@ -32,22 +32,22 @@
       </div>
 
       <div class="tech-group" id="tech-mode">
-        <span class="tech-label">Play mode</span>
+        <span class="tech-label" data-i18n="page:tech.playMode">Play mode</span>
         <!-- Whose eyes the board is drawn for (game/view.ts): a player's view hides the other
              side's hand, face-down headline and options; the model plays that side. The page asks
              for it when it opens and when New Game is pressed (the mode dialog below). -->
-        <select id="view-select" class="view-select" title="Developer: everything. Play as US / USSR: the other side's private information is hidden and the model plays it.">
-          <option value="DEV">Developer</option>
-          <option value="US">Play as US</option>
-          <option value="USSR">Play as USSR</option>
+        <select id="view-select" class="view-select" title="Developer: everything. Play as US / USSR: the other side's private information is hidden and the model plays it." data-i18n-title="page:tech.viewTitle">
+          <option value="DEV" data-i18n="page:tech.viewDev">Developer</option>
+          <option value="US" data-i18n="page:tech.viewUs">Play as US</option>
+          <option value="USSR" data-i18n="page:tech.viewUssr">Play as USSR</option>
         </select>
-        <button id="btn-new-game" class="btn btn-secondary btn-sm" title="A new game with a fresh deal; asks for the play mode first">New Game</button>
+        <button id="btn-new-game" class="btn btn-secondary btn-sm" title="A new game with a fresh deal; asks for the play mode first" data-i18n="page:tech.newGame" data-i18n-title="page:tech.newGameTitle">New Game</button>
         <!-- Shown once the game is over: the result dialog, and its offer of the stats database. -->
-        <button id="btn-game-result" class="btn btn-primary btn-sm hidden" title="The result, and adding the game to the stats database">Result</button>
+        <button id="btn-game-result" class="btn btn-primary btn-sm hidden" title="The result, and adding the game to the stats database" data-i18n="page:tech.result" data-i18n-title="page:tech.resultTitle">Result</button>
       </div>
 
       <div class="tech-group tech-model" id="tech-model">
-        <span class="tech-label">Model</span>
+        <span class="tech-label" data-i18n="page:tech.model">Model</span>
         <!-- The model and how it plays, in one line (main.ts renderModelModeLabels). A click opens
              the model & search section (#model-mode-section) in #model-mode-dialog. -->
         <button id="btn-model-choose" class="model-mode-label" title="Choose the model -- a local checkpoint, a Hugging Face repo or an .onnx file -- and how it plays" aria-haspopup="dialog" aria-controls="model-mode-dialog">
@@ -59,18 +59,19 @@
         <!-- The model's readout (its win chances, move probabilities, search) and its badges on the
              board: on in the Developer view, off in a player's view, either switchable here. The
              model's own decisions stay hidden in a player's view regardless (main.ts setView). -->
-        <label class="analysis-toggle" title="Show the model's readout -- win chances, move probabilities, search -- and its badges on the board. On in the Developer view, off when you play a side.">
+        <label class="analysis-toggle" title="Show the model's readout -- win chances, move probabilities, search -- and its badges on the board. On in the Developer view, off when you play a side." data-i18n-title="page:tech.showAnalysisTitle">
           <input type="checkbox" id="analysis-visible-toggle">
-          Show analysis
+          <span data-i18n="page:tech.showAnalysis">Show analysis</span>
         </label>
       </div>
 
       <div class="tech-group tech-dev" id="tech-dev">
-        <span class="tech-label">Dev</span>
-        <button id="btn-undo-action" class="btn btn-warning btn-sm" title="Undo / Cancel Last Action (Ctrl+Z / Esc)">⟲ Cancel Action</button>
-        <button id="btn-toggle-debug" class="btn btn-secondary btn-sm">Debug Tools</button>
-        <button id="btn-toggle-replay" class="btn btn-primary btn-sm">Replay Mode</button>
-        <a id="link-leaderboard" class="btn btn-secondary btn-sm" href="leaderboard.html" title="Elo ratings of the published models">Leaderboard</a>
+        <span class="tech-label" data-i18n="page:tech.dev">Dev</span>
+        <button id="btn-undo-action" class="btn btn-warning btn-sm" title="Undo / Cancel Last Action (Ctrl+Z / Esc)" data-i18n="page:tech.cancelAction" data-i18n-title="page:tech.cancelActionTitle">⟲ Cancel Action</button>
+        <button id="btn-toggle-debug" class="btn btn-secondary btn-sm" data-i18n="page:tech.debugTools">Debug Tools</button>
+        <button id="btn-toggle-replay" class="btn btn-primary btn-sm" data-i18n="page:tech.replayMode">Replay Mode</button>
+        <a id="link-leaderboard" class="btn btn-secondary btn-sm" href="leaderboard.html" title="Elo ratings of the published models" data-i18n="page:tech.leaderboard" data-i18n-title="page:tech.leaderboardTitle">Leaderboard</a>
+        <label class="language-control"><span data-i18n="common:language">Language</span> <select data-language-select aria-label="Language" data-i18n-aria-label="common:language"></select></label>
       </div>
     </header>
 
@@ -91,10 +92,10 @@
         <!-- Cards & Hands (full visibility): both hands, the piles, and all 110 cards. -->
         <div class="panel hands-panel" id="hands-panel">
           <div class="tabs">
-            <button class="tab-btn active" data-tab="tab-ussr-hand">USSR (<span id="ussr-hand-count">0</span>)</button>
-            <button class="tab-btn" data-tab="tab-us-hand">US (<span id="us-hand-count">0</span>)</button>
-            <button class="tab-btn" data-tab="tab-board-cards">Piles</button>
-            <button class="tab-btn" data-tab="tab-all-cards" title="All 110 cards and where each one is">All (110)</button>
+            <button class="tab-btn active" data-tab="tab-ussr-hand"><span data-i18n="common:side.USSR">USSR</span> (<span id="ussr-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-us-hand"><span data-i18n="common:side.US">US</span> (<span id="us-hand-count">0</span>)</button>
+            <button class="tab-btn" data-tab="tab-board-cards" data-i18n="page:cards.piles">Piles</button>
+            <button class="tab-btn" data-tab="tab-all-cards" title="All 110 cards and where each one is" data-i18n="page:cards.all" data-i18n-title="page:cards.allTitle">All (110)</button>
           </div>
 
           <div class="tab-content active" id="tab-ussr-hand">
@@ -105,26 +106,26 @@
           </div>
           <div class="tab-content" id="tab-board-cards">
             <div id="china-card-container"></div>
-            <div class="draw-count-label"><span id="draw-count-name">Draw Deck</span>: <strong id="draw-count">0</strong> cards remaining</div>
+            <div class="draw-count-label"><span id="draw-count-name">Draw Deck</span>: <strong id="draw-count">0</strong> <span data-i18n="page:cards.cardsRemaining">cards remaining</span></div>
             <!-- The piles as the hands are drawn, packed, by side then Ops (cards_view.ts renderPile). -->
-            <div class="pile-head">Discard Pile <span class="pile-head-count" id="discard-count">0</span></div>
+            <div class="pile-head"><span data-i18n="page:cards.discardPile">Discard Pile</span> <span class="pile-head-count" id="discard-count">0</span></div>
             <div class="card-list card-list-packed" id="discard-cards-list"></div>
-            <div class="pile-head">Removed from Game <span class="pile-head-count" id="removed-count">0</span></div>
+            <div class="pile-head"><span data-i18n="page:cards.removedFromGame">Removed from Game</span> <span class="pile-head-count" id="removed-count">0</span></div>
             <div class="card-list card-list-packed" id="removed-cards-list"></div>
           </div>
           <div class="tab-content" id="tab-all-cards">
             <div class="all-cards-controls">
-              <input type="text" id="all-cards-search" placeholder="Search cards by name/ID..." class="all-cards-search-input">
+              <input type="text" id="all-cards-search" placeholder="Search cards by name/ID..." data-i18n-placeholder="page:cards.searchPlaceholder" class="all-cards-search-input">
               <select id="all-cards-filter" class="all-cards-filter-select">
-                <option value="ALL">All (110 Cards)</option>
-                <option value="HAND_US">US Hand</option>
-                <option value="HAND_USSR">USSR Hand</option>
+                <option value="ALL" data-i18n="page:cards.filterAll">All (110 Cards)</option>
+                <option value="HAND_US" data-i18n="page:cards.filterUsHand">US Hand</option>
+                <option value="HAND_USSR" data-i18n="page:cards.filterUssrHand">USSR Hand</option>
                 <option value="DRAW_DECK">Draw Deck</option>
-                <option value="DISCARD_PILE">Discard Pile</option>
-                <option value="REMOVED_FROM_GAME">Removed Pile</option>
-                <option value="ONGOING_EVENT">Ongoing / China</option>
-                <option value="UNAVAILABLE">Future Era</option>
-                <option value="PEEKED_TEMP">Drawn, being chosen</option>
+                <option value="DISCARD_PILE" data-i18n="page:cards.filterDiscard">Discard Pile</option>
+                <option value="REMOVED_FROM_GAME" data-i18n="page:cards.filterRemoved">Removed Pile</option>
+                <option value="ONGOING_EVENT" data-i18n="page:cards.filterOngoing">Ongoing / China</option>
+                <option value="UNAVAILABLE" data-i18n="page:cards.filterFuture">Future Era</option>
+                <option value="PEEKED_TEMP" data-i18n="page:cards.filterPeeked">Drawn, being chosen</option>
               </select>
             </div>
             <div class="card-list all-cards-scroll-list" id="all-cards-list"></div>
@@ -137,20 +138,20 @@
         <!-- The effects that last for this turn, always in view (cards_view.ts renderTurnEffects). -->
         <div class="map-turn-effects" id="map-turn-effects"></div>
         <div class="map-viewport-controls">
-          <button id="btn-zoom-in" class="btn-icon" title="Zoom In">+</button>
-          <button id="btn-zoom-out" class="btn-icon" title="Zoom Out">−</button>
-          <button id="btn-zoom-reset" class="btn-icon" title="Reset View">⟲</button>
+          <button id="btn-zoom-in" class="btn-icon" title="Zoom In" data-i18n-title="page:map.zoomIn">+</button>
+          <button id="btn-zoom-out" class="btn-icon" title="Zoom Out" data-i18n-title="page:map.zoomOut">−</button>
+          <button id="btn-zoom-reset" class="btn-icon" title="Reset View" data-i18n-title="page:map.resetView">⟲</button>
           <div class="map-legend-toggle" id="map-legend"></div>
         </div>
         <!-- Frame one region (map_view.ts zoomToRegion), like the region buttons of the app. -->
-        <nav class="map-region-jump" id="map-region-jump" aria-label="Zoom to a region">
-          <button data-region="Europe" title="Europe">Eu</button>
-          <button data-region="Asia" title="Asia">As</button>
-          <button data-region="Southeast Asia" title="Southeast Asia">SE</button>
-          <button data-region="Middle East" title="Middle East">ME</button>
-          <button data-region="Africa" title="Africa">Af</button>
-          <button data-region="Central America" title="Central America">CA</button>
-          <button data-region="South America" title="South America">SA</button>
+        <nav class="map-region-jump" id="map-region-jump" aria-label="Zoom to a region" data-i18n-aria-label="page:map.regionJump">
+          <button data-region="Europe" title="Europe" data-i18n="page:map.regionShort.europe" data-i18n-title="page:map.region.europe">Eu</button>
+          <button data-region="Asia" title="Asia" data-i18n="page:map.regionShort.asia" data-i18n-title="page:map.region.asia">As</button>
+          <button data-region="Southeast Asia" title="Southeast Asia" data-i18n="page:map.regionShort.southeastAsia" data-i18n-title="page:map.region.southeastAsia">SE</button>
+          <button data-region="Middle East" title="Middle East" data-i18n="page:map.regionShort.middleEast" data-i18n-title="page:map.region.middleEast">ME</button>
+          <button data-region="Africa" title="Africa" data-i18n="page:map.regionShort.africa" data-i18n-title="page:map.region.africa">Af</button>
+          <button data-region="Central America" title="Central America" data-i18n="page:map.regionShort.centralAmerica" data-i18n-title="page:map.region.centralAmerica">CA</button>
+          <button data-region="South America" title="South America" data-i18n="page:map.regionShort.southAmerica" data-i18n-title="page:map.region.southAmerica">SA</button>
         </nav>
         <!-- A player's view: what the other side's latest turn did (map_view.ts renderLastTurnSummary). -->
         <div class="map-last-turn hidden" id="map-last-turn"></div>
@@ -166,7 +167,7 @@
         <!-- Section 1: Decision & Interactive HUD -->
         <div class="panel decision-panel" id="decision-panel">
           <div class="panel-header">
-            <h3>CURRENT ACTION</h3>
+            <h3 data-i18n="page:panels.currentAction">CURRENT ACTION</h3>
             <span id="decision-type-badge" class="badge">POINT_NODE</span>
           </div>
           <div class="decision-body" id="decision-body">
@@ -178,18 +179,18 @@
              the position, recomputed in the page on every move (analysis_view.ts). -->
         <div class="panel analysis-panel" id="analysis-panel">
           <div class="panel-header">
-            <h3>MODEL ANALYSIS</h3>
+            <h3 data-i18n="page:panels.modelAnalysis">MODEL ANALYSIS</h3>
             <span id="analysis-status" class="badge">off</span>
           </div>
           <!-- The model itself is chosen in the technical bar (#tech-model); here is what it says. -->
           <div class="analysis-controls">
-            <button id="btn-play-favourite" class="btn btn-primary btn-sm" title="Play the model's most likely move (F)" disabled>★ Play favourite</button>
-            <label class="analysis-autoplay" title="This side plays the model's favourite automatically; you play the other">
-              Auto-play
+            <button id="btn-play-favourite" class="btn btn-primary btn-sm" title="Play the model's most likely move (F)" disabled data-i18n="page:analysis.playFavourite">★ Play favourite</button>
+            <label class="analysis-autoplay" title="This side plays the model's favourite automatically; you play the other" data-i18n-title="page:analysis.autoplayTitle">
+              <span data-i18n="page:analysis.autoplay">Auto-play</span>
               <select id="analysis-autoplay-select" class="analysis-select">
-                <option value="">none</option>
-                <option value="USSR">USSR</option>
-                <option value="US">US</option>
+                <option value="" data-i18n="page:analysis.autoplayNone">none</option>
+                <option value="USSR" data-i18n="common:side.USSR">USSR</option>
+                <option value="US" data-i18n="common:side.US">US</option>
               </select>
             </label>
           </div>
@@ -200,7 +201,7 @@
              position. Present only for replays that carry a trace; hidden otherwise. -->
         <div class="panel trace-panel hidden" id="trace-panel">
           <div class="panel-header">
-            <h3>MODEL READOUT</h3>
+            <h3 data-i18n="page:panels.modelReadout">MODEL READOUT</h3>
             <span id="trace-source-badge" class="badge">policy</span>
           </div>
           <div id="trace-panel-body" class="trace-body">
@@ -211,7 +212,7 @@
         <!-- Section 3: Persistent Flags & Context Stack -->
         <div class="panel effects-panel">
           <div class="panel-header">
-            <h3>ACTIVE EFFECTS & CONTEXT</h3>
+            <h3 data-i18n="page:panels.activeEffects">ACTIVE EFFECTS & CONTEXT</h3>
           </div>
           <div id="active-flags-container" class="flags-list"></div>
           <div id="context-stack-container" class="context-stack"></div>
@@ -224,27 +225,27 @@
     <div id="mode-dialog" class="modal-backdrop mode-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="mode-dialog-title">
       <div class="modal-content mode-dialog-content">
         <div class="modal-header">
-          <h2 id="mode-dialog-title">How do you want to play?</h2>
-          <button id="mode-dialog-close" class="btn-icon" title="Keep the current mode (Esc)">✕</button>
+          <h2 id="mode-dialog-title" data-i18n="page:mode.title">How do you want to play?</h2>
+          <button id="mode-dialog-close" class="btn-icon" title="Keep the current mode (Esc)" data-i18n-title="page:mode.closeTitle">✕</button>
         </div>
         <div class="modal-body mode-dialog-body">
           <!-- The model & search section (#model-mode-section), folded: main.ts askMode moves it in
                here and openModelMode back into #model-mode-dialog. -->
           <details id="mode-model-details" class="mode-model-details">
-            <summary><span class="mode-model-summary-label">Model</span> <span id="mode-model-summary">no model · Policy</span></summary>
+            <summary><span class="mode-model-summary-label" data-i18n="page:tech.model">Model</span> <span id="mode-model-summary">no model · Policy</span></summary>
             <div id="mode-model-slot" class="mode-model-slot"></div>
           </details>
           <button id="mode-choice-dev" class="mode-choice" data-mode="DEV">
-            <span class="mode-choice-title">Developer</span>
-            <span class="mode-choice-text">Both hands, every option, the debug tools and replays. You move both sides, or let the model play one.</span>
+            <span class="mode-choice-title" data-i18n="page:tech.viewDev">Developer</span>
+            <span class="mode-choice-text" data-i18n="page:mode.devText">Both hands, every option, the debug tools and replays. You move both sides, or let the model play one.</span>
           </button>
           <button id="mode-choice-us" class="mode-choice mode-choice-us" data-mode="US">
-            <span class="mode-choice-title">Play as US</span>
-            <span class="mode-choice-text">The USSR's hand and headline stay hidden; the model plays the USSR. No hints: its win chances and move probabilities stay off unless you turn on Show analysis.</span>
+            <span class="mode-choice-title" data-i18n="page:tech.viewUs">Play as US</span>
+            <span class="mode-choice-text" data-i18n="page:mode.usText">The USSR's hand and headline stay hidden; the model plays the USSR. No hints: its win chances and move probabilities stay off unless you turn on Show analysis.</span>
           </button>
           <button id="mode-choice-ussr" class="mode-choice mode-choice-ussr" data-mode="USSR">
-            <span class="mode-choice-title">Play as USSR</span>
-            <span class="mode-choice-text">The US's hand and headline stay hidden; the model plays the US. No hints: its win chances and move probabilities stay off unless you turn on Show analysis.</span>
+            <span class="mode-choice-title" data-i18n="page:tech.viewUssr">Play as USSR</span>
+            <span class="mode-choice-text" data-i18n="page:mode.ussrText">The US's hand and headline stay hidden; the model plays the US. No hints: its win chances and move probabilities stay off unless you turn on Show analysis.</span>
           </button>
           <p class="mode-dialog-note" id="mode-dialog-note"></p>
         </div>
@@ -256,8 +257,8 @@
     <div id="model-mode-dialog" class="modal-backdrop model-mode-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="model-mode-dialog-title">
       <div class="modal-content model-mode-dialog-content">
         <div class="modal-header">
-          <h2 id="model-mode-dialog-title">Model &amp; play mode</h2>
-          <button id="model-mode-dialog-close" class="btn-icon" title="Close (Esc)">✕</button>
+          <h2 id="model-mode-dialog-title" data-i18n="page:model.dialogTitle">Model &amp; play mode</h2>
+          <button id="model-mode-dialog-close" class="btn-icon" title="Close (Esc)" data-i18n-title="page:dialog.closeTitle">✕</button>
         </div>
         <div class="modal-body" id="model-mode-dialog-body">
           <!-- The section: where the model comes from (analysis_view.ts binds these by id) and how
@@ -270,25 +271,25 @@
             </div>
             <div id="model-chooser" class="model-chooser">
               <div class="model-controls">
-                <select id="analysis-source-select" class="analysis-select analysis-source" title="Where the model comes from">
-                  <option value="">— analysis off —</option>
-                  <option value="local" id="analysis-source-local-option">Local checkpoints</option>
-                  <option value="hf">Hugging Face</option>
-                  <option value="file">.onnx file</option>
+                <select id="analysis-source-select" class="analysis-select analysis-source" title="Where the model comes from" data-i18n-title="page:model.sourceTitle">
+                  <option value="" data-i18n="page:model.sourceOff">— analysis off —</option>
+                  <option value="local" id="analysis-source-local-option" data-i18n="page:model.sourceLocal">Local checkpoints</option>
+                  <option value="hf" data-i18n="page:model.sourceHf">Hugging Face</option>
+                  <option value="file" data-i18n="page:model.sourceFile">.onnx file</option>
                 </select>
                 <div id="analysis-src-local" class="analysis-src hidden">
-                  <select id="analysis-run-select" class="analysis-select" title="Training run"></select>
-                  <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" disabled></select>
+                  <select id="analysis-run-select" class="analysis-select" title="Training run" data-i18n-title="page:model.runTitle"></select>
+                  <select id="analysis-snapshot-select" class="analysis-select analysis-snapshot" title="Snapshot" data-i18n-title="page:model.snapshotTitle" disabled></select>
                 </div>
                 <div id="analysis-src-hf" class="analysis-src hidden">
-                  <input id="analysis-hf-repo" class="analysis-select" placeholder="owner/repo" title="A public Hugging Face model repo holding .onnx exports (tools/export_onnx.py)">
-                  <input id="analysis-hf-revision" class="analysis-select analysis-snapshot" value="main" title="Branch, tag or commit">
-                  <button id="analysis-hf-list" class="btn btn-secondary btn-sm" title="List the repo's .onnx files">List</button>
-                  <select id="analysis-hf-file" class="analysis-select" title="Model file"></select>
-                  <button id="analysis-hf-clear" class="btn btn-secondary btn-sm" disabled>Clear cache</button>
+                  <input id="analysis-hf-repo" class="analysis-select" placeholder="owner/repo" title="A public Hugging Face model repo holding .onnx exports (tools/export_onnx.py)" data-i18n-title="page:model.hfRepoTitle">
+                  <input id="analysis-hf-revision" class="analysis-select analysis-snapshot" value="main" title="Branch, tag or commit" data-i18n-title="page:model.hfRevisionTitle">
+                  <button id="analysis-hf-list" class="btn btn-secondary btn-sm" title="List the repo's .onnx files" data-i18n="page:model.hfList" data-i18n-title="page:model.hfListTitle">List</button>
+                  <select id="analysis-hf-file" class="analysis-select" title="Model file" data-i18n-title="page:model.hfFileTitle"></select>
+                  <button id="analysis-hf-clear" class="btn btn-secondary btn-sm" disabled data-i18n="page:model.hfClear">Clear cache</button>
                 </div>
                 <div id="analysis-src-file" class="analysis-src hidden">
-                  <input id="analysis-file-input" type="file" accept=".onnx" class="analysis-file" title="An .onnx export (tools/export_onnx.py); you can also drop it anywhere on the page">
+                  <input id="analysis-file-input" type="file" accept=".onnx" class="analysis-file" title="An .onnx export (tools/export_onnx.py); you can also drop it anywhere on the page" data-i18n-title="page:model.fileTitle">
                 </div>
               </div>
             </div>
@@ -298,32 +299,32 @@
                  default (the Hugging Face repo's models.json), one from `search=` in the URL, or
                  what #search-settings say; the URL carries the one in force. -->
             <fieldset class="mode-opponent" id="mode-opponent">
-              <legend>The model plays with</legend>
-              <label class="mode-opponent-option" title="Its top moves each played out by the model in sampled worlds, then the best only on a clear lead over the policy's move. By default the search the Hugging Face repo names (the best player on the leaderboard); the search settings below, or search=rollout:k:worlds:horizon:rule:stop:leaf[:keyed][:aligned][:box4][:beliefN] in the address, for another.">
+              <legend data-i18n="page:search.legend">The model plays with</legend>
+              <label class="mode-opponent-option" title="Its top moves each played out by the model in sampled worlds, then the best only on a clear lead over the policy's move. By default the search the Hugging Face repo names (the best player on the leaderboard); the search settings below, or search=rollout:k:worlds:horizon:rule:stop:leaf[:keyed][:aligned][:box4][:beliefN] in the address, for another." data-i18n-title="page:search.rolloutTitle">
                 <input type="radio" name="mode-opponent" value="rollout" id="mode-opponent-rollout">
-                <span><b>Rollout root</b> -- its strongest player: <span id="mode-opponent-rollout-spec">its top 4 moves, each played out in 32 sampled worlds</span>. A few seconds a move.</span>
+                <span id="mode-opponent-rollout-label"><b>Rollout root</b> -- its strongest player: <span id="mode-opponent-rollout-spec">its top 4 moves, each played out in 32 sampled worlds</span>. A few seconds a move.</span>
               </label>
               <label class="mode-opponent-option">
                 <input type="radio" name="mode-opponent" value="policy" id="mode-opponent-policy">
-                <span><b>Policy</b> -- its most likely move, at once.</span>
+                <span id="mode-opponent-policy-label"><b>Policy</b> -- its most likely move, at once.</span>
               </label>
               <details class="search-settings" id="search-settings">
-                <summary>Search settings <code id="search-settings-code" class="search-settings-code"></code></summary>
+                <summary><span data-i18n="page:search.settings">Search settings</span> <code id="search-settings-code" class="search-settings-code"></code></summary>
                 <div class="search-settings-grid">
-                  <label title="The candidates: the policy's most probable moves">Moves <input type="number" id="ss-k" min="1" step="1"></label>
-                  <label title="Sampled worlds each candidate is played out in">Worlds <input type="number" id="ss-worlds" min="1" step="1"></label>
-                  <label title="Action-round boundaries a playout runs through">Horizon <input type="number" id="ss-horizon" min="0" step="1"></label>
-                  <label title="The choice: argmax, z&lt;x&gt; (the best only on an x-SE lead over the policy's move) or kl&lt;t&gt;">Rule <input type="text" id="ss-rule" size="6" spellcheck="false"></label>
-                  <label title="Where a playout stops">Stop <select id="ss-stop"></select></label>
-                  <label title="Whose side a leaf is read from">Leaf <select id="ss-leaf"></select></label>
-                  <label title="How a world's candidates share chance: one dice stream (shared), each draw tied to its situation (chance=keyed), or keyed with the player fields packed so a USSR side cannot hide the turn (chance=keyed2)">Chance <select id="ss-chance"><option value="shared">shared</option><option value="keyed">keyed</option><option value="keyed2">keyed2</option></select></label>
-                  <label class="ss-flag" title="Every candidate's horizon counted from the end of the mover's own action round"><input type="checkbox" id="ss-aligned"> aligned horizon</label>
-                  <label class="ss-flag" title="The opponent's headline revealed by Space Race box 4 kept in every world"><input type="checkbox" id="ss-box4"> box 4 headline</label>
-                  <label title="Worlds dealt from the policy-likelihood belief over the opponent's hand, with this many hands; 0 = uniform redeals">Belief hands <input type="number" id="ss-belief" min="0" step="1"></label>
-                  <label title="Worlds every candidate plays before a challenger trailing the policy's move leaves the race; the other worlds are played by the policy's move and the challengers left. 0 = every candidate on every world">Race worlds <input type="number" id="ss-race" min="0" step="1"></label>
+                  <label title="The candidates: the policy's most probable moves" data-i18n-title="page:search.movesTitle"><span data-i18n="page:search.moves">Moves</span> <input type="number" id="ss-k" min="1" step="1"></label>
+                  <label title="Sampled worlds each candidate is played out in" data-i18n-title="page:search.worldsTitle"><span data-i18n="page:search.worlds">Worlds</span> <input type="number" id="ss-worlds" min="1" step="1"></label>
+                  <label title="Action-round boundaries a playout runs through" data-i18n-title="page:search.horizonTitle"><span data-i18n="page:search.horizon">Horizon</span> <input type="number" id="ss-horizon" min="0" step="1"></label>
+                  <label title="The choice: argmax, z&lt;x&gt; (the best only on an x-SE lead over the policy's move) or kl&lt;t&gt;" data-i18n-title="page:search.ruleTitle"><span data-i18n="page:search.rule">Rule</span> <input type="text" id="ss-rule" size="6" spellcheck="false"></label>
+                  <label title="Where a playout stops" data-i18n-title="page:search.stopTitle"><span data-i18n="page:search.stop">Stop</span> <select id="ss-stop"></select></label>
+                  <label title="Whose side a leaf is read from" data-i18n-title="page:search.leafTitle"><span data-i18n="page:search.leaf">Leaf</span> <select id="ss-leaf"></select></label>
+                  <label title="How a world's candidates share chance: one dice stream (shared), each draw tied to its situation (chance=keyed), or keyed with the player fields packed so a USSR side cannot hide the turn (chance=keyed2)" data-i18n-title="page:search.chanceTitle"><span data-i18n="page:search.chance">Chance</span> <select id="ss-chance"><option value="shared">shared</option><option value="keyed">keyed</option><option value="keyed2">keyed2</option></select></label>
+                  <label class="ss-flag" title="Every candidate's horizon counted from the end of the mover's own action round" data-i18n-title="page:search.alignedTitle"><input type="checkbox" id="ss-aligned"> <span data-i18n="page:search.aligned">aligned horizon</span></label>
+                  <label class="ss-flag" title="The opponent's headline revealed by Space Race box 4 kept in every world" data-i18n-title="page:search.box4Title"><input type="checkbox" id="ss-box4"> <span data-i18n="page:search.box4">box 4 headline</span></label>
+                  <label title="Worlds dealt from the policy-likelihood belief over the opponent's hand, with this many hands; 0 = uniform redeals" data-i18n-title="page:search.beliefTitle"><span data-i18n="page:search.belief">Belief hands</span> <input type="number" id="ss-belief" min="0" step="1"></label>
+                  <label title="Worlds every candidate plays before a challenger trailing the policy's move leaves the race; the other worlds are played by the policy's move and the challengers left. 0 = every candidate on every world" data-i18n-title="page:search.raceTitle"><span data-i18n="page:search.race">Race worlds</span> <input type="number" id="ss-race" min="0" step="1"></label>
                 </div>
                 <div class="search-settings-foot">
-                  <button id="ss-default" class="btn btn-secondary btn-sm">Default</button>
+                  <button id="ss-default" class="btn btn-secondary btn-sm" data-i18n="page:search.default">Default</button>
                   <span id="ss-error" class="search-settings-error" role="status"></span>
                 </div>
               </details>
@@ -338,25 +339,25 @@
     <div id="result-dialog" class="modal-backdrop result-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="result-dialog-title">
       <div class="modal-content result-dialog-content">
         <div class="modal-header">
-          <h2 id="result-dialog-title">Game over</h2>
-          <button id="result-dialog-close" class="btn-icon" title="Close (Esc)">✕</button>
+          <h2 id="result-dialog-title" data-i18n="page:result.title">Game over</h2>
+          <button id="result-dialog-close" class="btn-icon" title="Close (Esc)" data-i18n-title="page:dialog.closeTitle">✕</button>
         </div>
         <div class="modal-body result-dialog-body">
           <p id="result-dialog-outcome" class="result-outcome"></p>
           <dl id="result-dialog-facts" class="result-facts"></dl>
           <div id="result-dialog-notes" class="result-notes"></div>
           <form id="result-form" class="result-form" novalidate>
-            <p class="result-form-intro">Add this game to the stats database? With your Playdek rating, games like it estimate the models' strength on Playdek's scale.</p>
+            <p class="result-form-intro" data-i18n="page:result.formIntro">Add this game to the stats database? With your Playdek rating, games like it estimate the models' strength on Playdek's scale.</p>
             <div class="result-fields">
-              <label>Playdek login <input id="result-login" type="text" autocomplete="username" maxlength="64" spellcheck="false"></label>
-              <label>Playdek rating <input id="result-rating" type="number" inputmode="numeric" min="1" max="5000" step="1"></label>
+              <label><span data-i18n="page:result.login">Playdek login</span> <input id="result-login" type="text" autocomplete="username" maxlength="64" spellcheck="false"></label>
+              <label><span data-i18n="page:result.rating">Playdek rating</span> <input id="result-rating" type="number" inputmode="numeric" min="1" max="5000" step="1"></label>
             </div>
-            <label class="result-note-label">Note (optional) <textarea id="result-note" maxlength="500" rows="2"></textarea></label>
-            <p class="result-privacy">Stored privately: your login and rating, the game's moves, the model and how it played, and this page's version. Nothing is sent unless you press Add.</p>
+            <label class="result-note-label"><span data-i18n="page:result.note">Note (optional)</span> <textarea id="result-note" maxlength="500" rows="2"></textarea></label>
+            <p class="result-privacy" data-i18n="page:result.privacy">Stored privately: your login and rating, the game's moves, the model and how it played, and this page's version. Nothing is sent unless you press Add.</p>
             <div class="result-actions">
-              <button type="submit" id="result-submit" class="btn btn-primary btn-sm">Add to database</button>
-              <button type="button" id="result-download" class="btn btn-secondary btn-sm" title="The record as the database would get it, as a .json file">Download record</button>
-              <button type="button" id="result-skip" class="btn btn-secondary btn-sm">Not now</button>
+              <button type="submit" id="result-submit" class="btn btn-primary btn-sm" data-i18n="page:result.submit">Add to database</button>
+              <button type="button" id="result-download" class="btn btn-secondary btn-sm" title="The record as the database would get it, as a .json file" data-i18n="page:result.download" data-i18n-title="page:result.downloadTitle">Download record</button>
+              <button type="button" id="result-skip" class="btn btn-secondary btn-sm" data-i18n="page:result.skip">Not now</button>
             </div>
             <p id="result-status" class="result-status" role="status"></p>
           </form>
@@ -365,7 +366,7 @@
     </div>
 
     <!-- Bottom Bar: Action Log & Replay Transport Controls with Resizer -->
-    <div class="bottom-bar-resizer" id="bottom-resizer" title="Drag vertically to resize panel">
+    <div class="bottom-bar-resizer" id="bottom-resizer" title="Drag vertically to resize panel" data-i18n-title="page:log.resizerTitle">
       <div class="resizer-handle"></div>
     </div>
     <footer class="bottom-bar" id="bottom-panel">
@@ -373,13 +374,13 @@
       <div class="log-stream-container">
         <div class="log-header-row">
           <div class="log-header-left">
-            <span class="log-header">ACTION STREAM</span>
+            <span class="log-header" data-i18n="page:log.title">ACTION STREAM</span>
             <span class="log-count-badge" id="log-count">0 events</span>
           </div>
           <div class="log-header-right">
-            <label class="log-filter-checkbox" title="Filter log to only show lines affecting VP and 2 context lines before and 2 context lines after">
+            <label class="log-filter-checkbox" title="Filter log to only show lines affecting VP and 2 context lines before and 2 context lines after" data-i18n-title="page:log.vpFilterTitle">
               <input type="checkbox" id="chk-filter-vp">
-              <span>🎯 VP Events (±2 Context)</span>
+              <span data-i18n="page:log.vpFilter">🎯 VP Events (±2 Context)</span>
             </label>
           </div>
         </div>
@@ -389,34 +390,34 @@
       <!-- Replay Transport Controls (Visible in Replay or Debug Mode) -->
       <div class="replay-toolbar" id="replay-toolbar">
         <div class="transport-controls">
-          <button id="btn-rep-first" class="btn-icon" title="First Step">⏮</button>
-          <button id="btn-rep-prev" class="btn-icon" title="Previous Step">◀</button>
-          <button id="btn-rep-play" class="btn btn-primary btn-sm">▶ Play</button>
-          <button id="btn-rep-next" class="btn-icon" title="Next Step">▶</button>
-          <button id="btn-rep-last" class="btn-icon" title="Last Step">⏭</button>
+          <button id="btn-rep-first" class="btn-icon" title="First Step" data-i18n-title="page:replay.firstTitle">⏮</button>
+          <button id="btn-rep-prev" class="btn-icon" title="Previous Step" data-i18n-title="page:replay.prevTitle">◀</button>
+          <button id="btn-rep-play" class="btn btn-primary btn-sm" data-i18n="replay:play">▶ Play</button>
+          <button id="btn-rep-next" class="btn-icon" title="Next Step" data-i18n-title="page:replay.nextTitle">▶</button>
+          <button id="btn-rep-last" class="btn-icon" title="Last Step" data-i18n-title="page:replay.lastTitle">⏭</button>
         </div>
         <div class="timeline-container">
           <span id="rep-step-label">Step 0 / 0</span>
           <input type="range" id="rep-timeline-slider" min="0" max="0" value="0">
           <!-- The calibrated critic across the whole game as P(US wins), one column per step:
                each position read from the side to move there. Empty for a replay without a trace. -->
-          <div class="value-ribbon hidden" id="rep-value-ribbon" title="Critic: P(US wins) across the game, each position read from the side to move (the only trained reading); the faint dashed line is the other, untrained side's reading. Click to seek."></div>
+          <div class="value-ribbon hidden" id="rep-value-ribbon" title="Critic: P(US wins) across the game, each position read from the side to move (the only trained reading); the faint dashed line is the other, untrained side's reading. Click to seek." data-i18n-title="page:replay.ribbonTitle"></div>
         </div>
         <div class="replay-options">
-          <select id="rep-server-select" class="replay-select-dropdown" title="Replays in the local server's replay directory">
-            <option value="">Local replays...</option>
+          <select id="rep-server-select" class="replay-select-dropdown" title="Replays in the local server's replay directory" data-i18n-title="page:replay.serverTitle">
+            <option value="" data-i18n="replay:localReplays">Local replays...</option>
           </select>
-          <label>Speed:
+          <label><span data-i18n="page:replay.speed">Speed:</span>
             <select id="rep-speed-select">
               <option value="1000">1.0s</option>
               <option value="500" selected>0.5s</option>
               <option value="200">0.2s</option>
-              <option value="50">Fast</option>
+              <option value="50" data-i18n="page:replay.fast">Fast</option>
             </select>
           </label>
-          <button id="btn-rep-export" class="btn btn-secondary btn-sm">Export Replay</button>
+          <button id="btn-rep-export" class="btn btn-secondary btn-sm" data-i18n="page:replay.export">Export Replay</button>
           <label class="btn btn-secondary btn-sm file-upload-label">
-            Load Replay <input type="file" id="input-replay-file" accept=".json" style="display: none;">
+            <span data-i18n="page:replay.load">Load Replay</span> <input type="file" id="input-replay-file" accept=".json" style="display: none;">
           </label>
         </div>
       </div>

@@ -1,0 +1,145 @@
+{
+  "where": {
+    "drawn": "Drawn",
+    "discardPile": "Discard pile",
+    "ussrHand": "USSR hand",
+    "usHand": "US hand",
+    "removed": "Removed",
+    "drawDeck": "Draw deck"
+  },
+  "cardNumber": "Card #{{id}}",
+  "countryNumber": "Country #{{id}}",
+  "event": "Event",
+  "cardOpsSide": "{{ops}} Ops · {{side}}",
+  "cardSide": {
+    "us": "US",
+    "ussr": "USSR",
+    "neutral": "NEUTRAL"
+  },
+  "cardChoice": {
+    "blockade": "<strong>{{who}}:</strong> <em>Blockade</em> is resolving! Select and discard a card with <strong>Operations ≥ 3</strong> from hand to maintain US influence in West Germany (or confirm/pass to forfeit influence):",
+    "saltNegotiations": "<strong>{{who}}:</strong> <em>SALT Negotiations</em>: Select a non-scoring card from the Discard Pile to return to hand:",
+    "ourManInTehran": "<strong>{{who}}:</strong> <em>Our Man in Tehran</em>: these are the cards drawn from the deck. Discard any of them, one at a time; <em>Done</em> returns the rest to the deck:",
+    "starWars": "<strong>{{who}}:</strong> <em>Star Wars</em>: Select a non-scoring card from the Discard Pile -- its Event is played immediately:",
+    "fiveYearPlan": "<strong>{{who}}:</strong> <em>Five Year Plan</em>: Select a card from hand to discard:",
+    "missileEnvy": "<strong>{{who}}:</strong> <em>Missile Envy</em>: Select your highest Ops card to transfer to opponent:",
+    "aldrichAmes": "<strong>{{who}}:</strong> <em>Aldrich Ames</em>: Select a card from US hand to discard:",
+    "grainSales": "<strong>{{who}}:</strong> <em>Grain Sales</em>: Select a card from USSR hand:",
+    "askNot": "<strong>{{who}}:</strong> <em>Ask Not What Your Country Can Do For You</em>: Select cards from hand to discard:",
+    "terrorism": "<strong>{{who}}:</strong> <em>Terrorism</em>: Select a card from hand to discard:",
+    "spaceWalk": "<strong>{{who}}:</strong> <em>Eagle / Bear Has Landed (Space Race Box 6)</em>: You may discard 1 card from hand at turn end (or click Pass to retain full hand):"
+  },
+  "branchAsk": {
+    "chernobyl": "designate a region: the USSR may not place influence there with Ops for the rest of the turn",
+    "summit": "set DEFCON (the Summit winner may move it by 1, or leave it)",
+    "howILearned": "set DEFCON to any level",
+    "default": "choose an option"
+  },
+  "mode": {
+    "ops": "{{ops}} Ops",
+    "cardsOps": "the card's Ops",
+    "event": {
+      "title": "Resolve the Event",
+      "desc": "Trigger the printed event. On an opponent's card this is the event-first branch — you choose how to spend the Ops afterwards."
+    },
+    "space": {
+      "title": "Space Race Attempt",
+      "desc": "Discard the card to attempt an advance on the Space Race track ({{ops}})."
+    },
+    "opsInfluence": {
+      "title": "Operations: Place Influence",
+      "desc": "Spend {{ops}} placing influence."
+    },
+    "opsCoup": {
+      "title": "Operations: Coup Attempt",
+      "desc": "Spend {{ops}} on a coup — rolls a die."
+    },
+    "opsRealign": {
+      "title": "Operations: Realignment",
+      "desc": "Spend {{ops}} on realignment rolls — opposed dice."
+    },
+    "unlabelled": {
+      "title": "⚠ Unlabelled resolution mode {{mode}} ({{name}})",
+      "desc": "The viewer has no label for this mode — the engine's Resolution enum has changed and web/ui/src/action_hud.ts was not updated."
+    }
+  },
+  "opMode": {
+    "influence": {
+      "text": "Place Influence",
+      "desc": "Place influence markers in adjacent countries"
+    },
+    "coup": {
+      "text": "Conduct Coup Attempt",
+      "desc": "Roll die to remove enemy influence and add own"
+    },
+    "realign": {
+      "text": "Conduct Realignment",
+      "desc": "Opposed die rolls to remove enemy influence"
+    },
+    "unknown": "Op Mode {{mode}}"
+  },
+  "badge": {
+    "terminal": "TERMINAL",
+    "waiting": "WAITING"
+  },
+  "noDecision": "No active decision required.",
+  "loadingEngine": "Loading the engine…",
+  "hidden": {
+    "toMove": "<strong>{{player}}</strong> to move — {{phase}}.",
+    "note": "Its options are hidden in the {{view}} view; the model plays this side (auto-play)."
+  },
+  "prompt": {
+    "resolvingEventCard": "<strong>{{player}}:</strong> Resolving Event (Card #{{card}}): Select a card:",
+    "headlineRevealed": "📡 <strong>Space Race Privilege (Box 4):</strong> {{side}} revealed Headline: Card #{{card}}",
+    "headline": "<strong>{{player}} Headline Phase:</strong> Select a card from your hand to play as your Headline:",
+    "actionRound": "<strong>{{player}} Action Round {{round}}:</strong> Select a card from your hand to play:",
+    "grainSales": "<strong>{{player}}:</strong> <em>Grain Sales to Soviets</em> drew <em>{{card}}</em> from the USSR hand. Play it, or return it and conduct Grain Sales' 2 Ops:",
+    "choosePlay": "<strong>{{player}}:</strong> Choose how to play <em>{{card}}</em>:",
+    "timing": "<strong>{{player}}:</strong> Opponent card <em>{{card}}</em> played for Ops. Choose execution order:",
+    "opMode": "<strong>{{player}}:</strong> Select Operations action with <strong>{{ops}} Ops</strong> available:",
+    "setup": "<strong>{{player}} Setup Phase:</strong> Click highlighted countries in {{region}} to place influence (<strong>{{remaining}} remaining</strong>):",
+    "resolvingEvent": "<strong>{{player}}:</strong> Resolving event <em>{{card}}</em>. Select target country (<strong>{{remaining}} remaining</strong>):",
+    "coup": "<strong>{{player}}:</strong> Select target country to <strong>COUP</strong> with <strong>{{ops}} Ops</strong> (or click on map):",
+    "realign": "<strong>{{player}}:</strong> Select target country for <strong>REALIGNMENT</strong> (or click on map):",
+    "target": "<strong>{{player}}:</strong> Select a target country:",
+    "targetOpsLeft": "<strong>{{player}}:</strong> Select a target country ({{remaining}} Ops remaining):",
+    "noTargetLeft": "<em>No eligible target is left.</em>",
+    "branch": "<strong>{{player}}:</strong> <em>{{card}}</em>: {{ask}}:",
+    "idle": "Simulation idle or transitioning.",
+    "waiting": "Waiting for decision..."
+  },
+  "pass": {
+    "ourManInTehran": "✓ Done — return the rest to the deck",
+    "salt": "✓ Take no card",
+    "noCard": "✓ No card can be chosen — continue",
+    "default": "✓ Pass / Confirm (Do not discard)",
+    "donePassRemaining": "✓ Done / Pass Remaining",
+    "doneNoTarget": "✓ Done — no eligible target left",
+    "confirmPass": "✓ Confirm / Pass"
+  },
+  "grainSalesReturn": {
+    "title": "↩ Return {{card}} to the USSR",
+    "desc": "Hand the card back (the USSR knows you saw it) and conduct Grain Sales' 2 Ops instead."
+  },
+  "timing": {
+    "opsFirst": {
+      "title": "Branch 0: Operations First",
+      "desc": "Conduct Operations now. Opponent event triggers afterwards."
+    },
+    "eventFirst": {
+      "title": "Branch 1: Opponent Event First",
+      "desc": "Trigger opponent event first. Conduct your Operations afterwards."
+    }
+  },
+  "target": {
+    "name": "{{name}} (Stab {{stab}})",
+    "influence": "US:<strong>{{us}}</strong> / USSR:<strong>{{ussr}}</strong>",
+    "header": "Available Target Actions ({{n}}):"
+  },
+  "die": {
+    "input": "🎲 Die Roll Input:",
+    "autoRoll": "Auto Roll (PRNG)",
+    "manual": "Manual: {{roll}}",
+    "auto": "🎲 Auto"
+  }
+}

@@ -68,7 +68,8 @@ web/ui/
 │   │                           # site_models.json (none if it cannot be read); with an estimate in its data
 │   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) a switch shows the
 │   │                           # players on Playdek's scale, in that scale's order (?scale=playdek)
-│   └── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
+│   ├── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
+│   └── i18n/                   # the page's languages (i18next): index.ts, locales/<lang>/<namespace>.json
 ├── public/engine/              # ts_engine.mjs + .wasm, not committed (tools/scripts/build_web.sh)
 ├── public/leaderboard.json     # fitted from leaderboard/ by build_web.sh (tools/leaderboard.py fit), not committed
 └── dist/                       # Production bundle, not committed (local server, or GitHub Pages)
@@ -525,6 +526,58 @@ web/ui/
 
 ---
 
+### Languages (`src/i18n/`, i18next)
+
+The page and the leaderboard speak English, and every message they show goes through the catalog,
+so another language is a set of files (below); none ships yet. The language is `?lang=` when a
+link names one, else the one chosen last in this browser (`localStorage` `ts.language`), else
+English; choosing one in the header's select (hidden while there is one to choose) does not put it
+in the address. `?lang=en-XA` is the pseudo-language: English with every message marked `⟦…⟧`,
+never offered in the select, so a test (and a person) sees at once which text was never
+translated. `initLanguage()` runs before either page draws, and a switch redraws in place (no
+reload, no new game, the game and its undo untouched).
+
+* **English is the catalog, by readable ids.** Every message is an id in
+  `src/i18n/locales/en/<namespace>.json` (`hud.json`: `{"pass": "Pass"}`), called as
+  `t("hud:pass")`; another language is the same ids in `locales/<lang>/`, loaded with a dynamic
+  `import()` only when chosen, and English stands in for any id it lacks. The English catalog types
+  `t` (`src/i18n/i18next.d.ts`): an id it lacks does not compile.
+* **One namespace per area** (`common`, `page` for index.html's markup, `app`, `hud`, `cards`,
+  `tracks`, `map`, `rolls`, `region`, `analysis`, `trace`, `replay`, `debug`, `result`,
+  `leaderboard`, `game`). `common` holds what several areas say (the sides, the disclaimer). A new
+  namespace goes in every language's `index.ts`.
+* **Parameters are named** (`{{card}}`), plurals are the language's own forms (`worlds_one` /
+  `worlds_other`, chosen by `count` through `Intl.PluralRules`; a language with one form has only
+  `_other`), and a message is a whole sentence: never glue fragments in code, so a translator can
+  reorder it.
+* **`t` does not escape** (`escapeValue: false`): a message goes into `innerHTML` exactly as the
+  template it replaced did, so escape a parameter with `escapeHtml` where that template did, and a
+  catalog may hold markup (`<code>`, `<b>`, a link with `{{href}}`).
+* **No `t()` at module level**: a constant built at import time stays English. Build text in the
+  function that renders it.
+* **Static markup** names its message: `data-i18n="page:newGame"` for the text and
+  `data-i18n-title` / `-placeholder` / `-aria-label` for those attributes, the English left in the
+  markup as it reads (`tests/web/test_i18n.py` holds the two equal). Wrap the text beside an `input`
+  in a `<span>` to key it. An element whose text the code sets carries no `data-i18n`.
+* **Names by id**: `cardName(id, english)`, `cardDescription`, `countryName`, `regionName`,
+  `sideName("US")` -- a language's `game` namespace (by id), the engine's or the rules' English
+  otherwise. `CARDS_METADATA`, the engine's names, enum values, saved games, replays, position
+  links and the stats record stay English: only what is shown is translated, at the point it is
+  shown.
+* **Redraw on a switch**: a component whose text is drawn once subscribes with
+  `onLanguageChange(() => this.render())`; the static markup is redone first (`applyStatic`).
+* **Errors**: the engine's and the network's error text is diagnostic and stays English; the
+  sentence around it is translated (`t("leaderboard:loadFailed", { error })`).
+* **Still English in every language**: the action log (its lines are built as English text by
+  `game/describe.ts` and the session, and `game/log_view.ts`, `game/view.ts` and `card_refs.ts`
+  read that text back; it becomes structured entries rendered per language), the model's choice
+  names (`game/names.ts`), branch titles (`game/branches.ts`), the ongoing-effect texts
+  (`cards_view.ts` `EFFECT_INFO_MAP`) and the engine's enum names shown raw (phase, decision type).
+  Do not translate a log line after it is built.
+* **Translations come from translators**, not from code changes: a contributor adds or edits
+  `locales/<lang>/*.json` only. A new language is a folder, an `index.ts`, an entry in `LANGUAGES`
+  and `LOADERS` (`src/i18n/index.ts`), and its plural forms in `tests/web/test_i18n.py`.
+
 ## 4. Development & Build Commands
 
 ```bash
@@ -565,6 +618,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 | `test_value_readings.py` | `trace_view.ts` under node: the decider of each replay position, the calibrated P(US wins), VP ×20, the terminal case, the `ΔP` chip |
 | `test_web_workbench.py` | the bundled rules metadata, the page's DOM, replay snapshots |
 | `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark) re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does, and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
+| `test_i18n.py` | the language catalogs: every translation is of an English id with its parameters and the language's own plural forms, card/country/region names keyed by the rules' ids, every `data-i18n*` key in the two pages English and the markup reading as it |
 | `test_e2e_game_stats.py` | in Chromium: a finished game opens the result dialog once with its notes (download only without an endpoint), Escape closes it without a take-back, the Result button reopens it; a forced die goes back to Auto once it has rolled; a reload plays the stored game back (same id, steps and undo) |
 
 The TypeScript under test in node (`tests/web/js/*.ts`) is bundled with the esbuild that ships

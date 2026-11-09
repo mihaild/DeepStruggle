@@ -1,0 +1,100 @@
+{
+  "none": "None",
+  "spaceBox": {
+    "launchpad": "Start / Launchpad",
+    "earthSatellite": "Earth Satellite",
+    "animalInSpace": "Animal in Space",
+    "manInSpace": "Man in Space",
+    "manInEarthOrbit": "Man in Earth Orbit",
+    "lunarOrbit": "Lunar Orbit",
+    "eagleBearHasLanded": "Eagle / Bear Has Landed",
+    "spaceShuttle": "Space Shuttle",
+    "spaceStation": "Space Station",
+    "fallback": "Box {{box}}"
+  },
+  "privilege": {
+    "animalInSpace": "May attempt Space Race twice per turn",
+    "manInEarthOrbit": "Opponent must select & reveal headline first",
+    "eagleBearHasLanded": "May discard 1 held card at end of turn",
+    "spaceStation": "May play 8 Action Rounds per turn"
+  },
+  "privilegeShort": {
+    "animalInSpace": "2 Attempts / Turn",
+    "manInEarthOrbit": "Opponent Reveals Headline 1st",
+    "eagleBearHasLanded": "Discard Held Card at Turn End",
+    "spaceStation": "8th Action Round"
+  },
+  "next": {
+    "doneTitle": "The last box, the Space Station: the space race is over",
+    "done": "done",
+    "title": "Box {{box}}, {{name}}: a card of {{ops}}+ Ops, then a roll of 1-{{roll}}",
+    "text": "next {{ops}} Ops · 1–{{roll}}"
+  },
+  "label": {
+    "defcon": "DEFCON",
+    "victoryPoints": "VICTORY POINTS",
+    "turnAndEra": "TURN & ERA",
+    "actionRound": "ACTION ROUND",
+    "militaryOps": "MILITARY OPS (REQ: {{defcon}})",
+    "spaceRace": "SPACE RACE"
+  },
+  "vp": {
+    "tie": "TIE 0",
+    "lead": "{{side}} +{{vp}}"
+  },
+  "era": {
+    "early": "EARLY WAR",
+    "mid": "MID WAR",
+    "late": "LATE WAR"
+  },
+  "turn": "T{{turn}}/10",
+  "round": {
+    "setup": "SETUP",
+    "headline": "HEADLINE",
+    "gameOver": "GAME OVER",
+    "actionRound": "AR {{ar}}"
+  },
+  "sideColon": "{{side}}:",
+  "widget": {
+    "title": "Space Race: USSR at Box #{{ussr}}, US at Box #{{us}}. Click to open full Deluxe Space Track & Perks.",
+    "pillTitle": "{{side}} Space: Box #{{box}} ({{name}}) | Attempts Used: {{used}}/{{max}}",
+    "boxTitle": "Box {{box}}: {{name}}",
+    "tokenTitle": "{{side}} at Box {{box}}",
+    "details": "View Space Race Details"
+  },
+  "playerTurn": "{{side}} TURN",
+  "modal": {
+    "title": "DELUXE SPACE RACE TRACK & PERKS",
+    "tied": "TIED ON SPACE RACE TRACK",
+    "leads": "{{side}} LEADS BY {{spaces}} SPACES",
+    "program": "{{side}} Space Program",
+    "maxAttemptsUsed": "Max Attempts Used",
+    "attemptAvailable": "Attempt Available",
+    "position": "Position:",
+    "positionValue": "Box #{{box}} — {{name}}",
+    "attemptsThisTurn": "Attempts this Turn:",
+    "attemptsValue": "{{used}} / {{max}} max",
+    "activePerks": "Active Superpower Perks:",
+    "leadSubtext": "Play card Ops ≥ Box requirement to attempt advance",
+    "boxNumber": "BOX #{{box}}",
+    "requiredOps": "Required Ops:",
+    "requiredOpsValue": "≥ {{ops}} Ops",
+    "rollToAdvance": "Roll to Advance:",
+    "firstVp": "1st Player VP:",
+    "secondVp": "2nd Player VP:",
+    "vpValue": "+{{vp}} VP",
+    "privilegeTitle": "✨ Privilege (1st Player Only):",
+    "activeFor": "ACTIVE FOR {{side}}",
+    "cancelled": "✕ CANCELLED (BOTH REACHED)",
+    "status": "{{side}}: {{status}}",
+    "here": "📍 HERE",
+    "cleared": "✓ Cleared",
+    "pending": "Pending"
+  },
+  "perk": {
+    "twoAttempts": "2 attempts/turn",
+    "opponentRevealsHeadline": "Opponent reveals headline first",
+    "discardHeldCard": "Discard held card at turn end",
+    "eighthActionRound": "8th Action Round"
+  }
+}

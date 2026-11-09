@@ -1,0 +1,102 @@
+{
+  "page": {
+    "title": "Twilight Struggle Elo Leaderboard",
+    "badge": "ELO LEADERBOARD",
+    "workbenchLink": "Engine workbench →",
+    "sections": "Leaderboard sections",
+    "tabRatings": "Ratings",
+    "tabCodes": "Recipes & architectures",
+    "epoch": "Engine epoch",
+    "whichPlayers": "Which players to show",
+    "viewMain": "Main players",
+    "viewLineage": "Main + lineages",
+    "viewAll": "All players",
+    "whichScale": "Which rating scale to show",
+    "scaleAnchor": "Anchor scale",
+    "scalePlaydek": "Playdek estimate",
+    "thPlayer": "Player",
+    "thLinks": "Links"
+  },
+  "tag": {
+    "main": "MAIN",
+    "hfDefault": "HF DEFAULT",
+    "hfDefaultTitle": "The default on Hugging Face: the workbench plays this network with this search when a link names neither",
+    "site": "SITE: {{level}}",
+    "siteTitle": "The {{level}} level of the AI on twilightstruggle.app"
+  },
+  "kind": {
+    "gumbel": "Gumbel",
+    "rollout": "rollout",
+    "search": "PUCT",
+    "bot": "bot"
+  },
+  "links": {
+    "report": "report",
+    "reportOfNetworkTitle": "Behaviour report of the network's greedy play",
+    "reportOfPlayerTitle": "Report on this player's play",
+    "weights": "weights",
+    "weightsTitle": "The weights on Hugging Face",
+    "play": "play",
+    "playTitle": "Play this player in the engine workbench (search={{search}})",
+    "playPolicyTitle": "The workbench cannot run this player's search: open its network's policy in the engine workbench"
+  },
+  "noLineages": "No lineages in this epoch.",
+  "table": {
+    "elo": "Elo",
+    "eloPlaydek": "Playdek est.",
+    "games": "Games",
+    "gamesPlaydek": "Human games",
+    "score": "Score",
+    "scorePlaydek": "W-D-L",
+    "anchor": "anchor"
+  },
+  "note": {
+    "anchor": "These ratings come only from games between the models listed here, on a scale anchored at one of them. They do not correspond to human Elo ratings, such as those of the Playdek Twilight Struggle app.",
+    "estimatePointer": "The Playdek estimate switch shows an estimate of that scale, from games people played against these models on this site.",
+    "playdek": "Estimates based on self-reported human ratings, not ratings from the Playdek app: each person typed in their own Playdek rating, the games were played on this site rather than in the app, and a model's rating there could differ. They come from {{games}} clean games against {{humans}} people to {{asOf}}, with takebacks allowed. Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider."
+  },
+  "scale": {
+    "anchor": "Anchor <code>{{anchor}}</code> = {{elo}}.",
+    "clickRow": "Click a row for its head-to-head results.",
+    "unrated": "Unrated (no games that connect them to the main players): {{players}}."
+  },
+  "footer": {
+    "fitted": "Fitted from <a href=\"{{records}}\">the match records</a>{{atCommit}} by <code>tools/leaderboard.py</code>. Weights: {{weights}}{{defaultModel}}.",
+    "atCommit": " at commit <code>{{commit}}</code>",
+    "defaultModel": ", default model <code>{{model}}</code> with search <code>{{search}}</code>{{notOnBoard}}",
+    "notOnBoard": " (not a player on the board)"
+  },
+  "detail": {
+    "formerly": "Formerly {{names}}.",
+    "architecture": "Architecture {{code}}",
+    "recipe": "recipe {{code}}",
+    "hfDefault": "The default on Hugging Face: the workbench plays this network with this search when a link names neither.",
+    "siteLevel": "The {{level}} level on {{site}}.",
+    "siteLevelDescribed": "The {{level}} level on {{site}}: {{description}}",
+    "estimate": "Playdek estimate <b>{{rating}}</b> ± {{se}} (95%: {{lo}}–{{hi}}) · {{games}}.",
+    "estimateGames_one": "{{games}} games against {{count}} person, the model {{record}}",
+    "estimateGames_other": "{{games}} games against {{count}} people, the model {{record}}",
+    "estimateNoGames": "no games against people of its own: placed by its leaderboard gaps and any games against its network",
+    "elo": "Elo <b>{{elo}}</b>{{uncertainty}} · {{games}} games against {{opponents}} opponents, {{main}} of them main players.",
+    "theAnchor": " (the anchor)",
+    "against": "Against",
+    "asUs": "as US",
+    "asUssr": "as USSR"
+  },
+  "codes": {
+    "predates": "This leaderboard.json predates the codes; rebuild it with tools/scripts/build_web.sh.",
+    "defaults": "the defaults",
+    "flags": "{{count}} flags",
+    "firstRun": "first run <code>{{run}}</code>",
+    "noDescription": "no description",
+    "recipes": "Recipes",
+    "architectures": "Architectures",
+    "thCode": "Code",
+    "thWhat": "What it is",
+    "thFlags": "Flags",
+    "thOnBoard": "On the board",
+    "note": "A player's name says how it was trained: <code>E7-A8-R1-S44</code> is engine E7, architecture A8, recipe R1, seed 44 (the engine it was trained on; its games here are played under the rules of the epoch shown, whatever engine trained it), and each <code>@&lt;step&gt;M+&lt;change&gt;</code> a branch point and what changed there (a new recipe or architecture, a seed, or a soup in parentheses). A code is a set of <code>tools/train.py</code> flags -- an architecture the network's shape, a recipe every other training setting -- assigned by <code>tools/scripts/run_codes.py</code> and listed here from <a href=\"{{src}}/research/run_codes.json\">research/run_codes.json</a> (<a href=\"{{src}}/research/architectures_and_recipes.md\">the same tables</a>). A network is trained under the last code of each kind in its name. Recipe flags are those that differ from the defaults.",
+    "showAll": "Show every code, not only those of networks on the board"
+  },
+  "loadFailed": "Could not load the leaderboard: {{error}}"
+}

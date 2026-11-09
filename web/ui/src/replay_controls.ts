@@ -1,4 +1,5 @@
 import { DieRollState, EventTrackState, GameState } from "./types";
+import { onLanguageChange, sideName, t } from "./i18n";
 
 /** One legal action and the probability the policy put on it. */
 export interface PolicyChoice {
@@ -59,6 +60,15 @@ export interface ReplayStep {
   critic?: CriticTrace;
 }
 
+/** One file of the local server's replay directory (web/server/replay.py); `error` when it could not be read. */
+interface ServerReplay {
+  filename: string;
+  game_id?: string;
+  total_steps?: number;
+  result?: { winner?: string } | null;
+  error?: string;
+}
+
 export interface ReplayFile {
   version?: string;
   metadata?: {
@@ -89,6 +99,8 @@ export class ReplayControls {
   private playBtn: HTMLButtonElement;
   private speedSelect: HTMLSelectElement;
   private serverSelect: HTMLSelectElement | null;
+  /** The local server's replays, once listed: the select is redrawn from them in a new language. */
+  private serverReplays: ServerReplay[] = [];
 
   constructor(onStepChange: (state: GameState, stepIndex: number, allSteps: ReplayStep[]) => void) {
     this.onStepChange = onStepChange;
@@ -99,6 +111,12 @@ export class ReplayControls {
     this.serverSelect = document.getElementById("rep-server-select") as HTMLSelectElement | null;
 
     this.setupListeners();
+    this.updateUI();
+    onLanguageChange(() => {
+      this.updateUI();
+      this.renderPlayButton();
+      this.renderServerList();
+    });
     this.fetchServerReplays();
   }
 
@@ -113,22 +131,8 @@ export class ReplayControls {
         return;
       }
       // A file the server could not read comes with its `error` instead (web/server/replay.py).
-      const replays: Array<{ filename: string; game_id?: string; total_steps?: number; result?: { winner?: string } | null;
-                             error?: string }> = await res.json();
-
-      this.serverSelect.innerHTML = "<option value=\"\">Local replays...</option>";
-      replays.forEach(r => {
-        const opt = document.createElement("option");
-        opt.value = r.filename;
-        if (r.error !== undefined) {
-          opt.disabled = true;
-          opt.textContent = `${r.filename} (unreadable: ${r.error})`;
-        } else {
-          const winner = r.result?.winner ? ` [Winner: ${r.result.winner}]` : "";
-          opt.textContent = `${r.game_id} (${r.total_steps} steps)${winner}`;
-        }
-        this.serverSelect?.appendChild(opt);
-      });
+      this.serverReplays = await res.json();
+      this.renderServerList();
 
       // Check URL query param ?replay=
       const urlParams = new URLSearchParams(window.location.search);
@@ -140,6 +144,32 @@ export class ReplayControls {
       this.serverSelect.classList.add("hidden");
       console.warn("No local replay list (static host?):", e);
     }
+  }
+
+  /** The replay select: its prompt, then each listed file (the choice kept across a redraw). */
+  private renderServerList() {
+    const select = this.serverSelect;
+    if (!select) return;
+    const chosen = select.value;
+    select.innerHTML = "";
+    const prompt = new Option(t("replay:localReplays"), "");
+    prompt.dataset.i18n = "replay:localReplays";
+    select.add(prompt);
+    for (const r of this.serverReplays) {
+      const opt = document.createElement("option");
+      opt.value = r.filename;
+      if (r.error !== undefined) {
+        opt.disabled = true;
+        opt.textContent = t("replay:unreadable", { file: r.filename, error: r.error });
+      } else {
+        const values = { game: String(r.game_id), steps: String(r.total_steps) };
+        opt.textContent = r.result?.winner
+          ? t("replay:entryWithWinner", { ...values, winner: sideName(r.result.winner) })
+          : t("replay:entry", values);
+      }
+      select.appendChild(opt);
+    }
+    select.value = chosen;
   }
 
   public async loadServerReplay(filename: string) {
@@ -235,7 +265,7 @@ export class ReplayControls {
           const json = JSON.parse(evt.target?.result as string);
           this.loadReplayData(json);
         } catch (err) {
-          alert("Failed to parse replay file.");
+          alert(t("replay:parseFailed"));
         }
       };
       reader.readAsText(file);
@@ -264,7 +294,7 @@ export class ReplayControls {
   public play() {
     if (this.steps.length === 0) return;
     this.isPlaying = true;
-    this.playBtn.textContent = "⏸ Pause";
+    this.renderPlayButton();
     const interval = parseInt(this.speedSelect.value, 10) || 500;
     this.timer = window.setInterval(() => {
       if (this.currentStep >= this.steps.length - 1) {
@@ -277,7 +307,7 @@ export class ReplayControls {
 
   public stop() {
     this.isPlaying = false;
-    this.playBtn.textContent = "▶ Play";
+    this.renderPlayButton();
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
@@ -285,7 +315,14 @@ export class ReplayControls {
   }
 
   private updateUI() {
-    this.labelEl.textContent = `Step ${this.currentStep} / ${Math.max(0, this.steps.length - 1)}`;
+    this.labelEl.textContent = t("replay:stepLabel", { step: this.currentStep, last: Math.max(0, this.steps.length - 1) });
+  }
+
+  /** Play or Pause; its key follows, so the static markup's redraw on a language switch agrees. */
+  private renderPlayButton() {
+    const key = this.isPlaying ? "replay:pause" : "replay:play";
+    this.playBtn.dataset.i18n = key;
+    this.playBtn.textContent = t(key);
   }
 
   /**
@@ -306,7 +343,7 @@ export class ReplayControls {
       name = `ts_workbench_${new Date().toISOString().replace(/[:.]/g, "-")}.tslog.json`;
     }
     if (!doc) {
-      alert("No replay data to export.");
+      alert(t("replay:nothingToExport"));
       return;
     }
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });

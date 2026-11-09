@@ -37,6 +37,7 @@ import { ResultDialog } from "./result_dialog";
 import { BUILD_COMMIT, BUILD_DIRTY } from "./build_info";
 import { CARDS_METADATA } from "./metadata";
 import { escapeHtml, num } from "./html";
+import { bindLanguageSelects, initLanguage, onLanguageChange, sideName, t } from "./i18n";
 
 /** Pause before an auto-played move, long enough to see each one land. */
 const AUTO_PLAY_DELAY_MS = 350;
@@ -117,7 +118,11 @@ export class TSApp {
   /** The log's card names (cardNames), once the engine is loaded. */
   private logCardNames: CardNames | null = null;
   /** The model in a few words (AnalysisPanel.onModelLabel), for the model · mode labels. */
-  private modelLabel: { text: string; status: "off" | "loading" | "ready" | "error" } = { text: "no model", status: "off" };
+  private modelLabel: { text: string; status: "off" | "loading" | "ready" | "error" } = { text: t("app:model.none"), status: "off" };
+  /** The engine badge, as a function: redrawn in a new language. */
+  private badgeView: () => { text: string; cls: string; title?: string } = () => ({ text: t("app:engine.loading"), cls: "" });
+  /** The search settings did not parse: their error stays shown, in the page's language. */
+  private searchInvalid = false;
 
   constructor() {
     this.parseQueryParams();
@@ -176,14 +181,29 @@ export class TSApp {
     this.setupGlobalControls();
     this.setupBottomResizer();
     this.setupFileDrop();
+    this.badge(this.badgeView);
+    // A new language: everything this page draws, drawn again (the static markup is redone first,
+    // and the AnalysisPanel relabels itself). The replay's trace panel keeps nothing, so it is redrawn.
+    onLanguageChange(() => {
+      this.badge(this.badgeView);
+      this.renderToolButtons();
+      this.renderSearchTexts();
+      this.renderModelModeLabels();
+      this.renderModeNote();
+      this.renderState();
+      if (this.isReplayMode) this.renderTrace();
+    });
     this.boot();
   }
 
-  private badge(text: string, cls: string, title = ""): void {
+  /** The engine badge; `view` is called again when the language changes. */
+  private badge(view: () => { text: string; cls: string; title?: string }): void {
+    this.badgeView = view;
     const el = document.getElementById("connection-status")!;
+    const { text, cls, title } = view();
     el.textContent = text;
     el.className = `status-badge ${cls}`;
-    el.title = title;
+    el.title = title ?? "";
   }
 
   /**
@@ -193,7 +213,7 @@ export class TSApp {
     try {
       this.engine = await WasmEngine.load();
     } catch (e) {
-      this.badge("NO ENGINE", "disconnected", String(e));
+      this.badge(() => ({ text: t("app:engine.none"), cls: "disconnected", title: String(e) }));
       window.alert(String(e));
       return;
     }
@@ -205,7 +225,7 @@ export class TSApp {
         try {
           this.session.loadPosition(await decodePosition(this.urlPosition), this.urlPosition);
         } catch (e) {
-          window.alert(`Could not open the position in the link -- starting a new game instead.\n\n${e}`);
+          window.alert(t("app:badPosition", { error: String(e) }));
         }
       }
     }
@@ -327,7 +347,8 @@ export class TSApp {
     this.resultDialog.open({
       winner: s.result.winner, margin: s.result.margin, endTurn: s.result.end_turn, reason: s.result.reason,
       summary, submitted: s.submitted,
-      model: model ? `${model.label}${search ? ` (${search === "policy" ? "policy" : `rollout root ${search.replace(/^rollout:/, "")}`})` : ""}` : "",
+      model: !model ? "" : !search ? model.label : search === "policy" ? t("app:model.withPolicy", { model: model.label })
+        : t("app:model.withRollout", { model: model.label, spec: search.replace(/^rollout:/, "") }),
     });
   }
 
@@ -366,14 +387,16 @@ export class TSApp {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const info = await res.json();
       if (info.engine_fingerprint !== fp) {
-        this.badge("ENGINE STALE", "stale",
-          `The page's engine (${fp.slice(0, 12)}) is not what the sources here build (${String(info.engine_fingerprint).slice(0, 12)}). `
-          + "Rebuild it with tools/scripts/build_web.sh.");
+        const sources = String(info.engine_fingerprint).slice(0, 12);
+        this.badge(() => ({ text: t("app:engine.stale"), cls: "stale",
+                            title: t("app:engine.staleTitle", { page: fp.slice(0, 12), sources }) }));
         return;
       }
-      this.badge(`ENGINE ${fp.slice(0, 8)}`, "connected", `engine fingerprint ${fp} -- matches the local sources`);
+      this.badge(() => ({ text: t("app:engine.fingerprint", { fp: fp.slice(0, 8) }), cls: "connected",
+                          title: t("app:engine.matchesTitle", { fp }) }));
     } catch {
-      this.badge(`ENGINE ${fp.slice(0, 8)}`, "connected", `engine fingerprint ${fp} (no local server to compare with)`);
+      this.badge(() => ({ text: t("app:engine.fingerprint", { fp: fp.slice(0, 8) }), cls: "connected",
+                          title: t("app:engine.noServerTitle", { fp }) }));
     }
   }
 
@@ -410,17 +433,12 @@ export class TSApp {
   private askMode(reason: "open" | "new") {
     const dialog = document.getElementById("mode-dialog");
     if (!dialog) return;
-    const note = document.getElementById("mode-dialog-note");
-    if (note) {
-      note.textContent = reason === "new"
-        ? "A fresh deal follows your choice. Close to keep the game on the board."
-        : "You can change this any time in the Play mode select above.";
-    }
+    this.modeReason = reason;
+    this.renderModeNote();
     this.closeModelMode();
     this.moveModelSection("mode-model-slot");
     const details = document.getElementById("mode-model-details") as HTMLDetailsElement | null;
     if (details) details.open = false;
-    this.modeReason = reason;
     this.showSearchChoice(this.offeredSearch(reason));
     this.searchChoiceTouched = false;
     dialog.classList.remove("hidden");
@@ -460,6 +478,12 @@ export class TSApp {
     const current = this.view === "US" ? "mode-choice-us" : this.view === "USSR" ? "mode-choice-ussr" : "mode-choice-dev";
     const focus = document.getElementById(current) as HTMLButtonElement | null;
     focus?.focus();
+  }
+
+  /** The play-mode question's note: what closing it keeps, by why it was asked. */
+  private renderModeNote() {
+    const note = document.getElementById("mode-dialog-note");
+    if (note) note.textContent = this.modeReason === "new" ? t("app:mode.newDeal") : t("app:mode.changeLater");
   }
 
   /**
@@ -564,12 +588,9 @@ export class TSApp {
     const whole = (v: number) => Number.isInteger(v) && v >= 0;
     const spec = whole(belief) && whole(race) ? parseRolloutParam(text) : null;
     const error = document.getElementById("ss-error");
-    if (!spec) {
-      if (error) error.textContent = "Not a search: k and worlds whole numbers of at least 1, the horizon and belief "
-        + "hands of at least 0, the race worlds 0 (off) or below the worlds, the rule argmax, z<x> or kl<t>.";
-      return;
-    }
-    if (error) error.textContent = "";
+    this.searchInvalid = !spec;
+    if (error) error.textContent = this.searchInvalid ? t("app:search.invalid") : "";
+    if (!spec) return;
     this.rolloutEdited = true;
     this.rolloutChoice = spec;
     this.chooseRollout();
@@ -593,11 +614,6 @@ export class TSApp {
     if (policyRadio) policyRadio.checked = !rollout;
     // The spec choosing it keeps, and the settings that edit it.
     const spec = this.rolloutChoice;
-    const specText = document.getElementById("mode-opponent-rollout-spec");
-    if (specText) {
-      specText.textContent = `its top ${spec.k} move${spec.k === 1 ? "" : "s"}, each played out in `
-        + `${spec.worlds} sampled world${spec.worlds === 1 ? "" : "s"}`;
-    }
     const set = (id: string, v: string) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.value = v; };
     const tick = (id: string, v: boolean) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.checked = v; };
     set("ss-k", String(spec.k));
@@ -613,10 +629,27 @@ export class TSApp {
     set("ss-race", String(spec.race));
     const code = document.getElementById("search-settings-code");
     if (code) code.textContent = rolloutParam(spec);
+    this.renderSearchTexts();
+    this.renderModelModeLabels();
+  }
+
+  /** The search radios' sentences (the rollout one describes the spec it would keep), the Default
+   *  button's title and the settings' error. */
+  private renderSearchTexts() {
+    const spec = this.rolloutChoice;
+    const rollout = document.getElementById("mode-opponent-rollout-label");
+    if (rollout) {
+      const what = t("app:search.spec", { moves: t("app:search.moves", { count: spec.k }),
+                                          worlds: t("app:search.worlds", { count: spec.worlds }) });
+      rollout.innerHTML = t("app:search.rolloutOption", { spec: `<span id="mode-opponent-rollout-spec">${escapeHtml(what)}</span>` });
+    }
+    const policy = document.getElementById("mode-opponent-policy-label");
+    if (policy) policy.innerHTML = t("app:search.policyOption");
     const deflt = document.getElementById("ss-default") as HTMLButtonElement | null;
     const d = this.defaultSearch ?? DEFAULT_ROLLOUT;
-    if (deflt) deflt.title = `The default search: ${rolloutParam(d)}`;
-    this.renderModelModeLabels();
+    if (deflt) deflt.title = t("app:search.defaultTitle", { spec: rolloutParam(d) });
+    const error = document.getElementById("ss-error");
+    if (error) error.textContent = this.searchInvalid ? t("app:search.invalid") : "";
   }
 
   /** The search the radios say: the Rollout root's spec, or null for the policy. */
@@ -630,7 +663,7 @@ export class TSApp {
    * the play-mode question's folded summary what its radios say.
    */
   private renderModelModeLabels() {
-    const modeName = (spec: RolloutSpec | null) => spec ? "Rollout root" : "Policy";
+    const modeName = (spec: RolloutSpec | null) => spec ? t("app:search.rollout") : t("app:search.policy");
     const { text, status } = this.modelLabel;
     const model = document.getElementById("model-mode-label-model");
     if (model) {
@@ -640,7 +673,7 @@ export class TSApp {
     const mode = document.getElementById("model-mode-label-mode");
     if (mode) mode.textContent = modeName(this.searchSpec);
     const btn = document.getElementById("btn-model-choose");
-    if (btn) btn.title = `${text} · ${modeName(this.searchSpec)} -- choose the model (a local checkpoint, a Hugging Face repo or an .onnx file) and how it plays`;
+    if (btn) btn.title = t("app:model.chooseTitle", { model: text, mode: modeName(this.searchSpec) });
     const summary = document.getElementById("mode-model-summary");
     if (summary) summary.textContent = `${text} · ${modeName(this.searchChoice())}`;
   }
@@ -761,12 +794,7 @@ export class TSApp {
     // A view's own default; the toggle overrides it until the view changes again.
     if (changed) this.setReadoutShown(opp === null);
     document.body.classList.toggle("player-view", opp !== null);
-    for (const id of ["btn-toggle-debug", "btn-toggle-replay"]) {
-      const b = document.getElementById(id) as HTMLButtonElement | null;
-      if (!b) continue;
-      b.disabled = opp !== null;
-      b.title = opp ? "Shows the full state -- switch to the Developer view to use it" : "";
-    }
+    this.renderToolButtons();
     if (!rerender) return;
     if (opp && this.isReplayMode) {
       this.setReplayMode(false);
@@ -902,7 +930,7 @@ export class TSApp {
       }
       this.maybeAutoPlay();
     } catch (e) {
-      if (key === this.modelKey) this.analysisPanel.setError(`The model failed on this position: ${e}`);
+      if (key === this.modelKey) this.analysisPanel.setError(t("app:model.failedOnPosition", { error: String(e) }));
     }
   }
 
@@ -941,7 +969,7 @@ export class TSApp {
         checkpoint: m.meta.checkpoint,
         fromCache: m.fromCache,
         engineWarning: fp && fp !== this.engine!.fingerprint
-          ? `Exported next to another engine build (${fp.slice(0, 8)}; this page runs ${this.engine!.fingerprint.slice(0, 8)}).`
+          ? t("app:model.otherEngine", { model: fp.slice(0, 8), page: this.engine!.fingerprint.slice(0, 8) })
           : undefined,
       });
     } catch (e) {
@@ -976,7 +1004,7 @@ export class TSApp {
           if (this.view !== "DEV") this.setView("DEV");
           this.replayControls.loadReplayData(JSON.parse(await f.text()));
         } catch (err) {
-          window.alert(`Not a replay: ${err}`);
+          window.alert(t("app:notReplay", { error: String(err) }));
         }
       }
     });
@@ -986,11 +1014,29 @@ export class TSApp {
     this.isReplayMode = on;
     this.replayControls.watching = on;
     const replayBtn = document.getElementById("btn-toggle-replay");
-    if (replayBtn) {
-      replayBtn.textContent = on ? "Live Mode" : "Replay Mode";
-      replayBtn.className = on ? "btn btn-warning btn-sm" : "btn btn-primary btn-sm";
-    }
+    if (replayBtn) replayBtn.className = on ? "btn btn-warning btn-sm" : "btn btn-primary btn-sm";
+    this.renderToolButtons();
     this.analysisPanel?.show(!on);
+  }
+
+  /**
+   * Debug Tools and Replay Mode: off in a player's view (they show the full state), saying why; the
+   * replay toggle names the mode it switches to, its key following so the markup's redraw agrees.
+   */
+  private renderToolButtons() {
+    const opp = opponentOf(this.view);
+    for (const id of ["btn-toggle-debug", "btn-toggle-replay"]) {
+      const b = document.getElementById(id) as HTMLButtonElement | null;
+      if (!b) continue;
+      b.disabled = opp !== null;
+      b.title = opp ? t("app:devOnlyTitle") : "";
+    }
+    const replayBtn = document.getElementById("btn-toggle-replay");
+    if (replayBtn) {
+      const key = this.isReplayMode ? "page:tech.liveMode" : "page:tech.replayMode";
+      replayBtn.dataset.i18n = key;
+      replayBtn.textContent = t(key);
+    }
   }
 
   private renderState() {
@@ -1123,7 +1169,7 @@ export class TSApp {
       // Never the live game's log in its place: a replay link opens on a new game, and its log
       // stood in until the replay file and the engine had both arrived.
       if (!this.engine || this.replaySteps.length === 0) {
-        logContainer.innerHTML = `<div class="log-empty-msg">Loading the replay…</div>`;
+        logContainer.innerHTML = `<div class="log-empty-msg">${t("app:log.loadingReplay")}</div>`;
         if (logCountBadge) logCountBadge.textContent = "";
         return;
       }
@@ -1144,14 +1190,15 @@ export class TSApp {
 
     if (logCountBadge) {
       logCountBadge.textContent = this.isVpFilterActive
-        ? `${includedIndices.length} filtered (${targetIndices.size} VP events)`
-        : replay ? `${this.replaySteps.length} steps (Current: #${this.replayCurrentStep + 1})` : `${entries.length} events`;
+        ? t("app:log.filtered", { shown: includedIndices.length, vp: targetIndices.size })
+        : replay ? t("app:log.replaySteps", { steps: this.replaySteps.length, current: this.replayCurrentStep + 1 })
+        : t("app:log.events", { events: entries.length });
     }
 
     logContainer.innerHTML = "";
     if (includedIndices.length === 0) {
       logContainer.innerHTML = `<div class="log-empty-msg">${replay
-        ? "No VP-affecting events found in replay." : "No VP-affecting events recorded yet."}</div>`;
+        ? t("app:log.noVpReplay") : t("app:log.noVpLive")}</div>`;
       return;
     }
 
@@ -1161,7 +1208,7 @@ export class TSApp {
         const gap = idx - includedIndices[k - 1] - 1;
         const sep = document.createElement("div");
         sep.className = "log-context-separator";
-        sep.textContent = `••• ${gap} entr${gap > 1 ? "ies" : "y"} skipped •••`;
+        sep.textContent = t("app:log.skipped", { count: gap });
         logContainer.appendChild(sep);
       }
 
@@ -1263,15 +1310,12 @@ export class TSApp {
   /** A refused action changes nothing; say so without interrupting play. */
   private refused(why: string) {
     console.warn("Engine refused:", why);
-    const el = document.getElementById("connection-status");
-    if (!el) return;
-    const prev = { text: el.textContent, cls: el.className, title: el.title };
-    this.badge("REFUSED", "disconnected", why);
-    window.setTimeout(() => {
-      el.textContent = prev.text;
-      el.className = prev.cls;
-      el.title = prev.title;
-    }, 1500);
+    if (!document.getElementById("connection-status")) return;
+    const prev = this.badgeView;
+    const refusal = () => ({ text: t("app:engine.refused"), cls: "disconnected", title: why });
+    this.badge(refusal);
+    // Back to the badge it replaced, unless another took its place meanwhile.
+    window.setTimeout(() => { if (this.badgeView === refusal) this.badge(prev); }, 1500);
   }
 
   /**
@@ -1281,7 +1325,7 @@ export class TSApp {
   private sendAction(action: MicroAction) {
     if (this.isReplayMode || !this.session) return;
     if (this.hiddenSideToMove()) {
-      this.refused(`it is ${opponentOf(this.view)}'s move -- the model plays that side in this view`);
+      this.refused(t("app:notYourMove", { side: sideName(opponentOf(this.view) ?? "") }));
       return;
     }
     this.noteSettings();
@@ -1311,7 +1355,7 @@ export class TSApp {
     if (this.isReplayMode || !this.session) return;
     // In a player's view only auto-play moves for the other side.
     if (!auto && this.hiddenSideToMove()) {
-      this.refused(`it is ${opponentOf(this.view)}'s move -- the model plays that side in this view`);
+      this.refused(t("app:notYourMove", { side: sideName(opponentOf(this.view) ?? "") }));
       return;
     }
     this.noteSettings();
@@ -1435,8 +1479,8 @@ export class TSApp {
         if (e.key === "Escape") this.resultDialog.close();
         return;
       }
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !typing) {
         e.preventDefault();
         this.cancelAction();
@@ -1540,6 +1584,9 @@ export class TSApp {
 }
 
 // Boot application
-window.addEventListener("DOMContentLoaded", () => {
+// The language first, so the page draws once in it (i18n/index.ts).
+window.addEventListener("DOMContentLoaded", async () => {
+  await initLanguage();
+  bindLanguageSelects();
   (window as any).__wb = new TSApp();
 });

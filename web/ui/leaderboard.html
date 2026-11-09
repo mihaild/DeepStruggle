@@ -3,40 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Twilight Struggle Elo Leaderboard</title>
+  <title data-i18n="leaderboard:page.title">Twilight Struggle Elo Leaderboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Cinzel:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/leaderboard.css">
 </head>
 <body>
-  <div class="disclaimer-bar" role="note">
+  <div class="disclaimer-bar" role="note" data-i18n="common:disclaimer">
     Unofficial fan project, not affiliated with or endorsed by GMT Games.
     Twilight Struggle® is a registered trademark of GMT Games, LLC.
   </div>
   <header class="lb-header">
     <div class="brand">
-      <span class="brand-title">TWILIGHT STRUGGLE</span>
-      <span class="brand-badge">ELO LEADERBOARD</span>
+      <span class="brand-title" data-i18n="common:brand">TWILIGHT STRUGGLE</span>
+      <span class="brand-badge" data-i18n="leaderboard:page.badge">ELO LEADERBOARD</span>
     </div>
-    <a class="lb-nav" id="lb-workbench-link" href="./">Engine workbench →</a>
+    <label class="language-control"><span data-i18n="common:language">Language</span> <select data-language-select aria-label="Language" data-i18n-aria-label="common:language"></select></label>
+    <a class="lb-nav" id="lb-workbench-link" href="./" data-i18n="leaderboard:page.workbenchLink">Engine workbench →</a>
   </header>
   <main class="lb-main">
-    <nav class="lb-tabs" role="tablist" aria-label="Leaderboard sections">
-      <button type="button" role="tab" data-tab="ratings" id="lb-tab-ratings-btn">Ratings</button>
-      <button type="button" role="tab" data-tab="codes" id="lb-tab-codes-btn">Recipes &amp; architectures</button>
+    <nav class="lb-tabs" role="tablist" aria-label="Leaderboard sections" data-i18n-aria-label="leaderboard:page.sections">
+      <button type="button" role="tab" data-tab="ratings" id="lb-tab-ratings-btn" data-i18n="leaderboard:page.tabRatings">Ratings</button>
+      <button type="button" role="tab" data-tab="codes" id="lb-tab-codes-btn" data-i18n="leaderboard:page.tabCodes">Recipes &amp; architectures</button>
     </nav>
     <div id="lb-tab-ratings" role="tabpanel">
     <section class="lb-controls">
-      <label>Engine epoch <select id="lb-epoch"></select></label>
-      <div class="lb-view" role="radiogroup" aria-label="Which players to show">
-        <label><input type="radio" name="lb-view" value="main" checked> Main players</label>
-        <label><input type="radio" name="lb-view" value="lineage"> Main + lineages</label>
-        <label><input type="radio" name="lb-view" value="all"> All players</label>
+      <label><span data-i18n="leaderboard:page.epoch">Engine epoch</span> <select id="lb-epoch"></select></label>
+      <div class="lb-view" role="radiogroup" aria-label="Which players to show" data-i18n-aria-label="leaderboard:page.whichPlayers">
+        <label><input type="radio" name="lb-view" value="main" checked> <span data-i18n="leaderboard:page.viewMain">Main players</span></label>
+        <label><input type="radio" name="lb-view" value="lineage"> <span data-i18n="leaderboard:page.viewLineage">Main + lineages</span></label>
+        <label><input type="radio" name="lb-view" value="all"> <span data-i18n="leaderboard:page.viewAll">All players</span></label>
       </div>
-      <div class="lb-view" id="lb-scale-mode" role="radiogroup" aria-label="Which rating scale to show" hidden>
-        <label><input type="radio" name="lb-mode" value="anchor" checked> Anchor scale</label>
-        <label><input type="radio" name="lb-mode" value="playdek"> Playdek estimate</label>
+      <div class="lb-view" id="lb-scale-mode" role="radiogroup" aria-label="Which rating scale to show" data-i18n-aria-label="leaderboard:page.whichScale" hidden>
+        <label><input type="radio" name="lb-mode" value="anchor" checked> <span data-i18n="leaderboard:page.scaleAnchor">Anchor scale</span></label>
+        <label><input type="radio" name="lb-mode" value="playdek"> <span data-i18n="leaderboard:page.scalePlaydek">Playdek estimate</span></label>
       </div>
       <div class="lb-lineages" id="lb-lineages" hidden></div>
     </section>
@@ -48,8 +49,8 @@
       <table class="lb-table" id="lb-table">
         <thead>
           <tr>
-            <th class="num">#</th><th>Player</th><th class="num" id="lb-th-elo">Elo</th><th class="num lb-hide-narrow">±</th>
-            <th class="num lb-hide-narrow" id="lb-th-games">Games</th><th class="num" id="lb-th-score">Score</th><th class="lb-hide-narrow">Links</th>
+            <th class="num">#</th><th data-i18n="leaderboard:page.thPlayer">Player</th><th class="num" id="lb-th-elo">Elo</th><th class="num lb-hide-narrow">±</th>
+            <th class="num lb-hide-narrow" id="lb-th-games">Games</th><th class="num" id="lb-th-score">Score</th><th class="lb-hide-narrow" data-i18n="leaderboard:page.thLinks">Links</th>
           </tr>
         </thead>
         <tbody id="lb-body"></tbody>

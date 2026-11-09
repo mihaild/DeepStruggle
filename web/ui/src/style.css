@@ -2687,3 +2687,8 @@ body.drop-target #map-container { outline: 3px dashed var(--warning); outline-of
   .rs { min-width: 0; }
   .modal-content, .modal-content.modal-lg { width: calc(100vw - 16px); max-width: none; max-height: 86vh; }
 }
+
+/* The language select (src/i18n); hidden while there is one language to choose. */
+.language-control { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 11px; }
+.language-control[hidden] { display: none; }
+.language-control select { font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-panel-solid); color: inherit; }

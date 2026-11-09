@@ -1,0 +1,47 @@
+{
+  "draw": "Draw",
+  "wins": "{{side}} wins",
+  "outcome": "<b>{{verdict}}</b>{{you}}. VP {{margin}}, turn {{turn}}{{reason}}.",
+  "youWon": " -- you won",
+  "youLost": " -- you lost",
+  "reason": " ({{reason}})",
+  "facts": {
+    "youPlayed": "You played",
+    "against": "Against",
+    "takenBack": "Taken back",
+    "moves_one": "{{count}} move",
+    "moves_other": "{{count}} moves"
+  },
+  "notesIntro": "Recorded with these notes, so the game can be filtered:",
+  "clean": "A straight game against one model: recorded as clean.",
+  "note": {
+    "noModelSide": "The model did not play a side.",
+    "bothSides": "The model played both sides.",
+    "movesForModel_one": "You made {{count}} move for the model's side.",
+    "movesForModel_other": "You made {{count}} moves for the model's side.",
+    "devViewMoves_one": "{{count}} move of yours was made in the Developer view, which shows the model's hand.",
+    "devViewMoves_other": "{{count}} moves of yours were made in the Developer view, which shows the model's hand.",
+    "analysisMoves_one": "{{count}} move of yours was made with the model's analysis on screen.",
+    "analysisMoves_other": "{{count}} moves of yours were made with the model's analysis on screen.",
+    "suggestedMoves_one": "{{count}} move of yours played the model's suggestion.",
+    "suggestedMoves_other": "{{count}} moves of yours played the model's suggestion.",
+    "noModelLoaded": "Some of the model side's moves were made with no model loaded.",
+    "modelChanged": "The model changed during the game.",
+    "searchChanged": "The model's search setting changed during the game.",
+    "forcedDice_one": "{{count}} die was forced.",
+    "forcedDice_other": "{{count}} dice were forced.",
+    "debugOverrides_one": "{{count}} debug override.",
+    "debugOverrides_other": "{{count}} debug overrides.",
+    "loadedPosition": "The game started from a loaded position."
+  },
+  "status": {
+    "already": "This game is in the database already.",
+    "noDatabase": "This build has no stats database (TS_STATS_ENDPOINT): download the record instead.",
+    "needLogin": "Your Playdek login, please.",
+    "needRating": "Your Playdek rating, please (1-5000).",
+    "sending": "Sending…",
+    "added": "Added. Thank you!",
+    "notAdded": "Not added: {{error}}",
+    "recordFailed": "Could not make the record: {{error}}"
+  }
+}

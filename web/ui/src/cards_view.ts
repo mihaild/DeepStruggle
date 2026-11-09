@@ -3,6 +3,7 @@ import { CARDS_METADATA } from "./metadata";
 import { UNSEEN } from "./game/view";
 import { engineLayout } from "./engine/layout";
 import { escapeHtml, num } from "./html";
+import { cardDescription, cardName, sideName, t } from "./i18n";
 
 export interface EffectInfo {
   name: string;
@@ -324,6 +325,26 @@ export const EFFECT_INFO_MAP: Record<string, EffectInfo> = {
 
 const PILE_SIDE_ORDER: Record<CardMetadata["side"], number> = { ussr: 0, us: 1, neutral: 2 };
 
+/** A card's era as the tooltip and the card text say it ("EARLY WAR"). */
+function ageLabel(age: string): string {
+  switch (age) {
+    case "early war": return t("cards:age.earlyWar");
+    case "mid war": return t("cards:age.midWar");
+    case "late war": return t("cards:age.lateWar");
+    default: return age.toUpperCase();
+  }
+}
+
+/** A card's side as the tooltip and the card text say it ("USSR"). */
+function cardSideLabel(side: string): string {
+  switch (side) {
+    case "us": return t("cards:side.us");
+    case "ussr": return t("cards:side.ussr");
+    case "neutral": return t("cards:side.neutral");
+    default: return side.toUpperCase();
+  }
+}
+
 /** A pile's order: by side (USSR, US, Neutral), then highest Ops first, then by name. */
 export function sortPile(metas: CardMetadata[]): CardMetadata[] {
   return [...metas].sort((a, b) =>
@@ -428,9 +449,9 @@ export class CardsView {
     const drawCountEl = document.getElementById("draw-count");
     if (drawCountEl) drawCountEl.textContent = (opp ? state.unseen_count ?? 0 : state.draw_deck_count || 0).toString();
     const drawNameEl = document.getElementById("draw-count-name");
-    if (drawNameEl) drawNameEl.textContent = opp ? `Draw Deck + ${opp} hand (unseen)` : "Draw Deck";
+    if (drawNameEl) drawNameEl.textContent = opp ? t("cards:drawDeckPlusHand", { side: sideName(opp) }) : t("cards:drawDeck");
     const deckOption = document.querySelector<HTMLOptionElement>('#all-cards-filter option[value="DRAW_DECK"]');
-    if (deckOption) deckOption.textContent = opp ? `Draw Deck or ${opp} hand` : "Draw Deck";
+    if (deckOption) deckOption.textContent = opp ? t("cards:drawDeckOrHand", { side: sideName(opp) }) : t("cards:drawDeck");
 
     // Render Hand Lists
     this.renderHand("tab-ussr-hand", state.hands?.USSR || [], "USSR", state);
@@ -485,10 +506,10 @@ export class CardsView {
         <div class="card-item-era-bar era-early" style="background: #F59E0B;"></div>
         <div class="card-ops-badge neutral">4</div>
         <div class="card-name-single">
-          🇨🇳 #6 The China Card
+          🇨🇳 #6 ${cardName(6, meta.name)}
         </div>
         <span class="china-status-pill ${china.playable ? "playable" : "face-down"}">
-          ${china.playable ? "✓ Face Up" : "✕ Face Down"}
+          ${china.playable ? t("cards:faceUp") : t("cards:faceDown")}
         </span>
       `;
 
@@ -505,7 +526,7 @@ export class CardsView {
 
     const hiddenCount = state.hidden_cards?.[player] ?? 0;
     if (cardIds.length === 0 && !holdsChina && hiddenCount === 0) {
-      container.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 20px; font-size: 11px;">Hand is empty</div>`;
+      container.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 20px; font-size: 11px;">${t("cards:handEmpty")}</div>`;
       return;
     }
 
@@ -528,11 +549,11 @@ export class CardsView {
     for (let i = 0; i < hiddenCount; i++) {
       const el = document.createElement("div");
       el.className = "card-item card-hidden";
-      el.title = "A card this side has not seen";
+      el.title = t("cards:hiddenCardTitle");
       el.innerHTML = `
         <div class="card-item-era-bar"></div>
         <div class="card-ops-badge neutral">?</div>
-        <div class="card-name-single">Face-down card</div>
+        <div class="card-name-single">${t("cards:hiddenCard")}</div>
       `;
       container.appendChild(el);
     }
@@ -542,7 +563,7 @@ export class CardsView {
   private metaOf(id: number): CardMetadata {
     return this.cardsMeta.get(id) || {
       id: num(id),
-      name: `Card #${num(id)}`,
+      name: t("cards:cardFallback", { id: num(id) }),
       ops: 0,
       side: "neutral",
       age: "early war",
@@ -560,10 +581,10 @@ export class CardsView {
     cardEl.innerHTML = `
       <div class="card-item-era-bar ${eraClass}"></div>
       <div class="card-ops-badge ${meta.side}">
-        ${meta.ops}${meta.one_time ? '<span class="card-star" title="Remove after event">★</span>' : ''}
+        ${meta.ops}${meta.one_time ? `<span class="card-star" title="${escapeHtml(t("cards:removeAfterEvent"))}">★</span>` : ''}
       </div>
       <div class="card-name-single">
-        #${meta.id} ${meta.name}
+        #${meta.id} ${cardName(meta.id, meta.name)}
       </div>
     `;
     cardEl.addEventListener("mouseenter", (e) => this.showTooltip(e, meta));
@@ -581,7 +602,7 @@ export class CardsView {
     if (!container) return;
     container.innerHTML = "";
     if (cardIds.length === 0) {
-      container.innerHTML = `<div class="pile-empty">Empty</div>`;
+      container.innerHTML = `<div class="pile-empty">${t("cards:pileEmpty")}</div>`;
       return;
     }
     for (const meta of sortPile(cardIds.map(id => this.metaOf(id)))) {
@@ -605,7 +626,7 @@ export class CardsView {
     for (let id = 1; id <= 110; id++) {
       const meta = this.cardsMeta.get(id) || {
         id: num(id),
-        name: `Card #${num(id)}`,
+        name: t("cards:cardFallback", { id: num(id) }),
         ops: 0,
         side: "neutral",
         age: "early war",
@@ -626,8 +647,11 @@ export class CardsView {
         continue;
       }
 
+      // A name matches in English (the rules') or as the page shows it.
+      const shownName = cardName(meta.id, meta.name);
       if (this.searchFilter) {
-        const nameMatch = meta.name.toLowerCase().includes(this.searchFilter);
+        const nameMatch = meta.name.toLowerCase().includes(this.searchFilter)
+          || shownName.toLowerCase().includes(this.searchFilter);
         const idMatch = id.toString() === this.searchFilter;
         if (!nameMatch && !idMatch) continue;
       }
@@ -638,7 +662,9 @@ export class CardsView {
 
       const locBadgeClass = this.getLocationBadgeClass(loc === UNSEEN ? "DRAW_DECK" : loc);
       const opp = this.opponent(state);
-      const locLabel = loc === UNSEEN ? `Deck or ${opp ?? "other"} hand` : this.getLocationLabel(loc);
+      const locLabel = loc === UNSEEN
+        ? (opp ? t("cards:deckOrHand", { side: sideName(opp) }) : t("cards:deckOrOtherHand"))
+        : this.getLocationLabel(loc);
       const eraClass = meta.age === "early war" ? "era-early" : (meta.age === "mid war" ? "era-mid" : "era-late");
 
       itemEl.innerHTML = `
@@ -646,7 +672,7 @@ export class CardsView {
         <div class="all-cards-item-left">
           <div class="card-ops-badge ${meta.side}">${meta.ops}</div>
           <div class="all-cards-info">
-            <div class="card-name">#${meta.id} ${meta.name} ${meta.one_time ? "★" : ""}</div>
+            <div class="card-name">#${meta.id} ${shownName} ${meta.one_time ? "★" : ""}</div>
           </div>
         </div>
         <div class="card-loc-badge ${locBadgeClass}">${locLabel}</div>
@@ -654,16 +680,16 @@ export class CardsView {
 
       // No description here -- neither an era/side line nor the hover tooltip the hand tabs
       // show: the list is for finding a card and where it is. Its text is one click away.
-      itemEl.title = "Click for the card's text";
+      itemEl.title = t("cards:clickForText");
       itemEl.addEventListener("click", () => {
-        this.showPileModal(`Card #${meta.id}: ${meta.name}`, [id]);
+        this.showPileModal(t("cards:cardModalTitle", { id: meta.id, name: cardName(meta.id, meta.name) }), [id]);
       });
 
       container.appendChild(itemEl);
     }
 
     if (matchedCount === 0) {
-      container.innerHTML = "<div style=\"color: var(--text-dim); text-align: center; padding: 20px;\">No cards match your filter.</div>";
+      container.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 20px;">${t("cards:noMatch")}</div>`;
     }
   }
 
@@ -683,14 +709,14 @@ export class CardsView {
 
   private getLocationLabel(loc: string): string {
     switch (loc) {
-      case "HAND_US": return "US Hand";
-      case "HAND_USSR": return "USSR Hand";
-      case "DRAW_DECK": return "Draw Deck";
-      case "DISCARD_PILE": return "Discard";
-      case "REMOVED_FROM_GAME": return "Removed";
-      case "ONGOING_EVENT": return "Ongoing";
-      case "UNAVAILABLE": return "Future Era";
-      case "PEEKED_TEMP": return "Drawn (being chosen)";
+      case "HAND_US": return t("cards:location.handUs");
+      case "HAND_USSR": return t("cards:location.handUssr");
+      case "DRAW_DECK": return t("cards:location.drawDeck");
+      case "DISCARD_PILE": return t("cards:location.discard");
+      case "REMOVED_FROM_GAME": return t("cards:location.removed");
+      case "ONGOING_EVENT": return t("cards:location.ongoing");
+      case "UNAVAILABLE": return t("cards:location.futureEra");
+      case "PEEKED_TEMP": return t("cards:location.peeked");
       default: return escapeHtml(loc);
     }
   }
@@ -706,11 +732,11 @@ export class CardsView {
     chinaContainer.innerHTML = `
       <div class="china-card-box ${isPlayable ? "face-up" : "face-down"}">
         <div>
-          <div style="font-weight: 800; font-size: 13px;">#6 THE CHINA CARD (4 Ops)</div>
-          <div style="font-size: 11px; opacity: 0.9;">Holder: <strong>${escapeHtml(holder)}</strong> (${isPlayable ? "Face Up / Playable" : "Face Down"})</div>
+          <div style="font-weight: 800; font-size: 13px;">${t("cards:china.title", { name: cardName(6, this.cardsMeta.get(6)?.name ?? "The China Card").toUpperCase() })}</div>
+          <div style="font-size: 11px; opacity: 0.9;">${t("cards:china.holder", { holder: escapeHtml(sideName(holder)), status: isPlayable ? t("cards:china.playable") : t("cards:china.faceDown") })}</div>
         </div>
         <div style="font-weight: bold; font-size: 11px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px;">
-          +1 Op in Asia
+          ${t("cards:china.asiaBonus")}
         </div>
       </div>
     `;
@@ -731,15 +757,15 @@ export class CardsView {
         effectCards.push({
           title: info.name,
           side: info.side,
-          badge: info.duration === "TURN" ? "Turn Only" : (info.duration === "PERMANENT" ? "Permanent" : "Conditional"),
+          badge: info.duration === "TURN" ? t("cards:effect.turnOnly") : (info.duration === "PERMANENT" ? t("cards:effect.permanent") : t("cards:effect.conditional")),
           desc: info.description
         });
       } else {
         effectCards.push({
           title: escapeHtml(f.replace(/_ACTIVE|_PLAYED/, "")),
           side: "NEUTRAL",
-          badge: "Active",
-          desc: `Continuous effect for ${escapeHtml(f)}`
+          badge: t("cards:effect.active"),
+          desc: t("cards:effect.continuous", { flag: escapeHtml(f) })
         });
       }
     });
@@ -753,18 +779,20 @@ export class CardsView {
     // way (SpaceRace::has_animal_in_space and friends all require opp_track < box), so
     // testing only one's own track showed perks that were not actually in effect --
     // "US may attempt Space Race twice" with the USSR level with them, for instance.
-    if (usSpace >= 2 && ussrSpace < 2) effectCards.push({ title: "US: Animal in Space (#2)", side: "US", badge: "Space Perk", desc: "US may attempt Space Race twice per turn." });
-    if (usSpace >= 4 && ussrSpace < 4) effectCards.push({ title: "US: Man in Earth Orbit (#4)", side: "US", badge: "Space Perk", desc: "USSR must select & reveal headline card before US chooses." });
-    if (usSpace >= 6 && ussrSpace < 6) effectCards.push({ title: "US: Eagle Has Landed (#6)", side: "US", badge: "Space Perk", desc: "US may discard 1 held card at end of turn." });
-    if (usSpace >= 8 && ussrSpace < 8) effectCards.push({ title: "US: Space Station (#8)", side: "US", badge: "Space Perk", desc: "US gains an 8th Action Round each turn." });
+    const perk = (side: "US" | "USSR", title: string, desc: string) => effectCards.push({ title, side, badge: t("cards:effect.spacePerk"), desc });
+    const us = sideName("US"), ussr = sideName("USSR");
+    if (usSpace >= 2 && ussrSpace < 2) perk("US", t("cards:perk.animalInSpace", { side: us }), t("cards:perk.animalInSpaceDesc", { side: us }));
+    if (usSpace >= 4 && ussrSpace < 4) perk("US", t("cards:perk.manInEarthOrbit", { side: us }), t("cards:perk.manInEarthOrbitDesc", { side: us, opponent: ussr }));
+    if (usSpace >= 6 && ussrSpace < 6) perk("US", t("cards:perk.eagleHasLanded", { side: us }), t("cards:perk.landedDesc", { side: us }));
+    if (usSpace >= 8 && ussrSpace < 8) perk("US", t("cards:perk.spaceStation", { side: us }), t("cards:perk.spaceStationDesc", { side: us }));
 
-    if (ussrSpace >= 2 && usSpace < 2) effectCards.push({ title: "USSR: Animal in Space (#2)", side: "USSR", badge: "Space Perk", desc: "USSR may attempt Space Race twice per turn." });
-    if (ussrSpace >= 4 && usSpace < 4) effectCards.push({ title: "USSR: Man in Earth Orbit (#4)", side: "USSR", badge: "Space Perk", desc: "US must select & reveal headline card before USSR chooses." });
-    if (ussrSpace >= 6 && usSpace < 6) effectCards.push({ title: "USSR: Bear Has Landed (#6)", side: "USSR", badge: "Space Perk", desc: "USSR may discard 1 held card at end of turn." });
-    if (ussrSpace >= 8 && usSpace < 8) effectCards.push({ title: "USSR: Space Station (#8)", side: "USSR", badge: "Space Perk", desc: "USSR gains an 8th Action Round each turn." });
+    if (ussrSpace >= 2 && usSpace < 2) perk("USSR", t("cards:perk.animalInSpace", { side: ussr }), t("cards:perk.animalInSpaceDesc", { side: ussr }));
+    if (ussrSpace >= 4 && usSpace < 4) perk("USSR", t("cards:perk.manInEarthOrbit", { side: ussr }), t("cards:perk.manInEarthOrbitDesc", { side: ussr, opponent: us }));
+    if (ussrSpace >= 6 && usSpace < 6) perk("USSR", t("cards:perk.bearHasLanded", { side: ussr }), t("cards:perk.landedDesc", { side: ussr }));
+    if (ussrSpace >= 8 && usSpace < 8) perk("USSR", t("cards:perk.spaceStation", { side: ussr }), t("cards:perk.spaceStationDesc", { side: ussr }));
 
     if (effectCards.length === 0) {
-      flagsContainer.innerHTML = "<div style=\"font-size: 11px; color: var(--text-dim); text-align: center; padding: 10px;\">No active continuous effects</div>";
+      flagsContainer.innerHTML = `<div style="font-size: 11px; color: var(--text-dim); text-align: center; padding: 10px;">${t("cards:effect.none")}</div>`;
       return;
     }
 
@@ -797,8 +825,8 @@ export class CardsView {
       .filter(e => e.info && e.info.duration === "TURN")
       .map(({ flag, info }) =>
         `<span class="turn-effect side-${info.side.toLowerCase()}" data-flag="${flag}" title="${esc(`${info.cardName}: ${info.description}`)}">${esc(info.name.replace(/ Active$/, ""))}</span>`);
-    strip.innerHTML = `<span class="turn-effects-label">This turn</span>`
-      + (chips.length ? chips.join("") : `<span class="turn-effects-none">no effects</span>`);
+    strip.innerHTML = `<span class="turn-effects-label">${t("cards:effect.thisTurn")}</span>`
+      + (chips.length ? chips.join("") : `<span class="turn-effects-none">${t("cards:effect.noEffects")}</span>`);
   }
 
   private renderContextStack(state: GameState) {
@@ -809,24 +837,24 @@ export class CardsView {
     if (!ctx) return;
 
     stackContainer.innerHTML = `
-      <div><strong>Reentrancy Depth:</strong> ${num(ctx.stack_depth || 0)} / 2</div>
-      <div><strong>Decision:</strong> ${escapeHtml(ctx.decision_type_name || ctx.decision_type)} (${escapeHtml(ctx.decision_player)})</div>
-      ${ctx.pending_op_card ? `<div><strong>Pending Card:</strong> #${num(ctx.pending_op_card)} (Ops: ${num(ctx.pending_ops_value)})</div>` : ""}
-      ${ctx.resolving_card ? `<div><strong>Resolving Card:</strong> #${num(ctx.resolving_card)} (${escapeHtml(ctx.resolving_card_name || "")})</div>` : ""}
-      ${ctx.remaining_steps ? `<div><strong>Remaining Steps:</strong> ${num(ctx.remaining_steps)}</div>` : ""}
+      <div>${t("cards:context.depth", { depth: num(ctx.stack_depth || 0) })}</div>
+      <div>${t("cards:context.decision", { decision: escapeHtml(ctx.decision_type_name || ctx.decision_type), player: escapeHtml(ctx.decision_player) })}</div>
+      ${ctx.pending_op_card ? `<div>${t("cards:context.pendingCard", { card: num(ctx.pending_op_card), ops: num(ctx.pending_ops_value) })}</div>` : ""}
+      ${ctx.resolving_card ? `<div>${t("cards:context.resolvingCard", { card: num(ctx.resolving_card), name: escapeHtml(ctx.resolving_card_name || "") })}</div>` : ""}
+      ${ctx.remaining_steps ? `<div>${t("cards:context.remainingSteps", { steps: num(ctx.remaining_steps) })}</div>` : ""}
     `;
   }
 
   private showTooltip(e: MouseEvent, meta: CardMetadata) {
     this.tooltipEl.innerHTML = `
       <div style="font-weight: bold; font-size: 13px; color: #F8FAFC; margin-bottom: 4px;">
-        #${meta.id} ${meta.name} ${meta.one_time ? "★" : ""}
+        #${meta.id} ${cardName(meta.id, meta.name)} ${meta.one_time ? "★" : ""}
       </div>
       <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">
-        ${meta.age.toUpperCase()} • ${meta.side.toUpperCase()} • ${meta.ops} OPS
+        ${t("cards:tooltipMeta", { age: ageLabel(meta.age), side: cardSideLabel(meta.side), ops: meta.ops })}
       </div>
       <div style="font-size: 12px; color: #E2E8F0; line-height: 1.4;">
-        ${meta.description}
+        ${cardDescription(meta.id, meta.description)}
       </div>
     `;
 
@@ -855,11 +883,11 @@ export class CardsView {
     const bodyEl = document.getElementById("modal-body");
     if (!modal || !titleEl || !bodyEl) return;
 
-    titleEl.textContent = `${title} (${cardIds.length} cards)`;
+    titleEl.textContent = t("cards:pileModalTitle", { title, n: cardIds.length });
     bodyEl.innerHTML = "";
 
     if (cardIds.length === 0) {
-      bodyEl.innerHTML = "<div style=\"color: var(--text-muted); text-align: center; padding: 20px;\">No cards in this pile</div>";
+      bodyEl.innerHTML = `<div style="color: var(--text-muted); text-align: center; padding: 20px;">${t("cards:pileModalEmpty")}</div>`;
     } else {
       cardIds.forEach(id => {
         const meta = this.cardsMeta.get(id);
@@ -870,8 +898,8 @@ export class CardsView {
         row.style.borderRadius = "4px";
         row.style.border = "1px solid rgba(255,255,255,0.06)";
         row.innerHTML = `
-          <div style="font-weight: bold; color: #F8FAFC;">#${meta.id} ${meta.name} (${meta.ops} Ops, ${meta.side.toUpperCase()}, ${meta.age.toUpperCase()})</div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.35;">${meta.description}</div>
+          <div style="font-weight: bold; color: #F8FAFC;">${t("cards:pileCard", { id: meta.id, name: cardName(meta.id, meta.name), ops: meta.ops, side: cardSideLabel(meta.side), age: ageLabel(meta.age) })}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.35;">${cardDescription(meta.id, meta.description)}</div>
         `;
         bodyEl.appendChild(row);
       });
