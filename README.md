@@ -15,18 +15,25 @@ Current status:
 
 ## Play, and the leaderboard
 
-* **[Play against the models](https://mihaild.github.io/DeepStruggle/)** in the browser (GitHub
-  Pages; no install, no server): choose *Play as US* or *Play as USSR* and the model takes the other
-  side, or use the developer view to see every model's move probabilities and evaluation.
-* **[Elo leaderboard](https://mihaild.github.io/DeepStruggle/leaderboard.html)** of the published
-  models, with each one's head-to-head results and a behaviour report.
+* **Play against the models** in the browser:
+  * **[Deep Struggle](https://mihaild.github.io/DeepStruggle/)** (GitHub Pages; no install, no
+    server): choose *Play as US* or *Play as USSR* and the model takes the other side, or use the
+    developer view to see every model's move probabilities and evaluation.
+  * **[twilightstruggle.app/ai](https://www.twilightstruggle.app/ai)**, a UI by
+    [LuisRubioE](https://github.com/LuisRubioE).
+  * **[ts.soyoling.top](https://ts.soyoling.top/)**, a UI by
+    [LingAochuan](https://github.com/LingAochuan).
+* **[Elo leaderboard](https://mihaild.github.io/DeepStruggle/leaderboard.html?scale=playdek)** of
+  the published models, with each one's head-to-head results and a behaviour report.
 * **Models** are on Hugging Face: [`mihaild/deepstruggle`](https://huggingface.co/mihaild/deepstruggle).
 
-> **About the Elo numbers.** The leaderboard's Elo is computed only from games between these
-> models, on a scale anchored at one of them (`E7-A4-R1-S44@4800M` = 1500). It does **not**
-> correspond to the human Elo ratings of the Playdek Twilight Struggle app or any other human
-> rating: a model rated 1600 here is not a 1600 player there, and no game against a human
-> contributes to it.
+> **About the Elo numbers.** The leaderboard link opens the *Playdek estimate*: each model placed
+> on the rating scale of the Playdek Twilight Struggle app, estimated from games people played
+> against the models on the Deep Struggle page, using the Playdek rating each person **self-reported**. It is
+> an estimate, not a measurement: it does **not** say what rating a model would actually reach if
+> it played on the Playdek app. The page's *Anchor scale* switch shows the underlying Elo, computed
+> only from games between the models, on a scale anchored at one of them (each engine epoch names
+> its anchor on the page), which corresponds to no human rating at all.
 
 ## AI Slop warning
 
