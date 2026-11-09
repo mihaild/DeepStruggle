@@ -13,15 +13,18 @@
  *   holds the space race's Man in Space perk, which makes the other side reveal first);
  * - while the other side is deciding, its legal actions are withheld (they are its hand, for a
  *   card choice) and `view_hidden_decision` is set;
- * - the action log drops the lines that name a card going into the other side's unseen hand (a
- *   card leaving it is public: played, discarded, removed), and the other side's still face-down
- *   headline is logged without the card;
+ * - the action log drops the lines that move a card into the other side's unseen hand (a card
+ *   leaving it is public: played, discarded, removed), and the other side's still face-down
+ *   headline is logged without the card -- read from the lines' message ids and parameters, never
+ *   their words;
  * - `last_turn` (game/last_turn.ts, set by main.ts) marks the countries the other side's latest
  *   turn changed or targeted, for the map.
  *
  * The engine itself, the model and the undo history keep the full state: only what is drawn changes.
  */
 import { ActionLogItem, GameState } from "../types";
+import { message } from "../i18n";
+import { sideArg, strParam } from "./log";
 
 export type ViewMode = "DEV" | "US" | "USSR";
 
@@ -41,31 +44,28 @@ export function opponentOf(v: ViewMode): "US" | "USSR" | null {
   return v === "US" ? "USSR" : v === "USSR" ? "US" : null;
 }
 
-const MOVED = /moved: (\S+) -> (\S+)/;
-
 /**
  * The log as `view` may read it. `faceDownHeadline`: the other side has chosen a headline that is
  * still face down, so its latest headline line is not shown with the card (earlier headlines have
- * been revealed since, and their lines stay as they are).
+ * been revealed since, and their lines stay as they are). Lines are told apart by their message id
+ * and parameters (game/log.ts): a card's move by its `from` and `to`, a headline commit by its id.
  */
 export function redactLogs(logs: ActionLogItem[], view: ViewMode, faceDownHeadline = false): ActionLogItem[] {
   const opp = opponentOf(view);
   if (!opp) return logs;
   const unseen = `HAND_${opp}_UNKNOWN`;
-  const commit = `${opp} commits Headline Card:`;
   let faceDown = -1;
   if (faceDownHeadline) {
     for (let i = logs.length - 1; i >= 0; i--) {
-      if (logs[i].player === opp && logs[i].text.startsWith(commit)) { faceDown = i; break; }
+      if (logs[i].player === opp && logs[i].text.key === "log:action.headlineCommit") { faceDown = i; break; }
     }
   }
   return logs.map((log, i) => {
-    let text = log.text;
-    if (i === faceDown) text = `${opp} commits a Headline Card (face down until both are revealed)`;
+    const text = i === faceDown ? message("log:action.headlineFaceDown", { side: sideArg(opp) }) : log.text;
     const details = (log.details || []).filter(d => {
-      const m = MOVED.exec(d);
-      if (!m) return true;
-      const [, from, to] = m;
+      if (d.msg.key !== "log:change.cardMoved") return true;
+      const from = strParam(d.msg, "from");
+      const to = strParam(d.msg, "to");
       // A card going into the other side's unseen hand (its deal, a card it draws) is its secret;
       // one leaving it -- played, discarded, removed, taken by an event -- is shown to both.
       if (to === unseen) return false;

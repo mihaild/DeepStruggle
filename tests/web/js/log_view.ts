@@ -3,11 +3,12 @@
 //   node log_view.mjs <public dir> <seed>
 // Plays two turns of a game in the page's GameSession on the WebAssembly engine, by a fixed
 // choice among the legal actions, and reports the grouped log next to what the board did, for
-// the Python side to hold one to the other.
+// the Python side to hold one to the other. Lines are rendered in English (game/log.ts).
 import { pathToFileURL } from "node:url";
 import { WasmEngine } from "../../../web/ui/src/engine/wasm_engine";
 import { GameSession } from "../../../web/ui/src/game/session";
-import { groupLog } from "../../../web/ui/src/game/log_view";
+import { englishEntry, groupLog } from "../../../web/ui/src/game/log_view";
+import { lineEnglish } from "../../../web/ui/src/game/log";
 import { redactLogs } from "../../../web/ui/src/game/view";
 
 const engine = await WasmEngine.load(pathToFileURL(process.argv[2]).href);
@@ -38,11 +39,11 @@ for (const c of Object.values(end.countries)) {
 const plays = s.logs.filter(l => l.kind === "play").length;
 // The cards dealt into the US hand unseen by the USSR (a deal that empties the deck reveals both
 // hands, so not every dealt card is one).
-const unseenUs = s.logs.flatMap(l => l.details ?? [])
+const unseenUs = s.logs.flatMap(l => l.details ?? []).map(lineEnglish)
   .map(d => /^  • Card #\d+ \((.*)\) moved: DRAW_DECK -> HAND_US_UNKNOWN$/.exec(d)?.[1]).filter(Boolean);
 console.log(JSON.stringify({
-  entries: groupLog(s.logs),
-  ussr_view: groupLog(redactLogs(s.logs, "USSR")),
+  entries: groupLog(s.logs).map(englishEntry),
+  ussr_view: groupLog(redactLogs(s.logs, "USSR")).map(englishEntry),
   influence, plays, unseen_us: unseenUs,
   vp: (end.victory_points ?? 0) - (start.victory_points ?? 0),
   terminal: engine.isTerminal(),

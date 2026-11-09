@@ -171,7 +171,7 @@ def test_a_game_is_played_by_the_page_itself(browser: Any, server: str) -> None:
     cid = page.evaluate("window.__wb.state.legal_actions.valid_ids[0]")
     page.click(f".svg-country-node[data-id='{cid}']")
     page.wait_for_function("window.__wb.state.step_index === 1")
-    last = page.evaluate("window.__wb.state.action_logs.at(-1)")
+    last = page.evaluate("window.__wb.englishLog().at(-1)")
     assert "places 1 Influence in" in last["text"] and last["player"] == "USSR"
     assert not page.errors
 
@@ -1092,7 +1092,7 @@ def test_debug_overrides_and_their_undo(browser: Any, server: str) -> None:
     page.fill("#dbg-vp", "5")
     page.click("#dbg-apply-vp")
     page.wait_for_function("window.__wb.state.victory_points === 5")
-    assert "[DEBUG] Set VP -> 5" in page.evaluate("window.__wb.state.action_logs.at(-1).text")
+    assert "[DEBUG] Set VP -> 5" in page.evaluate("window.__wb.englishLog().at(-1).text")
     page.click("#btn-undo-action")
     page.wait_for_function("window.__wb.state.victory_points === 0")
 

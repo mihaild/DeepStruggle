@@ -3,7 +3,7 @@ import { CARDS_METADATA } from "./metadata";
 import { UNSEEN } from "./game/view";
 import { engineLayout } from "./engine/layout";
 import { escapeHtml, num } from "./html";
-import { cardDescription, cardName, Message, messageIfKnown, render, renderEnglish, sideName, t } from "./i18n";
+import { cardDescription, cardName, Message, messageIfKnown, render, sideName, t } from "./i18n";
 import { enumLabel } from "./i18n/enums";
 
 /**
@@ -19,15 +19,9 @@ export interface EffectInfo {
   duration: "PERMANENT" | "TURN" | "CONDITIONAL" | "SPACE_PERK";
 }
 
-/** An effect's name as a Message, for the action log (i18n phase 2); null for a flag the catalog lacks. */
+/** An effect's name as a Message, for the action log; null for a flag the catalog lacks. */
 export function effectNameMessage(flag: string): Message | null {
   return EFFECT_INFO_MAP[flag] ? messageIfKnown(`effects:${flag}.name`) : null;
-}
-
-/** An effect's name in English, as the action log still words it (until i18n phase 2); else the flag. */
-export function effectEnglishName(flag: string): string {
-  const m = effectNameMessage(flag);
-  return m ? renderEnglish(m) : flag;
 }
 
 /** An effect's words in the current language, or null for a flag the page has no entry for. */

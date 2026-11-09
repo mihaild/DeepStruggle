@@ -46,6 +46,9 @@
     "noVpReplay": "No VP-affecting events found in replay.",
     "noVpLive": "No VP-affecting events recorded yet.",
     "skipped_one": "••• {{count}} entry skipped •••",
-    "skipped_other": "••• {{count}} entries skipped •••"
+    "skipped_other": "••• {{count}} entries skipped •••",
+    "round": "[T{{turn}} AR{{ar}}]",
+    "player": "{{player}}:",
+    "vpDelta": "{{vp}} VP"
   }
 }

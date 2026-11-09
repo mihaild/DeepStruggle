@@ -1,10 +1,11 @@
 /**
- * The action log: what an applied action did, in words, and what it changed.
+ * The action log: what an applied action did, and what it changed, as log lines (game/log.ts) --
+ * Messages with their cards, countries and sides by id, worded only where the log is shown.
  *
  * A line-for-line port of the Python session's `describe_action_and_deltas` (web/server/session.py
- * before the workbench moved into the browser), pinned by tests/web/test_describe_golden.py
- * against lines that function produced. Names come from the engine, not from rules/*.json, so
- * the text is the engine's own.
+ * before the workbench moved into the browser): rendered in English (`lineEnglish`), each line is
+ * that function's text, pinned by tests/web/test_describe_golden.py against lines it produced.
+ * Names come from the engine, not from rules/*.json, so the English is the engine's own.
  *
  * Iteration order matters for a multi-line diff: countries are walked by id and cards 1..110, as
  * the Python dicts were built; the JSON the page reads has its keys sorted by name instead.
@@ -14,7 +15,8 @@ import { CARDS_METADATA } from "../metadata";
 import { branchMeta } from "./branches";
 import { WasmEngine } from "../engine/wasm_engine";
 import { cardId, namesByValue } from "../engine/layout";
-import { renderEnglish } from "../i18n";
+import { Message, MessageArg, MessageKey, message, messageIfKnown } from "../i18n";
+import { LogLine, cardArg, countryArg, logLine, sideArg, signed } from "./log";
 
 const SIDE = new Map(CARDS_METADATA.map(c => [c.id, c.side]));
 
@@ -33,25 +35,34 @@ function cardIds(engine: WasmEngine) {
   };
 }
 
-/** How the log says each play mode, by the engine's Resolution names. On an opponent card EVENT reads
- *  as event-first and any OPS_* as ops-first, which is what the retired CHOOSE_TIMING_BRANCH said. */
-const MODE_WORDS: Record<string, string> = {
-  EVENT: "EVENT", SPACE: "SPACE RACE", OPS_INFLUENCE: "OPERATIONS - INFLUENCE PLACEMENT",
-  OPS_COUP: "OPERATIONS - COUP ATTEMPT", OPS_REALIGN: "OPERATIONS - REALIGNMENT",
-};
-/** The same for the deferred Ops choice, by the engine's OpMode names. */
-const OP_MODE_WORDS: Record<string, string> = { INFLUENCE: "INFLUENCE PLACEMENT", COUP: "COUP ATTEMPT", REALIGN: "REALIGNMENT" };
+/** How the log says each play mode (`log:playMode.<Resolution>`) and the deferred Ops choice
+ *  (`log:opMode.<OpMode>`), by the engine's names; the number for a name the catalog lacks. On an
+ *  opponent card EVENT reads as event-first and any OPS_* as ops-first, which is what the retired
+ *  CHOOSE_TIMING_BRANCH said. */
+function modeWords(kind: "playMode" | "opMode", name: string | undefined, value: number): MessageArg {
+  return (name ? messageIfKnown(`log:${kind}.${name}`) : null) ?? String(value);
+}
 
 function isConfirmDone(a: Required<MicroAction>): boolean {
   return (a.flags & 0x80) !== 0 || a.primary_id === 255;
 }
 
-function signed(v: number): string {
-  return v > 0 ? `+${v}` : `${v}`;
+/** A score as the log says it: "+3 (US)", "-2 (USSR)", "0 (Tie)". */
+export function vpScore(vp: number): Message {
+  return vp > 0 ? message("log:vpScore.us", { n: vp }) : vp < 0 ? message("log:vpScore.ussr", { n: -vp })
+    : message("log:vpScore.tie");
 }
 
-export function vpStr(vp: number): string {
-  return vp > 0 ? `+${vp} (US)` : vp < 0 ? `${vp} (USSR)` : "0 (Tie)";
+/** The score a `vpScore` message says. */
+export function vpOf(m: MessageArg | undefined): number {
+  if (typeof m !== "object" || !("key" in m)) return Number.NaN;
+  const n = Number(m.params?.n ?? 0);
+  return m.key === "log:vpScore.us" ? n : m.key === "log:vpScore.ussr" ? -n : 0;
+}
+
+/** A card the log names, by the engine's name; a number that is no card stays "#n". */
+function cardRef(engine: WasmEngine, id: number): MessageArg {
+  return id >= 1 && id <= 110 ? cardArg(id, engine.cardName(id)) : `#${id}`;
 }
 
 function countriesById(s: GameState) {
@@ -60,7 +71,7 @@ function countriesById(s: GameState) {
 
 export function describeActionAndDeltas(
   engine: WasmEngine, before: GameState, after: GameState, action: Required<MicroAction>,
-): string[] {
+): LogLine[] {
   const chosen = action.decision_type === engine.layout.decision_types.SELECT_CARD ? action.primary_id : 0;
   const p = before.decision_context?.decision_player ?? "NONE";
   return [...describeAction(engine, before, after, action), ...describeDeltas(engine, before, after, p, chosen)];
@@ -73,14 +84,16 @@ export function describeActionAndDeltas(
  */
 export function describeAction(
   engine: WasmEngine, before: GameState, after: GameState, action: Required<MicroAction>,
-): string[] {
+): LogLine[] {
   const d = action.decision_type;
   const primary = action.primary_id;
   const secondary = action.secondary_id;
   const flags = action.flags;
   const ctx = before.decision_context;
   const p = ctx?.decision_player ?? "NONE";
-  const logs: string[] = [];
+  const side = sideArg(p);
+  const logs: LogLine[] = [];
+  const say = (key: MessageKey, params?: Record<string, MessageArg>) => logs.push(logLine(undefined, key, { side, ...params }));
   const L = engine.layout;
   const DT = L.decision_types;
   const C = cardIds(engine);
@@ -88,81 +101,80 @@ export function describeAction(
   // 1. What was done
   if (d === DT.SELECT_CARD) {
     const resolving = ctx?.resolving_card ?? 0;
-    const cardName = primary >= 1 && primary <= 110 ? engine.cardName(primary) : `#${primary}`;
+    const card = { card: cardRef(engine, primary), id: primary };
     const phase = before.current_phase_name ?? "";
     if (resolving !== 0 && resolving !== C.SPACE_WALK) {
       logs.push(eventCardChoice(engine, before, after, action, p, resolving));
     } else if (resolving === C.SPACE_WALK) {
-      if (isConfirmDone(action) || primary === 0) {
-        logs.push(`${p} passes Eagle / Bear Has Landed (Box 6) turn-end discard opportunity.`);
-      } else {
-        logs.push(`${p} discards ${cardName} (#${primary}) via Eagle / Bear Has Landed (Box 6 privilege).`);
-      }
+      if (isConfirmDone(action) || primary === 0) say("log:action.spaceWalkPass");
+      else say("log:action.spaceWalkDiscard", card);
     } else if (phase === "HEADLINE") {
       const usBefore = before.headline_us_card ?? 0;
       const ussrBefore = before.headline_ussr_card ?? 0;
       const isSecond = (p === "US" && ussrBefore > 0) || (p === "USSR" && usBefore > 0);
-      logs.push(`${p} commits Headline Card: ${cardName} (#${primary})`);
+      say("log:action.headlineCommit", card);
       if (isSecond) {
         const usCard = p === "US" ? primary : usBefore;
         const ussrCard = p === "USSR" ? primary : ussrBefore;
-        const usName = engine.cardName(usCard);
-        const ussrName = engine.cardName(ussrCard);
+        const us = cardArg(usCard, engine.cardName(usCard));
+        const ussr = cardArg(ussrCard, engine.cardName(ussrCard));
         const usOps = engine.cardOps(usCard);
         const ussrOps = engine.cardOps(ussrCard);
         // The order is the engine's: the card it resolves first (headline_first_card), set by the
         // commit that revealed both.
         const firstP = after.headline_first_card === ussrCard ? "USSR" : "US";
         const secondP = firstP === "US" ? "USSR" : "US";
-        const firstName = firstP === "US" ? usName : ussrName;
-        const secondName = firstP === "US" ? ussrName : usName;
-        logs.push(`  ★ Headlines Simultaneously Revealed: US plays '${usName}' (#${usCard}, ${usOps} Ops) vs USSR plays '${ussrName}' (#${ussrCard}, ${ussrOps} Ops)`);
-        logs.push(`  ★ Resolution Order: 1st ${firstP} '${firstName}' (${firstP === "US" ? usOps : ussrOps} Ops) -> 2nd ${secondP} '${secondName}' (${firstP === "US" ? ussrOps : usOps} Ops)`);
+        logs.push(logLine("★", "log:headline.revealed", {
+          usCard: us, usId: usCard, usOps, ussrCard: ussr, ussrId: ussrCard, ussrOps,
+        }));
+        logs.push(logLine("★", "log:headline.order", {
+          first: sideArg(firstP), firstCard: firstP === "US" ? us : ussr, firstOps: firstP === "US" ? usOps : ussrOps,
+          second: sideArg(secondP), secondCard: firstP === "US" ? ussr : us, secondOps: firstP === "US" ? ussrOps : usOps,
+        }));
       }
     } else {
-      logs.push(`${p} plays Card: ${cardName} (#${primary})`);
+      say("log:action.plays", card);
     }
   } else if (d === DT.POINT_NODE) {
     if (isConfirmDone(action) || primary === 255 || (primary === 0 && (flags & 128))) {
-      logs.push(`${p} confirms / finishes point node selections.`);
+      say("log:action.confirmPoints");
     } else {
-      const cName = primary < 84 ? engine.countryName(primary) : `Node #${primary}`;
+      const country = primary < 84 ? countryArg(primary, engine.countryName(primary)) : message("log:node", { n: primary });
       const resolving = ctx?.resolving_card ?? 0;
       const phase = before.current_phase_name ?? "";
       if (phase === "SETUP") {
-        logs.push(`${p} places 1 Influence in ${cName} during Setup.`);
+        say("log:action.setupInfluence", { country });
       } else if (resolving > 0) {
-        logs.push(`${p} targets ${cName} for Event: ${engine.cardName(resolving)} (#${resolving})`);
+        say("log:action.eventTarget", { country, card: cardArg(resolving, engine.cardName(resolving)), id: resolving });
       } else {
         const opMode = ctx?.op_mode ?? L.op_modes.INFLUENCE;
-        if (opMode === L.op_modes.COUP) logs.push(`${p} attempts Coup in ${cName}`);
-        else if (opMode === L.op_modes.REALIGN) logs.push(`${p} conducts Realignment in ${cName}`);
-        else logs.push(`${p} places Influence in ${cName}`);
+        if (opMode === L.op_modes.COUP) say("log:action.coup", { country });
+        else if (opMode === L.op_modes.REALIGN) say("log:action.realign", { country });
+        else say("log:action.influence", { country });
       }
     }
   } else if (d === DT.SELECT_PLAY_MODE) {
-    // P17: one resolution node (MODE_WORDS).
+    // P17: one resolution node (`log:playMode`).
     if (isConfirmDone(action) && (ctx?.resolving_card ?? 0) === C.GRAIN_SALES) {
       // The decline at Grain Sales' node: the drawn card goes back, Grain Sales' own Ops are taken.
       const drawn = ctx?.pending_op_card ?? 0;
-      logs.push(`${p} returns ${engine.cardName(drawn)} (#${drawn}) to the USSR hand and conducts Grain Sales' 2 Ops`);
+      say("log:action.grainSalesReturn", { card: cardArg(drawn, engine.cardName(drawn)), id: drawn });
     } else if (primary === L.resolutions.SPACE) {
-      const rollInfo = secondary > 0 ? ` (Input Roll: ${secondary})` : "";
-      logs.push(`${p} attempts Space Race with pending card${rollInfo}`);
+      if (secondary > 0) say("log:action.spaceRoll", { roll: secondary });
+      else say("log:action.space");
     } else {
-      logs.push(`${p} selects play mode: ${MODE_WORDS[namesByValue(L.resolutions)[primary] ?? ""] ?? String(primary)}`);
+      say("log:action.playMode", { mode: modeWords("playMode", namesByValue(L.resolutions)[primary], primary) });
     }
   } else if (d === DT.SELECT_OP_MODE) {
-    logs.push(`${p} chooses Op mode: ${OP_MODE_WORDS[namesByValue(L.op_modes)[primary] ?? ""] ?? String(primary)}`);
+    say("log:action.opMode", { mode: modeWords("opMode", namesByValue(L.op_modes)[primary], primary) });
   } else if (d === DT.CHOOSE_BRANCH) {
     const card = ctx?.resolving_card ?? 0;
     const meta = isConfirmDone(action) ? null : branchMeta(card, primary, before);
-    if (isConfirmDone(action)) logs.push(`${p} confirms / passes option.`);
-    // The branch's verb in English: the log is still English text (until i18n phase 2).
-    else if (meta) logs.push(`${p} ${renderEnglish(meta.verb)} (${engine.cardName(card)})`);
-    else logs.push(`${p} chooses option: ${primary}`);
+    if (isConfirmDone(action)) say("log:action.confirmOption");
+    else if (meta) say("log:action.branch", { verb: meta.verb, event: cardArg(card, engine.cardName(card)) });
+    else say("log:action.option", { n: primary });
   } else {
-    logs.push(`${p} action: type=${d} primary=${primary} secondary=${secondary} flags=${flags}`);
+    say("log:action.other", { type: d, primary, secondary, flags });
   }
   return logs;
 }
@@ -173,8 +185,8 @@ export function describeAction(
  * session logs the changes a step made after the action itself (the turn's end).
  */
 export function describeDeltas(engine: WasmEngine, before: GameState, after: GameState, p: string,
-                               chosen = 0): string[] {
-  const logs: string[] = [];
+                               chosen = 0): LogLine[] {
+  const logs: LogLine[] = [];
   // 2. Influence
   const oldCountries = before.countries || {};
   for (const c of countriesById(after)) {
@@ -183,20 +195,16 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
     const usDiff = c.us_influence - old.us_influence;
     const ussrDiff = c.ussr_influence - old.ussr_influence;
     if (usDiff !== 0 || ussrDiff !== 0) {
-      const parts: string[] = [];
-      if (usDiff !== 0) parts.push(`US: ${old.us_influence} -> ${c.us_influence} (${signed(usDiff)})`);
-      if (ussrDiff !== 0) parts.push(`USSR: ${old.ussr_influence} -> ${c.ussr_influence} (${signed(ussrDiff)})`);
-      logs.push(`  • ${c.name} Influence: ` + parts.join(", "));
+      logs.push(influenceLine(countryArg(c.id, c.name),
+                              usDiff !== 0 ? [old.us_influence, c.us_influence] : null,
+                              ussrDiff !== 0 ? [old.ussr_influence, c.ussr_influence] : null));
     }
   }
 
   // 3. Tracks
-  if (before.defcon !== after.defcon) logs.push(`  • DEFCON: ${before.defcon} -> ${after.defcon}`);
+  if (before.defcon !== after.defcon) logs.push(defconLine(before.defcon, after.defcon));
   if (before.victory_points !== after.victory_points) {
-    const vb = before.victory_points ?? 0;
-    const va = after.victory_points ?? 0;
-    const delta = va - vb;
-    logs.push(`  • Victory Points: ${vpStr(vb)} -> ${vpStr(va)} (${delta > 0 ? `+${delta} VP` : `${delta} VP`})`);
+    logs.push(vpLine(before.victory_points ?? 0, after.victory_points ?? 0));
   }
   // The Python session read `us_mil_ops`/`ussr_mil_ops`, keys the display state never had (it
   // carries `mil_ops: {US, USSR}`), so a MilOps change was never logged. Fixed here; the golden
@@ -204,7 +212,7 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
   for (const side of ["US", "USSR"] as const) {
     const b = before.mil_ops?.[side];
     const a = after.mil_ops?.[side];
-    if (b !== a) logs.push(`  • ${side} MilOps: ${b} -> ${a}`);
+    if (b !== a) logs.push(milOpsLine(side, b ?? 0, a ?? 0));
   }
 
   // The Space Race track: an advance pays VP, and Captured Nazi Scientist's +2 VP read as
@@ -212,14 +220,14 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
   for (const side of ["US", "USSR"] as const) {
     const b = before.space?.[side];
     const a = after.space?.[side];
-    if (b !== undefined && a !== undefined && b !== a) logs.push(`  • Space Race: ${side} ${b} -> ${a}`);
+    if (b !== undefined && a !== undefined && b !== a) logs.push(spaceLine(side, b, a));
   }
 
   // 3.5 Effect flags
   const oldFlags = new Set(before.flags || []);
   const newFlags = new Set(after.flags || []);
-  for (const f of [...newFlags].filter(x => !oldFlags.has(x)).sort()) logs.push(`  • Effect Activated: ${f}`);
-  for (const f of [...oldFlags].filter(x => !newFlags.has(x)).sort()) logs.push(`  • Effect Cancelled: ${f}`);
+  for (const f of [...newFlags].filter(x => !oldFlags.has(x)).sort()) logs.push(logLine("•", "log:change.effectActivated", { flag: f }));
+  for (const f of [...oldFlags].filter(x => !newFlags.has(x)).sort()) logs.push(logLine("•", "log:change.effectCancelled", { flag: f }));
 
   // 4. Cards that moved
   const oldLocs = before.card_locations || {};
@@ -228,7 +236,9 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
     const o = oldLocs[String(cid)];
     const n = newLocs[String(cid)];
     if (n === undefined) continue;
-    if (o && o !== n) logs.push(`  • Card #${cid} (${engine.cardName(cid)}) moved: ${o} -> ${n}`);
+    if (o && o !== n) {
+      logs.push(logLine("•", "log:change.cardMoved", { id: cid, card: cardArg(cid, engine.cardName(cid)), from: o, to: n }));
+    }
   }
 
   // 4.5 The random discards events make, said as discards; Missile Envy's exchange, as one
@@ -240,10 +250,31 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
   return logs;
 }
 
-/**
- * The dice line for one roll, as the display state writes a roll (`die_roll`); `before` is the
- * position the roll was made from (a coup's defence reads its stability). Nothing for no roll.
- */
+/** A country's Influence change, by side: each `[from, to]`, or null where that side's did not move. */
+export function influenceLine(country: MessageArg, us: [number, number] | null, ussr: [number, number] | null): LogLine {
+  const u: Record<string, MessageArg> = us ? { usFrom: us[0], usTo: us[1], usDelta: signed(us[1] - us[0]) } : {};
+  const r: Record<string, MessageArg> = ussr ? { ussrFrom: ussr[0], ussrTo: ussr[1], ussrDelta: signed(ussr[1] - ussr[0]) } : {};
+  const key = us && ussr ? "log:change.influenceBoth" : us ? "log:change.influenceUs" : "log:change.influenceUssr";
+  return logLine("•", key, { country, ...u, ...r });
+}
+
+export function defconLine(from: number, to: number): LogLine {
+  return logLine("•", "log:change.defcon", { from, to });
+}
+
+/** The score's change, from `from` to `to`. */
+export function vpLine(from: number, to: number): LogLine {
+  return logLine("•", "log:change.vp", { from: vpScore(from), to: vpScore(to), delta: signed(to - from) });
+}
+
+export function milOpsLine(side: string, from: number, to: number): LogLine {
+  return logLine("•", "log:change.milOps", { side: sideArg(side), from, to });
+}
+
+export function spaceLine(side: string, from: number, to: number): LogLine {
+  return logLine("•", "log:change.space", { side: sideArg(side), from, to });
+}
+
 /**
  * What each Event of a step did to VP and DEFCON, when the step's before/after cannot say it. The
  * second headline commit resolves both headlines: Nuclear Test Ban's +1 VP for the US and Pershing
@@ -251,7 +282,7 @@ export function describeDeltas(engine: WasmEngine, before: GameState, after: Gam
  * Event that accounts for the whole change is already told by those lines, so it adds nothing.
  */
 export function describeEventTracks(before: GameState, after: GameState,
-                                    tracks: EventTrackState[] | undefined): string[] {
+                                    tracks: EventTrackState[] | undefined): LogLine[] {
   if (!tracks || tracks.length === 0) return [];
   const vp = tracks.reduce((sum, t) => sum + t.vp_delta, 0);
   const defcon = tracks.reduce((sum, t) => sum + t.defcon_delta, 0);
@@ -259,79 +290,114 @@ export function describeEventTracks(before: GameState, after: GameState,
   const netDefcon = (after.defcon ?? 0) - (before.defcon ?? 0);
   if (tracks.length === 1 && vp === netVp && defcon === netDefcon) return [];
   return tracks.map(t => {
-    const parts: string[] = [];
-    if (t.vp_delta !== 0) parts.push(`${t.vp_delta > 0 ? "US" : "USSR"} +${Math.abs(t.vp_delta)} VP`);
-    if (t.defcon_delta !== 0) parts.push(`DEFCON ${signed(t.defcon_delta)}`);
-    return `  • ${t.card_name || `Card #${t.card_id}`} (#${t.card_id}): ${parts.join(", ")}`;
+    const card = { card: cardArg(t.card_id, t.card_name || `Card #${t.card_id}`), id: t.card_id };
+    const vpPart = t.vp_delta !== 0 ? { side: sideArg(t.vp_delta > 0 ? "US" : "USSR"), vp: Math.abs(t.vp_delta) } : null;
+    const defconPart = t.defcon_delta !== 0 ? { defcon: signed(t.defcon_delta) } : null;
+    const key = vpPart && defconPart ? "log:eventTrack.both" : vpPart ? "log:eventTrack.vp"
+      : defconPart ? "log:eventTrack.defcon" : "log:eventTrack.none";
+    return logLine("•", key, { ...card, ...vpPart, ...defconPart });
   });
 }
 
-export function describeRoll(engine: WasmEngine, before: GameState, roll: DieRollState | undefined, p: string): string[] {
-  const logs: string[] = [];
+/**
+ * The dice line for one roll, as the display state writes a roll (`die_roll`); `before` is the
+ * position the roll was made from (a coup's defence reads its stability). Nothing for no roll.
+ */
+export function describeRoll(engine: WasmEngine, before: GameState, roll: DieRollState | undefined, p: string): LogLine[] {
+  const logs: LogLine[] = [];
   const r = roll || ({} as DieRollState);
   const type = r.type ?? "NONE";
-  const cname = () => r.country_name || ((r.country_id ?? 255) < 84 ? engine.countryName(r.country_id ?? 0) : "");
-  const sgn = (v: number) => (v >= 0 ? "+" : "");
+  const named = (r.country_id ?? 255) < 84;
+  const cname = () => r.country_name || (named ? engine.countryName(r.country_id ?? 0) : "");
+  const country = (name: string): MessageArg => (named ? countryArg(r.country_id ?? 0, name) : name);
+  const sgn = (v: number) => (v >= 0 ? `+${v}` : `${v}`);
+  const roller = sideArg(r.roller || p);
   if (type === "COUP") {
     const c = cname();
     const stab = before.countries?.[c]?.stability ?? 1;
-    const roller = r.roller || p;
     const roll1 = r.roll1 ?? 0, mod1 = r.mod1 ?? 0, tot1 = r.total1 ?? roll1 + mod1;
-    const def = stab * 2;
     const net = r.net_delta ?? 0;
-    const cardPrefix = r.card_name ? ` (${r.card_name})` : "";
-    const status = r.success ? `Net +${net} Influence (Coup Succeeded)` : "Coup Failed (Roll + Ops <= 2x Stability)";
-    logs.push(`  🎲 Coup in ${c}${cardPrefix}: ${roller} rolls ${roll1} (+${mod1} Ops = ${tot1}) vs ${def} Defense (2x Stability ${stab}) -> ${status}`);
+    const result = r.success ? message("log:roll.coupSucceeded", { net }) : message("log:roll.coupFailed");
+    const values = { country: country(c), roller, roll: roll1, mod: mod1, total: tot1, defense: stab * 2, stability: stab, result };
+    if (r.card_name) {
+      const card: MessageArg = r.card_id ? cardArg(r.card_id, r.card_name) : r.card_name;
+      logs.push(logLine("🎲", "log:roll.coupWithCard", { ...values, card }));
+    } else {
+      logs.push(logLine("🎲", "log:roll.coup", values));
+    }
   } else if (type === "REALIGNMENT") {
     const c = cname();
     const rus = r.roll1 ?? 0, mus = r.mod1 ?? 0, tus = r.total1 ?? rus + mus;
     const rr = r.roll2 ?? 0, mr = r.mod2 ?? 0, tr = r.total2 ?? rr + mr;
     const net = r.net_delta ?? 0;
-    const res = tus > tr ? `US wins by +${tus - tr} (Removes ${net} USSR Influence)`
-      : tr > tus ? `USSR wins by +${tr - tus} (Removes ${net} US Influence)` : "Tie (No Influence Removed)";
-    logs.push(`  🎲 Realignment in ${c}: US rolls ${rus} (${sgn(mus)}${mus} mod = ${tus}), USSR rolls ${rr} (${sgn(mr)}${mr} mod = ${tr}) -> ${res}`);
+    const result = tus > tr ? message("log:roll.realignUs", { by: tus - tr, net })
+      : tr > tus ? message("log:roll.realignUssr", { by: tr - tus, net }) : message("log:roll.realignTie");
+    logs.push(logLine("🎲", "log:roll.realign", {
+      country: country(c), usRoll: rus, usMod: sgn(mus), usTotal: tus, ussrRoll: rr, ussrMod: sgn(mr), ussrTotal: tr, result,
+    }));
   } else if (type === "SPACE_RACE") {
-    const target = r.country_id ?? 0;
+    const box = r.country_id ?? 0;
     const roll1 = r.roll1 ?? 0;
-    const status = r.success ? `SUCCESS (Advanced to Box #${target})` : `FAILED (Roll ${roll1} > ${r.mod1 ?? 0} threshold)`;
-    logs.push(`  🎲 Space Race Attempt (Target Box #${target}): ${r.roller || p} rolls ${roll1} -> ${status}`);
+    const result = r.success ? message("log:roll.spaceSucceeded", { box })
+      : message("log:roll.spaceFailed", { roll: roll1, threshold: r.mod1 ?? 0 });
+    logs.push(logLine("🎲", "log:roll.space", { box, roller, roll: roll1, result }));
   } else if (type === "WAR_EVENT") {
-    const card = r.card_name || `Card #${r.card_id}`;
+    const name = r.card_name || `Card #${r.card_id}`;
+    const card: MessageArg = r.card_id !== undefined ? cardArg(r.card_id, name) : name;
     const c = cname();
     const roll1 = r.roll1 ?? 0, mod1 = r.mod1 ?? 0, tot1 = r.total1 ?? roll1 + mod1;
     const threshold = r.mod2 ?? 0;
-    const target = c ? ` targeting ${c}` : "";
-    const status = r.success ? `Success (${tot1} >= ${threshold} target: Target Captured & VP Awarded)` : `Roll Failed (${tot1} < ${threshold} target)`;
-    logs.push(`  🎲 ${card} Roll${target}: ${r.roller || p} rolls ${roll1} (${sgn(mod1)}${mod1} mod = ${tot1}) -> ${status}`);
+    const result = r.success ? message("log:roll.warSucceeded", { total: tot1, threshold })
+      : message("log:roll.warFailed", { total: tot1, threshold });
+    const values = { card, roller, roll: roll1, mod: sgn(mod1), total: tot1, result };
+    if (c) logs.push(logLine("🎲", "log:roll.warTargeting", { ...values, country: country(c) }));
+    else logs.push(logLine("🎲", "log:roll.war", values));
   } else if (type === "OLYMPIC_GAMES") {
     const sponsor = r.roller || p;
     const sr = r.roll1 ?? 0, st = r.total1 ?? sr + (r.mod1 ?? 2);
     const or = r.roll2 ?? 0, ot = r.total2 ?? or;
     const opp = sponsor === "USSR" ? "US" : "USSR";
-    const res = st > ot ? `Sponsor ${sponsor} wins by +${st - ot} (+2 VP)` : ot > st ? `Opponent ${opp} wins` : "Tie (No VP)";
-    logs.push(`  🎲 Olympic Games Competition: Sponsor (${sponsor}) rolls ${sr} (+2 = ${st}), Opponent (${opp}) rolls ${or} -> ${res}`);
+    const result = st > ot ? message("log:roll.olympicsSponsor", { side: sideArg(sponsor), by: st - ot })
+      : ot > st ? message("log:roll.olympicsOpponent", { side: sideArg(opp) }) : message("log:roll.olympicsTie");
+    logs.push(logLine("🎲", "log:roll.olympics", {
+      sponsor: sideArg(sponsor), sponsorRoll: sr, sponsorTotal: st, opponent: sideArg(opp), opponentRoll: or, result,
+    }));
   } else if (type === "SUMMIT") {
     const ur = r.roll1 ?? 0, ud = r.mod1 ?? 0, ut = r.total1 ?? ur + ud;
     const sr = r.roll2 ?? 0, sd = r.mod2 ?? 0, stt = r.total2 ?? sr + sd;
-    const diff = Math.abs(ut - stt);
-    const res = ut > stt ? `US wins Summit by +${diff}` : stt > ut ? `USSR wins Summit by +${diff}` : "Tied Summit (No Effect)";
-    logs.push(`  🎲 Summit Rolls: US rolls ${ur} (+${ud} Dom = ${ut}), USSR rolls ${sr} (+${sd} Dom = ${stt}) -> ${res}`);
+    const by = Math.abs(ut - stt);
+    const result = ut > stt ? message("log:roll.summitUs", { by }) : stt > ut ? message("log:roll.summitUssr", { by })
+      : message("log:roll.summitTie");
+    logs.push(logLine("🎲", "log:roll.summit", {
+      usRoll: ur, usMod: ud, usTotal: ut, ussrRoll: sr, ussrMod: sd, ussrTotal: stt, result,
+    }));
   } else if (type === "TRAP_ESCAPE") {
-    const status = r.success ? "Success! Discard canceled trap." : "Failed (Roll > 4, remains trapped)";
-    logs.push(`  🎲 Trap Escape Roll: ${r.roller || p} rolls ${r.roll1 ?? 0} (Needed 1–4) -> ${status}`);
+    const result = r.success ? message("log:roll.trapSucceeded") : message("log:roll.trapFailed");
+    logs.push(logLine("🎲", "log:roll.trap", { roller, roll: r.roll1 ?? 0, result }));
   }
   return logs;
 }
 
-/** Where a card was, for "from the US hand" and the like ("" where it says nothing). */
-function from(loc: string | undefined): string {
-  if (!loc) return "";
-  if (loc.startsWith("HAND_US_")) return " from the US hand";
-  if (loc.startsWith("HAND_USSR_")) return " from the USSR hand";
-  if (loc === "DISCARD_PILE") return " from the discard pile";
-  if (loc === "PEEKED_TEMP") return " from the cards drawn";
-  return "";
+/** Where a card was, for "from the US hand" and the like (null where it says nothing). */
+function from(loc: string | undefined): Message | null {
+  if (!loc) return null;
+  if (loc.startsWith("HAND_US_")) return message("log:from.hand", { side: sideArg("US") });
+  if (loc.startsWith("HAND_USSR_")) return message("log:from.hand", { side: sideArg("USSR") });
+  if (loc === "DISCARD_PILE") return message("log:from.discardPile");
+  if (loc === "PEEKED_TEMP") return message("log:from.drawn");
+  return null;
 }
+
+/** What happened to a card chosen while an event resolves, by where it went: each without and with
+ *  where it came from. */
+const CHOICE = {
+  discards: ["log:choice.discards", "log:choice.discardsFrom"],
+  removes: ["log:choice.removes", "log:choice.removesFrom"],
+  returns: ["log:choice.returns", "log:choice.returnsFrom"],
+  takes: ["log:choice.takes", "log:choice.takesFrom"],
+  gives: ["log:choice.gives", "log:choice.givesFrom"],
+  chooses: ["log:choice.chooses", "log:choice.choosesFrom"],
+} as const satisfies Record<string, readonly [MessageKey, MessageKey]>;
 
 /**
  * A card chosen while an event resolves (`resolving_card`), said as what happened to it -- never as
@@ -340,26 +406,28 @@ function from(loc: string | undefined): string {
  * Revealed" line for it.
  */
 function eventCardChoice(engine: WasmEngine, before: GameState, after: GameState, action: Required<MicroAction>,
-                         p: string, resolving: number): string {
+                         p: string, resolving: number): LogLine {
   const C = cardIds(engine);
-  const event = engine.cardName(resolving);
+  const side = sideArg(p);
+  const event = cardArg(resolving, engine.cardName(resolving));
   const id = action.primary_id;
-  if (isConfirmDone(action) || id === 0) return `${p} chooses no (further) card (${event})`;
-  const card = `${engine.cardName(id)} (#${id})`;
+  if (isConfirmDone(action) || id === 0) return logLine(undefined, "log:choice.none", { side, event });
+  const card = { side, event, card: cardArg(id, engine.cardName(id)), id };
   const opp = p === "US" ? "USSR" : "US";
   const src = before.card_locations?.[String(id)];
   const dst = after.card_locations?.[String(id)];
-  if (resolving === C.STAR_WARS) return `${p} takes ${card} from the discard pile and plays its event (${event})`;
-  if (resolving === C.SALT) return `${p} takes ${card} back into hand from the discard pile (${event})`;
-  if (resolving === C.UN_INTERVENTION) return `${p} plays ${card} with ${event}: its event is cancelled, ${p} uses its Ops`;
-  if (resolving === C.MISSILE_ENVY) return `${p} gives ${card} to the ${opp} (${event})`;
+  if (resolving === C.STAR_WARS) return logLine(undefined, "log:choice.starWars", card);
+  if (resolving === C.SALT) return logLine(undefined, "log:choice.salt", card);
+  if (resolving === C.UN_INTERVENTION) return logLine(undefined, "log:choice.unIntervention", card);
+  if (resolving === C.MISSILE_ENVY) return logLine(undefined, "log:choice.missileEnvy", { ...card, opponent: sideArg(opp) });
   if (resolving === C.GRAIN_SALES && id === C.UN_INTERVENTION) {
-    return `${p} plays UN Intervention on the card ${event} drew: its event is cancelled, ${p} uses its Ops`;
+    return logLine(undefined, "log:choice.grainSalesUn", { side, event, un: cardArg(id, engine.cardName(id)) });
   }
-  const verb = dst === "DISCARD_PILE" ? "discards" : dst === "REMOVED_FROM_GAME" ? "removes"
-    : dst === "DRAW_DECK" ? "returns to the draw deck" : dst?.startsWith(`HAND_${p}_`) ? "takes"
-    : dst?.startsWith(`HAND_${opp}_`) ? `gives the ${opp}` : "chooses";
-  return `${p} ${verb} ${card}${from(src)} (${event})`;
+  const verb = dst === "DISCARD_PILE" ? CHOICE.discards : dst === "REMOVED_FROM_GAME" ? CHOICE.removes
+    : dst === "DRAW_DECK" ? CHOICE.returns : dst?.startsWith(`HAND_${p}_`) ? CHOICE.takes
+    : dst?.startsWith(`HAND_${opp}_`) ? CHOICE.gives : CHOICE.chooses;
+  const where = from(src);
+  return logLine(undefined, where ? verb[1] : verb[0], { ...card, opponent: sideArg(opp), ...(where ? { from: where } : {}) });
 }
 
 /**
@@ -371,9 +439,9 @@ function eventCardChoice(engine: WasmEngine, before: GameState, after: GameState
  * headline, or an opponent's card played for Ops); the step's own played and headline cards leave
  * a hand too and are not the event's discards.
  */
-function randomDiscards(engine: WasmEngine, before: GameState, after: GameState, chosen: number): string[] {
+function randomDiscards(engine: WasmEngine, before: GameState, after: GameState, chosen: number): LogLine[] {
   const C = cardIds(engine);
-  const lines: string[] = [];
+  const lines: LogLine[] = [];
   const c = before.decision_context;
   const ownPlay = [chosen, c?.pending_op_card, before.headline_us_card, before.headline_ussr_card,
                    after.headline_us_card, after.headline_ussr_card];
@@ -388,8 +456,11 @@ function randomDiscards(engine: WasmEngine, before: GameState, after: GameState,
       const n = after.card_locations?.[String(cid)] ?? "";
       const side = victims.find(v => o.startsWith(`HAND_${v}_`));
       if (!side || (n !== "DISCARD_PILE" && n !== "REMOVED_FROM_GAME")) continue;
-      const fires = event === C.FIVE_YEAR_PLAN && SIDE.get(cid) === "us" ? " — a US event, so its event fires" : "";
-      lines.push(`  ✂ ${side} discards ${engine.cardName(cid)} (#${cid}) at random (${engine.cardName(event)})${fires}`);
+      // A US event discarded by Five Year Plan fires.
+      const fires = event === C.FIVE_YEAR_PLAN && SIDE.get(cid) === "us";
+      lines.push(logLine("✂", fires ? "log:randomDiscardFires" : "log:randomDiscard", {
+        side: sideArg(side), card: cardArg(cid, engine.cardName(cid)), id: cid, event: cardArg(event, engine.cardName(event)),
+      }));
     }
   }
   return lines;
@@ -404,25 +475,26 @@ function randomDiscards(engine: WasmEngine, before: GameState, after: GameState,
  * The engine marks the exchange: Missile Envy becomes the giver's forced card (`forced_card_id`,
  * `forced_card_player`) -- not merely Missile Envy reaching a hand, which a deal does too.
  */
-function missileEnvyExchange(engine: WasmEngine, before: GameState, after: GameState): string[] {
+function missileEnvyExchange(engine: WasmEngine, before: GameState, after: GameState): LogLine[] {
   const C = cardIds(engine);
   const forced = after.forced_card_id === C.MISSILE_ENVY && after.forced_card_player !== "NONE";
   const already = before.forced_card_id === C.MISSILE_ENVY && before.forced_card_player === after.forced_card_player;
   if (!forced || already) return [];
   const giver = after.forced_card_player, taker = giver === "US" ? "USSR" : "US";
+  const sides = { giver: sideArg(giver), taker: sideArg(taker), event: cardArg(C.MISSILE_ENVY, engine.cardName(C.MISSILE_ENVY)) };
   const headlines = [before.headline_us_card, before.headline_ussr_card, after.headline_us_card, after.headline_ussr_card];
-  const lines: string[] = [];
+  const lines: LogLine[] = [];
   for (let cid = 1; cid <= 110; cid++) {
     if (cid === C.MISSILE_ENVY || headlines.includes(cid)) continue;
     const was = before.card_locations?.[String(cid)] ?? "";
     const now = after.card_locations?.[String(cid)] ?? "";
     if (!was.startsWith(`HAND_${giver}_`) || now.startsWith(`HAND_${giver}_`)) continue;
     const side = SIDE.get(cid);
-    const how = side === giver.toLowerCase()
-      ? `a ${giver} event, so the ${taker} uses its ${engine.cardOps(cid)} Ops and the event does not fire`
-      : `${side === "neutral" ? "an event for both sides" : `a ${taker} event`}, so its event fires for the ${taker}`;
-    lines.push(`  ⇄ The ${taker} takes ${engine.cardName(cid)} (#${cid}) from the ${giver} hand (Missile Envy) — ${how}`);
+    const card = { ...sides, card: cardArg(cid, engine.cardName(cid)), id: cid };
+    if (side === giver.toLowerCase()) lines.push(logLine("⇄", "log:envy.takesGivers", { ...card, ops: engine.cardOps(cid) }));
+    else if (side === "neutral") lines.push(logLine("⇄", "log:envy.takesBoth", card));
+    else lines.push(logLine("⇄", "log:envy.takesTakers", card));
   }
-  lines.push(`  ⇄ Missile Envy goes to the ${giver} hand: the ${giver} must play it for Ops in its next action round`);
+  lines.push(logLine("⇄", "log:envy.goes", sides));
   return lines;
 }

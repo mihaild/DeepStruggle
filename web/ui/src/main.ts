@@ -29,13 +29,12 @@ import { RolloutRunner } from "./analysis/rollout_runner";
 import { ViewMode, opponentOf, redactState, viewFromParam, viewToParam } from "./game/view";
 import { lastTurnOf } from "./game/last_turn";
 import { recentRolls } from "./game/rolls";
-import { LogEntry, groupLog, replayItems } from "./game/log_view";
-import { CardNames, linkCardRefs } from "./game/card_refs";
+import { LogEntry, groupLog, mentionsVp, movesVp, replayItems } from "./game/log_view";
+import { EnglishLogItem, englishItem, lineHtml, messageHtml, playerLabel } from "./game/log";
 import { MoveHow, buildSubmission, sha256Hex, summarize } from "./game/record";
 import { loadStoredGame, storeGame } from "./game/saved_game";
 import { ResultDialog } from "./result_dialog";
 import { BUILD_COMMIT, BUILD_DIRTY } from "./build_info";
-import { CARDS_METADATA } from "./metadata";
 import { escapeHtml, num } from "./html";
 import { bindLanguageSelects, initLanguage, onLanguageChange, sideName, t } from "./i18n";
 
@@ -115,8 +114,6 @@ export class TSApp {
   private resultDialog: ResultDialog;
   /** The board showed a finished game at the last refresh: the dialog opens when a game ends. */
   private wasOver = false;
-  /** The log's card names (cardNames), once the engine is loaded. */
-  private logCardNames: CardNames | null = null;
   /** The model in a few words (AnalysisPanel.onModelLabel), for the model · mode labels. */
   private modelLabel: { text: string; status: "off" | "loading" | "ready" | "error" } = { text: t("app:model.none"), status: "off" };
   /** The engine badge, as a function: redrawn in a new language. */
@@ -1089,22 +1086,15 @@ export class TSApp {
     }
   }
 
-  /** The names the log calls each card by: the engine's (which writes the log) and the rules'. */
-  private cardNames(): CardNames {
-    if (!this.logCardNames) {
-      const names = new Map<number, string[]>();
-      const ids = new Map<string, number>();
-      for (const c of CARDS_METADATA) {
-        const engineName = this.engine?.cardName(c.id);
-        const all = [...new Set([engineName, c.name].filter((n): n is string => !!n))];
-        names.set(c.id, all);
-        for (const n of all) ids.set(n, c.id);
-      }
-      // Kept once the engine has named them; until then the rules' names stand in.
-      if (this.engine) this.logCardNames = { namesOf: id => names.get(id) ?? [], idOf: n => ids.get(n) };
-      else return { namesOf: id => names.get(id) ?? [], idOf: n => ids.get(n) };
-    }
-    return this.logCardNames;
+  /** The live game's log in English, as its lines read before they kept Messages: for the tests
+   *  and for debugging in the console. */
+  englishLog(): EnglishLogItem[] {
+    return (this.session?.logs ?? []).map(englishItem);
+  }
+
+  /** The log as the current view may read it (`shown`), in English. */
+  shownEnglishLog(): EnglishLogItem[] {
+    return (this.shown?.action_logs ?? []).map(englishItem);
   }
 
   private getFilteredIndices(
@@ -1183,10 +1173,9 @@ export class TSApp {
     }
     const isVpEntry = (i: number): boolean => {
       const e = entries[i];
-      return e.vp_delta !== 0 || e.lines.some(l => l.includes("Victory Points:") || l.includes(" VP"));
+      return e.vp_delta !== 0 || e.lines.some(mentionsVp);
     };
     const { targetIndices, includedIndices } = this.getFilteredIndices(entries.length, isVpEntry);
-    const cardNames = this.cardNames();
 
     if (logCountBadge) {
       logCountBadge.textContent = this.isVpFilterActive
@@ -1218,13 +1207,14 @@ export class TSApp {
 
       // A line that can be matched to one step says which (game/log_view.ts LogEntry.steps).
       const stepTag = (n: number | null) => n === null ? "" : `<span class="log-line-step">#${n}</span> `;
+      // Its class by what the line is (game/log.ts): a die, a change to the score, a decision within the play.
       const lines = e.lines.map((d, j) => {
         let lineClass = "log-detail-line";
-        if (d.includes("🎲")) lineClass += " log-die-line";
-        if (d.includes("Victory Points:") || /\(#\d+\): .*VP/.test(d)) lineClass += " log-vp-line";
-        if (d.startsWith("  ▸ ")) lineClass += " log-sub-line";
+        if (d.mark === "🎲") lineClass += " log-die-line";
+        if (movesVp(d)) lineClass += " log-vp-line";
+        if (d.mark === "▸") lineClass += " log-sub-line";
         const n = e.steps[j];
-        return `<div class="${lineClass}"${n === null ? "" : ` data-step="${n}"`}>${stepTag(n)}${linkCardRefs(d, cardNames)}</div>`;
+        return `<div class="${lineClass}"${n === null ? "" : ` data-step="${n}"`}>${stepTag(n)}${lineHtml(d)}</div>`;
       }).join("");
 
       // A replay's policy chips: every decision of the play, in order.
@@ -1234,16 +1224,17 @@ export class TSApp {
       let vpDeltaBadge = "";
       if (e.vp_delta !== 0) {
         const deltaClass = e.vp_delta > 0 ? "us" : "ussr";
-        vpDeltaBadge = `<span class="vp-delta-pill ${deltaClass}">${num(e.vp_delta) > 0 ? `+${num(e.vp_delta)}` : num(e.vp_delta)} VP</span>`;
+        const vp = num(e.vp_delta) > 0 ? `+${num(e.vp_delta)}` : String(num(e.vp_delta));
+        vpDeltaBadge = `<span class="vp-delta-pill ${deltaClass}">${escapeHtml(t("app:log.vpDelta", { vp }))}</span>`;
       }
 
       item.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 6px;">
           <div>
             ${e.step === null ? "" : `<span class="log-index" style="font-size: 10px; color: var(--text-dim);">#${num(e.step)}</span>`}
-            <span class="log-step">[T${num(e.turn)} AR${num(e.ar)}]</span>
-            <span class="log-player ${escapeHtml(e.player)}">${escapeHtml(e.player)}:</span>
-            <span class="log-main-text">${linkCardRefs(e.title, cardNames)}</span>
+            <span class="log-step">${escapeHtml(t("app:log.round", { turn: num(e.turn), ar: num(e.ar) }))}</span>
+            <span class="log-player ${escapeHtml(e.player)}">${escapeHtml(t("app:log.player", { player: playerLabel(e.player) }))}</span>
+            <span class="log-main-text">${messageHtml(e.title)}</span>
             ${chips}
           </div>
           ${vpDeltaBadge}
