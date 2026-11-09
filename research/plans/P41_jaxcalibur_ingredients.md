@@ -563,6 +563,52 @@ forced wins taken per recipe, and the swindle rate (eventual winner with V < −
 decided-state play is sharp and swindles are rare, nothing beyond R103 is warranted; the uncertainty-scaled bonus
 is an arm only if J1′ still plays flat there.
 
+## Targeted exploiters: by win condition (owner's question, 2026-11-09)
+
+**The idea.** The exploiters so far (R106–R109: a seat-locked learner, warm-started from the main's own weights,
+against the frozen greedy main, the floor on setup only) found +4 to +5.5 per seat and told us *where* only by
+inspection (post-setup play, Europe uncontested). A **condition-targeted exploiter** is the same recipe with a
+restricted payoff: +1 for a win by condition X, 0 for any other win, −1 for a loss. Its margin against the main's
+own self-play rate of X-wins in that seat is the main's exploitability *along X*, and the set over conditions --
+Europe control, the VP track (±20), Wargames, final scoring, an induced DEFCON loss, an induced held-scoring loss --
+is a **strategic exploitability profile**, the ending-type analogue of the searched-leak census. The dual, a
+**defender**, is the zero-sum payoff plus an extra −1 for losing by X: an opponent that still plays to win but
+denies X; added to the main's pool it suppresses the main's X-wins and forces the other routes.
+
+**Antecedents.** Nothing uses win conditions as the target, but each half has a name. A restricted payoff
+best response is Johanson et al.'s restricted Nash response (NIPS 2007: a counter-strategy to a fixed model,
+exploitation traded against exploitability by a parameter p; data-biased responses after it). Diversifying
+best responses by a behavioural descriptor is the behavioural-diversity PSRO line (Perez-Nieves et al. ICML 2021;
+Liu et al. 2021 unifying behavioural and response diversity; PSD-PSRO 2023) -- here the descriptor would be the
+ending type, chosen by hand. AlphaStar's league is the training use: main exploiters find the main agent's
+weaknesses, league exploiters the league's, and the main agents are conditioned on a strategy statistic z with a
+pseudo-reward for following it, which is a hand-defined target keeping the league diverse. Rectified Nash
+(Balduzzi et al. ICML 2019) trains responses only against opponents one beats, the "target weaknesses" variant.
+The caution is the adversarial-Go line: a general exploiter found the cyclic attack (Wang et al. 2023, >97%
+against KataGo), and iterated adversarial training made the victim robust to each adversary it had seen and to
+no new one (Tseng et al. 2024) -- a defender in the pool fixes exactly X, and the profile has to be re-taken after.
+
+**Assessment.** Worth doing as a *diagnostic* now, as *training* only on what the profile shows.
+
+* The profile is cheap and interpretable: A8 warm starts of ~300M (R104 stopped at +310M) are under an hour each
+  on an idle GPU, so six conditions in both seats are a day; each margin is read against the control's own
+  self-play rate of X in that seat (the per-seat rule), beside the general exploiter's +5.5 so the restricted
+  payoff's overstatement is visible (a targeted exploiter sacrifices every other route, so its X-margin is an
+  upper bound on what a real opponent takes through X).
+* Rare conditions are reachable from the warm start (Europe control is 1–7% of the main's own wins; −1 for a loss
+  keeps the exploiter from throwing games to chase X), so no shaped progress reward is needed -- the exploiter is a
+  probe, not the product, and its payoff is the only engineering.
+* The induced-loss conditions (DEFCON, held scoring) are the robustness probes in the Go sense: an opponent that
+  learns to make the main blunder, found by training, which the leak census cannot see.
+* Training on it is B2's league with condition-targeted members, deferred by the owner's order; the profile is
+  what would justify it: a condition with a margin well above the general exploiter's share tells the main what
+  it cannot defend, and the defender for that condition is the pool member to add.
+
+**First profile:** the frozen target is J5's 2,000M gate checkpoint (or J1′ at matched steps, whichever the gate
+chooses); Europe control and Wargames first (the endings where J5 and J1 differ most: 7.5 vs 0.9% Wargames, 1.3 vs
+7.0% Europe at 180M), both seats, then the induced DEFCON loss; read beside R108's general margin. Nothing launched;
+the owner's call after the gate.
+
 ## Not in this plan
 
 Policy distillation of search (closed), value targets from playouts (closed), the belief root as a
