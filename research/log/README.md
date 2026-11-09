@@ -184,6 +184,7 @@ per-seat control ratings, setup placement and temperature self-play.
 | [`E7_rollout_race.md`](E7_rollout_race.md) | racing the worlds (16 for every candidate, then the challengers not trailing): 32 worlds' gain at 83% of the playouts; race 16 → 64 plays as 4:64 (+12 Elo over 4:32 on A13+R48) at ~1.5× 4:32's time |
 | [`E7_searched_leak_R39.md`](E7_searched_leak_R39.md) | where R39 under the rollout root still loses |
 | [`E7_searched_leak_A13_R48.md`](E7_searched_leak_A13_R48.md) | the same census on A13+R48 at 12,000M |
+| [`E8_J1_census_and_leak.md`](E8_J1_census_and_leak.md) | J1's searched leak is level with R48's; engine-proven blunders are rare and cheap; its largest estimated rows are the Cuban Missile Crisis hole |
 | [`E7_determinization_audit.md`](E7_determinization_audit.md) | determinization leaks nothing; a few deductions unused |
 | [`P33_diagnostics.md`](P33_diagnostics.md) | the critic is the channel search keeps, blind where the searched player errs |
 
@@ -203,5 +204,5 @@ per-seat control ratings, setup placement and temperature self-play.
 | [`E7_five_year_plan_timing.md`](E7_five_year_plan_timing.md) | early Five Year Plan plays are not a leak |
 | [`per_checkpoint/`](per_checkpoint/README.md) | generated behaviour reports, one per rated checkpoint (`tools/scripts/checkpoint_report.py`) |
 
-The subdirectories `E7_blunder_bank/`, `E7_leak_by_kind_*/`, `E7_rollout_root_tuning_R39/` and
-`E7_searched_leak_*/` hold the generated tables their notes link to.
+The subdirectories `E7_blunder_bank/`, `E7_leak_by_kind_*/`, `E7_rollout_root_tuning_R39/`,
+`E7_searched_leak_*/` and `E8_J1_census_and_leak/` hold the generated tables their notes link to.

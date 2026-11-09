@@ -510,6 +510,23 @@
     "description": "P41 J1's best SWA (13,520-13,600M), greedy.",
     "report": null
   },
+  "E8-A8-R102-S44@13520..13600M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)": {
+    "network": "E8-A8-R102-S44@13520..13600M",
+    "inference": {
+      "kind": "rollout",
+      "k": 4,
+      "worlds": 32,
+      "horizon": 4,
+      "rule": "z2",
+      "stop": "earlier",
+      "leaf": "own",
+      "chance": "keyed",
+      "aligned": true,
+      "box4": true
+    },
+    "description": "P41 J1's best SWA under the corrected keyed root at 32 worlds, the root R48's searched-leak census ran under. Registered for that census; it has played no leaderboard matches.",
+    "report": null
+  },
   "E8-A8-R102-S44@13520..13600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true,race=16)": {
     "network": "E8-A8-R102-S44@13520..13600M",
     "inference": {
