@@ -1,7 +1,9 @@
 /**
  * One game, in the page: stepping, dice, undo, the action log, debug overrides, loading a shared
  * position, a replay of the game so far for export, and its record for the stats database
- * (game/record.ts): every step tagged with who made it and the settings in force.
+ * (game/record.ts): every step tagged with who made it and the settings in force. Its log's lines
+ * are Messages (game/log.ts), worded where the log is shown; what it keeps as data -- a replay
+ * step's description, the record's event texts -- is their English.
  *
  * The port of web/server/session.py's GameSession, which ran on the server until the workbench
  * moved into the browser. Two things it now does that the server did not: undo restores the log
@@ -12,6 +14,9 @@ import { ActionLogItem, GameState, MicroAction } from "../types";
 import { WasmEngine } from "../engine/wasm_engine";
 import { describeAction, describeDeltas, describeEventTracks, describeRoll } from "./describe";
 import { clickInfo } from "./log_view";
+import { sideArg } from "./log";
+import { Message, message, messageIfKnown, renderEnglish } from "../i18n";
+import { endingArg } from "../i18n/enums";
 import { ReplayStep } from "../replay_controls";
 import { DebugOverride, GameRecordData, ModelInfo, MoveHow, RecordEvent, RecordEventKind, Settings, StepTag } from "./record";
 
@@ -94,7 +99,7 @@ export class GameSession {
     this.start = s;
     this.logs = [{
       step_index: 0, turn: s.turn, ar: s.action_round, phase: "SETUP", player: "SYSTEM",
-      text: `Game started (Seed: ${seed}). USSR setup: Place 6 Influence in Eastern Europe.`,
+      text: message("log:session.started", { seed, side: sideArg("USSR"), region: { region: "Eastern Europe" } }),
     }];
   }
 
@@ -175,7 +180,7 @@ export class GameSession {
       for (const i of overrides) {
         const e = this.events[i];
         if (e.step !== step) continue;
-        const why = this.override(e.text, e.override!, i);
+        const why = this.override(e.override!, i);
         if (why) throw new Error(`a debug override of the saved game was refused: ${why}`);
       }
     };
@@ -249,7 +254,7 @@ export class GameSession {
       source: how.source, analysis: how.analysis, mover: mover === "US" || mover === "USSR" ? mover : "",
       forcedDie, rolled: rolls.length > 0, setting: this.setting,
     });
-    const main = lines[0] ?? `Action type=${a.decision_type}`;
+    const main = lines[0]?.msg ?? message("log:session.actionType", { type: a.decision_type });
     const phase = before.current_phase_name ?? "ACTION";
     const ar = phase === "HEADLINE" || phase === "SETUP" ? 0 : before.action_round;
     const player = before.decision_context?.decision_player ?? "NONE";
@@ -260,8 +265,10 @@ export class GameSession {
     });
     if (crossed) {
       const rest = describeDeltas(this.engine, settled, after, "SYSTEM");
+      const ended = settled.current_phase_name ?? "";
       const text = after.turn !== settled.turn || after.current_phase_name === "GAME_OVER"
-        ? `End of turn ${settled.turn}` : `${settled.current_phase_name ?? ""} ends`;
+        ? message("log:session.endOfTurn", { turn: settled.turn })
+        : messageIfKnown(`log:session.phaseEnds.${ended}`) ?? message("log:session.phaseEnds.other", { phase: ended });
       this.logs.push({
         step_index: this.stepIndex, turn: settled.turn, ar: settled.action_round, phase: "TURN_END", player: "SYSTEM",
         text, details: rest, vp_delta: (after.victory_points ?? 0) - (settled.victory_points ?? 0),
@@ -270,7 +277,8 @@ export class GameSession {
     this.steps.push({
       step_index: this.stepIndex, turn: before.turn, ar, phase, player,
       action: { decision_type: a.decision_type, primary_id: a.primary_id, secondary_id: a.secondary_id, flags: a.flags },
-      description: main, state_snapshot: after, rolls, event_tracks: eventTracks,
+      // The file's description is English, whatever the page's language: replays are data.
+      description: renderEnglish(main), state_snapshot: after, rolls, event_tracks: eventTracks,
     });
 
     if (this.engine.isTerminal()) {
@@ -279,7 +287,10 @@ export class GameSession {
       this.result = { winner, margin: after.victory_points, end_turn: after.turn, reason: this.engine.endingReason() };
       this.logs.push({
         step_index: this.stepIndex + 1, turn: after.turn, ar: after.action_round, phase: "GAME_OVER", player: "SYSTEM",
-        text: `Game Over! Winner: ${winner} (VP: ${after.victory_points}, Turn: ${after.turn}) -- ${this.result.reason}`,
+        text: message("log:session.gameOver", {
+          winner: winner === "DRAW" ? message("log:session.draw") : sideArg(winner),
+          vp: after.victory_points, turn: after.turn, reason: endingArg(this.result.reason),
+        }),
       });
     }
     return null;
@@ -349,7 +360,7 @@ export class GameSession {
       const s = this.engine.display();
       this.logs.push({
         step_index: this.stepIndex, turn: s.turn, ar: s.action_round, phase: s.current_phase_name ?? "ACTION",
-        player: "SYSTEM", text: `↺ Action cancelled (Rolled back to Step ${this.stepIndex})`,
+        player: "SYSTEM", text: message("log:session.undone", { step: this.stepIndex }),
       });
     }
     return true;
@@ -361,8 +372,16 @@ export class GameSession {
   // game: each is recorded as a "debug" event carrying the exact change (record.ts DebugOverride),
   // which replayRecord applies again where it was made. Its summary is never `clean`.
 
+  /** What an override did, as the log says it; the record keeps it in English (`RecordEvent.text`). */
+  private overrideMessage(o: DebugOverride): Message {
+    if (o.kind === "country") {
+      return message("log:debug.country", { country: { country: o.id, name: this.engine.countryName(o.id) }, us: o.us, ussr: o.ussr });
+    }
+    return message(o.kind === "defcon" ? "log:debug.defcon" : "log:debug.vp", { value: o.value });
+  }
+
   /** Apply `o` as one undoable change, logged; `event` is the record's event for it. */
-  private override(text: string, o: DebugOverride, event: number): string | null {
+  private override(o: DebugOverride, event: number): string | null {
     this.remember();
     const refused = o.kind === "country" ? this.engine.setCountry(o.id, o.us, o.ussr)
       : o.kind === "defcon" ? this.engine.setDefcon(o.value) : this.engine.setVp(o.value);
@@ -372,25 +391,27 @@ export class GameSession {
     }
     this.history[this.history.length - 1].event = event;
     const s = this.engine.display();
-    this.logs.push({ step_index: this.stepIndex, turn: s.turn, ar: s.action_round, phase: "DEBUG", player: "DEBUG", text });
+    this.logs.push({
+      step_index: this.stepIndex, turn: s.turn, ar: s.action_round, phase: "DEBUG", player: "DEBUG",
+      text: this.overrideMessage(o),
+    });
     return null;
   }
 
-  private debug(text: string, o: DebugOverride): string | null {
-    const refused = this.override(text, o, this.events.length);
-    if (!refused) this.events.push({ step: this.steps.length, kind: "debug", text, override: o });
+  private debug(o: DebugOverride): string | null {
+    const refused = this.override(o, this.events.length);
+    if (!refused) this.events.push({ step: this.steps.length, kind: "debug", text: renderEnglish(this.overrideMessage(o)), override: o });
     return refused;
   }
 
   setCountry(cid: number, us: number, ussr: number): string | null {
-    return this.debug(`[DEBUG] Set ${this.engine.countryName(cid)} Influence -> US: ${us}, USSR: ${ussr}`,
-      { kind: "country", id: cid, us, ussr });
+    return this.debug({ kind: "country", id: cid, us, ussr });
   }
   setDefcon(v: number): string | null {
-    return this.debug(`[DEBUG] Set DEFCON -> ${v}`, { kind: "defcon", value: v });
+    return this.debug({ kind: "defcon", value: v });
   }
   setVp(v: number): string | null {
-    return this.debug(`[DEBUG] Set VP -> ${v}`, { kind: "vp", value: v });
+    return this.debug({ kind: "vp", value: v });
   }
 
   // ---- positions -------------------------------------------------------------------------------
@@ -415,7 +436,7 @@ export class GameSession {
     this.start = s;
     this.logs = [{
       step_index: 0, turn: s.turn, ar: s.action_round, phase: s.current_phase_name ?? "", player: "SYSTEM",
-      text: "Position loaded from a shared link (undo history starts here).",
+      text: message("log:session.positionLoaded"),
     }];
     return true;
   }

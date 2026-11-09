@@ -46,7 +46,7 @@ _FIND = """want => {
       wb.sendFlatAction(a, 0, true);
       const after = wb.state;
       const realign = ctx.decision_type_name === 'POINT_NODE' && (ctx.resolving_card || 0) === 0 && ctx.op_mode === 2;
-      const added = wb.session.logs.slice(from);
+      const added = wb.englishLog().slice(from);
       if (realign && ok(added, before, after)) return { added, turn: before.turn, after_turn: after.turn };
     }
   }
@@ -126,7 +126,7 @@ def test_a_card_aldrich_ames_discards_in_the_headline_is_a_discard_not_a_headlin
     pick = page.evaluate("window.__wb.state.legal_actions.valid_ids.find(i => i >= 1 && i <= 110)")
     name = page.evaluate(f"window.__wb.engine.cardName({pick})")
     page.evaluate(f"window.__wb.sendAction({{decision_type: 1, primary_id: {pick}, secondary_id: 0, flags: 0}})")
-    last = page.evaluate("window.__wb.session.logs.at(-1)")
+    last = page.evaluate("window.__wb.englishLog().at(-1)")
     assert last["text"] == f"USSR discards {name} (#{pick}) from the US hand (Aldrich Ames Remix)", last["text"]
     log = page.inner_text("#action-log-stream")
     assert f"commits Headline Card: {name}" not in log, "the discarded card is not a headline"
@@ -140,7 +140,7 @@ def test_five_year_plans_random_discard_is_noted_with_whether_its_event_fires(br
     page = _open(browser, f"{static_site}/?model=off&pos={_token(s)}")
     page.evaluate(f"window.__wb.sendAction({{decision_type: 1, primary_id: {FIVE_YEAR_PLAN}, secondary_id: 0, flags: 0}})")
     page.evaluate("window.__wb.sendAction({decision_type: 2, primary_id: 0, secondary_id: 0, flags: 0})")   # the event
-    lines = [d for e in page.evaluate("window.__wb.session.logs") for d in (e.get("details") or [])]
+    lines = [d for e in page.evaluate("window.__wb.englishLog()") for d in (e.get("details") or [])]
     noted = [d for d in lines if d.startswith("  ✂ USSR discards") and "at random (Five Year Plan)" in d]
     assert len(noted) == 1, lines
     cid = int(noted[0].split("(#")[1].split(")")[0])
@@ -154,7 +154,7 @@ def test_terrorisms_random_discard_is_its_own_line(browser: Any, static_site: st
     page = _open(browser, f"{static_site}/?model=off&pos={_token(s)}")
     page.evaluate(f"window.__wb.sendAction({{decision_type: 1, primary_id: {TERRORISM}, secondary_id: 0, flags: 0}})")
     page.evaluate("window.__wb.sendAction({decision_type: 2, primary_id: 0, secondary_id: 0, flags: 0})")   # the event
-    lines = [d for e in page.evaluate("window.__wb.session.logs") for d in (e.get("details") or [])]
+    lines = [d for e in page.evaluate("window.__wb.englishLog()") for d in (e.get("details") or [])]
     noted = [d for d in lines if d.startswith("  ✂ USSR discards") and d.endswith("at random (Terrorism)")]
     assert len(noted) == 1, lines
     cid = int(noted[0].split("(#")[1].split(")")[0])
@@ -177,7 +177,7 @@ def test_chernobyls_options_are_regions_in_the_hud_and_the_log(browser: Any, sta
     assert "Option" not in page.inner_text("#decision-body")
     page.click("#decision-body .btn-choice-card[data-primary='3']")   # Africa
     page.wait_for_function(f"window.__wb.state.decision_context.resolving_card !== {CHERNOBYL}")
-    texts = [e["text"] for e in page.evaluate("window.__wb.session.logs")]
+    texts = [e["text"] for e in page.evaluate("window.__wb.englishLog()")]
     assert "US designates Africa (Chernobyl)" in texts, texts[-3:]
     assert page.errors == []
     page.close()
@@ -193,7 +193,7 @@ def test_missile_envys_exchange_says_what_is_taken_and_how_it_resolves(browser: 
     if ctx.get("resolving_card") == MISSILE_ENVY and ctx.get("decision_type_name") == "SELECT_CARD":
         pick = page.evaluate("window.__wb.state.legal_actions.valid_ids.find(i => i >= 1 && i <= 110)")
         page.evaluate(f"window.__wb.sendAction({{decision_type: 1, primary_id: {pick}, secondary_id: 0, flags: 0}})")
-    lines = [d for e in page.evaluate("window.__wb.session.logs") for d in (e.get("details") or [])]
+    lines = [d for e in page.evaluate("window.__wb.englishLog()") for d in (e.get("details") or [])]
     taken = [d for d in lines if d.startswith("  ⇄ The US takes")]
     assert len(taken) == 1, lines
     cid = int(taken[0].split("(#")[1].split(")")[0])

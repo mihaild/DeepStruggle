@@ -196,8 +196,12 @@ def test_space_race_replay_state_synchronization(browser_context, server_url):
 
     # The crafted step: US Box 2, USSR Box 1
     page.evaluate('window.__wb.replayControls.goToStep(1)')
-    page.wait_for_timeout(300)
-    
+    # The widget has drawn the step: both pills show it (a fixed wait was too short under load).
+    page.wait_for_function("""() => {
+      const n = s => document.querySelector(`#space-race-widget .space-pill.${s} .pill-box-num`)?.textContent ?? "";
+      return n("us").includes("#2") && n("ussr").includes("#1");
+    }""", timeout=5000)
+
     # Verify Space Race header widget shows US: #2 and USSR: #1
     widget = page.locator("#space-race-widget")
     assert "#1" in widget.locator(".space-pill.ussr .pill-box-num").inner_text()

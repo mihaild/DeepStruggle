@@ -1,0 +1,199 @@
+{
+  "player": {
+    "SYSTEM": "SYSTEM",
+    "DEBUG": "DEBUG",
+    "NONE": "NONE"
+  },
+  "verbatim": "{{text}}",
+  "cardNumber": "Card #{{id}}",
+  "node": "Node #{{n}}",
+  "list": "{{first}}, {{rest}}",
+  "session": {
+    "started": "Game started (Seed: {{seed}}). {{side}} setup: Place 6 Influence in {{region}}.",
+    "endOfTurn": "End of turn {{turn}}",
+    "phaseEnds": {
+      "SETUP": "SETUP ends",
+      "HEADLINE": "HEADLINE ends",
+      "ACTION_ROUND": "ACTION_ROUND ends",
+      "INTERRUPT": "INTERRUPT ends",
+      "DISCARD": "DISCARD ends",
+      "END_TURN": "END_TURN ends",
+      "GAME_OVER": "GAME_OVER ends",
+      "other": "{{phase}} ends"
+    },
+    "gameOver": "Game Over! Winner: {{winner}} (VP: {{vp}}, Turn: {{turn}}) -- {{reason}}",
+    "draw": "DRAW",
+    "undone": "↺ Action cancelled (Rolled back to Step {{step}})",
+    "positionLoaded": "Position loaded from a shared link (undo history starts here).",
+    "actionType": "Action type={{type}}"
+  },
+  "debug": {
+    "country": "[DEBUG] Set {{country}} Influence -> US: {{us}}, USSR: {{ussr}}",
+    "defcon": "[DEBUG] Set DEFCON -> {{value}}",
+    "vp": "[DEBUG] Set VP -> {{value}}"
+  },
+  "action": {
+    "spaceWalkPass": "{{side}} passes Eagle / Bear Has Landed (Box 6) turn-end discard opportunity.",
+    "spaceWalkDiscard": "{{side}} discards {{card}} (#{{id}}) via Eagle / Bear Has Landed (Box 6 privilege).",
+    "headlineCommit": "{{side}} commits Headline Card: {{card}} (#{{id}})",
+    "headlineFaceDown": "{{side}} commits a Headline Card (face down until both are revealed)",
+    "plays": "{{side}} plays Card: {{card}} (#{{id}})",
+    "confirmPoints": "{{side}} confirms / finishes point node selections.",
+    "setupInfluence": "{{side}} places 1 Influence in {{country}} during Setup.",
+    "eventTarget": "{{side}} targets {{country}} for Event: {{card}} (#{{id}})",
+    "coup": "{{side}} attempts Coup in {{country}}",
+    "realign": "{{side}} conducts Realignment in {{country}}",
+    "influence": "{{side}} places Influence in {{country}}",
+    "grainSalesReturn": "{{side}} returns {{card}} (#{{id}}) to the USSR hand and conducts Grain Sales' 2 Ops",
+    "space": "{{side}} attempts Space Race with pending card",
+    "spaceRoll": "{{side}} attempts Space Race with pending card (Input Roll: {{roll}})",
+    "playMode": "{{side}} selects play mode: {{mode}}",
+    "opMode": "{{side}} chooses Op mode: {{mode}}",
+    "confirmOption": "{{side}} confirms / passes option.",
+    "branch": "{{side}} {{verb}} ({{event}})",
+    "option": "{{side}} chooses option: {{n}}",
+    "other": "{{side}} action: type={{type}} primary={{primary}} secondary={{secondary}} flags={{flags}}"
+  },
+  "playMode": {
+    "EVENT": "EVENT",
+    "SPACE": "SPACE RACE",
+    "OPS_INFLUENCE": "OPERATIONS - INFLUENCE PLACEMENT",
+    "OPS_COUP": "OPERATIONS - COUP ATTEMPT",
+    "OPS_REALIGN": "OPERATIONS - REALIGNMENT"
+  },
+  "opMode": {
+    "INFLUENCE": "INFLUENCE PLACEMENT",
+    "COUP": "COUP ATTEMPT",
+    "REALIGN": "REALIGNMENT"
+  },
+  "choice": {
+    "none": "{{side}} chooses no (further) card ({{event}})",
+    "starWars": "{{side}} takes {{card}} (#{{id}}) from the discard pile and plays its event ({{event}})",
+    "salt": "{{side}} takes {{card}} (#{{id}}) back into hand from the discard pile ({{event}})",
+    "unIntervention": "{{side}} plays {{card}} (#{{id}}) with {{event}}: its event is cancelled, {{side}} uses its Ops",
+    "missileEnvy": "{{side}} gives {{card}} (#{{id}}) to the {{opponent}} ({{event}})",
+    "grainSalesUn": "{{side}} plays {{un}} on the card {{event}} drew: its event is cancelled, {{side}} uses its Ops",
+    "discards": "{{side}} discards {{card}} (#{{id}}) ({{event}})",
+    "discardsFrom": "{{side}} discards {{card}} (#{{id}}) {{from}} ({{event}})",
+    "removes": "{{side}} removes {{card}} (#{{id}}) ({{event}})",
+    "removesFrom": "{{side}} removes {{card}} (#{{id}}) {{from}} ({{event}})",
+    "returns": "{{side}} returns to the draw deck {{card}} (#{{id}}) ({{event}})",
+    "returnsFrom": "{{side}} returns to the draw deck {{card}} (#{{id}}) {{from}} ({{event}})",
+    "takes": "{{side}} takes {{card}} (#{{id}}) ({{event}})",
+    "takesFrom": "{{side}} takes {{card}} (#{{id}}) {{from}} ({{event}})",
+    "gives": "{{side}} gives the {{opponent}} {{card}} (#{{id}}) ({{event}})",
+    "givesFrom": "{{side}} gives the {{opponent}} {{card}} (#{{id}}) {{from}} ({{event}})",
+    "chooses": "{{side}} chooses {{card}} (#{{id}}) ({{event}})",
+    "choosesFrom": "{{side}} chooses {{card}} (#{{id}}) {{from}} ({{event}})"
+  },
+  "from": {
+    "hand": "from the {{side}} hand",
+    "discardPile": "from the discard pile",
+    "drawn": "from the cards drawn"
+  },
+  "headline": {
+    "revealed": "Headlines Simultaneously Revealed: US plays '{{usCard}}' (#{{usId}}, {{usOps}} Ops) vs USSR plays '{{ussrCard}}' (#{{ussrId}}, {{ussrOps}} Ops)",
+    "order": "Resolution Order: 1st {{first}} '{{firstCard}}' ({{firstOps}} Ops) -> 2nd {{second}} '{{secondCard}}' ({{secondOps}} Ops)"
+  },
+  "change": {
+    "influenceUs": "{{country}} Influence: US: {{usFrom}} -> {{usTo}} ({{usDelta}})",
+    "influenceUssr": "{{country}} Influence: USSR: {{ussrFrom}} -> {{ussrTo}} ({{ussrDelta}})",
+    "influenceBoth": "{{country}} Influence: US: {{usFrom}} -> {{usTo}} ({{usDelta}}), USSR: {{ussrFrom}} -> {{ussrTo}} ({{ussrDelta}})",
+    "defcon": "DEFCON: {{from}} -> {{to}}",
+    "vp": "Victory Points: {{from}} -> {{to}} ({{delta}} VP)",
+    "milOps": "{{side}} MilOps: {{from}} -> {{to}}",
+    "space": "Space Race: {{side}} {{from}} -> {{to}}",
+    "effectActivated": "Effect Activated: {{flag}}",
+    "effectCancelled": "Effect Cancelled: {{flag}}",
+    "cardMoved": "Card #{{id}} ({{card}}) moved: {{from}} -> {{to}}",
+    "inEffect": "In effect: {{effect}}",
+    "noLongerInEffect": "No longer in effect: {{effect}}"
+  },
+  "vpScore": {
+    "us": "+{{n}} (US)",
+    "ussr": "-{{n}} (USSR)",
+    "tie": "0 (Tie)"
+  },
+  "eventTrack": {
+    "vp": "{{card}} (#{{id}}): {{side}} +{{vp}} VP",
+    "defcon": "{{card}} (#{{id}}): DEFCON {{defcon}}",
+    "both": "{{card}} (#{{id}}): {{side}} +{{vp}} VP, DEFCON {{defcon}}",
+    "none": "{{card}} (#{{id}}): "
+  },
+  "roll": {
+    "coup": "Coup in {{country}}: {{roller}} rolls {{roll}} (+{{mod}} Ops = {{total}}) vs {{defense}} Defense (2x Stability {{stability}}) -> {{result}}",
+    "coupWithCard": "Coup in {{country}} ({{card}}): {{roller}} rolls {{roll}} (+{{mod}} Ops = {{total}}) vs {{defense}} Defense (2x Stability {{stability}}) -> {{result}}",
+    "coupSucceeded": "Net +{{net}} Influence (Coup Succeeded)",
+    "coupFailed": "Coup Failed (Roll + Ops <= 2x Stability)",
+    "realign": "Realignment in {{country}}: US rolls {{usRoll}} ({{usMod}} mod = {{usTotal}}), USSR rolls {{ussrRoll}} ({{ussrMod}} mod = {{ussrTotal}}) -> {{result}}",
+    "realignUs": "US wins by +{{by}} (Removes {{net}} USSR Influence)",
+    "realignUssr": "USSR wins by +{{by}} (Removes {{net}} US Influence)",
+    "realignTie": "Tie (No Influence Removed)",
+    "space": "Space Race Attempt (Target Box #{{box}}): {{roller}} rolls {{roll}} -> {{result}}",
+    "spaceSucceeded": "SUCCESS (Advanced to Box #{{box}})",
+    "spaceFailed": "FAILED (Roll {{roll}} > {{threshold}} threshold)",
+    "war": "{{card}} Roll: {{roller}} rolls {{roll}} ({{mod}} mod = {{total}}) -> {{result}}",
+    "warTargeting": "{{card}} Roll targeting {{country}}: {{roller}} rolls {{roll}} ({{mod}} mod = {{total}}) -> {{result}}",
+    "warSucceeded": "Success ({{total}} >= {{threshold}} target: Target Captured & VP Awarded)",
+    "warFailed": "Roll Failed ({{total}} < {{threshold}} target)",
+    "olympics": "Olympic Games Competition: Sponsor ({{sponsor}}) rolls {{sponsorRoll}} (+2 = {{sponsorTotal}}), Opponent ({{opponent}}) rolls {{opponentRoll}} -> {{result}}",
+    "olympicsSponsor": "Sponsor {{side}} wins by +{{by}} (+2 VP)",
+    "olympicsOpponent": "Opponent {{side}} wins",
+    "olympicsTie": "Tie (No VP)",
+    "summit": "Summit Rolls: US rolls {{usRoll}} (+{{usMod}} Dom = {{usTotal}}), USSR rolls {{ussrRoll}} (+{{ussrMod}} Dom = {{ussrTotal}}) -> {{result}}",
+    "summitUs": "US wins Summit by +{{by}}",
+    "summitUssr": "USSR wins Summit by +{{by}}",
+    "summitTie": "Tied Summit (No Effect)",
+    "trap": "Trap Escape Roll: {{roller}} rolls {{roll}} (Needed 1–4) -> {{result}}",
+    "trapSucceeded": "Success! Discard canceled trap.",
+    "trapFailed": "Failed (Roll > 4, remains trapped)"
+  },
+  "randomDiscard": "{{side}} discards {{card}} (#{{id}}) at random ({{event}})",
+  "randomDiscardFires": "{{side}} discards {{card}} (#{{id}}) at random ({{event}}) — a US event, so its event fires",
+  "envy": {
+    "takesGivers": "The {{taker}} takes {{card}} (#{{id}}) from the {{giver}} hand ({{event}}) — a {{giver}} event, so the {{taker}} uses its {{ops}} Ops and the event does not fire",
+    "takesBoth": "The {{taker}} takes {{card}} (#{{id}}) from the {{giver}} hand ({{event}}) — an event for both sides, so its event fires for the {{taker}}",
+    "takesTakers": "The {{taker}} takes {{card}} (#{{id}}) from the {{giver}} hand ({{event}}) — a {{taker}} event, so its event fires for the {{taker}}",
+    "goes": "{{event}} goes to the {{giver}} hand: the {{giver}} must play it for Ops in its next action round"
+  },
+  "entry": {
+    "setup": "{{side}} places its setup Influence",
+    "headlines": "Headlines: US {{us}} (#{{usId}}) vs USSR {{ussr}} (#{{ussrId}})",
+    "plays": "{{side}} plays {{card}} (#{{id}})",
+    "withModes": "{{title}} — {{modes}}",
+    "eventOf": "{{card}} (#{{id}}) — {{side}}"
+  },
+  "mode": {
+    "event": "Event",
+    "space": "Space Race",
+    "ops": "Ops: {{ops}}",
+    "opsThenEvent": "Ops: {{ops}}, then the {{side}} Event",
+    "eventThenOps": "{{side}} Event first, then Ops",
+    "eventThenOpsAs": "{{side}} Event first, then Ops: {{ops}}",
+    "then": "{{first}}, then {{next}}"
+  },
+  "ops": {
+    "INFLUENCE": "Influence",
+    "COUP": "Coup",
+    "REALIGN": "Realignment"
+  },
+  "card": {
+    "nowKnown": "{{card}} (#{{id}}) in the {{side}} hand, now known to the {{other}}",
+    "noLongerKnown": "{{card}} (#{{id}}) in the {{side}} hand, no longer known to the {{other}}",
+    "takenInto": "{{card}} (#{{id}}) taken into the {{side}} hand",
+    "toHand": "{{card}} (#{{id}}) to the {{side}} hand",
+    "to": {
+      "DISCARD_PILE": "{{card}} (#{{id}}) discarded",
+      "REMOVED_FROM_GAME": "{{card}} (#{{id}}) removed from the game",
+      "ONGOING_EVENT": "{{card}} (#{{id}}) stays in play",
+      "DRAW_DECK": "{{card}} (#{{id}}) returned to the draw deck",
+      "PEEKED_TEMP": "{{card}} (#{{id}}) drawn to choose from",
+      "UNAVAILABLE": "{{card}} (#{{id}}) set aside",
+      "other": "{{card}} (#{{id}}) moved to {{to}}"
+    },
+    "draws_one": "{{side}} draws {{count}} card: {{cards}}",
+    "draws_other": "{{side}} draws {{count}} cards: {{cards}}",
+    "newEra": "{{n}} cards of the new era shuffled into the draw deck",
+    "reshuffled": "The discard pile ({{n}} cards) reshuffled into the draw deck"
+  }
+}

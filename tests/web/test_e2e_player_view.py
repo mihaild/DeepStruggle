@@ -73,10 +73,10 @@ def test_the_other_sides_hand_and_the_deck_are_one_unseen_pile(browser: Any, sta
 def test_the_other_sides_deal_and_face_down_headline_are_not_logged(browser: Any, static_site: str) -> None:
     page = _open(browser, f"{static_site}/?model=off")
     _play_until(page, "s.turn >= 2 && s.current_phase_name === 'HEADLINE'")
-    full_logs = json.dumps(page.evaluate("window.__wb.state.action_logs"))
+    full_logs = json.dumps(page.evaluate("window.__wb.englishLog()"))
     for view, opp in (("US", "USSR"), ("USSR", "US")):
         page.evaluate(f"window.__wb.setView('{view}')")
-        logs = json.dumps(page.evaluate("window.__wb.shown.action_logs"))
+        logs = json.dumps(page.evaluate("window.__wb.shownEnglishLog()"))
         assert f"-> HAND_{opp}_UNKNOWN" in full_logs
         assert f"-> HAND_{opp}_UNKNOWN" not in logs, f"the {view} view logs the {opp} deal"
         assert f"-> HAND_{view}_UNKNOWN" in logs, f"the {view} view lost its own deal"

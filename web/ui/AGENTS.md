@@ -23,14 +23,15 @@ web/ui/
 │   ├── engine/layout.ts        # the engine's own enums, card ids, rollout stop/leaf names and Space
 │   │                           # Race track (ts_action_layout_json), set by every engine that loads
 │   ├── html.ts                 # escapeHtml / num: untrusted text (replays, traces, logs) into innerHTML
-│   ├── game/                   # session.ts (stepping, undo, log, export), describe.ts (log text),
+│   ├── game/                   # session.ts (stepping, undo, log, export), describe.ts (log lines),
+│   │                           # log.ts (a log line: a Message by id, rendered where shown),
+│   │                           # log_view.ts (the log grouped into plays),
 │   │                           # names.ts (flat action names), position.ts (link tokens),
 │   │                           # branches.ts (what an event's branch choice means: HUD and log),
 │   │                           # view.ts (the US / USSR player views: what the other side hides),
 │   │                           # last_turn.ts (what the other side's latest turn did to the map),
 │   │                           # rolls.ts (the latest action round's dice, from the steps),
 │   │                           # record.ts (a game for the stats database: log, tags, summary),
-│   │                           # card_refs.ts (the cards a log line names, made hoverable),
 │   │                           # saved_game.ts (the game kept in the browser, for a reload)
 │   ├── result_dialog.ts        # Game over: the result, how it was played, submit to the stats database
 │   ├── build_info.ts           # the commit the page was built from, the stats endpoint
@@ -246,7 +247,19 @@ web/ui/
      the replay are restored with it), debug overrides (undoable), load a shared position, export
      the game as a `.tslog.json` (*Export Replay*). A composed E4.1 action is applied as its two E4
      steps. `game/describe.ts` writes the action log -- a line-for-line port of the old Python
-     session, pinned by a golden (`tests/web/test_describe_golden.py`).
+     session, pinned by a golden (`tests/web/test_describe_golden.py`, on each line's English).
+   - **A log line is a Message, not text** (`game/log.ts` `LogLine`: a message id in the `log`
+     namespace with its parameters, and the mark it is indented under -- `•` a change, `🎲` a die,
+     `★` the headline reveal, `✂` a random discard, `⇄` Missile Envy's exchange, `▸` a decision
+     within a play). Cards, countries and sides are arguments by id (`{card, name}`, `{country,
+     name}`, `{side}`), numbers are numbers, and the session's own lines (game start, end of turn,
+     game over, undo, debug overrides, a loaded position) are Messages too. Nothing reads a line's
+     words: grouping, redaction and the page's styling read its id and parameters, and it is
+     rendered only where it is shown (`lineHtml`, `messageHtml`), in the language of that moment,
+     so a switch redraws the log. Its English (`lineEnglish`) is the old text byte for byte, and
+     what is kept as English data is rendered with it: a replay step's `description`, the stats
+     record's debug event texts. `window.__wb.englishLog()` (and `shownEnglishLog()`, the view's)
+     gives the log's items in English, which the E2E tests read.
    - A click is described from the engine's settled state (`WasmEngine.settledDisplay`: after its
      action or last die roll), from cause to effect: the action (`describeAction`), a dice line for
      every roll it made (`clickRolls`, in order), what each Event did to VP and DEFCON, then the
@@ -265,29 +278,33 @@ web/ui/
      headline commit, a card played, its mode, a point, any other decision) with the play's
      heading. `groupLog` groups clicks into plays -- a card played in an action round, the
      headline, one side's setup, every line the session writes itself (turn end, undo, debug) --
-     and tells each once: the heading with its mode ("USSR plays Fidel (#8) — Ops: Influence",
-     "Ops: Coup, then the US Event" for an opponent's card), the decisions within it (`▸`), dice
+     and tells each once (merging on the lines' ids and parameters: Influence summed by country id
+     and side, a card's move by its `from` and `to`): the heading with its mode ("USSR plays
+     Fidel (#8) — Ops: Influence", "Ops: Coup, then the US Event" for an opponent's card), the
+     decisions within it (`▸`), dice
      and Events in order, the board's changes merged Event by Event and told where each Event's
      clicks end (a headline's Red Scare before the other headline's De-Stalinization, labelled
      "▸ De-Stalinization (#33) — USSR"), and where the cards went at the end, with card moves in words
      ("removed from the game", "now known to the USSR"), a deal as "US draws 7 cards: ..." and a
      reshuffle on one line. It runs on the log **after** `redactLogs`, so grouping only merges and
      rewords lines the view may read. A replay is grouped the same way (`replayItems` builds the
-     items from its steps' snapshots, rolls and event records). `tests/web/test_log_view.py`
+     items from its steps' snapshots, rolls and event records; a step is shown by its choice's name,
+     `actionLabel`, when it carries its flat action -- the words of a Python replay's description --
+     by its action's own line when it carries only the click and the position before it -- a replay
+     the page exported -- and by the file's description as it is otherwise). `tests/web/test_log_view.py`
      holds the merged changes to the board's own over two turns and the USSR view to the redaction.
      A line that can be matched to one step shows its number (`LogEntry.steps`, the session's step
      index, which an exported replay keeps): a click's own lines, its dice and Events, and a merged
      change that one click made; a change merged over several clicks, and an Event's label, show
      none. An entry's heading shows the step that started it; in a replay a numbered line opens
      that step.
-   - **A card named in the log shows its text on hover** (`game/card_refs.ts` `linkCardRefs`):
-     every mention -- `Name (#id)`, the headline reveal's `'Name' (#id, n Ops)`, a card move's
-     `Card #id (Name)`, and the bare names of a deal -- is wrapped in `span.log-card[data-card-id]`
-     (by the engine's name or the rules'), and one delegated listener on `#action-log-stream`
-     opens the hand tabs' tooltip (`CardsView.showCardTooltip`: Ops, side, era, text). Nothing
-     else in the line changes, and the lines are the redacted log, so nothing hidden is named.
-     The tooltip opens above the pointer where it would run off the bottom.
-     `tests/web/test_card_refs.py` holds it to a two-turn game's log and to each form.
+   - **A card named in the log shows its text on hover** (`game/log.ts` `lineHtml`): every card
+     argument of a line's message is rendered as `span.log-card[data-card-id]` around its name in
+     the current language, and one delegated listener on `#action-log-stream` opens the hand tabs'
+     tooltip (`CardsView.showCardTooltip`: Ops, side, era, text). Every other argument is escaped
+     (a replay's description is anyone's text), and the lines are the redacted log, so nothing
+     hidden is named. The tooltip opens above the pointer where it would run off the bottom.
+     `tests/web/test_log_html.py` holds it to a two-turn game's log, in English and the pseudo-language.
    - A card chosen while an event resolves (`resolving_card`) is said as what happened to it
      (`eventCardChoice`): discarded or removed, and from where ("USSR discards X from the US hand
      (Aldrich Ames Remix)"), taken back (SALT), played from the discard pile (Star Wars), played
@@ -428,8 +445,9 @@ web/ui/
      in Space perk makes it reveal first). The hidden hand cards and the deck become one
      `UNSEEN` pile -- the *All* list says "Deck or <opp> hand", the deck count adds the hand --
      while the hand tab keeps its size as face-down cards (`hidden_cards`; hand sizes are public).
-   - `redactLogs` drops the log's card-move lines *into* `HAND_<opp>_UNKNOWN` (the other side's
-     deal, a card it draws) and its `PEEKED_TEMP` moves, and replaces its face-down headline
+   - `redactLogs` drops the log's card-move lines (`log:change.cardMoved`, read by their `from`
+     and `to`) *into* `HAND_<opp>_UNKNOWN` (the other side's deal, a card it draws) and its
+     `PEEKED_TEMP` moves, and replaces its face-down headline
      commit with a line that does not name the card. A card *leaving* that hand -- played,
      discarded, removed, taken by an event -- is public and stays in the log. (A headline card
      stays in the hand until both are committed, `state_machine.cpp`, so its move is a reveal.)
@@ -546,9 +564,9 @@ reload, no new game, the game and its undo untouched).
 * **One namespace per area** (`common`, `page` for index.html's markup, `app`, `hud`, `cards`,
   `tracks`, `map`, `rolls`, `region`, `analysis`, `trace`, `replay`, `debug`, `result`,
   `leaderboard`, `game`), and one per word table: `branches` (`game/branches.ts`), `effects` (by
-  flag), `enums`, `endings` and `actions` (the model's choice names). `common` holds what several
-  areas say (the sides, the disclaimer, a turn's label "T3 AR4"). A new namespace goes in every
-  language's `index.ts`.
+  flag), `enums`, `endings`, `actions` (the model's choice names) and `log` (the action log's
+  lines, `game/log.ts`). `common` holds what several areas say (the sides, the disclaimer, a
+  turn's label "T3 AR4"). A new namespace goes in every language's `index.ts`.
 * **Parameters are named** (`{{card}}`), plurals are the language's own forms (`worlds_one` /
   `worlds_other`, chosen by `count` through `Intl.PluralRules`; a language with one form has only
   `_other`), and a message is a whole sentence: never glue fragments in code, so a translator can
@@ -570,8 +588,9 @@ reload, no new game, the game and its undo untouched).
 * **Words decided before they are shown are Messages** (`message(key, params)`, `render(m, how)`):
   a branch's meaning, a choice's name (`actionLabel`; `actionName` stays the English port of
   Python's, kept as data), a roll's or a turn's label (`rollWhen`, `turnLabel`; the English stays
-  in `when` / `label` beside them). Text still built as English and read back as data -- the log's
-  lines -- renders them with `renderEnglish`, never with `render`.
+  in `when` / `label` beside them), and every line of the action log (`game/log.ts`). English kept
+  as data -- a replay's descriptions, the stats record's texts, the model's choice names -- is
+  rendered with `renderEnglish`, never with `render`.
 * **Engine names** shown to a person go through `src/i18n/enums.ts`: `enumLabel(kind, NAME)` for a
   phase, decision type, play mode or Op mode (`enums:<kind>.<NAME>`, whose English is the name as
   the page showed it), a region by its English name (`regionName`; `enumLabel("region", NAME)`
@@ -582,10 +601,10 @@ reload, no new game, the game and its undo untouched).
   `onLanguageChange(() => this.render())`; the static markup is redone first (`applyStatic`).
 * **Errors**: the engine's and the network's error text is diagnostic and stays English; the
   sentence around it is translated (`t("leaderboard:loadFailed", { error })`).
-* **Still English in every language**: the action log (its lines are built as English text by
-  `game/describe.ts` and the session, and `game/log_view.ts`, `game/view.ts` and `card_refs.ts`
-  read that text back; it becomes structured entries rendered per language), and a replay file's
-  trace (its choice names are the file's). Do not translate a log line after it is built.
+* **Still English in every language**: a replay file's trace (its choice names are the file's),
+  and a replay step's description where the step carries no action the page can name (it is shown
+  as the file has it, `log:verbatim`). A log line is never text to be translated after it is built:
+  it is a Message from the start (`game/log.ts`).
 * **Translations come from translators**, not from code changes: a contributor adds or edits
   `locales/<lang>/*.json` only. A new language is a folder, an `index.ts`, an entry in `LANGUAGES`
   and `LOADERS` (`src/i18n/index.ts`), and its plural forms in `tests/web/test_i18n.py`.
@@ -617,7 +636,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 |:---|:---|
 | `test_wasm_engine.py` | the WebAssembly engine is the native one: 200 whole games, and display JSON / save JSON / observations / masks at every step of games driven by clicks |
 | `test_e2e_action_log.py` | in Chromium: the turn's last realignment keeps its dice and the turn's end is its own entry; a click that rolls twice (a realignment with the opponent's war card) logs both dice; the card Aldrich Ames has the US discard in the headline is a discard, not a headline; Five Year Plan's and Terrorism's random discards are their own lines, with whether Five Year Plan's event fires; Missile Envy's exchange says the card taken and how it resolves; Chernobyl's options are region names in the HUD and the log |
-| `test_describe_golden.py` | the TypeScript action log writes what the Python session wrote (1,098 steps); after an engine change refuses a recorded action, re-record with `fixtures/make_describe_golden.py` |
+| `test_describe_golden.py` | the TypeScript action log, rendered in English, writes what the Python session wrote (1,529 steps); after an engine change refuses a recorded action, re-record with `fixtures/make_describe_golden.py` |
 | `test_e2e_board_display.py` | in Chromium: this turn's effects on top of the map (not permanent ones, not Space Race attempts), control as the country's fill (a highlighted target included), an empty influence space blank with the US marker left and the controlling one flipped, the hover card's control arithmetic and neighbour highlight, and the roll tray and the rolled country's die (no roll from an earlier turn; a Space Race roll marks no country), a redraw putting a tapped country's card away, a drag whose release was outside the window ending, the space perks named as their boxes |
 | `test_e2e_mobile.py` | in Chromium at 390px with touch: one column with the map first and nothing wider than the screen, the region buttons clear of the zoom buttons and framing their region, a tap showing a non-target country's card and a tap on open map closing it, a badge opening the region's scoring summary with the right rows, and the space pills' next Ops and roll |
 | `test_position_tokens.py` | a `pos=` token means the same position to the page and to Python's zlib |
@@ -625,7 +644,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 | `test_e2e_workbench.py` | in Chromium: a game played by the page, the model readout against Python's `read_policy`/`read_critic`, the live critic lighting the side to move, country probabilities clear of the influence, the cards column left of the map (and stacked when narrow), the Piles tab packed by side then Ops, a log card's tooltip on hover, auto-play + undo, links, a dropped `.onnx`, debug overrides, replay export, and the page on a static server with no API (GitHub Pages) |
 | `test_e2e_player_view.py` | in Chromium, a player's view: the other hand and the deck are one unseen pile on every tab, the other side's deal and face-down headline are not logged (the cards leaving its hand are), its latest turn's countries are marked on the map, its decision is hidden and clicks for it refused, *New Game* and the view select fit a 1366px screen; the play-mode question holds the model & search section folded and sets the search for a side (rollout root by default) and leaves it alone for Developer unless changed there, the model · mode dialog sets it at once and its Escape takes back no move, describes the spec it would keep, and its Escape takes back no move; Show analysis follows the view and the toggle; with a model, the player's own decisions show no readout, no badges and no favourite and are not searched until Show analysis is on, a change of view keeps the search already made, the question starts one search at a time (the runner supersedes a waiting request), a failed search is reported in a player's view, and a change of view drops a move armed for the old auto side |
 | `test_e2e_replay_trace.py`, `test_e2e_space_race.py` | replay trace views (the readout lights the next step's player); the header tracks and the Space Race widget |
-| `test_card_refs.py` | `game/card_refs.ts` under node: on a two-turn game's grouped log and on one line per form of mention, every card named by number is wrapped (with its name where the name precedes it), a deal's names too, a Space Race box is not, and the line is otherwise unchanged |
+| `test_log_html.py` | `game/log.ts` `lineHtml` under node: on a two-turn game's grouped log, every card argument is a `span.log-card` under its name, in order, a deal's cards too, a number that is no card is not, and the line is otherwise its English; in the pseudo-language every heading and line is marked as translated and its cards are still spans |
 | `test_recent_rolls.py` | `game/rolls.ts`, `roll_tray.ts` and the log's dice lines (`game/describe.ts`) under node: the turn's last coup shown in the next headline and gone a half round later, every die of one click, a replay file's snapshot roll, the Olympic sponsor's die without its +2 (tray and log) |
 | `test_value_readings.py` | `trace_view.ts` under node: the decider of each replay position, the calibrated P(US wins), VP ×20, the terminal case, the `ΔP` chip |
 | `test_web_workbench.py` | the bundled rules metadata, the page's DOM, replay snapshots |

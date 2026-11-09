@@ -19,8 +19,9 @@ import effects from "./effects.json";
 import enums from "./enums.json";
 import endings from "./endings.json";
 import actions from "./actions.json";
+import log from "./log.json";
 
 export default {
   common, game, page, app, debug, replay, result, hud, rolls, region, map, tracks, cards, analysis, trace, leaderboard,
-  branches, effects, enums, endings, actions,
+  branches, effects, enums, endings, actions, log,
 };

@@ -3,6 +3,7 @@
  * returns and web/server/replay_types.py `GameStateDict` types), plus the fields the page attaches.
  */
 import type { Message } from "./i18n";
+import type { LogLine } from "./game/log";
 
 export interface CountryNode {
   id: number;
@@ -61,19 +62,22 @@ export interface ActionLogItem {
   turn: number;
   ar: number;
   phase: string;
+  /** "US", "USSR", or the session's own "SYSTEM" and "DEBUG" (game/log.ts playerLabel shows it). */
   player: string;
-  text: string;
-  details?: string[];
+  /** The click's own line, or the line the session writes itself (game/log.ts). */
+  text: Message;
+  /** What the click did after its own line: its dice, its Events, the board's changes. */
+  details?: LogLine[];
   vp_delta?: number;
   /** Set on a click's entry; the lines the session writes itself (turn end, undo...) have none. */
   kind?: LogKind;
   /** The heading of the play the click starts (never set for a headline still face down). */
-  title?: string;
+  title?: Message;
   /** A play's mode, for its heading. */
-  mode?: string;
+  mode?: Message;
   /** Cards whose ordinary discard the heading implies. */
   cards?: number[];
-  /** The Event the click answered (`resolving_card` before it), 0 for none, and its name. */
+  /** The Event the click answered (`resolving_card` before it), 0 for none, and its engine name. */
   resolving?: number;
   resolving_name?: string;
 }

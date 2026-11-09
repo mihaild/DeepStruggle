@@ -1,11 +1,13 @@
 // Bundled by tests/web/test_describe_golden.py (esbuild) and run with node: replays the golden
-// games through the WebAssembly engine and the TypeScript action log, and prints the mismatches.
+// games through the WebAssembly engine and the TypeScript action log, rendered in English
+// (game/log.ts lineEnglish), and prints the mismatches.
 //   node describe_golden.mjs <web/ui/public/> <describe_golden.json.gz>
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { WasmEngine } from "../../../web/ui/src/engine/wasm_engine";
 import { describeActionAndDeltas } from "../../../web/ui/src/game/describe";
+import { lineEnglish } from "../../../web/ui/src/game/log";
 
 const [publicDir, goldenPath] = process.argv.slice(2);
 const engine = await WasmEngine.load(pathToFileURL(publicDir).href);
@@ -43,7 +45,7 @@ for (const g of golden.games) {
     // ... and an event's branch choice, which it logged as "chooses option: N" (game/branches.ts).
     const eventChoice = (action.decision_type === 1 && (ctx?.resolving_card ?? 0) !== 0 && ctx?.resolving_card !== 250)
       || action.decision_type === 6;
-    const got = comparable(describeActionAndDeltas(engine, before, engine.display(), action), eventChoice);
+    const got = comparable(describeActionAndDeltas(engine, before, engine.display(), action).map(lineEnglish), eventChoice);
     const want = comparable(g.lines[i] as string[], eventChoice);
     steps += 1;
     if (JSON.stringify(got) !== JSON.stringify(want)) {

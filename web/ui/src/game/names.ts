@@ -34,7 +34,7 @@ export function actionName(engine: WasmEngine, idx: number, state?: GameState): 
   const card = state?.decision_context?.resolving_card ?? 0;
   if (idx < L.confirm_done_index) {
     const meta = state ? branchMeta(card, idx - o.branch, state) : null;
-    // The branch's title in English (until i18n phase 2): this name is data, and the log's.
+    // The branch's title in English: this name is data (`actionLabel` is the one shown).
     return meta ? renderEnglish(meta.title) : `Branch #${idx - o.branch}`;
   }
   if (idx >= o.defcon_value && idx < o.region) {

@@ -254,9 +254,10 @@ export function render(m: Message, how: MessageFormat = {}): string {
 
 /**
  * A message in English whatever the page's language, unmarked even in the pseudo-language, with its
- * cards, countries and regions under their English names. Only for text that is still built as
- * English and read back as data -- the action log's lines (game/describe.ts, game/log_view.ts) and
- * the model's choice names (game/names.ts) -- until the log keeps Messages (i18n phase 2).
+ * cards, countries and regions under their English names. Only for text kept as English data: a
+ * replay's step descriptions and the stats record's event texts (game/session.ts), the model's choice
+ * names (game/names.ts, analysis/readout.ts), a roll's and a turn's `when` / `label` (game/rolls.ts,
+ * game/last_turn.ts), and the log's English for the tests (game/log.ts `lineEnglish`).
  */
 export function renderEnglish(m: Message, how: MessageFormat = {}): string {
   return renderIn(m, how, true);
