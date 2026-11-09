@@ -316,6 +316,22 @@ judged on early reads unless a clear problem shows).
    it is not behind. V3 (the network's own order) is the natural second arm on the same channel, since it needs the
    legal set even more: its order moves with its own logits.
 
+## placement_order at 400M (2026-11-09)
+
+The slot-19 variant that does not overload (`placement_order`, A37: access stays 1, order-blocked countries 0.5), from
+scratch on R119 (`data/reports/p43_po_*_400M.*`):
+
+| | read 400M | control's score | V1's score |
+|---|---:|---:|---:|
+| V1 + placement_order | 11.4% | 65.5% | 65.5% |
+| V3 + placement_order | 15.7% | 55.7% | 52.4% |
+
+**Order information in slot 19 hurts V1 either way** -- two independent runs (placement_legal 62.4 / 75.0%,
+placement_order 65.5 / 65.5%) both lose clearly to the control and to V1 without it, while V1 without it is level with the
+control. So the overloaded meaning was not the cause (the hypothesis recorded above is refuted); the mechanism is not
+known. V3 is hurt less (placement_order: 52.4% for V1, within 1.5 SE). Still open, per "Next": order-based legality on a
+channel of its own (the mask into the trunk, or an appended block), which these two runs no longer argue for strongly.
+
 ## V3: the network's own order (owner, 2026-11-07)
 
 At each placement run's first decision the deciding network's logits over the 84 countries, highest first, fix
