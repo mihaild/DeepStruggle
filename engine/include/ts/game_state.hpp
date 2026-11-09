@@ -310,7 +310,8 @@ struct alignas(64) GameState {
     uint8_t us_space_track;            // Range: [0, 8]
     uint8_t ussr_space_track;          // Range: [0, 8]
     uint8_t turn;                      // Range: [1, 10]
-    uint8_t action_round;              // Range: [1, 8] (8 with North Sea Oil)
+    uint8_t action_round;              // Rounds played: [1, 8] (8 with North Sea Oil or a Space Station).
+                                       // Cleanup reads one past the last: 9 after a US eighth round.
 
     // -------------------------------------------------------------------------
     // 2. Phasing, Priority & Forced Plays

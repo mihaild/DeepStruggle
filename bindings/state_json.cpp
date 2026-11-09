@@ -891,7 +891,9 @@ bool check_ranges(const GameState& s, std::string* error) {
     if (s.defcon < 1 || s.defcon > 5) return fail("defcon outside 1..5");
     if (s.victory_points < -20 || s.victory_points > 20) return fail("victory_points outside -20..20");
     if (s.turn > 11) return fail("turn outside 0..11");
-    if (s.action_round > 8) return fail("action_round outside 0..8");
+    // 9, not 8: the counter passes the last round on the way into the turn's cleanup, and the last
+    // can be the US's eighth (see GameState::action_round). No ninth round is ever played.
+    if (s.action_round > 9) return fail("action_round outside 0..9");
     if (s.us_space_track > 8 || s.ussr_space_track > 8) return fail("space track outside 0..8");
     for (uint8_t card : {s.headline_us_card, s.headline_ussr_card, s.headline_first_card,
                          s.headline_second_card, s.forced_card_id}) {

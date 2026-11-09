@@ -125,6 +125,73 @@ def test_missing_context_depth_keeps_the_baseline() -> None:
     assert ts.state_from_save_dict(saved).ctx_stack_depth == 0
 
 
+NORTH_SEA_OIL_ACTIVE = 1 << 27  # effect_bits in engine/include/ts/constants.hpp
+SPACE_WALK_DISCARD = 250  # card_ids in the same file
+DUCK_AND_COVER = 4
+
+
+def _us_declining_its_eighth_round() -> ts.GameState:
+    """Turn 8, the US in the eighth round North Sea Oil gave it, the USSR holding Space Walk."""
+    s = _played()
+    guard = 0
+    while s.current_phase != ts.Phase.ACTION_ROUND and guard < 600:
+        guard += 1
+        if s.ctx().decision_type == ts.DecisionType.ROLL_DIE:
+            ts.Engine.step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+        else:
+            ts.Engine.step_flat(s, int(np.flatnonzero(np.asarray(ActionEncoder.get_legal_mask(s)))[0]))
+    for c in range(1, 111):
+        if s.get_card_location(c) in (ts.hand_of(ts.Player.US), ts.hand_of(ts.Player.USSR)):
+            s.set_card_location(c, ts.CardLocation.DISCARD_PILE)
+    s.set_card_location(DUCK_AND_COVER, ts.hand_of(ts.Player.USSR))
+    s.china_card_holder = ts.Player.USSR
+    s.turn = 8
+    s.action_round = 8
+    s.phasing_player = ts.Player.US
+    s.ussr_space_track = 6
+    s.us_space_track = 5
+    s.set_flag(NORTH_SEA_OIL_ACTIVE)
+    ctx = s.ctx()
+    ctx.decision_player = ts.Player.US
+    ctx.decision_type = ts.DecisionType.SELECT_CARD
+    return s
+
+
+def test_the_turn_after_a_us_eighth_round_saves_and_loads() -> None:
+    """The counter reads 9 through the cleanup after a US eighth round: no ninth round is played.
+
+    J1's blunder screen stored two such Space Walk discards and the loader refused them, ending the
+    CI part that reached one. Both places the counter can be saved at 9 are checked.
+    """
+    s = _us_declining_its_eighth_round()
+    assert ts.Engine.try_step_flat(s, ActionEncoder.CONFIRM_DONE_INDEX), "the eighth round may be declined"
+
+    assert s.action_round == 9
+    assert s.ctx().decision_type == ts.DecisionType.ROLL_DIE, "the cleanup's roll"
+    _same_position(s, ts.state_from_save_json(s.to_save_json()))
+
+    ts.Engine.step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    assert s.action_round == 9
+    assert s.ctx().decision_type == ts.DecisionType.SELECT_CARD
+    assert s.ctx().resolving_card == SPACE_WALK_DISCARD
+    assert s.ctx().decision_player == ts.Player.USSR
+    back = ts.state_from_save_json(s.to_save_json())
+    _same_position(s, back)
+
+    assert ts.Engine.try_step_flat(back, ActionEncoder.CONFIRM_DONE_INDEX), "the discard may be declined"
+    assert back.turn == 9 or back.current_phase != ts.Phase.ACTION_ROUND, "and the turn ends"
+
+
+@pytest.mark.parametrize("action_round", [10, 255])
+def test_an_action_round_past_the_cleanup_is_refused(action_round: int) -> None:
+    saved = _played().to_save_dict()
+    saved["action_round"] = action_round
+    with pytest.raises(ValueError, match="action_round"):
+        ts.state_from_save_dict(saved)
+    with pytest.raises(ValueError, match="action_round"):
+        ts.state_from_save_json(json.dumps(saved))
+
+
 @pytest.mark.parametrize("seed", [777, 31337, 4242])
 def test_every_position_in_a_whole_game_round_trips(seed: int) -> None:
     """Round-trip at EVERY step, which is what it takes to catch a dropped decision stack.

@@ -25,7 +25,8 @@ are cited from elsewhere; keep them.
   - **Fail loudly at the boundary** (2026-10-28): `ts.anomalies_reported()` counts this thread's
     engine anomalies (a caller that must not continue past one checks it around a step);
     `state_from_save_dict/json` refuse out-of-range enums, DEFCON, VP, turn, tracks and card
-    locations (a save that round-trips is not therefore a position); the rollout entry points
+    locations (a save that round-trips is not therefore a position; `action_round` runs to 9,
+    which is the turn's cleanup after a US eighth round, not a round); the rollout entry points
     (`RolloutBatch.step/set_leaf_values`, the playout labeller's `step`, `rollout_candidates`,
     `rollout_decide`) refuse NaN; `VectorizedBatchRunner.reset_game` raises on a bad index;
     `get_predeal`'s views hold a reference to the runner. A `BatchedSearch` node expanded with an
