@@ -1,0 +1,89 @@
+{
+  "snapshot": {
+    "millionSteps": "{{m}}M steps",
+    "steps": "{{n}} steps",
+    "final": "final",
+    "start": "start (0)"
+  },
+  "local": {
+    "unavailable": "Local checkpoints (no local server)",
+    "chooseRun": "— choose a run —",
+    "looseGroup": "(loose checkpoints)",
+    "unlisted": "{{run}} (unlisted)"
+  },
+  "hf": {
+    "listing": "listing…",
+    "chooseModel": "— choose a model —",
+    "listFailed": "Could not list {{repo}}: {{error}}"
+  },
+  "cache": {
+    "none": "This browser keeps no downloaded models",
+    "delete_one": "Delete the {{count}} downloaded model this browser keeps; they are downloaded again when next used",
+    "delete_other": "Delete the {{count}} downloaded models this browser keeps; they are downloaded again when next used"
+  },
+  "autoLocked": "Locked to {{side}}: in a player's view the model plays the other side",
+  "view": {
+    "e41": "E4.1 view",
+    "e4": "E4 view",
+    "macro": "macro view"
+  },
+  "info": {
+    "cached": "cached"
+  },
+  "status": {
+    "loading": "loading {{what}}…",
+    "failed": "model failed to load",
+    "none": "no model"
+  },
+  "badge": {
+    "error": "error",
+    "off": "off",
+    "loading": "loading",
+    "composedSum": "sum over every 'Ops → Influence' option: the model decides where the first point goes in the same action",
+    "composedHere": "Ops → Influence, first point here"
+  },
+  "favourite": {
+    "hiddenSide": "The model plays {{side}} in this view",
+    "readoutHidden": "The analysis is hidden -- turn on Show analysis in the top bar to use it",
+    "play": "Play the model's most likely move: {{move}} (F)",
+    "none": "No decision to make"
+  },
+  "body": {
+    "choose": "Choose a model -- local checkpoint, Hugging Face repo, or an .onnx file (drop it anywhere) -- to see its policy on every decision and its critic on every position. You can still play any move yourself.",
+    "autoNeedsModel": "Auto-play {{side}} needs a model to play with.",
+    "loading": "Loading {{what}}…",
+    "loadingLocal": "Loading {{what}}… (a checkpoint's first use exports it to ONNX: a few seconds)"
+  },
+  "search": {
+    "label": "ROLLOUT ROOT",
+    "spec": "{{k}} candidates · {{worlds}} worlds · {{horizon}} boundaries · {{rule}}",
+    "searching": "Searching…",
+    "ownTitle": "the network's own move",
+    "leadTitle": "paired lead over the network's own move, in points of value, with its standard error",
+    "policyTag": "(policy)",
+    "qTitle": "mean value from the mover's side",
+    "summaryStays": "{{worlds}} worlds · {{rows}} network rows · {{ms}} ms · stays with the policy",
+    "summaryDeparts": "{{worlds}} worlds · {{rows}} network rows · {{ms}} ms · departs from the policy"
+  },
+  "next": {
+    "label": "NEXT DECISION",
+    "gameOver": "Game over.",
+    "noDecision": "No decision is open.",
+    "toChoose": "NEXT DECISION — {{who}} to choose{{auto}}",
+    "autoPlaying": "· auto-playing",
+    "best": "best {{p}}",
+    "bestTitle": "probability of its most likely move, temperature 1",
+    "entropyTitle": "entropy of the distribution, in nats",
+    "legal": "{{n}} legal",
+    "play": "Click to play this move",
+    "playComposed": "Click to play this move (applied as two steps: Ops for influence, then the placement)",
+    "more": "+{{n}} more — every option's probability is on the cards, buttons and map"
+  },
+  "off": {
+    "choosing": "The model is choosing for <b>{{side}}</b>.",
+    "choosingSearching": "The model is choosing for <b>{{side}}</b>. It is searching (rollout root): a few seconds.",
+    "searchFailed": "The rollout root failed, so the model plays its policy's move instead: {{error}}",
+    "hidden": "The model's readout -- its win chances, its move probabilities and its search -- is hidden. Turn on <b>Show analysis</b> in the top bar to see it.",
+    "hiddenPlayer": "You are playing <b>{{side}}</b>. The model's readout -- its win chances, its move probabilities and its search -- is hidden. Turn on <b>Show analysis</b> in the top bar to see it; the model's own decisions stay hidden in a player's view."
+  }
+}

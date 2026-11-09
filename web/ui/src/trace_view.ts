@@ -25,6 +25,7 @@ import { ReplayStep, PolicyTrace, CriticTrace } from "./replay_controls";
 import { GameState } from "./types";
 import { engineLayout } from "./engine/layout";
 import { escapeHtml, num } from "./html";
+import { sideName, t } from "./i18n";
 
 const FLAG_CONFIRM_DONE = 0x80;
 
@@ -153,11 +154,12 @@ export function calibratedSeries(steps: ReplayStep[]): Array<CalibratedValue | n
 
 /** How a finished game came out, from the terminal display state. */
 export function resultText(state: GameState | null | undefined): string {
-  if (!state) return "Game over.";
+  if (!state) return t("trace:result.gameOver");
   const u = num(state.terminal_utility);
-  const who = u > 0 ? "US won" : u < 0 ? "USSR won" : "drawn";
+  const outcome = u > 0 ? t("trace:result.usWon") : u < 0 ? t("trace:result.ussrWon") : t("trace:result.drawn");
   const vp = state.victory_points === undefined ? undefined : num(state.victory_points);
-  return `Game over — ${who}${vp !== undefined ? ` (VP ${vp > 0 ? "+" : ""}${vp})` : ""}.`;
+  return vp !== undefined ? t("trace:result.outcomeVp", { outcome, vp: `${vp > 0 ? "+" : ""}${vp}` })
+    : t("trace:result.outcome", { outcome });
 }
 
 /**
@@ -177,10 +179,12 @@ export function valueSidesHtml(c: CriticTrace, decider: Side | null,
     const evp = vp === undefined ? null : vp * VP_LIMIT;
     return `
       <div class="value-side ${cls} ${status}" data-side="${s}" data-p="${p === null ? "" : p.toFixed(6)}" data-vp="${evp === null ? "" : evp.toFixed(4)}"
-           title="${s}'s own view: P(victory) = (1 + v_win)/2, expected final VP margin = v_vp × ${VP_LIMIT}${decider && decider !== s ? ` (${decider} is to move)` : ""}">
-        <div class="value-side-name">${s}</div>
+           title="${decider && decider !== s
+             ? t("trace:sides.titleOtherToMove", { side: sideName(s), limit: VP_LIMIT, decider: sideName(decider) })
+             : t("trace:sides.title", { side: sideName(s), limit: VP_LIMIT })}">
+        <div class="value-side-name">${sideName(s)}</div>
         <div class="value-side-p">${p === null ? "–" : pct(p)}</div>
-        <div class="value-side-vp">${evp === null ? "–" : signed1(evp)} VP</div>
+        <div class="value-side-vp">${t("trace:sides.vp", { vp: evp === null ? "–" : signed1(evp) })}</div>
       </div>`;
   };
   const parts = [`<div class="value-sides" data-decider="${decider ?? "none"}">${side("US")}${side("USSR")}</div>`];
@@ -194,13 +198,14 @@ export function policyChipHtml(steps: ReplayStep[], idx: number): string {
   const pol = step.policy;
   const parts: string[] = [];
   if (pol && pol.source === "forced") {
-    parts.push(`<span class="trace-chip trace-chip-forced" title="One legal action -- played by the loop, not chosen">forced</span>`);
+    parts.push(`<span class="trace-chip trace-chip-forced" title="${t("trace:chip.forcedTitle")}">${t("trace:chip.forced")}</span>`);
   } else if (pol && pol.p_chosen !== undefined) {
     const p = num(pol.p_chosen);
     const offMode = pol.argmax_idx !== undefined && pol.argmax_idx !== pol.chosen_idx;
-    const title = `policy probability of the move it played (T=1)`
-      + (pol.p_max !== undefined ? `; best was ${num(pol.p_max).toFixed(3)}` : "")
-      + (offMode ? " -- not the mode" : "");
+    const best = pol.p_max !== undefined ? num(pol.p_max).toFixed(3) : undefined;
+    const title = best !== undefined
+      ? t(offMode ? "trace:chip.titleBestNotMode" : "trace:chip.titleBest", { best })
+      : t(offMode ? "trace:chip.titleNotMode" : "trace:chip.title");
     parts.push(
       `<span class="trace-chip" style="border-color:${probColor(p)};color:${probColor(p)}" title="${title}">`
       + `p=${p.toFixed(3)}${offMode ? " ✳" : ""}</span>`);
@@ -214,7 +219,7 @@ export function policyChipHtml(steps: ReplayStep[], idx: number): string {
     // of probability is the 0.05 of v_win this chip used to be keyed on.
     if (Math.abs(dp) >= 0.025) {
       const cls = dp > 0 ? "trace-dv-us" : "trace-dv-ussr";
-      parts.push(`<span class="trace-chip ${cls}" title="the calibrated critic's P(US wins) moved by this many points across this step -- each position read from the side to move there (${prev.decider}, then ${cur.decider})">ΔP ${dp > 0 ? "+" : "−"}${Math.abs(dp * 100).toFixed(0)}%</span>`);
+      parts.push(`<span class="trace-chip ${cls}" title="${t("trace:chip.deltaTitle", { before: sideName(prev.decider), after: sideName(cur.decider) })}">ΔP ${dp > 0 ? "+" : "−"}${Math.abs(dp * 100).toFixed(0)}%</span>`);
     }
   }
   return parts.join("");
@@ -297,8 +302,8 @@ export function renderValueRibbon(
       ${paths.join("")}
       <line x1="${cx.toFixed(1)}" y1="0" x2="${cx.toFixed(1)}" y2="${H}" stroke="var(--warning)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
     </svg>
-    <span class="ribbon-label ribbon-label-top">US</span>
-    <span class="ribbon-label ribbon-label-bottom">USSR</span>`;
+    <span class="ribbon-label ribbon-label-top">${sideName("US")}</span>
+    <span class="ribbon-label ribbon-label-bottom">${sideName("USSR")}</span>`;
 
   container.onclick = (ev: MouseEvent) => {
     const rect = container.getBoundingClientRect();
@@ -329,9 +334,8 @@ export function htmlBadge(p: number, mark: BadgeMark, note?: string): HTMLElemen
   span.style.color = probColor(p);
   span.style.borderColor = probColor(p);
   span.textContent = fmtP(p) + (mark === "played" ? " ◀" : mark === "favourite" ? " ★" : "");
-  span.title = `policy probability ${p} (temperature 1)`
-    + (mark === "played" ? " -- the move it played" : mark === "favourite" ? " -- the model's favourite" : "")
-    + (note ? `\n${note}` : "");
+  span.title = t(mark === "played" ? "trace:badge.titlePlayed" : mark === "favourite" ? "trace:badge.titleFavourite"
+    : "trace:badge.title", { p }) + (note ? `\n${note}` : "");
   return span;
 }
 
@@ -448,13 +452,13 @@ export function decorateChoices(policy: PolicyTrace | undefined, state: GameStat
 
 function nextDecisionHtml(pol: PolicyTrace | undefined, index: number): string {
   if (!pol) {
-    return `<div class="trace-empty">No recorded decision from this position.</div>`;
+    return `<div class="trace-empty">${t("trace:next.none")}</div>`;
   }
   if (pol.source === "forced") {
-    return `<div class="trace-empty">Next step is forced — one legal action, played by the loop.</div>`;
+    return `<div class="trace-empty">${t("trace:next.forced")}</div>`;
   }
   if (pol.source === "scripted") {
-    return `<div class="trace-empty">Next step is a scripted opening — the policy was overruled.</div>`;
+    return `<div class="trace-empty">${t("trace:next.scripted")}</div>`;
   }
   // A replay's trace is the file's: every field is checked or escaped on its way into the HTML.
   const offMode = pol.argmax_idx !== undefined && pol.argmax_idx !== pol.chosen_idx;
@@ -463,14 +467,14 @@ function nextDecisionHtml(pol: PolicyTrace | undefined, index: number): string {
   const nLegal = pol.n_legal !== undefined ? num(pol.n_legal) : undefined;
   return `
     <div class="trace-head">
-      <span class="trace-head-item" title="probability the policy put on the move it went on to play, at temperature 1">plays <b style="color:${probColor(pChosen)}">${pChosen.toFixed(5)}</b></span>
-      <span class="trace-head-item" title="probability of its most likely move">best ${num(pol.p_max ?? 0).toFixed(5)}</span>
-      ${pol.entropy !== undefined ? `<span class="trace-head-item" title="entropy of the distribution, in nats">H ${num(pol.entropy).toFixed(3)}</span>` : ""}
-      ${nLegal !== undefined ? `<span class="trace-head-item">${nLegal} legal</span>` : ""}
-      ${offMode ? `<span class="trace-head-item trace-offmode" title="the sampler did not take the policy's own best move">off-mode</span>` : ""}
+      <span class="trace-head-item" title="${t("trace:next.playsTitle")}">${t("trace:next.plays", { p: `<b style="color:${probColor(pChosen)}">${pChosen.toFixed(5)}</b>` })}</span>
+      <span class="trace-head-item" title="${t("trace:next.bestTitle")}">${t("trace:next.best", { p: num(pol.p_max ?? 0).toFixed(5) })}</span>
+      ${pol.entropy !== undefined ? `<span class="trace-head-item" title="${t("trace:next.entropyTitle")}">H ${num(pol.entropy).toFixed(3)}</span>` : ""}
+      ${nLegal !== undefined ? `<span class="trace-head-item">${t("trace:next.legal", { n: nLegal })}</span>` : ""}
+      ${offMode ? `<span class="trace-head-item trace-offmode" title="${t("trace:next.offModeTitle")}">${t("trace:next.offMode")}</span>` : ""}
     </div>
-    <div class="trace-note">step ${index + 2}: ${escapeHtml(played?.name ?? `#${num(pol.chosen_idx)}`)}</div>
-    <div class="trace-note trace-hint">probabilities for all ${nLegal ?? "legal"} options are on the cards, buttons and map</div>`;
+    <div class="trace-note">${t("trace:next.step", { n: index + 2, move: escapeHtml(played?.name ?? `#${num(pol.chosen_idx)}`) })}</div>
+    <div class="trace-note trace-hint">${nLegal !== undefined ? t("trace:next.hintCount", { n: nLegal }) : t("trace:next.hintAll")}</div>`;
 }
 
 /**
@@ -494,16 +498,18 @@ export function renderTracePanel(steps: ReplayStep[], index: number): void {
     return;
   }
   panel.classList.remove("hidden");
-  if (badge) badge.textContent = nextPolicy?.source ?? "critic only";
+  if (badge) badge.textContent = nextPolicy?.source ?? t("trace:panel.criticOnly");
 
   const sections: string[] = [];
   if (critic) {
     const decider = replayDecider(steps, index);
     const terminal = current?.state_snapshot?.is_terminal ? current.state_snapshot : null;
-    sections.push(`<div class="trace-section-label">POSITION ON SCREEN — after step ${index + 1}${decider ? `, <span class="analysis-who ${decider.toLowerCase()}">${decider}</span> to move` : ""}</div>`);
+    sections.push(`<div class="trace-section-label">${decider
+      ? t("trace:panel.positionToMove", { n: index + 1, side: `<span class="analysis-who ${decider.toLowerCase()}">${sideName(decider)}</span>` })
+      : t("trace:panel.position", { n: index + 1 })}</div>`);
     sections.push(valueSidesHtml(critic, decider, terminal));
   }
-  sections.push(`<div class="trace-section-label">NEXT DECISION — from this position</div>`);
+  sections.push(`<div class="trace-section-label">${t("trace:panel.next")}</div>`);
   sections.push(nextDecisionHtml(nextPolicy, index));
   body.innerHTML = sections.join("");
 }

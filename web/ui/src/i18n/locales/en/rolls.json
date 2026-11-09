@@ -1,0 +1,34 @@
+{
+  "dieLabel": "{{side}} rolls {{value}}",
+  "vs": "vs",
+  "needsAtMost": "needs ≤",
+  "needsAtLeast": "needs ≥",
+  "kind": {
+    "coup": "Coup",
+    "realignment": "Realignment",
+    "spaceRace": "Space Race",
+    "war": "War",
+    "olympics": "Olympic Games",
+    "summit": "Summit",
+    "trap": "Trap"
+  },
+  "where": {
+    "box": "box {{box}}",
+    "sponsors": "{{side}} sponsors",
+    "escapes": "{{side}} escapes?"
+  },
+  "result": {
+    "succeedsBy": "{{side}} succeeds by {{net}}",
+    "fails": "fails",
+    "tieNothingRemoved": "tie, nothing removed",
+    "removes": "{{winner}} removes {{net}} {{loser}}",
+    "winsNoneToRemove": "{{winner}} wins, no {{loser}} to remove",
+    "advances": "{{side}} advances",
+    "warWins": "{{side}} wins, +{{net}} VP",
+    "plusTwoVp": "{{side}} +2 VP",
+    "summitWins": "{{side}} +2 VP, may move DEFCON",
+    "tie": "tie",
+    "escapes": "escapes",
+    "staysTrapped": "stays trapped"
+  }
+}

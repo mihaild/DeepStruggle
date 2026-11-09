@@ -1,0 +1,51 @@
+{
+  "engine": {
+    "loading": "LOADING ENGINE…",
+    "none": "NO ENGINE",
+    "stale": "ENGINE STALE",
+    "staleTitle": "The page's engine ({{page}}) is not what the sources here build ({{sources}}). Rebuild it with tools/scripts/build_web.sh.",
+    "fingerprint": "ENGINE {{fp}}",
+    "matchesTitle": "engine fingerprint {{fp}} -- matches the local sources",
+    "noServerTitle": "engine fingerprint {{fp}} (no local server to compare with)",
+    "refused": "REFUSED"
+  },
+  "badPosition": "Could not open the position in the link -- starting a new game instead.\n\n{{error}}",
+  "notReplay": "Not a replay: {{error}}",
+  "notYourMove": "it is {{side}}'s move -- the model plays that side in this view",
+  "devOnlyTitle": "Shows the full state -- switch to the Developer view to use it",
+  "mode": {
+    "newDeal": "A fresh deal follows your choice. Close to keep the game on the board.",
+    "changeLater": "You can change this any time in the Play mode select above."
+  },
+  "search": {
+    "rolloutOption": "<b>Rollout root</b> -- its strongest player: {{spec}}. A few seconds a move.",
+    "policyOption": "<b>Policy</b> -- its most likely move, at once.",
+    "spec": "its top {{moves}}, each played out in {{worlds}}",
+    "moves_one": "{{count}} move",
+    "moves_other": "{{count}} moves",
+    "worlds_one": "{{count}} sampled world",
+    "worlds_other": "{{count}} sampled worlds",
+    "invalid": "Not a search: k and worlds whole numbers of at least 1, the horizon and belief hands of at least 0, the race worlds 0 (off) or below the worlds, the rule argmax, z<x> or kl<t>.",
+    "defaultTitle": "The default search: {{spec}}",
+    "rollout": "Rollout root",
+    "policy": "Policy"
+  },
+  "model": {
+    "none": "no model",
+    "chooseTitle": "{{model}} · {{mode}} -- choose the model (a local checkpoint, a Hugging Face repo or an .onnx file) and how it plays",
+    "failedOnPosition": "The model failed on this position: {{error}}",
+    "otherEngine": "Exported next to another engine build ({{model}}; this page runs {{page}}).",
+    "withPolicy": "{{model}} (policy)",
+    "withRollout": "{{model}} (rollout root {{spec}})"
+  },
+  "log": {
+    "loadingReplay": "Loading the replay…",
+    "filtered": "{{shown}} filtered ({{vp}} VP events)",
+    "replaySteps": "{{steps}} steps (Current: #{{current}})",
+    "events": "{{events}} events",
+    "noVpReplay": "No VP-affecting events found in replay.",
+    "noVpLive": "No VP-affecting events recorded yet.",
+    "skipped_one": "••• {{count}} entry skipped •••",
+    "skipped_other": "••• {{count}} entries skipped •••"
+  }
+}

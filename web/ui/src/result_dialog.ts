@@ -9,6 +9,7 @@
  */
 import { RecordSummary, Submission } from "./game/record";
 import { STATS_ENDPOINT } from "./build_info";
+import { onLanguageChange, sideName, t } from "./i18n";
 
 const PLAYDEK_KEY = "ts.stats.playdek.v1";
 
@@ -27,25 +28,21 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-function plural(n: number, one: string, many = `${one}s`): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-/** The summary's departures from a straight game against one model, in words. */
+/** The summary's departures from a straight game against one model, in words (the page's language). */
 export function summaryNotes(s: RecordSummary): string[] {
   const notes: string[] = [];
-  if (s.model_side === null) notes.push("The model did not play a side.");
-  if (s.model_side === "mixed") notes.push("The model played both sides.");
-  if (s.human_moves_for_model) notes.push(`You made ${plural(s.human_moves_for_model, "move")} for the model's side.`);
-  if (s.dev_view_moves) notes.push(`${plural(s.dev_view_moves, "move")} of yours ${s.dev_view_moves === 1 ? "was" : "were"} made in the Developer view, which shows the model's hand.`);
-  if (s.analysis_moves) notes.push(`${plural(s.analysis_moves, "move")} of yours ${s.analysis_moves === 1 ? "was" : "were"} made with the model's analysis on screen.`);
-  if (s.suggested_moves) notes.push(`${plural(s.suggested_moves, "move")} of yours played the model's suggestion.`);
-  if (s.models.includes("")) notes.push("Some of the model side's moves were made with no model loaded.");
-  if (s.models.length > 1) notes.push("The model changed during the game.");
-  if (s.searches.length > 1) notes.push("The model's search setting changed during the game.");
-  if (s.forced_dice) notes.push(`${plural(s.forced_dice, "die", "dice")} ${s.forced_dice === 1 ? "was" : "were"} forced.`);
-  if (s.debug_overrides) notes.push(`${plural(s.debug_overrides, "debug override")}.`);
-  if (s.loaded_position) notes.push("The game started from a loaded position.");
+  if (s.model_side === null) notes.push(t("result:note.noModelSide"));
+  if (s.model_side === "mixed") notes.push(t("result:note.bothSides"));
+  if (s.human_moves_for_model) notes.push(t("result:note.movesForModel", { count: s.human_moves_for_model }));
+  if (s.dev_view_moves) notes.push(t("result:note.devViewMoves", { count: s.dev_view_moves }));
+  if (s.analysis_moves) notes.push(t("result:note.analysisMoves", { count: s.analysis_moves }));
+  if (s.suggested_moves) notes.push(t("result:note.suggestedMoves", { count: s.suggested_moves }));
+  if (s.models.includes("")) notes.push(t("result:note.noModelLoaded"));
+  if (s.models.length > 1) notes.push(t("result:note.modelChanged"));
+  if (s.searches.length > 1) notes.push(t("result:note.searchChanged"));
+  if (s.forced_dice) notes.push(t("result:note.forcedDice", { count: s.forced_dice }));
+  if (s.debug_overrides) notes.push(t("result:note.debugOverrides", { count: s.debug_overrides }));
+  if (s.loaded_position) notes.push(t("result:note.loadedPosition"));
   return notes;
 }
 
@@ -81,6 +78,10 @@ export class ResultDialog {
   private readonly submit = document.getElementById("result-submit") as HTMLButtonElement;
   private readonly status = document.getElementById("result-status")!;
   private sending = false;
+  /** The game shown, while the dialog is open: redrawn in a new language, the form as filled. */
+  private view: ResultView | null = null;
+  /** The status line, as a message to redraw in a new language. */
+  private statusText: () => string = () => "";
 
   /**
    * `makeSubmission` builds the game's record with the form's Playdek fields and note;
@@ -99,6 +100,11 @@ export class ResultDialog {
       void this.send();
     });
     document.getElementById("result-download")?.addEventListener("click", () => void this.download());
+    onLanguageChange(() => {
+      if (!this.isOpen || !this.view) return;
+      this.render(this.view);
+      this.status.textContent = this.statusText();
+    });
   }
 
   get isOpen(): boolean {
@@ -106,36 +112,21 @@ export class ResultDialog {
   }
 
   open(v: ResultView): void {
-    const s = v.summary;
-    const outcome = document.getElementById("result-dialog-outcome")!;
-    const verdict = v.winner === "DRAW" ? "Draw" : `${v.winner} wins`;
-    const you = s.human_side === null ? "" : v.winner === "DRAW" ? "" : v.winner === s.human_side ? " -- you won" : " -- you lost";
-    outcome.innerHTML = `<b>${verdict}</b>${you}. VP ${v.margin > 0 ? "+" : ""}${v.margin}, turn ${v.endTurn}`
-      + (v.reason ? ` (${escapeHtml(v.reason)})` : "") + ".";
-    const facts = document.getElementById("result-dialog-facts")!;
-    facts.innerHTML = [
-      s.human_side ? `<dt>You played</dt><dd>${s.human_side}</dd>` : "",
-      v.model ? `<dt>Against</dt><dd>${escapeHtml(v.model)}</dd>` : "",
-      s.undos ? `<dt>Taken back</dt><dd>${plural(s.undos, "move")}</dd>` : "",
-    ].join("");
-    const notes = summaryNotes(s);
-    const list = document.getElementById("result-dialog-notes")!;
-    list.innerHTML = notes.length
-      ? `<p class="result-notes-intro">Recorded with these notes, so the game can be filtered:</p><ul>${notes.map(n => `<li>${escapeHtml(n)}</li>`).join("")}</ul>`
-      : `<p class="result-notes-intro">A straight game against one model: recorded as clean.</p>`;
+    this.view = v;
+    this.render(v);
 
     const p = loadPlaydek();
     this.login.value = p.login;
     this.rating.value = p.rating === null ? "" : String(p.rating);
     this.note.value = "";
-    this.setStatus("", "");
+    this.setStatus(() => "", "");
     this.sending = false;
     if (v.submitted) {
       this.submit.disabled = true;
-      this.setStatus("This game is in the database already.", "ok");
+      this.setStatus(() => t("result:status.already"), "ok");
     } else if (!STATS_ENDPOINT) {
       this.submit.disabled = true;
-      this.setStatus("This build has no stats database (TS_STATS_ENDPOINT): download the record instead.", "");
+      this.setStatus(() => t("result:status.noDatabase"), "");
     } else {
       this.submit.disabled = false;
     }
@@ -147,8 +138,33 @@ export class ResultDialog {
     this.el.classList.add("hidden");
   }
 
-  private setStatus(text: string, cls: "" | "ok" | "error"): void {
-    this.status.textContent = text;
+  /** The result, the facts and the notes: everything but the form. */
+  private render(v: ResultView): void {
+    const s = v.summary;
+    const outcome = document.getElementById("result-dialog-outcome")!;
+    const verdict = v.winner === "DRAW" ? t("result:draw") : t("result:wins", { side: sideName(v.winner) });
+    const you = s.human_side === null ? "" : v.winner === "DRAW" ? "" : v.winner === s.human_side ? t("result:youWon") : t("result:youLost");
+    outcome.innerHTML = t("result:outcome", {
+      verdict, you, margin: `${v.margin > 0 ? "+" : ""}${v.margin}`, turn: v.endTurn,
+      reason: v.reason ? t("result:reason", { reason: escapeHtml(v.reason) }) : "",
+    });
+    const facts = document.getElementById("result-dialog-facts")!;
+    facts.innerHTML = [
+      s.human_side ? `<dt>${t("result:facts.youPlayed")}</dt><dd>${sideName(s.human_side)}</dd>` : "",
+      v.model ? `<dt>${t("result:facts.against")}</dt><dd>${escapeHtml(v.model)}</dd>` : "",
+      s.undos ? `<dt>${t("result:facts.takenBack")}</dt><dd>${t("result:facts.moves", { count: s.undos })}</dd>` : "",
+    ].join("");
+    const notes = summaryNotes(s);
+    const list = document.getElementById("result-dialog-notes")!;
+    list.innerHTML = notes.length
+      ? `<p class="result-notes-intro">${t("result:notesIntro")}</p><ul>${notes.map(n => `<li>${escapeHtml(n)}</li>`).join("")}</ul>`
+      : `<p class="result-notes-intro">${t("result:clean")}</p>`;
+  }
+
+  /** The status line; `text` is called again when the language changes. */
+  private setStatus(text: () => string, cls: "" | "ok" | "error"): void {
+    this.statusText = text;
+    this.status.textContent = text();
     this.status.className = `result-status ${cls}`;
   }
 
@@ -158,7 +174,7 @@ export class ResultDialog {
     const rating = Number(this.rating.value);
     const ratingOk = this.rating.value.trim() !== "" && Number.isFinite(rating) && rating >= 1 && rating <= 5000;
     if (require && (!login || !ratingOk)) {
-      this.setStatus(!login ? "Your Playdek login, please." : "Your Playdek rating, please (1-5000).", "error");
+      this.setStatus(() => !login ? t("result:status.needLogin") : t("result:status.needRating"), "error");
       (!login ? this.login : this.rating).focus();
       return null;
     }
@@ -172,7 +188,7 @@ export class ResultDialog {
     storePlaydek(p);
     this.sending = true;
     this.submit.disabled = true;
-    this.setStatus("Sending…", "");
+    this.setStatus(() => t("result:status.sending"), "");
     try {
       const body = await this.makeSubmission(p, this.note.value.trim());
       const res = await fetch(`${STATS_ENDPOINT.replace(/\/+$/, "")}/games`, {
@@ -183,10 +199,12 @@ export class ResultDialog {
       const reply = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(reply?.error ?? `HTTP ${res.status}`);
       this.onSubmitted();
-      this.setStatus(reply?.stored === false ? "This game is in the database already." : "Added. Thank you!", "ok");
+      const stored = reply?.stored !== false;
+      this.setStatus(() => stored ? t("result:status.added") : t("result:status.already"), "ok");
     } catch (e) {
       this.submit.disabled = false;
-      this.setStatus(`Not added: ${e instanceof Error ? e.message : String(e)}`, "error");
+      const error = e instanceof Error ? e.message : String(e);
+      this.setStatus(() => t("result:status.notAdded", { error }), "error");
     } finally {
       this.sending = false;
     }
@@ -204,7 +222,8 @@ export class ResultDialog {
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
-      this.setStatus(`Could not make the record: ${e instanceof Error ? e.message : String(e)}`, "error");
+      const error = e instanceof Error ? e.message : String(e);
+      this.setStatus(() => t("result:status.recordFailed", { error }), "error");
     }
   }
 }

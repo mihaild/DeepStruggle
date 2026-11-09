@@ -1,0 +1,52 @@
+{
+  "cardNumber": "Card #{{id}}",
+  "where": {
+    "drawDeck": "in the draw deck",
+    "usHand": "in the US hand",
+    "usHandKnown": "in the US hand (the USSR knows)",
+    "ussrHand": "in the USSR hand",
+    "ussrHandKnown": "in the USSR hand (the US knows)",
+    "headline": "headlined, not yet resolved",
+    "peeked": "being looked at by an event",
+    "discarded": "discarded -- back only after a reshuffle",
+    "removed": "removed from the game -- never scores again",
+    "ongoing": "in play as an ongoing event",
+    "unavailable": "not in the game yet -- comes in with its war's deck",
+    "unseen": "in the draw deck or the other side's hand",
+    "unknown": "unknown"
+  },
+  "tag": {
+    "live": "LIVE",
+    "out": "OUT",
+    "later": "NOT YET",
+    "scoring": "SCORING"
+  },
+  "superpower": {
+    "usa": "UNITED STATES",
+    "ussr": "SOVIET UNION"
+  },
+  "control": {
+    "controlsSpare": "{{side}} controls, {{spare}} to spare",
+    "controlsNoSpare": "{{side}} controls, with nothing to spare",
+    "controlsWith_one": "{{side}} controls with +{{count}} ({{count}} Op)",
+    "controlsWith_other": "{{side}} controls with +{{count}} ({{count}} Ops)",
+    "breaksWith": "{{side}} breaks with +{{brk}} ({{breakOps}} Ops), controls with +{{control}} ({{controlOps}} Ops)"
+  },
+  "tooltip": {
+    "theUs": "the US",
+    "theUssr": "the USSR",
+    "usControls": "US controls",
+    "ussrControls": "USSR controls",
+    "uncontrolled": "Uncontrolled",
+    "battleground": "Battleground",
+    "sub": "{{regions}} · stability {{stability}}",
+    "coup": "Coup: die + Ops must beat <b>{{n}}</b>",
+    "lastTurn": "{{player}}'s last turn: {{what}}",
+    "adjacent": "Adjacent: {{list}}",
+    "none": "none"
+  },
+  "lastTurn": "{{player}}'s last turn ({{when}}): {{what}}",
+  "noCountryChanged": "no country changed",
+  "targetedNoChange": "targeted, no change",
+  "badgeVp": "{{side}} {{vp}} VP"
+}

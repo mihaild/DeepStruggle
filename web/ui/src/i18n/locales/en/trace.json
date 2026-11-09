@@ -1,0 +1,51 @@
+{
+  "result": {
+    "gameOver": "Game over.",
+    "outcome": "Game over — {{outcome}}.",
+    "outcomeVp": "Game over — {{outcome}} (VP {{vp}}).",
+    "usWon": "US won",
+    "ussrWon": "USSR won",
+    "drawn": "drawn"
+  },
+  "sides": {
+    "title": "{{side}}'s own view: P(victory) = (1 + v_win)/2, expected final VP margin = v_vp × {{limit}}",
+    "titleOtherToMove": "{{side}}'s own view: P(victory) = (1 + v_win)/2, expected final VP margin = v_vp × {{limit}} ({{decider}} is to move)",
+    "vp": "{{vp}} VP"
+  },
+  "chip": {
+    "forced": "forced",
+    "forcedTitle": "One legal action -- played by the loop, not chosen",
+    "title": "policy probability of the move it played (T=1)",
+    "titleBest": "policy probability of the move it played (T=1); best was {{best}}",
+    "titleNotMode": "policy probability of the move it played (T=1) -- not the mode",
+    "titleBestNotMode": "policy probability of the move it played (T=1); best was {{best}} -- not the mode",
+    "deltaTitle": "the calibrated critic's P(US wins) moved by this many points across this step -- each position read from the side to move there ({{before}}, then {{after}})"
+  },
+  "badge": {
+    "title": "policy probability {{p}} (temperature 1)",
+    "titlePlayed": "policy probability {{p}} (temperature 1) -- the move it played",
+    "titleFavourite": "policy probability {{p}} (temperature 1) -- the model's favourite"
+  },
+  "next": {
+    "none": "No recorded decision from this position.",
+    "forced": "Next step is forced — one legal action, played by the loop.",
+    "scripted": "Next step is a scripted opening — the policy was overruled.",
+    "plays": "plays {{p}}",
+    "playsTitle": "probability the policy put on the move it went on to play, at temperature 1",
+    "best": "best {{p}}",
+    "bestTitle": "probability of its most likely move",
+    "entropyTitle": "entropy of the distribution, in nats",
+    "legal": "{{n}} legal",
+    "offMode": "off-mode",
+    "offModeTitle": "the sampler did not take the policy's own best move",
+    "step": "step {{n}}: {{move}}",
+    "hintCount": "probabilities for all {{n}} options are on the cards, buttons and map",
+    "hintAll": "probabilities for all legal options are on the cards, buttons and map"
+  },
+  "panel": {
+    "criticOnly": "critic only",
+    "position": "POSITION ON SCREEN — after step {{n}}",
+    "positionToMove": "POSITION ON SCREEN — after step {{n}}, {{side}} to move",
+    "next": "NEXT DECISION — from this position"
+  }
+}

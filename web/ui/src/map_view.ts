@@ -1,9 +1,10 @@
 import { GameState, LastTurnCountry, MapMetadata, RecentRoll, RegionSideScore } from "./types";
 import { renderRollTray } from "./roll_tray";
-import { NetSide, regionNet, regionSummaryHtml, STANDING_SHORT } from "./region_summary";
+import { NetSide, regionNet, regionSummaryHtml, standingShort } from "./region_summary";
 import { CARDS_METADATA, MAP_METADATA } from "./metadata";
 import { engineLayout, namesByValue, titleCase } from "./engine/layout";
 import { escapeHtml } from "./html";
+import { cardDescription, cardName, countryName, onLanguageChange, regionName, sideName, t } from "./i18n";
 
 /** A scoring card's badge and summary: the engine's scoring (RegionScore) with names and colours. */
 export interface RegionScoreAudit {
@@ -58,32 +59,52 @@ export interface ScoringCardWhereabouts {
   where: string;
 }
 
-const SCORING_CARD_WHERE: Record<string, ScoringCardWhereabouts> = {
-  DRAW_DECK: { status: "live", where: "in the draw deck" },
-  HAND_US_UNKNOWN: { status: "live", where: "in the US hand" },
-  HAND_US_KNOWN: { status: "live", where: "in the US hand (the USSR knows)" },
-  HAND_USSR_UNKNOWN: { status: "live", where: "in the USSR hand" },
-  HAND_USSR_KNOWN: { status: "live", where: "in the USSR hand (the US knows)" },
-  HEADLINE_COMMITTED: { status: "live", where: "headlined, not yet resolved" },
-  PEEKED_TEMP: { status: "live", where: "being looked at by an event" },
-  DISCARD_PILE: { status: "out", where: "discarded -- back only after a reshuffle" },
-  REMOVED_FROM_GAME: { status: "out", where: "removed from the game -- never scores again" },
-  ONGOING_EVENT: { status: "out", where: "in play as an ongoing event" },
-  UNAVAILABLE: { status: "later", where: "not in the game yet -- comes in with its war's deck" },
-  // A player's view (game/view.ts): the deck and the other side's unseen cards are one pile.
-  UNSEEN: { status: "live", where: "in the draw deck or the other side's hand" },
-};
+/** Where the engine's card location leaves a scoring card, in words; null for a location not listed. */
+function scoringCardWhere(loc: string): ScoringCardWhereabouts | null {
+  switch (loc) {
+    case "DRAW_DECK": return { status: "live", where: t("map:where.drawDeck") };
+    case "HAND_US_UNKNOWN": return { status: "live", where: t("map:where.usHand") };
+    case "HAND_US_KNOWN": return { status: "live", where: t("map:where.usHandKnown") };
+    case "HAND_USSR_UNKNOWN": return { status: "live", where: t("map:where.ussrHand") };
+    case "HAND_USSR_KNOWN": return { status: "live", where: t("map:where.ussrHandKnown") };
+    case "HEADLINE_COMMITTED": return { status: "live", where: t("map:where.headline") };
+    case "PEEKED_TEMP": return { status: "live", where: t("map:where.peeked") };
+    case "DISCARD_PILE": return { status: "out", where: t("map:where.discarded") };
+    case "REMOVED_FROM_GAME": return { status: "out", where: t("map:where.removed") };
+    case "ONGOING_EVENT": return { status: "out", where: t("map:where.ongoing") };
+    case "UNAVAILABLE": return { status: "later", where: t("map:where.unavailable") };
+    // A player's view (game/view.ts): the deck and the other side's unseen cards are one pile.
+    case "UNSEEN": return { status: "live", where: t("map:where.unseen") };
+    default: return null;
+  }
+}
 
 export function scoringCardWhereabouts(state: GameState, cardId: number): ScoringCardWhereabouts {
   const loc = state.card_locations?.[String(cardId)] ?? "";
-  return SCORING_CARD_WHERE[loc] ?? { status: "later", where: loc ? loc.toLowerCase() : "unknown" };
+  return scoringCardWhere(loc) ?? { status: "later", where: loc ? loc.toLowerCase() : t("map:where.unknown") };
 }
 
-const SCORING_CARD_TAG: Record<ScoringCardWhereabouts["status"], { text: string; fill: string; stroke: string; ink: string }> = {
-  live: { text: "LIVE", fill: "rgba(22, 101, 52, 0.95)", stroke: "#4ADE80", ink: "#DCFCE7" },
-  out: { text: "OUT", fill: "rgba(51, 65, 85, 0.95)", stroke: "#64748B", ink: "#94A3B8" },
-  later: { text: "NOT YET", fill: "rgba(15, 23, 42, 0.90)", stroke: "#475569", ink: "#64748B" },
+const SCORING_CARD_TAG: Record<ScoringCardWhereabouts["status"], { fill: string; stroke: string; ink: string }> = {
+  live: { fill: "rgba(22, 101, 52, 0.95)", stroke: "#4ADE80", ink: "#DCFCE7" },
+  out: { fill: "rgba(51, 65, 85, 0.95)", stroke: "#64748B", ink: "#94A3B8" },
+  later: { fill: "rgba(15, 23, 42, 0.90)", stroke: "#475569", ink: "#64748B" },
 };
+
+function scoringCardTagText(status: ScoringCardWhereabouts["status"]): string {
+  return status === "live" ? t("map:tag.live") : status === "out" ? t("map:tag.out") : t("map:tag.later");
+}
+
+/**
+ * Roughly how wide `text` is set, in map units: `narrow` a Latin glyph, `wide` a CJK one -- so a
+ * translated name is squeezed into its box as an English one is.
+ */
+function textWidth(text: string, narrow: number, wide: number): number {
+  let n = 0, w = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0)! >= 0x2e80) w++; else n++;
+  }
+  return n * narrow + w * wide;
+}
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -150,17 +171,17 @@ const REGION_BADGE_H = 34;
  */
 export function controlLine(side: "US" | "USSR", own: number, opp: number, stability: number,
                             controlledBy: string): string {
-  const tag = `<span class="ct-${side.toLowerCase()}">${side}</span>`;
+  const tag = `<span class="ct-${side.toLowerCase()}">${sideName(side)}</span>`;
   if (controlledBy === side) {
     const spare = own - opp - stability;
-    return `${tag} controls${spare > 0 ? `, ${spare} to spare` : ", with nothing to spare"}`;
+    return spare > 0 ? t("map:control.controlsSpare", { side: tag, spare }) : t("map:control.controlsNoSpare", { side: tag });
   }
   const control = Math.max(0, opp + stability - own);
-  if (controlledBy === "NONE") return `${tag} controls with +${control} (${control} Op${control === 1 ? "" : "s"})`;
+  if (controlledBy === "NONE") return t("map:control.controlsWith", { side: tag, count: control });
   const brk = opp - stability - own + 1;
   const breakOps = 2 * brk;
   const controlOps = breakOps + (control - brk);
-  return `${tag} breaks with +${brk} (${breakOps} Ops), controls with +${control} (${controlOps} Ops)`;
+  return t("map:control.breaksWith", { side: tag, brk, breakOps, control, controlOps });
 }
 
 type SvgAttrs = Record<string, string | number | null | undefined>;
@@ -242,6 +263,8 @@ export class MapView {
   private dragged = false;
   /** The latest press's pointer type: "mouse" hovers, "touch" and "pen" tap to see a card. */
   private lastPointer = "mouse";
+  /** The region whose scoring summary was last pinned in the modal, to redo in a new language. */
+  private summaryRegion: number | null = null;
 
   constructor(svgElement: SVGSVGElement, onCountryClick: (countryId: number) => void) {
     this.svg = svgElement;
@@ -250,6 +273,7 @@ export class MapView {
     this.setupPanAndZoom();
     this.updateViewBox();
     this.fetchMetadata();
+    onLanguageChange(() => this.refreshRegionSummary());
   }
 
   public fetchMetadata() {
@@ -427,15 +451,17 @@ export class MapView {
       const card = CARD_META.get(cardId);
       const listed = (s: RegionSideScore) => s.controlled.map(c => {
         const star = se ? (c.vp ?? 0) > 1 : !!c.battleground;
-        return `${names.get(c.id) ?? `#${c.id}`}${star ? " ★" : ""}`;
+        const name = names.get(c.id);
+        return `${name ? countryName(c.id, name) : `#${c.id}`}${star ? " ★" : ""}`;
       });
       return {
         regionId: r.slot,
         regionName: se ? "SOUTHEAST ASIA" : titleCase(key).toUpperCase(),
         badgePos: look?.pos ?? [0, 0],
         color: (se ? REGION_STYLE["Southeast Asia"] : REGION_STYLE[titleCase(key)] ?? REGION_STYLE["Europe"]).accent,
-        scoringCardName: card ? `${card.name} (#${cardId})` : `Card #${cardId}`,
-        scoringCardText: (card?.description ?? "").replace(/;?\s*MAY NOT BE HELD!?\s*$/i, ""),
+        scoringCardName: card ? `${cardName(cardId, card.name)} (#${cardId})` : t("map:cardNumber", { id: cardId }),
+        // A translation keeps the card's whole text: only the English is cut, by its own words.
+        scoringCardText: cardDescription(cardId, (card?.description ?? "").replace(/;?\s*MAY NOT BE HELD!?\s*$/i, "")),
         scoringCard: scoringCardWhereabouts(state, cardId),
         southeastAsia: se,
         totalBattlegrounds: r.battlegrounds,
@@ -472,8 +498,8 @@ export class MapView {
     const drawnEdges = new Set<string>();
 
     const superpowers = [
-      { id: "USA", label: "UNITED STATES", pos: [85, 230], color: "#1E3A8A", stroke: "#3B82F6" },
-      { id: "USSR", label: "SOVIET UNION", pos: [635, 120], color: "#7F1D1D", stroke: "#EF4444" }
+      { id: "USA", label: t("map:superpower.usa"), pos: [85, 230], color: "#1E3A8A", stroke: "#3B82F6" },
+      { id: "USSR", label: t("map:superpower.ussr"), pos: [635, 120], color: "#7F1D1D", stroke: "#EF4444" }
     ];
 
     // Country-to-Country Edges
@@ -641,13 +667,13 @@ export class MapView {
       }));
 
       // The name, squeezed rather than cut when it is long.
-      const label = SHORT_NAMES[c.name] ?? c.name;
+      const label = countryName(c.id, SHORT_NAMES[c.name] ?? c.name);
       const room = stabX - (left + 1.6) - 0.8;
       const name = svgText(label, {
         class: "country-name", x: left + 1.6, y: top + BAND_H / 2 + 1.75,
         fill: "#FFFFFF", "font-size": NAME_FONT, "font-weight": 800,
       });
-      if (label.length * NAME_FONT * 0.56 > room) {
+      if (textWidth(label, NAME_FONT * 0.56, NAME_FONT) > room) {
         name.setAttribute("textLength", room.toString());
         name.setAttribute("lengthAdjust", "spacingAndGlyphs");
       }
@@ -760,20 +786,22 @@ export class MapView {
     const us = Number(sc?.us_influence ?? 0), ussr = Number(sc?.ussr_influence ?? 0);
     const ctrl = sc?.controlled_by ?? "NONE";
     const lines = [controlLine("US", us, ussr, c.stability, ctrl), controlLine("USSR", ussr, us, c.stability, ctrl)];
-    const adjacent = [...(c.neighbours || [])];
-    if (c.superpower_adjacent) adjacent.push(c.superpower_adjacent === "USA" ? "the US" : "the USSR");
-    const standing = ctrl === "US" ? `<b class="ct-us">US controls</b>` : ctrl === "USSR" ? `<b class="ct-ussr">USSR controls</b>` : "Uncontrolled";
+    const ids = new Map((this.mapData?.countries || []).map(x => [x.name, x.id]));
+    const adjacent = (c.neighbours || []).map(n => { const id = ids.get(n); return id === undefined ? n : countryName(id, n); });
+    if (c.superpower_adjacent) adjacent.push(c.superpower_adjacent === "USA" ? t("map:tooltip.theUs") : t("map:tooltip.theUssr"));
+    const standing = ctrl === "US" ? `<b class="ct-us">${t("map:tooltip.usControls")}</b>`
+      : ctrl === "USSR" ? `<b class="ct-ussr">${t("map:tooltip.ussrControls")}</b>` : t("map:tooltip.uncontrolled");
     // Whether a coup or realignment is allowed here is the engine's to say (the legal targets lit on
     // the map); the card gives only the board's numbers.
     this.tooltipEl.innerHTML = `
-      <div class="ct-head"><span class="ct-name">${escapeHtml(c.name)}</span>${c.battleground ? `<span class="ct-bg">Battleground</span>` : ""}</div>
-      <div class="ct-sub">${escapeHtml([c.region, ...(c.subregions || [])].join(" \u00b7 "))} \u00b7 stability ${c.stability}</div>
-      <div class="ct-inf"><span class="ct-us">US ${us}</span><span class="ct-ussr">USSR ${ussr}</span><span>${standing}</span></div>
+      <div class="ct-head"><span class="ct-name">${escapeHtml(countryName(c.id, c.name))}</span>${c.battleground ? `<span class="ct-bg">${t("map:tooltip.battleground")}</span>` : ""}</div>
+      <div class="ct-sub">${t("map:tooltip.sub", { regions: escapeHtml([c.region, ...(c.subregions || [])].map(regionName).join(" \u00b7 ")), stability: c.stability })}</div>
+      <div class="ct-inf"><span class="ct-us">${sideName("US")} ${us}</span><span class="ct-ussr">${sideName("USSR")} ${ussr}</span><span>${standing}</span></div>
       <div class="ct-rows">${lines.map(l => `<div>${l}</div>`).join("")}
-        <div>Coup: die + Ops must beat <b>${2 * c.stability}</b></div>
-        ${lc && state.last_turn ? `<div class="ct-last">${escapeHtml(state.last_turn.player)}'s last turn: ${escapeHtml(describeLastTurnCountry(lc))}</div>` : ""}
+        <div>${t("map:tooltip.coup", { n: 2 * c.stability })}</div>
+        ${lc && state.last_turn ? `<div class="ct-last">${t("map:tooltip.lastTurn", { player: escapeHtml(sideName(state.last_turn.player)), what: escapeHtml(describeLastTurnCountry(lc)) })}</div>` : ""}
       </div>
-      <div class="ct-adj">Adjacent: ${escapeHtml(adjacent.join(", ") || "none")}</div>`;
+      <div class="ct-adj">${t("map:tooltip.adjacent", { list: escapeHtml(adjacent.join(", ") || t("map:tooltip.none")) })}</div>`;
     this.tooltipEl.classList.remove("hidden");
     this.placeTooltip(e);
   }
@@ -799,9 +827,9 @@ export class MapView {
     }
     el.classList.remove("hidden");
     const what = lt.countries.length
-      ? lt.countries.map(lc => `${lc.name} ${describeLastTurnCountry(lc)}`).join(" · ")
-      : "no country changed";
-    el.textContent = `${lt.player}'s last turn (${lt.label}): ${what}`;
+      ? lt.countries.map(lc => `${countryName(lc.id, lc.name)} ${describeLastTurnCountry(lc)}`).join(" · ")
+      : t("map:noCountryChanged");
+    el.textContent = t("map:lastTurn", { player: sideName(lt.player), when: lt.label, what });
   }
 
   /**
@@ -833,11 +861,12 @@ export class MapView {
       g.appendChild(svgEl("rect", { x: left + 1.2, y: top + 1.2, width: 2.6, height: REGION_BADGE_H - 2.4, rx: 1.2, fill: accent }));
 
       // Row 1: the region and what its scoring card is worth to whom, right now.
-      const title = svgText(audit.regionName, {
+      const regionTitle = regionName(audit.regionName.toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase())).toUpperCase();
+      const title = svgText(regionTitle, {
         class: "region-badge-title", x: left + 6, y: top + 9.2, fill: accent,
         "font-size": 6, "font-weight": 800, "letter-spacing": 0.3,
       });
-      if (audit.regionName.length * 6 * 0.68 > 62) {
+      if (textWidth(regionTitle, 6 * 0.68, 6) > 62) {
         title.setAttribute("textLength", "62");
         title.setAttribute("lengthAdjust", "spacingAndGlyphs");
       }
@@ -850,9 +879,9 @@ export class MapView {
 
       // Row 2: each side's standing and its total (Southeast Asia has no standings, only VP).
       const line = (side: string, s: RegionSideScore) =>
-        s.status === null ? `${side} ${s.vp} VP` : `${side} ${STANDING_SHORT[s.status]} ${s.vp}`;
-      const usLine = line("US", audit.us);
-      const ussrLine = line("USSR", audit.ussr);
+        s.status === null ? t("map:badgeVp", { side, vp: s.vp }) : `${side} ${standingShort(s.status)} ${s.vp}`;
+      const usLine = line(sideName("US"), audit.us);
+      const ussrLine = line(sideName("USSR"), audit.ussr);
       g.appendChild(svgText(usLine, {
         class: "region-badge-us", x: left + 6, y: top + 18.6, fill: "#93C5FD", "font-size": 4.9, "font-weight": 700,
       }));
@@ -863,15 +892,15 @@ export class MapView {
 
       // Row 3: can the region's scoring card still come this cycle? Inside the badge, because
       // country nodes are drawn over the badges and would hide anything sticking out.
-      const tag = SCORING_CARD_TAG[audit.scoringCard.status];
+      const tag = { ...SCORING_CARD_TAG[audit.scoringCard.status], text: scoringCardTagText(audit.scoringCard.status) };
       const tagH = 6;
       const tagY = top + REGION_BADGE_H - tagH - 2.6;
       const tagG = svgEl("g", { class: "svg-region-card-tag", "data-status": audit.scoringCard.status });
-      tagG.appendChild(svgText("SCORING", {
+      tagG.appendChild(svgText(t("map:tag.scoring"), {
         x: left + 6, y: tagY + tagH / 2 + 1.4, fill: "#64748B", "font-size": 3.8, "font-weight": 800, "letter-spacing": 0.4,
       }));
       const tagX = left + 28;
-      const tagW = tag.text.length * 2.9 + 4.4;
+      const tagW = textWidth(tag.text, 2.9, 4.2) + 4.4;
       const tagRect = svgEl("rect", {
         x: tagX, y: tagY, width: tagW, height: tagH, rx: 1.6,
         fill: tag.fill, stroke: tag.stroke, "stroke-width": 0.6,
@@ -913,6 +942,19 @@ export class MapView {
     title.textContent = audit.scoringCardName;
     body.innerHTML = regionSummaryHtml(audit);
     container.classList.remove("hidden");
+    this.summaryRegion = audit.regionId;
+  }
+
+  /** The pinned summary, redone in a new language while it is still the modal's. */
+  private refreshRegionSummary() {
+    const container = document.getElementById("modal-container");
+    const body = document.getElementById("modal-body");
+    if (this.summaryRegion === null || !container || container.classList.contains("hidden") || !body?.querySelector(".rs")) {
+      this.summaryRegion = null;
+      return;
+    }
+    const audit = this.lastState && this.calculateRegionalScoring(this.lastState).find(a => a.regionId === this.summaryRegion);
+    if (audit) this.openRegionSummary(audit);
   }
 
   private hideRegionTooltip() {
@@ -926,7 +968,7 @@ export class MapView {
 export function describeLastTurnCountry(lc: LastTurnCountry): string {
   const signed = (v: number) => (v > 0 ? `+${v}` : `\u2212${-v}`);
   const parts: string[] = [];
-  if (lc.ussr) parts.push(`USSR ${signed(lc.ussr)}`);
-  if (lc.us) parts.push(`US ${signed(lc.us)}`);
-  return parts.length ? parts.join(", ") : "targeted, no change";
+  if (lc.ussr) parts.push(`${sideName("USSR")} ${signed(lc.ussr)}`);
+  if (lc.us) parts.push(`${sideName("US")} ${signed(lc.us)}`);
+  return parts.length ? parts.join(", ") : t("map:targetedNoChange");
 }

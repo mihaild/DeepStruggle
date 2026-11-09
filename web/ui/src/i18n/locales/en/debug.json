@@ -1,0 +1,13 @@
+{
+  "title": "Engine Debug & State Inspector",
+  "overrideTracks": "Override Tracks",
+  "defcon": "DEFCON:",
+  "setDefcon": "Set DEFCON",
+  "vp": "Victory Points (-20 to +20):",
+  "setVp": "Set VP",
+  "setCountry": "Set Country Influence",
+  "us": "US:",
+  "ussr": "USSR:",
+  "apply": "Apply",
+  "country": "{{name}} (#{{id}})"
+}

@@ -23,6 +23,7 @@
  */
 
 import { SiteLevel, fetchSiteLevels, hfCatalog } from "./analysis/hf_catalog";
+import { bindLanguageSelects, initLanguage, onLanguageChange, t } from "./i18n";
 import { DEFAULT_ROLLOUT, RolloutSpec, parseSearchParam, rolloutParam, specEqual } from "./analysis/rollout_spec";
 
 interface Seat { w: number; l: number; d: number }
@@ -161,20 +162,26 @@ function defaultEpoch(epochs: Record<string, { pairs: unknown[] }>): string {
   return played.length ? played[played.length - 1] : names[names.length - 1];
 }
 
-const HF_TAG = `<span class="lb-tag hf" title="The default on Hugging Face: the workbench plays this network with this search when a link names neither">HF DEFAULT</span>`;
+const hfTag = () => `<span class="lb-tag hf" title="${esc(t("leaderboard:tag.hfDefaultTitle"))}">${t("leaderboard:tag.hfDefault")}</span>`;
 
 const SITE_URL = "https://twilightstruggle.app/ai/";
 
 function siteTag(level: SiteLevel): string {
-  return `<span class="lb-tag site" title="${esc(`The ${level.name} level of the AI on twilightstruggle.app`)}">SITE: ${esc(level.name.toUpperCase())}</span>`;
+  return `<span class="lb-tag site" title="${esc(t("leaderboard:tag.siteTitle", { level: level.name }))}">${
+    t("leaderboard:tag.site", { level: esc(level.name.toUpperCase()) })}</span>`;
 }
 
-const ANCHOR_NOTE = `These ratings come only from games between the models listed here, on a scale
-  anchored at one of them. They do not correspond to human Elo ratings, such as those of the
-  Playdek Twilight Struggle app.`;
-const ESTIMATE_POINTER = ` The Playdek estimate switch shows an estimate of that scale, from games people played against these models on this site.`;
-
-const KIND_LABEL: Record<string, string> ={ policy: "", gumbel: "Gumbel", rollout: "rollout", search: "PUCT", bot: "bot" };
+/** A player's kind as its tag says it; none for the greedy policy, the kind itself for one not listed. */
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case "policy": return "";
+    case "gumbel": return t("leaderboard:kind.gumbel");
+    case "rollout": return t("leaderboard:kind.rollout");
+    case "search": return t("leaderboard:kind.search");
+    case "bot": return t("leaderboard:kind.bot");
+    default: return kind;
+  }
+}
 
 class LeaderboardPage {
   private epoch = "";
@@ -329,19 +336,19 @@ class LeaderboardPage {
     // The player's report, never simply its network's: a network's report is of its greedy play,
     // and says nothing about the same weights under a search.
     if (pl.report) {
-      const what = pl.report === net.report ? "Behaviour report of the network's greedy play" : "Report on this player's play";
+      const what = pl.report === net.report ? t("leaderboard:links.reportOfNetworkTitle") : t("leaderboard:links.reportOfPlayerTitle");
       out.push(`<a href="https://github.com/${esc(this.data.github)}/blob/${esc(this.data.commit ?? "main")}/${esc(pl.report)}"
-        title="${what}">report</a>`);
+        title="${esc(what)}">${t("leaderboard:links.report")}</a>`);
     }
     if (net.hf) {
       const onnx = net.hf.replace(/\.pt$/, ".onnx");
-      out.push(`<a href="https://huggingface.co/${esc(this.data.hf_repo)}/blob/main/${esc(net.hf)}" title="The weights on Hugging Face">weights</a>`);
+      out.push(`<a href="https://huggingface.co/${esc(this.data.hf_repo)}/blob/main/${esc(net.hf)}" title="${esc(t("leaderboard:links.weightsTitle"))}">${t("leaderboard:links.weights")}</a>`);
       // The player as the workbench plays it; a search it cannot run opens the network's policy, and says so.
       const search = pl.workbench_search ?? "policy";
-      const what = pl.workbench_search ? `Play this player in the engine workbench (search=${pl.workbench_search})`
-        : `The workbench cannot run this player's search: open its network's policy in the engine workbench`;
+      const what = pl.workbench_search ? t("leaderboard:links.playTitle", { search: pl.workbench_search })
+        : t("leaderboard:links.playPolicyTitle");
       out.push(`<a href="./?model=${encodeURIComponent(`hf:${this.data.hf_repo}@main:${onnx}`)}&search=${encodeURIComponent(search)}"
-        title="${esc(what)}">play</a>`);
+        title="${esc(what)}">${t("leaderboard:links.play")}</a>`);
     }
     return out.join("");
   }
@@ -356,27 +363,27 @@ class LeaderboardPage {
     }
     box.innerHTML = [...all].sort().map(l =>
       `<label><input type="checkbox" value="${esc(l)}" ${this.lineages.has(l) ? "checked" : ""}> ${esc(l)}</label>`).join("")
-      || `<span class="lb-dim">No lineages in this epoch.</span>`;
+      || `<span class="lb-dim">${t("leaderboard:noLineages")}</span>`;
   }
 
   private renderTable(): void {
     const rows = this.ratingsShown();
     const playdek = this.mode === "playdek";
-    $("lb-th-elo").textContent = playdek ? "Playdek est." : "Elo";
-    $("lb-th-games").textContent = playdek ? "Human games" : "Games";
-    $("lb-th-score").textContent = playdek ? "W-D-L" : "Score";
+    $("lb-th-elo").textContent = playdek ? t("leaderboard:table.eloPlaydek") : t("leaderboard:table.elo");
+    $("lb-th-games").textContent = playdek ? t("leaderboard:table.gamesPlaydek") : t("leaderboard:table.games");
+    $("lb-th-score").textContent = playdek ? t("leaderboard:table.scorePlaydek") : t("leaderboard:table.score");
     $("lb-body").innerHTML = rows.map((r, k) => {
       const pl = this.data.players[r.player];
-      const kind = KIND_LABEL[pl?.kind ?? ""] ?? pl?.kind ?? "";
+      const kind = kindLabel(pl?.kind ?? "");
       const pct = r.games ? (100 * r.score / r.games).toFixed(1) + "%" : "";
       const est = this.estimateOf(r.player);
       const eloCell = !playdek ? r.elo.toFixed(0) : est ? est.rating.toFixed(0) : "–";
-      const seCell = !playdek ? (r.player === this.ep.anchor ? "anchor" : r.se.toFixed(0)) : est ? est.se.toFixed(0) : "";
+      const seCell = !playdek ? (r.player === this.ep.anchor ? t("leaderboard:table.anchor") : r.se.toFixed(0)) : est ? est.se.toFixed(0) : "";
       const gamesCell = !playdek ? r.games.toLocaleString("en-US") : est?.games ? String(est.games) : "–";
       const scoreCell = !playdek ? pct : est?.games ? `${est.w}-${est.d}-${est.l}` : "";
       return `<tr data-player="${esc(r.player)}" class="${r.player === this.selected ? "selected" : ""}">
         <td class="num lb-dim">${k + 1}</td>
-        <td><span class="lb-player">${esc(r.player)}</span>${r.main ? `<span class="lb-tag main">MAIN</span>` : ""}${kind ? `<span class="lb-tag kind">${esc(kind)}</span>` : ""}${this.isHfDefault(r.player) ? HF_TAG : ""}${this.siteLevelsOf(r.player).map(siteTag).join("")}</td>
+        <td><span class="lb-player">${esc(r.player)}</span>${r.main ? `<span class="lb-tag main">${t("leaderboard:tag.main")}</span>` : ""}${kind ? `<span class="lb-tag kind">${esc(kind)}</span>` : ""}${this.isHfDefault(r.player) ? hfTag() : ""}${this.siteLevelsOf(r.player).map(siteTag).join("")}</td>
         <td class="num lb-elo">${eloCell}</td>
         <td class="num lb-dim lb-hide-narrow">${seCell}</td>
         <td class="num lb-hide-narrow">${gamesCell}</td>
@@ -409,29 +416,37 @@ class LeaderboardPage {
       return { opp, all, asUs, asUssr, oppElo: oppRating?.elo };
     }).sort((x, y) => (y.oppElo ?? 0) - (x.oppElo ?? 0));
     const desc = [pl?.description, net?.description].filter(Boolean).map(s => esc(s!)).join(" ");
-    const old = net?.old_names.length ? ` Formerly ${net.old_names.map(n => `<code>${esc(n)}</code>`).join(", ")}.` : "";
+    const old = net?.old_names.length ? " " + t("leaderboard:detail.formerly", { names: net.old_names.map(n => `<code>${esc(n)}</code>`).join(", ") }) : "";
     const links = this.links(pid);
     const nc = pl?.network ? this.data.codes?.by_network[pl.network] : undefined;
     const codeLine = nc && (nc.architecture || nc.recipe)
-      ? `<p class="lb-codes-line">${nc.architecture ? `Architecture ${this.codeLink(nc.architecture)}` : ""}${nc.architecture && nc.recipe ? " · " : ""}${nc.recipe ? `recipe ${this.codeLink(nc.recipe)}` : ""}</p>`
+      ? `<p class="lb-codes-line">${nc.architecture ? t("leaderboard:detail.architecture", { code: this.codeLink(nc.architecture) }) : ""}${nc.architecture && nc.recipe ? " · " : ""}${nc.recipe ? t("leaderboard:detail.recipe", { code: this.codeLink(nc.recipe) }) : ""}</p>`
       : "";
     const est = this.estimateOf(pid);
-    const estLine = !est ? "" : `<p>Playdek estimate <b>${est.rating.toFixed(0)}</b> ± ${est.se.toFixed(0)} (95%: ${est.lo.toFixed(0)}–${est.hi.toFixed(0)}) · ${
-      est.games ? `${est.games} games against ${est.humans} ${est.humans === 1 ? "person" : "people"}, the model ${est.w}-${est.d}-${est.l}`
-        : "no games against people of its own: placed by its leaderboard gaps and any games against its network"}.</p>`;
+    const estLine = !est ? "" : `<p>${t("leaderboard:detail.estimate", {
+      rating: est.rating.toFixed(0), se: est.se.toFixed(0), lo: est.lo.toFixed(0), hi: est.hi.toFixed(0),
+      games: est.games ? t("leaderboard:detail.estimateGames", { games: est.games, count: est.humans, record: `${est.w}-${est.d}-${est.l}` })
+        : t("leaderboard:detail.estimateNoGames") })}</p>`;
     box.innerHTML = `
       <h2>${esc(pid)}</h2>
       <p>${desc}${old}</p>
-      ${this.isHfDefault(pid) ? `<p>${HF_TAG} The default on Hugging Face: the workbench plays this network with this search when a link names neither.</p>` : ""}
-      ${this.siteLevelsOf(pid).map(l => `<p>${siteTag(l)} The ${esc(l.name)} level on <a href="${SITE_URL}">twilightstruggle.app</a>${
-        l.description ? `: ${esc(l.description)}` : "."}</p>`).join("")}
+      ${this.isHfDefault(pid) ? `<p>${hfTag()} ${t("leaderboard:detail.hfDefault")}</p>` : ""}
+      ${this.siteLevelsOf(pid).map(l => {
+        const site = `<a href="${SITE_URL}">twilightstruggle.app</a>`;
+        return `<p>${siteTag(l)} ${l.description
+          ? t("leaderboard:detail.siteLevelDescribed", { level: esc(l.name), site, description: esc(l.description) })
+          : t("leaderboard:detail.siteLevel", { level: esc(l.name), site })}</p>`;
+      }).join("")}
       ${codeLine}
       ${links ? `<p class="lb-links">${links}</p>` : ""}
-      <p>Elo <b>${rating.elo.toFixed(0)}</b>${pid !== this.ep.anchor ? ` ± ${rating.se.toFixed(0)}` : this.mode === "playdek" ? "" : " (the anchor)"} · ${rating.games.toLocaleString("en-US")} games against ${rating.opponents} opponents, ${rating.main_opponents} of them main players.</p>
+      <p>${t("leaderboard:detail.elo", {
+        elo: rating.elo.toFixed(0),
+        uncertainty: pid !== this.ep.anchor ? ` ± ${rating.se.toFixed(0)}` : this.mode === "playdek" ? "" : t("leaderboard:detail.theAnchor"),
+        games: rating.games.toLocaleString("en-US"), opponents: rating.opponents, main: rating.main_opponents })}</p>
       ${estLine}
       <div class="lb-table-wrap"><table class="lb-table">
-        <thead><tr><th>Against</th><th class="num">Elo</th><th class="num">Games</th><th class="num">Score</th>
-          <th class="num lb-hide-narrow">as US</th><th class="num lb-hide-narrow">as USSR</th></tr></thead>
+        <thead><tr><th>${t("leaderboard:detail.against")}</th><th class="num">${t("leaderboard:table.elo")}</th><th class="num">${t("leaderboard:table.games")}</th><th class="num">${t("leaderboard:table.score")}</th>
+          <th class="num lb-hide-narrow">${t("leaderboard:detail.asUs")}</th><th class="num lb-hide-narrow">${t("leaderboard:detail.asUssr")}</th></tr></thead>
         <tbody>${h2h.map(h => `<tr>
           <td><span class="lb-player">${esc(h.opp)}</span></td>
           <td class="num lb-dim">${h.oppElo === undefined ? "–" : h.oppElo.toFixed(0)}</td>
@@ -452,7 +467,7 @@ class LeaderboardPage {
     const box = $("lb-tab-codes");
     const codes = this.data.codes;
     if (!codes) {
-      box.innerHTML = `<p class="lb-dim">This leaderboard.json predates the codes; rebuild it with tools/scripts/build_web.sh.</p>`;
+      box.innerHTML = `<p class="lb-dim">${t("leaderboard:codes.predates")}</p>`;
       return;
     }
     const src = `https://github.com/${esc(this.data.github)}/blob/${esc(this.data.commit ?? "main")}`;
@@ -460,59 +475,52 @@ class LeaderboardPage {
       const rows = Object.entries(codes[kind]).filter(([, c]) => this.allCodes || c.networks.length);
       const body = rows.map(([code, c]) => {
         const flags = Object.entries(c.flags).map(([k, v]) => `<code class="lb-flag">${esc(flagText(k, v))}</code>`).join(" ");
-        const flagCell = !flags ? `<span class="lb-dim">the defaults</span>`
-          : inline ? flags : `<details><summary>${Object.keys(c.flags).length} flags</summary>${flags}</details>`;
+        const flagCell = !flags ? `<span class="lb-dim">${t("leaderboard:codes.defaults")}</span>`
+          : inline ? flags : `<details><summary>${t("leaderboard:codes.flags", { count: Object.keys(c.flags).length })}</summary>${flags}</details>`;
         const nets = c.networks.length
           ? c.networks.map(n => `<span class="lb-player">${esc(n)}</span>`).join("<br>")
-          : `<span class="lb-dim">${c.first ? `first run <code>${esc(c.first)}</code>` : "–"}</span>`;
+          : `<span class="lb-dim">${c.first ? t("leaderboard:codes.firstRun", { run: esc(c.first) }) : "–"}</span>`;
         return `<tr id="code-${esc(code)}"><td class="lb-code"><code>${esc(code)}</code></td>
-          <td>${esc(c.description) || `<span class="lb-dim">no description</span>`}</td>
+          <td>${esc(c.description) || `<span class="lb-dim">${t("leaderboard:codes.noDescription")}</span>`}</td>
           <td class="lb-flags">${flagCell}</td><td class="lb-hide-narrow">${nets}</td></tr>`;
       }).join("");
       return `<h2>${title}</h2>
         <div class="lb-table-wrap"><table class="lb-table lb-codes">
-          <thead><tr><th>Code</th><th>What it is</th><th>Flags</th><th class="lb-hide-narrow">On the board</th></tr></thead>
+          <thead><tr><th>${t("leaderboard:codes.thCode")}</th><th>${t("leaderboard:codes.thWhat")}</th><th>${t("leaderboard:codes.thFlags")}</th><th class="lb-hide-narrow">${t("leaderboard:codes.thOnBoard")}</th></tr></thead>
           <tbody>${body}</tbody></table></div>`;
     };
     box.innerHTML = `
-      <p class="lb-note">A player's name says how it was trained: <code>E7-A8-R1-S44</code> is engine E7,
-        architecture A8, recipe R1, seed 44 (the engine it was trained on; its games here are played under the
-        rules of the epoch shown, whatever engine trained it), and each <code>@&lt;step&gt;M+&lt;change&gt;</code> a branch point
-        and what changed there (a new recipe or architecture, a seed, or a soup in parentheses). A code is a set of
-        <code>tools/train.py</code> flags -- an architecture the network's shape, a recipe every other training
-        setting -- assigned by <code>tools/scripts/run_codes.py</code> and listed here from
-        <a href="${src}/research/run_codes.json">research/run_codes.json</a>
-        (<a href="${src}/research/architectures_and_recipes.md">the same tables</a>). A network is trained
-        under the last code of each kind in its name. Recipe flags are those that differ from the defaults.</p>
+      <p class="lb-note">${t("leaderboard:codes.note", { src })}</p>
       <label class="lb-codes-toggle"><input type="checkbox" id="lb-codes-all" ${this.allCodes ? "checked" : ""}>
-        Show every code, not only those of networks on the board</label>
-      ${table("recipes", "Recipes", true)}
-      ${table("architectures", "Architectures", false)}`;
+        ${t("leaderboard:codes.showAll")}</label>
+      ${table("recipes", t("leaderboard:codes.recipes"), true)}
+      ${table("architectures", t("leaderboard:codes.architectures"), false)}`;
   }
 
   private renderScale(): void {
     const ep = this.ep;
     const pd = this.data.playdek;
     $("lb-note").textContent = this.mode === "playdek" && pd
-      ? `Estimates based on self-reported human ratings, not ratings from the Playdek app: each person typed in their own Playdek rating, the games were played on this site rather than in the app, and a model's rating there could differ. `
-        + `They come from ${pd.games} clean games against ${pd.humans} people to ${pd.as_of}, with takebacks allowed. `
-        + `Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider.`
-      : ANCHOR_NOTE + (pd ? ESTIMATE_POINTER : "");
-    const anchor = this.mode === "playdek" ? "" : `Anchor <code>${esc(ep.anchor)}</code> = ${ep.anchor_elo.toFixed(0)}. `;
-    $("lb-scale").innerHTML = `${anchor}Click a row for its head-to-head results.`
-      + (ep.unrated.length ? ` <span class="lb-dim">Unrated (no games that connect them to the main players): ${ep.unrated.map(esc).join(", ")}.</span>` : "");
+      ? t("leaderboard:note.playdek", { games: pd.games, humans: pd.humans, asOf: pd.as_of })
+      : t("leaderboard:note.anchor") + (pd ? " " + t("leaderboard:note.estimatePointer") : "");
+    const anchor = this.mode === "playdek" ? "" : t("leaderboard:scale.anchor", { anchor: esc(ep.anchor), elo: ep.anchor_elo.toFixed(0) }) + " ";
+    $("lb-scale").innerHTML = `${anchor}${t("leaderboard:scale.clickRow")}`
+      + (ep.unrated.length ? ` <span class="lb-dim">${t("leaderboard:scale.unrated", { players: ep.unrated.map(esc).join(", ") })}</span>` : "");
     const d = this.data;
     const records = `https://github.com/${esc(d.github)}/blob/${esc(d.commit ?? "main")}/leaderboard/matches/${esc(this.epoch)}.jsonl`;
-    $("lb-footer").innerHTML = `Fitted from <a href="${records}">the match records</a>`
-      + (d.commit ? ` at commit <code>${esc(d.commit.slice(0, 10))}</code>` : "")
-      + ` by <code>tools/leaderboard.py</code>. Weights: <a href="https://huggingface.co/${esc(d.hf_repo)}">${esc(d.hf_repo)}</a>`
-      + (this.hfDefault ? `, default model <code>${esc(this.hfDefault)}</code> with search <code>${
-        esc(this.hfDefaultSearch ? rolloutParam(this.hfDefaultSearch) : "policy")}</code>`
-        + (Object.keys(this.data.players).some(p => this.isHfDefault(p)) ? "" : " (not a player on the board)") : "")
-      + ".";
+    $("lb-footer").innerHTML = t("leaderboard:footer.fitted", {
+      records,
+      atCommit: d.commit ? t("leaderboard:footer.atCommit", { commit: esc(d.commit.slice(0, 10)) }) : "",
+      weights: `<a href="https://huggingface.co/${esc(d.hf_repo)}">${esc(d.hf_repo)}</a>`,
+      defaultModel: this.hfDefault ? t("leaderboard:footer.defaultModel", {
+        model: esc(this.hfDefault),
+        search: esc(this.hfDefaultSearch ? rolloutParam(this.hfDefaultSearch) : "policy"),
+        notOnBoard: Object.keys(this.data.players).some(p => this.isHfDefault(p)) ? "" : t("leaderboard:footer.notOnBoard"),
+      }) : "",
+    });
   }
 
-  private render(): void {
+  render(): void {
     $("lb-tab-ratings").hidden = this.tab !== "ratings";
     $("lb-tab-codes").hidden = this.tab !== "codes";
     for (const b of document.querySelectorAll<HTMLButtonElement>(".lb-tabs button")) {
@@ -533,21 +541,28 @@ class LeaderboardPage {
     if (this.view === "lineage" && this.lineages.size) params.set("lineage", [...this.lineages].sort().join(","));
     if (this.selected) params.set("player", this.selected);
     if (this.mode === "playdek") params.set("scale", "playdek");
+    const lang = new URLSearchParams(location.search).get("lang");
+    if (lang) params.set("lang", lang);
     history.replaceState(null, "", `?${params}`);
   }
 }
 
 async function main(): Promise<void> {
+  await initLanguage();
+  bindLanguageSelects();
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}leaderboard.json`);
     if (!res.ok) throw new Error(`leaderboard.json: HTTP ${res.status} (build it with tools/scripts/build_web.sh)`);
     const data = await res.json() as LeaderboardData;
     if (data.schema !== 1) throw new Error(`leaderboard.json schema ${data.schema}; this page reads schema 1`);
-    new LeaderboardPage(data);
+    const page = new LeaderboardPage(data);
+    onLanguageChange(() => page.render());
   } catch (e) {
     const box = $("lb-error");
     box.hidden = false;
-    box.textContent = `Could not load the leaderboard: ${e instanceof Error ? e.message : e}`;
+    const show = () => { box.textContent = t("leaderboard:loadFailed", { error: e instanceof Error ? e.message : String(e) }); };
+    show();
+    onLanguageChange(show);
   }
 }
 

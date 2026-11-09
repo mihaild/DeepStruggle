@@ -25,6 +25,7 @@ import {
 } from "./analysis/model";
 import { cachedModelCount, clearModelCache } from "./analysis/model_cache";
 import { SearchResult } from "./analysis/rollout";
+import { onLanguageChange, sideName, t } from "./i18n";
 
 export interface AnalysisChoice {
   idx: number;
@@ -85,6 +86,7 @@ interface ModelList {
 
 const FLAG_CONFIRM_DONE = 0x80;
 
+/** The run select's value for checkpoints outside any run (its label is `analysis:local.looseGroup`). */
 const LOOSE_GROUP = "(loose checkpoints)";
 const TOP_LISTED = 8;
 
@@ -93,10 +95,10 @@ function snapshotLabel(name: string): string {
   const m = name.match(/^snapshot_(\d+)steps\.pt$/);
   if (m) {
     const n = parseInt(m[1], 10);
-    return n >= 1e6 ? `${Math.round(n / 1e6)}M steps` : `${n} steps`;
+    return n >= 1e6 ? t("analysis:snapshot.millionSteps", { m: Math.round(n / 1e6) }) : t("analysis:snapshot.steps", { n });
   }
-  if (name === "snapshot_final.pt") return "final";
-  if (name === "snapshot_0s.pt") return "start (0)";
+  if (name === "snapshot_final.pt") return t("analysis:snapshot.final");
+  if (name === "snapshot_0s.pt") return t("analysis:snapshot.start");
   return name;
 }
 
@@ -134,6 +136,12 @@ export class AnalysisPanel {
    * the Developer view turns them on, a player's view off, and the toggle overrides either.
    */
   private readoutShown = true;
+  /** No local server to list checkpoints (a static host): the local source is disabled. */
+  private localUnavailable = false;
+  /** The Hugging Face file select holds only its "listing…" placeholder. */
+  private hfListing = false;
+  /** The position of the last `render`, for a redraw in another language. */
+  private lastState: GameState | null = null;
 
   private sourceSelect = el<HTMLSelectElement>("analysis-source-select");
   private runSelect = el<HTMLSelectElement>("analysis-run-select");
@@ -199,15 +207,33 @@ export class AnalysisPanel {
     this.showSourceControls();
     this.loadLocalModels();
     this.refreshCacheButton();
+    onLanguageChange(() => this.relabel());
+  }
+
+  /**
+   * The panel in another language: the pickers' own labels (filled once, from the lists), the
+   * cache button, the auto-play lock, and the body. The values selected stay as they are.
+   */
+  private relabel(): void {
+    if (this.localUnavailable) this.markLocalUnavailable();
+    for (const o of this.runSelect.options) {
+      if (o.value === "") o.textContent = t("analysis:local.chooseRun");
+      else if (o.value === LOOSE_GROUP) o.textContent = t("analysis:local.looseGroup");
+      else if (o.dataset.unlisted !== undefined) o.textContent = t("analysis:local.unlisted", { run: o.value });
+    }
+    for (const o of this.snapSelect.options) o.textContent = snapshotLabel(o.value);
+    const placeholder = this.hfFile.querySelector<HTMLOptionElement>('option[value=""]');
+    if (placeholder) placeholder.textContent = this.hfListing ? t("analysis:hf.listing") : t("analysis:hf.chooseModel");
+    this.refreshCacheButton();
+    if (this.hiddenSide) this.autoSelect.title = t("analysis:autoLocked", { side: sideName(this.hiddenSide) });
+    this.renderBody(this.lastState);
   }
 
   /** The Hugging Face models this browser keeps (analysis/model_cache.ts), on the clear button. */
   private async refreshCacheButton(): Promise<void> {
     const n = await cachedModelCount().catch(() => 0);
     this.hfClear.disabled = n === 0;
-    this.hfClear.title = n === 0
-      ? "This browser keeps no downloaded models"
-      : `Delete the ${n} downloaded model${n === 1 ? "" : "s"} this browser keeps; they are downloaded again when next used`;
+    this.hfClear.title = n === 0 ? t("analysis:cache.none") : t("analysis:cache.delete", { count: n });
   }
 
   /** A model file dropped anywhere on the page. */
@@ -321,7 +347,7 @@ export class AnalysisPanel {
     this.hiddenSide = side;
     if (side) this.setAutoSide(side);
     this.autoSelect.disabled = side !== null;
-    this.autoSelect.title = side ? `Locked to ${side}: in a player's view the model plays the other side` : "";
+    this.autoSelect.title = side ? t("analysis:autoLocked", { side: sideName(side) }) : "";
     this.renderBody();
   }
 
@@ -384,17 +410,26 @@ export class AnalysisPanel {
     } catch {
       // A static host (GitHub Pages): there is no local server to list checkpoints.
       this.models = null;
-      el<HTMLOptionElement>("analysis-source-local-option").disabled = true;
-      el<HTMLOptionElement>("analysis-source-local-option").textContent = "Local checkpoints (no local server)";
+      this.localUnavailable = true;
+      this.markLocalUnavailable();
       return;
     }
-    const opts: string[] = [`<option value="">— choose a run —</option>`];
+    const opts: string[] = [`<option value="">${t("analysis:local.chooseRun")}</option>`];
     for (const r of this.models!.runs) opts.push(`<option value="${esc(r.run)}">${esc(r.run)}</option>`);
-    if (this.models!.loose.length) opts.push(`<option value="${LOOSE_GROUP}">${LOOSE_GROUP}</option>`);
+    if (this.models!.loose.length) opts.push(`<option value="${LOOSE_GROUP}">${t("analysis:local.looseGroup")}</option>`);
     const keep = this.runSelect.value;
     this.runSelect.innerHTML = opts.join("");
     if (keep) this.selectLocal(this.currentLocalPath(keep));
     else this.fillSnapshots(this.runSelect.value, null);
+  }
+
+  /** The local source's option, disabled and saying why. Its text is the code's from here on, so
+   *  the markup's message key (index.html) is dropped. */
+  private markLocalUnavailable(): void {
+    const option = el<HTMLOptionElement>("analysis-source-local-option");
+    option.disabled = true;
+    delete option.dataset.i18n;
+    option.textContent = t("analysis:local.unavailable");
   }
 
   private currentLocalPath(run: string): string {
@@ -409,7 +444,8 @@ export class AnalysisPanel {
     if (![...this.runSelect.options].some(o => o.value === run)) {
       // Named by a link but not listed here (another machine's checkpoint tree): keep it
       // visible rather than silently showing a different model.
-      this.runSelect.insertAdjacentHTML("beforeend", `<option value="${esc(run)}">${esc(run)} (unlisted)</option>`);
+      this.runSelect.insertAdjacentHTML("beforeend",
+        `<option value="${esc(run)}" data-unlisted>${t("analysis:local.unlisted", { run: esc(run) })}</option>`);
     }
     this.runSelect.value = run;
     this.fillSnapshots(run, snap);
@@ -435,21 +471,24 @@ export class AnalysisPanel {
   private async listHf(read?: () => Promise<HfCatalog>): Promise<HfCatalog> {
     const repo = this.hfRepo.value.trim();
     const rev = this.hfRevision.value.trim() || "main";
-    this.hfFile.innerHTML = `<option value="">listing…</option>`;
+    this.hfFile.innerHTML = `<option value="">${t("analysis:hf.listing")}</option>`;
+    this.hfListing = true;
     try {
       const catalog = await (read ? read() : hfCatalog(repo, rev));
       const files = catalog.files;
       if (files.length === 0) throw new Error("no .onnx files in the repo (export them with tools/export_onnx.py)");
       const option = (f: HfModelFile, text: string) =>
         `<option value="${esc(f.path)}">${esc(text)}${f.date ? ` · ${esc(f.date.slice(0, 10))}` : ""}</option>`;
-      this.hfFile.innerHTML = `<option value="">— choose a model —</option>`
+      this.hfFile.innerHTML = `<option value="">${t("analysis:hf.chooseModel")}</option>`
         + groupHfModels(files).map(g => g.dir
           ? `<optgroup label="${esc(g.dir)}">${g.files.map(f => option(f, f.path.slice(g.dir.length + 1))).join("")}</optgroup>`
           : g.files.map(f => option(f, f.path)).join("")).join("");
       return catalog;
     } catch (e) {
       this.hfFile.innerHTML = "";
-      throw new Error(`Could not list ${repo}: ${e instanceof Error ? e.message : e}`);
+      throw new Error(t("analysis:hf.listFailed", { repo, error: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      this.hfListing = false;
     }
   }
 
@@ -479,13 +518,14 @@ export class AnalysisPanel {
   /** Redraw for the position on screen. `analysis` is undefined until it arrives. */
   public render(analysis: LiveAnalysis | undefined, state: GameState | null): void {
     this.lastAnalysis = analysis && this.loaded && analysis.model === this.loaded.key ? analysis : null;
+    this.lastState = state;
     this.renderBody(state);
   }
 
   private renderInfo(): void {
     if (this.status === "ready" && this.loaded) {
       const l = this.loaded;
-      this.info.innerHTML = `<b>${esc(l.label)}</b> <span class="analysis-info-dim">${l.merged ? "E4.1 view" : "E4 view"}${l.checkpoint ? ` · ${esc(l.checkpoint)}` : ""}${l.fromCache ? " · cached" : ""}</span>`
+      this.info.innerHTML = `<b>${esc(l.label)}</b> <span class="analysis-info-dim">${l.merged ? t("analysis:view.e41") : t("analysis:view.e4")}${l.checkpoint ? ` · ${esc(l.checkpoint)}` : ""}${l.fromCache ? ` · ${t("analysis:info.cached")}` : ""}</span>`
         + (l.engineWarning ? `<span class="analysis-warning"> · ${esc(l.engineWarning)}</span>` : "");
       this.info.classList.remove("hidden");
       this.activeStatus.textContent = "";
@@ -496,9 +536,9 @@ export class AnalysisPanel {
     this.info.innerHTML = "";
     this.info.classList.add("hidden");
     const what = this.pending ? sourceLabel(this.pending) : this.loaded?.label ?? "";
-    const text = this.status === "loading" ? `loading ${what}…`
-      : this.status === "error" ? "model failed to load"
-      : "no model";
+    const text = this.status === "loading" ? t("analysis:status.loading", { what })
+      : this.status === "error" ? t("analysis:status.failed")
+      : t("analysis:status.none");
     this.activeStatus.textContent = text;
     this.activeStatus.className = `model-active-status ${this.status}`;
     this.activeStatus.title = this.status === "error" ? this.error ?? "" : "";
@@ -510,29 +550,29 @@ export class AnalysisPanel {
     this.renderInfo();
     this.favButton.disabled = !this.readoutOnScreen() || this.favourite() === null;
     const fav = a?.choices.find(c => c.idx === a.policy?.argmax_idx);
-    this.favButton.title = this.hidingDecision() ? `The model plays ${this.hiddenSide} in this view`
-      : !this.readoutShown ? "The analysis is hidden -- turn on Show analysis in the top bar to use it"
-      : fav ? `Play the model's most likely move: ${fav.name ?? "#" + fav.idx} (F)` : "No decision to make";
+    this.favButton.title = this.hidingDecision() ? t("analysis:favourite.hiddenSide", { side: sideName(this.hiddenSide!) })
+      : !this.readoutShown ? t("analysis:favourite.readoutHidden")
+      : fav ? t("analysis:favourite.play", { move: fav.name ?? "#" + fav.idx }) : t("analysis:favourite.none");
 
     if (this.status === "error") {
-      this.badge.textContent = "error";
+      this.badge.textContent = t("analysis:badge.error");
       this.body.innerHTML = `<div class="analysis-error">${esc(this.error ?? "")}</div>`;
       return;
     }
     if (this.status === "off") {
-      this.badge.textContent = "off";
-      this.body.innerHTML = `<div class="trace-empty">Choose a model -- local checkpoint, Hugging Face repo, or an .onnx file (drop it anywhere) -- to see its policy on every decision and its critic on every position. You can still play any move yourself.</div>`
-        + (this.auto ? `<div class="analysis-error">Auto-play ${this.auto} needs a model to play with.</div>` : "");
+      this.badge.textContent = t("analysis:badge.off");
+      this.body.innerHTML = `<div class="trace-empty">${t("analysis:body.choose")}</div>`
+        + (this.auto ? `<div class="analysis-error">${t("analysis:body.autoNeedsModel", { side: sideName(this.auto) })}</div>` : "");
       return;
     }
     if (this.status === "loading" || !a) {
-      this.badge.textContent = "loading";
-      const what = this.pending ? sourceLabel(this.pending) : this.loaded?.label ?? "";
-      const note = this.pending?.kind === "local" ? " (a checkpoint's first use exports it to ONNX: a few seconds)" : "";
-      this.body.innerHTML = `<div class="trace-empty">Loading ${esc(what)}…${note}</div>`;
+      this.badge.textContent = t("analysis:badge.loading");
+      const what = esc(this.pending ? sourceLabel(this.pending) : this.loaded?.label ?? "");
+      this.body.innerHTML = `<div class="trace-empty">${this.pending?.kind === "local"
+        ? t("analysis:body.loadingLocal", { what }) : t("analysis:body.loading", { what })}</div>`;
       return;
     }
-    this.badge.textContent = a.merged_influence ? "E4.1 view" : a.macro_influence ? "macro view" : "E4 view";
+    this.badge.textContent = a.merged_influence ? t("analysis:view.e41") : a.macro_influence ? t("analysis:view.macro") : t("analysis:view.e4");
     if (!this.readoutOnScreen()) {
       this.body.innerHTML = this.readoutOffNote(a);
       return;
@@ -549,12 +589,12 @@ export class AnalysisPanel {
     // The search's decision, above the policy it searched from.
     if (a.search || a.search_pending || a.search_error) {
       const s = a.search;
-      const spec = s ? `${s.spec.k} candidates · ${s.spec.worlds} worlds · ${s.spec.horizon} boundaries · ${s.spec.rule}` : "";
-      parts.push(`<div class="trace-section-label">ROLLOUT ROOT${spec ? ` <span class="analysis-info-dim">${esc(spec)}</span>` : ""}</div>`);
+      const spec = s ? t("analysis:search.spec", { k: s.spec.k, worlds: s.spec.worlds, horizon: s.spec.horizon, rule: s.spec.rule }) : "";
+      parts.push(`<div class="trace-section-label">${t("analysis:search.label")}${spec ? ` <span class="analysis-info-dim">${esc(spec)}</span>` : ""}</div>`);
       if (a.search_error) {
         parts.push(`<div class="analysis-error">${esc(a.search_error)}</div>`);
       } else if (!s) {
-        parts.push(`<div class="trace-empty">Searching…</div>`);
+        parts.push(`<div class="trace-empty">${t("analysis:search.searching")}</div>`);
       } else {
         const name = (idx: number) => esc(a.choices.find(c => c.idx === idx)?.name ?? "#" + idx);
         const rows = s.candidates.map((idx, i) => {
@@ -562,36 +602,39 @@ export class AnalysisPanel {
           const own = i === 0;
           const lead = own ? "" : `${s.lead[i] >= 0 ? "+" : ""}${(s.lead[i] * 100).toFixed(1)} ± ${(s.lead_se[i] * 100).toFixed(1)}`;
           return `
-            <div class="analysis-choice analysis-search-row${picked ? " favourite" : ""}" data-flat-idx="${idx}" title="${own ? "the network's own move" : "paired lead over the network's own move, in points of value, with its standard error"}">
-              <span class="analysis-choice-name">${picked ? "★ " : ""}${name(idx)}${own ? ` <span class="analysis-info-dim">(policy)</span>` : ""}</span>
-              <span class="analysis-search-q" title="mean value from the mover's side">${s.q[i] >= 0 ? "+" : ""}${s.q[i].toFixed(3)}</span>
+            <div class="analysis-choice analysis-search-row${picked ? " favourite" : ""}" data-flat-idx="${idx}" title="${own ? t("analysis:search.ownTitle") : t("analysis:search.leadTitle")}">
+              <span class="analysis-choice-name">${picked ? "★ " : ""}${name(idx)}${own ? ` <span class="analysis-info-dim">${t("analysis:search.policyTag")}</span>` : ""}</span>
+              <span class="analysis-search-q" title="${t("analysis:search.qTitle")}">${s.q[i] >= 0 ? "+" : ""}${s.q[i].toFixed(3)}</span>
               <span class="analysis-search-lead">${lead}</span>
             </div>`;
         });
         parts.push(`<div class="analysis-choices">${rows.join("")}</div>`);
-        parts.push(`<div class="trace-note trace-hint">${s.worlds} worlds · ${s.rows} network rows · ${s.ms} ms${s.pick === s.candidates[0] ? " · stays with the policy" : " · departs from the policy"}</div>`);
+        parts.push(`<div class="trace-note trace-hint">${t(s.pick === s.candidates[0] ? "analysis:search.summaryStays" : "analysis:search.summaryDeparts",
+          { worlds: s.worlds, rows: s.rows, ms: s.ms })}</div>`);
       }
     }
 
     const pol = a.policy;
     if (!pol || a.choices.length === 0) {
-      parts.push(`<div class="trace-section-label">NEXT DECISION</div>`);
-      parts.push(`<div class="trace-empty">${state?.is_terminal ? "Game over." : "No decision is open."}</div>`);
+      parts.push(`<div class="trace-section-label">${t("analysis:next.label")}</div>`);
+      parts.push(`<div class="trace-empty">${state?.is_terminal ? t("analysis:next.gameOver") : t("analysis:next.noDecision")}</div>`);
     } else {
       const who = a.decision_player ?? "";
-      const autoTag = this.auto && this.auto === who ? `<span class="analysis-auto-tag">· auto-playing</span>` : "";
-      parts.push(`<div class="trace-section-label">NEXT DECISION — <span class="analysis-who ${who.toLowerCase()}">${who}</span> to choose${autoTag}</div>`);
+      const autoTag = this.auto && this.auto === who ? `<span class="analysis-auto-tag">${t("analysis:next.autoPlaying")}</span>` : "";
+      parts.push(`<div class="trace-section-label">${t("analysis:next.toChoose", {
+        who: `<span class="analysis-who ${who.toLowerCase()}">${who ? sideName(who) : ""}</span>`, auto: autoTag })}</div>`);
       parts.push(`
         <div class="trace-head">
-          <span class="trace-head-item" title="probability of its most likely move, temperature 1">best <b style="color:${probColor(pol.p_max ?? 0)}">${(pol.p_max ?? 0).toFixed(3)}</b></span>
-          ${pol.entropy !== undefined ? `<span class="trace-head-item" title="entropy of the distribution, in nats">H ${pol.entropy.toFixed(3)}</span>` : ""}
-          <span class="trace-head-item">${pol.n_legal ?? a.choices.length} legal</span>
+          <span class="trace-head-item" title="${t("analysis:next.bestTitle")}">${t("analysis:next.best", {
+            p: `<b style="color:${probColor(pol.p_max ?? 0)}">${(pol.p_max ?? 0).toFixed(3)}</b>` })}</span>
+          ${pol.entropy !== undefined ? `<span class="trace-head-item" title="${t("analysis:next.entropyTitle")}">H ${pol.entropy.toFixed(3)}</span>` : ""}
+          <span class="trace-head-item">${t("analysis:next.legal", { n: pol.n_legal ?? a.choices.length })}</span>
         </div>`);
       const rows = a.choices.slice(0, TOP_LISTED).map(c => {
         const isFav = c.idx === pol.argmax_idx;
         const pct = Math.max(0, Math.min(100, c.p * 100));
         return `
-          <div class="analysis-choice${isFav ? " favourite" : ""}" data-flat-idx="${c.idx}" title="Click to play this move${c.composed ? " (applied as two steps: Ops for influence, then the placement)" : ""}">
+          <div class="analysis-choice${isFav ? " favourite" : ""}" data-flat-idx="${c.idx}" title="${c.composed ? t("analysis:next.playComposed") : t("analysis:next.play")}">
             <span class="analysis-choice-bar" style="width:${pct.toFixed(1)}%;background:${probColor(c.p)}"></span>
             <span class="analysis-choice-name">${isFav ? "★ " : ""}${esc(c.name ?? "#" + c.idx)}</span>
             <span class="analysis-choice-p" style="color:${probColor(c.p)}">${fmtP(c.p)}</span>
@@ -599,7 +642,7 @@ export class AnalysisPanel {
       });
       parts.push(`<div class="analysis-choices">${rows.join("")}</div>`);
       if (a.choices.length > TOP_LISTED) {
-        parts.push(`<div class="trace-note trace-hint">+${a.choices.length - TOP_LISTED} more — every option's probability is on the cards, buttons and map</div>`);
+        parts.push(`<div class="trace-note trace-hint">${t("analysis:next.more", { n: a.choices.length - TOP_LISTED })}</div>`);
       }
     }
     this.body.innerHTML = parts.join("");
@@ -613,17 +656,16 @@ export class AnalysisPanel {
   private readoutOffNote(a: LiveAnalysis): string {
     const who = a.decision_player;
     if (who && who === this.auto) {
-      const searching = a.search_pending ? " It is searching (rollout root): a few seconds." : "";
+      const side = esc(sideName(who));
       const failed = a.search_error
-        ? `<div class="analysis-error search-failed">The rollout root failed, so the model plays its policy's move instead: ${esc(a.search_error)}</div>`
+        ? `<div class="analysis-error search-failed">${t("analysis:off.searchFailed", { error: esc(a.search_error) })}</div>`
         : "";
-      return `<div class="trace-empty">The model is choosing for <b>${esc(who)}</b>.${searching}</div>${failed}`;
+      return `<div class="trace-empty">${a.search_pending ? t("analysis:off.choosingSearching", { side })
+        : t("analysis:off.choosing", { side })}</div>${failed}`;
     }
     const me = this.hiddenSide === "US" ? "USSR" : "US";
-    return `<div class="trace-empty readout-off-note">${this.hiddenSide ? `You are playing <b>${me}</b>. ` : ""}`
-      + `The model's readout -- its win chances, its move probabilities and its search -- is hidden. `
-      + `Turn on <b>Show analysis</b> in the top bar to see it`
-      + `${this.hiddenSide ? "; the model's own decisions stay hidden in a player's view" : ""}.</div>`;
+    return `<div class="trace-empty readout-off-note">${this.hiddenSide
+      ? t("analysis:off.hiddenPlayer", { side: sideName(me) }) : t("analysis:off.hidden")}</div>`;
   }
 
   /**
@@ -654,9 +696,8 @@ export class AnalysisPanel {
       const fav = c.idx === favIdx;
       const key = clickKey(c.primary_id ?? -1, c.flags ?? 0);
       if (c.composed) {
-        add(buttons, key, c.p, fav,
-            "sum over every 'Ops → Influence' option: the model decides where the first point goes in the same action");
-        if (c.country_id !== undefined) countries.set(c.country_id, { p: c.p, fav, note: "Ops → Influence, first point here" });
+        add(buttons, key, c.p, fav, t("analysis:badge.composedSum"));
+        if (c.country_id !== undefined) countries.set(c.country_id, { p: c.p, fav, note: t("analysis:badge.composedHere") });
         continue;
       }
       add(buttons, key, c.p, fav);

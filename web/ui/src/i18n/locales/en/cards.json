@@ -1,0 +1,78 @@
+{
+  "drawDeck": "Draw Deck",
+  "drawDeckPlusHand": "Draw Deck + {{side}} hand (unseen)",
+  "drawDeckOrHand": "Draw Deck or {{side}} hand",
+  "faceUp": "✓ Face Up",
+  "faceDown": "✕ Face Down",
+  "handEmpty": "Hand is empty",
+  "hiddenCardTitle": "A card this side has not seen",
+  "hiddenCard": "Face-down card",
+  "removeAfterEvent": "Remove after event",
+  "cardFallback": "Card #{{id}}",
+  "pileEmpty": "Empty",
+  "deckOrHand": "Deck or {{side}} hand",
+  "deckOrOtherHand": "Deck or other hand",
+  "clickForText": "Click for the card's text",
+  "cardModalTitle": "Card #{{id}}: {{name}}",
+  "noMatch": "No cards match your filter.",
+  "location": {
+    "handUs": "US Hand",
+    "handUssr": "USSR Hand",
+    "drawDeck": "Draw Deck",
+    "discard": "Discard",
+    "removed": "Removed",
+    "ongoing": "Ongoing",
+    "futureEra": "Future Era",
+    "peeked": "Drawn (being chosen)"
+  },
+  "china": {
+    "title": "#6 {{name}} (4 Ops)",
+    "holder": "Holder: <strong>{{holder}}</strong> ({{status}})",
+    "playable": "Face Up / Playable",
+    "faceDown": "Face Down",
+    "asiaBonus": "+1 Op in Asia"
+  },
+  "effect": {
+    "turnOnly": "Turn Only",
+    "permanent": "Permanent",
+    "conditional": "Conditional",
+    "active": "Active",
+    "continuous": "Continuous effect for {{flag}}",
+    "spacePerk": "Space Perk",
+    "none": "No active continuous effects",
+    "thisTurn": "This turn",
+    "noEffects": "no effects"
+  },
+  "perk": {
+    "animalInSpace": "{{side}}: Animal in Space (#2)",
+    "animalInSpaceDesc": "{{side}} may attempt Space Race twice per turn.",
+    "manInEarthOrbit": "{{side}}: Man in Earth Orbit (#4)",
+    "manInEarthOrbitDesc": "{{opponent}} must select & reveal headline card before {{side}} chooses.",
+    "eagleHasLanded": "{{side}}: Eagle Has Landed (#6)",
+    "bearHasLanded": "{{side}}: Bear Has Landed (#6)",
+    "landedDesc": "{{side}} may discard 1 held card at end of turn.",
+    "spaceStation": "{{side}}: Space Station (#8)",
+    "spaceStationDesc": "{{side}} gains an 8th Action Round each turn."
+  },
+  "context": {
+    "depth": "<strong>Reentrancy Depth:</strong> {{depth}} / 2",
+    "decision": "<strong>Decision:</strong> {{decision}} ({{player}})",
+    "pendingCard": "<strong>Pending Card:</strong> #{{card}} (Ops: {{ops}})",
+    "resolvingCard": "<strong>Resolving Card:</strong> #{{card}} ({{name}})",
+    "remainingSteps": "<strong>Remaining Steps:</strong> {{steps}}"
+  },
+  "age": {
+    "earlyWar": "EARLY WAR",
+    "midWar": "MID WAR",
+    "lateWar": "LATE WAR"
+  },
+  "side": {
+    "us": "US",
+    "ussr": "USSR",
+    "neutral": "NEUTRAL"
+  },
+  "tooltipMeta": "{{age}} • {{side}} • {{ops}} OPS",
+  "pileCard": "#{{id}} {{name}} ({{ops}} Ops, {{side}}, {{age}})",
+  "pileModalTitle": "{{title}} ({{n}} cards)",
+  "pileModalEmpty": "No cards in this pile"
+}
