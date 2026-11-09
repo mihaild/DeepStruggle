@@ -1,0 +1,62 @@
+{
+  "warsawPact": {
+    "remove": {
+      "title": "Remove US influence",
+      "desc": "Remove all US influence from up to 4 countries in Eastern Europe.",
+      "verb": "removes US influence from Eastern Europe"
+    },
+    "add": {
+      "title": "Add USSR influence",
+      "desc": "Add 5 USSR influence in Eastern Europe (at most 2 per country).",
+      "verb": "adds USSR influence in Eastern Europe"
+    }
+  },
+  "olympics": {
+    "participate": {
+      "title": "Participate",
+      "desc": "Both roll a die, the sponsor +2; the higher roll gains 2 VP.",
+      "verb": "participates in the Olympic Games"
+    },
+    "boycott": {
+      "title": "Boycott",
+      "desc": "DEFCON degrades by 1 and the sponsor conducts 4 Ops.",
+      "verb": "boycotts the Olympic Games"
+    }
+  },
+  "wargames": {
+    "end": {
+      "title": "End the game",
+      "desc": "Give the opponent 6 VP, then the game ends and is scored as it stands.",
+      "verb": "ends the game, giving the opponent 6 VP"
+    },
+    "continue": {
+      "title": "Continue",
+      "desc": "Do not end the game.",
+      "verb": "declines to end the game"
+    }
+  },
+  "chernobyl": {
+    "title": "{{region}}",
+    "desc": "The USSR may not place influence in {{region}} with Ops for the rest of the turn.",
+    "verb": "designates {{region}}",
+    "regionNumber": "region {{n}}"
+  },
+  "defcon": {
+    "unchanged": {
+      "title": "Set DEFCON to {{level}} (unchanged)",
+      "desc": "Leave DEFCON at {{current}}.",
+      "verb": "sets DEFCON to {{level}} (unchanged)"
+    },
+    "improve": {
+      "title": "Set DEFCON to {{level}} (improve)",
+      "desc": "Improve DEFCON from {{current}} to {{level}}.",
+      "verb": "sets DEFCON to {{level}} (improve)"
+    },
+    "degrade": {
+      "title": "Set DEFCON to {{level}} (degrade)",
+      "desc": "Degrade DEFCON from {{current}} to {{level}}.",
+      "verb": "sets DEFCON to {{level}} (degrade)"
+    },
+    "endsGame": "DEFCON 1 ends the game: the phasing player loses."
+  }
+}

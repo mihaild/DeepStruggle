@@ -69,7 +69,7 @@ web/ui/
 │   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) a switch shows the
 │   │                           # players on Playdek's scale, in that scale's order (?scale=playdek)
 │   ├── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
-│   └── i18n/                   # the page's languages (i18next): index.ts, locales/<lang>/<namespace>.json
+│   └── i18n/                   # the page's languages (i18next): index.ts, enums.ts (engine names), locales/<lang>/<namespace>.json
 ├── public/engine/              # ts_engine.mjs + .wasm, not committed (tools/scripts/build_web.sh)
 ├── public/leaderboard.json     # fitted from leaderboard/ by build_web.sh (tools/leaderboard.py fit), not committed
 └── dist/                       # Production bundle, not committed (local server, or GitHub Pages)
@@ -194,7 +194,7 @@ web/ui/
      `data-card-id`, so the model's probabilities are painted on the hands only. It replaced the
      Discard / Removed buttons, whose modal had a column a side.
 3. **Active Continuous Effects Panel (`cards_view.ts`)**:
-   - `EFFECT_INFO_MAP` describes every persistent continuous-effect and state bit (e.g. *Containment*, *Brezhnev Doctrine*, *Red Scare/Purge*, *Quagmire*, *Bear Trap*, *Flower Power*, *Willy Brandt*, *NORAD*, *NATO*, Space Race bonuses) with side tags (`US`, `USSR`, `Both`, `Neutral`), duration badges (`Turn Only`, `Permanent`, `Conditional`, `Space Perk`), and rule summaries. Add an entry here whenever the engine gains an effect bit.
+   - `EFFECT_INFO_MAP` describes every persistent continuous-effect and state bit (e.g. *Containment*, *Brezhnev Doctrine*, *Red Scare/Purge*, *Quagmire*, *Bear Trap*, *Flower Power*, *Willy Brandt*, *NORAD*, *NATO*, Space Race bonuses) with side tags (`US`, `USSR`, `Both`, `Neutral`), duration badges (`Turn Only`, `Permanent`, `Conditional`, `Space Perk`), and rule summaries. Add an entry here whenever the engine gains an effect bit, and its name and summary to `locales/en/effects.json` (`effects:<FLAG>.name`, `.description`, `.short` for the map's strip where it differs).
 4. **Descriptive Branch Choice HUD (`action_hud.ts`)**:
    - `game/branches.ts` says what each branch of an event's CHOOSE_BRANCH means -- the engine asks
      for one in six events: Warsaw Pact Formed, Olympic Games, Wargames, Chernobyl (a region),
@@ -202,7 +202,8 @@ web/ui/
      degrade against the current one; Summit offers the current level and one either side). The
      HUD's buttons, the action log ("US designates Africa (Chernobyl)", "USSR sets DEFCON to 4
      (improve) (Summit)") and the analysis panel's choice names (`game/names.ts`) all read it, so
-     no option shows as a bare number. It replaced `CARD_BRANCHES`, whose Summit entries described
+     no option shows as a bare number. Its title, description and verb are Messages (`branches`
+     namespace), rendered where they are shown. It replaced `CARD_BRANCHES`, whose Summit entries described
      the pre-P17 +1/-1 branches and whose other entries were for cards that ask no branch.
    - An event's card choice (`SELECT_CARD` with a `resolving_card`) lists every offered card as a
      button in the HUD -- name, ops, side and where it is -- because those cards are mostly in no
@@ -544,8 +545,10 @@ reload, no new game, the game and its undo untouched).
   `t` (`src/i18n/i18next.d.ts`): an id it lacks does not compile.
 * **One namespace per area** (`common`, `page` for index.html's markup, `app`, `hud`, `cards`,
   `tracks`, `map`, `rolls`, `region`, `analysis`, `trace`, `replay`, `debug`, `result`,
-  `leaderboard`, `game`). `common` holds what several areas say (the sides, the disclaimer). A new
-  namespace goes in every language's `index.ts`.
+  `leaderboard`, `game`), and one per word table: `branches` (`game/branches.ts`), `effects` (by
+  flag), `enums`, `endings` and `actions` (the model's choice names). `common` holds what several
+  areas say (the sides, the disclaimer, a turn's label "T3 AR4"). A new namespace goes in every
+  language's `index.ts`.
 * **Parameters are named** (`{{card}}`), plurals are the language's own forms (`worlds_one` /
   `worlds_other`, chosen by `count` through `Intl.PluralRules`; a language with one form has only
   `_other`), and a message is a whole sentence: never glue fragments in code, so a translator can
@@ -564,16 +567,25 @@ reload, no new game, the game and its undo untouched).
   otherwise. `CARDS_METADATA`, the engine's names, enum values, saved games, replays, position
   links and the stats record stay English: only what is shown is translated, at the point it is
   shown.
+* **Words decided before they are shown are Messages** (`message(key, params)`, `render(m, how)`):
+  a branch's meaning, a choice's name (`actionLabel`; `actionName` stays the English port of
+  Python's, kept as data), a roll's or a turn's label (`rollWhen`, `turnLabel`; the English stays
+  in `when` / `label` beside them). Text still built as English and read back as data -- the log's
+  lines -- renders them with `renderEnglish`, never with `render`.
+* **Engine names** shown to a person go through `src/i18n/enums.ts`: `enumLabel(kind, NAME)` for a
+  phase, decision type, play mode or Op mode (`enums:<kind>.<NAME>`, whose English is the name as
+  the page showed it), a region by its English name (`regionName`; `enumLabel("region", NAME)`
+  title-cases the engine's name into it), and `endingLabel(result.reason)` for why a game ended.
+  `enumArg` / `endingArg` give the same as a Message parameter. An unknown name shows as before.
+  An effect is named by `effectText(flag)` (`cards_view.ts`).
 * **Redraw on a switch**: a component whose text is drawn once subscribes with
   `onLanguageChange(() => this.render())`; the static markup is redone first (`applyStatic`).
 * **Errors**: the engine's and the network's error text is diagnostic and stays English; the
   sentence around it is translated (`t("leaderboard:loadFailed", { error })`).
 * **Still English in every language**: the action log (its lines are built as English text by
   `game/describe.ts` and the session, and `game/log_view.ts`, `game/view.ts` and `card_refs.ts`
-  read that text back; it becomes structured entries rendered per language), the model's choice
-  names (`game/names.ts`), branch titles (`game/branches.ts`), the ongoing-effect texts
-  (`cards_view.ts` `EFFECT_INFO_MAP`) and the engine's enum names shown raw (phase, decision type).
-  Do not translate a log line after it is built.
+  read that text back; it becomes structured entries rendered per language), and a replay file's
+  trace (its choice names are the file's). Do not translate a log line after it is built.
 * **Translations come from translators**, not from code changes: a contributor adds or edits
   `locales/<lang>/*.json` only. A new language is a folder, an `index.ts`, an entry in `LANGUAGES`
   and `LOADERS` (`src/i18n/index.ts`), and its plural forms in `tests/web/test_i18n.py`.

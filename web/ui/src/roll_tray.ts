@@ -4,7 +4,7 @@
  * in one place. The rolls come from `state.recent_rolls` (game/rolls.ts).
  */
 import { RecentRoll } from "./types";
-import { cardName, countryName, sideName, t } from "./i18n";
+import { cardName, countryName, render, sideName, t } from "./i18n";
 
 type Side = "US" | "USSR";
 
@@ -123,7 +123,7 @@ export function renderRollTray(el: HTMLElement, rolls: RecentRoll[]): void {
     return `<div class="roll-row ${v.ok ? "roll-ok" : "roll-fail"}" data-type="${esc(r.type)}">`
       + `<div class="roll-head"><span class="roll-kind">${esc(v.kind)}</span>`
       + (v.where ? `<span class="roll-where">${esc(v.where)}</span>` : "")
-      + `<span class="roll-when">${esc(r.when)}</span></div>`
+      + `<span class="roll-when">${esc(r.whenMessage ? render(r.whenMessage) : r.when)}</span></div>`
       + `<div class="roll-body">${v.dice}<span class="roll-result"><span class="roll-arrow">→</span>${v.result}</span></div>`
       + `</div>`;
   }).join("");

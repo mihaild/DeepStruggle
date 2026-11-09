@@ -25,12 +25,15 @@ import {
 } from "./analysis/model";
 import { cachedModelCount, clearModelCache } from "./analysis/model_cache";
 import { SearchResult } from "./analysis/rollout";
-import { onLanguageChange, sideName, t } from "./i18n";
+import { Message, onLanguageChange, render, sideName, t } from "./i18n";
 
 export interface AnalysisChoice {
   idx: number;
   p: number;
+  /** The action's name in English (game/names.ts `actionName`), as data. */
   name?: string;
+  /** The same as a Message (`actionLabel`), which the panel shows. */
+  label?: Message;
   decision_type?: number;
   primary_id?: number;
   flags?: number;
@@ -109,6 +112,11 @@ function clickKey(primary: number, flags: number): string {
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+}
+
+/** A choice as the panel names it, in the page's language; its index when it has no name. */
+function choiceName(c: AnalysisChoice | undefined, idx: number): string {
+  return c?.label ? render(c.label) : c?.name ?? "#" + idx;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -552,7 +560,7 @@ export class AnalysisPanel {
     const fav = a?.choices.find(c => c.idx === a.policy?.argmax_idx);
     this.favButton.title = this.hidingDecision() ? t("analysis:favourite.hiddenSide", { side: sideName(this.hiddenSide!) })
       : !this.readoutShown ? t("analysis:favourite.readoutHidden")
-      : fav ? t("analysis:favourite.play", { move: fav.name ?? "#" + fav.idx }) : t("analysis:favourite.none");
+      : fav ? t("analysis:favourite.play", { move: choiceName(fav, fav.idx) }) : t("analysis:favourite.none");
 
     if (this.status === "error") {
       this.badge.textContent = t("analysis:badge.error");
@@ -596,7 +604,7 @@ export class AnalysisPanel {
       } else if (!s) {
         parts.push(`<div class="trace-empty">${t("analysis:search.searching")}</div>`);
       } else {
-        const name = (idx: number) => esc(a.choices.find(c => c.idx === idx)?.name ?? "#" + idx);
+        const name = (idx: number) => esc(choiceName(a.choices.find(c => c.idx === idx), idx));
         const rows = s.candidates.map((idx, i) => {
           const picked = idx === s.pick;
           const own = i === 0;
@@ -636,7 +644,7 @@ export class AnalysisPanel {
         return `
           <div class="analysis-choice${isFav ? " favourite" : ""}" data-flat-idx="${c.idx}" title="${c.composed ? t("analysis:next.playComposed") : t("analysis:next.play")}">
             <span class="analysis-choice-bar" style="width:${pct.toFixed(1)}%;background:${probColor(c.p)}"></span>
-            <span class="analysis-choice-name">${isFav ? "★ " : ""}${esc(c.name ?? "#" + c.idx)}</span>
+            <span class="analysis-choice-name">${isFav ? "★ " : ""}${esc(choiceName(c, c.idx))}</span>
             <span class="analysis-choice-p" style="color:${probColor(c.p)}">${fmtP(c.p)}</span>
           </div>`;
       });

@@ -5,5 +5,10 @@
   "side": {
     "US": "US",
     "USSR": "USSR"
+  },
+  "round": {
+    "setup": "Setup",
+    "headline": "T{{turn}} Headline",
+    "actionRound": "T{{turn}} AR{{ar}}"
   }
 }

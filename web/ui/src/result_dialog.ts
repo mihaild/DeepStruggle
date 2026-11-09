@@ -10,6 +10,7 @@
 import { RecordSummary, Submission } from "./game/record";
 import { STATS_ENDPOINT } from "./build_info";
 import { onLanguageChange, sideName, t } from "./i18n";
+import { endingLabel } from "./i18n/enums";
 
 const PLAYDEK_KEY = "ts.stats.playdek.v1";
 
@@ -146,7 +147,8 @@ export class ResultDialog {
     const you = s.human_side === null ? "" : v.winner === "DRAW" ? "" : v.winner === s.human_side ? t("result:youWon") : t("result:youLost");
     outcome.innerHTML = t("result:outcome", {
       verdict, you, margin: `${v.margin > 0 ? "+" : ""}${v.margin}`, turn: v.endTurn,
-      reason: v.reason ? t("result:reason", { reason: escapeHtml(v.reason) }) : "",
+      // The engine's reason is the record's value; only its words are the language's.
+      reason: v.reason ? t("result:reason", { reason: escapeHtml(endingLabel(v.reason)) }) : "",
     });
     const facts = document.getElementById("result-dialog-facts")!;
     facts.innerHTML = [

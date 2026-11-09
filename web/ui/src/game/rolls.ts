@@ -17,6 +17,7 @@
  */
 import { DieRollState, GameState, RecentRoll } from "../types";
 import { ReplayStep } from "../replay_controls";
+import { Message, message, renderEnglish } from "../i18n";
 
 const MAX_ROLLS = 4;
 
@@ -28,6 +29,11 @@ function halfRound(turn: number, phase: string, ar: number, phasing: string): nu
   if (phase === "HEADLINE" || phase === "SETUP") return turn * 100 + 1;
   if (phase === "ACTION_ROUND" || phase === "INTERRUPT") return turn * 100 + ar * 2 + (phasing === "US" ? 1 : 0);
   return null;
+}
+
+/** When a step's roll was made, by the step's turn, phase and action round: "T3 Headline", "T3 AR2". */
+export function rollWhen(turn: number, phase: string, ar: number): Message {
+  return phase === "HEADLINE" ? message("common:round.headline", { turn }) : message("common:round.actionRound", { turn, ar });
 }
 
 /** The dice a step rolled, in order. */
@@ -61,8 +67,9 @@ export function recentRolls(start: GameState | null, steps: ReplayStep[], end: n
     half = h;
     if (!rolls.length) continue;
     found = true;
-    const when = `T${s.turn} ${s.phase === "HEADLINE" ? "Headline" : `AR${s.ar}`}`;
-    for (let i = rolls.length - 1; i >= 0 && out.length < MAX_ROLLS; i--) out.push({ ...rolls[i], when });
+    const whenMessage = rollWhen(s.turn, s.phase, s.ar);
+    const when = renderEnglish(whenMessage);
+    for (let i = rolls.length - 1; i >= 0 && out.length < MAX_ROLLS; i--) out.push({ ...rolls[i], when, whenMessage });
     if (out.length >= MAX_ROLLS) break;
   }
   return out.reverse();
