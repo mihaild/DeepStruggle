@@ -18,6 +18,8 @@ from ai.models.ladder_net import create_ladder_net
 from ai.training.generic_trainer import add_rule_bits_to, obs_feature_bits
 from bindings.ts_env import (CANONICAL_LEARNED, TsVectorizedEnv, give_run_priorities, give_state_priority,
                              legal_mask, model_obs_features, priority_ranks)
+from tools.lib.batch_tournament import BatchMatchRunner
+from tools.lib.player_agent import NeuralAgent
 
 FIRST = ts.OBS_FEATURE_CANONICAL_FIRST
 LAST = ts.OBS_FEATURE_CANONICAL_LAST
@@ -166,3 +168,16 @@ def test_the_runner_takes_run_orders_from_logits() -> None:
     assert not np.asarray(env.runner.priority_wanted(), dtype=bool).any()
     acts = [int(np.flatnonzero(np.asarray(masks[i])[:ts.FLAT_BASE_SIZE])[0]) for i in range(8)]
     env.step(acts)                                               # accepted: each run had its order
+
+
+@pytest.mark.parametrize("packed", [False, True])
+def test_a_learned_order_network_plays_through_the_match_runner(packed: bool) -> None:
+    """Both match paths give a V3 network its run orders: neither may hit a refused placement."""
+    a = NeuralAgent(model=create_ladder_net("cpu", **{**M2D, "obs_features": REVEAL | CANONICAL_LEARNED}), name="v3",
+                    device="cpu")
+    b = NeuralAgent(model=create_ladder_net("cpu", **{**M2D, "obs_features": REVEAL}), name="free", device="cpu")
+    if packed:
+        res = BatchMatchRunner.play_packed_matchups([(a, b), (b, a)], games_per_side=2, device="cpu", batch_chunk_size=8)
+    else:
+        res = BatchMatchRunner.play_parallel_matchup(a, b, games_per_side=2, batch_chunk_size=8, device="cpu")
+    assert res is not None

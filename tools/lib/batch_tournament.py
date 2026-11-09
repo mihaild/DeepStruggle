@@ -965,9 +965,16 @@ class BatchMatchRunner:
                         _assert_width(agent, np.asarray(obs[rows[:1]]))
                     rows_t = torch.from_numpy(rows).to(dev)
                     with torch.no_grad():
+                        sel_obs = obs_dev.index_select(0, rows_t)[:, :want]
+                        sel_mask = mask_dev.index_select(0, rows_t)
                         act_t, _, _, _, _ = agent.model.sample_action(
-                            obs_dev.index_select(0, rows_t)[:, :want], mask_dev.index_select(0, rows_t),
-                            temperature=t_ag, deterministic=g_ag)
+                            sel_obs, sel_mask, temperature=t_ag, deterministic=g_ag)
+                        if agent.obs_features & CANONICAL_LEARNED:
+                            # P43 V3: the runs opening here take their order from this network's own logits.
+                            logits_t, _, _ = agent.model(sel_obs, sel_mask)
+                            full = np.zeros((n, logits_t.shape[1]), dtype=np.float32)
+                            full[rows] = logits_t.float().cpu().numpy()
+                            give_run_priorities(runner, full, rows=rows)
                     act_dev.index_copy_(0, rows_t, act_t.long())
                 else:
                     _choose_actions(agent, rows, obs, masks, d_players, runner, t_ag, g_ag, dev,
