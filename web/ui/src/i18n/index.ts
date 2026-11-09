@@ -14,6 +14,7 @@
  * shows unmarked was never translated (tests/web/test_e2e_i18n.py). It is never offered in the select.
  */
 import i18next from "i18next";
+import type { ParseKeys } from "i18next";
 import en from "./locales/en";
 
 /** Each language by its own name, as the select offers it. A new one also goes in LOADERS. */
@@ -169,4 +170,72 @@ export function regionName(english: string): string {
 /** A side as the engine names it ("US", "USSR"); anything else unchanged. */
 export function sideName(side: string): string {
   return tDynamic(`common:side.${side}`, side);
+}
+
+/** Any message id of the English catalog, `ns:dotted.id` (a plural by its base id). */
+export type MessageKey = ParseKeys<(keyof typeof en)[]>;
+
+/**
+ * A message kept to be rendered later, in whatever language is current then: its id and its
+ * parameters, never its text. Built where the words are decided (the action log, a branch's
+ * meaning), rendered where they are shown -- so a language switch redraws it, and code that needs to
+ * know what was said reads the id and the ids in its parameters, never the words.
+ */
+export interface Message {
+  key: MessageKey;
+  params?: Record<string, MessageArg>;
+}
+/**
+ * A parameter: text or a number as it is, a nested message, or a card / country / region / side by
+ * what the engine calls it, named in the current language when rendered (`name` is the English).
+ */
+export type MessageArg =
+  | string | number | Message
+  | { card: number; name: string }
+  | { country: number; name: string }
+  | { region: string }
+  | { side: string };
+
+export function message(key: MessageKey, params?: Record<string, MessageArg>): Message {
+  return params ? { key, params } : { key };
+}
+
+/** How a rendering shows each kind of parameter; by default plain names and text as it is. */
+export interface MessageFormat {
+  /** Text and numbers: `escapeHtml` for innerHTML. */
+  text?: (s: string) => string;
+  /** A card by id and its name in the current language: the log's hoverable reference. */
+  card?: (id: number, name: string) => string;
+  country?: (id: number, name: string) => string;
+}
+
+const isMessage = (a: MessageArg): a is Message => typeof a === "object" && "key" in a;
+
+function formatArg(a: MessageArg, how: MessageFormat): string {
+  const text = how.text ?? ((s: string) => s);
+  if (typeof a === "string" || typeof a === "number") return text(String(a));
+  if (isMessage(a)) return render(a, how);
+  if ("card" in a) {
+    const name = cardName(a.card, a.name);
+    return how.card ? how.card(a.card, name) : text(name);
+  }
+  if ("country" in a) {
+    const name = countryName(a.country, a.name);
+    return how.country ? how.country(a.country, name) : text(name);
+  }
+  if ("region" in a) return text(regionName(a.region));
+  return text(sideName(a.side));
+}
+
+/**
+ * A message in the current language. `count` stays a number (it picks the plural form); every other
+ * parameter is formatted by `how` -- for innerHTML, `{ text: escapeHtml }`, and the catalog's own
+ * markup is kept.
+ */
+export function render(m: Message, how: MessageFormat = {}): string {
+  const values: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(m.params ?? {})) {
+    values[k] = k === "count" && typeof v === "number" ? v : formatArg(v, how);
+  }
+  return (i18next.t as unknown as (k: string, o: object) => string)(m.key, values);
 }
