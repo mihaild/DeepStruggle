@@ -590,7 +590,7 @@ Per seat, every gate read (score %, 1,000 deals a seat, so ± 1.5 on a cell and 
 | 1,600M | 29.6 | 33.8 | 38.9 | 32.0 | 37.2 | 39.6 |
 | 2,000M | 38.9 | 36.8 | 38.6 | 38.5 | 40.5 | 41.5 |
 | 2,400M | 36.1 | 35.5 | 38.5 | 36.6 | 46.5 | 44.2 |
-| 2,800M | | 38.6 | 44.1 | | 48.0 | 49.0 |
+| 2,800M | 33.6 | 38.6 | 44.1 | 37.5 | 48.0 | 49.0 |
 | 3,200M | | 39.5 | 45.4 | | 50.6 | 48.2 |
 
 * **J5's US seat is not behind**: at or above J1's at six of seven gates, level at 2,400M (36.1 / 35.5), 2.4 under
@@ -660,6 +660,54 @@ is both: the USSR seat still under ~40 against the reference *and* J5 under 50 i
 second low gate running. Head to head back at 50 with the reference's USSR seat still low is the reference's
 Europe, not J5's training, and no reason for the lr branch. Level or ahead on both is late, not stuck. Either way
 the run continues through the read; a branch waits for the owner.
+
+**The 2,800M gate (2026-11-10, 19:00 UTC): a plateau by the rule, on both yardsticks.** Numbers from the stored
+JSON (`recipe_*_2800M_vs_a13.json`, `j5_vs_j1_2800.json`), 1,000 deals a seat, greedy.
+
+| 2,800M | J5 | J1 | J1′ |
+|:---|---:|---:|---:|
+| against the reference, both seats | 35.5 | 43.4 | 46.6 |
+| as US | 33.6 | 38.6 | 44.1 |
+| as USSR | 37.5 | 48.0 | 49.0 |
+| J5 head to head against J1 at the same step | 44.1 as US, 44.4 as USSR | | |
+
+* **Against the reference J5 has read 36.5, 30.8, 38.7, 36.4, 35.5 from 1,200M to 2,800M** -- no net movement in
+  1,600M steps (68 hours of the GPU) -- while J1 on the same recipe went 33.5 → 43.4 and J1′ 35.8 → 46.6. The
+  deficit is now in both seats (US -5.0, USSR -10.5 against J1); the US seat, level at 2,400M, fell 2.5.
+* **Head to head it is the second low gate running:** J5's score against the same-step J1 is 49.6, 53.1, 46.7,
+  54.2, 45.7, 44.2 from 800M, under 50 in both seats at 2,400M and at 2,800M. A J5 standing still against a J1
+  that gains ten points on the reference would fall from 53 to about 43, which is what it did. So the match-up
+  reading of the last block does not rescue the number: the reference's Europe may cost J5's USSR a few points
+  more, and J5 is behind J1 without it.
+* **The endings do not move:** DEFCON-1 losses 24 own and 66 opponent's of 1,278 (J1 16 and 60 of 1,119), as at
+  the last two gates. The extra losses are on points in both seats (20 VP 730 against J1's 608; Wargames 157
+  against 121).
+
+**So the answer to "run to saturation?" is no, not at these settings.** A 3×128 token transformer under
+R102 → R119 at lr 3e-4 learns the first 1,200M about twice as fast as A8 and then stops, and 10,000M of it would be
+18 days for a curve that has been flat for the last 1,600M. What is not known is which of three things stops it,
+and they point at different runs:
+
+1. *It no longer learns at all* (too large a step for this trunk, the policy circling: the reads swing four points
+   and the openings churn). Fix: the lr 1.5e-4 branch (c).
+2. *It learns, but only to beat itself* -- a private meta (the France Europe is one sign) that outside yardsticks
+   do not reward. Fix: neither the rate nor the width; the pool.
+3. *It is at the capacity of 128-wide tokens.* Fix: 3×192 from scratch (b), 400M in ~28 h, 1,200M in 3.5 days.
+
+**One match separates 2 from 1 and 3 before any training: J5 at 2,800M against J5 at 1,200M** (stored pool
+snapshots, 2,000 games, about half a minute). Near 50% it has learned nothing in 1,600M by its own measure either
+(1 or 3); at 58% or more it has kept learning against itself while standing still against J1 and the reference
+(2). Requested from the running session with the gate.
+
+**Recommended next run, the owner's to start:** stop J5's main line at its next snapshot and give the GPU to one
+branch from the 2,800M state, `...@2800M+lr1.5e-4`, with `--entropy-coef 0` beside it (R103's form: J1′ is ahead of
+or level with J1 at every gate but one from 1,200M to 8,000M, and P41 already reserved it for J5's next branch), read at +400M and
++800M (17 and 34 hours) against the plateau's band of 31–39. Two changes in one branch is deliberate: if it does
+not leave the band both are cleared in a day and a half and the question is width; if it does, one further
+branch says which. The main line needs no continuation beside it as a control -- five flat gates are the
+control, and a second trainer would halve both. 3×192 from scratch waits on that read: it needs 3.5 days to reach the
+step where the plateau began, against 17 hours to the branch's first read. The recipe confound stays open and unpriced: J5 moved to R119
+(pure win/loss) at 930M and stalled about 300M later, and no A8 run on R119 from scratch exists past 410M.
 
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
