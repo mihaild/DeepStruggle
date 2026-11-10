@@ -518,6 +518,57 @@ none on shared positions means J5 reaches these states more often rather than mi
 KL trajectory now says it stabilises at best. Not saturation under any of them until one of the three moves the
 400M or the +400M read.
 
+**P41b, the result (running session, 2026-11-10; `data/reports/p41b_defcon.md`): candidate (a) is closed as an
+architecture defect -- J5 plays a DEFCON-2 position as safely as J1 does and loses more by being in more of them,
+and in more dangerous ones.** 200 T=1 self-play games per lineage at 2,400M, every action-round card choice at
+DEFCON 2 by the phasing player where some completion of the card play loses by DEFCON 1 (90% of all DEFCON-2 card
+choices): 28,654 positions, 15,341 from J5's games and 13,313 from J1's, both networks scored on all of them.
+
+| suicide mass per position, % | J5 | J1 | paired difference |
+|---|---:|---:|---:|
+| all positions | 0.23 | 0.21 | +0.02 ± 0.01 |
+| positions from J5's games | 0.26 | 0.26 | 0.00 ± 0.02 |
+| positions from J1's games | 0.20 | 0.17 | +0.04 ± 0.02 |
+| decider US / USSR | 0.25 / 0.21 | 0.20 / 0.23 | +0.05 / −0.01 (± 0.02) |
+
+* *Per decision, nothing to fix.* On J5's own distribution the two networks are level; ± 0.02 points of mass over
+  J5's 77 such positions a game bounds the per-decision share at about ± 1.5 points of games, against the excess
+  below. The trend has no stable sign either (scored on the same 2,400M positions: +0.04 at 400M, **−0.17** at
+  1,200M when J1 was the worse one, +0.02 at 2,400M).
+* *By stage, a real but small tilt.* J5 chooses a coup more often when a safe target exists (17.2 against 13.3% of
+  card plays; +4 to +6 at 400M and 2,400M, both seats) and sends more of those coups to a battleground (1.17
+  against 0.70%); where only battleground targets remain it is the *safer* one (from the tables, about 0.3 against
+  0.5–0.6% of card plays). The context path does leak twice J1's rate, but the product is hundredths of a point of
+  mass: neither the 64-d head context nor the trunk summary accounts for the ending gap. **The wider-context and
+  DEFCON-broadcast A codes lose their reason and are dropped.**
+* *The critic sees the loss:* after a coup that its own head sends to a battleground, v = −0.915 (J5), −0.903 (J1).
+  The policy is not blind and the value is not missing it. (Aside: on the same positions J5's critic rates the USSR
+  seat 5.7 points higher than J1's does, 8.4 at 1,200M and 10.5 at 400M -- a seat-balance disagreement between the
+  two critics, not a DEFCON matter; calibrating each on its own games' outcomes would say who is right.)
+* *The excess is exposure.* DEFCON-2 card choices a game: J5 85.1, J1 73.7 (+15%). Danger per position, under one
+  network (J1's): 0.26 on J5's positions against 0.17 on J1's (×1.5). Expected suicides a game, positions × mass on
+  its own games: 0.20 against 0.11, **×1.8, the observed ratio** (own-decision DEFCON-1 losses 11.0 against 6.5% of
+  these games; training's 13.5 against 8.8) -- about ×1.15 from more DEFCON-2 decisions, ×1.5 from more dangerous
+  ones, ×1.0–1.2 from J5's own play. One visible part of "more dangerous": of the card plays that could coup a
+  battleground, 33% have no safe coup target on J5's boards against 25% on J1's.
+* *Not located:* the opponent-decided endings (32 against 16 of 200 here; training's far larger sample says 12.1
+  against 10.5, so most of that doubling may be the 200 games). The mass on an opponent's card whose event fires
+  predicts about 12 such endings in J5's games, not 32, so they sit mostly outside these positions (headline, DEFCON
+  3, or the branches the bounded search left unsettled and counted safe).
+* Caveats as given: the bounded lethality search, and the 400M / 1,200M pairs scored on 2,400M positions.
+
+**What this changes.** The DEFCON-1 excess is a property of the game J5 plays -- longer at DEFCON 2, with fewer
+safe coup targets, and readier to coup -- not a routing fault a flag would fix, so no architecture run follows from
+it. It also stops being evidence about the stall: a self-play ending rate does not say J5 loses its *reads* that
+way. **The number that does, from games already on disk and nothing new played:** the endings of the 2,400M read
+games, J5's against J1's -- if J5's 4.6-point deficit (36.4 against 41.0) is DEFCON-1 losses, exposure is the stall
+and the question is why J5 lives at DEFCON 2; if the DEFCON-1 losses are level there, the stall is elsewhere and
+only (b) and (c) are left. Beside it, from the same 400 probe games: whether the +15% is longer games or a larger
+share of each turn at DEFCON 2 (and who takes it there, in which action round), the safe coup targets per position,
+and the opponent-decided endings by phase, DEFCON level and card. Of the training candidates, (c) the lr 1.5e-4
+branch from 2,000M is now first (two days, no new code) and (b) 3×192 from scratch second; both are the owner's
+to start.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
