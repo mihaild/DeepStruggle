@@ -699,6 +699,14 @@ snapshots, 2,000 games, about half a minute). Near 50% it has learned nothing in
 (1 or 3); at 58% or more it has kept learning against itself while standing still against J1 and the reference
 (2). Requested from the running session with the gate.
 
+**The self-match (2026-11-10, `j5_2800_vs_j5_1200.json`): 53.6% ± 1.1 for the 2,800M snapshot** (raw snapshots,
+1,000 deals a seat, greedy; 49.6 as US and 57.6 as USSR, the split not corrected for the USSR seat's self-play
+edge, so only the total is read). That is between the two marks: about +25 Elo by its own measure in 1,600M
+steps, over which J1 gained ten points on the reference (roughly +70). **Reading 2 is out** -- J5 is not
+learning a private game that the outside yardsticks miss; what little it gains against its older self is all it
+gains. It is not a full stop either: slow learning, a third of A8's pace or less, with a four-point swing on top.
+Readings 1 and 3 stand, the recommendation below is unchanged, and the pool is not the lever.
+
 **Recommended next run, the owner's to start:** stop J5's main line at its next snapshot and give the GPU to one
 branch from the 2,800M state, `...@2800M+lr1.5e-4`, with `--entropy-coef 0` beside it (R103's form: J1′ is ahead of
 or level with J1 at every gate but one from 1,200M to 8,000M, and P41 already reserved it for J5's next branch), read at +400M and
