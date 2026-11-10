@@ -1,0 +1,62 @@
+{
+  "warsawPact": {
+    "remove": {
+      "title": "移除美国影响力",
+      "desc": "移除最多 4 个东欧国家的全部美国影响力。",
+      "verb": "从东欧移除美国影响力"
+    },
+    "add": {
+      "title": "增加苏联影响力",
+      "desc": "在东欧增加 5 点苏联影响力（每个国家最多 2 点）。",
+      "verb": "在东欧增加苏联影响力"
+    }
+  },
+  "olympics": {
+    "participate": {
+      "title": "参加",
+      "desc": "双方各掷一枚骰子，主办方加 2；结果较高者获得 2 胜利点数。",
+      "verb": "参加奥运会"
+    },
+    "boycott": {
+      "title": "抵制",
+      "desc": "核危机等级恶化 1 级，主办方获得 4 行动点数用于行动。",
+      "verb": "抵制奥运会"
+    }
+  },
+  "wargames": {
+    "end": {
+      "title": "结束游戏",
+      "desc": "给予对手 6 胜利点数，随后立即结束游戏，按当前得分判定胜负。",
+      "verb": "给予对手 6 胜利点数并结束游戏"
+    },
+    "continue": {
+      "title": "继续",
+      "desc": "不结束游戏。",
+      "verb": "选择不结束游戏"
+    }
+  },
+  "chernobyl": {
+    "title": "{{region}}",
+    "desc": "本回合余下时间，苏联不能使用行动点数在{{region}}放置影响力。",
+    "verb": "指定{{region}}",
+    "regionNumber": "区域 {{n}}"
+  },
+  "defcon": {
+    "unchanged": {
+      "title": "将核危机等级设为 {{level}}（保持不变）",
+      "desc": "核危机等级保持为 {{current}}。",
+      "verb": "将核危机等级设为 {{level}}（保持不变）"
+    },
+    "improve": {
+      "title": "将核危机等级设为 {{level}}（缓和）",
+      "desc": "将核危机等级从 {{current}} 提高到 {{level}}。",
+      "verb": "将核危机等级设为 {{level}}（缓和）"
+    },
+    "degrade": {
+      "title": "将核危机等级设为 {{level}}（恶化）",
+      "desc": "将核危机等级从 {{current}} 降低到 {{level}}。",
+      "verb": "将核危机等级设为 {{level}}（恶化）"
+    },
+    "endsGame": "核危机等级降至 1，游戏结束：当前行动方输掉游戏。"
+  }
+}

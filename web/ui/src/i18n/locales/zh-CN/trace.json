@@ -1,0 +1,51 @@
+{
+  "result": {
+    "gameOver": "游戏结束。",
+    "outcome": "对局结束——{{outcome}}。",
+    "outcomeVp": "对局结束——{{outcome}}（胜利点数 {{vp}}）。",
+    "usWon": "美国获胜",
+    "ussrWon": "苏联获胜",
+    "drawn": "平局"
+  },
+  "sides": {
+    "title": "{{side}}自身视角：胜率 = (1 + v_win)/2，预计终局胜利点数差 = v_vp × {{limit}}",
+    "titleOtherToMove": "{{side}}自身视角：胜率 = (1 + v_win)/2，预计终局胜利点数差 = v_vp × {{limit}}（当前由{{decider}}行动）",
+    "vp": "{{vp}} 胜利点数"
+  },
+  "chip": {
+    "forced": "强制指定",
+    "forcedTitle": "仅一个合法行动，由系统执行，无需选择",
+    "title": "所选行动的策略概率（T=1）",
+    "titleBest": "实际行动的策略概率（温度 T=1）；最高概率为 {{best}}",
+    "titleNotMode": "实际行动的策略概率（温度 T=1）——并非概率最高的行动",
+    "titleBestNotMode": "实际行动的策略概率（温度 T=1）；最高概率为 {{best}}——实际行动并非概率最高项",
+    "deltaTitle": "校准评估器给出的美国获胜概率在此步前后变化的百分点；各局面按当时行动方的视角读取（先{{before}}，后{{after}}）"
+  },
+  "badge": {
+    "title": "策略概率 {{p}}（温度 1）",
+    "titlePlayed": "策略概率 {{p}}（温度 1）——实际执行的行动",
+    "titleFavourite": "策略概率 {{p}}（温度 1）——模型首选"
+  },
+  "next": {
+    "none": "此局面没有已记录的决策。",
+    "forced": "下一步只有一个合法行动，系统自动执行。",
+    "scripted": "下一步为预设开局行动，覆盖了模型策略。",
+    "plays": "实际行动 {{p}}",
+    "playsTitle": "策略对最终所选行动赋予的概率，温度为 1",
+    "best": "最佳 {{p}}",
+    "bestTitle": "最可能行动的概率",
+    "entropyTitle": "分布熵，单位为 nat",
+    "legal": "{{n}} 个合法行动",
+    "offMode": "非最高概率行动",
+    "offModeTitle": "采样器没有选择策略概率最高的行动",
+    "step": "第 {{n}} 步：{{move}}",
+    "hintCount": "全部 {{n}} 个选项的概率已显示在卡牌、按钮和地图上",
+    "hintAll": "所有合法选项的概率均显示在卡牌、按钮和地图上"
+  },
+  "panel": {
+    "criticOnly": "仅局面评估",
+    "position": "当前局面——第 {{n}} 步行动后",
+    "positionToMove": "当前局面——第 {{n}} 步行动后，由{{side}}行动",
+    "next": "下一次决策——从当前局面出发"
+  }
+}

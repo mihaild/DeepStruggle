@@ -1,0 +1,88 @@
+{
+  "snapshot": {
+    "millionSteps": "{{m}}M 步",
+    "steps": "{{n}} 步",
+    "final": "最终",
+    "start": "起点（0）"
+  },
+  "local": {
+    "unavailable": "本地检查点（未连接本地服务器）",
+    "chooseRun": "— 选择训练记录 —",
+    "looseGroup": "（独立检查点）",
+    "unlisted": "{{run}}（未列出）"
+  },
+  "hf": {
+    "listing": "正在获取列表…",
+    "chooseModel": "— 选择模型 —",
+    "listFailed": "无法列出 {{repo}}：{{error}}"
+  },
+  "cache": {
+    "none": "浏览器中没有已下载的模型",
+    "delete_other": "删除此浏览器缓存的 {{count}} 个模型；下次使用时会重新下载"
+  },
+  "autoLocked": "固定为{{side}}：玩家视角由模型控制对方",
+  "view": {
+    "e41": "E4.1 视图",
+    "e4": "E4 视图",
+    "macro": "宏行动视图"
+  },
+  "info": {
+    "cached": "已缓存"
+  },
+  "status": {
+    "loading": "正在加载 {{what}}…",
+    "failed": "模型加载失败",
+    "none": "未加载模型"
+  },
+  "badge": {
+    "error": "错误",
+    "off": "关闭",
+    "loading": "加载中",
+    "composedSum": "汇总全部“行动 → 放置影响力”选项：模型在同一行动中决定第一点影响力放在哪里",
+    "composedHere": "行动点数 → 影响力，第一点置于此处"
+  },
+  "favourite": {
+    "hiddenSide": "此视角中模型操作{{side}}",
+    "readoutHidden": "分析已隐藏；请在顶部开启“显示分析”",
+    "play": "采用模型概率最高的行动：{{move}}（F）",
+    "none": "当前无需决策"
+  },
+  "body": {
+    "choose": "选择模型（本地检查点、Hugging Face 仓库或拖入 .onnx 文件），即可查看每次决策的行动概率和局面评估。你仍可自行选择任何合法行动。",
+    "autoNeedsModel": "{{side}}自动行动需要先加载模型。",
+    "loading": "正在加载{{what}}……",
+    "loadingLocal": "正在加载{{what}}……（检查点首次使用时需导出为 ONNX，约需数秒）"
+  },
+  "search": {
+    "label": "Rollout 根节点搜索",
+    "spec": "{{k}} 个候选 · {{worlds}} 个局面 · {{horizon}} 个边界 · {{rule}}",
+    "searching": "正在搜索……",
+    "ownTitle": "网络原本选择的行动",
+    "leadTitle": "相对网络原选行动的配对评估优势，以及其标准误差",
+    "policyTag": "（策略）",
+    "qTitle": "从行动方视角计算的平均评估值",
+    "summaryStays": "{{worlds}} 个抽样局面 · {{rows}} 行网络输入 · {{ms}} 毫秒 · 保持策略原选择",
+    "summaryDeparts": "{{worlds}} 个抽样局面 · {{rows}} 行网络输入 · {{ms}} 毫秒 · 改用搜索结果"
+  },
+  "next": {
+    "label": "下一次决策",
+    "gameOver": "游戏结束。",
+    "noDecision": "当前没有待处理决策。",
+    "toChoose": "下一次决策——由{{who}}选择{{auto}}",
+    "autoPlaying": "· 正在自动行动",
+    "best": "最佳 {{p}}",
+    "bestTitle": "最可能行动的概率，温度为 1",
+    "entropyTitle": "分布熵，单位为 nat",
+    "legal": "{{n}} 个合法行动",
+    "play": "点击执行此行动",
+    "playComposed": "点击执行此行动（分两步执行：先选择用行动点数放置影响力，再放置）",
+    "more": "另有 {{n}} 项；所有选项的概率均显示在卡牌、按钮和地图上"
+  },
+  "off": {
+    "choosing": "模型正在为<b>{{side}}</b>选择行动。",
+    "choosingSearching": "模型正在为<b>{{side}}</b>选择行动。正在进行 Rollout 根节点搜索，约需数秒。",
+    "searchFailed": "根节点模拟搜索失败，改用策略首选行动：{{error}}",
+    "hidden": "模型分析（胜率、行动概率及搜索结果）已隐藏。可在顶栏开启<b>显示分析</b>来查看。",
+    "hiddenPlayer": "你执<b>{{side}}</b>。模型分析（胜率、行动概率及搜索结果）已隐藏。可在顶栏开启<b>显示分析</b>来查看；玩家视角下，模型方的决策分析仍然隐藏。"
+  }
+}

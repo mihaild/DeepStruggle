@@ -1,0 +1,198 @@
+{
+  "player": {
+    "SYSTEM": "系统",
+    "DEBUG": "调试",
+    "NONE": "无"
+  },
+  "verbatim": "{{text}}",
+  "cardNumber": "卡牌 #{{id}}",
+  "node": "节点 #{{n}}",
+  "list": "{{first}}、{{rest}}",
+  "session": {
+    "started": "对局开始（种子：{{seed}}）。{{side}}初始设置：在{{region}}放置 6 点影响力。",
+    "endOfTurn": "第 {{turn}} 回合结束",
+    "phaseEnds": {
+      "SETUP": "初始设置结束",
+      "HEADLINE": "头条阶段结束",
+      "ACTION_ROUND": "行动轮结束",
+      "INTERRUPT": "中断处理结束",
+      "DISCARD": "弃牌阶段结束",
+      "END_TURN": "回合结束阶段结束",
+      "GAME_OVER": "对局结束阶段结束",
+      "other": "{{phase}}结束"
+    },
+    "gameOver": "游戏结束！胜者：{{winner}}（胜利点数：{{vp}}，回合：{{turn}}）——{{reason}}",
+    "draw": "平局",
+    "undone": "↺ 行动已撤销（回退至第 {{step}} 步）",
+    "positionLoaded": "已载入共享链接中的局面（撤销历史从此处开始）。",
+    "actionType": "行动类型={{type}}"
+  },
+  "debug": {
+    "country": "[调试] 设置{{country}}影响力 → 美国：{{us}}，苏联：{{ussr}}",
+    "defcon": "[调试] 设置核危机等级 → {{value}}",
+    "vp": "[调试] 设置胜利点数 → {{value}}"
+  },
+  "action": {
+    "spaceWalkPass": "{{side}}放弃雄鹰／巨熊登月特权（第 6 格）的回合末弃牌机会。",
+    "spaceWalkDiscard": "{{side}}利用雄鹰／巨熊登月特权（第 6 格）弃置{{card}} (#{{id}})。",
+    "headlineCommit": "{{side}}提交头条：{{card}} (#{{id}})",
+    "headlineFaceDown": "{{side}}选定头条牌（双方均选定前保持背面朝上）",
+    "plays": "{{side}}打出卡牌：{{card}} (#{{id}})",
+    "confirmPoints": "{{side}}确认并结束国家选择。",
+    "setupInfluence": "{{side}}在初始设置时向{{country}}放置 1 点影响力。",
+    "eventTarget": "{{side}}为事件{{card}} (#{{id}}) 选择{{country}}作为目标",
+    "coup": "{{side}}尝试在{{country}}政变",
+    "realign": "{{side}}在{{country}}进行调整阵营",
+    "influence": "{{side}}在{{country}}放置影响力",
+    "grainSalesReturn": "{{side}}把{{card}} (#{{id}}) 归还苏联手牌，使用向苏联出售谷物的 2 行动点数",
+    "space": "{{side}}使用待处理卡牌尝试太空竞赛",
+    "spaceRoll": "{{side}}使用待处理卡牌尝试太空竞赛（输入掷骰点数：{{roll}}）",
+    "playMode": "{{side}}选择出牌方式：{{mode}}",
+    "opMode": "{{side}}选择行动方式：{{mode}}",
+    "confirmOption": "{{side}}确认／跳过选项。",
+    "branch": "{{side}}{{verb}}（{{event}}）",
+    "option": "{{side}}选择分支：{{n}}",
+    "other": "{{side}}行动：类型={{type}}，主参数={{primary}}，次参数={{secondary}}，标记={{flags}}"
+  },
+  "playMode": {
+    "EVENT": "事件",
+    "SPACE": "太空竞赛",
+    "OPS_INFLUENCE": "行动点数——放置影响力",
+    "OPS_COUP": "行动点数——尝试政变",
+    "OPS_REALIGN": "行动点数——调整阵营"
+  },
+  "opMode": {
+    "INFLUENCE": "放置影响力",
+    "COUP": "尝试政变",
+    "REALIGN": "调整阵营"
+  },
+  "choice": {
+    "none": "{{side}}不再选择卡牌（{{event}}）",
+    "starWars": "{{side}}从弃牌堆取得{{card}}（#{{id}}）并执行其事件（{{event}}）",
+    "salt": "{{side}}从弃牌堆将{{card}}（#{{id}}）收回手牌（{{event}}）",
+    "unIntervention": "{{side}}配合{{event}}打出{{card}}（#{{id}}）：取消其事件，{{side}}使用其行动点数",
+    "missileEnvy": "{{side}}将{{card}}（#{{id}}）交给{{opponent}}（{{event}}）",
+    "grainSalesUn": "{{side}}对{{event}}抽出的卡牌使用{{un}}：取消其事件，{{side}}使用其行动点数",
+    "discards": "{{side}}弃置{{card}}（#{{id}}）（{{event}}）",
+    "discardsFrom": "{{side}}{{from}}弃置{{card}}（#{{id}}）（{{event}}）",
+    "removes": "{{side}}将{{card}}（#{{id}}）移出游戏（{{event}}）",
+    "removesFrom": "{{side}}{{from}}将{{card}}（#{{id}}）移出游戏（{{event}}）",
+    "returns": "{{side}}将{{card}}（#{{id}}）放回牌堆（{{event}}）",
+    "returnsFrom": "{{side}}{{from}}将{{card}}（#{{id}}）放回牌堆（{{event}}）",
+    "takes": "{{side}}取得{{card}}（#{{id}}）（{{event}}）",
+    "takesFrom": "{{side}}{{from}}取得{{card}}（#{{id}}）（{{event}}）",
+    "gives": "{{side}}将{{card}}（#{{id}}）交给{{opponent}}（{{event}}）",
+    "givesFrom": "{{side}}{{from}}将{{card}}（#{{id}}）交给{{opponent}}（{{event}}）",
+    "chooses": "{{side}}选择{{card}}（#{{id}}）（{{event}}）",
+    "choosesFrom": "{{side}}{{from}}选择{{card}}（#{{id}}）（{{event}}）"
+  },
+  "from": {
+    "hand": "从{{side}}手牌中",
+    "discardPile": "从弃牌堆中",
+    "drawn": "从抽出的卡牌中"
+  },
+  "headline": {
+    "revealed": "双方同时展示头条：美国打出“{{usCard}}”（#{{usId}}，{{usOps}} 行动点数），苏联打出“{{ussrCard}}”（#{{ussrId}}，{{ussrOps}} 行动点数）",
+    "order": "结算顺序：先由{{first}}执行“{{firstCard}}”（{{firstOps}} 行动点数）→ 再由{{second}}执行“{{secondCard}}”（{{secondOps}} 行动点数）"
+  },
+  "change": {
+    "influenceUs": "{{country}}影响力：美国 {{usFrom}} → {{usTo}}（{{usDelta}}）",
+    "influenceUssr": "{{country}}影响力：苏联 {{ussrFrom}} → {{ussrTo}}（{{ussrDelta}}）",
+    "influenceBoth": "{{country}}影响力：美国 {{usFrom}} → {{usTo}}（{{usDelta}}），苏联 {{ussrFrom}} → {{ussrTo}}（{{ussrDelta}}）",
+    "defcon": "核危机等级：{{from}} → {{to}}",
+    "vp": "胜利点数：{{from}} → {{to}}（{{delta}} 点）",
+    "milOps": "{{side}}军事行动：{{from}} → {{to}}",
+    "space": "太空竞赛：{{side}} {{from}} → {{to}}",
+    "effectActivated": "效果生效：{{flag}}",
+    "effectCancelled": "效果取消：{{flag}}",
+    "cardMoved": "卡牌 #{{id}}（{{card}}）移动：{{from}} → {{to}}",
+    "inEffect": "生效中：{{effect}}",
+    "noLongerInEffect": "不再生效：{{effect}}"
+  },
+  "vpScore": {
+    "us": "+{{n}}（美国）",
+    "ussr": "-{{n}}（苏联）",
+    "tie": "0（平局）"
+  },
+  "eventTrack": {
+    "vp": "{{card}}（#{{id}}）：{{side}} +{{vp}} 胜利点数",
+    "defcon": "{{card}}（#{{id}}）：核危机等级 {{defcon}}",
+    "both": "{{card}}（#{{id}}）：{{side}} +{{vp}} 胜利点数，核危机等级 {{defcon}}",
+    "none": "{{card}}（#{{id}}）："
+  },
+  "roll": {
+    "coup": "在{{country}}政变：{{roller}}掷出 {{roll}}（+{{mod}} 行动点数 = {{total}}），对抗防御值 {{defense}}（2 × 稳定度 {{stability}}）→ {{result}}",
+    "coupWithCard": "在{{country}}政变（{{card}}）：{{roller}}掷出 {{roll}}（+{{mod}} 行动点数 = {{total}}），对抗防御值 {{defense}}（2 × 稳定度 {{stability}}）→ {{result}}",
+    "coupSucceeded": "净增加 {{net}} 点影响力（政变成功）",
+    "coupFailed": "政变失败（骰点 + 行动点数 ≤ 2 × 稳定度）",
+    "realign": "在{{country}}调整阵营：美国掷出 {{usRoll}}（修正 {{usMod}} = {{usTotal}}），苏联掷出 {{ussrRoll}}（修正 {{ussrMod}} = {{ussrTotal}}）→ {{result}}",
+    "realignUs": "美国以 {{by}} 点优势获胜（移除 {{net}} 点苏联影响力）",
+    "realignUssr": "苏联以 {{by}} 点优势获胜（移除 {{net}} 点美国影响力）",
+    "realignTie": "平局（未移除影响力）",
+    "space": "尝试太空竞赛（目标第 {{box}} 格）：{{roller}}掷出 {{roll}} → {{result}}",
+    "spaceSucceeded": "成功（前进至第 {{box}} 格）",
+    "spaceFailed": "失败（骰点 {{roll}} > 阈值 {{threshold}}）",
+    "war": "{{card}}掷骰：{{roller}}掷出 {{roll}}（修正 {{mod}} = {{total}}）→ {{result}}",
+    "warTargeting": "{{card}}以{{country}}为目标掷骰：{{roller}}掷出 {{roll}}（修正 {{mod}} = {{total}}）→ {{result}}",
+    "warSucceeded": "成功（{{total}} ≥ 目标值 {{threshold}}：占领目标并获得胜利点数）",
+    "warFailed": "掷骰失败（{{total}} < 目标值 {{threshold}}）",
+    "olympics": "奥运会比赛：主办方（{{sponsor}}）掷出 {{sponsorRoll}}（+2 = {{sponsorTotal}}），对方（{{opponent}}）掷出 {{opponentRoll}} → {{result}}",
+    "olympicsSponsor": "主办方{{side}}以 {{by}} 点优势获胜（+2 胜利点数）",
+    "olympicsOpponent": "对手{{side}}获胜",
+    "olympicsTie": "平局（未获得胜利点数）",
+    "summit": "首脑峰会掷骰：美国掷出 {{usRoll}}（+{{usMod}} 支配修正 = {{usTotal}}），苏联掷出 {{ussrRoll}}（+{{ussrMod}} 支配修正 = {{ussrTotal}}）→ {{result}}",
+    "summitUs": "美国以 {{by}} 点优势赢得首脑峰会",
+    "summitUssr": "苏联以 {{by}} 点优势赢得首脑峰会",
+    "summitTie": "首脑峰会平局（无效果）",
+    "trap": "逃离陷阱掷骰：{{roller}}掷出 {{roll}}（需要 1–4）→ {{result}}",
+    "trapSucceeded": "成功！弃牌后已逃离陷阱。",
+    "trapFailed": "失败（骰点 > 4，仍被困住）"
+  },
+  "randomDiscard": "{{side}}随机弃置{{card}}（#{{id}}）（{{event}}）",
+  "randomDiscardFires": "{{side}}随机弃置{{card}}（#{{id}}）（{{event}}）——这是美国事件牌，因此触发其事件",
+  "envy": {
+    "takesGivers": "{{taker}}从{{giver}}手牌中取得{{card}}（#{{id}}）（{{event}}）——这是{{giver}}事件牌，因此{{taker}}使用其 {{ops}} 行动点数，不触发事件",
+    "takesBoth": "{{taker}}从{{giver}}手牌中取得{{card}}（#{{id}}）（{{event}}）——这是双方事件牌，因此为{{taker}}触发事件",
+    "takesTakers": "{{taker}}从{{giver}}手牌中取得{{card}}（#{{id}}）（{{event}}）——这是{{taker}}事件牌，因此为{{taker}}触发事件",
+    "goes": "{{event}}进入{{giver}}手牌：{{giver}}必须在下一个行动轮将其用于行动点数"
+  },
+  "entry": {
+    "setup": "{{side}}放置初始影响力",
+    "headlines": "头条：美国 {{us}}（#{{usId}}）对阵苏联 {{ussr}}（#{{ussrId}}）",
+    "plays": "{{side}}打出{{card}}（#{{id}}）",
+    "withModes": "{{title}}——{{modes}}",
+    "eventOf": "{{card}}（#{{id}}）——{{side}}"
+  },
+  "mode": {
+    "event": "事件",
+    "space": "太空竞赛",
+    "ops": "行动点数：{{ops}}",
+    "opsThenEvent": "行动点数：{{ops}}，随后执行{{side}}事件",
+    "eventThenOps": "先执行{{side}}事件，再进行行动",
+    "eventThenOpsAs": "先执行{{side}}事件，随后行动点数：{{ops}}",
+    "then": "{{first}}，随后{{next}}"
+  },
+  "ops": {
+    "INFLUENCE": "影响力",
+    "COUP": "政变",
+    "REALIGN": "调整阵营"
+  },
+  "card": {
+    "nowKnown": "{{side}}手牌中的{{card}}（#{{id}}）现已被{{other}}知晓",
+    "noLongerKnown": "{{side}}手牌中的{{card}}（#{{id}}）不再被{{other}}知晓",
+    "takenInto": "{{card}}（#{{id}}）被取得并加入{{side}}手牌",
+    "toHand": "{{card}}（#{{id}}）进入{{side}}手牌",
+    "to": {
+      "DISCARD_PILE": "{{card}}（#{{id}}）被弃置",
+      "REMOVED_FROM_GAME": "{{card}}（#{{id}}）移出游戏",
+      "ONGOING_EVENT": "{{card}}（#{{id}}）持续生效",
+      "DRAW_DECK": "{{card}}（#{{id}}）放回牌堆",
+      "PEEKED_TEMP": "{{card}}（#{{id}}）被抽出供选择",
+      "UNAVAILABLE": "{{card}}（#{{id}}）暂时放到一旁",
+      "other": "{{card}}（#{{id}}）移至{{to}}"
+    },
+    "draws_other": "{{side}}抽取 {{count}} 张牌：{{cards}}",
+    "newEra": "将新时期的 {{n}} 张牌洗入牌堆",
+    "reshuffled": "将弃牌堆中的 {{n}} 张牌重新洗入牌堆"
+  }
+}

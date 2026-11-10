@@ -25,7 +25,7 @@ OTHERS = [lang for lang in LANGUAGES if lang != "en"]
 NAMESPACES = sorted(p.stem for p in (LOCALES / "en").glob("*.json"))
 #: CLDR's plural categories for cardinals (what Intl.PluralRules gives i18next), by language: a
 #: language added to locales/ adds its own here (Chinese or Japanese {"other"}; Russian one, few, many, other).
-PLURALS = {"en": {"one", "other"}}
+PLURALS = {"en": {"one", "other"}, "zh-CN": {"other"}}
 SUFFIX = re.compile(r"_(zero|one|two|few|many|other)$")
 PARAM = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*\}\}")
 

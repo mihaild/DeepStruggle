@@ -1,0 +1,51 @@
+{
+  "engine": {
+    "loading": "正在加载引擎……",
+    "none": "引擎未加载",
+    "stale": "引擎版本过旧",
+    "staleTitle": "页面引擎（{{page}}）与当前源码对应的版本（{{sources}}）不同。请运行 tools/scripts/build_web.sh 重新构建。",
+    "fingerprint": "引擎 {{fp}}",
+    "matchesTitle": "引擎指纹 {{fp}}——与本地源码一致",
+    "noServerTitle": "引擎指纹 {{fp}}（没有本地服务器可供比对）",
+    "refused": "操作被拒绝"
+  },
+  "badPosition": "无法打开链接中的局面，将开始新游戏。\n\n{{error}}",
+  "notReplay": "不是有效回放：{{error}}",
+  "notYourMove": "现在轮到{{side}}——当前视角下由模型操作该方",
+  "devOnlyTitle": "此工具显示完整状态；请切换到开发者模式使用",
+  "mode": {
+    "newDeal": "选择后将重新发牌。关闭则保留当前棋局。",
+    "changeLater": "可随时在上方的游玩模式中更改。"
+  },
+  "search": {
+    "rolloutOption": "<b>Rollout 根节点搜索</b>——最强的对弈配置：{{spec}}。每步约需数秒。",
+    "policyOption": "<b>策略</b>——立即执行模型认为最可能的行动。",
+    "spec": "选取概率最高的 {{moves}}，分别在 {{worlds}} 中模拟",
+    "moves_other": "{{count}} 个行动",
+    "worlds_other": "{{count}} 个抽样局面",
+    "invalid": "搜索参数无效：k 和抽样局面数须为至少 1 的整数，模拟步数和信念手牌数须为非负整数，竞逐局面数须为 0（关闭）或小于抽样局面数，决策规则须为 argmax、z<x> 或 kl<t>。",
+    "defaultTitle": "默认搜索：{{spec}}",
+    "rollout": "根节点模拟搜索",
+    "policy": "策略"
+  },
+  "model": {
+    "none": "未加载模型",
+    "chooseTitle": "{{model}} · {{mode}}——选择模型（本地检查点、Hugging Face 仓库或 .onnx 文件）及其行动方式",
+    "failedOnPosition": "模型处理此局面失败：{{error}}",
+    "otherEngine": "此模型导出时使用的引擎版本为 {{model}}；本页面运行的是 {{page}}。",
+    "withPolicy": "{{model}}（策略）",
+    "withRollout": "{{model}}（Rollout 根节点搜索 {{spec}}）"
+  },
+  "log": {
+    "loadingReplay": "正在载入回放……",
+    "filtered": "筛选出 {{shown}} 项（{{vp}} 个胜利点数事件）",
+    "replaySteps": "{{steps}} 步（当前：#{{current}}）",
+    "events": "{{events}} 个事件",
+    "noVpReplay": "回放中没有影响胜利点数的事件。",
+    "noVpLive": "尚未记录影响胜利点数的事件。",
+    "skipped_other": "••• 已省略 {{count}} 条记录 •••",
+    "round": "[第 {{turn}} 回合，第 {{ar}} 行动轮]",
+    "player": "{{player}}：",
+    "vpDelta": "{{vp}} 胜利点数"
+  }
+}

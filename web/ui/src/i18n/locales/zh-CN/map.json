@@ -1,0 +1,51 @@
+{
+  "cardNumber": "卡牌 #{{id}}",
+  "where": {
+    "drawDeck": "在抽牌堆中",
+    "usHand": "在美国手牌中",
+    "usHandKnown": "在美国手牌中（苏联已知）",
+    "ussrHand": "在苏联手牌中",
+    "ussrHandKnown": "在苏联手牌中（美国已知）",
+    "headline": "已作为头条打出，尚未结算",
+    "peeked": "正被事件查看",
+    "discarded": "已弃置——重新洗牌后才能返回",
+    "removed": "已移出游戏——不会再参与计分",
+    "ongoing": "正作为持续事件生效",
+    "unavailable": "尚未加入游戏——将在对应冷战时期加入牌组",
+    "unseen": "在抽牌堆或对手手牌中",
+    "unknown": "未知"
+  },
+  "tag": {
+    "live": "可用",
+    "out": "已离开",
+    "later": "尚未加入",
+    "scoring": "计分"
+  },
+  "superpower": {
+    "usa": "美国",
+    "ussr": "苏联"
+  },
+  "control": {
+    "controlsSpare": "{{side}}控制，超出控制所需 {{spare}} 点",
+    "controlsNoSpare": "{{side}}恰好控制",
+    "controlsWith_other": "{{side}}再增加 {{count}} 点影响力即可控制（需 {{count}} 行动点数）",
+    "breaksWith": "{{side}}增加 {{brk}} 点可打破控制（需 {{breakOps}} 点行动），增加 {{control}} 点可取得控制（需 {{controlOps}} 点行动）"
+  },
+  "tooltip": {
+    "theUs": "美国",
+    "theUssr": "苏联",
+    "usControls": "美国控制",
+    "ussrControls": "苏联控制",
+    "uncontrolled": "未控制",
+    "battleground": "战场国",
+    "sub": "{{regions}} · 稳定度 {{stability}}",
+    "coup": "政变：骰子点数＋行动点数须大于 <b>{{n}}</b>",
+    "lastTurn": "{{player}}的上一行动轮：{{what}}",
+    "adjacent": "相邻：{{list}}",
+    "none": "无"
+  },
+  "lastTurn": "{{player}}的上一行动轮（{{when}}）：{{what}}",
+  "noCountryChanged": "没有国家发生变化",
+  "targetedNoChange": "被选为目标，未发生变化",
+  "badgeVp": "{{side}} {{vp}} 胜利点数"
+}

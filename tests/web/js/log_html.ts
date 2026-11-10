@@ -10,7 +10,7 @@ import { WasmEngine } from "../../../web/ui/src/engine/wasm_engine";
 import { GameSession } from "../../../web/ui/src/game/session";
 import { groupLog } from "../../../web/ui/src/game/log_view";
 import { LogLine, cardsIn, lineEnglish, lineHtml } from "../../../web/ui/src/game/log";
-import { PSEUDO, setLanguage } from "../../../web/ui/src/i18n";
+import { PSEUDO, message, render, renderEnglish, setLanguage } from "../../../web/ui/src/i18n";
 
 const engine = await WasmEngine.load(pathToFileURL(process.argv[2]).href);
 const s = new GameSession(engine);
@@ -35,4 +35,20 @@ const game = lines.map(l => ({
   text: lineEnglish(l), html: lineHtml(l), cards: cardsIn(l.msg).map(c => [c.card, c.name]), mark: l.mark ?? "",
 }));
 await setLanguage(PSEUDO);
-console.log(JSON.stringify({ game, pseudo: lines.map(lineHtml) }));
+const pseudo = lines.map(lineHtml);
+const saved = engine.saveJson();
+const steps = JSON.stringify(s.steps);
+await setLanguage("zh-CN");
+const chinese = lines.map(l => ({ text: render(l.msg), html: lineHtml(l) }));
+const un = message("log:choice.unIntervention", {
+  side: { side: "USSR" }, event: { card: 32, name: "UN Intervention" },
+  card: { card: 26, name: "CIA Created" }, id: 26,
+});
+const timing = message("log:mode.eventThenOpsAs", {
+  side: { side: "USSR" }, ops: message("log:ops.COUP"),
+});
+console.log(JSON.stringify({
+  game, pseudo, chinese, englishAfterSwitch: lines.map(lineEnglish),
+  savedUnchanged: saved === engine.saveJson() && steps === JSON.stringify(s.steps),
+  linked: { html: lineHtml({ msg: un }), english: renderEnglish(un), timing: render(timing) },
+}));

@@ -547,14 +547,20 @@ web/ui/
 
 ### Languages (`src/i18n/`, i18next)
 
-The page and the leaderboard speak English, and every message they show goes through the catalog,
-so another language is a set of files (below); none ships yet. The language is `?lang=` when a
+The page and the leaderboard support English and Simplified Chinese (`zh-CN`), and every message
+they show goes through the catalog. Chinese card names retain the contributor's reviewed glossary;
+its translations live in `locales/zh-CN/`, with only the `_other` plural form. The language is `?lang=` when a
 link names one, else the one chosen last in this browser (`localStorage` `ts.language`), else
 English; choosing one in the header's select (hidden while there is one to choose) does not put it
 in the address. `?lang=en-XA` is the pseudo-language: English with every message marked `⟦…⟧`,
 never offered in the select, so a test (and a person) sees at once which text was never
 translated. `initLanguage()` runs before either page draws, and a switch redraws in place (no
 reload, no new game, the game and its undo untouched).
+
+The header's track groups wrap as whole groups when their translated labels need more room,
+rather than compressing Chinese labels into one character per line.
+`test_e2e_i18n.py` exercises Chinese as well as the pseudo-language; `test_log_html.py`
+checks translated card references and nested play-mode messages while saved data stays English.
 
 * **English is the catalog, by readable ids.** Every message is an id in
   `src/i18n/locales/en/<namespace>.json` (`hud.json`: `{"pass": "Pass"}`), called as

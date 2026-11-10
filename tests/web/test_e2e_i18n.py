@@ -1,7 +1,7 @@
 """The page's languages in Chromium (web/ui/src/i18n): a switch redraws in place and changes nothing else.
 
-The pseudo-language `en-XA` stands in for a translation: every message is the English one marked
-`⟦…⟧`. Switching mid-game keeps the position, the moves and the undo history while the static
+The pseudo-language `en-XA` marks English messages `⟦…⟧`; Simplified Chinese uses its own catalog.
+Switching mid-game keeps the position, the moves and the undo history while the static
 markup and the header follow the language chosen. A link's `?lang=` opens the page in that language
 without being remembered, a choice made in the select is remembered (and drops the link's), and the
 leaderboard switches the same way with the same rows. The catalogs themselves are test_i18n.py's.
@@ -21,9 +21,9 @@ PSEUDO = "en-XA"
 
 
 def message(lang: str, key: str) -> str:
-    """`ns:dotted.id` as the page shows it in `lang` (English, or English marked for the pseudo-language)."""
+    """`ns:dotted.id` in the chosen catalog, or marked English for the pseudo-language."""
     ns, path = key.split(":", 1)
-    node: Any = json.loads((LOCALES / "en" / f"{ns}.json").read_text(encoding="utf-8"))
+    node: Any = json.loads((LOCALES / ("en" if lang == PSEUDO else lang) / f"{ns}.json").read_text(encoding="utf-8"))
     for part in path.split("."):
         node = node[part]
     assert isinstance(node, str), key
@@ -59,18 +59,28 @@ def _game(page: Any) -> Dict[str, Any]:
     }""")
 
 
-def test_with_one_language_there_is_no_select(page: Any, site: str) -> None:  # noqa: F811
+def test_english_is_default_and_both_languages_are_offered(page: Any, site: str) -> None:  # noqa: F811
     _workbench(page, site)
     assert page.evaluate("document.documentElement.lang") == "en"
-    assert not page.is_visible("select[data-language-select]")
+    assert page.is_visible("select[data-language-select]")
+    assert page.locator("select[data-language-select] option").evaluate_all(
+        "els => els.map(e => [e.value, e.textContent])"
+    ) == [["en", "English"], ["zh-CN", "简体中文"]]
 
 
-def test_a_switch_mid_game_keeps_the_game_and_redraws_the_markup(page: Any, site: str) -> None:  # noqa: F811
-    _workbench(page, site, f"&lang={PSEUDO}")
-    assert page.is_visible("select[data-language-select]"), "the pseudo-language offers the select"
+@pytest.mark.parametrize("lang", [PSEUDO, "zh-CN"])
+def test_a_switch_mid_game_keeps_the_game_and_redraws_the_markup(page: Any, site: str, lang: str) -> None:  # noqa: F811
+    _workbench(page, site, f"&lang={lang}")
+    assert page.is_visible("select[data-language-select]")
     key = page.get_attribute("#btn-new-game", "data-i18n")
     assert key, "the New Game button names its message"
-    assert page.inner_text("#btn-new-game") == message(PSEUDO, key)
+    assert page.inner_text("#btn-new-game") == message(lang, key)
+    if lang == "zh-CN":
+        assert page.locator(".turn-ar-badge strong").evaluate_all("""els => els.every(el => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getClientRects().length === 1;
+        })"""), "the track labels must not be compressed into vertical text"
     start = _game(page)
     page.evaluate("""() => {
       const w = window.__wb;
@@ -83,16 +93,17 @@ def test_a_switch_mid_game_keeps_the_game_and_redraws_the_markup(page: Any, site
     assert _game(page) == played
     assert page.inner_text("#btn-new-game") == message("en", key)
 
-    _switch(page, PSEUDO)
+    _switch(page, lang)
     assert _game(page) == played
-    assert page.inner_text("#btn-new-game") == message(PSEUDO, key)
+    assert page.inner_text("#btn-new-game") == message(lang, key)
     page.click("#btn-undo-action")
     assert _game(page)["steps"] == played["steps"] - 1, "undo still takes back one move"
 
 
-def test_a_links_language_opens_the_page_and_a_choice_is_kept(page: Any, site: str) -> None:  # noqa: F811
-    _workbench(page, site, f"&lang={PSEUDO}")
-    assert page.evaluate("document.documentElement.lang") == PSEUDO
+@pytest.mark.parametrize("lang", [PSEUDO, "zh-CN"])
+def test_a_links_language_opens_the_page_and_a_choice_is_kept(page: Any, site: str, lang: str) -> None:  # noqa: F811
+    _workbench(page, site, f"&lang={lang}")
+    assert page.evaluate("document.documentElement.lang") == lang
     assert page.evaluate("localStorage.getItem('ts.language')") is None, "a link's language is not remembered"
 
     _switch(page, "en")
@@ -101,29 +112,31 @@ def test_a_links_language_opens_the_page_and_a_choice_is_kept(page: Any, site: s
     page.wait_for_function("window.__wb && window.__wb.state")
     assert page.evaluate("document.documentElement.lang") == "en"
 
-    _workbench(page, site, f"&lang={PSEUDO}")
-    _switch(page, PSEUDO)
+    _workbench(page, site, f"&lang={lang}")
+    _switch(page, lang)
     assert "lang=" not in page.url, "a choice is not written into the address"
     _workbench(page, site)
-    assert page.evaluate("document.documentElement.lang") == PSEUDO, "the choice is remembered"
+    assert page.evaluate("document.documentElement.lang") == lang, "the choice is remembered"
     _workbench(page, site, "&lang=en")
     assert page.evaluate("document.documentElement.lang") == "en", "a link's language wins over the remembered one"
 
 
-def test_a_longer_language_fits_a_phone(browser: Any, site: str) -> None:  # noqa: F811
+@pytest.mark.parametrize("lang", [PSEUDO, "zh-CN"])
+def test_a_longer_language_fits_a_phone(browser: Any, site: str, lang: str) -> None:  # noqa: F811
     ctx = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
     p = ctx.new_page()
-    _workbench(p, site, f"&lang={PSEUDO}")
+    _workbench(p, site, f"&lang={lang}")
     assert p.evaluate("document.documentElement.scrollWidth") <= 390, "nothing wider than the screen"
     ctx.close()
 
 
-def test_the_leaderboard_switches_in_place(page: Any, site: str) -> None:  # noqa: F811
-    page.goto(f"{site}/leaderboard.html?lang={PSEUDO}")
+@pytest.mark.parametrize("lang", [PSEUDO, "zh-CN"])
+def test_the_leaderboard_switches_in_place(page: Any, site: str, lang: str) -> None:  # noqa: F811
+    page.goto(f"{site}/leaderboard.html?lang={lang}")
     page.wait_for_function("document.querySelector('#lb-body')?.children.length > 0")
     rows = page.locator("#lb-body tr").count()
-    assert page.inner_text("#lb-tab-ratings-btn") == message(PSEUDO, "leaderboard:page.tabRatings")
-    assert page.inner_text("#lb-note").startswith(message(PSEUDO, "leaderboard:note.anchor"))
+    assert page.inner_text("#lb-tab-ratings-btn") == message(lang, "leaderboard:page.tabRatings")
+    assert page.inner_text("#lb-note").startswith(message(lang, "leaderboard:note.anchor"))
     _switch(page, "en")
     assert page.inner_text("#lb-tab-ratings-btn") == message("en", "leaderboard:page.tabRatings")
     assert page.locator("#lb-body tr").count() == rows

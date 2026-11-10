@@ -1,0 +1,34 @@
+{
+  "standing": {
+    "none": "无",
+    "presence": "存在",
+    "domination": "支配",
+    "control": "控制"
+  },
+  "standingShort": {
+    "none": "—",
+    "presence": "存在",
+    "domination": "支配",
+    "control": "控制"
+  },
+  "net": {
+    "winsGame": "{{side}}赢得对局",
+    "winsShort": "{{side}}获胜",
+    "vp": "{{side}} +{{vp}}",
+    "even": "持平"
+  },
+  "row": {
+    "countriesOneVp": "国家（1 胜利点数）",
+    "thailandTwoVp": "泰国（2 胜利点数）",
+    "standing": "区域地位",
+    "battlegrounds": "战场国<small>（共 {{total}} 个）</small>",
+    "otherCountries": "非战场国",
+    "nextToEnemy": "与对方超级大国相邻",
+    "total": "合计"
+  },
+  "title": "{{region}}计分",
+  "controls": "{{side}}控制",
+  "none": "无",
+  "shuttleDiplomacy": "穿梭外交：本次计分少计苏联一个战场国",
+  "cardWhere": "{{card}}：{{where}}"
+}

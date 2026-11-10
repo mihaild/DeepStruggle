@@ -18,13 +18,15 @@ import type { ParseKeys } from "i18next";
 import en from "./locales/en";
 
 /** Each language by its own name, as the select offers it. A new one also goes in LOADERS. */
-export const LANGUAGES = { en: "English" } as const;
+export const LANGUAGES = { en: "English", "zh-CN": "简体中文" } as const;
 export const PSEUDO = "en-XA";
 export type Language = keyof typeof LANGUAGES | typeof PSEUDO;
 
 type Bundle = Record<string, object>;
 /** A language's catalogs (locales/<lang>/index.ts), imported only when it is chosen. */
-const LOADERS: Partial<Record<Language, () => Promise<{ default: Bundle }>>> = {};
+const LOADERS: Partial<Record<Language, () => Promise<{ default: Bundle }>>> = {
+  "zh-CN": () => import("./locales/zh-CN"),
+};
 const STORAGE_KEY = "ts.language";
 
 i18next.use({

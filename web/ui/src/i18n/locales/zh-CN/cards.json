@@ -1,0 +1,79 @@
+{
+  "drawDeck": "抽牌堆",
+  "drawDeckPlusHand": "抽牌堆与{{side}}手牌（未知）",
+  "drawDeckOrHand": "抽牌堆或{{side}}手牌",
+  "faceUp": "✓ 正面朝上",
+  "faceDown": "✕ 背面朝上",
+  "handEmpty": "没有手牌",
+  "hiddenCardTitle": "本方尚未见过的卡牌",
+  "hiddenCard": "背面朝上的卡牌",
+  "removeAfterEvent": "事件结算后移出游戏",
+  "cardFallback": "卡牌 #{{id}}",
+  "pileEmpty": "空",
+  "deckOrHand": "牌堆或{{side}}手牌",
+  "deckOrOtherHand": "牌堆或对手手牌",
+  "clickForText": "点击查看卡牌说明",
+  "cardModalTitle": "卡牌 #{{id}}：{{name}}",
+  "noMatch": "没有符合筛选条件的卡牌。",
+  "location": {
+    "handUs": "美国手牌",
+    "handUssr": "苏联手牌",
+    "drawDeck": "抽牌堆",
+    "discard": "弃牌堆",
+    "removed": "已移出",
+    "ongoing": "持续事件",
+    "futureEra": "后续时期",
+    "peeked": "已抽取（待选择）"
+  },
+  "china": {
+    "title": "#6 {{name}}（4 行动点数）",
+    "holder": "持有方：<strong>{{holder}}</strong>（{{status}}）",
+    "playable": "正面朝上／可使用",
+    "faceDown": "背面朝上",
+    "asiaBonus": "在亚洲增加 1 行动点数"
+  },
+  "effect": {
+    "turnOnly": "仅本回合",
+    "permanent": "永久",
+    "conditional": "有条件",
+    "active": "生效中",
+    "continuous": "{{flag}}的持续效果",
+    "spacePerk": "太空竞赛特权",
+    "none": "没有生效中的持续效果",
+    "thisTurn": "本回合",
+    "noEffects": "无效果",
+    "chipTitle": "{{card}}：{{description}}"
+  },
+  "perk": {
+    "animalInSpace": "{{side}}：动物进入太空（第 2 格）",
+    "animalInSpaceDesc": "{{side}}每回合可尝试两次太空竞赛。",
+    "manInEarthOrbit": "{{side}}：载人地球轨道飞行（第 4 格）",
+    "manInEarthOrbitDesc": "{{opponent}}必须先选择并展示头条牌，{{side}}随后选择。",
+    "eagleHasLanded": "{{side}}：雄鹰登月（第 6 格）",
+    "bearHasLanded": "{{side}}：巨熊登月（第 6 格）",
+    "landedDesc": "{{side}}可在回合结束时弃置 1 张保留的手牌。",
+    "spaceStation": "{{side}}：空间站（第 8 格）",
+    "spaceStationDesc": "{{side}}每回合获得第 8 个行动轮。"
+  },
+  "context": {
+    "depth": "<strong>重入深度：</strong>{{depth}} / 2",
+    "decision": "<strong>决策：</strong>{{decision}}（{{player}}）",
+    "pendingCard": "<strong>待处理卡牌：</strong>#{{card}}（行动点数：{{ops}}）",
+    "resolvingCard": "<strong>正在结算：</strong>#{{card}}（{{name}}）",
+    "remainingSteps": "<strong>剩余步骤：</strong>{{steps}}"
+  },
+  "age": {
+    "earlyWar": "冷战早期",
+    "midWar": "冷战中期",
+    "lateWar": "冷战晚期"
+  },
+  "side": {
+    "us": "美国",
+    "ussr": "苏联",
+    "neutral": "中立"
+  },
+  "tooltipMeta": "{{age}} • {{side}} • {{ops}} 点行动",
+  "pileCard": "#{{id}} {{name}}（{{ops}} 行动点数，{{side}}，{{age}}）",
+  "pileModalTitle": "{{title}}（{{n}} 张牌）",
+  "pileModalEmpty": "此牌堆为空"
+}

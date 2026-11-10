@@ -1,0 +1,33 @@
+{
+  "phase": {
+    "SETUP": "初始设置",
+    "HEADLINE": "头条阶段",
+    "ACTION_ROUND": "行动轮",
+    "INTERRUPT": "中断处理",
+    "DISCARD": "弃牌阶段",
+    "END_TURN": "回合结束",
+    "GAME_OVER": "对局结束"
+  },
+  "decision": {
+    "NONE": "无",
+    "SELECT_CARD": "选择卡牌",
+    "SELECT_PLAY_MODE": "选择出牌方式",
+    "CHOOSE_TIMING_BRANCH": "选择时机",
+    "SELECT_OP_MODE": "选择行动方式",
+    "POINT_NODE": "选择国家",
+    "CHOOSE_BRANCH": "选择分支",
+    "ROLL_DIE": "掷骰"
+  },
+  "resolution": {
+    "EVENT": "事件",
+    "SPACE": "太空竞赛",
+    "OPS_INFLUENCE": "行动点数：放置影响力",
+    "OPS_COUP": "行动点数：政变",
+    "OPS_REALIGN": "行动点数：调整阵营"
+  },
+  "opMode": {
+    "INFLUENCE": "影响力",
+    "COUP": "政变",
+    "REALIGN": "调整阵营"
+  }
+}
