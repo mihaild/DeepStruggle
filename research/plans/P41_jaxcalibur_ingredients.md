@@ -569,6 +569,49 @@ and the opponent-decided endings by phase, DEFCON level and card. Of the trainin
 branch from 2,000M is now first (two days, no new code) and (b) 3×192 from scratch second; both are the owner's
 to start.
 
+**The endings of the reads (running session, 2026-11-10; the stored `recipe_*_vs_a13.json`, nothing new played):
+DEFCON is not the deficit -- it is the USSR seat, on points.** DEFCON-1 losses in 2,000 read games at 2,400M: own
+decision J5 15, J1 15, J1′ 9; opponent's decision 79, 66, 57 -- and 12 / 14 / 10 and 82 / 79 / 68 at 2,000M, where
+the three were level. Of J5's 94 extra losses against J1 at 2,400M, 0 are own-decision DEFCON-1, 13
+opponent-decided, and 81 everything else, nearly all as USSR (574 against 481: 20 VP +39, final scoring +37,
+Wargames +14). **The self-play DEFCON excess does not carry into the reads; candidate (a) is closed in its exposure
+form too.** The exposure split and the opponent-decided endings of the probe games were not kept (the games lived
+in memory); not worth a rerun now. The probe's expected counts, for the record: 39.8 lethal card plays in J5's 200
+games (coup 24.1, opponent's card 11.8) against 22.3 in J1's (coup 11.8, opponent's card 4.6).
+
+Per seat, every gate read (score %, 1,000 deals a seat, so ± 1.5 on a cell and ± 2.2 on a difference):
+
+| step | US: J5 | J1 | J1′ | USSR: J5 | J1 | J1′ |
+|---|---:|---:|---:|---:|---:|---:|
+| 200M | 19.5 | 10.9 | | 22.8 | 12.8 | |
+| 400M | 18.2 | 14.6 | 13.8 | 28.4 | 17.4 | 18.4 |
+| 800M | 28.6 | 26.7 | 27.9 | 37.6 | 34.0 | 35.3 |
+| 1,200M | 34.2 | 29.7 | 31.1 | 38.7 | 37.4 | 40.6 |
+| 1,600M | 29.6 | 33.8 | 38.9 | 32.0 | 37.2 | 39.6 |
+| 2,000M | 38.9 | 36.8 | 38.6 | 38.5 | 40.5 | 41.5 |
+| 2,400M | 36.1 | 35.5 | 38.5 | 36.6 | 46.5 | 44.2 |
+| 2,800M | | 38.6 | 44.1 | | 48.0 | 49.0 |
+| 3,200M | | 39.5 | 45.4 | | 50.6 | 48.2 |
+
+* **J5's US seat is not behind**: at or above J1's at six of seven gates, level at 2,400M (36.1 / 35.5), 2.4 under
+  J1′, inside the noise.
+* **J5's USSR seat has not moved since 800M** (37.6, 38.7, 32.0, 38.5, 36.6) and was level with A8's through
+  2,000M (2–3 behind, noise). **The whole 2,400M deficit is the A8 lines' USSR gain between 2,000M and 2,400M**
+  (J1 40.5 → 46.5, J1′ 41.5 → 44.2), which they kept (48–50 by 2,800–3,200M) and J5 has not made. J1's own USSR sat
+  at 37 from 1,200M to 1,600M before it moved.
+* The USSR losses are on points -- 20 VP and final scoring, no one ending -- and J5's swing between snapshots
+  (final-scoring losses as USSR 175, 180, 136, 196 at the last four gates; the same 2,400M snapshot loses 213 that
+  way to J1 against 129 at 2,000M) is as large as the gap. Head to head at 2,400M is no seat story: 46.2 as US,
+  45.2 as USSR.
+
+**So "flat since 1,200M and 5 behind" was too coarse: one seat is level with A8, the other is one read interval
+behind an A8 gain.** Two readings, and a read already on its way tells them apart at no cost: J5 is running (2,620M
+at 10:56 UTC, 2,800M about eight hours later). **At 2,800M, J5's USSR seat against A8's 48–49:** still under ~40
+makes it a 2,000M-long plateau in one seat while the same recipe moves the other architecture -- then the lr 1.5e-4
+branch (c), judged on the USSR seat; at 43 or more it is late, not stuck, and the run simply continues. No branch
+before that read. What the A8 USSR learned between 2,000M and 2,400M (the behaviour reports of J1 at the two steps,
+USSR seat, against J5's 2,400M) is the no-training question behind it.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
