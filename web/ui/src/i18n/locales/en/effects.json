@@ -101,6 +101,14 @@
     "name": "Camp David Accords",
     "description": "Prevents Arab-Israeli War from being played as an Event."
   },
+  "IRON_LADY_PLAYED": {
+    "name": "The Iron Lady",
+    "description": "Prevents #7 Socialist Governments from being played as an Event."
+  },
+  "NORTH_SEA_OIL_PLAYED": {
+    "name": "North Sea Oil Played",
+    "description": "Prevents #61 OPEC from being played as an Event."
+  },
   "NORTH_SEA_OIL_ACTIVE": {
     "name": "North Sea Oil",
     "description": "Grants US an 8th Action Round for the current turn only."
