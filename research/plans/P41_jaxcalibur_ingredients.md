@@ -612,6 +612,55 @@ branch (c), judged on the USSR seat; at 43 or more it is late, not stuck, and th
 before that read. What the A8 USSR learned between 2,000M and 2,400M (the behaviour reports of J1 at the two steps,
 USSR seat, against J5's 2,400M) is the no-training question behind it.
 
+**The behaviour reports, read (2026-11-10; nothing run).** No report exists at 2,400M for either line, so this is
+J5 at 2,000M beside J1 at 2,000M, 4,000M and 13,600M and the reads' opponent (its lineage's report at 12,000M),
+all greedy self-play. Setups are one placement per seat unless a share is given; the last four columns are how
+often the USSR events its own card (H = as headline).
+
+| | USSR setup | US setup | De Gaulle | Suez | Blockade | Quagmire |
+|:---|:---|:---|---:|---:|---:|---:|
+| reference, 12,000M | Poland +3, Yugoslavia +3 | West Germany +4, Italy +3, Iran +1, Panama +1 | 18% | 34% | 50% | 90% |
+| J1, 2,000M | Czechoslovakia +3, Poland +3 | West Germany +4, Greece +2, Italy +2, Iran +1 | 14% (H 7) | 21% (H 8) | 58% | 87% |
+| J1, 4,000M | Poland +3, Yugoslavia +3 | West Germany +4, Italy +2, Spain/Portugal +2, Iran +1 (61%) | 10% (H 1) | 19% (H 9) | 53% | 87% |
+| J1, 13,600M | Finland +3, Poland +3 | France +3, Italy +3, Canada +2, Iran +1 (57%; France +3 or +4 in all) | 57% (H 36) | 67% (H 48) | 24% | 70% |
+| **J5, 2,000M** | Bulgaria +3, Poland +3 | France +3, Italy +3, West Germany +2, Iran +1 (98%) | 77% (H 43) | 69% (H 30) | 26% | 28% |
+
+* **J5 at 2,000M plays the Europe J1 has only by 13,600M, not the one J1 and the reference play at this stage.**
+  Its US holds France from the setup and leaves West Germany at +2; its USSR spends De Gaulle and Suez as events
+  (three times in four, often as the headline) and Blockade as Ops. J1 at 2,000M and 4,000M is the reference's
+  family: West Germany +4, France empty, the two France events played for Ops four times in five. The France
+  Europe is no defect in itself -- J1 reads 63.1 / 64.0 against the reference from it at 13,600M.
+* **The seat split exists only against the reference.** The same seats against three opponents (greedy; the
+  self-play rows are the 2,000M reports, the others the 2,400M matches, so read the pattern and not the last
+  point):
+
+  | USSR seat, against the US of | J1 | J5 | J5 - J1 | | US seat, against the USSR of | J1 | J5 | J5 - J1 |
+  |:---|---:|---:|---:|---|:---|---:|---:|---:|
+  | J5 (holds France) | 53.8 | 51.4 | -2 | | J5 | 54.8 | 47.7 | -7 |
+  | J1 (France empty) | 49.4 | 45.2 | -4 | | J1 | 49.1 | 46.2 | -3 |
+  | the reference (France empty) | 46.5 | 36.6 | -10 | | the reference | 35.5 | 36.1 | +1 |
+
+  Head to head J1 leads by about four in each seat (54.8 as US, 53.8 as USSR at 2,400M). Against the reference the
+  same eight points fall as zero on the US seat and ten on the USSR seat. So the USSR deficit of the last block is
+  a fact about J5's USSR *against this opponent's US*, not about J5's USSR.
+* **A candidate reason, not tested:** J1's USSR meets the reference's US Europe in every game of its own self-play
+  at this stage, and J5's USSR never does -- its training opponent holds France +3 from the first placement, and
+  the cards it has learned to spend as events are the two that act on a held France. The reads store outcomes
+  only (no setups, no card plays), so the stored games cannot say what J5's USSR does when France is empty; a
+  behaviour census of J5 as USSR against the reference would. Not requested: it explains a number, it does not
+  change what is run.
+* **J5's snapshots swing together on both yardsticks:** against the reference 36.5, 30.8, 38.7, 36.4 (both seats,
+  1,200M to 2,400M) and head to head against the same-step J1 46.7, 54.2, 45.7 (1,600M to 2,400M) -- low, high,
+  low on both, about four points either way, while J1 climbs two a gate. J5 was ahead of J1 head to head at
+  2,000M. One gate cannot order the two lines closer than that swing.
+
+**What this does to the 2,800M rule.** The reference's USSR-seat number alone can call a match-up a plateau, so it
+is read beside the head to head against J1 at 2,800M (the match already played at each gate), per seat. A plateau
+is both: the USSR seat still under ~40 against the reference *and* J5 under 50 in both seats head to head, a
+second low gate running. Head to head back at 50 with the reference's USSR seat still low is the reference's
+Europe, not J5's training, and no reason for the lr branch. Level or ahead on both is late, not stuck. Either way
+the run continues through the read; a branch waits for the owner.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
