@@ -228,8 +228,8 @@ void StateMachine::start_turn(GameState& state) noexcept {
     state.headline_second_owner = Player::NONE;
 
     // Space 4 Priority check
-    bool us_space4 = SpaceRace::has_man_in_space(state, Player::US);
-    bool ussr_space4 = SpaceRace::has_man_in_space(state, Player::USSR);
+    bool us_space4 = SpaceRace::has_man_in_earth_orbit(state, Player::US);
+    bool ussr_space4 = SpaceRace::has_man_in_earth_orbit(state, Player::USSR);
 
     if (us_space4 && !ussr_space4) {
         state.ctx().decision_player = Player::USSR; // USSR reveals first
@@ -701,23 +701,23 @@ void StateMachine::end_turn(GameState& state) noexcept {
     if (state.current_phase == Phase::GAME_OVER) return;
 
     // Check Eagle/Bear Has Landed (Box 6) Privilege
-    bool us_sw = SpaceRace::has_space_walk(state, Player::US);
-    bool ussr_sw = SpaceRace::has_space_walk(state, Player::USSR);
-    Player sw_player = us_sw ? Player::US : (ussr_sw ? Player::USSR : Player::NONE);
+    bool us_landed = SpaceRace::has_eagle_bear_landed(state, Player::US);
+    bool ussr_landed = SpaceRace::has_eagle_bear_landed(state, Player::USSR);
+    Player landed_player = us_landed ? Player::US : (ussr_landed ? Player::USSR : Player::NONE);
 
-    if (sw_player != Player::NONE) {
+    if (landed_player != Player::NONE) {
         bool has_cards = false;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (in_hand_of(state.card_locations[i], sw_player)) {
+            if (in_hand_of(state.card_locations[i], landed_player)) {
                 has_cards = true;
                 break;
             }
         }
         if (has_cards) {
             state.ctx() = DecisionContext{};
-            state.ctx().decision_player = sw_player;
+            state.ctx().decision_player = landed_player;
             state.ctx().decision_type = DecisionType::SELECT_CARD;
-            state.ctx().resolving_card = card_ids::SPACE_WALK_DISCARD;
+            state.ctx().resolving_card = card_ids::EAGLE_BEAR_LANDED_DISCARD;
             state.ctx().allow_early_stop = 1;
             return;
         }
@@ -1127,7 +1127,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {
-            if (state.ctx().resolving_card == card_ids::SPACE_WALK_DISCARD) {
+            if (state.ctx().resolving_card == card_ids::EAGLE_BEAR_LANDED_DISCARD) {
                 uint8_t card = action.primary_id;
                 if (card >= 1 && card <= 110 && !action.is_confirm_done()) {
                     state.card_locations[card] = CardLocation::DISCARD_PILE;

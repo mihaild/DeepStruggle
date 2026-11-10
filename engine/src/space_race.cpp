@@ -42,7 +42,7 @@ bool SpaceRace::has_animal_in_space(const GameState& state, Player p) noexcept {
     return false;
 }
 
-bool SpaceRace::has_man_in_space(const GameState& state, Player p) noexcept {
+bool SpaceRace::has_man_in_earth_orbit(const GameState& state, Player p) noexcept {
     if (p == Player::US) {
         return state.us_space_track >= 4 && state.ussr_space_track < 4;
     } else if (p == Player::USSR) {
@@ -52,11 +52,11 @@ bool SpaceRace::has_man_in_space(const GameState& state, Player p) noexcept {
 }
 
 uint8_t SpaceRace::revealed_headline(const GameState& state, Player p) noexcept {
-    if (state.current_phase != Phase::HEADLINE || state.headline_stage != 0 || !has_man_in_space(state, p)) return 0;
+    if (state.current_phase != Phase::HEADLINE || state.headline_stage != 0 || !has_man_in_earth_orbit(state, p)) return 0;
     return p == Player::US ? state.headline_ussr_card : state.headline_us_card;
 }
 
-bool SpaceRace::has_space_walk(const GameState& state, Player p) noexcept {
+bool SpaceRace::has_eagle_bear_landed(const GameState& state, Player p) noexcept {
     if (p == Player::US) {
         return state.us_space_track >= 6 && state.ussr_space_track < 6;
     } else if (p == Player::USSR) {

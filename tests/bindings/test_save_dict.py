@@ -126,7 +126,7 @@ def test_missing_context_depth_keeps_the_baseline() -> None:
 
 
 NORTH_SEA_OIL_ACTIVE = 1 << 27  # effect_bits in engine/include/ts/constants.hpp
-SPACE_WALK_DISCARD = 250  # card_ids in the same file
+EAGLE_BEAR_LANDED_DISCARD = 250  # card_ids in the same file
 DUCK_AND_COVER = 4
 
 
@@ -173,7 +173,7 @@ def test_the_turn_after_a_us_eighth_round_saves_and_loads() -> None:
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
     assert s.action_round == 9
     assert s.ctx().decision_type == ts.DecisionType.SELECT_CARD
-    assert s.ctx().resolving_card == SPACE_WALK_DISCARD
+    assert s.ctx().resolving_card == EAGLE_BEAR_LANDED_DISCARD
     assert s.ctx().decision_player == ts.Player.USSR
     back = ts.state_from_save_json(s.to_save_json())
     _same_position(s, back)

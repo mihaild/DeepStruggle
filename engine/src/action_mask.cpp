@@ -45,7 +45,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // may not be held at all, and the held-card check comes after this discard, so offering
             // one let the player throw it away instead of losing for holding it (ENG-7). The engine's
             // own networks had learned to: 29 of 30 times in self-play of E8's top network.
-            if (ctx.resolving_card == card_ids::SPACE_WALK_DISCARD) {
+            if (ctx.resolving_card == card_ids::EAGLE_BEAR_LANDED_DISCARD) {
                 for (uint8_t i = 1; i <= 110; ++i) {
                     if (in_hand_of(state.card_locations[i], p) && !CardData::is_scoring_card(i)) {
                         mask_out[i] = 1;

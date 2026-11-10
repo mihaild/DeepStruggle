@@ -1155,8 +1155,8 @@ TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInEarthOrbit_EagleBe
     // Box 0: Initial state - no abilities
     ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
     ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
-    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
-    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::US));
     ASSERT_FALSE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
 
     // Box 2: Animal in Space (2 attempts per turn)
@@ -1173,18 +1173,18 @@ TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInEarthOrbit_EagleBe
     // Box 4: Man in Earth Orbit (Opponent reveals headline first)
     state.us_space_track = 4;
     state.ussr_space_track = 3;
-    ASSERT_TRUE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
-    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::USSR));
+    ASSERT_TRUE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::USSR));
     state.ussr_space_track = 4;
-    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::US));
 
     // Box 6: Eagle/Bear Has Landed (Discard 1 held card at end of turn)
     state.us_space_track = 6;
     state.ussr_space_track = 5;
-    ASSERT_TRUE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
-    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::USSR));
+    ASSERT_TRUE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::USSR));
     state.ussr_space_track = 6;
-    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::US));
 
     // Box 8: Space Station (8th Action Round)
     state.us_space_track = 8;
@@ -1781,8 +1781,8 @@ TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInEarthOrbit_OpponentRevealsHeadlineFi
     state.us_space_track = 4;
     state.ussr_space_track = 3;
 
-    ASSERT_TRUE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
-    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::USSR));
+    ASSERT_TRUE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::USSR));
 
     // Start turn -> USSR must be prompted for Headline first!
     ts::StateMachine::start_turn(state);
@@ -1804,7 +1804,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInEarthOrbit_OpponentRevealsHeadlineFi
 
     // USSR catches up to Box 4 -> privilege cancelled
     state.ussr_space_track = 4;
-    ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_man_in_earth_orbit(state, ts::Player::US));
 }
 
 TEST(CardEdgeCasesTest, SpaceRace_Box5_LunarOrbit_VPAwards_First3VP_Second1VP) {
@@ -1837,7 +1837,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_AllowsDiscardAtTurnEnd
     state.us_space_track = 6;
     state.ussr_space_track = 5;
 
-    ASSERT_TRUE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_TRUE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::US));
 
     // Populate draw deck with plenty of dummy cards so reshuffle does not occur
     for (uint8_t i = 1; i <= 35; ++i) {
@@ -1859,7 +1859,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_AllowsDiscardAtTurnEnd
     // End of turn reached -> US with Eagle/Bear Has Landed is prompted to discard a card!
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
-    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::EAGLE_BEAR_LANDED_DISCARD);
     ASSERT_EQ(state.ctx().allow_early_stop, 1);
 
     // US discards Red Scare/Purge (#31)
@@ -1877,7 +1877,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_AllowsDiscardAtTurnEnd
 
     // If USSR catches up to Box 6, privilege is cancelled
     state.ussr_space_track = 6;
-    ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
+    ASSERT_FALSE(ts::SpaceRace::has_eagle_bear_landed(state, ts::Player::US));
 }
 
 TEST(CardEdgeCasesTest, SpaceRace_Box7_SpaceShuttle_VPAwards_First4VP_Second2VP) {
@@ -2757,14 +2757,14 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_CannotDiscardAScoringC
 
     ts::StateMachine::advance_after_action_round(state);
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
-    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::EAGLE_BEAR_LANDED_DISCARD);
 
     uint8_t mask[ts::flat_slots::SIZE] = {};
     ts::ActionMask::generate_flat_mask_212(state, mask);
     ASSERT_EQ(mask[ts::card_ids::EUROPE_SCORING - 1], 0);
     ASSERT_EQ(mask[ts::card_ids::RED_SCARE_PURGE - 1], 1);
     ASSERT_FALSE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::EUROPE_SCORING, 0, 0}));
-    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
+    ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::EAGLE_BEAR_LANDED_DISCARD);
 
     // Discarding the other card leaves the scoring card held, and holding it loses.
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, ts::card_ids::RED_SCARE_PURGE, 0, 0}));
@@ -2787,7 +2787,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_HoldingOnlyAScoringCar
     state.card_locations[ts::card_ids::ASIA_SCORING] = ts::hand_of(ts::Player::US);
     ts::StateMachine::advance_after_action_round(state);
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
-    if (state.ctx().resolving_card == ts::card_ids::SPACE_WALK_DISCARD) {
+    if (state.ctx().resolving_card == ts::card_ids::EAGLE_BEAR_LANDED_DISCARD) {
         uint8_t mask[ts::flat_slots::SIZE] = {};
         ts::ActionMask::generate_flat_mask_212(state, mask);
         size_t legal = 0;

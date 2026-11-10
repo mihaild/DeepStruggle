@@ -27,7 +27,7 @@
     "grainSales": "<strong>{{who}}:</strong> <em>Grain Sales</em>: Select a card from USSR hand:",
     "askNot": "<strong>{{who}}:</strong> <em>Ask Not What Your Country Can Do For You</em>: Select cards from hand to discard:",
     "terrorism": "<strong>{{who}}:</strong> <em>Terrorism</em>: Select a card from hand to discard:",
-    "spaceWalk": "<strong>{{who}}:</strong> <em>Eagle / Bear Has Landed (Space Race Box 6)</em>: You may discard 1 card from hand at turn end (or click Pass to retain full hand):"
+    "eagleBearLanded": "<strong>{{who}}:</strong> <em>Eagle / Bear Has Landed (Space Race Box 6)</em>: You may discard 1 card from hand at turn end (or click Pass to retain full hand):"
   },
   "branchAsk": {
     "chernobyl": "designate a region: the USSR may not place influence there with Ops for the rest of the turn",

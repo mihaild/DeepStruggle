@@ -31,7 +31,7 @@ function cardIds(engine: WasmEngine) {
     GRAIN_SALES: cardId(L, "GRAIN_SALES_TO_SOVIETS"), STAR_WARS: cardId(L, "STAR_WARS"),
     SALT: cardId(L, "SALT_NEGOTIATIONS"), UN_INTERVENTION: cardId(L, "UN_INTERVENTION"),
     MISSILE_ENVY: cardId(L, "MISSILE_ENVY"), FIVE_YEAR_PLAN: cardId(L, "FIVE_YEAR_PLAN"),
-    SPACE_WALK: cardId(L, "SPACE_WALK_DISCARD"), TERRORISM: cardId(L, "TERRORISM"),
+    EAGLE_BEAR_LANDED: cardId(L, "EAGLE_BEAR_LANDED_DISCARD"), TERRORISM: cardId(L, "TERRORISM"),
   };
 }
 
@@ -103,11 +103,11 @@ export function describeAction(
     const resolving = ctx?.resolving_card ?? 0;
     const card = { card: cardRef(engine, primary), id: primary };
     const phase = before.current_phase_name ?? "";
-    if (resolving !== 0 && resolving !== C.SPACE_WALK) {
+    if (resolving !== 0 && resolving !== C.EAGLE_BEAR_LANDED) {
       logs.push(eventCardChoice(engine, before, after, action, p, resolving));
-    } else if (resolving === C.SPACE_WALK) {
-      if (isConfirmDone(action) || primary === 0) say("log:action.spaceWalkPass");
-      else say("log:action.spaceWalkDiscard", card);
+    } else if (resolving === C.EAGLE_BEAR_LANDED) {
+      if (isConfirmDone(action) || primary === 0) say("log:action.eagleBearLandedPass");
+      else say("log:action.eagleBearLandedDiscard", card);
     } else if (phase === "HEADLINE") {
       const usBefore = before.headline_us_card ?? 0;
       const ussrBefore = before.headline_ussr_card ?? 0;
