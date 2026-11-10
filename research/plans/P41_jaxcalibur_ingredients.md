@@ -507,7 +507,13 @@ on identical positions at matched steps, P(coup in a battleground | DEFCON 2) an
 is legal), J5 against J1, and whether J5's excess sits in those positions; only then an A code -- the candidates are
 a wider head context, or the global DEFCON float broadcast into every country token's input MLP (a network-side
 routing of a float the observation already holds, not a layout change) -- read from scratch at 3×128 against J5's
-own 23.4% at 400M (17 h). (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
+own 23.4% at 400M (17 h). **The probe is requested (owner, 2026-11-10), as P41b:** one shared position set drawn
+half from each lineage's games, both networks scored on it at 2,400M (400M and 1,200M if cheap); the suicide mass
+split by kind (battleground coup, DEFCON-lowering event, opponent card for Ops) and the coup split by stage -- the
+play-mode head's mass on a coup at all (reads the trunk directly) against the per-country head's mass on
+battlegrounds given a coup (reads the 64-d context) -- with the critic's value at the same positions. An excess in
+the first stage points at the trunk summary, in the second at the context path, in events at the card tokens, and
+none on shared positions means J5 reaches these states more often rather than misplaying them. (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
 400M read. (c) *The rate:* the lr 1.5e-4 branch from 2,000M, read at +400M against J5's 36.4 -- cheapest, but the
 KL trajectory now says it stabilises at best. Not saturation under any of them until one of the three moves the
 400M or the +400M read.
