@@ -67,7 +67,7 @@
   "opMode": {
     "influence": {
       "text": "Place Influence",
-      "desc": "Place influence markers in adjacent countries"
+      "desc": "Place influence in or next to countries with your influence, or next to your superpower"
     },
     "coup": {
       "text": "Conduct Coup Attempt",

@@ -151,13 +151,13 @@ export function movesVp(l: LogLine): boolean {
   return k === "log:change.vp" || k === "log:eventTrack.vp" || k === "log:eventTrack.both";
 }
 
-/** A line that speaks of VP: `movesVp`, and a die whose outcome is put in VP (the Olympics' sponsor
- *  winning or a tie, a war won). */
+/** A line that speaks of VP: `movesVp`, and a die whose outcome is put in VP (the Olympics won by
+ *  either side, a war won). */
 export function mentionsVp(l: LogLine): boolean {
   if (movesVp(l)) return true;
   const result = param(l.msg, "result");
   const outcome = typeof result === "object" && "key" in result ? result.key : "";
-  return outcome === "log:roll.olympicsSponsor" || outcome === "log:roll.olympicsTie" || outcome === "log:roll.warSucceeded";
+  return outcome === "log:roll.olympicsSponsor" || outcome === "log:roll.olympicsOpponent" || outcome === "log:roll.warSucceeded";
 }
 
 type Span = [number, number];

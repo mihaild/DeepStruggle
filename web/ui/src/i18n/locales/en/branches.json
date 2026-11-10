@@ -2,7 +2,7 @@
   "warsawPact": {
     "remove": {
       "title": "Remove US influence",
-      "desc": "Remove all US influence from up to 4 countries in Eastern Europe.",
+      "desc": "Remove all US influence from 4 countries in Eastern Europe (fewer if fewer have any).",
       "verb": "removes US influence from Eastern Europe"
     },
     "add": {
@@ -26,7 +26,7 @@
   "wargames": {
     "end": {
       "title": "End the game",
-      "desc": "Give the opponent 6 VP, then the game ends and is scored as it stands.",
+      "desc": "Give the opponent 6 VP, then the game ends: the side ahead on VP wins (no Final Scoring).",
       "verb": "ends the game, giving the opponent 6 VP"
     },
     "continue": {

@@ -699,6 +699,9 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                 uint8_t forced_opp = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : 0;
                 uint8_t sp_roll = (forced_sp > 0) ? (forced_sp + 2) : (Prng::roll_d6(state.rng_state) + 2);
                 uint8_t opp_roll = (forced_opp > 0) ? forced_opp : Prng::roll_d6(state.rng_state);
+                // A tie is re-rolled only when both dice are rolled here: a forced die (either one)
+                // is kept as given, so forced dice can tie, and a tie then goes to the opponent below
+                // (`sp_roll > opp_roll` fails). Only forced dice can leave a tie.
                 while (sp_roll == opp_roll && forced_sp == 0 && forced_opp == 0) {
                     sp_roll = Prng::roll_d6(state.rng_state) + 2;
                     opp_roll = Prng::roll_d6(state.rng_state);
