@@ -1794,7 +1794,7 @@ def _defcon_set_under(e: Entry, marker: str) -> Optional[int]:
 
 
 def _space_walk_discard(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
-    """The card a Space Walk discard takes, which the log hangs on the entry's cleanup copy.
+    """The card a Eagle/Bear Has Landed discard takes, which the log hangs on the entry's cleanup copy.
 
     A player who has reached box 6 of the space race may discard a held card as the turn ends,
     and ts-replayer records that where it records the rest of the turn's bookkeeping: on a
@@ -3425,7 +3425,7 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
         return False
     if (e.turn, e.phase, e.player, e.card) != (prev.turn, prev.phase, prev.player, prev.card):
         return False
-    # A discard is bookkeeping here too: the Space Walk discard a player at box 6 takes as the
+    # A discard is bookkeeping here too: the Eagle/Bear Has Landed discard a player at box 6 takes as the
     # turn ends is recorded on this copy, and answered inside the entry above -- see
     # _space_walk_discard. A play always brings more than a discard with it.
     return _is_cleanup_body(e)

@@ -156,7 +156,7 @@ Five encodings today, catalogued over all 110 cards:
 
 | | how it is encoded | used by |
 |---|:---|:---|
-| A | `ctx.allow_early_stop` → shared slot 211 | ~25 cards, realignment's stop, ordinary influence ops, Space Walk |
+| A | `ctx.allow_early_stop` → shared slot 211 | ~25 cards, realignment's stop, ordinary influence ops, Eagle/Bear Has Landed |
 | B | a dedicated `CHOOSE_BRANCH` index | Wargames (branch 1), Summit (branch 2) |
 | C | **aliased `INFLUENCE`, slot 116** | Junta, Tear Down, KAL-007, Glasnost — *and* the generic "nothing is legal" skip |
 | D | automatic fizzle, no node opens | Camp David/Arab-Israeli, Independent Reds, Cambridge Five, Special Relationship, UN Intervention, Star Wars, plus a hardcoded `may_fizzle` whitelist of four |

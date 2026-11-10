@@ -41,7 +41,7 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             *out_size = 112;
             std::memset(mask_out, 0, 112);
 
-            // 0. Space Walk (Box 6) end-of-turn discard. A held card, never a scoring card: those
+            // 0. Eagle/Bear Has Landed (Box 6) end-of-turn discard. A held card, never a scoring card: those
             // may not be held at all, and the held-card check comes after this discard, so offering
             // one let the player throw it away instead of losing for holding it (ENG-7). The engine's
             // own networks had learned to: 29 of 30 times in self-play of E8's top network.

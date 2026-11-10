@@ -500,7 +500,7 @@
       "struct_location": "GameState::us_space_turns_used, GameState::ussr_space_turns_used",
       "cleaned_on_end_of_turn": true,
       "cleaned_on_end_of_ar": false,
-      "description": "Tracks space race attempts conducted in current turn (max 1, or 2 with Lunar Orbit); reset to 0 at Phase::END_TURN."
+      "description": "Tracks space race attempts conducted in current turn (max 1, or 2 with Animal in Space); reset to 0 at Phase::END_TURN."
     },
     {
       "variable_name": "turn_aggregates",

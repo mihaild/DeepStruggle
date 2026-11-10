@@ -34,7 +34,7 @@ public:
     static bool has_space_walk(const GameState& state, Player p) noexcept;       // Discard held card
     static bool has_space_station_ar8(const GameState& state, Player p) noexcept;// 8 ARs
 
-    // The opposing headline `p` has seen, else 0: with Man in Space held by `p` alone the opponent
+    // The opposing headline `p` has seen, else 0: with Man in Earth Orbit held by `p` alone the opponent
     // chooses first and reveals it (StateMachine::start_turn asks it first), so while `p` chooses
     // its own headline the opponent's card is known to it.
     static uint8_t revealed_headline(const GameState& state, Player p) noexcept;

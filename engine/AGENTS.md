@@ -245,7 +245,7 @@ and is mirrored in `ai/models/ladder_net.OBS_FEATURE_WIDTHS` (a test compares th
 | bit | name | width | contents |
 |:---|:---|---:|:---|
 | 1<<1 | `OPS_BUDGET` | 3 | at SELECT_PLAY_MODE, `Operations::grant_ops_for_card(pending_op_card, decider)/5`, else 0; my per-card Ops modifier; the opponent's (Containment/Brezhnev +1, Red Scare/Purge −1, summed) |
-| 1<<2 | `HEADLINE_REVEAL` | 0 | **no block: edits the base's card rows** (owner, 2026-10-20). While the side holding Man in Space alone chooses its headline, the opponent's -- chosen first and revealed (`SpaceRace::revealed_headline`) -- shows as `KNOWN_OPPONENT_HAND` with `ACTIVE_CARD` = `ACTIVE_NEXT`, as the second headline does while the first resolves; the base layout leaves it hidden. The one bit that changes base slots, so a model reads it only if trained with it and every other model's view is unchanged. A new network reads it by default since E8 (`tools/train.py --obs-features`) |
+| 1<<2 | `HEADLINE_REVEAL` | 0 | **no block: edits the base's card rows** (owner, 2026-10-20). While the side holding Man in Earth Orbit alone chooses its headline, the opponent's -- chosen first and revealed (`SpaceRace::revealed_headline`) -- shows as `KNOWN_OPPONENT_HAND` with `ACTIVE_CARD` = `ACTIVE_NEXT`, as the second headline does while the first resolves; the base layout leaves it hidden. The one bit that changes base slots, so a model reads it only if trained with it and every other model's view is unchanged. A new network reads it by default since E8 (`tools/train.py --obs-features`) |
 
 **The extractor computes each country's control once** (2026-10-06) and reads it everywhere —
 control features, realignment neighbour counts (from a list of the 112 borders), regional scoring
@@ -518,7 +518,7 @@ the same test the base frame uses. `finish_play_without_ops` unwinds the Event a
 depth guards on the base frame's owed Event stay: a pushed frame starts zeroed, which reads as
 OPS_FIRST. Tests: `PushedFrame.*` in `engine/tests/test_rules_audit.cpp`.
 
-## 17. Space Walk may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
+## 17. Eagle/Bear Has Landed may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
 
 Space Race box 6 lets its holder discard a held card at the end of the turn, and the discard runs
 before the held-card check (`end_turn`, then `finish_end_turn`). Its mask offered every card in the
@@ -527,7 +527,7 @@ E8's top network had learned to: holding a scoring card at that decision, it dis
 (4,000 sampled self-play games, 0.73% of them; none after the fix). Scoring cards may never be
 held (rules.md, the held-card invariant), so the mask now leaves them out; holding only a scoring card,
 the pass is all there is, and the check then ends the game. The step refuses one too, since the mask
-decides legality. Tests: `SpaceRace_Box6_SpaceWalk_*` in `engine/tests/test_card_edge_cases.cpp`.
+decides legality. Tests: `SpaceRace_Box6_EagleBearHasLanded_*` in `engine/tests/test_card_edge_cases.cpp`.
 
 ## 18. An event-first Event opens nothing to the Ops after it (ENG-8, E8 in place, 2026-11-06)
 

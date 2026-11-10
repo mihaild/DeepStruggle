@@ -1148,7 +1148,7 @@ TEST(CardEdgeCasesTest, WarsawPact_Branch0_NoUSInfluence_ResolvesImmediately_Nev
 // Space Race Edge Cases and Ability Tests
 // =============================================================================
 
-TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInSpace_SpaceWalk_MoonLanding) {
+TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInEarthOrbit_EagleBearHasLanded_SpaceStation) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
 
@@ -1170,7 +1170,7 @@ TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInSpace_SpaceWalk_Mo
     ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
     ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
 
-    // Box 4: Lunar Orbit (Opponent reveals headline first)
+    // Box 4: Man in Earth Orbit (Opponent reveals headline first)
     state.us_space_track = 4;
     state.ussr_space_track = 3;
     ASSERT_TRUE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
@@ -1178,7 +1178,7 @@ TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInSpace_SpaceWalk_Mo
     state.ussr_space_track = 4;
     ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
 
-    // Box 6: Space Walk (Discard 1 held card at end of turn)
+    // Box 6: Eagle/Bear Has Landed (Discard 1 held card at end of turn)
     state.us_space_track = 6;
     state.ussr_space_track = 5;
     ASSERT_TRUE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
@@ -1186,7 +1186,7 @@ TEST(CardEdgeCasesTest, SpaceRace_AllBoxAbilities_Animal_ManInSpace_SpaceWalk_Mo
     state.ussr_space_track = 6;
     ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
 
-    // Box 8: Moon Landing (8th Action Round)
+    // Box 8: Space Station (8th Action Round)
     state.us_space_track = 8;
     state.ussr_space_track = 7;
     ASSERT_TRUE(ts::SpaceRace::has_space_station_ar8(state, ts::Player::US));
@@ -1221,7 +1221,7 @@ TEST(CardEdgeCasesTest, CapturedNaziScientist_AdvancesTrack_AwardsVPsAndAbilitie
     ASSERT_EQ(state.victory_points, 1); // No VP change on Box 2
     ASSERT_TRUE(ts::SpaceRace::has_animal_in_space(state, ts::Player::US));
 
-    // 4. USSR advances to Box 8 (Moon Landing): awards 2 VP to USSR (net 1 - 2 = -1 VP)
+    // 4. USSR advances to Box 8 (Space Station): awards 2 VP to USSR (net 1 - 2 = -1 VP)
     state.ussr_space_track = 7;
     state.us_space_track = 6;
     done = ts::CardHandlers::trigger_event(state, ts::card_ids::CAPTURED_NAZI_SCIENTIST, ts::Player::USSR);
@@ -1256,7 +1256,7 @@ TEST(CardEdgeCasesTest, OneSmallStep_Advances2SpacesWhenBehind_AwardsVPWhenLandi
 
     // Case 2: Landing on a VP box as 1st player awards full 1st VP
     // USSR is at Box 4, US is at Box 3.
-    // US plays One Small Step: advances +2 to Box 5 (Lunar Probe).
+    // US plays One Small Step: advances +2 to Box 5 (Lunar Orbit).
     // Box 5 awards 3 VP (1st) / 1 VP (2nd). US reaches Box 5 before USSR (USSR is at 4).
     state.victory_points = 0;
     state.us_space_track = 3;
@@ -1755,14 +1755,14 @@ TEST(CardEdgeCasesTest, SpaceRace_Box2_AnimalInSpace_Grants2AttemptsPerTurn_AndC
     ASSERT_FALSE(ts::SpaceRace::has_animal_in_space(state, ts::Player::USSR));
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box3_ManInOrbit_VPAwards_First2VP_Second0VP) {
+TEST(CardEdgeCasesTest, SpaceRace_Box3_ManInSpace_VPAwards_First2VP_Second0VP) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.victory_points = 0;
     state.us_space_track = 2;
     state.ussr_space_track = 2;
 
-    // US advances to Box 3 (Man in Orbit)
+    // US advances to Box 3 (Man in Space)
     bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::US, ts::card_ids::DUCK_AND_COVER, 1);
     ASSERT_TRUE(ok1);
     ASSERT_EQ(state.us_space_track, 3);
@@ -1775,7 +1775,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box3_ManInOrbit_VPAwards_First2VP_Second0VP) {
     ASSERT_EQ(state.victory_points, 2); // 2nd player gets 0 VP (remains +2 VP)
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInSpace_OpponentRevealsHeadlineFirst_AndCancelsWhenOpponentReaches) {
+TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInEarthOrbit_OpponentRevealsHeadlineFirst_AndCancelsWhenOpponentReaches) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.us_space_track = 4;
@@ -1807,7 +1807,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box4_ManInSpace_OpponentRevealsHeadlineFirst_A
     ASSERT_FALSE(ts::SpaceRace::has_man_in_space(state, ts::Player::US));
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box5_LunarProbe_VPAwards_First3VP_Second1VP) {
+TEST(CardEdgeCasesTest, SpaceRace_Box5_LunarOrbit_VPAwards_First3VP_Second1VP) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.victory_points = 0;
@@ -1827,7 +1827,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box5_LunarProbe_VPAwards_First3VP_Second1VP) {
     ASSERT_EQ(state.victory_points, 2); // 2nd player gets 1 VP (3 - 1 = +2 VP)
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCancelsWhenOpponentReaches) {
+TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_AllowsDiscardAtTurnEnd_AndCancelsWhenOpponentReaches) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.turn = 2;
@@ -1856,7 +1856,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ASSERT_TRUE(ts::StateMachine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 0, 0, 0}));
 
-    // End of turn reached -> US with Space Walk is prompted to discard a card!
+    // End of turn reached -> US with Eagle/Bear Has Landed is prompted to discard a card!
     ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_CARD);
     ASSERT_EQ(state.ctx().resolving_card, ts::card_ids::SPACE_WALK_DISCARD);
@@ -1880,14 +1880,14 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_AllowsDiscardAtTurnEnd_AndCance
     ASSERT_FALSE(ts::SpaceRace::has_space_walk(state, ts::Player::US));
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box7_SpaceStation_VPAwards_First4VP_Second2VP) {
+TEST(CardEdgeCasesTest, SpaceRace_Box7_SpaceShuttle_VPAwards_First4VP_Second2VP) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.victory_points = 0;
     state.us_space_track = 6;
     state.ussr_space_track = 6;
 
-    // USSR advances to Box 7 (Space Station, 3 Ops)
+    // USSR advances to Box 7 (Space Shuttle, 3 Ops)
     bool ok1 = ts::SpaceRace::attempt_space(state, ts::Player::USSR, ts::card_ids::RED_SCARE_PURGE, 1);
     ASSERT_TRUE(ok1);
     ASSERT_EQ(state.ussr_space_track, 7);
@@ -1900,7 +1900,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box7_SpaceStation_VPAwards_First4VP_Second2VP)
     ASSERT_EQ(state.victory_points, -2); // US 2nd gets 2 VP (-4 + 2 = -2 VP)
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box8_EagleBearLanded_Grants8thActionRound_And2VPFirst0VPSecond) {
+TEST(CardEdgeCasesTest, SpaceRace_Box8_SpaceStation_Grants8thActionRound_And2VPFirst0VPSecond) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.turn = 5;
@@ -2738,9 +2738,9 @@ TEST(CardEdgeCasesTest, OpsModifiers_VietnamRevolts_BeyondTheCaps_PurgeFloorOnTh
     ASSERT_EQ(Operations::get_effective_ops_in(s3, card_ids::DUCK_AND_COVER, Player::US, burma), 3);
 }
 
-// ENG-7: Space Walk discards a held card, never a scoring card -- those may not be held, and
+// ENG-7: Eagle/Bear Has Landed discards a held card, never a scoring card -- those may not be held, and
 // discarding one escaped the loss for holding it, which the held-card check only makes after.
-TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_CannotDiscardAScoringCard) {
+TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_CannotDiscardAScoringCard) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.turn = 2;
@@ -2772,7 +2772,7 @@ TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_CannotDiscardAScoringCard) {
     ASSERT_EQ(state.victory_points, -20);
 }
 
-TEST(CardEdgeCasesTest, SpaceRace_Box6_SpaceWalk_HoldingOnlyAScoringCardOffersOnlyThePass) {
+TEST(CardEdgeCasesTest, SpaceRace_Box6_EagleBearHasLanded_HoldingOnlyAScoringCardOffersOnlyThePass) {
     ts::GameState state{};
     ts::StateMachine::init_new_game(state, 42);
     state.turn = 2;

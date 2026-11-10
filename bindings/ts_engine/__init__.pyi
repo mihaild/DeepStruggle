@@ -973,7 +973,7 @@ def determinize(state: GameState, me: Player, seed: int, keep_hand: bool = False
 
 def revealed_headline(state: GameState, me: Player) -> int:
     """
-    The opposing headline `me` has seen, else 0: with Man in Space (Space Race box 4) held by `me` alone the opponent chooses first and reveals it.
+    The opposing headline `me` has seen, else 0: with Man in Earth Orbit (Space Race box 4) held by `me` alone the opponent chooses first and reveals it.
     """
 
 def place_hand(state: GameState, me: Player, held: Annotated[NDArray[numpy.uint8], dict(shape=(None,), order='C', device='cpu', writable=False)]) -> GameState:

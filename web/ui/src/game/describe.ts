@@ -23,7 +23,7 @@ const SIDE = new Map(CARDS_METADATA.map(c => [c.id, c.side]));
 /**
  * The cards the log words by name, by the engine's ids (WasmEngine.layout.card_ids): Grain Sales
  * to Soviets (its node offers the drawn card back, a CONFIRM_DONE, for its own 2 Ops), the cards
- * whose card choices eventCardChoice words, the random discards, and Space Walk's pseudo-card.
+ * whose card choices eventCardChoice words, the random discards, and Eagle/Bear Has Landed's pseudo-card.
  */
 function cardIds(engine: WasmEngine) {
   const L = engine.layout;

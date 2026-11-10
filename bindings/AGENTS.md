@@ -176,7 +176,7 @@ are cited from elsewhere; keep them.
   that stops for a choice added boundaries and one that resolved at once did not -- at a headline
   choice the candidate itself decided how far its playout read. `Config::box4` (Python `box4=True`, the
   page's eleventh argument, `:box4`, `box4=true`; off by default) keeps the opponent's headline in every
-  world at the headline choice of the side holding Man in Space alone (Space Race box 4: the opponent
+  world at the headline choice of the side holding Man in Earth Orbit alone (Space Race box 4: the opponent
   chose first and revealed it; `revealed_headline`, `determinize(..., keep_revealed)`), the rest of the
   hand redealt around it; off, the world forgets it and asks it again. The belief tracker's `reveal`
   (`BeliefTracker(..., reveal=True)`, `ts_belief_reset`'s fifth argument) draws every hand holding it.
@@ -230,7 +230,7 @@ are cited from elsewhere; keep them.
   its target and roller, steps left, resolving card -- so a world's candidates draw the same dice and
   event cards wherever they reach the same situation; at the turn's end the next deal is forced
   (the engine's forced-deal slots) from one card priority order per world, with one card in reserve
-  per hand for the Space Walk discard. A single continuation plays the same game distribution; only
+  per hand for the Eagle/Bear Has Landed discard. A single continuation plays the same game distribution; only
   the coupling between continuations changes. Measured on P34's sibling slice: two candidates'
   results in one world correlate at 0.39 keyed against 0.22 with the shared stream.
   **Two packings.** `keyed` widens the player fields as signed bytes: USSR is -1, so it sets every

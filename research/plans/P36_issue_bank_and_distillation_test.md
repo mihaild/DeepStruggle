@@ -251,7 +251,7 @@ the playout -- so those were read an action round earlier. The deployed root pla
 event over space at +0.10; read at one point it trails by 0.12. (2) **The headline counted 1 to 3
 boundaries** by how its events resolved (an event that stops for a choice sets the phasing side to its
 owner at a decision), decided at a headline choice by the candidate itself. (3) **Space Race box 4**: the
-side holding Man in Space alone sees the opponent's headline before choosing, but every world forgot it and
+side holding Man in Earth Orbit alone sees the opponent's headline before choosing, but every world forgot it and
 asked it again. Fixed as two opt-in options so every measured player keeps its meaning and the E7
 behaviour digest is unchanged (measured): `aligned` (every candidate's horizon counted from the end of the
 mover's own round, the headline one boundary; `bef6b4c`, `eedf70e`) and `box4` (the revealed headline kept

@@ -131,7 +131,7 @@ DUCK_AND_COVER = 4
 
 
 def _us_declining_its_eighth_round() -> ts.GameState:
-    """Turn 8, the US in the eighth round North Sea Oil gave it, the USSR holding Space Walk."""
+    """Turn 8, the US in the eighth round North Sea Oil gave it, the USSR holding Eagle/Bear Has Landed."""
     s = _played()
     guard = 0
     while s.current_phase != ts.Phase.ACTION_ROUND and guard < 600:
@@ -160,7 +160,7 @@ def _us_declining_its_eighth_round() -> ts.GameState:
 def test_the_turn_after_a_us_eighth_round_saves_and_loads() -> None:
     """The counter reads 9 through the cleanup after a US eighth round: no ninth round is played.
 
-    J1's blunder screen stored two such Space Walk discards and the loader refused them, ending the
+    J1's blunder screen stored two such Eagle/Bear Has Landed discards and the loader refused them, ending the
     CI part that reached one. Both places the counter can be saved at 9 are checked.
     """
     s = _us_declining_its_eighth_round()

@@ -63,10 +63,10 @@ def validate_legal_choices(state_dict: Dict[str, Any]) -> List[str]:
             for cid in valid_ids:
                 if cid > 0 and cid not in hand_ids:
                     violations.append(f"Ask Not proposed card #{cid} but not in hand {hand_ids}")
-        elif res_card == 250:  # Space Walk discard
+        elif res_card == 250:  # Eagle/Bear Has Landed discard
             for cid in valid_ids:
                 if cid > 0 and cid not in hand_ids:
-                    violations.append(f"Space Walk discard proposed card #{cid} but not in hand {hand_ids}")
+                    violations.append(f"Eagle/Bear Has Landed discard proposed card #{cid} but not in hand {hand_ids}")
         else:
             for cid in valid_ids:
                 if cid == 0:

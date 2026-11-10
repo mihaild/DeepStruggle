@@ -92,7 +92,7 @@ def test_the_other_sides_deal_and_face_down_headline_are_not_logged(browser: Any
     key = "headline_us_card" if first == "US" else "headline_ussr_card"
     card = page.evaluate(f"window.__wb.state.{key}")
     space = page.evaluate("window.__wb.state.space")
-    perk = space[second] >= 4 and space[first] < 4   # Man in Space: the other side shows first
+    perk = space[second] >= 4 and space[first] < 4   # Man in Earth Orbit: the other side shows first
     assert card and not perk
     page.evaluate(f"window.__wb.setView('{second}')")
     assert page.evaluate(f"window.__wb.shown.{key}") == 0

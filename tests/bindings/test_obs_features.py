@@ -160,7 +160,7 @@ R = int(ts.OBS_FEATURE_HEADLINE_REVEAL)
 
 
 def _box4_headline(seed: int) -> "ts.GameState":
-    """The US's headline choice with Man in Space its own: the USSR chose first."""
+    """The US's headline choice with Man in Earth Orbit its own: the USSR chose first."""
     st = ts.GameState()
     ts.Engine.init_game(st, seed)
     drain_chance(st)

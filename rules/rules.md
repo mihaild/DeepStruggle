@@ -135,7 +135,7 @@ $$\text{defcon} \leftarrow \min(5, \text{defcon} + 1)$$
 
 ### 4.3 Phase C: Headline Phase
 1. **Selection**: Each player secretly selects 1 card from hand (The China Card is prohibited).
-   - *Space Race Box 4 Modifier*: If one player has reached Space Race box 4 ("Man in Space") and the opponent has not, the opponent must select and reveal their headline card *before* the space leader selects.
+   - *Space Race Box 4 Modifier*: If one player has reached Space Race box 4 ("Man in Earth Orbit") and the opponent has not, the opponent must select and reveal their headline card *before* the space leader selects.
 2. **Simultaneous Reveal & Resolution Priority**:
    - Headline Value $\text{HV}(C) = \text{base\_ops}(C)$.
    - Scoring cards have $\text{HV} = 0$.

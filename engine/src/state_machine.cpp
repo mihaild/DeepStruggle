@@ -700,7 +700,7 @@ void StateMachine::end_turn(GameState& state) noexcept {
     Scoring::evaluate_military_ops(state);
     if (state.current_phase == Phase::GAME_OVER) return;
 
-    // Check Space Walk (Box 6) Privilege
+    // Check Eagle/Bear Has Landed (Box 6) Privilege
     bool us_sw = SpaceRace::has_space_walk(state, Player::US);
     bool ussr_sw = SpaceRace::has_space_walk(state, Player::USSR);
     Player sw_player = us_sw ? Player::US : (ussr_sw ? Player::USSR : Player::NONE);

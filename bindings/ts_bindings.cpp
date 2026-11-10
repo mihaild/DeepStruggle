@@ -1049,7 +1049,7 @@ NB_MODULE(ts_engine, m) {
           "an opposing headline `me` has seen under Space Race box 4 (revealed_headline), chosen and in the hand.");
     m.def("revealed_headline", [](const ts::GameState& s, ts::Player me) { return ts::SpaceRace::revealed_headline(s, me); },
           nb::arg("state"), nb::arg("me"),
-          "The opposing headline `me` has seen, else 0: with Man in Space (Space Race box 4) held by `me` alone "
+          "The opposing headline `me` has seen, else 0: with Man in Earth Orbit (Space Race box 4) held by `me` alone "
           "the opponent chooses first and reveals it.");
     using Hands = nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
     m.def("place_hand", [](const ts::GameState& s, ts::Player me, nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> held) {

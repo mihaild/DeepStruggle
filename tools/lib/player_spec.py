@@ -82,7 +82,7 @@ class Rollout:
     #: rollout id before it meant.
     aligned: bool = False
     #: Space Race box 4 (Config::box4): the opponent's headline, chosen first and revealed to the side holding
-    #: Man in Space alone, kept in every world; false = forgotten, as every rollout id before it meant.
+    #: Man in Earth Orbit alone, kept in every world; false = forgotten, as every rollout id before it meant.
     box4: bool = False
     #: Race the worlds (RolloutBatch.race): every candidate on the first `race`, the rest of `worlds` only
     #: for the network's move and the challengers not trailing it; 0 = every candidate on every world, as

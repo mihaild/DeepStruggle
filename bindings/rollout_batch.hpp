@@ -43,7 +43,7 @@ namespace ts::rollout {
 // stays chosen and in the opponent's hand, and only the rest of the hand is redealt.
 void determinize(GameState& s, Player me, uint64_t& rng, bool keep_hand = false, bool keep_revealed = false) noexcept;
 
-// The opposing headline `me` has seen, else 0. With Man in Space (Space Race box 4) held by `me` alone
+// The opposing headline `me` has seen, else 0. With Man in Earth Orbit (Space Race box 4) held by `me` alone
 // the opponent chooses its headline first and reveals it (the engine asks it first, StateMachine::
 // start_turn), so at `me`'s own headline choice the card is known -- though no observation slot shows it.
 uint8_t revealed_headline(const GameState& s, Player me) noexcept;
@@ -124,7 +124,7 @@ struct Config {
     // different points of the turn (the owner's Decolonization replay, 2026-10-19). Off by default:
     // every rollout player measured before it played the unaligned count.
     bool aligned = false;
-    // Space Race box 4: at the headline choice of the side holding Man in Space alone, the opponent's
+    // Space Race box 4: at the headline choice of the side holding Man in Earth Orbit alone, the opponent's
     // headline -- chosen first and revealed -- stays in every world (revealed_headline), and the
     // opponent's hand is redealt around it. Off: the world forgets it and asks it again, as every
     // rollout player measured before it did.

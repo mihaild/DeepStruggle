@@ -584,7 +584,7 @@ def test_aligned_counts_the_headline_as_one_boundary_for_every_candidate() -> No
 
 
 def _box4_headline(seed: int) -> ts.GameState:
-    """The US's headline choice with Man in Space (Space Race box 4) its own: the USSR chose first."""
+    """The US's headline choice with Man in Earth Orbit (Space Race box 4) its own: the USSR chose first."""
     st = ts.GameState()
     ts.Engine.init_game(st, seed)
     drain_chance(st)
@@ -601,7 +601,7 @@ def _box4_headline(seed: int) -> ts.GameState:
 
 
 def test_box4_keeps_the_revealed_opposing_headline_in_every_world() -> None:
-    """With Man in Space held alone, the opponent chooses its headline first and reveals it: the box-4
+    """With Man in Earth Orbit held alone, the opponent chooses its headline first and reveals it: the box-4
     worlds keep the card chosen and in the opponent's hand, the rest of the hand redealt around it; the
     default worlds forget it and ask it again, as every measured player's did."""
     st = _box4_headline(5)
