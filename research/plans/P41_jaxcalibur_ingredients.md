@@ -707,6 +707,10 @@ learning a private game that the outside yardsticks miss; what little it gains a
 gains. It is not a full stop either: slow learning, a third of A8's pace or less, with a four-point swing on top.
 Readings 1 and 3 stand, the recommendation below is unchanged, and the pool is not the lever.
 
+**J5 stopped (owner, 2026-11-10 ~20:00 UTC)** at ~2,853M; resumable in place, latest snapshot 2,850M. The GPU is
+free. No branch is launched: the lr 1.5e-4 + entropy-0 branch (from the 2,800M snapshot, the state the gate
+read) and 3×192 from scratch both wait on the owner.
+
 **Recommended next run, the owner's to start:** stop J5's main line at its next snapshot and give the GPU to one
 branch from the 2,800M state, `...@2800M+lr1.5e-4`, with `--entropy-coef 0` beside it (R103's form: J1′ is ahead of
 or level with J1 at every gate but one from 1,200M to 8,000M, and P41 already reserved it for J5's next branch), read at +400M and
