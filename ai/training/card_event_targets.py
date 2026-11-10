@@ -117,7 +117,7 @@ def coup_roll_mod(st: "ts.GameState", player: "ts.Player", country: int) -> int:
         us = player == ts.Player.US
         if st.has_flag(DEATH_SQUADS_US):
             mod += 1 if us else -1
-        elif st.has_flag(DEATH_SQUADS_USSR):
+        if st.has_flag(DEATH_SQUADS_USSR):
             mod += -1 if us else 1
     if st.has_flag(SALT):
         mod -= 1
