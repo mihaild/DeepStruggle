@@ -245,11 +245,15 @@ class TestTrainingPipelines:
     def device(self):
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def test_behavioral_cloning_training_step(self, device):
+    def test_behavioral_cloning_training_step(self, device, tmp_path):
+        # Seeded: the weights, the batch order and the demonstration games (global np.random) would
+        # otherwise come from whatever earlier tests on this worker left, and "loss fell" with them.
+        torch.manual_seed(0)
+        np.random.seed(0)
         model = create_coldwar_net(device)
         trainer = BehavioralCloningTrainer(model, device=device, lr=1e-3)
         dataset = trainer.generate_demonstration_dataset(num_games=5, max_steps_per_game=50)
-        history = trainer.train(dataset, epochs=2, batch_size=32)
+        history = trainer.train(dataset, epochs=2, batch_size=32, save_path=str(tmp_path / "bc.pt"))
         assert len(history["loss"]) == 2
         assert history["loss"][-1] < history["loss"][0]
 

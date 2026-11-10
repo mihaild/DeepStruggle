@@ -59,7 +59,11 @@ def model(request: pytest.FixtureRequest) -> torch.nn.Module:
     it), so the whole file runs on the CPU too; it used to sit behind a module-level GPU skip,
     which on a machine without one checked nothing at all -- including the engine-only test at
     the end, which needs no model.
+
+    Seeded, so the weights -- and any near-tie the batch-size comparison below meets -- do not
+    depend on which tests ran before this module on the worker.
     """
+    torch.manual_seed(0)
     return create_coldwar_net_v2(device=request.param, graph_layers=0).eval()
 
 
