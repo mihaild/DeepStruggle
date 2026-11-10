@@ -495,14 +495,19 @@ higher ceiling is unanswered, and the current run cannot answer it.
    bias, not parameter count -- so "capacity" cannot mean parameters; if it means anything it means **width per
    token** (128, spread over per-type MLPs) against A8's wide fused representation.
 
-**Revised reading.** Three candidates, in the order to test them. (a) *The global token does not reach the
-per-country decision.* The per-entity heads read their own tokens; DEFCON lives in the global token; a coup in a
-battleground at DEFCON 2 is a two-token judgement that three narrow attention layers may mix weakly -- and the
-self-DEFCON-1 excess, 5 points above J1 from the first recipe on, is exactly that failure. **A no-training probe
-first:** on identical positions, P(coup in a battleground | DEFCON 2) and P(any DEFCON-suicide action | it is
-legal) for J5 against J1 at matched steps; if J5's is the excess, the fix is architectural and cheap to read -- the
-global token concatenated into the per-entity heads (or DEFCON in every country token), an A code, from scratch at
-3×128 against J5's own 23.4% at 400M (17 h). (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
+**Revised reading.** Three candidates, in the order to test them. (a) *The DEFCON-1 excess, 5 points above J1 from
+the first recipe on, is the one concrete architectural defect, and its mechanism is not yet known.* My first guess --
+the global token not reaching the per-country decision -- is wrong on the weights (running session, 2,400M): both
+models run `head_context`, so every per-country logit reads a 64-wide projection of the trunk hidden, which in J5
+is built from the global token's output and the per-type means, and the choice to coup at all goes through the
+branch and play-mode heads, which read the trunk directly in both. What can still differ is the width of the path
+(DEFCON squeezed through a 64-d context beside a 128-d token, where J1's whole trunk is the global mix) or the
+trunk summary itself (global output + type means) losing what a DEFCON-2 coup needs. **A no-training probe first:**
+on identical positions at matched steps, P(coup in a battleground | DEFCON 2) and P(any DEFCON-suicide action | it
+is legal), J5 against J1, and whether J5's excess sits in those positions; only then an A code -- the candidates are
+a wider head context, or the global DEFCON float broadcast into every country token's input MLP (a network-side
+routing of a float the observation already holds, not a layout change) -- read from scratch at 3×128 against J5's
+own 23.4% at 400M (17 h). (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
 400M read. (c) *The rate:* the lr 1.5e-4 branch from 2,000M, read at +400M against J5's 36.4 -- cheapest, but the
 KL trajectory now says it stabilises at best. Not saturation under any of them until one of the three moves the
 400M or the +400M read.
