@@ -10,7 +10,9 @@ marked as translated and its cards are still spans.
 from __future__ import annotations
 
 import html
+import json
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import pytest
@@ -64,3 +66,24 @@ def test_in_the_pseudo_language_every_line_is_translated_and_its_cards_still_hov
         assert words.startswith("⟦") and words.endswith("⟧"), pseudo
         assert [i for i, _ in _spans(pseudo)] == [i for i, _ in row["cards"]], pseudo
         assert MARK.match(pseudo) is None if not row["mark"] else pseudo.startswith(f"  {row['mark']} ")
+
+
+def test_chinese_log_keeps_card_ids_and_english_saved_data(log: Dict[str, Any]) -> None:
+    catalog = Path(__file__).resolve().parents[2] / "web/ui/src/i18n/locales/zh-CN/game.json"
+    cards = json.loads(catalog.read_text(encoding="utf-8"))["cards"]
+    for row, translated in zip(log["game"], log["chinese"]):
+        assert _spans(translated["html"]) == [(i, cards[str(i)]["name"]) for i, _ in row["cards"]]
+        assert _strip(translated["html"]) == (f"  {row['mark']} " if row["mark"] else "") + translated["text"]
+        assert "{{" not in translated["text"] and "[object Object]" not in translated["text"]
+    assert any("放置初始影响力" in row["text"] for row in log["chinese"])
+    assert log["englishAfterSwitch"] == [row["text"] for row in log["game"]]
+    assert log["savedUnchanged"], "a translation must not change the position or replay steps"
+
+
+def test_chinese_linked_card_and_nested_play_mode(log: Dict[str, Any]) -> None:
+    linked = log["linked"]
+    assert _spans(linked["html"]) == [(32, "联合国干预"), (26, "中情局成立")]
+    assert _strip(linked["html"]) == "苏联配合联合国干预打出中情局成立（#26）：取消其事件，苏联使用其行动点数"
+    assert linked["timing"] == "先执行苏联事件，随后行动点数：政变"
+    assert "UN Intervention" in linked["english"] and "CIA Created" in linked["english"]
+    assert not re.search(r"[\u4e00-\u9fff]", linked["english"])

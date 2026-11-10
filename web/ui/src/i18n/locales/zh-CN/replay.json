@@ -1,0 +1,11 @@
+{
+  "play": "▶ 播放",
+  "pause": "⏸ 暂停",
+  "stepLabel": "第 {{step}} 步／共 {{last}} 步",
+  "localReplays": "本地回放……",
+  "unreadable": "{{file}}（无法读取：{{error}}）",
+  "entry": "{{game}}（{{steps}} 步）",
+  "entryWithWinner": "{{game}}（{{steps}} 步）[获胜方：{{winner}}]",
+  "parseFailed": "无法解析回放文件。",
+  "nothingToExport": "没有可导出的回放数据。"
+}

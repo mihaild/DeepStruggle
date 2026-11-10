@@ -1,0 +1,100 @@
+{
+  "none": "无",
+  "spaceBox": {
+    "launchpad": "起点／发射台",
+    "earthSatellite": "人造卫星",
+    "animalInSpace": "动物进入太空",
+    "manInSpace": "载人航天",
+    "manInEarthOrbit": "载人绕地飞行",
+    "lunarOrbit": "绕月飞行",
+    "eagleBearHasLanded": "雄鹰／巨熊登月",
+    "spaceShuttle": "航天飞机",
+    "spaceStation": "空间站",
+    "fallback": "第 {{box}} 格"
+  },
+  "privilege": {
+    "animalInSpace": "每回合可尝试太空竞赛两次",
+    "manInEarthOrbit": "对手必须先选择并展示头条牌",
+    "eagleBearHasLanded": "回合结束时可弃置 1 张持牌",
+    "spaceStation": "每回合可进行 8 个行动轮"
+  },
+  "privilegeShort": {
+    "animalInSpace": "每回合 2 次",
+    "manInEarthOrbit": "对方先展示头条",
+    "eagleBearHasLanded": "回合结束时弃置一张持牌",
+    "spaceStation": "第八行动轮"
+  },
+  "next": {
+    "doneTitle": "最后一格：空间站，太空竞赛已完成",
+    "done": "完成",
+    "title": "第 {{box}} 格，{{name}}：使用至少 {{ops}} 行动点数的卡牌，掷出 1–{{roll}}",
+    "text": "下次需 {{ops}} 点行动 · 掷出 1～{{roll}}"
+  },
+  "label": {
+    "defcon": "核危机等级",
+    "victoryPoints": "胜利点数",
+    "turnAndEra": "回合与时期",
+    "actionRound": "行动轮",
+    "militaryOps": "军事行动（需求：{{defcon}}）",
+    "spaceRace": "太空竞赛"
+  },
+  "vp": {
+    "tie": "平局 0",
+    "lead": "{{side}} +{{vp}}"
+  },
+  "era": {
+    "early": "冷战早期",
+    "mid": "冷战中期",
+    "late": "冷战晚期"
+  },
+  "turn": "第 {{turn}}/10 回合",
+  "round": {
+    "setup": "初始设置",
+    "headline": "头条",
+    "gameOver": "对局结束",
+    "actionRound": "第 {{ar}} 行动轮"
+  },
+  "sideColon": "{{side}}：",
+  "widget": {
+    "title": "太空竞赛：苏联在第 {{ussr}} 格，美国在第 {{us}} 格。点击查看完整轨道与特权。",
+    "pillTitle": "{{side}}太空竞赛：第 {{box}} 格（{{name}}）｜已用尝试次数：{{used}}/{{max}}",
+    "boxTitle": "第 {{box}} 格：{{name}}",
+    "tokenTitle": "{{side}}位于第 {{box}} 格",
+    "details": "查看太空竞赛详情"
+  },
+  "playerTurn": "{{side}}回合",
+  "modal": {
+    "title": "豪华版太空竞赛轨道与特权",
+    "tied": "太空竞赛进度相同",
+    "leads": "{{side}}领先 {{spaces}} 格",
+    "program": "{{side}}太空计划",
+    "maxAttemptsUsed": "尝试次数已用尽",
+    "attemptAvailable": "可以尝试",
+    "position": "局面：",
+    "positionValue": "第 {{box}} 格——{{name}}",
+    "attemptsThisTurn": "本回合尝试次数：",
+    "attemptsValue": "{{used}}／上限 {{max}}",
+    "activePerks": "当前太空竞赛特权：",
+    "leadSubtext": "使用行动点数达到目标格要求的卡牌，尝试前进",
+    "boxNumber": "第 {{box}} 格",
+    "requiredOps": "所需行动点数：",
+    "requiredOpsValue": "≥ {{ops}} 点行动",
+    "rollToAdvance": "前进所需骰点：",
+    "firstVp": "首位到达的胜利点数：",
+    "secondVp": "次位到达的胜利点数：",
+    "vpValue": "+{{vp}} 胜利点数",
+    "privilegeTitle": "✨ 特权（仅限先到达者）：",
+    "activeFor": "对{{side}}生效",
+    "cancelled": "✕ 已取消（双方均已到达）",
+    "status": "{{side}}：{{status}}",
+    "here": "📍 当前位置",
+    "cleared": "✓ 已通过",
+    "pending": "待解锁"
+  },
+  "perk": {
+    "twoAttempts": "每回合 2 次尝试",
+    "opponentRevealsHeadline": "对方先展示头条牌",
+    "discardHeldCard": "回合结束时弃置持牌",
+    "eighthActionRound": "第八行动轮"
+  }
+}

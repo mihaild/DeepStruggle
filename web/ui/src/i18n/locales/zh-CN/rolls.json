@@ -1,0 +1,34 @@
+{
+  "dieLabel": "{{side}}掷出 {{value}}",
+  "vs": "对阵",
+  "needsAtMost": "需要 ≤",
+  "needsAtLeast": "需要 ≥",
+  "kind": {
+    "coup": "政变",
+    "realignment": "调整阵营",
+    "spaceRace": "太空竞赛",
+    "war": "战争",
+    "olympics": "奥运会",
+    "summit": "首脑峰会",
+    "trap": "陷阱"
+  },
+  "where": {
+    "box": "第 {{box}} 格",
+    "sponsors": "{{side}}主办",
+    "escapes": "{{side}}能否脱困？"
+  },
+  "result": {
+    "succeedsBy": "{{side}}成功，超过目标 {{net}}",
+    "fails": "失败",
+    "tieNothingRemoved": "平局，未移除影响力",
+    "removes": "{{winner}}移除 {{net}} 点{{loser}}影响力",
+    "winsNoneToRemove": "{{winner}}获胜，但无{{loser}}影响力可移除",
+    "advances": "{{side}}前进",
+    "warWins": "{{side}}获胜，+{{net}} 胜利点数",
+    "plusTwoVp": "{{side}} +2 胜利点数",
+    "summitWins": "{{side}} +2 胜利点数，可调整核危机等级",
+    "tie": "平局",
+    "escapes": "逃脱",
+    "staysTrapped": "仍被困住"
+  }
+}

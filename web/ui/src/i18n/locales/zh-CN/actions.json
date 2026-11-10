@@ -1,0 +1,17 @@
+{
+  "confirmDone": "确认完成／跳过",
+  "selectCard": "选择卡牌 #{{n}}（{{card}}）",
+  "resolution": "出牌方式：{{resolution}}",
+  "resolutionOrOpMode": "出牌方式：{{resolution}}／行动方式：{{opMode}}",
+  "rollDie": "掷骰",
+  "unassigned": "未分配 #{{idx}}",
+  "pointNode": "选择国家 #{{n}}（{{country}}）",
+  "branch": "分支 #{{n}}",
+  "setDefcon": "将核危机等级设为 {{level}}",
+  "region": "{{region}}",
+  "regionNumber": "区域 #{{n}}",
+  "unknown": "未知行动 #{{idx}}",
+  "opsInfluenceFirst": "行动点数 → 影响力，第一点置于{{country}}",
+  "opsInfluenceNothing": "行动点数 → 影响力，不放置",
+  "untilControl": "在{{country}}放置影响力直至控制（{{points}} 点）"
+}

@@ -1,0 +1,146 @@
+{
+  "where": {
+    "drawn": "已抽取",
+    "discardPile": "弃牌堆",
+    "ussrHand": "苏联手牌",
+    "usHand": "美国手牌",
+    "removed": "已移出",
+    "drawDeck": "抽牌堆"
+  },
+  "cardNumber": "卡牌 #{{id}}",
+  "countryNumber": "国家 #{{id}}",
+  "event": "事件",
+  "cardOpsSide": "{{ops}} 点行动 · {{side}}",
+  "cardSide": {
+    "us": "美国",
+    "ussr": "苏联",
+    "neutral": "中立"
+  },
+  "cardChoice": {
+    "blockade": "<strong>{{who}}：</strong>正在结算<em>封锁</em>！选择并弃置一张<strong>行动点数 ≥ 3</strong> 的手牌，以保留美国在西德的影响力（或确认／跳过，放弃这些影响力）：",
+    "saltNegotiations": "<strong>{{who}}：</strong><em>战略武器限制谈判</em>：从弃牌堆中选择一张非计分牌收回手牌：",
+    "ourManInTehran": "<strong>{{who}}：</strong><em>我们的人在德黑兰</em>：以下是从牌堆抽出的卡牌。可逐张选择弃置；点击<em>完成</em>将其余卡牌放回牌堆：",
+    "starWars": "<strong>{{who}}：</strong><em>星球大战</em>：从弃牌堆中选择一张非计分牌，立即执行其事件：",
+    "fiveYearPlan": "<strong>{{who}}：</strong><em>五年计划</em>：选择一张手牌弃置：",
+    "missileEnvy": "<strong>{{who}}：</strong><em>导弹嫉妒</em>：选择行动点数最高的手牌交给对手：",
+    "aldrichAmes": "<strong>{{who}}：</strong><em>奥德里奇·艾姆斯</em>：选择一张美国手牌弃置：",
+    "grainSales": "<strong>{{who}}：</strong><em>向苏联出售谷物</em>：选择一张苏联手牌：",
+    "askNot": "<strong>{{who}}：</strong><em>“不要问你的国家能为你做什么”</em>：选择要弃置的手牌：",
+    "terrorism": "<strong>{{who}}：</strong><em>恐怖主义</em>：选择一张手牌弃置：",
+    "spaceWalk": "<strong>{{who}}：</strong><em>雄鹰／巨熊登月（太空竞赛第 6 格）</em>：可在回合结束时弃置 1 张手牌（或点击跳过，保留全部手牌）："
+  },
+  "branchAsk": {
+    "chernobyl": "指定一个地区：本回合剩余时间内，苏联不得使用行动点数在该地区放置影响力",
+    "summit": "设置核危机等级（首脑峰会的获胜方可将其提高或降低 1 级，也可保持不变）",
+    "howILearned": "将核危机等级设为任意等级",
+    "default": "选择一个选项"
+  },
+  "optionNumber": "选项 {{n}}",
+  "mode": {
+    "ops": "{{ops}} 点行动",
+    "cardsOps": "该牌的行动点数",
+    "event": {
+      "title": "结算事件",
+      "desc": "触发牌面事件。若是对手事件牌，将先结算事件，再选择如何使用行动点数。"
+    },
+    "space": {
+      "title": "尝试太空竞赛",
+      "desc": "弃置此牌，尝试推进太空竞赛（{{ops}}）。"
+    },
+    "opsInfluence": {
+      "title": "使用行动点：放置影响力",
+      "desc": "使用 {{ops}} 放置影响力。"
+    },
+    "opsCoup": {
+      "title": "使用行动点：尝试政变",
+      "desc": "使用 {{ops}} 尝试政变，需要掷骰。"
+    },
+    "opsRealign": {
+      "title": "使用行动点：调整阵营",
+      "desc": "使用 {{ops}} 调整阵营，双方对掷骰子。"
+    },
+    "unlabelled": {
+      "title": "⚠ 未标注的结算模式 {{mode}}（{{name}}）",
+      "desc": "此模式尚无显示名称；引擎 Resolution 枚举已更改，但 web/ui/src/action_hud.ts 尚未更新。"
+    }
+  },
+  "opMode": {
+    "influence": {
+      "text": "放置影响力",
+      "desc": "在相邻国家放置影响力标记"
+    },
+    "coup": {
+      "text": "尝试政变",
+      "desc": "掷骰以移除对方影响力并增加己方影响力"
+    },
+    "realign": {
+      "text": "进行调整阵营",
+      "desc": "双方对掷骰子以移除对手影响力"
+    },
+    "unknown": "行动方式 {{mode}}"
+  },
+  "badge": {
+    "terminal": "对局已结束",
+    "waiting": "等待中"
+  },
+  "noDecision": "当前无需选择行动。",
+  "loadingEngine": "正在加载游戏引擎……",
+  "hidden": {
+    "toMove": "轮到<strong>{{player}}</strong>——{{phase}}。",
+    "note": "{{view}}视角隐藏此方的选项；模型会自动操作此方。"
+  },
+  "prompt": {
+    "resolvingEventCard": "<strong>{{player}}：</strong>正在结算事件（卡牌 #{{card}}），请选择卡牌：",
+    "headlineRevealed": "📡 <strong>太空竞赛特权（第 4 格）：</strong>{{side}}已展示头条：卡牌 #{{card}}",
+    "headline": "<strong>{{player}}头条阶段：</strong>从手牌中选择一张作为头条：",
+    "actionRound": "<strong>{{player}}第 {{round}} 行动轮：</strong>选择要打出的手牌：",
+    "grainSales": "<strong>{{player}}：</strong><em>向苏联出售谷物</em>从苏联手牌中抽到了<em>{{card}}</em>。可以打出此牌，或归还它并使用向苏联出售谷物的 2 行动点数：",
+    "choosePlay": "<strong>{{player}}：</strong>选择<em>{{card}}</em>的出牌方式：",
+    "timing": "<strong>{{player}}：</strong>将对方事件牌<em>{{card}}</em>用于行动点数。请选择执行顺序：",
+    "opMode": "<strong>{{player}}：</strong>有 <strong>{{ops}} 行动点数</strong>可用，请选择行动方式：",
+    "setup": "<strong>{{player}}初始设置：</strong>点击{{region}}中高亮的国家，放置影响力（<strong>剩余 {{remaining}} 点</strong>）：",
+    "resolvingEvent": "<strong>{{player}}：</strong>正在结算事件<em>{{card}}</em>。请选择目标国家（<strong>剩余 {{remaining}} 次</strong>）：",
+    "coup": "<strong>{{player}}：</strong>选择目标国家，以 <strong>{{ops}} 行动点数</strong>尝试<strong>政变</strong>（也可点击地图）：",
+    "realign": "<strong>{{player}}：</strong>选择<strong>调整阵营</strong>的目标国家（也可点击地图）：",
+    "target": "<strong>{{player}}：</strong>请选择目标国家：",
+    "targetOpsLeft": "<strong>{{player}}：</strong>请选择目标国家（剩余 {{remaining}} 行动点数）：",
+    "noTargetLeft": "<em>已无符合条件的目标。</em>",
+    "branch": "<strong>{{player}}：</strong><em>{{card}}</em>：{{ask}}：",
+    "idle": "模拟处于空闲或切换阶段。",
+    "waiting": "等待决策……"
+  },
+  "pass": {
+    "ourManInTehran": "✓ 完成——其余牌放回牌堆",
+    "salt": "✓ 不取牌",
+    "noCard": "✓ 无牌可选——继续",
+    "default": "✓ 跳过／确认（不弃牌）",
+    "donePassRemaining": "✓ 完成／跳过剩余行动",
+    "doneNoTarget": "✓ 完成——没有剩余的合法目标",
+    "confirmPass": "✓ 确认／跳过"
+  },
+  "grainSalesReturn": {
+    "title": "↩ 将{{card}}交还苏联",
+    "desc": "归还此牌（苏联知道你已看过），改为使用向苏联出售谷物的 2 行动点数。"
+  },
+  "timing": {
+    "opsFirst": {
+      "title": "分支 0：先行动",
+      "desc": "现在进行行动，之后触发对手事件。"
+    },
+    "eventFirst": {
+      "title": "分支 1：先执行对手事件",
+      "desc": "先触发对手事件，再进行你的行动。"
+    }
+  },
+  "target": {
+    "name": "{{name}}（稳定度 {{stab}}）",
+    "influence": "美国：<strong>{{us}}</strong>／苏联：<strong>{{ussr}}</strong>",
+    "header": "可选目标行动（{{n}}）："
+  },
+  "die": {
+    "input": "🎲 掷骰输入：",
+    "autoRoll": "自动掷骰（伪随机）",
+    "manual": "手动：{{roll}}",
+    "auto": "🎲 自动"
+  }
+}

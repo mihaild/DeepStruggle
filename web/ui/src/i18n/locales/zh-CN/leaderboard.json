@@ -1,0 +1,101 @@
+{
+  "page": {
+    "title": "冷战热斗 Elo 排行榜",
+    "badge": "Elo 排行榜",
+    "workbenchLink": "游戏工作台 →",
+    "sections": "排行榜分区",
+    "tabRatings": "评分",
+    "tabCodes": "训练配置与架构",
+    "epoch": "引擎版本批次",
+    "whichPlayers": "选择要显示的玩家",
+    "viewMain": "主要玩家",
+    "viewLineage": "主要玩家及同系模型",
+    "viewAll": "所有玩家",
+    "whichScale": "选择评分体系",
+    "scaleAnchor": "基准评分体系",
+    "scalePlaydek": "Playdek 评分估计",
+    "thPlayer": "玩家",
+    "thLinks": "链接"
+  },
+  "tag": {
+    "main": "主选",
+    "hfDefault": "HF 默认",
+    "hfDefaultTitle": "Hugging Face 默认配置：链接未指定时，工作台采用此网络及搜索设置",
+    "site": "站点：{{level}}",
+    "siteTitle": "twilightstruggle.app 中的 {{level}} 级电脑对手"
+  },
+  "kind": {
+    "gumbel": "Gumbel",
+    "rollout": "模拟搜索",
+    "search": "PUCT",
+    "bot": "程序对手"
+  },
+  "links": {
+    "report": "报告",
+    "reportOfNetworkTitle": "网络采用概率最高行动时的表现报告",
+    "reportOfPlayerTitle": "此玩家的对局表现报告",
+    "weights": "模型权重",
+    "weightsTitle": "Hugging Face 上的模型权重",
+    "play": "打出",
+    "playTitle": "在游戏工作台中挑战此玩家（search={{search}}）",
+    "playPolicyTitle": "工作台无法执行此玩家的搜索；可改为使用其网络策略"
+  },
+  "noLineages": "此版本批次没有同系模型。",
+  "table": {
+    "elo": "Elo",
+    "eloPlaydek": "Playdek 估计",
+    "games": "对局数",
+    "gamesPlaydek": "人机对局数",
+    "score": "得分",
+    "scorePlaydek": "胜—平—负",
+    "anchor": "基准"
+  },
+  "note": {
+    "anchor": "这些评分仅根据此处模型间的对局计算，并以其中一个模型为基准；不等同于人类玩家的 Elo 评分，也不等同于 Playdek 冷战热斗应用中的评分。",
+    "estimatePointer": "切换至 Playdek 估计等级分后，可查看根据本站玩家与模型的对局推算出的同尺度等级分。",
+    "playdek": "这些估计依据玩家自行填写的等级分，并非 Playdek 应用提供的评级：玩家自行报告 Playdek 等级分，对局在本站进行，模型在 Playdek 中的实际等级分可能不同。截至 {{asOf}}，估计使用了 {{humans}} 位玩家的 {{games}} 场合规对局，其中允许悔棋。各对弈配置以排行榜中的相对分差作为初始依据，再由与真人的对局调整其等级分，同一网络的其他配置也会受到较小幅度的调整。若某个网络从未与真人对局，则只能依据原有分差估计，因此其 ± 不确定范围更大。"
+  },
+  "scale": {
+    "anchor": "基准 <code>{{anchor}}</code> = {{elo}}。",
+    "clickRow": "点击一行可查看该配置与各对手的交锋成绩。",
+    "unrated": "尚无评级（缺少与主要玩家相连的对局）：{{players}}。"
+  },
+  "footer": {
+    "fitted": "由 <code>tools/leaderboard.py</code> 根据<a href=\"{{records}}\">对局记录</a>{{atCommit}}拟合。权重：{{weights}}{{defaultModel}}。",
+    "atCommit": "（提交 <code>{{commit}}</code>）",
+    "defaultModel": "，默认模型 <code>{{model}}</code>，搜索配置 <code>{{search}}</code>{{notOnBoard}}",
+    "notOnBoard": "（不是棋盘上的玩家）"
+  },
+  "detail": {
+    "formerly": "曾用名：{{names}}。",
+    "architecture": "架构 {{code}}",
+    "recipe": "训练方案 {{code}}",
+    "hfDefault": "Hugging Face 上的默认配置：链接未指定模型或搜索方式时，工作台使用此网络及其搜索配置。",
+    "siteLevel": "{{site}} 上的 {{level}} 难度。",
+    "siteLevelDescribed": "{{site}} 上的 {{level}} 难度：{{description}}",
+    "estimate": "Playdek 估计等级分 <b>{{rating}}</b> ± {{se}}（95% 区间：{{lo}}–{{hi}}）· {{games}}。",
+    "estimateGames_other": "与 {{count}} 位玩家对局 {{games}} 场，模型战绩为 {{record}}",
+    "estimateNoGames": "本配置尚未直接与人类对局：排名根据其排行榜差距及所属网络与人类的对局估算",
+    "elo": "Elo <b>{{elo}}</b>{{uncertainty}} · 与 {{opponents}} 个对手对局 {{games}} 场，其中 {{main}} 个是主要参赛配置。",
+    "theAnchor": "（评级基准）",
+    "against": "对手",
+    "asUs": "扮演美国",
+    "asUssr": "扮演苏联"
+  },
+  "codes": {
+    "predates": "此 leaderboard.json 早于代码体系；请运行 tools/scripts/build_web.sh 重新构建。",
+    "defaults": "默认值",
+    "flags": "{{count}} 个标记",
+    "firstRun": "首次运行 <code>{{run}}</code>",
+    "noDescription": "暂无说明",
+    "recipes": "训练配方",
+    "architectures": "网络架构",
+    "thCode": "代码",
+    "thWhat": "说明",
+    "thFlags": "效果标记",
+    "thOnBoard": "当前棋局",
+    "note": "配置名称说明其训练来源：<code>E7-A8-R1-S44</code> 表示引擎 E7、架构 A8、训练配方 R1、种子 44（指训练时的引擎；无论使用哪个引擎训练，这里的对局均采用所示规则版本）。每个 <code>@&lt;step&gt;M+&lt;change&gt;</code> 表示一个分支点及该处的变更，如新配方、架构、种子，或括号内的模型权重融合。每个代码代表一组 <code>tools/train.py</code> 参数：架构指定网络结构，配方指定其他训练设置。代码由 <code>tools/scripts/run_codes.py</code> 分配，此处根据 <a href=\"{{src}}/research/run_codes.json\">research/run_codes.json</a> 列出（<a href=\"{{src}}/research/architectures_and_recipes.md\">同一组表格</a>）。网络采用名称中各类代码最后出现的配置进行训练。配方仅列出与默认值不同的参数。",
+    "showAll": "显示所有代码，包括当前棋局未使用的网络代码"
+  },
+  "loadFailed": "无法加载排行榜：{{error}}"
+}

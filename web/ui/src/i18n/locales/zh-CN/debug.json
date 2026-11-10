@@ -1,0 +1,13 @@
+{
+  "title": "引擎调试与状态查看器",
+  "overrideTracks": "修改轨道数值",
+  "defcon": "核危机等级：",
+  "setDefcon": "设置核危机等级",
+  "vp": "胜利点数（-20 至 +20）：",
+  "setVp": "设置胜利点数",
+  "setCountry": "设置国家影响力",
+  "us": "美国：",
+  "ussr": "苏联：",
+  "apply": "应用",
+  "country": "{{name}}（#{{id}}）"
+}

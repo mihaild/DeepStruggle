@@ -1,0 +1,40 @@
+{
+  "draw": "平局",
+  "wins": "{{side}}获胜",
+  "outcome": "<b>{{verdict}}</b>{{you}}。胜利点数 {{margin}}，第 {{turn}} 回合{{reason}}。",
+  "youWon": "——你赢了",
+  "youLost": "——你输了",
+  "reason": "（{{reason}}）",
+  "facts": {
+    "youPlayed": "你执行了",
+    "against": "对手",
+    "takenBack": "已撤销",
+    "moves_other": "{{count}} 步行动"
+  },
+  "notesIntro": "同时记录以下说明，便于筛选对局：",
+  "clean": "全程与同一模型正常对局：记为无辅助对局。",
+  "note": {
+    "noModelSide": "模型没有控制任何一方。",
+    "bothSides": "模型曾操作双方。",
+    "movesForModel_other": "你替模型方执行了 {{count}} 步行动。",
+    "devViewMoves_other": "你的 {{count}} 步行动是在可查看模型手牌的开发者视角下执行的。",
+    "analysisMoves_other": "你的 {{count}} 步行动是在显示模型分析时执行的。",
+    "suggestedMoves_other": "你的 {{count}} 步行动采用了模型建议。",
+    "noModelLoaded": "模型一方的部分行动在未加载模型时执行。",
+    "modelChanged": "对局过程中更换了模型。",
+    "searchChanged": "对局过程中更改了模型搜索设置。",
+    "forcedDice_other": "有 {{count}} 次掷骰被指定点数。",
+    "debugOverrides_other": "有 {{count}} 次调试修改。",
+    "loadedPosition": "本局从载入的局面开始。"
+  },
+  "status": {
+    "already": "本局已在数据库中。",
+    "noDatabase": "此构建未配置统计数据库（TS_STATS_ENDPOINT）；请改为下载记录。",
+    "needLogin": "请填写 Playdek 用户名。",
+    "needRating": "请填写 Playdek 评分（1–5000）。",
+    "sending": "正在发送……",
+    "added": "已加入，谢谢！",
+    "notAdded": "未加入：{{error}}",
+    "recordFailed": "无法生成对局记录：{{error}}"
+  }
+}

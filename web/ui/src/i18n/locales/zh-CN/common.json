@@ -1,0 +1,14 @@
+{
+  "brand": "冷战热斗",
+  "disclaimer": "非官方爱好者项目，与 GMT Games 无关联，亦未获其背书。Twilight Struggle® 是 GMT Games, LLC 的注册商标。",
+  "language": "语言",
+  "side": {
+    "US": "美国",
+    "USSR": "苏联"
+  },
+  "round": {
+    "setup": "初始设置",
+    "headline": "第 {{turn}} 回合头条",
+    "actionRound": "第 {{turn}} 回合，第 {{ar}} 行动轮"
+  }
+}

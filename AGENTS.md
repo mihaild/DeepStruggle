@@ -237,7 +237,7 @@ one side against the model with the other side's private information hidden. The
 the share link. **The page restates no rule:** legal targets are the engine's mask, region scores
 are the engine's scoring (`ts_region_scores_json`), and every enum, card id and table it names
 comes from the engine's layout export (`web/ui/src/engine/layout.ts`). The page and the
-leaderboard are ready for other languages (i18next, `web/ui/src/i18n/`): messages are readable
+leaderboard support English and Simplified Chinese (i18next, `web/ui/src/i18n/`): messages are readable
 ids in an English JSON catalog that a language's catalog mirrors, and only what is shown is
 translated -- engine names, saves, replays, links and the stats record stay as they are. Details:
 [`web/ui/AGENTS.md`](web/ui/AGENTS.md). Deployment: GitHub Pages with no

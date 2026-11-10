@@ -1,0 +1,157 @@
+{
+  "NATO_ACTIVE": {
+    "name": "北大西洋公约组织生效中",
+    "description": "苏联不能在美国控制的欧洲国家政变或调整阵营。"
+  },
+  "NATO_CANCELED_FRANCE": {
+    "name": "北大西洋公约组织（不含法国）",
+    "description": "北大西洋公约组织不再保护法国。"
+  },
+  "NATO_CANCELED_WEST_GERMANY": {
+    "name": "北大西洋公约组织（不含西德）",
+    "description": "北大西洋公约组织不再保护西德（可被推倒这堵墙取消）。"
+  },
+  "MARSHALL_PLAN_PLAYED": {
+    "name": "马歇尔计划已打出",
+    "description": "美国启用北大西洋公约组织的前提已满足。"
+  },
+  "WARSAW_PACT_PLAYED": {
+    "name": "华沙条约组织成立已打出",
+    "description": "美国启用北大西洋公约组织的前提已满足。"
+  },
+  "US_JAPAN_PACT_ACTIVE": {
+    "name": "美日共同防卫协定",
+    "description": "苏联不能在日本政变或调整阵营。此事件使美国获得足以控制日本的影响力。"
+  },
+  "CONTAINMENT_ACTIVE": {
+    "name": "遏制政策生效中",
+    "description": "美国所有行动点数加 1（上限为 4）。",
+    "short": "遏制政策"
+  },
+  "PURGE_US_ACTIVE": {
+    "name": "红色恐怖（美国）",
+    "description": "美国所有行动点数减 1（下限为 1）。"
+  },
+  "PURGE_USSR_ACTIVE": {
+    "name": "清洗（苏联）",
+    "description": "苏联所有行动点数减 1（下限为 1）。"
+  },
+  "VIETNAM_REVOLTS_ACTIVE": {
+    "name": "越南起义",
+    "description": "本回合余下时间，苏联将行动点数全部用于东南亚时加 1。"
+  },
+  "FORMOSAN_RESOLUTION_ACTIVE": {
+    "name": "台湾决议",
+    "description": "美国控制台湾时，亚洲计分将其视为战场国；美国打出中国牌后失效。"
+  },
+  "CMC_ACTIVE_US": {
+    "name": "古巴导弹危机（美国打出）",
+    "description": "本回合苏联尝试政变即输掉游戏，除非先从古巴移除 2 点苏联影响力以解除危机。"
+  },
+  "CMC_ACTIVE_USSR": {
+    "name": "古巴导弹危机（苏联打出）",
+    "description": "本回合美国尝试政变即输掉游戏，除非先从西德或土耳其移除 2 点美国影响力以解除危机。"
+  },
+  "NUCLEAR_SUBS_ACTIVE": {
+    "name": "核潜艇生效中",
+    "description": "本回合美国在战场国进行政变尝试不会降低核危机等级。",
+    "short": "核潜艇"
+  },
+  "QUAGMIRE_ACTIVE": {
+    "name": "泥潭生效中",
+    "description": "美国须在每个行动轮弃置一张至少 2 行动点数的卡牌；掷出 1–4 则摆脱泥潭。"
+  },
+  "BEAR_TRAP_ACTIVE": {
+    "name": "捕熊陷阱生效中",
+    "description": "苏联须在每个行动轮弃置一张至少 2 行动点数的卡牌；掷出 1–4 则逃离捕熊陷阱。"
+  },
+  "SALT_ACTIVE": {
+    "name": "战略武器限制谈判",
+    "description": "本回合余下时间，双方所有政变尝试的掷骰结果均减 1。"
+  },
+  "WE_WILL_BURY_YOU_PENDING": {
+    "name": "“我们会埋葬你们”（待结算）",
+    "description": "除非美国在下一行动轮作为事件打出联合国干预，否则苏联在美国的牌生效前获得 3 胜利点数。"
+  },
+  "BREZHNEV_DOCTRINE_ACTIVE": {
+    "name": "勃列日涅夫主义",
+    "description": "苏联所有行动点数加 1（上限为 4）。"
+  },
+  "FLOWER_POWER_ACTIVE": {
+    "name": "花朵力量生效中",
+    "description": "美国每打出一张战争牌，无论用于行动还是事件，苏联均获得 2 胜利点数（可被“邪恶帝国”取消）。"
+  },
+  "U2_INCIDENT_ACTIVE": {
+    "name": "U-2击坠事件",
+    "description": "苏联立即获得 1 胜利点数；若本回合使用联合国干预，再获得 1 点。"
+  },
+  "SHUTTLE_DIPLOMACY_ACTIVE": {
+    "name": "穿梭外交",
+    "description": "下次亚洲或中东计分少计苏联一个战场国。"
+  },
+  "DEATH_SQUADS_US": {
+    "name": "拉丁美洲敢死队（美国）",
+    "description": "本回合美国在中美洲和南美洲的政变掷骰结果加 1，苏联在这两个区域的政变掷骰结果减 1。"
+  },
+  "DEATH_SQUADS_USSR": {
+    "name": "拉丁美洲敢死队（苏联）",
+    "description": "本回合苏联在中美洲和南美洲的政变掷骰结果加 1，美国在这两个区域的政变掷骰结果减 1。"
+  },
+  "CAMP_DAVID_PLAYED": {
+    "name": "戴维营协议",
+    "description": "阿拉伯—以色列战争不能再作为事件打出。"
+  },
+  "NORTH_SEA_OIL_ACTIVE": {
+    "name": "北海油田",
+    "description": "仅本回合，美国可以进行第八行动轮。"
+  },
+  "THE_REFORMER_PLAYED": {
+    "name": "改革家",
+    "description": "苏联不能再在欧洲政变；#90 开放政策可以用于行动点数。"
+  },
+  "IRAN_CONTRA_ACTIVE": {
+    "name": "伊朗门丑闻",
+    "description": "本回合余下时间，美国所有调整阵营的掷骰结果减 1。"
+  },
+  "EVIL_EMPIRE_PLAYED": {
+    "name": "“邪恶帝国”",
+    "description": "取消并阻止 #59 花朵力量的效果。"
+  },
+  "ALDRICH_AMES_ACTIVE": {
+    "name": "奥德里奇·艾姆斯",
+    "description": "本回合余下时间，美国手牌向苏联公开。"
+  },
+  "JOHN_PAUL_II_PLAYED": {
+    "name": "约翰·保罗二世当选教皇",
+    "description": "已满足前提，可以将 #101 团结工会作为事件打出。"
+  },
+  "NORAD_ACTIVE": {
+    "name": "北美防空司令部生效中",
+    "description": "美国控制加拿大时，每当核危机等级在行动轮中降至 2，美国可增加 1 点影响力。"
+  },
+  "YURI_AND_SAMANTHA_ACTIVE": {
+    "name": "尤里和萨曼莎",
+    "description": "本回合余下时间，美国每次尝试政变，苏联获得 1 胜利点数。"
+  },
+  "AWACS_PLAYED": {
+    "name": "向沙特出售预警机",
+    "description": "#56 穆斯林革命不能再作为事件打出。"
+  },
+  "IRANIAN_HOSTAGE_CRISIS_PLAY": {
+    "name": "伊朗人质危机",
+    "description": "#92 恐怖主义使美国随机弃置 2 张牌，而非 1 张。"
+  },
+  "WILLY_BRANDT_PLAYED": {
+    "name": "维利·勃兰特已打出",
+    "description": "取消北大西洋公约组织对西德的保护（可被推倒这堵墙取消）。"
+  },
+  "TEAR_DOWN_THIS_WALL_PLAYED": {
+    "name": "推倒这堵墙",
+    "description": "取消并阻止 #55 维利·勃兰特的效果。"
+  },
+  "CHERNOBYL_ACTIVE": {
+    "name": "切尔诺贝利生效中",
+    "description": "本回合苏联不能使用行动点数在指定区域增加影响力。",
+    "short": "切尔诺贝利"
+  }
+}
