@@ -478,6 +478,35 @@ branch, three numbers the running session can pull without training: J5's per-up
 learner at matched steps to ~1,200M and the human US opening is reachable for it unprompted; whether it has a
 higher ceiling is unanswered, and the current run cannot answer it.
 
+**The three numbers (running session, 2026-11-10; `training_metrics.jsonl`, the 2,400M weights):**
+
+1. *Step size: still ~2× J1, no longer rising.* Per-update KL ×10⁻³, J5 / J1: 2.52 / 1.03 at 1,200–1,300M, 2.13 /
+   0.97 at 1,600M, 1.84 / 0.92 at 2,000M, 1.81 / 0.89 at 2,300–2,400M; clip fraction 19.2 / 15.5% → 17.5 / 14.4%;
+   KL to π_ref 7.1 / 3.3 → 5.2 / 2.9. The ratio peaked at ~400M (3.13 / 1.42) and J5's own KL has fallen steadily
+   since 1,200M -- the stall began as the step was shrinking, so the rate is not the whole story, though J5 still
+   takes twice J1's step with three more points clipped.
+2. *Self-inflicted DEFCON-1 endings: J5's excess is architectural and predates R119.* Per 100M, J5 / J1: 12.7 / 11.1
+   at 1,200M, peaking 16.7 / 10.4 at 1,500M, 13.5 / 8.8 at 2,300M -- J1 falls steadily from 11 to 9, J5 sits at
+   13.5–14.5. At 300–400M, all three runs on their first recipe: J5 (R102) 16.2, J1 (R102) 11.1, A8 on R119 12.5;
+   R119 costs an A8 about +1.4 at 400M. Provoked DEFCON-1 is also ~2 points above J1 (12.1 vs 10.5). **The recipe
+   confound is cleared: the excess was there on R102 from the start.**
+3. *Parameters are equal:* A35 1,619k (token transformer 792k + fusion 186k = 978k trunk) against A8 1,485k (914k
+   trunk), ~9% more overall; the heads are the same size. The difference is compute (~16× per step) and inductive
+   bias, not parameter count -- so "capacity" cannot mean parameters; if it means anything it means **width per
+   token** (128, spread over per-type MLPs) against A8's wide fused representation.
+
+**Revised reading.** Three candidates, in the order to test them. (a) *The global token does not reach the
+per-country decision.* The per-entity heads read their own tokens; DEFCON lives in the global token; a coup in a
+battleground at DEFCON 2 is a two-token judgement that three narrow attention layers may mix weakly -- and the
+self-DEFCON-1 excess, 5 points above J1 from the first recipe on, is exactly that failure. **A no-training probe
+first:** on identical positions, P(coup in a battleground | DEFCON 2) and P(any DEFCON-suicide action | it is
+legal) for J5 against J1 at matched steps; if J5's is the excess, the fix is architectural and cheap to read -- the
+global token concatenated into the per-entity heads (or DEFCON in every country token), an A code, from scratch at
+3×128 against J5's own 23.4% at 400M (17 h). (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
+400M read. (c) *The rate:* the lr 1.5e-4 branch from 2,000M, read at +400M against J5's 36.4 -- cheapest, but the
+KL trajectory now says it stabilises at best. Not saturation under any of them until one of the three moves the
+400M or the +400M read.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
