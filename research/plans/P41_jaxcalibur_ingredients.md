@@ -444,6 +444,40 @@ Germany (any WG 25.5%, WG ≥ 4 0%); J1 at 1,200M 100% WG (89.9% ≥ 4) but J1 a
 2,000M gate (~22:00 UTC, 2026-11-08). P43 is built for every placement run; its launch waits on the owner's GPU and
 order decision.
 
+**J5 through the 2,000M gate and past it (2026-11-08/09, [`../runs.md`](../runs.md)), against A13+R48's SWA, J1 and
+J1′ at matched steps:**
+
+| step | J5 (A35 3×128) | J1 (A8, R102) | J1′ (A8, R103) | J5 vs J1 head to head |
+|---:|---:|---:|---:|---:|
+| 200M | 21.1 | 11.8 | | |
+| 400M | 23.4 | 16.0 | | 41.4 |
+| 800M | 33.1 | 30.4 | | 49.7 |
+| 1,200M | 36.4 | 33.5 | 35.8 | 53.1 |
+| 1,600M | 30.8 | 35.5 | 39.2 | 46.7 |
+| 2,000M | 38.7 | 38.6 | 40.1 | 54.2 |
+| 2,400M | 36.4 | 41.0 | 41.4 | 45.7 |
+
+(J5 on R119, pure win/loss, from 930M; J1 continues 44.8 → 48.5% over 4,400–7,600M.) A 10M sweep shows J5 flat
+against the reference from ~1,200M and slipping from ~1,450M, no discontinuity at any resume; its DEFCON-1 endings
+in training rose 12.7 → 16.6% over 1,200–1,600M; its openings keep churning (US back to West Germany 2 at 2,000M;
+USSR Poland/Romania → Bulgaria/Poland). **Reading (2026-11-10): the gate is passed by the letter (level at 2,000M)
+and failed in substance** -- J5 learns the early game about twice as fast as A8 and has made no net progress since
+1,200M, swinging 5–8 points between reads where J1's reads are monotone; by 2,400M it is 5 behind both A8 lines
+and loses head to head. Two readings fit, and they are told apart cheaply, so **not saturation at the current
+settings** (10,000M ≈ 18 days at 6.5k steps/s): (i) the step size -- per-update KL was 2.3× J1's at 400M and
+rising, never lowered; non-monotone reads and opening churn are its signature; the fix is the branch deferred at
+400M, `E8-A35-R102-S44@930M+R119@2000M+lr1.5e-4` from the 38.7 state, read at +400M / +800M against J5's own
+continuation (36.4 at 2,400M) and J1's 41.0 / ~44; (ii) capacity at 3×128 -- a plateau at ~36–39 where A8 keeps
+climbing, in which case the lower rate stabilises but does not climb and the question becomes 3×192 or more
+layers (J5 was always meant to be sized by the gate). Also open: the recipe confound -- J5 switched to R119 at
+930M and stalled ~300M later with DEFCON-1 endings rising; the A8 R119 control stopped at 410M, so there is no
+matched A8 read on R119 past that, and J5's own curve cannot separate the recipe from the architecture. Before the
+branch, three numbers the running session can pull without training: J5's per-update KL and clip fraction over
+1,200–2,400M beside J1's; DEFCON-1 endings per 100M beside J1's and the A8-R119 run's; parameter counts for A35
+3×128 against A8, so "capacity" has a number. What we already understand: the token transformer is the faster
+learner at matched steps to ~1,200M and the human US opening is reachable for it unprompted; whether it has a
+higher ceiling is unanswered, and the current run cannot answer it.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
