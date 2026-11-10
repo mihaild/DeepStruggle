@@ -274,12 +274,12 @@ Vietnam Revolts cancel on a 1-Op card: $1 - 1 + 1 = 1$.
 | :---: | :--- | :---: | :---: | :---: | :--- |
 | **1** | Earth Satellite | 2 | 1–3 | 2 / 1 | None |
 | **2** | Animal in Space | 2 | 1–4 | 0 / 0 | May play 2 Space Race cards per turn |
-| **3** | Man in Orbit | 2 | 1–4 | 2 / 0 | None |
-| **4** | Man in Space | 2 | 1–3 | 0 / 0 | Opponent must reveal Headline card first |
-| **5** | Lunar Probe | 3 | 1–4 | 3 / 1 | None |
-| **6** | Space Walk | 3 | 1–3 | 0 / 0 | May discard held card at end of turn |
-| **7** | Space Station | 3 | 1–4 | 4 / 2 | None |
-| **8** | Eagle/Bear Landed | 4 | 1–2 | 2 / 0 | May play 8 Action Rounds per turn |
+| **3** | Man in Space | 2 | 1–3 | 2 / 0 | None |
+| **4** | Man in Earth Orbit | 2 | 1–4 | 0 / 0 | Opponent must reveal Headline card first |
+| **5** | Lunar Orbit | 3 | 1–3 | 3 / 1 | None |
+| **6** | Eagle / Bear Has Landed | 3 | 1–4 | 0 / 0 | May discard held card at end of turn |
+| **7** | Space Shuttle | 3 | 1–3 | 4 / 2 | None |
+| **8** | Space Station | 4 | 1–2 | 2 / 0 | May play 8 Action Rounds per turn |
 
 *Special abilities are canceled immediately when the second player reaches that box.*
 
