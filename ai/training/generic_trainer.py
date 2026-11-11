@@ -1453,6 +1453,8 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                           if getattr(trainer, "active_search", None) is not None else None),
         "searched_opponent": (trainer.searched_opp.state_dict()
                               if getattr(trainer, "searched_opp", None) is not None else None),
+        # --head-l2-init-coef's theta_0 (P44): the heads' initial weights, which a resume cannot rebuild.
+        "head_init_state": (dict(trainer.head_init) if getattr(trainer, "head_init", None) else None),
     }, path)
 
 
@@ -1573,7 +1575,7 @@ def _is_macro(net: Any) -> bool:
 
 def load_resume_state(path: str, model: nn.Module, trainer: Any,
                       seed: Optional[int] = None, widen: bool = False, grow_tokens: bool = False,
-                      reset_head: bool = False, grow_sphere: bool = False,
+                      reset_head: bool = False, fresh_optimizer: bool = False, grow_sphere: bool = False,
                       grow_macro: bool = False, add_rules: int = 0) -> Dict[str, Any]:
     """Restore a run in place and return where it left off.
 
@@ -1701,6 +1703,18 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         heads = reset_policy_head(model, trainer.optimizer)
         print(f"[resume reset-policy-head] re-initialised {heads} with fresh Adam moments; the trunk, the value heads "
               f"and pi_ref are restored as saved (pi_ref refreshes on its own schedule)", flush=True)
+    if fresh_optimizer:
+        # P44 0b: the weights, pi_ref, the pool and the clocks as saved, the optimiser as if new -- every Adam moment and
+        # step count dropped -- so a bleed after a restart can be told from one after a distillation.
+        trainer.optimizer.state.clear()
+        print("[resume fresh-optimizer] every Adam moment and step count dropped; everything else restored", flush=True)
+    if float(getattr(trainer, "head_l2_init_coef", 0.0)) > 0.0:
+        _init = blob.get("head_init_state")
+        if _init is None:
+            raise ValueError("--head-l2-init-coef pulls the heads toward the run's initial weights, and this resume "
+                             "state has none (it was written without the term): its theta_0 is not known")
+        trainer.set_head_init(_init)
+        print(f"[resume] head L2-init: theta_0 restored for {len(_init)} head parameters", flush=True)
     trainer.total_env_steps = int(blob["total_env_steps"])
     if hasattr(trainer, "steps_since_ref_update"):
         saved_clock = blob.get("steps_since_ref_update")
@@ -1917,6 +1931,7 @@ def train_pipeline(
     resume_grow_tokens: bool = False,
     resume_add_rules: Optional[List[str]] = None,
     resume_reset_policy_head: bool = False,
+    resume_fresh_optimizer: bool = False,
     teacher_checkpoint: Optional[str] = None,
     teacher_coef: float = 0.0,
     teacher_seat: str = "us",
@@ -2007,6 +2022,7 @@ def train_pipeline(
     zero_avoid_coef: float = 0.0,
     zero_avoid_scope: str = "all",
     zero_avoid_ramp_steps: int = 0,
+    head_l2_init_coef: float = 0.0,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2282,6 +2298,7 @@ def train_pipeline(
         "resume_grow_tokens": bool(resume_grow_tokens),
         "resume_add_rules": list(resume_add_rules or []),
         "resume_reset_policy_head": bool(resume_reset_policy_head),
+        "resume_fresh_optimizer": bool(resume_fresh_optimizer),
         "teacher_checkpoint": teacher_checkpoint,
         "teacher_coef": float(teacher_coef),
         "teacher_seat": teacher_seat,
@@ -2420,6 +2437,7 @@ def train_pipeline(
         "zero_avoid_coef": float(zero_avoid_coef),
         "zero_avoid_scope": str(zero_avoid_scope),
         "zero_avoid_ramp_steps": int(zero_avoid_ramp_steps),
+        "head_l2_init_coef": float(head_l2_init_coef),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2811,6 +2829,7 @@ def train_pipeline(
         logit_gap_coef=logit_gap_coef,
         zero_avoid_coef=zero_avoid_coef,
         zero_avoid_scope=zero_avoid_scope,
+        head_l2_init_coef=head_l2_init_coef,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -3098,6 +3117,9 @@ def train_pipeline(
     if z_loss_coef > 0.0:
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
+    if head_l2_init_coef > 0.0:
+        print(f"[head L2-init] coef {head_l2_init_coef:g} on sum ||theta - theta_0||^2 over the policy and value heads "
+              f"(--head-l2-init-coef, P44)", flush=True)
     if zero_avoid_coef > 0.0:
         print(f"[zero-avoiding] coef {zero_avoid_coef:g} on KL(uniform || pi) over the legal moves, "
               f"{'the learner' + chr(39) + 's rows' if zero_avoid_scope == 'all' else 'only the learner' + chr(39) + 's setup placements'} "
@@ -3197,12 +3219,15 @@ def train_pipeline(
     resume_path = os.path.join(out_dir, RESUME_FILENAME)
     resumed_elapsed = 0.0
     _ema_state: Optional[Dict[str, Any]] = None
+    if resume_fresh_optimizer and not resume:
+        raise ValueError("--resume-fresh-optimizer restarts a resumed run's optimiser; give --resume")
     if resume_reset_policy_head and not resume:
         raise ValueError("--resume-reset-policy-head re-initialises a resumed network's policy head; give --resume")
     if resume:
         src = resolve_resume(resume)
         state = load_resume_state(src, model, trainer, seed=seed, widen=resume_widen,
                                   grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head,
+                                  fresh_optimizer=resume_fresh_optimizer,
                                   grow_sphere=resume_grow_sphere, grow_macro=grow_macro,
                                   add_rules=add_rule_bits)
         _ema_state = state.get("ema_state_dict")
@@ -3343,6 +3368,8 @@ def train_pipeline(
         active_aux_losses.append("logit_gap_frac")
     if zero_avoid_coef > 0.0:
         active_aux_losses.append("zero_avoid_kl")
+    if head_l2_init_coef > 0.0:
+        active_aux_losses.append("head_l2_init_dist")
     if teacher_coef > 0.0:
         active_aux_losses.append("teacher_kl")
         active_aux_losses.append("teacher_rows")

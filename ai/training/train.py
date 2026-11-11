@@ -402,6 +402,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "trunk context, the branch and play-mode heads) with fresh weights and Adam moments, keeping "
                              "the trunk and the value heads -- P37's last-layer reset, once at the branch point, aimed at "
                              "the policy head's measured plasticity loss (P37a).")
+    parser.add_argument("--resume-fresh-optimizer", action="store_true", default=False,
+                        help="With --resume: restore the weights, pi_ref, the pool and the clocks, but drop every Adam "
+                             "moment and step count -- the optimiser starts as new (P44 0b: does a restart alone make "
+                             "the distil-then-RL bleed).")
     parser.add_argument("--resume-add-rules", nargs="+", default=None, metavar="RULE",
                         help="With --resume: rule bits the branch plays that its resume state was not trained with "
                              "(canonical_first / canonical_last, P43; opp_event_gated). A rule bit has no width, so the weights are "
@@ -1106,6 +1110,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logit-gap-coef", type=float, default=0.0,
                         help="Penalty coef * mean over legal moves of relu(top - logit - --logit-gap)^2 "
                              "(owner 2026-10-09): keeps a saturated policy learnable. 0 (default): off.")
+    parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
+                        help="P44 step 1's arm: add coef * sum ||theta - theta_0||^2 over the policy heads (base, "
+                             "per-entity and their trunk context, branch, play-mode, --ladder-head-norm's norms) and the "
+                             "two value heads, theta_0 the run's initial weights (kept in the resume state). Juliani and "
+                             "Ash 2024 (arXiv:2405.19153): L2 toward the initial weights, with LayerNorm, kept PPO's "
+                             "plasticity where resets failed. 0 = off.")
     parser.add_argument("--zero-avoid-coef", type=float, default=0.0,
                         help="P41 J1: coef * KL(uniform || pi) over the legal moves on the learner's rows, beside the "
                              "entropy bonus -- zero-avoiding, so no legal move's probability can collapse. 0: off.")
@@ -1489,6 +1499,7 @@ def main():
             resume_add_rules=args.resume_add_rules,
             resume_grow_sphere=args.resume_grow_sphere,
             resume_reset_policy_head=args.resume_reset_policy_head,
+            resume_fresh_optimizer=args.resume_fresh_optimizer,
             teacher_checkpoint=args.teacher_checkpoint,
             teacher_coef=args.teacher_coef,
             teacher_seat=args.teacher_seat,
@@ -1612,6 +1623,7 @@ def main():
             z_loss_coef=args.z_loss_coef,
             logit_gap_coef=args.logit_gap_coef,
             zero_avoid_coef=args.zero_avoid_coef,
+            head_l2_init_coef=args.head_l2_init_coef,
             zero_avoid_scope=args.zero_avoid_scope,
             zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,
